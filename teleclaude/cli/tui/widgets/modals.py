@@ -362,6 +362,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         agent_availability: dict[str, AgentAvailabilityDTO] | None = None,
         default_message: str | None = None,
         path_mode: bool = False,
+        title: str | None = None,
         **kwargs: object,
     ) -> None:
         super().__init__(**kwargs)
@@ -370,13 +371,14 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         self._agent_availability = agent_availability or {}
         self._default_message = default_message
         self._path_mode = path_mode
+        self._title = title
         self._agents = tuple(get_enabled_agents())
 
     def compose(self) -> ComposeResult:
         project_name = self._project_path.rsplit("/", 1)[-1]
 
         with Vertical(id="modal-box") as box:
-            box.border_title = "Start Session"
+            box.border_title = self._title or "Start Session"
 
             yield Label(f"Computer: {self._computer}", id="modal-computer")
 

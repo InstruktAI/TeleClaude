@@ -173,6 +173,8 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             "activate",
             "preview_file",
             "new_project",
+            "prepare",
+            "start_work",
             "refine",
             "freeze",
             "move_todo_up",
@@ -429,6 +431,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             computer=computer,
             project_path=project_path,
             default_message=self._next_command(SlashCommand.NEXT_PREPARE.value, slug),
+            title=f"Prepare: {slug}" if slug else "Prepare",
         )
 
     def action_start_work(self) -> None:
@@ -460,6 +463,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             computer=computer,
             project_path=project_path,
             default_message=self._next_command(SlashCommand.NEXT_WORK.value, slug),
+            title=f"Start Work: {slug}" if slug else "Start Work",
         )
 
     def action_refine(self) -> None:
@@ -472,6 +476,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             computer=computer,
             project_path=project_path,
             default_message=self._next_command(SlashCommand.NEXT_REFINE_INPUT.value, slug),
+            title=f"Refine Input: {slug}" if slug else "Refine Input",
         )
 
     def action_freeze(self) -> None:
