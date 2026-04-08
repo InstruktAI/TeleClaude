@@ -319,9 +319,14 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 self._player = player
                 self._current_track = track
                 start_paused = self._paused_requested
-                start_position = (
-                    self._paused_position_seconds if start_position_seconds is None else start_position_seconds
-                )
+                # Reset position for new tracks; only use saved position for explicit resume
+                if start_position_seconds is not None:
+                    start_position = start_position_seconds
+                elif self._paused_requested:
+                    start_position = self._paused_position_seconds
+                else:
+                    start_position = 0.0
+                self._paused_position_seconds = 0.0
 
             track_label = track.stem.replace("_", " ")
             # Use the SID's default subtune (start_song is 1-based)
