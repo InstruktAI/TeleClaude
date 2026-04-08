@@ -13,7 +13,7 @@ from teleclaude.chiptunes.worker import _WorkerProcess
 
 
 class _ImmediateThread:
-    def __init__(
+    def __init__(  # pylint: disable=too-many-positional-arguments
         self,
         target: Callable[..., object],
         args: tuple[object, ...] = (),
@@ -193,6 +193,19 @@ class TestWorkerProcess:
 
         worker._on_track_end("init_failed", gen=worker._playback_gen)
         assert worker._current_track == tmp_path / "Second.sid"
+
+    def test_resume_on_fresh_worker_enables_playback(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        tracks = [tmp_path / "Fresh.sid"]
+        worker = _make_worker(monkeypatch, tmp_path, tracks=tracks)
+        worker._emit = lambda event, **kw: None
+        assert worker._enabled is False
+
+        worker._do_resume()
+
+        assert worker._enabled is True
+        assert worker._current_track == tmp_path / "Fresh.sid"
+        player = _FakePlayer.instances[-1]
+        assert player.play_calls == [(tmp_path / "Fresh.sid", False, 0.0)]
 
     def test_stale_generation_callback_ignored(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         tracks = [tmp_path / "One.sid", tmp_path / "Two.sid"]

@@ -232,6 +232,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
 
     def _do_resume(self) -> None:
         with self._lock:
+            self._enabled = True
             self._paused_requested = False
             player = self._player
             current_track = self._current_track

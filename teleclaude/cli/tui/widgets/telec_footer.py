@@ -331,8 +331,12 @@ class TelecFooter(Widget):
         prev_button.icon = "\u23ee"
         if self.chiptunes_pending_command_id:
             play_button.icon = "\u23f3"
+        elif self.chiptunes_playback == "loading":
+            play_button.icon = "\u23f3"
+        elif self.chiptunes_playing:
+            play_button.icon = "\u23f8"
         else:
-            play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
+            play_button.icon = "\u25b6"
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
 

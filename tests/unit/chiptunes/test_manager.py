@@ -92,7 +92,7 @@ class _FakeWorkerServer:
 @pytest.fixture()
 def fake_worker() -> Generator[_FakeWorkerServer]:
     # Use /tmp to stay within macOS AF_UNIX path length limit (104 bytes)
-    import tempfile
+    import tempfile  # pylint: disable=import-outside-toplevel
 
     fd, sock_path = tempfile.mkstemp(prefix="tc_ct_", suffix=".sock", dir="/tmp")
     os.close(fd)
@@ -205,7 +205,7 @@ class TestChiptunesManagerIPC:
     ) -> None:
         sock_path = fake_worker._socket_path
         pid_path = str(tmp_path / "chiptunes.pid")
-        Path(pid_path).write_text(str(os.getpid()))
+        Path(pid_path).write_text(str(os.getpid()), encoding="utf-8")
 
         manager = _make_manager(monkeypatch, tmp_path, sock_path, pid_path=pid_path)
         manager._connect()
@@ -216,6 +216,42 @@ class TestChiptunesManagerIPC:
         assert manager._sock is None
         assert ChiptunesManager._worker_alive()
         manager._disconnect()
+
+    def test_reader_disconnect_resets_playback_to_cold(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        fake_worker: _FakeWorkerServer,
+    ) -> None:
+        sock_path = fake_worker._socket_path
+        manager = _make_manager(monkeypatch, tmp_path, sock_path)
+        changes: list[str] = []
+        manager.on_state_change = lambda: changes.append("changed")
+
+        manager._connect()
+        threading.Event().wait(0.2)
+
+        # Set state to playing via a track_start event
+        fake_worker.send_event(
+            {
+                "event": "track_start",
+                "track": "Test Track",
+                "sid_path": "/music/Test.sid",
+            }
+        )
+        threading.Event().wait(0.3)
+        assert manager._cached_state.playback == "playing"
+        changes.clear()
+
+        # Kill the fake worker connection — reader thread should detect and clean up
+        fake_worker.stop()
+        threading.Event().wait(0.5)
+
+        assert manager._cached_state.playback == "cold"  # type: ignore[comparison-overlap]
+        assert manager._sock is None
+        # Track path preserved for recovery
+        assert manager._cached_state.track_path == "/music/Test.sid"
+        assert changes, "on_state_change should have been called"
 
     def test_enqueue_command_reconnects_when_socket_is_none(
         self,
@@ -274,7 +310,7 @@ class TestChiptunesManagerProperties:
 class TestWorkerAlive:
     def test_worker_alive_returns_true_for_own_pid(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         pid_path = str(tmp_path / "chiptunes.pid")
-        Path(pid_path).write_text(str(os.getpid()))
+        Path(pid_path).write_text(str(os.getpid()), encoding="utf-8")
         monkeypatch.setattr(manager_module, "PID_PATH", pid_path)
         assert ChiptunesManager._worker_alive() is True
 

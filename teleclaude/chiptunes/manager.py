@@ -284,6 +284,16 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                     self._handle_event(line.decode())
         except OSError:
             pass
+        # Detect unexpected disconnect (crash, network break).
+        # Graceful shutdown() calls _disconnect() before the reader exits,
+        # so _sock is already None — skip cleanup in that case.
+        with self._lock:
+            was_connected = self._sock is not None
+        if was_connected:
+            self._disconnect()
+            self._cached_state.playback = "cold"
+            logger.info("ChipTunes: worker connection lost, playback state reset to cold")
+            self._notify_state_change()
 
     def _handle_event(self, line: str) -> None:
         try:

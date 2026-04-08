@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.core import output_poller
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.polling_coordinator import _build_transcript_output_update
 
@@ -29,8 +30,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 class TestTmuxHotPathBounded:
     def test_output_poller_hot_path_capture_window_is_small(self) -> None:
-        from teleclaude.core import output_poller  # pylint: disable=import-outside-toplevel
-
         assert output_poller._HOT_PATH_CAPTURE_LINES == 20  # pylint: disable=protected-access
 
     def test_output_poller_passes_hot_path_capture_window_to_tmux_bridge(self) -> None:

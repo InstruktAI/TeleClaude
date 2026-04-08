@@ -158,16 +158,16 @@ class TelecAppWsMixin:
         if isinstance(event, ChiptunesTrackEventDTO):
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=True,
-                playback="playing",
+                playback="loading",
                 state_version=None,
-                playing=True,
+                playing=False,
                 track=event.track,
                 sid_path=event.sid_path,
                 pending_command_id="",
                 pending_action="",
             )
             if event.track:
-                self.notify(f"♪ Now Playing: {event.track}", timeout=4)  # type: ignore[attr-defined]
+                self.notify(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, ChiptunesStateEventDTO):

@@ -5,7 +5,13 @@ from unittest.mock import Mock
 
 import pytest
 
-from teleclaude.api_models import AgentAvailabilityDTO, AgentAvailabilityEventDTO, SessionDTO, SessionStartedEventDTO
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    AgentAvailabilityEventDTO,
+    ChiptunesTrackEventDTO,
+    SessionDTO,
+    SessionStartedEventDTO,
+)
 from teleclaude.cli.tui import app_ws
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed
 
@@ -91,6 +97,7 @@ class _WsApp(app_ws.TelecAppWsMixin):
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self._tui_initiated_sessions: set[str] = set()
         self._activity_trigger = None
+        self._apply_chiptunes_footer_state = Mock()
         self.notify = Mock()
         self._refresh_data = Mock()
 
@@ -331,3 +338,26 @@ def test_on_session_started_user_run_session_with_job_auto_focuses() -> None:
     # Should auto-focus because the TUI initiated it, despite having job metadata
     assert sessions_view.select_requests == [("run-session-1", True)]
     assert sessions_view.pending_applied == 1
+
+
+@pytest.mark.unit
+def test_chiptunes_track_event_sets_loading_state() -> None:
+    """ChiptunesTrackEventDTO should set playback=loading, playing=False (prebuffer phase)."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_event(ChiptunesTrackEventDTO(track="Lazy Jones", sid_path="/music/Lazy_Jones.sid"))
+
+    app._apply_chiptunes_footer_state.assert_called_once()
+    kwargs = app._apply_chiptunes_footer_state.call_args[1]
+    assert kwargs["playback"] == "loading"
+    assert kwargs["playing"] is False
+    assert kwargs["loaded"] is True
+    assert kwargs["track"] == "Lazy Jones"
+    assert kwargs["sid_path"] == "/music/Lazy_Jones.sid"
+    assert kwargs["pending_command_id"] == ""
+    app.notify.assert_called_once()
+    toast_text = app.notify.call_args[0][0]
+    assert "Loading" in toast_text
+    assert "Lazy Jones" in toast_text
