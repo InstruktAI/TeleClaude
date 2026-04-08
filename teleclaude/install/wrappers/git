@@ -232,6 +232,57 @@ if [ "$_subcmd" = "checkout" ]; then
         echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
         exit 1
     fi
+    # During active merge, file-scoped checkout from a remote ref silently
+    # overwrites the local version. Require --confirmed to proceed.
+    if [ "$_has_separator" -eq 1 ] && [ -f "$(_real_git "${_dir_args[@]}" rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ]; then
+        _has_co_confirmed=0
+        for _carg in "$@"; do
+            [ "$_carg" = "--confirmed" ] && _has_co_confirmed=1
+        done
+        if [ "$_has_co_confirmed" -eq 0 ]; then
+            cat >&2 <<'MSG'
+WARNING: 'git checkout <ref> -- <files>' during active merge — inspection required.
+
+This overwrites local versions of conflicted files. In a multi-agent
+environment, local main often has hotfixes not present on the remote.
+
+Before proceeding:
+  1. Run: git diff HEAD -- <file>   (see what local has)
+  2. Run: git diff MERGE_HEAD -- <file>   (see what remote has)
+  3. Verify the local version has no unique work worth preserving.
+  4. Rerun with: git checkout --confirmed <ref> -- <files>
+MSG
+            exit 1
+        fi
+        _co_args=()
+        for _carg in "$@"; do
+            [ "$_carg" = "--confirmed" ] && continue
+            _co_args+=("$_carg")
+        done
+        _real_git "${_co_args[@]}"
+        exit $?
+    fi
+fi
+
+# Block sweep-add on main — force explicit file staging.
+if [ "$_subcmd" = "add" ]; then
+    _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
+        for _aarg in "$@"; do
+            case "$_aarg" in
+                -A|--all|.)
+                    cat >&2 <<'MSG'
+ERROR: 'git add -A', 'git add --all', and 'git add .' are prohibited on main.
+
+Repo root main may contain in-progress work from other agents. Sweep-add
+includes everything — use explicit file paths instead:
+  git add <file1> <file2> ...
+MSG
+                    exit 1
+                    ;;
+            esac
+        done
+    fi
 fi
 
 if [ "$_subcmd" = "commit" ]; then

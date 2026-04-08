@@ -27,7 +27,12 @@ from teleclaude.core.integration.checkpoint import (
     _read_checkpoint,
     _write_checkpoint,
 )
-from teleclaude.core.integration.formatters import _format_autostash_orphaned, _format_error, _format_queue_empty
+from teleclaude.core.integration.formatters import (
+    _format_autostash_orphaned,
+    _format_error,
+    _format_queue_empty,
+    _format_repo_root_diverged,
+)
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
@@ -88,12 +93,7 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
 
     rc, _, stderr = _run_git(["pull", "--ff-only", "--autostash", "origin", "main"], cwd=cwd)
     if rc != 0:
-        return _format_error(
-            "REPO_ROOT_DIVERGED",
-            f"git pull --ff-only origin main failed on repo root:\n{stderr.strip()}\n\n"
-            "Repo root main has diverged from origin/main. "
-            "Resolve the divergence (merge or reset to origin/main) before re-running integration.",
-        )
+        return _format_repo_root_diverged(stderr=stderr, project_root=cwd)
 
     # Detect orphaned autostash: git reports rc=0 when the pull succeeds but
     # the autostash pop fails due to conflicts, silently leaving a stash entry.

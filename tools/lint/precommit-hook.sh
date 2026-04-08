@@ -109,7 +109,7 @@ case "$component" in
         # Pylint (staged-file scoped when invoked by pre-commit)
         # Test files get pytest-structural checks disabled via CLI args;
         # pyproject.toml remains the single config source.
-        PYLINT_TEST_DISABLE="missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,redefined-outer-name,too-many-arguments,protected-access,consider-using-from-import"
+        PYLINT_TEST_DISABLE="missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,redefined-outer-name,too-many-arguments,protected-access,too-many-locals,too-many-instance-attributes,consider-using-from-import"
         (if [ $# -gt 0 ]; then
             src_files=""
             test_files=""
