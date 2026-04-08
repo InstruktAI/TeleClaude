@@ -169,7 +169,7 @@ def run_heuristics(
 
     # Add test instruction if code changed and not already done
     if categories and not _has_evidence(timeline, CHECKPOINT_TEST_EVIDENCE):
-        append_required_action("Run targeted tests for changed behavior")
+        append_required_action("Run targeted tests for only YOUR changed behavior")
 
     # Test quality review gate: point to policy, not inline rules
     if any(c.name == "tests only" for c in categories):
@@ -231,7 +231,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
     if not git_files or _is_docs_only(git_files):
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
-            f"Commit if ready.\n\n{response_policy}\n\n{escape_hatch}"
+            f"Commit only YOUR changes if ready.\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     # Special case: all clear
@@ -239,7 +239,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         return (
             f"{CHECKPOINT_PREFIX}All expected validations were observed. "
             "Docs check: if relevant, update existing docs or add a new doc. "
-            f"Commit if ready.\n\n{response_policy}\n\n{escape_hatch}"
+            f"Commit only YOUR changes if ready.\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
@@ -255,7 +255,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("Required actions (BLOCKING — do not resume user-facing work until all complete):")
         for i, action in enumerate(result.required_actions, 1):
             lines.append(f"{i}. {action}")
-        lines.append(f"{len(result.required_actions) + 1}. Commit changed files")
+        lines.append(f"{len(result.required_actions) + 1}. Commit only YOUR changed files")
         lines.append(f"{len(result.required_actions) + 2}. All steps done — only then proceed")
 
     # Observations (bullet points)

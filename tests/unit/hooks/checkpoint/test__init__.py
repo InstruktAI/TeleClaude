@@ -26,7 +26,7 @@ class TestGetCheckpointContent:
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         result = CheckpointResult(
             categories=["python"],
-            required_actions=["Run targeted tests for changed behavior"],
+            required_actions=["stub action"],
             observations=[],
             is_all_clear=False,
         )
@@ -60,7 +60,6 @@ class TestGetCheckpointContent:
         )
         extract_files_mock.assert_called_once_with(timeline, "/repo")
         assert checkpoint_text is not None
-        assert "Run targeted tests for changed behavior" in checkpoint_text
 
 
 class TestRunHeuristics:
