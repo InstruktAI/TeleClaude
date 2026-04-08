@@ -462,8 +462,7 @@ flowchart TD
     Committed --> IsBug
     IsBug -->|"No"| Deliver
     IsBug -->|"Yes"| Stage
-    Deliver --> DemoCreate
-    DemoCreate --> Stage
+    Deliver --> Stage
     Stage --> Commit
     Commit --> Push
 ```

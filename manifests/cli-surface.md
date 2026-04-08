@@ -320,39 +320,6 @@ Validate todo files and state.yaml schema
 
 - If slug is omitted, all active todos are checked.
 
-### `telec todo demo`
-
-Manage and run demo artifacts
-
-**Notes:**
-
-- Use 'list' explicitly to list available demos.
-- validate <slug>: check todos/{slug}/demo.md has executable bash blocks.
-- run <slug>: execute bash blocks from demos/{slug}/demo.md.
-- create <slug>: promote todos/{slug}/demo.md to demos/{slug}/demo.md.
-
-#### `telec todo demo list`
-
-List available demos
-
-#### `telec todo demo validate`
-
-Validate demo artifact for a slug
-
-**Usage:** `telec todo demo validate <slug>`
-
-#### `telec todo demo run`
-
-Execute demo bash blocks for a slug
-
-**Usage:** `telec todo demo run <slug>`
-
-#### `telec todo demo create`
-
-Promote demo artifact for a slug
-
-**Usage:** `telec todo demo create <slug>`
-
 ### `telec todo prepare`
 
 Run the Phase A (prepare) state machine
