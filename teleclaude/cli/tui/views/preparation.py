@@ -69,7 +69,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
         Binding("r", "refine", "Refine"),
-        Binding("shift+r", "remove_todo", "Remove", key_display="R"),
+        Binding("R", "remove_todo", "Remove"),
         Binding("f", "freeze", "Freeze"),
         Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
         Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
