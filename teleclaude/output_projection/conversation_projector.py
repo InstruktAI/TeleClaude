@@ -38,10 +38,10 @@ from typing import cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
+from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.utils.transcript import (
     _get_entries_for_agent,
     _is_compaction_entry,

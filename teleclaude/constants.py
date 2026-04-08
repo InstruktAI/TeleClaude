@@ -163,8 +163,6 @@ def format_system_message(label: str, content: str = "") -> str:
     return header
 
 
-
-
 # Checkpoint injection
 CHECKPOINT_PREFIX = "[TeleClaude Checkpoint] - "
 CHECKPOINT_MESSAGE = (

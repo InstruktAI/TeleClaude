@@ -7,8 +7,8 @@ import os
 from datetime import datetime
 from pathlib import Path
 
-from teleclaude.output_projection.visibility import is_internal_user_text
 from teleclaude.core.agents import AgentName
+from teleclaude.output_projection.visibility import is_internal_user_text
 
 from ._iterators import (
     _get_entries_for_agent,
