@@ -212,6 +212,7 @@ class TelecAppActionsMixin:
             "chiptunes_prev": self._chiptunes_prev,  # type: ignore[attr-defined]
             "chiptunes_stop": self._chiptunes_stop,  # type: ignore[attr-defined]
             "chiptunes_favorite": self._chiptunes_favorite,  # type: ignore[attr-defined]
+            "chiptunes_dislike": self._chiptunes_dislike,  # type: ignore[attr-defined]
         }
         action = simple_actions.get(key)
         if action is not None:

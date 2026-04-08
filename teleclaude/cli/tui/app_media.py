@@ -11,6 +11,8 @@ from instrukt_ai_logging import get_logger
 from textual import work
 
 from teleclaude.api_models import ChiptunesStatusDTO
+from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
+from teleclaude.chiptunes.favorites import is_favorited
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -169,8 +171,6 @@ class TelecAppMediaMixin:
         pending_command_id: str,
         pending_action: str,
     ) -> None:
-        from teleclaude.chiptunes.favorites import is_favorited
-
         if state_version is not None and state_version < self._chiptunes_state_version:  # type: ignore[attr-defined]
             return
         if state_version is not None:
@@ -185,6 +185,7 @@ class TelecAppMediaMixin:
         footer.chiptunes_pending_command_id = pending_command_id
         footer.chiptunes_pending_action = pending_action
         footer.chiptunes_favorited = is_favorited(sid_path) if sid_path else False
+        footer.chiptunes_disliked = is_disliked(sid_path) if sid_path else False
 
     def _apply_chiptunes_status(self, status: ChiptunesStatusDTO) -> None:
         self._apply_chiptunes_footer_state(
@@ -239,12 +240,13 @@ class TelecAppMediaMixin:
     @work(exclusive=False, group="settings")
     async def _chiptunes_favorite(self) -> None:
         """Toggle the current track in favorites."""
+        from teleclaude.chiptunes.favorites import remove_favorite, save_favorite
+
         footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
         if not footer.chiptunes_loaded:
             return
         if not footer.chiptunes_sid_path:
             return
-        from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
 
         sid_path = footer.chiptunes_sid_path
         track = footer.chiptunes_track
@@ -269,7 +271,43 @@ class TelecAppMediaMixin:
             return
 
         footer.chiptunes_favorited = True
-        self.notify("⭐ Added to favorites")  # type: ignore[attr-defined]
+        self.notify("Added to favorites")  # type: ignore[attr-defined]
+
+    @work(exclusive=False, group="settings")
+    async def _chiptunes_dislike(self) -> None:
+        """Toggle the current track in dislikes. Auto-skips when disliking."""
+        footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
+        if not footer.chiptunes_loaded:
+            return
+        if not footer.chiptunes_sid_path:
+            return
+
+        sid_path = footer.chiptunes_sid_path
+        track = footer.chiptunes_track
+
+        already_disliked = await asyncio.to_thread(is_disliked, sid_path)
+        if already_disliked:
+            try:
+                removed = await asyncio.to_thread(remove_dislike, sid_path)
+            except OSError as e:
+                self.notify(f"Failed to remove dislike: {e}", severity="error")  # type: ignore[attr-defined]
+                return
+
+            if removed:
+                footer.chiptunes_disliked = False
+                self.notify("Removed from dislikes")  # type: ignore[attr-defined]
+            return
+
+        try:
+            await asyncio.to_thread(save_dislike, track, sid_path)
+        except OSError as e:
+            self.notify(f"Failed to save dislike: {e}", severity="error")  # type: ignore[attr-defined]
+            return
+
+        footer.chiptunes_disliked = True
+        self.notify("Disliked — skipping track")  # type: ignore[attr-defined]
+        # Auto-skip to next track
+        self._chiptunes_next()  # type: ignore[attr-defined]
 
     # --- Banner compactness ---
 

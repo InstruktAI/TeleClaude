@@ -34,6 +34,7 @@ import threading
 import time
 from pathlib import Path
 
+from teleclaude.chiptunes.dislikes import disliked_paths
 from teleclaude.chiptunes.player import ChiptunesPlayer
 from teleclaude.chiptunes.sid_parser import parse_sid_file
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
@@ -434,7 +435,12 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
     def _discover_tracks(self) -> list[Path]:
         if not self._music_dir.exists():
             return []
-        return [p for p in self._music_dir.rglob("*.sid") if not _is_rsid(p)]
+        blocked = disliked_paths()
+        return [p for p in self._music_dir.rglob("*.sid") if not _is_rsid(p) and str(p) not in blocked]
+
+    def invalidate_track_cache(self) -> None:
+        """Clear the cached track list so dislike changes take effect."""
+        self._track_list = None
 
     # ------------------------------------------------------------------ #
     # IPC emit                                                             #

@@ -161,7 +161,8 @@ class TelecFooter(Widget):
         width: 1;
     }
 
-    #footer-fav {
+    #footer-fav,
+    #footer-dislike {
         width: 2;
     }
     """
@@ -175,6 +176,7 @@ class TelecFooter(Widget):
     chiptunes_pending_command_id = reactive("")
     chiptunes_pending_action = reactive("")
     chiptunes_favorited = reactive(False)
+    chiptunes_disliked = reactive(False)
     animation_mode = reactive("off")
     pane_theming_mode = reactive("off")
     persistence_key = "status_bar"
@@ -209,7 +211,8 @@ class TelecFooter(Widget):
                 yield FooterActionButton("\u25b6", id="footer-play", classes="footer-action-button")
                 yield FooterActionButton("\u23f9", id="footer-stop", classes="footer-action-button")
                 yield FooterActionButton("\u23ed", id="footer-next", classes="footer-action-button")
-                yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button -last-action")
+                yield FooterActionButton("\u2b50", id="footer-fav", classes="footer-action-button")
+                yield FooterActionButton("\u2193", id="footer-dislike", classes="footer-action-button -last-action")
                 yield Static("", id="footer-anim-toggle", classes="footer-token -last-token")
 
     def on_mount(self) -> None:
@@ -330,12 +333,14 @@ class TelecFooter(Widget):
         stop_button = self.query_one("#footer-stop", FooterActionButton)
         next_button = self.query_one("#footer-next", FooterActionButton)
         fav_button = self.query_one("#footer-fav", FooterActionButton)
+        dislike_button = self.query_one("#footer-dislike", FooterActionButton)
 
         prev_button.icon = "\u23ee"
         play_button.icon = "\u23f8" if self.chiptunes_playing else "\u25b6"
         stop_button.icon = "\u23f9"
         next_button.icon = "\u23ed"
         fav_button.icon = "\u2705" if self.chiptunes_favorited else "\u2b50"
+        dislike_button.icon = "\u2717" if self.chiptunes_disliked else "\u2193"
 
         controls_loaded = self.chiptunes_loaded
         pending = bool(self.chiptunes_pending_command_id)
@@ -344,6 +349,7 @@ class TelecFooter(Widget):
         next_button.disabled = (not controls_loaded) or pending
         play_button.disabled = pending
         fav_button.disabled = (not controls_loaded) or pending
+        dislike_button.disabled = (not controls_loaded) or pending
 
     def on_click(self, event: Click) -> None:  # pylint: disable=too-many-return-statements
         widget = event.widget
@@ -373,6 +379,7 @@ class TelecFooter(Widget):
             "footer-stop": ("chiptunes_stop", None),
             "footer-next": ("chiptunes_next", None),
             "footer-fav": ("chiptunes_favorite", None),
+            "footer-dislike": ("chiptunes_dislike", None),
         }
         action = action_map.get(widget_id)
         if action is not None:
@@ -396,6 +403,9 @@ class TelecFooter(Widget):
             return
         if button_id == "footer-fav":
             self.post_message(SettingsChanged("chiptunes_favorite", None))
+            return
+        if button_id == "footer-dislike":
+            self.post_message(SettingsChanged("chiptunes_dislike", None))
 
     def watch_tts_enabled(self, _value: bool) -> None:
         self._refresh_controls()
@@ -416,6 +426,9 @@ class TelecFooter(Widget):
         self._refresh_controls()
 
     def watch_chiptunes_favorited(self, _value: bool) -> None:
+        self._refresh_controls()
+
+    def watch_chiptunes_disliked(self, _value: bool) -> None:
         self._refresh_controls()
 
     def watch_animation_mode(self, _value: str) -> None:
