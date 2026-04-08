@@ -71,10 +71,13 @@ class _FakePlayer:
         self.is_playing = True
 
 
-def _patch_worker_runtime(monkeypatch: pytest.MonkeyPatch) -> None:
+def _patch_worker_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path | None = None) -> None:
     _FakePlayer.instances.clear()
     monkeypatch.setattr(worker_module.threading, "Thread", _ImmediateThread)
     monkeypatch.setattr(worker_module, "ChiptunesPlayer", _FakePlayer)
+    # Redirect state file to temp dir so tests don't pollute production state
+    if tmp_path is not None:
+        monkeypatch.setattr(worker_module, "STATE_PATH", tmp_path / "chiptunes_state.json")
 
 
 def _make_worker(
@@ -82,7 +85,7 @@ def _make_worker(
     tmp_path: Path,
     tracks: list[Path] | None = None,
 ) -> _WorkerProcess:
-    _patch_worker_runtime(monkeypatch)
+    _patch_worker_runtime(monkeypatch, tmp_path)
     music_dir = tmp_path / "music"
     worker = _WorkerProcess(music_dir, volume=0.4)
     if tracks is not None:

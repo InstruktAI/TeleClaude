@@ -277,6 +277,45 @@ class TestProjectSessionFromTranscript:
         )
 
     @pytest.mark.unit
+    async def test_same_timestamp_does_not_re_reflect(self):
+        """Once a message is reflected, the same transcript timestamp must not re-trigger."""
+        long_text = "x" * 300
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        session = Session(
+            session_id="sess-dedup-1",
+            computer_name="local",
+            tmux_session_name="tmux-dedup-1",
+            title="Untitled",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+            last_message_sent=long_text[:200],
+            last_message_sent_at=transcript_ts,
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=(long_text, transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+
+    @pytest.mark.unit
     async def test_projects_transcript_output(self):
         session = Session(
             session_id="sess-title-1",

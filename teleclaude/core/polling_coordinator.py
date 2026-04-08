@@ -497,15 +497,16 @@ async def _project_user_reflection(
         return session
 
     user_text, transcript_ts = extracted
-    normalized_text = user_text.strip()
-    if not normalized_text:
+    if not user_text.strip():
         return session
 
-    current_text = (session.last_message_sent or "").strip()
-    current_ts = session.last_message_sent_at
     transcript_iso = transcript_ts.astimezone(UTC).isoformat() if isinstance(transcript_ts, datetime) else None
-    current_iso = current_ts.astimezone(UTC).isoformat() if isinstance(current_ts, datetime) else None
-    changed = normalized_text != current_text or transcript_iso != current_iso
+    current_iso = (
+        session.last_message_sent_at.astimezone(UTC).isoformat()
+        if isinstance(session.last_message_sent_at, datetime)
+        else None
+    )
+    changed = transcript_iso != current_iso
     if not changed:
         return session
 

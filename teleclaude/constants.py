@@ -170,16 +170,22 @@ _INTERNAL_WRAPPER_RE = re.compile(
 )
 
 
+_HOOK_FEEDBACK_PREFIXES = ("Stop hook feedback:", "PreToolUse hook feedback:")
+
+
 def is_internal_user_text(text: str) -> bool:
     """Return True if text is system-injected content that must not enter public data fields.
 
     Detects:
     - TeleClaude system prefix ("[TeleClaude ...")
+    - Claude Code hook feedback injections ("Stop hook feedback:", etc.)
     - Claude Code task-notification wrappers (full or prefix)
     - Claude Code system-reminder wrappers (full or prefix)
     """
     stripped = text.lstrip()
     if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
+        return True
+    if stripped.startswith(_HOOK_FEEDBACK_PREFIXES):
         return True
     if stripped.startswith(("<task-notification", "<system-reminder")):
         return True
