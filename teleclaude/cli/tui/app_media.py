@@ -105,9 +105,10 @@ class TelecAppMediaMixin:
                 self._schedule_chiptunes_reconcile()
             else:
                 footer.chiptunes_playing = True
-                receipt = await self.api.chiptunes_resume()  # type: ignore[attr-defined]
-                self._apply_chiptunes_receipt(receipt.command_id, receipt.action)
-                # No reconcile — worker may be spawning. WS events deliver the real state.
+                footer.chiptunes_loaded = True
+                await self.api.chiptunes_resume()  # type: ignore[attr-defined]
+                # No receipt tracking, no reconcile — button shows pause immediately.
+                # WS events correct the state once the worker is up.
         except Exception as e:
             self.notify(f"Failed to pause/resume: {e}", severity="error")  # type: ignore[attr-defined]
 
