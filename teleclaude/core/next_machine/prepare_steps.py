@@ -727,6 +727,13 @@ async def _prepare_step_re_grounding(
     else:
         changed_paths = [path for path in changed_paths if isinstance(path, str)]
 
+    # Advance base_sha so the next GROUNDING_CHECK compares from this point,
+    # not the original grounding — prevents infinite re-grounding loops.
+    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
+    if rc == 0 and current_sha.strip():
+        grounding_dict["base_sha"] = current_sha.strip()
+        state["grounding"] = grounding_dict
+
     # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed
     state["current"] = PreparePhase.PLAN_REVIEW.value
     # Reset plan review verdict so fresh review runs
