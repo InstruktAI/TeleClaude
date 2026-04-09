@@ -6,6 +6,7 @@ import os
 import subprocess
 from typing import TYPE_CHECKING, Any
 
+from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.types import TodoStatus
@@ -200,18 +201,22 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             return action not in project_disallowed
 
         if isinstance(item, TodoRow):
-            if action in {"preview_file", "new_project"}:
-                return False
-            if action == "unfreeze":
-                return item.todo.status == TodoStatus.ICEBOX
-            if action == "freeze":
-                return item.todo.status != TodoStatus.ICEBOX
-            return action not in {"move_todo_up", "move_todo_down"} or not item._tree_lines
+            return self._check_todo_row_action(item, action)
 
         if isinstance(item, TodoFileRow):
             return action not in file_disallowed
 
         return True
+
+    def _check_todo_row_action(self, item: TodoRow, action: str) -> bool:
+        """Return whether ``action`` is enabled for a TodoRow node."""
+        if action in {"preview_file", "new_project"}:
+            return False
+        if action == "unfreeze":
+            return item.todo.status == TodoStatus.ICEBOX
+        if action == "freeze":
+            return item.todo.status != TodoStatus.ICEBOX
+        return action not in {"move_todo_up", "move_todo_down"} or not item._tree_lines
 
     def watch_cursor_index(self, _index: int) -> None:
         """Refresh key bindings when node context changes."""
@@ -332,12 +337,15 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
         """Create a todo or bug via the daemon API."""
         project_root = self._resolve_project_root()
 
-        body = {"slug": slug, "content": "", "cwd": project_root}
-        if kind == "bug":
-            body["kind"] = "bug"
+        request = TodoDumpRequest(
+            slug=slug,
+            content="",
+            kind="bug" if kind == "bug" else None,
+            cwd=project_root,
+        )
 
         try:
-            result = tool_api_request("POST", "/todos/dump", json_body=body, timeout=10.0)
+            result = tool_api_request("POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
             return

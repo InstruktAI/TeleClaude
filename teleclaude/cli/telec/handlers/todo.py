@@ -8,6 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.events.envelope import EventEnvelope, EventLevel
@@ -199,10 +200,17 @@ def _handle_todo_verify_artifacts(args: list[str]) -> None:
 
 
 def _handle_todo_dump(args: list[str]) -> None:
-    """Handle telec todo dump <slug> <content> [--after <deps>] [--draft].
+    """Handle telec todo dump <slug> <content> [--after <deps>] [--draft] [--prepped].
 
-    Creates a todo in todos.db: state, input artifact, and roadmap entry.
-    No filesystem writes. No git commits.
+    Creates a todo in todos.db: state, artifact row, and roadmap entry. Everything
+    lives in the database — no filesystem writes, no git commits.
+
+    Modes:
+      - Default: writes content as the "input" artifact; enters the normal prepare
+        lifecycle.
+      - --draft: same as default but suppresses the todo_dumped notification.
+      - --prepped: writes content as the "implementation-plan" artifact and marks the
+        todo as kind=prepped, immediately ready for build. Skips the prepare phase.
     """
     if len(args) < 2:
         print(_usage("todo", "dump"))
@@ -212,6 +220,7 @@ def _handle_todo_dump(args: list[str]) -> None:
     content: str | None = None
     after: list[str] | None = None
     draft = False
+    prepped = False
 
     i = 0
     while i < len(args):
@@ -221,6 +230,9 @@ def _handle_todo_dump(args: list[str]) -> None:
             i += 2
         elif arg == "--draft":
             draft = True
+            i += 1
+        elif arg == "--prepped":
+            prepped = True
             i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -241,21 +253,25 @@ def _handle_todo_dump(args: list[str]) -> None:
         print(_usage("todo", "dump"))
         raise SystemExit(1)
 
-    # Create via daemon API — writes state + input artifact + roadmap entry to todos.db
+    # Create via daemon API — writes state + artifact + roadmap entry to todos.db.
+    # When --prepped, kind="prepped" routes the server-side dump to write the content
+    # as the implementation-plan artifact and stamp the todo as ready for build.
+    request = TodoDumpRequest(
+        slug=slug,
+        content=content,
+        after=after,
+        kind="prepped" if prepped else None,
+        cwd=str(Path.cwd()),
+    )
     result = tool_api_request(
         "POST",
         "/todos/dump",
-        json_body={
-            "slug": slug,
-            "content": content,
-            "after": after or [],
-            "cwd": str(Path.cwd()),
-        },
+        json_body=request.model_dump(mode="json"),
         timeout=10.0,
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Dumped todo: {slug}")
+        print(f"Dumped todo: {slug}" + (" (prepped, ready for build)" if prepped else ""))
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)

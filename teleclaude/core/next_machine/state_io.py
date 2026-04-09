@@ -439,6 +439,17 @@ def is_bug_todo(cwd: str, slug: str) -> bool:
     return state.get("kind") == "bug"
 
 
+def is_prepped_todo(cwd: str, slug: str) -> bool:
+    """Check if a todo entered the lifecycle pre-prepared (kind='prepped').
+
+    Prepped todos were born with a complete implementation plan and skipped the
+    prepare phase entirely. They have no requirements artifact — the plan is the
+    sole spec.
+    """
+    state = read_phase_state(cwd, slug)
+    return state.get("kind") == "prepped"
+
+
 def check_review_status(cwd: str, slug: str) -> str:
     """Check review status for a work item.
 
@@ -527,6 +538,7 @@ __all__ = [
     "has_pending_deferrals",
     "is_bug_todo",
     "is_build_complete",
+    "is_prepped_todo",
     "is_review_approved",
     "is_review_changes_requested",
     "mark_phase",

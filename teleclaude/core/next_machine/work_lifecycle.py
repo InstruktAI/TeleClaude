@@ -160,8 +160,13 @@ def _on_enter_prepared(  # pylint: disable=too-many-locals
     slug = ctx.slug
     db = _get_todos_db_sync(ctx.project_root)
 
-    if not _has_artifact_content(ctx.project_root, slug, "requirements"):
-        raise ValueError(f"Missing requirements artifact with content for {slug}")
+    kind = state.get("kind")
+
+    # Prepped todos enter pre-prepared with only an implementation-plan — the plan is
+    # their sole spec, no requirements artifact exists. Regular todos still require both.
+    if kind != "prepped":
+        if not _has_artifact_content(ctx.project_root, slug, "requirements"):
+            raise ValueError(f"Missing requirements artifact with content for {slug}")
 
     if not _has_artifact_content(ctx.project_root, slug, "implementation-plan"):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
@@ -214,12 +219,23 @@ def _on_enter_prepared(  # pylint: disable=too-many-locals
         },
     }
 
-    # Review verdicts
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": now_iso,
-        "findings_count": 0,
-    }
+    # Review verdicts. Prepped todos have no requirements to review — the plan is the
+    # sole spec. Mark requirements_review as "skipped" with an explicit reason so
+    # downstream consumers and audits can distinguish an intentional skip from a
+    # forgotten review.
+    if kind == "prepped":
+        state["requirements_review"] = {
+            "verdict": "skipped",
+            "reviewed_at": now_iso,
+            "findings_count": 0,
+            "reason": "prepped",
+        }
+    else:
+        state["requirements_review"] = {
+            "verdict": "approve",
+            "reviewed_at": now_iso,
+            "findings_count": 0,
+        }
     state["plan_review"] = {
         "verdict": "approve",
         "reviewed_at": now_iso,

@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from teleclaude.api_models import CreateSessionResponseDTO
+from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
 from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
@@ -94,10 +94,11 @@ def _handle_bugs_create(args: list[str]) -> None:
         print("Usage: telec bugs create <slug>")
         raise SystemExit(1)
 
+    request = TodoDumpRequest(slug=slug, content="", kind="bug", cwd=str(project_root))
     result = tool_api_request(
         "POST",
         "/todos/dump",
-        json_body={"slug": slug, "content": "", "kind": "bug", "cwd": str(project_root)},
+        json_body=request.model_dump(mode="json"),
         timeout=10.0,
     )
     if isinstance(result, dict) and result.get("status") == "ok":
@@ -166,10 +167,11 @@ def _handle_bugs_report(args: list[str]) -> None:
     if body:
         bug_content += f"\n{body}\n"
 
+    bug_request = TodoDumpRequest(slug=slug, content=bug_content, kind="bug", cwd=str(project_root))
     api_result = tool_api_request(
         "POST",
         "/todos/dump",
-        json_body={"slug": slug, "content": bug_content, "kind": "bug", "cwd": str(project_root)},
+        json_body=bug_request.model_dump(mode="json"),
         timeout=10.0,
     )
     if not (isinstance(api_result, dict) and api_result.get("status") == "ok"):

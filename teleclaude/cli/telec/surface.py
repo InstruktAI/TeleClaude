@@ -463,8 +463,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> [<slug> ...]",
                 flags=[_H],
                 notes=[
-                    "Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md.",
-                    "Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved.",
+                    "Requires requirements and implementation-plan artifacts to already exist with content.",
+                    "Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved, "
+                    "generates quality-checklist.",
                     "Use for straightforward work items that don't need the full prepare ceremony.",
                     "Accepts multiple slugs to fast-track a batch in one call.",
                 ],
@@ -495,14 +496,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "dump": CommandDef(
                 desc="Fire-and-forget brain dump with notification trigger",
-                args="<slug> <content> [--after <deps>] [--draft]",
+                args="<slug> <content> [--after <deps>] [--draft] [--prepped]",
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
                     Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
+                    Flag("--prepped", desc="Content is a complete plan; mark todo prepped and ready for build"),
                 ],
                 notes=[
                     "Emits todo.dumped notification for autonomous processing.",
                     "Use --draft to stage an idea without triggering autonomous pickup.",
+                    "Use --prepped when content is a complete implementation plan: content becomes "
+                    "the implementation-plan artifact, kind=prepped, plan_review=approve, "
+                    "requirements_review=skipped, ready for build.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

@@ -301,6 +301,28 @@ class SetAgentStatusRequest(BaseModel):
     duration_minutes: int | None = None
 
 
+class TodoDumpRequest(BaseModel):
+    """Request body for POST /todos/dump.
+
+    The kind field selects the lifecycle lane:
+      - None (default): regular todo — content is written as the "input" artifact
+        and the todo enters the normal prepare phase.
+      - "bug": bug-fix lane — content is written as the "bug" artifact and the todo
+        enters the work phase directly.
+      - "prepped": pre-prepared lane — content is written as the "implementation-plan"
+        artifact and the todo is stamped prepared (ready for build), skipping the
+        prepare phase entirely.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    slug: str = Field(..., min_length=1)
+    content: str
+    after: list[str] | None = None
+    kind: Literal["bug", "prepped"] | None = None
+    cwd: str | None = None
+
+
 # WebSocket Event DTOs
 
 

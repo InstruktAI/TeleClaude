@@ -25,7 +25,7 @@ from teleclaude.api.auth import (
     clearance_todos_set_deps,
     clearance_todos_work,
 )
-from teleclaude.api_models import OperationStatusDTO
+from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine.core import (
@@ -455,21 +455,21 @@ async def list_artifacts(
 
 
 @router.post("/dump")
-async def todo_dump(
-    slug: Annotated[str, Body()],
-    content: Annotated[str, Body()],
-    after: Annotated[list[str] | None, Body()] = None,
-    kind: Annotated[str | None, Body()] = None,
-    cwd: Annotated[str | None, Body()] = None,
-) -> _SlugStatusResponse:
+async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + roadmap entry in todos.db.
 
-    When kind="bug", sets state.kind and writes a "bug" artifact instead of "input".
+    Kind variants (see TodoDumpRequest for the full contract):
+      - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
+      - "bug": writes a "bug" artifact; enters the bug-fix lane with state.current=prepared.
+      - "prepped": writes the content as an "implementation-plan" artifact; after the
+        transaction commits, stamps state as prepared via the lifecycle machine so the
+        todo is immediately ready for build, skipping the prepare phase entirely.
     """
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
 
+    slug = request.slug
     try:
-        effective_cwd = cwd or _default_cwd()
+        effective_cwd = request.cwd or _default_cwd()
         todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
         existing = await todos_db.read_state(slug)
@@ -477,22 +477,35 @@ async def todo_dump(
             raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
 
         state = default_state()
-        if kind == "bug":
+        if request.kind == "bug":
             state["kind"] = "bug"
             state["current"] = "prepared"
+        elif request.kind == "prepped":
+            state["kind"] = "prepped"
 
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
-                await todos_db.add_to_roadmap(slug, after=after if after else None, session=session)
+                await todos_db.add_to_roadmap(slug, after=request.after if request.after else None, session=session)
                 await todos_db.write_state(slug, state, session=session)
 
-                if kind == "bug":
-                    await todos_db.write_artifact(slug, "bug", content, session=session)
+                if request.kind == "bug":
+                    await todos_db.write_artifact(slug, "bug", request.content, session=session)
+                elif request.kind == "prepped":
+                    plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
+                    await todos_db.write_artifact(slug, "implementation-plan", plan_content, session=session)
                 else:
-                    input_content = f"# {slug} — Input\n\n{content}\n"
+                    input_content = f"# {slug} — Input\n\n{request.content}\n"
                     await todos_db.write_artifact(slug, "input", input_content, session=session)
 
         todos_db._on_mutation()  # pylint: disable=protected-access
+
+        if request.kind == "prepped":
+            # Run the lifecycle machine's on_enter for "prepared" — stamps DOR, grounding,
+            # plan_review=approve, requirements_review=skipped, and writes quality-checklist.
+            from teleclaude.core.next_machine.state_io import mark_phase  # pylint: disable=import-outside-toplevel
+
+            mark_phase(effective_cwd, slug, "prepared")
+            todos_db._on_mutation()  # pylint: disable=protected-access
 
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:

@@ -19,15 +19,21 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} requirements` exists and is readable.
 - `telec todo artifacts read {slug} implementation-plan` exists and is readable.
+- `telec todo artifacts read {slug} requirements` exists and is readable — **unless**
+  the todo is prepped (`state.kind == "prepped"`), in which case there is no
+  requirements artifact and the implementation-plan is the sole spec.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.
 
 ## Steps
 
-1. Read `requirements.md` to confirm intent and constraints.
-2. Read `implementation-plan.md` and identify unchecked tasks.
+1. Read the requirements artifact via `telec todo artifacts read {slug} requirements`
+   to confirm intent and constraints. If the todo is prepped (no requirements artifact
+   exists), skip this step — the implementation-plan artifact is the combined
+   spec-and-plan.
+2. Read the implementation-plan artifact via
+   `telec todo artifacts read {slug} implementation-plan` and identify unchecked tasks.
 3. Determine the build mode from the nature of the work:
    - **Spec-satisfaction (default):** Pre-written xfail test specs exist. For each task, remove the expected-failure marker, then write the implementation that makes the test pass. This is the standard RED-GREEN-REFACTOR flow.
    - **Characterization:** The deliverable is test coverage for existing untested code (no pre-written specs). Follow the OBSERVE-ASSERT-VERIFY cycle from the testing policy. Coverage depth at meaningful public boundaries is the primary output — pin actual behavior, verify each test catches mutations, discard shallow tests that survive production faults.

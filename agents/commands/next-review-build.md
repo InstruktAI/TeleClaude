@@ -43,13 +43,24 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
-- Read `telec todo artifacts read {slug} requirements`, `implementation-plan.md`, and the diff against main.
+- Read `telec todo artifacts read {slug} requirements`,
+  `telec todo artifacts read {slug} implementation-plan`, and the diff against main.
+  If the requirements artifact does not exist, this is a prepped todo
+  (`state.kind == "prepped"`) — the implementation-plan artifact is the sole spec.
+  Continue with the plan artifact and diff only.
 
 - **Ad-hoc item detection:** If `requirements.md` contains the marker text `telec todo from-main`,
   this is an ad-hoc submission (code committed directly, no formal requirements or planning).
   Skip the scope lane and completeness checks. Run all other lanes. Note
   "Ad-hoc review (via from-main)" in the findings header. Focus on whether the delivered
   code adheres to project policies.
+
+- **Prepped item detection:** If the todo is prepped (no requirements artifact), the
+  implementation-plan was authored as a complete spec-and-plan and the prepare phase
+  was intentionally skipped. Treat the plan as the sole intent source. Skip the scope
+  lane (there is no separate requirements document to trace against). Run all other
+  lanes against the plan and the diff. Note "Prepped review (kind=prepped)" in the
+  findings header.
 - Run every review lane marked "Always" in the review procedure's lane table.
 - Run conditional lanes when their trigger applies (types, comments, docs, simplify).
 - Before writing findings, verify every triggered lane was executed. A missing lane

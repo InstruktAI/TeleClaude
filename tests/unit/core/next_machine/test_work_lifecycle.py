@@ -337,3 +337,51 @@ def test_prepared_raises_when_git_returns_empty_sha(tmp_path: Path) -> None:
     ):
         with pytest.raises(ValueError, match="git rev-parse HEAD failed"):
             _on_enter_prepared({}, _ctx(tmp_path))
+
+
+# ---------------------------------------------------------------------------
+# _on_enter_prepared prepped-kind shortcut
+# ---------------------------------------------------------------------------
+
+
+def test_prepared_requires_requirements_for_regular_todo(tmp_path: Path) -> None:
+    """Regular (non-prepped) todos must have a requirements artifact with content."""
+
+    def _has_content(_cwd: str, _slug: str, artifact: str) -> bool:
+        # Requirements missing, everything else present.
+        return artifact != "requirements"
+
+    with patch(f"{_LIFECYCLE_MODULE}._has_artifact_content", side_effect=_has_content):
+        with pytest.raises(ValueError, match="Missing requirements artifact"):
+            _on_enter_prepared({}, _ctx(tmp_path))
+
+
+def test_prepared_skips_requirements_check_for_prepped_todo(tmp_path: Path) -> None:
+    """Prepped todos (kind='prepped') skip the requirements artifact check entirely.
+
+    Asserts via negative proof: with the requirements artifact missing and git rigged
+    to fail, a prepped todo reaches the git call (and raises on it) instead of bailing
+    on the missing requirements. This confirms the kind gate skips the requirements
+    check without touching the sentinel-stamping code path (which requires a live DB).
+    """
+
+    def _has_content(_cwd: str, _slug: str, artifact: str) -> bool:
+        return artifact != "requirements"
+
+    with (
+        patch(f"{_LIFECYCLE_MODULE}._has_artifact_content", side_effect=_has_content),
+        patch(f"{_LIFECYCLE_MODULE}.run_git_command", return_value=(1, "", "fatal: not a git repo")),
+    ):
+        with pytest.raises(ValueError, match="git rev-parse HEAD failed"):
+            _on_enter_prepared({"kind": "prepped"}, _ctx(tmp_path))
+
+
+def test_prepared_still_requires_plan_for_prepped_todo(tmp_path: Path) -> None:
+    """Prepped todos still require an implementation-plan artifact — that is the sole spec."""
+
+    def _has_content(_cwd: str, _slug: str, artifact: str) -> bool:
+        return artifact != "implementation-plan"
+
+    with patch(f"{_LIFECYCLE_MODULE}._has_artifact_content", side_effect=_has_content):
+        with pytest.raises(ValueError, match="Missing implementation-plan artifact"):
+            _on_enter_prepared({"kind": "prepped"}, _ctx(tmp_path))
