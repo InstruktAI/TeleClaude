@@ -69,11 +69,11 @@ teleclaude.db
 teleclaude.db-wal
 teleclaude.db-shm
 
-# TeleClaude worktree infrastructure state (changes with every prep cycle)
-.teleclaude/
-
 AGENTS.md
 CLAUDE.md
+
+# TeleClaude worktree infrastructure state (changes with every prep cycle)
+.teleclaude/
 
 # Generated build artifacts (never tracked)
 **/index.yaml
@@ -87,3 +87,4 @@ docs/diagrams/
 
 # Temporary backup of worktree todos folders
 .temp/
+.teleclaude*copy/

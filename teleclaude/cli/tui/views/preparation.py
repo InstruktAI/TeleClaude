@@ -200,6 +200,24 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
         # Populate children_statuses for holder todos (active only)
         active_items = [t for t in all_todo_items if t.status != TodoStatus.ICEBOX]
         item_by_slug = {t.slug: t for t in active_items}
+
+        # Inject synthetic parent items for label groups (group value not a real slug)
+        label_groups: set[str] = set()
+        for item in active_items:
+            if item.group and item.group not in item_by_slug:
+                label_groups.add(item.group)
+        for group_slug in label_groups:
+            synthetic = TodoItem(
+                slug=group_slug,
+                status=TodoStatus.PENDING,
+                description=None,
+                has_requirements=False,
+                has_impl_plan=False,
+                group=None,
+            )
+            active_items.append(synthetic)
+            item_by_slug[group_slug] = synthetic
+
         for item in active_items:
             if item.group and item.group in item_by_slug:
                 item_by_slug[item.group].children_statuses.append(item.status.value)
@@ -258,8 +276,11 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
 
-                # Filter tree nodes to this project's active todos
+                # Filter tree nodes to this project's active todos (include label group parents)
                 project_slugs = {td.slug for td in (project.todos or []) if td.status != "icebox"}
+                for lg in label_groups:
+                    if any(td.group == lg for td in (project.todos or []) if td.status != "icebox"):
+                        project_slugs.add(lg)
                 project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
 
                 for node in project_nodes:
