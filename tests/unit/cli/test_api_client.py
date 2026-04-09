@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -136,6 +137,23 @@ def test_build_identity_headers_excludes_absent_fields(monkeypatch: pytest.Monke
                 headers = client._build_identity_headers()
     assert "x-session-token" not in headers
     assert "x-telec-email" not in headers
+
+
+def test_build_identity_headers_omits_stale_session_identity_in_tc_tui(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identity_path = tmp_path / "teleclaude_identity.json"
+    identity_path.write_text(json.dumps({"session_id": "closed-session", "session_token": "stale-token"}))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    tmux_result = MagicMock(returncode=0, stdout="tc_tui\n")
+
+    with patch("teleclaude.cli.api_client.read_current_session_email", return_value=None):
+        with patch("teleclaude.cli.api_client.subprocess.run", return_value=tmux_result):
+            client = TelecAPIClient()
+            headers = client._build_identity_headers()
+
+    assert headers == {"x-tmux-session": "tc_tui"}
 
 
 @pytest.mark.unit

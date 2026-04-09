@@ -48,6 +48,7 @@ logger = get_logger(__name__)
 
 BASE_URL = "http://localhost"
 WS_URI = "ws://localhost/ws"
+_TUI_SESSION_NAME = "tc_tui"
 
 # Reconnection settings
 WS_INITIAL_BACKOFF = 0.5  # Initial reconnect delay in seconds
@@ -451,13 +452,15 @@ class _TelecConnectionClient:
     def _build_identity_headers(self) -> dict[str, str]:
         """Build caller identity headers for daemon-side auth checks."""
         headers: dict[str, str] = {}
+        tmux_session = self._read_tmux_session_name()
+        use_session_identity = tmux_session != _TUI_SESSION_NAME
 
         # Agent sessions: send daemon-issued token first (takes priority on the server side).
-        token = get_session_token()
+        token = get_session_token() if use_session_identity else None
         if token:
             headers["x-session-token"] = token
 
-        session_id = get_session_id()
+        session_id = get_session_id() if use_session_identity else None
         if session_id:
             headers["x-caller-session-id"] = session_id
 
@@ -465,7 +468,6 @@ class _TelecConnectionClient:
         if terminal_email:
             headers["x-telec-email"] = terminal_email
 
-        tmux_session = self._read_tmux_session_name()
         if tmux_session:
             headers["x-tmux-session"] = tmux_session
 

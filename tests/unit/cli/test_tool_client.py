@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
 from teleclaude.cli.tool_client import (
@@ -75,6 +77,35 @@ def test_read_tmux_session_name_returns_none_on_nonzero_exit() -> None:
     assert result is None
 
 
+def test_tool_api_request_omits_stale_session_headers_in_tc_tui(
+    tmp_path: Path,
+) -> None:
+    """The dedicated TUI must authenticate as a terminal, not a stale session."""
+    identity_path = tmp_path / "teleclaude_identity.json"
+    identity_path.write_text(json.dumps({"session_id": "closed-session", "session_token": "stale-token"}))
+    tmux_result = MagicMock(returncode=0, stdout="tc_tui\n")
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"status": "ok"}
+
+    with (
+        patch.dict("os.environ", {"TMPDIR": str(tmp_path)}, clear=False),
+        patch("teleclaude.cli.tool_client.read_current_session_email", return_value=None),
+        patch("teleclaude.cli.tool_client.subprocess.run", return_value=tmux_result),
+        patch("teleclaude.cli.tool_client.httpx.Client") as mock_client_cls,
+    ):
+        mock_client = MagicMock()
+        mock_client.__enter__ = MagicMock(return_value=mock_client)
+        mock_client.__exit__ = MagicMock(return_value=False)
+        mock_client.request.return_value = mock_resp
+        mock_client_cls.return_value = mock_client
+
+        tool_api_request("GET", "/sessions")
+
+    headers = mock_client.request.call_args.kwargs["headers"]
+    assert headers == {"x-tmux-session": "tc_tui"}
+
+
 # ---------------------------------------------------------------------------
 # _extract_detail
 # ---------------------------------------------------------------------------
@@ -128,8 +159,6 @@ def test_print_json_handles_list(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_tool_api_request_raises_on_connect_error() -> None:
-    import httpx
-
     with patch("teleclaude.cli.tool_client.httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
@@ -179,8 +208,6 @@ def test_tool_api_request_raises_on_403() -> None:
 
 
 def test_tool_api_call_raises_system_exit_on_error() -> None:
-    import httpx
-
     with patch("teleclaude.cli.tool_client.httpx.Client") as mock_client_cls:
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
