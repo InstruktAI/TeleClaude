@@ -63,6 +63,11 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         return self._enabled
 
     @property
+    def is_playing(self) -> bool:
+        """Return True if playback state is 'playing'."""
+        return bool(self._last_state.get("playback") == "playing")
+
+    @property
     def last_state(self) -> dict[str, Any]:
         """Return the last known worker state dict."""
         return self._last_state
@@ -142,9 +147,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                 str(self._volume),
             ],
             stdin=subprocess.DEVNULL,
-            stdout=open(  # noqa: SIM115
-                CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8"
-            ),
+            stdout=open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8"),
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
