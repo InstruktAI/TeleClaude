@@ -60,26 +60,58 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             return None
         return origin_adapter
 
-    def _resolve_final_output_targets(self, session: "Session") -> set[str]:
-        """Return the explicit UI adapters eligible for final-output repair."""
-        origin_adapter = self._resolve_origin_ui_adapter(session)
-        if origin_adapter is None:
-            return set()
-        origin_section = session.get_origin_section(origin_adapter)
+    def _resolve_admin_output_target(self, session: "Session", origin_adapter: str | None) -> str | None:
+        """Return "discord" when the session is eligible for the admin output copy.
+
+        Mirrors the reflection admin lane, whose own system-role and Discord-origin
+        guards live at its caller (`polling_coordinator._project_user_reflection`).
+        Both lanes suppress the Discord admin copy under the same conditions; this
+        helper centralises the output lane's guard rather than pushing it to each
+        callsite.
+
+        - system-role sessions skip (integrator/finalizer/worker noise)
+        - Discord-origin sessions skip (origin delivery already hits Discord)
+        - Discord must be a registered UI adapter
+        """
+        if session.system_role:
+            return None
+        if origin_adapter == "discord":
+            return None
+        adapter = self.adapters.get("discord")
+        if not isinstance(adapter, UiAdapter):
+            return None
+        return "discord"
+
+    def _origin_section_has_channel(self, session: "Session", adapter_type: str) -> bool:
+        """Return True when the adapter's origin section carries a provisioned channel."""
+        origin_section = session.get_origin_section(adapter_type)
         if not origin_section:
-            return set()
-        if origin_adapter == "telegram":
-            if TelegramAdapterMetadata.from_dict(origin_section).topic_id is None:
-                return set()
-        elif origin_adapter == "discord":
+            return False
+        if adapter_type == "telegram":
+            return TelegramAdapterMetadata.from_dict(origin_section).topic_id is not None
+        if adapter_type == "discord":
             discord_meta = DiscordAdapterMetadata.from_dict(origin_section)
-            if discord_meta.thread_id is None and discord_meta.channel_id is None:
-                return set()
-        elif origin_adapter == "whatsapp":
+            return discord_meta.thread_id is not None or discord_meta.channel_id is not None
+        if adapter_type == "whatsapp":
             whatsapp_meta = WhatsAppAdapterMetadata.from_dict(origin_section)
-            if whatsapp_meta.conversation_id is None and whatsapp_meta.phone_number is None:
-                return set()
-        return {origin_adapter}
+            return whatsapp_meta.conversation_id is not None or whatsapp_meta.phone_number is not None
+        return False
+
+    def _resolve_final_output_targets(self, session: "Session") -> set[str]:
+        """Return the explicit UI adapters eligible for final-output repair.
+
+        Dual-lane contract (mirrors live `send_output_update`):
+        - origin UI adapter when its channel was provisioned
+        - Discord admin copy when the session is eligible
+        """
+        targets: set[str] = set()
+        origin_adapter = self._resolve_origin_ui_adapter(session)
+        if origin_adapter is not None and self._origin_section_has_channel(session, origin_adapter):
+            targets.add(origin_adapter)
+        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        if admin_target is not None:
+            targets.add(admin_target)
+        return targets
 
     async def send_error_feedback(self, session_id: str, error_message: str) -> None:
         """Send error feedback to all UI adapters, surfacing failures."""
@@ -269,7 +301,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             include_adapters={"discord"},
         )
 
-    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
         self,
         session: "Session",
         output: str,
@@ -281,19 +313,26 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         multi_message: bool = False,
         delivery_ts: datetime | None = None,
     ) -> str | None:
-        """Push live output only to the origin UI adapter."""
+        """Deliver live output on the dual lane: origin UI + Discord admin copy.
+
+        The origin UI adapter receives the session's direct output. Discord also
+        receives an admin copy when the origin is not already Discord and the
+        session is not a system-role session. Mirrors the reflection lane's
+        admin symmetry so non-Discord-origin sessions remain observable.
+        """
         origin_adapter = self._resolve_origin_ui_adapter(session)
-        if origin_adapter is None:
+        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+
+        if origin_adapter is None and admin_target is None:
             logger.debug(
-                "Skipping live UI output for non-UI origin: session=%s origin=%s",
+                "Skipping live UI output: session=%s origin=%s system_role=%s",
                 session.session_id,
                 (session.last_input_origin or "").strip() or "<none>",
+                session.system_role or "<none>",
             )
             return None
 
-        result = await self._route_to_ui(
-            session,
-            "send_output_update",
+        args = (
             output,
             started_at,
             last_output_changed_at,
@@ -302,12 +341,33 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             render_markdown,
             multi_message,
             delivery_ts,
-            include_adapters={origin_adapter},
         )
-        return str(result) if result else None
+
+        origin_result: object = None
+        if origin_adapter is not None:
+            origin_result = await self._route_to_ui(
+                session,
+                "send_output_update",
+                *args,
+                include_adapters={origin_adapter},
+            )
+
+        if admin_target is not None:
+            await self._route_to_ui(
+                session,
+                "send_output_update",
+                *args,
+                include_adapters={admin_target},
+            )
+
+        return str(origin_result) if origin_result else None
 
     async def reconcile_outstanding_final_outputs(self, computer_name: str) -> int:
-        """Repair persisted final output that never reached UI adapters."""
+        """Repair persisted final output that never reached UI adapters.
+
+        Iterates every target resolved by the dual-lane contract so the Discord
+        admin copy is repaired alongside origin delivery when eligible.
+        """
         sessions = await db.list_sessions(
             computer_name=computer_name,
             include_closed=True,
@@ -326,25 +386,29 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             if not due_adapters:
                 continue
 
-            adapter_type = next(iter(due_adapters))
-            adapter = self.adapters.get(adapter_type)
-            if not isinstance(adapter, UiAdapter):
-                continue
-            delivered_at = adapter.get_last_delivered_at(session)
-            if delivered_at is not None and delivered_at >= stop_at:
-                continue
+            session_repaired = False
+            for adapter_type in sorted(due_adapters):
+                adapter = self.adapters.get(adapter_type)
+                if not isinstance(adapter, UiAdapter):
+                    continue
+                delivered_at = adapter.get_last_delivered_at(session)
+                if delivered_at is not None and delivered_at >= stop_at:
+                    continue
 
-            await self._route_to_ui(
-                session,
-                "send_output_update",
-                session.last_output_raw,
-                0.0,
-                stop_at.timestamp(),
-                is_final=True,
-                include_adapters=due_adapters,
-                delivery_ts=stop_at,
-            )
-            repaired += 1
+                await self._route_to_ui(
+                    session,
+                    "send_output_update",
+                    session.last_output_raw,
+                    0.0,
+                    stop_at.timestamp(),
+                    is_final=True,
+                    include_adapters={adapter_type},
+                    delivery_ts=stop_at,
+                )
+                session_repaired = True
+
+            if session_repaired:
+                repaired += 1
 
         return repaired
 

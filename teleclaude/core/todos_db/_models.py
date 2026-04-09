@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Column, ForeignKey, Index, PrimaryKeyConstraint, String, Text, text
+from sqlalchemy import Column, ForeignKey, Index, String, Text, text
 from sqlmodel import Field, SQLModel
 
 
@@ -94,13 +94,10 @@ class RoadmapDep(SQLModel, table=True):
     """Dependency edge between roadmap slugs."""
 
     __tablename__ = "roadmap_deps"  # pyright: ignore[reportAssignmentType]
-    __table_args__ = (
-        PrimaryKeyConstraint("slug", "depends_on"),
-        {"extend_existing": True},
-    )
+    __table_args__ = {"extend_existing": True}
 
-    slug: str
-    depends_on: str
+    slug: str = Field(primary_key=True)
+    depends_on: str = Field(primary_key=True)
 
 
 Index(
