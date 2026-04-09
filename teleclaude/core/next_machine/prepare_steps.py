@@ -115,7 +115,8 @@ async def _prepare_step_input_assessment(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Assess todos/{slug}/input.md and produce todos/{slug}/requirements.md. "
+                f"Read the input via `telec todo artifacts read {slug} input` and "
+                f"produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
                 "Work solo if the input is already concrete enough. If important intent, "
                 "constraints, or code grounding still need another perspective, run "
                 "triangulated discovery with a complementary partner."
@@ -150,8 +151,9 @@ async def _prepare_step_triangulation(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Produce todos/{slug}/requirements.md. Use solo discovery if you already have "
-                "enough grounding; otherwise triangulate with a complementary partner before writing."
+                f"Produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
+                "Use solo discovery if you already have enough grounding; otherwise triangulate with a "
+                "complementary partner before writing."
             ),
             next_call=f"telec todo prepare {slug}",
         )
@@ -192,7 +194,8 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         await todos_db.write_state(slug, state)
         return False, (
             f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
-            f"requiring human decision. See todos/{slug}/requirements-review-findings.md.\n\n"
+            f"requiring human decision. Read findings via "
+            f"`telec todo artifacts read {slug} requirements-review-findings`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
             f"Then use telec docs get to load the procedure for the role you are assuming."
@@ -223,7 +226,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         findings_note = (
             f"Requirements need revision: {open_count} unresolved finding(s). "
-            f"See todos/{slug}/requirements-review-findings.md."
+            f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
         )
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "requirements_review", "verdict", "needs_work")
@@ -280,7 +283,10 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review todos/{slug}/requirements.md and write verdict to state.yaml requirements_review.verdict.",
+            note=(
+                f"Review requirements via `telec todo artifacts read {slug} requirements` "
+                f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
+            ),
             next_call=f"telec todo prepare {slug}",
         )
     )
@@ -313,9 +319,9 @@ async def _prepare_step_test_spec_build(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Read todos/{slug}/requirements.md and write xfail-marked pytest test specs "
-                f"in the worktree. Each test should capture a requirement as a failing test. "
-                f"Commit the specs to the worktree branch."
+                f"Read requirements via `telec todo artifacts read {slug} requirements` and write "
+                f"xfail-marked pytest test specs in the worktree. Each test should capture a "
+                f"requirement as a failing test. Commit the specs to the worktree branch."
             ),
             next_call=f"telec todo prepare {slug}",
         )
@@ -426,9 +432,11 @@ async def _prepare_step_plan_drafting(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Ground the approved requirements for todos/{slug}. If the work is atomic, "
-                f"write todos/{slug}/implementation-plan.md. If planning shows the "
-                "parent is too large, split it into child todos and update the holder breakdown."
+                f"Ground the approved requirements for {slug}. If the work is atomic, "
+                f"write the implementation plan via "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`. "
+                "If planning shows the parent is too large, split it into child todos and "
+                "update the holder breakdown."
             ),
             next_call=f"telec todo prepare {slug}",
         )
@@ -469,7 +477,8 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         await todos_db.write_state(slug, state)
         return False, (
             f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
-            f"requiring human decision. See todos/{slug}/plan-review-findings.md.\n\n"
+            f"requiring human decision. Read findings via "
+            f"`telec todo artifacts read {slug} plan-review-findings`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
             f"Then use telec docs get to load the procedure for the role you are assuming."
@@ -500,7 +509,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         findings_note = (
             f"Implementation plan needs revision: {open_count} unresolved finding(s). "
-            f"See todos/{slug}/plan-review-findings.md."
+            f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
         )
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "plan_review", "verdict", "needs_work")
@@ -557,7 +566,10 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review todos/{slug}/implementation-plan.md and write verdict to state.yaml plan_review.verdict.",
+            note=(
+                f"Review the plan via `telec todo artifacts read {slug} implementation-plan` "
+                f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
+            ),
             next_call=f"telec todo prepare {slug}",
         )
     )
@@ -752,7 +764,12 @@ async def _prepare_step_re_grounding(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Update todos/{slug}/implementation-plan.md against current codebase. {changed_note}",
+            note=(
+                f"Update the implementation plan via "
+                f"`telec todo artifacts read {slug} implementation-plan` + "
+                f"`telec todo artifacts write {slug} implementation-plan <content>` "
+                f"against current codebase. {changed_note}"
+            ),
             next_call=f"telec todo prepare {slug}",
         )
     )
@@ -782,7 +799,7 @@ def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool
     return False, (
         f"BLOCKED: {slug} requires human decision. "
         f"Reason: {blocker}. "
-        f"Inspect todos/{slug}/state.yaml and resolve the blocker manually."
+        f"Inspect state via `telec todo show {slug}` and resolve the blocker manually."
     )
 
 

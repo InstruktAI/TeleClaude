@@ -347,7 +347,7 @@ def _is_review_round_limit_reached(cwd: str, slug: str) -> tuple[bool, int, int]
 
 
 def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
-    """Read breakdown state from todos/{slug}/state.yaml.
+    """Read breakdown state from todos.db for the given slug.
 
     Returns:
         Breakdown state dict with 'assessed' and 'todos' keys, or None if not present.
