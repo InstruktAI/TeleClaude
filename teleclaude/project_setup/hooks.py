@@ -36,29 +36,49 @@ if [ -n "$_staged" ] && [ -n "$_unstaged" ]; then
 fi
 """
 
-# Captures staged files before hooks, runs pre-commit as a regular call (not exec),
-# then restages formatter-modified files so they're included in the commit.
+# Captures staged files before hooks, runs pre-commit as a regular call (not exec), then
+# restages formatter-modified files and retries pre-commit once so the commit completes in
+# one go. Pre-commit returns non-zero when a hook modifies files, so restaging must happen
+# on the failure path — not only on success.
 RESTAGE_BLOCK = f"""\
 # {RESTAGE_MARKER}: capture staged files before hooks run
 _pre_staged="$(git diff --cached --name-only --diff-filter=ACM)"
 
-# Run pre-commit hooks (no exec — we need control back for restaging)
-if [ -x "$INSTALL_PYTHON" ]; then
-    "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
-    _rc=$?
-elif command -v pre-commit > /dev/null; then
-    pre-commit "${{ARGS[@]}}"
-    _rc=$?
-else
+_teleclaude_run_precommit() {{
+    if [ -x "$INSTALL_PYTHON" ]; then
+        "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
+        return $?
+    elif command -v pre-commit > /dev/null; then
+        pre-commit "${{ARGS[@]}}"
+        return $?
+    fi
     echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
-    exit 1
+    return 127
+}}
+
+_teleclaude_run_precommit
+_rc=$?
+
+# Collect previously-staged files that formatters modified (now unstaged).
+_modified=""
+if [ -n "$_pre_staged" ]; then
+    for _f in $_pre_staged; do
+        if [ -f "$_f" ] && ! git diff --quiet -- "$_f"; then
+            _modified="$_modified $_f"
+        fi
+    done
 fi
 
-# Restage files that formatters modified
-if [ $_rc -eq 0 ] && [ -n "$_pre_staged" ]; then
-    if ! printf '%s\\n' "$_pre_staged" | xargs git add; then
+# Restage formatter edits, then retry pre-commit once if it had failed because of them.
+if [ -n "$_modified" ]; then
+    if ! git add -- $_modified; then
         echo "ERROR: failed to restage formatted files — aborting commit." >&2
         exit 1
+    fi
+    if [ $_rc -ne 0 ]; then
+        echo "Restaged formatter-modified files; re-running pre-commit..."
+        _teleclaude_run_precommit
+        _rc=$?
     fi
 fi
 
@@ -220,47 +240,36 @@ def _append_block_if_missing(hook_file: Path, marker: str, block: str) -> bool:
 def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
     """Inject stash prevention and format-restage blocks into pre-commit's generated hook wrapper.
 
-    Two blocks are injected:
-    1. Stash prevention — blocks commits with partially staged files.
-    2. Format restage — replaces the ``exec`` tail with a regular call so
-       formatter-modified files are restaged before the commit completes.
-
-    Migrates from the old overlap guard if present.
+    Replaces any pre-existing TeleClaude blocks (stash prevention, the old overlap
+    guard, or a prior restage block) with a fresh pair so updates land cleanly on
+    re-run. On a fresh install the ``exec`` tail is removed so the restage block
+    owns the pre-commit invocation.
     """
     if not precommit_hook_file.exists():
         print("telec init: pre-commit entrypoint not found; run `pre-commit install`.")
         return
 
     content = precommit_hook_file.read_text(encoding="utf-8")
-    exec_anchor = '\nif [ -x "$INSTALL_PYTHON" ]; then'
 
-    # --- 1. Stash prevention block ---
-    existing_marker = None
-    for marker in (STASH_PREVENTION_MARKER, _OLD_OVERLAP_MARKER):
-        if marker in content:
-            existing_marker = marker
-            break
+    marker_comments = (
+        f"# {STASH_PREVENTION_MARKER}",
+        f"# {_OLD_OVERLAP_MARKER}",
+        f"# {RESTAGE_MARKER}",
+    )
+    teleclaude_start: int | None = None
+    for marker in marker_comments:
+        idx = content.find(marker)
+        if idx != -1 and (teleclaude_start is None or idx < teleclaude_start):
+            teleclaude_start = idx
 
-    if existing_marker:
-        start = content.find(f"# {existing_marker}")
-        if start == -1:
-            return
-        end = content.find(exec_anchor, start)
-        if end == -1:
-            return
-        content = content[:start].rstrip("\n") + "\n\n" + STASH_PREVENTION_BLOCK + content[end:]
+    if teleclaude_start is not None:
+        prefix = content[:teleclaude_start].rstrip("\n")
     else:
+        exec_anchor = '\nif [ -x "$INSTALL_PYTHON" ]; then'
         idx = content.find(exec_anchor)
-        if idx == -1:
-            content = content.rstrip("\n") + "\n" + STASH_PREVENTION_BLOCK + "\n"
-        else:
-            content = content[:idx] + "\n" + STASH_PREVENTION_BLOCK + content[idx:]
+        prefix = (content[:idx] if idx != -1 else content).rstrip("\n")
 
-    # --- 2. Format restage block (replaces exec tail) ---
-    if RESTAGE_MARKER not in content:
-        exec_tail_start = content.find('\nif [ -x "$INSTALL_PYTHON" ]; then')
-        if exec_tail_start != -1:
-            content = content[: exec_tail_start + 1] + RESTAGE_BLOCK
+    content = prefix + "\n" + STASH_PREVENTION_BLOCK + "\n" + RESTAGE_BLOCK
 
     precommit_hook_file.write_text(content, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)
