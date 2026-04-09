@@ -56,7 +56,6 @@ Review code changes against requirements and architecture and produce a verdict.
   means the review is incomplete — stop and execute it.
 - Each lane must produce a section in `review-findings.md`.
 - Persist the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
-  Do not stage temporary markdown files or write under `todos/{slug}/`.
 - Count unresolved Critical and unresolved Important findings.
 - If either count > 0: verdict is REQUEST CHANGES.
 - If both are 0: verdict is APPROVE.

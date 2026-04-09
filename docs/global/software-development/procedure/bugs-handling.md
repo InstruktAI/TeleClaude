@@ -42,8 +42,8 @@ Two tracks apply depending on how the bug was discovered: inline (internal) or v
    minimal fix, verify via commit hooks (lint + unit tests), commit, continue.
 
 3. **If the bug is too large for inline fixing**, it is not a bug — it is a work item.
-   Create `telec todo artifacts read {slug} input` with the issue details and add it to
-   `todos.db` roadmap. Do not create a separate bugs file.
+   Run `telec roadmap add <slug> --description "<issue details>"` to register it as a
+   roadmap entry. Do not create a separate bugs file.
 
 4. **Never log a bug and move on.** That middle ground — "I'll note it for later" —
    creates noise that goes stale. Either fix it or promote it. There is no third option.
@@ -61,7 +61,7 @@ Two tracks apply depending on how the bug was discovered: inline (internal) or v
 **Track 1:**
 
 - Bug fixed and committed on the current branch, or
-- New work item in `todos/` with the issue promoted to a roadmap entry.
+- New roadmap entry added via `telec roadmap add` with the issue promoted from inline fix scope.
 
 **Track 2:**
 

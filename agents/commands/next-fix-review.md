@@ -43,7 +43,6 @@ Address review findings and prepare the work for re-review.
 
 - Follow the fix-review procedure.
 - Persist findings updates with `telec todo artifacts write {slug} review-findings "<content>"`.
-  Do not stage temporary markdown files or write under `todos/{slug}/`.
 - Do not self-terminate — the orchestrator always ends child sessions.
 
 ## Discipline

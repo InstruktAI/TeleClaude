@@ -58,7 +58,7 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
      - Fix requires service restart, config changes, or external coordination.
    - **Record only** when:
      - Error is transient and self-resolved (network blip, temporary resource pressure).
-     - Error is already tracked by an existing bug (`todos/fix-*`) or todo.
+     - Error is already tracked by an existing bug (visible in `telec bugs list`) or todo.
 
 5. Execute inline fixes:
    - Apply minimal fix.
@@ -66,7 +66,7 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
    - Commit with type `fix(scope): subject`.
 
 6. Dispatch unfixable errors to the bug pipeline:
-   - Check if a `todos/fix-{slug}/` already exists for this error class.
+   - Check if a bug already exists for this error class via `telec bugs list`.
    - If yes, skip (do not create duplicates).
    - If no, run `telec bugs report "<description>" --slug fix-{slug}` where
      description includes: error summary, log excerpt, and attempted diagnosis.

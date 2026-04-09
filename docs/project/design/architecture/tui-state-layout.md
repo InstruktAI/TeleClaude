@@ -149,7 +149,7 @@ flowchart TD
 - `v` on file: `ViewFile(file_id)`
 - `e` on file: `EditFile(file_id)`
 - `+`/`-`: `ExpandAll()` / `CollapseAll()`
-- Expanded todo file list is derived from all non-hidden files under `todos/{slug}` (including nested paths), sorted alphabetically.
+- Expanded todo file list is derived from DB-sourced artifacts for the todo (via `telec todo artifacts list {slug}`), sorted alphabetically.
 - Todo rows render roadmap status plus compact phase tags (`B`, `R`, `DOR`, `DEF`, `F`) from todo metadata.
 
 ### Navigation, modals, and edge cases

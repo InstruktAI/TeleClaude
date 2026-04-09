@@ -15,18 +15,18 @@ Curate the **User-Agent Relationship** by saving _only_ high-signal, durable con
 ## Preconditions
 
 - You have encountered something important about the relationship, user preference, or collaboration context during a session.
-- The item has passed the routing check: it is not a bug (fix inline), not a work item (`todos/`), and not a system rule (doc snippet).
+- The item has passed the routing check: it is not a bug (fix inline), not a work item (roadmap entry), and not a system rule (doc snippet).
 
 Before saving, route the information to its proper home:
 
-| Item Type                 | Destination       | Why?                                                                          |
-| :------------------------ | :---------------- | :---------------------------------------------------------------------------- |
-| **Defect / Error**        | **Fix inline**    | Fix it now, right where you are. If too large, promote to `todos/`.           |
-| **Work Item / Task**      | `todos/`          | It's a unit of work to be executed.                                           |
-| **System Rule / How-To**  | **Documentation** | It's a formal instruction for _all_ agents. Update global doc snippet(s).     |
-| **Project Context**       | **Documentation** | It's a formal instruction for project agents. Update project doc snippets(s). |
-| **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").                  |
-| **Relationship Friction** | **Memory**        | It's a lesson on how to work better together (e.g., "User dislikes X").       |
+| Item Type                 | Destination       | Why?                                                                              |
+| :------------------------ | :---------------- | :-------------------------------------------------------------------------------- |
+| **Defect / Error**        | **Fix inline**    | Fix it now, right where you are. If too large, promote to the roadmap.            |
+| **Work Item / Task**      | **Roadmap**       | It's a unit of work to be executed. Use `telec roadmap add` or `telec todo dump`. |
+| **System Rule / How-To**  | **Documentation** | It's a formal instruction for _all_ agents. Update global doc snippet(s).         |
+| **Project Context**       | **Documentation** | It's a formal instruction for project agents. Update project doc snippets(s).     |
+| **User Preference**       | **Memory**        | It's a fact about the user (e.g., "Don't use filler words").                      |
+| **Relationship Friction** | **Memory**        | It's a lesson on how to work better together (e.g., "User dislikes X").           |
 
 ## Steps
 
@@ -47,7 +47,7 @@ Before saving, route the information to its proper home:
    - **AI-to-AI Chatter:** Worker agents reporting to Orchestrators should _never_ save memories. Their interaction is transactional, not relational.
 
 2. **Route Check:**
-   - Is it a bug? -> Fix it inline now. If too large, create a todo.
+   - Is it a bug? -> Fix it inline now. If too large, promote to the roadmap via `telec todo dump`.
    - Is it a doc update? -> Update the doc snippet (PR).
 
 3. **Classify:** Pick the observation type that best matches the gem:
@@ -77,7 +77,7 @@ Before saving, route the information to its proper home:
 
 ## Recovery
 
-- If you are unsure where something goes, do not store it as memory. Promote concrete work to `todos/` and discard vague notes.
+- If you are unsure where something goes, do not store it as memory. Promote concrete work to the roadmap via `telec todo dump` and discard vague notes.
 - If you accidentally save "gravel" (noise), it dilutes the database. Be stricter next time.
 
 ## See Also

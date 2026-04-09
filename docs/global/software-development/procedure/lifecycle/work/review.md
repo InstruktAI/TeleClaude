@@ -263,7 +263,6 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 ### 6. Write and commit findings
 
 Write the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
-Do not stage temporary markdown files or write under `todos/{slug}/`.
 
 Verdict rules — **verdict is arithmetic, not judgement:**
 

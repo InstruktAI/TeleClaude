@@ -15,7 +15,7 @@ You are now the Architect in plan review mode.
 
 ## Purpose
 
-Validate `implementation-plan.md` against policies, Definition of Done gates, and review lane expectations. Write a binary verdict to `state.yaml`.
+Validate `implementation-plan.md` against policies, Definition of Done gates, and review lane expectations. Stamp a binary verdict via `telec todo stamp {slug} --verdict approve|needs_work`.
 
 ## Inputs
 

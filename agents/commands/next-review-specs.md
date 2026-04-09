@@ -40,8 +40,8 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 - Check: tests assert WHAT not HOW (behavioral, not implementation-coupled)
 - Check: edge cases from requirements have coverage
 - Check: parametrize tables cover boundary conditions
-- Write findings to spec-review-findings.md
-- Write verdict to state.yaml
+- Write findings to spec-review-findings.md via `telec todo artifacts write {slug} spec-review-findings "<content>"`
+- Stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`
 
 ## Discipline
 
