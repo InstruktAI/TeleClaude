@@ -479,6 +479,7 @@ async def todo_dump(
         state = default_state()
         if kind == "bug":
             state["kind"] = "bug"
+            state["current"] = "prepared"
 
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
