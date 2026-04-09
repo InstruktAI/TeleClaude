@@ -36,7 +36,7 @@ from pathlib import Path
 
 from teleclaude.chiptunes.dislikes import disliked_paths
 from teleclaude.chiptunes.player import ChiptunesPlayer
-from teleclaude.chiptunes.sid_parser import parse_sid_file
+from teleclaude.chiptunes.sid_parser import parse_sid_file, speed_for_subtune
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
 from teleclaude.paths import CHIPTUNES_STATE_PATH
 
@@ -47,12 +47,17 @@ STATE_PATH = CHIPTUNES_STATE_PATH
 _PERSIST_INTERVAL_SECONDS = 2.0
 
 
-def _is_rsid(path: Path) -> bool:
-    """Return True if path is an RSID file (interrupt-driven, skip in v1)."""
+def _is_unplayable(path: Path) -> bool:
+    """Return True if the SID file can't be played correctly (RSID or CIA-timer)."""
     try:
         with path.open("rb") as f:
-            return f.read(4) == _RSID_MAGIC
-    except OSError:
+            magic = f.read(4)
+        if magic == _RSID_MAGIC:
+            return True
+        header = parse_sid_file(path)
+        subtune = max(0, header.start_song - 1)
+        return speed_for_subtune(header, subtune) == "CIA"
+    except (OSError, ValueError):
         return False
 
 
@@ -441,7 +446,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
         if not self._music_dir.exists():
             return []
         blocked = disliked_paths()
-        return [p for p in self._music_dir.rglob("*.sid") if not _is_rsid(p) and str(p) not in blocked]
+        return [p for p in self._music_dir.rglob("*.sid") if not _is_unplayable(p) and str(p) not in blocked]
 
     def invalidate_track_cache(self) -> None:
         """Clear the cached track list so dislike changes take effect."""
