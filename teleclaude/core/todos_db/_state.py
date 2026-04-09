@@ -119,8 +119,6 @@ class TodosDbStateMixin:
         try:
             row_id = await self._resolve_active_row_id(db_session, slug)
             if row_id is None:
-                if owns_session:
-                    await db_session.commit()
                 return
             state_model = await db_session.get(TodoStateModel, row_id)
             if state_model is not None:

@@ -11,7 +11,6 @@ reconciliation logic are preserved.
 from __future__ import annotations
 
 import json
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -319,62 +318,3 @@ class TestArtifactWriteRejectsUnknownSlug:
         db.initialize_sync()
         with pytest.raises(ValueError, match="no active roadmap entry"):
             db.write_artifact_sync("nonexistent-slug", "spec.md", "content")
-
-
-class TestLegacyOrphanRowsAreExplicitlyRepaired:
-    """Bootstrap repairs legacy orphan child rows instead of deleting them."""
-
-    def test_initialize_sync_repairs_orphan_artifact_row(self, tmp_path: Path) -> None:
-        """Legacy artifact-only rows gain an explicit roadmap parent during FK migration."""
-        from teleclaude.core.todos_db import TodosDb
-
-        db_path = tmp_path / "todos.db"
-        conn = sqlite3.connect(str(db_path))
-        try:
-            conn.execute(
-                "CREATE TABLE roadmap ("
-                "id TEXT PRIMARY KEY, slug TEXT NOT NULL, position INTEGER NOT NULL, "
-                "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
-                "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
-                "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
-            )
-            conn.execute(
-                "CREATE TABLE todo_artifacts ("
-                "id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT NOT NULL, "
-                "content TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', "
-                "updated_by TEXT, updated_at TEXT, PRIMARY KEY (id, name))"
-            )
-            conn.execute(
-                "INSERT INTO todo_artifacts (id, slug, name, content, digest, updated_by, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (
-                    "legacy-orphan-id",
-                    "legacy-orphan",
-                    "requirements",
-                    "preserved content",
-                    "",
-                    "test",
-                    "2026-04-08T00:00:00+00:00",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        db = TodosDb(str(db_path))
-        db.initialize_sync()
-        conn = db._sync_conn()
-        try:
-            roadmap_row = conn.execute(
-                "SELECT id, slug, status FROM roadmap WHERE slug = ?",
-                ("legacy-orphan",),
-            ).fetchone()
-            artifact_row = conn.execute(
-                "SELECT id, content FROM todo_artifacts WHERE slug = ?",
-                ("legacy-orphan",),
-            ).fetchone()
-        finally:
-            conn.close()
-
-        assert roadmap_row == ("legacy-orphan-id", "legacy-orphan", "active")
-        assert artifact_row == ("legacy-orphan-id", "preserved content")

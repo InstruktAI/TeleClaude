@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, TypedDict
 from teleclaude.cli.telec.help import _usage
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
     from teleclaude.api_models import TodoDTO
@@ -170,6 +171,17 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
     return result
 
 
+def _validate_slugs(*slugs: str | None) -> None:
+    """Validate all non-None slug arguments; exit on invalid."""
+    try:
+        for slug in slugs:
+            if slug is not None:
+                validate_slug(slug)
+    except ValueError as exc:
+        print(str(exc))
+        raise SystemExit(1) from exc
+
+
 def _resolve_roadmap_project_root() -> Path:
     """Resolve the canonical project root for roadmap commands."""
     return resolve_main_repo_root(Path.cwd())
@@ -236,6 +248,8 @@ def _handle_roadmap_add(args: list[str]) -> None:
         print(_usage("roadmap", "add"))
         raise SystemExit(1)
 
+    _validate_slugs(slug, group, before, *(after or []))
+
     project_root = _resolve_roadmap_project_root()
     _run_db(project_root, slug, "add_to_roadmap", group_slug=group, after=after, description=description, before=before)
     print(f"Added {slug} to roadmap.")
@@ -268,6 +282,8 @@ def _handle_roadmap_remove(args: list[str]) -> None:
         print("Missing required slug.")
         print(_usage("roadmap", "remove"))
         raise SystemExit(1)
+
+    _validate_slugs(slug)
 
     project_root = _resolve_roadmap_project_root()
     if _run_db(project_root, slug, "remove_from_roadmap"):
@@ -318,6 +334,8 @@ def _handle_roadmap_move(args: list[str]) -> None:
         print(_usage("roadmap", "move"))
         raise SystemExit(1)
 
+    _validate_slugs(slug, before, after)
+
     project_root = _resolve_roadmap_project_root()
     if _run_db(project_root, slug, "move_in_roadmap", before=before, after=after):
         target = before or after
@@ -365,6 +383,8 @@ def _handle_roadmap_deps(args: list[str]) -> None:
         print(_usage("roadmap", "deps"))
         raise SystemExit(1)
 
+    _validate_slugs(slug, *after)
+
     project_root = _resolve_roadmap_project_root()
     _run_db(project_root, slug, "set_deps", after=after)
     if after:
@@ -399,6 +419,8 @@ def _handle_roadmap_freeze(args: list[str]) -> None:
         print("Missing required slug.")
         print(_usage("roadmap", "freeze"))
         raise SystemExit(1)
+
+    _validate_slugs(slug)
 
     project_root = _resolve_roadmap_project_root()
     if _run_db(project_root, slug, "freeze"):
@@ -435,6 +457,8 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         print("Missing required slug.")
         print(_usage("roadmap", "unfreeze"))
         raise SystemExit(1)
+
+    _validate_slugs(slug)
 
     project_root = _resolve_roadmap_project_root()
     if _run_db(project_root, slug, "unfreeze"):
@@ -484,6 +508,8 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
         print("Missing required slug.")
         print(_usage("roadmap", "deliver"))
         raise SystemExit(1)
+
+    _validate_slugs(slug)
 
     project_root = _resolve_roadmap_project_root()
     if not _run_db(project_root, slug, "deliver", commit=commit):
