@@ -1,8 +1,9 @@
-"""RED tests for TodosDbBase — connection lifecycle and schema bootstrap."""
+"""Tests for TodosDbBase — connection lifecycle and schema bootstrap."""
 
 from __future__ import annotations
 
 import sqlite3
+import uuid
 from pathlib import Path
 
 from teleclaude.core.todos_db import TodosDb
@@ -117,3 +118,48 @@ def test_migrate_to_uuid_schema_fixes_artifact_versions_with_integer_id_primary_
     cols = _artifact_versions_col_types(db_path)
     assert "version_id" in cols, "version_id column missing after UUID migration"
     assert cols.get("id", "").upper() == "TEXT", "id column must be TEXT after UUID migration"
+
+
+def _is_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
+def test_uuid_migration_assigns_uuid_to_artifacts_without_roadmap_entry(
+    tmp_path: Path,
+) -> None:
+    """Artifacts whose slug has no roadmap entry must get a generated UUID as id,
+    not the slug string."""
+    db_path = str(tmp_path / "todos.db")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE roadmap (slug TEXT PRIMARY KEY, position INTEGER NOT NULL, "
+        "group_slug TEXT, description TEXT, status TEXT NOT NULL DEFAULT 'active', "
+        "delivered_at TEXT, delivered_commit TEXT, children TEXT, "
+        "created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap VALUES ('known-slug', 0, NULL, NULL, 'active', NULL, NULL, NULL, "
+        "'2026-01-01T00:00:00', '2026-01-01T00:00:00')"
+    )
+    conn.execute(
+        "CREATE TABLE todo_artifacts (slug TEXT NOT NULL, name TEXT NOT NULL, "
+        "content TEXT NOT NULL DEFAULT '', digest TEXT NOT NULL DEFAULT '', "
+        "updated_by TEXT, updated_at TEXT, PRIMARY KEY (slug, name))"
+    )
+    conn.execute("INSERT INTO todo_artifacts VALUES ('orphan-slug', 'input', 'content', 'digest', NULL, NULL)")
+    conn.commit()
+    conn.close()
+
+    TodosDb(db_path).initialize_sync()
+
+    conn = sqlite3.connect(db_path)
+    row = conn.execute("SELECT id FROM todo_artifacts WHERE slug = 'orphan-slug'").fetchone()
+    conn.close()
+
+    assert row is not None, "orphan artifact row should survive migration"
+    assert _is_uuid(row[0]), f"artifact id must be a UUID, got {row[0]!r}"

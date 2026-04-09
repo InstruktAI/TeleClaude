@@ -131,7 +131,8 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
     for _iter in range(_PREPARE_LOOP_LIMIT):
         state = await todos_db.read_state(resolved_slug)
         if state is None:
-            state = {}
+            msg = f"Contract violation: no state record for slug {resolved_slug!r}"
+            raise RuntimeError(msg)
 
         # Artifact staleness check (R6): run before routing
         stale_artifacts = await check_artifact_staleness_db(todos_db, resolved_slug)

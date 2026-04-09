@@ -1,4 +1,4 @@
-"""Characterization tests for the prepare state machine entrypoint."""
+"""Tests for the prepare state machine entrypoint."""
 
 from __future__ import annotations
 
@@ -86,3 +86,20 @@ async def test_next_prepare_uses_derived_phase_and_returns_dispatch_instruction(
         result = await next_prepare(db, "slug-a", "/repo")
 
     assert result == "dispatch"
+
+
+@pytest.mark.asyncio
+async def test_next_prepare_raises_on_missing_state() -> None:
+    """A slug with no state record is a contract violation — must raise, not return PREPARED."""
+    db = AsyncMock()
+    todos_db = _mock_todos_db(state=None)
+    todos_db.read_state = AsyncMock(return_value=None)
+
+    with (
+        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch("teleclaude.core.todos_db.get_todos_db", return_value=todos_db),
+        patch(f"{_SLUG_RES}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}.check_artifact_staleness_db", return_value=[]),
+        pytest.raises(RuntimeError, match="Contract violation: no state record"),
+    ):
+        await next_prepare(db, "stateless-slug", "/repo")

@@ -5,7 +5,6 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -54,76 +53,6 @@ def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
         (table_name,),
     ).fetchone()
     return str(row[0]) if row and row[0] else ""
-
-
-def _next_roadmap_position(conn: sqlite3.Connection) -> int:
-    """Return the next roadmap position for sync bootstrap work."""
-    if not _table_exists(conn, "roadmap"):
-        return 0
-    row = conn.execute(
-        "SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap",
-    ).fetchone()
-    if row is None:
-        return 0
-    return int(row[0])
-
-
-def _repair_orphan_roadmap_row(conn: sqlite3.Connection, *, row_id: str, slug: str) -> str:
-    """Preserve legacy child rows by explicitly creating the missing roadmap parent."""
-    existing = conn.execute(
-        "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",
-        (slug,),
-    ).fetchone()
-    if existing is not None:
-        return str(existing[0])
-
-    now = datetime.now(UTC).isoformat()
-    logger.warning(
-        "Repairing legacy todo row without roadmap parent: slug=%s row_id=%s",
-        slug,
-        row_id,
-    )
-    conn.execute(
-        "INSERT INTO roadmap (id, slug, position, group_slug, description, status, created_at, updated_at) "
-        "VALUES (?, ?, ?, NULL, NULL, 'active', ?, ?)",
-        (row_id, slug, _next_roadmap_position(conn), now, now),
-    )
-    return row_id
-
-
-def _normalize_child_row_ids(conn: sqlite3.Connection) -> None:
-    """Map child rows onto a real roadmap row before FK enforcement.
-
-    Legacy databases could contain artifact/state rows for slugs that never
-    received a roadmap entry. During bootstrap we repair those rows
-    explicitly so runtime artifact writes no longer need to invent roadmap
-    parents on demand.
-    """
-    if not _table_exists(conn, "roadmap"):
-        return
-
-    for table_name in ("todo_state", "todo_artifacts", "todo_artifact_versions"):
-        columns = _table_columns(conn, table_name)
-        if {"id", "slug"} - columns:
-            continue
-
-        rows = conn.execute(
-            f"SELECT rowid, id, slug FROM {table_name} "  # guard: raw-sql
-            "WHERE id NOT IN (SELECT id FROM roadmap)",
-        ).fetchall()
-        for rowid, current_id, slug in rows:
-            replacement = conn.execute(
-                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",
-                (slug,),
-            ).fetchone()
-            if replacement is None:
-                replacement_id = _repair_orphan_roadmap_row(conn, row_id=str(current_id), slug=str(slug))
-            else:
-                replacement_id = str(replacement[0])
-            conn.execute(
-                f"UPDATE {table_name} SET id = ? WHERE rowid = ?",  # guard: raw-sql
-                (replacement_id, rowid),
-            )
 
 
 def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:  # pylint: disable=too-many-locals
@@ -182,7 +111,7 @@ def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:  # pylint: disabl
         for slug, name, content, digest, updated_by, updated_at in conn.execute(
             "SELECT slug, name, content, digest, updated_by, updated_at FROM todo_artifacts"
         ).fetchall():
-            row_id = slug_to_id.get(str(slug), str(slug))
+            row_id = slug_to_id.get(str(slug), _generate_id())
             conn.execute(
                 "INSERT OR IGNORE INTO todo_artifacts_new VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (row_id, slug, name, content, digest, updated_by, updated_at),
@@ -203,7 +132,7 @@ def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:  # pylint: disabl
             for slug, name, content, digest, updated_by, created_at in conn.execute(
                 "SELECT slug, name, content, digest, updated_by, created_at FROM todo_artifact_versions"
             ).fetchall():
-                row_id = slug_to_id.get(str(slug), str(slug))
+                row_id = slug_to_id.get(str(slug), _generate_id())
                 conn.execute(
                     "INSERT INTO todo_artifact_versions_new "
                     "(id, slug, name, content, digest, updated_by, created_at) "
@@ -243,7 +172,7 @@ def _migrate_artifact_versions_schema(conn: sqlite3.Connection) -> None:
     for slug, name, content, digest, updated_by, created_at in conn.execute(
         "SELECT slug, name, content, digest, updated_by, created_at FROM todo_artifact_versions"
     ).fetchall():
-        row_id = slug_to_id.get(str(slug), str(slug))
+        row_id = slug_to_id.get(str(slug), _generate_id())
         conn.execute(
             "INSERT INTO todo_artifact_versions_new "
             "(id, slug, name, content, digest, updated_by, created_at) "
@@ -258,7 +187,6 @@ def _migrate_artifact_versions_schema(conn: sqlite3.Connection) -> None:
 
 def _migrate_foreign_key_schema(conn: sqlite3.Connection) -> None:
     """Ensure child tables reference roadmap(id) with ON DELETE CASCADE."""
-    _normalize_child_row_ids(conn)
 
     state_sql = _table_sql(conn, "todo_state").upper()
     if _table_exists(conn, "todo_state") and "ON DELETE CASCADE" not in state_sql:
