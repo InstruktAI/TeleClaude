@@ -276,7 +276,7 @@ async def spawn_integrator_session(  # pylint: disable=too-many-locals
     from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
     from teleclaude.types.commands import ProcessMessageCommand  # pylint: disable=import-outside-toplevel
 
-    if not caller_session_id:
+    if not caller_session_id or caller_session_id == "unknown":
         raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
 
     # If an integrator session is already active, wake it with a message instead of

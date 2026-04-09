@@ -316,6 +316,47 @@ class TestProjectSessionFromTranscript:
         adapter_client.broadcast_user_input.assert_not_awaited()
 
     @pytest.mark.unit
+    async def test_system_role_session_persists_prompt_without_human_reflection(self):
+        session = Session(
+            session_id="sess-integrator-1",
+            computer_name="local",
+            tmux_session_name="tmux-integrator-1",
+            title="/next-integrate",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+            system_role="integrator",
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("/next-integrate", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+        mock_db.update_session.assert_awaited_once_with(
+            "sess-integrator-1",
+            last_message_sent="/next-integrate",
+            last_message_sent_at=transcript_ts.isoformat(),
+        )
+
+    @pytest.mark.unit
     async def test_projects_transcript_output(self):
         session = Session(
             session_id="sess-title-1",

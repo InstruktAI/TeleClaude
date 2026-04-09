@@ -90,6 +90,15 @@ async def test_spawn_rejects_missing_caller_identity():
 
 
 @pytest.mark.asyncio
+async def test_spawn_rejects_unknown_caller_identity():
+    """Sentinel caller IDs must not be persisted as real session lineage."""
+    from teleclaude.core.integration_bridge import spawn_integrator_session
+
+    with pytest.raises(ValueError, match="missing caller session identity"):
+        await spawn_integrator_session("my-slug", "my-branch", "abc123", "unknown")
+
+
+@pytest.mark.asyncio
 async def test_spawn_notifies_running_integrator():
     """If an integrator session is already running, send it a ProcessMessageCommand."""
     running = MagicMock()

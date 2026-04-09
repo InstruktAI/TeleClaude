@@ -284,7 +284,7 @@ async def next_integrate(
     """
     from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
 
-    session_id = caller_session_id or get_session_id() or "unknown"
+    session_id = caller_session_id or get_session_id() or ""
     started = perf_counter()
     state_dir = _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)

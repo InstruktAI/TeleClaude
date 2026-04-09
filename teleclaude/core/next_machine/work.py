@@ -720,7 +720,7 @@ async def _dispatch_finalize_handoff(
             next_call=f"telec todo work {resolved_slug}",
         )
 
-    session_id = get_session_id() or "unknown"
+    session_id = get_session_id() or ""
     handoff_started = perf_counter()
     try:
         await emit_branch_pushed(
@@ -753,7 +753,7 @@ async def _dispatch_finalize_handoff(
 
 async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     """List child sessions spawned by the current orchestrator session."""
-    if session_id == "unknown":
+    if not session_id:
         return []
     try:
         child_sessions = await db.list_sessions(initiator_session_id=session_id)
@@ -810,7 +810,7 @@ async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-
 
     review_round_val = state.get("review_round")
     review_round = review_round_val if isinstance(review_round_val, int) else 1
-    session_id = get_session_id() or "unknown"
+    session_id = get_session_id() or ""
     try:
         await emit_review_approved(slug=resolved_slug, reviewer_session_id=session_id, review_round=review_round)
     except Exception:  # pylint: disable=broad-exception-caught
