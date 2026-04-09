@@ -59,6 +59,7 @@ dependencies = [
     "misaki[en]; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "phonemizer-fork>=3.3.2; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "num2words; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "boto3>=1.34.0",
 ]
 
 [dependency-groups]
@@ -336,6 +337,7 @@ orphan-exclude = [
     "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
     "tests/unit/test_dependency_upgrade.py",                   # Tests jobs/dependency_upgrade.py (path mismatch)
     "tests/unit/jobs/test_session_memory_extraction.py",      # Tests jobs/session_memory_extraction.py (path mismatch)
+    "tests/unit/jobs/test_project_backup.py",                 # Tests jobs/project_backup.py (path mismatch)
     "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
     "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
     "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)
