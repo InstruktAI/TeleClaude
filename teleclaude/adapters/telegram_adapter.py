@@ -519,7 +519,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
                 lane_session,
                 _text,
                 _multi,
-                MARKDOWN_V2_INITIAL_STATE,
                 delivery_ts=_delivery_ts,
             )
 

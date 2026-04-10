@@ -39,9 +39,9 @@ configure_logging("myapp")
 - Prefer structured pairs over interpolated strings
 
 ```python
-import logging
+from instrukt_ai_logging import get_logger
 
-logger = logging.getLogger("instrukt_ai.myapp.worker")
+logger = get_logger(__name__)
 logger.info("job_started", job_id=job_id, user_id=user_id)
 ```
 

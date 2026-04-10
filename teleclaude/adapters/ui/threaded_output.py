@@ -7,7 +7,6 @@ pagination, continuation markers, and markdown-aware overflow splitting.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 
 @dataclass(frozen=True)
@@ -16,7 +15,6 @@ class OverflowPlan:
 
     chunk: str
     split_idx: int
-    next_state: Any  # opaque — owned by the adapter's markdown strategy
 
 
 @dataclass(frozen=True)
@@ -24,7 +22,6 @@ class OverflowContext:
     """Inputs shared by the overflow planning helpers."""
 
     continuation_prefix: str
-    continuation_state: Any  # opaque — owned by the adapter's markdown strategy
     available_for_content: int
 
 

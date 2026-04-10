@@ -131,13 +131,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         session: Session,
         text: str,
         multi_message: bool = False,
-        _continuation_state: Any = None,
         *,
         delivery_ts: datetime | None = None,
     ) -> str | None:
         """Send or edit threaded output message with smart pagination."""
-        if _continuation_state is None:
-            _continuation_state = self._markdown_initial_state()  # pylint: disable=assignment-from-none
         lock = self._get_output_delivery_lock(session.session_id)
         async with lock:
             await self._sync_threaded_session_state(session)
@@ -154,7 +151,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 session,
                 converted_text,
                 multi_message=multi_message,
-                _continuation_state=_continuation_state,
             )
             if result and delivery_ts is not None:
                 await self.set_last_delivered_at(session, delivery_ts)
@@ -171,7 +167,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         session: Session,
         text: str,
         multi_message: bool = False,
-        _continuation_state: Any = None,
     ) -> str | None:
         """Threaded-output core logic. Caller must hold the session output lock."""
         # 1. Get current offset and ID.
@@ -191,8 +186,15 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         if not active_text and output_message_id:
             return output_message_id
 
-        # 3. Build display body with continuation markers.
-        continuation_prefix = self._continuation_prefix_for_state(_continuation_state)
+        # 3. Re-derive markdown state at the resume point. The cumulative text +
+        #    char_offset are the source of truth: whatever markers are open at
+        #    position char_offset can be re-derived by scanning text[:char_offset]
+        #    every render. This guarantees that on every edit of a post-seal
+        #    chunk, the reopen prefix (e.g. ```\n for an open code fence) is
+        #    reapplied — even across separate top-level renders where any
+        #    in-memory parameter would have been lost.
+        continuation_state = self._scan_markdown_state(text[:char_offset], self._markdown_initial_state())
+        continuation_prefix = self._continuation_prefix_for_state(continuation_state)
         display_text = f"{continuation_prefix}{active_text}"
 
         # 4. Check for overflow.
@@ -200,7 +202,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         if len(display_text) > limit:
             overflow_context = OverflowContext(
                 continuation_prefix=continuation_prefix,
-                continuation_state=_continuation_state,
                 available_for_content=max(limit, 1),
             )
             overflow_plan = self._plan_overflow(active_text, overflow_context)
@@ -213,11 +214,12 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             await self._set_char_offset(session, char_offset + overflow_plan.split_idx)
             await self._clear_output_message_id(session)
 
+            # Recurse: the new char_offset will re-derive continuation state
+            # from text[:new_char_offset] on the next iteration.
             return await self._send_threaded_output_unlocked(
                 session,
                 text,
                 multi_message=multi_message,
-                _continuation_state=overflow_plan.next_state,
             )
 
         # --- NORMAL CASE: FIT AND SEND ---
@@ -267,9 +269,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                 overflow_context.available_for_content,
             )
 
-        consumed_source = active_text[:split_idx]
-        next_state = self._scan_markdown_state(consumed_source, overflow_context.continuation_state)
-        return OverflowPlan(chunk=chunk, split_idx=split_idx, next_state=next_state)
+        return OverflowPlan(chunk=chunk, split_idx=split_idx)
 
     async def _seal_thread_chunk(
         self,

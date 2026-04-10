@@ -212,11 +212,15 @@ class TestBuildTranscriptOutputUpdate:
             title="Demo",
             native_log_file="/tmp/transcript.jsonl",
             active_agent="claude",
-            last_tool_done_at=datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC),
         )
+        turn_start_ts = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
         last_ts = datetime(2026, 4, 3, 12, 0, 5, tzinfo=UTC)
 
         with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_turn_boundary_timestamp",
+                return_value=turn_start_ts,
+            ),
             patch(
                 "teleclaude.core.polling_coordinator.get_assistant_messages_since",
                 return_value=[{"role": "assistant"}],
@@ -228,11 +232,68 @@ class TestBuildTranscriptOutputUpdate:
             patch(
                 "teleclaude.core.polling_coordinator.render_agent_output",
                 return_value=("rendered", last_ts),
-            ),
+            ) as render,
         ):
             update = _build_transcript_output_update(session)
 
         assert update == ("rendered", last_ts, True)
+        # Cursor must be the turn start anchor, not a per-tool cursor, so each
+        # render produces the full cumulative view of the current turn.
+        assert render.call_args.kwargs["since_timestamp"] == turn_start_ts
+
+    @pytest.mark.unit
+    def test_renders_cumulative_turn_content_across_tool_calls(self):
+        """Regression: tool calls must accumulate in the rendered view, not replace each other.
+
+        Each render within a turn must re-read from the turn start anchor so
+        Discord/Telegram edits produce an accumulating view. Using any cursor
+        that advances within the turn (e.g. the last-tool-done timestamp)
+        causes edits to wipe prior content.
+        """
+        session = Session(
+            session_id="sess-accum",
+            computer_name="local",
+            tmux_session_name="tmux-accum",
+            title="Demo",
+            native_log_file="/tmp/transcript.jsonl",
+            active_agent="claude",
+        )
+        turn_start_ts = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
+        tool1_ts = datetime(2026, 4, 3, 12, 0, 5, tzinfo=UTC)
+        tool2_ts = datetime(2026, 4, 3, 12, 0, 10, tzinfo=UTC)
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_turn_boundary_timestamp",
+                return_value=turn_start_ts,
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.get_assistant_messages_since",
+                return_value=[{"role": "assistant"}],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.count_renderable_assistant_blocks",
+                return_value=2,
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.render_agent_output",
+                side_effect=[
+                    ("text A\n\ntool 1", tool1_ts),
+                    ("text A\n\ntool 1\n\ntool 2", tool2_ts),
+                ],
+            ) as render,
+        ):
+            first = _build_transcript_output_update(session)
+            second = _build_transcript_output_update(session)
+
+        assert first is not None
+        assert second is not None
+        # Both renders must use the same turn-start cursor, regardless of how
+        # many tool calls completed between them.
+        assert render.call_args_list[0].kwargs["since_timestamp"] == turn_start_ts
+        assert render.call_args_list[1].kwargs["since_timestamp"] == turn_start_ts
+        # The second render's content must be a superset (accumulating) of the first.
+        assert first[0] in second[0]
 
 
 class TestProjectSessionFromTranscript:
@@ -385,7 +446,11 @@ class TestProjectSessionFromTranscript:
             mock_db.get_session = AsyncMock(return_value=session)
             await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
 
-        mock_db.update_session.assert_any_await("sess-title-1", last_tool_done_at=delivery_ts.isoformat())
+        # The polling coordinator no longer writes a per-tool cursor to the DB;
+        # the render pipeline derives its cursor fresh from the transcript's
+        # turn start anchor on every projection so edits accumulate.
+        for call in mock_db.update_session.await_args_list:
+            assert "last_tool_done_at" not in call.kwargs
         adapter_client.send_output_update.assert_awaited_once_with(
             session,
             "assistant text",

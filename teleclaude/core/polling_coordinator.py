@@ -33,6 +33,7 @@ from teleclaude.core.summarizer import generate_session_title
 from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
+    extract_last_turn_boundary_timestamp,
     extract_last_user_message_with_timestamp,
     extract_recent_transcript_turns,
     get_assistant_messages_since,
@@ -88,7 +89,14 @@ def _percentile(values: list[float], pct: float) -> float | None:
 
 
 def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, bool] | None:
-    """Render transcript-backed output for one session turn."""
+    """Render transcript-backed output for one session turn.
+
+    Uses the start-of-turn anchor (last genuine user message timestamp) as the
+    cursor, so every render produces the full cumulative view of the current
+    turn. Edit-based platforms (Discord, Telegram) replace the tracking message
+    with the accumulating view; append-based chunking (char_offset) is handled
+    downstream by the adapter.
+    """
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -100,7 +108,7 @@ def _build_transcript_output_update(session: "Session") -> tuple[str, datetime, 
         logger.warning("Invalid active_agent %r for transcript output", active_agent)
         return None
 
-    turn_cursor = session.last_tool_done_at
+    turn_cursor = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
     assistant_messages = get_assistant_messages_since(transcript_path, agent_name, since_timestamp=turn_cursor)
     if not assistant_messages:
         return None
@@ -597,10 +605,6 @@ async def project_session_from_transcript(
             delivery_ts=last_ts,
         )
         _record_output_tick(session.session_id, len(message))
-        await db.update_session(session.session_id, last_tool_done_at=last_ts.isoformat())
-        refreshed = await db.get_session(session.session_id)
-        if refreshed is not None:
-            session = refreshed
     return session
 
 

@@ -545,7 +545,6 @@ def _escape_nested_backticks(text: str) -> str:
 # ===========================================================================
 
 _GFM_STATE_CODE_FENCE = "gfm_code_fence"
-_GFM_STATE_INLINE_CODE = "gfm_inline_code"
 _GFM_STATE_BOLD = "gfm_bold"
 _GFM_STATE_STRIKETHROUGH = "gfm_strikethrough"
 _GFM_STATE_SPOILER = "gfm_spoiler"
@@ -556,65 +555,146 @@ class GfmMarkdownState:
     """Parser state for balanced GFM chunking.
 
     stack:
-        Open entity markers in open order, innermost last.
-        Preserves close/reopen order across chunk boundaries.
+        Open multi-line markers in open order, innermost last. Tracks code
+        fences and toggle-style markers (bold, strikethrough, spoiler).
+    open_inline_code_run:
+        Length of an inline code backtick run that is still waiting for its
+        matching closer at the end of the scanned text. Zero when not inside
+        an inline code span. CommonMark inline code is handled with atomic
+        lookahead matching: a run of N backticks closes at the next run of
+        exactly N backticks. Spans with no closer in the current text carry
+        the run length here so the next chunk can reopen with the same run.
     """
 
     stack: tuple[str, ...] = ()
+    open_inline_code_run: int = 0
 
 
 GFM_MARKDOWN_INITIAL_STATE = GfmMarkdownState()
 
 
-def _scan_gfm_token(text: str, index: int, stack: list[str]) -> int:  # pylint: disable=too-many-return-statements
-    """Consume one GFM token at *index*, mutating *stack*. Returns new index."""
-    in_fence = bool(stack and stack[-1] == _GFM_STATE_CODE_FENCE)
-    if in_fence:
-        if text[index : index + 3] == MARKDOWN_FENCE:
-            stack.pop()
-            return index + 3
-        return index + 1  # inside fence — skip char verbatim
-
-    in_inline = bool(stack and stack[-1] == _GFM_STATE_INLINE_CODE)
-    if in_inline:
-        if text[index] == MARKDOWN_INLINE_CODE:
-            stack.pop()
-            return index + 1
-        return index + 1  # inside inline code — skip char verbatim
-
-    # Not inside a code span — process format markers (longest match first).
-    if text[index : index + 3] == MARKDOWN_FENCE:
-        stack.append(_GFM_STATE_CODE_FENCE)
-        return index + 3
-    if text[index : index + 2] == "**":
-        _toggle_stack_marker(stack, _GFM_STATE_BOLD)
-        return index + 2
-    if text[index : index + 2] == "~~":
-        _toggle_stack_marker(stack, _GFM_STATE_STRIKETHROUGH)
-        return index + 2
-    if text[index : index + 2] == "||":
-        _toggle_stack_marker(stack, _GFM_STATE_SPOILER)
-        return index + 2
-    if text[index] == MARKDOWN_INLINE_CODE:
-        stack.append(_GFM_STATE_INLINE_CODE)
-        return index + 1
-    return index + 1  # plain character
+def _at_line_start(text: str, index: int) -> bool:
+    """Return True if *index* is at the start of a line in *text*."""
+    return index == 0 or text[index - 1] == "\n"
 
 
-def scan_gfm_state(text: str, initial_state: GfmMarkdownState = GFM_MARKDOWN_INITIAL_STATE) -> GfmMarkdownState:
-    """Scan GFM text and return parser state after consuming it."""
+def _backtick_run_length(text: str, index: int) -> int:
+    """Return the number of consecutive backticks starting at *index*."""
+    count = 0
+    length = len(text)
+    while index + count < length and text[index + count] == MARKDOWN_INLINE_CODE:
+        count += 1
+    return count
+
+
+def _find_matching_backtick_run(text: str, start: int, run_length: int) -> int:
+    """Return the index of the next backtick run of exactly *run_length*.
+
+    Scans *text* from *start* forward. Returns -1 when no matching run exists.
+    This is the CommonMark inline code closing rule: the closing run must be
+    exactly the same length as the opening run.
+    """
+    i = start
+    length = len(text)
+    while i < length:
+        if text[i] != MARKDOWN_INLINE_CODE:
+            i += 1
+            continue
+        run = _backtick_run_length(text, i)
+        if run == run_length:
+            return i
+        i += run
+    return -1
+
+
+def scan_gfm_state(  # pylint: disable=too-many-branches
+    text: str, initial_state: GfmMarkdownState = GFM_MARKDOWN_INITIAL_STATE
+) -> GfmMarkdownState:
+    """Scan GFM text and return parser state after consuming it.
+
+    Inline code spans are treated as atomic: a backtick run of length N is
+    matched against the next run of exactly N in the remaining text. Found
+    spans advance past the closer with no state change. Unmatched opening
+    runs are carried as ``open_inline_code_run`` so the caller can reopen
+    the span in the next chunk.
+
+    Code fences must begin at the start of a line (CommonMark requirement).
+    A fence mid-line is treated as an inline code run of 3 backticks.
+    """
     stack = list(initial_state.stack)
+    open_run = initial_state.open_inline_code_run
+    length = len(text)
     i = 0
-    while i < len(text):
-        i = _scan_gfm_token(text, i, stack)
-    return GfmMarkdownState(stack=tuple(stack))
+
+    # Resume: if we entered this scan already inside an open inline code span,
+    # scan forward for the matching-length closer. If found, close the span;
+    # otherwise the whole text is consumed inside the still-open span.
+    if open_run > 0:
+        close_idx = _find_matching_backtick_run(text, 0, open_run)
+        if close_idx == -1:
+            return GfmMarkdownState(stack=tuple(stack), open_inline_code_run=open_run)
+        i = close_idx + open_run
+        open_run = 0
+
+    while i < length:
+        in_fence = bool(stack and stack[-1] == _GFM_STATE_CODE_FENCE)
+
+        if in_fence:
+            # Closing fence must be at line start, 3+ backticks.
+            if _at_line_start(text, i) and text[i] == MARKDOWN_INLINE_CODE:
+                run = _backtick_run_length(text, i)
+                if run >= 3:
+                    stack.pop()
+                    i += run
+                    continue
+            i += 1
+            continue
+
+        ch = text[i]
+
+        # Opening code fence: 3+ backticks at line start.
+        if ch == MARKDOWN_INLINE_CODE and _at_line_start(text, i):
+            run = _backtick_run_length(text, i)
+            if run >= 3:
+                stack.append(_GFM_STATE_CODE_FENCE)
+                i += run
+                continue
+
+        # Inline code: any backtick run with lookahead-matched closer.
+        if ch == MARKDOWN_INLINE_CODE:
+            run = _backtick_run_length(text, i)
+            close_idx = _find_matching_backtick_run(text, i + run, run)
+            if close_idx != -1:
+                # Atomic span: advance past the closing run.
+                i = close_idx + run
+                continue
+            # No closer in the remaining text — carry the run forward.
+            open_run = run
+            i += run
+            continue
+
+        # Toggle-style markers outside code context.
+        if text[i : i + 2] == "**":
+            _toggle_stack_marker(stack, _GFM_STATE_BOLD)
+            i += 2
+            continue
+        if text[i : i + 2] == "~~":
+            _toggle_stack_marker(stack, _GFM_STATE_STRIKETHROUGH)
+            i += 2
+            continue
+        if text[i : i + 2] == "||":
+            _toggle_stack_marker(stack, _GFM_STATE_SPOILER)
+            i += 2
+            continue
+
+        i += 1
+
+    return GfmMarkdownState(stack=tuple(stack), open_inline_code_run=open_run)
 
 
-def _gfm_opening_marker(marker: str) -> str:  # pylint: disable=too-many-return-statements
+def _gfm_opening_marker(marker: str) -> str:
     if marker == _GFM_STATE_CODE_FENCE:
         return f"{MARKDOWN_FENCE}\n"
-    if marker == _GFM_STATE_INLINE_CODE:
-        return MARKDOWN_INLINE_CODE
     if marker == _GFM_STATE_BOLD:
         return "**"
     if marker == _GFM_STATE_STRIKETHROUGH:
@@ -628,8 +708,6 @@ def _gfm_closing_marker(marker: str, source_text: str) -> str:
     if marker == _GFM_STATE_CODE_FENCE:
         prefix = "\n" if source_text and not source_text.endswith("\n") else ""
         return f"{prefix}{MARKDOWN_FENCE}"
-    if marker == _GFM_STATE_INLINE_CODE:
-        return MARKDOWN_INLINE_CODE
     if marker == _GFM_STATE_BOLD:
         return "**"
     if marker == _GFM_STATE_STRIKETHROUGH:
@@ -641,11 +719,19 @@ def _gfm_closing_marker(marker: str, source_text: str) -> str:
 
 def continuation_prefix_for_gfm_state(state: GfmMarkdownState) -> str:
     """Build GFM opening markers needed to continue a previously closed chunk."""
-    return "".join(_gfm_opening_marker(m) for m in state.stack)
+    parts = [_gfm_opening_marker(m) for m in state.stack]
+    if state.open_inline_code_run > 0:
+        parts.append(MARKDOWN_INLINE_CODE * state.open_inline_code_run)
+    return "".join(parts)
 
 
 def _gfm_closers(text: str, state: GfmMarkdownState) -> str:
-    return "".join(_gfm_closing_marker(m, text) for m in reversed(state.stack))
+    # Close innermost first: inline code (if open) before stacked markers.
+    parts: list[str] = []
+    if state.open_inline_code_run > 0:
+        parts.append(MARKDOWN_INLINE_CODE * state.open_inline_code_run)
+    parts.extend(_gfm_closing_marker(m, text) for m in reversed(state.stack))
+    return "".join(parts)
 
 
 def _seek_word_boundary(text: str) -> str:
@@ -669,14 +755,15 @@ def _trim_gfm_balanced(text: str, budget: int) -> tuple[str, int]:
     current = text[:budget]
     while True:
         state = scan_gfm_state(current)
-        if not state.stack:
-            # No open markers — prefer a word boundary unless inside code.
+        if not state.stack and state.open_inline_code_run == 0:
+            # No open markers — prefer a word boundary.
             current = _seek_word_boundary(current)
             return current, len(current)
         closers = _gfm_closers(current, state)
         if len(current) + len(closers) <= budget:
-            # Markers will be closed — seek word boundary if not in a code fence.
-            in_code = any(m == _GFM_STATE_CODE_FENCE for m in state.stack)
+            # Markers will be closed — seek word boundary only when outside any
+            # code context (fence or inline code span).
+            in_code = state.open_inline_code_run > 0 or any(m == _GFM_STATE_CODE_FENCE for m in state.stack)
             if not in_code:
                 trimmed = _seek_word_boundary(current)
                 if len(trimmed) + len(closers) <= budget and trimmed:

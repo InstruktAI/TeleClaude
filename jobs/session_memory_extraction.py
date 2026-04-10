@@ -38,8 +38,8 @@ Integration:
 
 from __future__ import annotations
 
+import asyncio
 import json
-import logging
 import ssl
 import sys
 from collections.abc import Awaitable
@@ -47,6 +47,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypedDict, cast
 
+from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 
 # Ensure repo root is in path for imports
@@ -54,18 +55,24 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# pylint: disable=wrong-import-position  # sys.path must be set before these imports resolve
 from jobs.base import Job, JobResult, run_job_cli
 from teleclaude.channels import publisher as channels_publisher
 from teleclaude.config import config
 from teleclaude.core.agents import AgentName
+from teleclaude.core.db import db
+from teleclaude.core.identity import derive_identity_key
+from teleclaude.core.models import Session
 from teleclaude.core.summarizer import _call_summarizer
 from teleclaude.memory.store import MemoryStore
 from teleclaude.memory.types import ObservationInput, ObservationType
 from teleclaude.mirrors.store import get_mirror
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
-logger = logging.getLogger(__name__)
-_REDIS_CLIENT: Redis | None = None
+# pylint: enable=wrong-import-position
+
+logger = get_logger(__name__)
+_redis_client: Redis | None = None  # pylint: disable=invalid-name  # mutable singleton, not a constant
 
 
 class _MemoryCandidate(TypedDict):
@@ -148,8 +155,6 @@ class SessionMemoryExtractionJob(Job):
 
     def run(self) -> JobResult:
         """Execute memory extraction for all pending sessions."""
-        import asyncio
-
         loop = asyncio.new_event_loop()
         try:
             return loop.run_until_complete(self._run_async())
@@ -167,70 +172,45 @@ class SessionMemoryExtractionJob(Job):
                 items_processed=0,
             )
 
-        processed = 0
-        errors: list[str] = []
-
         for session in sessions:
-            try:
-                await self._process_session(session)
-                processed += 1
-            except Exception as e:
-                sid = session.session_id if hasattr(session, "session_id") else "unknown"
-                errors.append(f"session {sid}: {e}")
+            await self._process_session(session)
 
-        success = len(errors) == 0
-        message = (
-            f"Extracted {processed} session(s)"
-            if success
-            else f"Extracted {processed} session(s) with {len(errors)} error(s)"
-        )
         return JobResult(
-            success=success,
-            message=message,
-            items_processed=processed,
-            errors=errors if errors else None,
+            success=True,
+            message=f"Extracted {len(sessions)} session(s)",
+            items_processed=len(sessions),
         )
 
-    async def _find_sessions_needing_extraction(self) -> list[object]:
+    async def _find_sessions_needing_extraction(self) -> list[Session]:
         """Find sessions that have transcript content beyond the last extraction boundary.
 
         Closed sessions need a final post-mortem pass when ``help_desk_processed_at``
         is still NULL. Active long-lived sessions need extraction when
         ``last_memory_extraction_at`` is older than ``last_activity`` (or unset).
         """
-        from teleclaude.core.db import db
-
         all_sessions = await db.list_sessions(include_closed=True)
-        pending = []
+        pending: list[Session] = []
         for session in all_sessions:
             # Any session with a human_role is eligible for extraction
-            if not getattr(session, "human_role", None):
+            if not session.human_role:
                 continue
-            last_activity = getattr(session, "last_activity", None)
-            if not last_activity:
+            if session.last_activity is None:
                 continue
-            last_extracted_at = getattr(session, "last_memory_extraction_at", None)
-            processed_at = getattr(session, "help_desk_processed_at", None)
-            lifecycle_status = getattr(session, "lifecycle_status", None)
-            closed_at = getattr(session, "closed_at", None)
-            is_closed = closed_at is not None or lifecycle_status in {"closed", "stopped"}
+            is_closed = session.closed_at is not None or session.lifecycle_status in {"closed", "stopped"}
 
             if is_closed:
-                if processed_at is None:
+                if session.help_desk_processed_at is None:
                     pending.append(session)
                 continue
 
-            if last_extracted_at is None or last_extracted_at < last_activity:
+            if session.last_memory_extraction_at is None or session.last_memory_extraction_at < session.last_activity:
                 pending.append(session)
-        return pending  # type: ignore[return-value]
+        return pending
 
-    async def _process_session(self, session: object) -> None:
+    async def _process_session(self, session: Session) -> None:
         """Process a single session: extract memories and actionable items."""
-        session_id: str = session.session_id  # type: ignore[attr-defined]
-        last_extracted_at = getattr(session, "last_memory_extraction_at", None)
-
         # Step 1: Read transcript since last extraction
-        transcript = await self._read_transcript_delta(session_id, since=last_extracted_at)
+        transcript = await self._read_transcript_delta(session.session_id, since=session.last_memory_extraction_at)
         if not transcript or not transcript.strip():
             return
 
@@ -249,7 +229,7 @@ class SessionMemoryExtractionJob(Job):
 
         # Step 6: Update bookkeeping timestamps
         now = datetime.now(UTC)
-        await self._update_bookkeeping(session_id, now)
+        await self._update_bookkeeping(session.session_id, now)
 
     async def _read_transcript_delta(
         self,
@@ -290,34 +270,28 @@ class SessionMemoryExtractionJob(Job):
             return None
         return "\n\n".join(transcript_lines)
 
-    def _resolve_identity_key(self, session: object) -> str | None:
+    def _resolve_identity_key(self, session: Session) -> str | None:
         """Derive the identity key from session origin_metadata."""
-        from teleclaude.core.identity import derive_identity_key
-
-        origin = getattr(session, "origin_metadata", None)
-        if not isinstance(origin, dict):
-            return None
-        return derive_identity_key(origin)
+        return derive_identity_key(session.origin_metadata)
 
     async def _extract_personal_memories(
         self,
         transcript: str,
         identity_key: str | None,
-        session: object,
+        session: Session,
     ) -> None:
         """Extract personal memories from transcript and save with identity scope.
 
         Personal memories capture user-specific information: preferences,
         communication style, history, and relationship context.
         """
-        session_id = getattr(session, "session_id", "?")
         if identity_key is None:
-            logger.info("Skipping personal memory extraction for session %s: identity key missing", session_id)
+            logger.info("Skipping personal memory extraction for session %s: identity key missing", session.session_id)
             return
 
         project = _get_session_project(session)
         if project is None:
-            logger.warning("Skipping personal memory extraction for session %s: project missing", session_id)
+            logger.warning("Skipping personal memory extraction for session %s: project missing", session.session_id)
             return
 
         memories = await _call_summarizer(
@@ -347,17 +321,16 @@ class SessionMemoryExtractionJob(Job):
     async def _extract_business_memories(
         self,
         transcript: str,
-        session: object,
+        session: Session,
     ) -> None:
         """Extract business memories from transcript and save at project scope.
 
         Business memories capture product feedback, feature requests, common
         pain points, and domain knowledge shared by users.
         """
-        session_id = getattr(session, "session_id", "?")
         project = _get_session_project(session)
         if project is None:
-            logger.warning("Skipping business memory extraction for session %s: project missing", session_id)
+            logger.warning("Skipping business memory extraction for session %s: project missing", session.session_id)
             return
 
         memories = await _call_summarizer(
@@ -386,7 +359,7 @@ class SessionMemoryExtractionJob(Job):
     async def _extract_and_publish_actionable_items(
         self,
         transcript: str,
-        session: object,
+        session: Session,
     ) -> None:
         """Extract actionable items from transcript and publish to channels.
 
@@ -394,14 +367,9 @@ class SessionMemoryExtractionJob(Job):
         and escalation triggers. Each item is published to the appropriate
         internal channel for downstream routing.
         """
-        session_id = getattr(session, "session_id", None)
-        if not isinstance(session_id, str) or not session_id.strip():
-            logger.warning("Skipping actionable item extraction: session_id missing")
-            return
-
         project = _get_session_project(session)
         if project is None:
-            logger.warning("Skipping actionable item extraction for session %s: project missing", session_id)
+            logger.warning("Skipping actionable item extraction for session %s: project missing", session.session_id)
             return
 
         items = await _call_summarizer(
@@ -412,35 +380,21 @@ class SessionMemoryExtractionJob(Job):
         if not items:
             return
 
-        try:
-            redis_client = await get_redis()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            logger.warning("Skipping actionable item publish for session %s: %s", session_id, exc)
-            return
-
+        redis_client = await get_redis()
         channel = channels_publisher.channel_key(project, "actionable-items")
         for item in items:
-            try:
-                await channels_publisher.publish(
-                    redis_client,
-                    channel,
-                    {
-                        "type": item["type"],
-                        "summary": item["summary"],
-                        "session_id": session_id,
-                    },
-                )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.warning(
-                    "Failed to publish actionable item for session %s: %s",
-                    session_id,
-                    exc,
-                )
+            await channels_publisher.publish(
+                redis_client,
+                channel,
+                {
+                    "type": item["type"],
+                    "summary": item["summary"],
+                    "session_id": session.session_id,
+                },
+            )
 
     async def _update_bookkeeping(self, session_id: str, now: datetime) -> None:
         """Update session timestamps after successful extraction."""
-        from teleclaude.core.db import db
-
         await db.update_session(
             session_id,
             last_memory_extraction_at=now.isoformat(),
@@ -563,22 +517,21 @@ def _parse_observation_type(raw_type: str) -> ObservationType | None:
         return None
 
 
-def _get_session_project(session: object) -> str | None:
+def _get_session_project(session: Session) -> str | None:
     """Resolve a normalized project scope from the session."""
-    project_raw = getattr(session, "project_path", None)
-    if not isinstance(project_raw, str):
+    if session.project_path is None:
         return None
-    project = project_raw.strip()
+    project = session.project_path.strip()
     return project or None
 
 
 async def get_redis() -> Redis:
     """Return the configured Redis client for channels publication."""
-    global _REDIS_CLIENT  # pylint: disable=global-statement
+    global _redis_client  # pylint: disable=global-statement
     if not config.redis.enabled:
         raise RuntimeError("Redis transport is disabled")
 
-    if _REDIS_CLIENT is None:
+    if _redis_client is None:
         kwargs: dict[str, Any] = {
             "password": config.redis.password,
             "max_connections": config.redis.max_connections,
@@ -588,7 +541,7 @@ async def get_redis() -> Redis:
         }
         if config.redis.url.startswith("rediss://"):
             kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
-        _REDIS_CLIENT = Redis.from_url(config.redis.url, **kwargs)
+        _redis_client = Redis.from_url(config.redis.url, **kwargs)
 
-    await cast(Awaitable[bool], _REDIS_CLIENT.ping())
-    return _REDIS_CLIENT
+    await cast(Awaitable[bool], _redis_client.ping())
+    return _redis_client

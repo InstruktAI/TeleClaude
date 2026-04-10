@@ -5,12 +5,20 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session
+from teleclaude.utils.markdown import (
+    GFM_MARKDOWN_INITIAL_STATE,
+    GfmMarkdownState,
+    continuation_prefix_for_gfm_state,
+    scan_gfm_state,
+    truncate_gfm_with_consumed,
+)
 
 # ---------------------------------------------------------------------------
 # Minimal concrete host for testing
@@ -209,3 +217,122 @@ class TestOverflowPagination:
             result = await host.send_threaded_output(session, short_text)
 
         assert result is not None
+
+
+# ---------------------------------------------------------------------------
+# Marker bookkeeping across chunk boundaries (regression)
+# ---------------------------------------------------------------------------
+
+
+class _GfmHost(_ThreadedHost):
+    """Host configured with the GFM markdown strategy (Discord dialect)."""
+
+    max_message_size = 60  # tiny limit to force overflow on short fixtures
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Record every display_text that reaches the live-delivery path so the
+        # tests can inspect the rendered body for marker correctness.
+        self.delivered_bodies: list[str] = []
+
+    def _markdown_initial_state(self) -> object:
+        return GFM_MARKDOWN_INITIAL_STATE
+
+    def _continuation_prefix_for_state(self, state: object) -> str:
+        return continuation_prefix_for_gfm_state(cast(GfmMarkdownState, state))
+
+    def _truncate_for_overflow(self, body_text: str, max_chars: int) -> tuple[str, int]:
+        return truncate_gfm_with_consumed(body_text, max_chars=max_chars, suffix="")
+
+    def _scan_markdown_state(self, consumed: str, state: object) -> object:
+        return scan_gfm_state(consumed, initial_state=cast(GfmMarkdownState, state))
+
+    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+        self,
+        session: Session,
+        text: str,
+        metadata: MessageMetadata,
+        **delivery_kwargs: object,
+    ) -> str | None:
+        self.delivered_bodies.append(text)
+        if self._output_message_id:
+            return self._output_message_id
+        new_id = await self.send_message(session, text, metadata=metadata)
+        if new_id:
+            self._output_message_id = new_id
+        return new_id
+
+
+class TestMarkerBookkeepingAcrossRenders:
+    """Regression: re-derive open-marker state from text[:char_offset] every render.
+
+    The bug: a per-call ``_continuation_state`` parameter was the only carrier of
+    "what markers are open at the resume point". On the immediate post-overflow
+    recursive call it survived; on the *next* top-level render it was reset to
+    the initial state, so the post-seal chunk B was edited with content that
+    dropped the reopened code-fence prefix. Subsequent edits buried the fence
+    and Discord/Telegram showed unfenced content where a fenced block was
+    intended.
+
+    These tests pin the stateless behaviour: every render scans
+    ``text[:char_offset]`` and re-derives the prefix.
+    """
+
+    @pytest.mark.unit
+    async def test_post_seal_chunk_keeps_reopen_prefix_on_next_render(self) -> None:
+        """Render N+1 must edit chunk B *with* the reopened code-fence prefix."""
+        host = _GfmHost()
+        session = _make_session()
+
+        # Long text with an unclosed code fence that overflows the 60-char limit.
+        # Chunk A will be sealed with a closing fence; chunk B is the remainder
+        # and must keep the ```\n reopen prefix on every subsequent edit.
+        long_text = "Here is code:\n```python\n" + ("print('x')\n" * 8) + "```\nDone."
+
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=None)
+            mock_db.update_origin_metadata = AsyncMock()
+            mock_db.update_session = AsyncMock()
+
+            # ----- Render N: triggers overflow + recursive seal+continue -----
+            await host.send_threaded_output(session, long_text)
+
+        # Char offset advanced past chunk A and chunk B is the new active region.
+        offset_after_n = host._char_offset
+        assert offset_after_n > 0
+        assert offset_after_n < len(long_text)
+        assert host._output_message_id is not None  # chunk B id stored
+
+        # State at the resume point must include the open code fence so the
+        # reopen prefix is reapplied on chunk B.
+        derived_state = scan_gfm_state(long_text[:offset_after_n])
+        derived_prefix = continuation_prefix_for_gfm_state(derived_state)
+        assert derived_prefix == "```\n", f"Expected open code fence at offset {offset_after_n}, got {derived_prefix!r}"
+
+        # The chunk-B body delivered during render N must already include the
+        # reopen prefix (proves the recursive call wired it correctly).
+        bodies_after_n = list(host.delivered_bodies)
+        assert bodies_after_n, "expected at least one delivered body during render N"
+        chunk_b_first_body = bodies_after_n[-1]
+        assert chunk_b_first_body.startswith("```\n"), (
+            f"chunk B first delivery missing reopen prefix: {chunk_b_first_body!r}"
+        )
+
+        # ----- Render N+1: NEW top-level call, extended text -----
+        # This is the regression case: previously _continuation_state defaulted
+        # to initial here and the rendered body went out without the reopen prefix.
+        host.delivered_bodies.clear()
+
+        extended_text = long_text + " more text"
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=None)
+            mock_db.update_origin_metadata = AsyncMock()
+            mock_db.update_session = AsyncMock()
+
+            await host.send_threaded_output(session, extended_text)
+
+        # The body delivered on render N+1 must carry the reopen prefix.
+        bodies_after_next = list(host.delivered_bodies)
+        assert bodies_after_next, "expected at least one delivered body during render N+1"
+        next_body = bodies_after_next[-1]
+        assert next_body.startswith("```\n"), f"render N+1 dropped reopen prefix — bug regressed. Got: {next_body!r}"
