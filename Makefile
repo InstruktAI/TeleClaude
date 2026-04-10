@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status
+.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -12,6 +12,7 @@ help:
 	@echo "  make init         Initialize this TeleClaude repo for development (ARGS=-y for unattended)"
 	@echo "  make bootstrap    Non-interactive install AND init (for CI)"
 	@echo "  make bootstrap-ci Lean non-interactive bootstrap for CI environments"
+	@echo "  make generate-types  Generate TypeScript types from Pydantic API models"
 	@echo "  make build-artifacts  Generate and deploy agent artifacts (docs, skills, prompts)"
 	@echo "  make link         Link shared scripts/docs into ~/.teleclaude"
 	@echo "  make certs        Generate SSL certificates for REST API"
@@ -182,4 +183,8 @@ onboard:
 	@telec onboard
 
 build-artifacts:
+	@$(MAKE) generate-types
 	@uv run -m teleclaude.cli.telec sync --warn-only
+
+generate-types:
+	@uv run -m teleclaude.codegen.pydantic_to_typescript

@@ -222,6 +222,7 @@ class TodoDTO(BaseModel):
     files: list[str] = Field(default_factory=list)
     after: list[str] = Field(default_factory=list)
     group: str | None = None
+    todo_path: str | None = None
     delivered_at: str | None = None
     prepare_phase: str | None = None
     integration_phase: str | None = None
