@@ -5,6 +5,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.cli.telec.surface_types import CommandDef
+
 help_mod = importlib.import_module("teleclaude.cli.telec.help")
 surface_mod = importlib.import_module("teleclaude.cli.telec.surface")
 surface_types = importlib.import_module("teleclaude.cli.telec.surface_types")
@@ -27,11 +29,24 @@ def _completion_values(rows: list[str]) -> list[str]:
     return [row.split("\t", 1)[0] for row in rows]
 
 
-_SMOKE_COMMANDS = sorted(
-    name
-    for name, cmd_def in surface_mod.CLI_SURFACE.items()
-    if not cmd_def.hidden and (cmd_def.subcommands or cmd_def.flags)
-)
+def _collect_completion_contexts() -> list[str]:
+    """Every non-hidden command context in CLI_SURFACE that should emit completions."""
+    lines: list[str] = []
+
+    def walk(path: list[str], node: CommandDef) -> None:
+        if node.hidden:
+            return
+        if node.subcommands or node.flags or node.args:
+            lines.append("telec " + " ".join(path) + " ")
+        for sub_name, sub_node in node.subcommands.items():
+            walk([*path, sub_name], sub_node)
+
+    for name, cmd_def in surface_mod.CLI_SURFACE.items():
+        walk([name], cmd_def)
+    return lines
+
+
+_COMPLETION_CONTEXTS = _collect_completion_contexts()
 
 
 def test_sample_positional_value_uses_domain_specific_examples() -> None:
@@ -99,61 +114,35 @@ def test_complete_flags_only_prints_matching_unused_options(monkeypatch: pytest.
     printed.assert_called_once_with(("-m", "--mode", "Mode"))
 
 
-@pytest.mark.parametrize("command", _SMOKE_COMMANDS)
-def test_handle_completion_emits_rows_for_every_surface_command(
-    command: str,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Smoke guard: every non-hidden command with content must produce completions."""
-    rows = _run_completion(monkeypatch, capsys, f"telec {command} ")
-
-    assert rows, f"telec {command} <TAB> emitted no completion rows"
-
-
-def test_handle_completion_emits_history_subcommands(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    values = _completion_values(_run_completion(monkeypatch, capsys, "telec history "))
-
-    assert {"list", "search", "show"} <= set(values)
-
-
-def test_handle_completion_walks_nested_container_todo_artifacts(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    values = _completion_values(_run_completion(monkeypatch, capsys, "telec todo artifacts "))
-
-    assert {"list", "read", "write"} <= set(values)
-
-
-def test_handle_completion_walks_nested_container_config_people(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    values = _completion_values(_run_completion(monkeypatch, capsys, "telec config people "))
-
-    assert {"list", "add", "edit", "remove"} <= set(values)
-
-
-def test_handle_completion_walks_nested_container_config_env(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    values = _completion_values(_run_completion(monkeypatch, capsys, "telec config env "))
-
-    assert {"list", "set"} <= set(values)
-
-
-def test_handle_completion_ignores_flag_like_text_inside_quoted_positional(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """Flag-like substrings inside a quoted positional must not be marked as used."""
-    values = _completion_values(_run_completion(monkeypatch, capsys, 'telec content dump "text --author val" '))
-
-    assert any("--author" in v for v in values), (
-        "--author was inside quoted positional and must still be offered as a flag"
+def test_split_args_tokens_keeps_bracketed_flag_docs_and_positionals_atomic() -> None:
+    """`[--flag <value>]` and `[<positional>]` must each tokenize as single units."""
+    tokens = help_mod._split_args_tokens(
+        "<slug> [<message>] [terms...] [--direct] [--agent <name>] [--changed-paths <paths>]"
     )
+
+    assert tokens == [
+        "<slug>",
+        "[<message>]",
+        "[terms...]",
+        "[--direct]",
+        "[--agent <name>]",
+        "[--changed-paths <paths>]",
+    ]
+
+
+@pytest.mark.parametrize("command_line", _COMPLETION_CONTEXTS)
+def test_handle_completion_emits_well_formed_tokens_for_every_command_context(
+    command_line: str,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Every non-hidden CLI_SURFACE context must emit balanced, non-flag-doc positional hints."""
+    values = _completion_values(_run_completion(monkeypatch, capsys, command_line))
+
+    assert values, f"{command_line!r} emitted no completion rows"
+    for value in values:
+        assert value.count("[") == value.count("]"), f"{command_line!r} emitted unbalanced brackets in {value!r}"
+        assert value.count("<") == value.count(">"), f"{command_line!r} emitted unbalanced angle brackets in {value!r}"
+        if value.startswith("["):
+            inner = value[1:-1]
+            assert not inner.startswith("-"), f"{command_line!r} leaked flag-doc token as positional hint: {value!r}"

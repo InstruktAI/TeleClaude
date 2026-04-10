@@ -581,10 +581,56 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
     _complete_leaf_command(node, remaining, current, is_partial)
 
 
+def _split_args_tokens(args: str) -> list[str]:
+    """Bracket-aware tokenizer for CommandDef.args strings.
+
+    Keeps `<name>` and balanced `[...]` (including nested `[--flag <value>]`)
+    atomic so downstream hint rendering can distinguish real positionals from
+    flag documentation.
+    """
+    tokens: list[str] = []
+    i = 0
+    length = len(args)
+    while i < length:
+        char = args[i]
+        if char.isspace():
+            i += 1
+            continue
+        if char == "[":
+            depth = 1
+            j = i + 1
+            while j < length and depth > 0:
+                if args[j] == "[":
+                    depth += 1
+                elif args[j] == "]":
+                    depth -= 1
+                j += 1
+            tokens.append(args[i:j])
+            i = j
+        elif char == "<":
+            close = args.find(">", i + 1)
+            end = length if close == -1 else close + 1
+            tokens.append(args[i:end])
+            i = end
+        else:
+            j = i
+            while j < length and not args[j].isspace():
+                j += 1
+            tokens.append(args[i:j])
+            i = j
+    return tokens
+
+
+def _is_positional_hint(token: str) -> bool:
+    """True when a tokenized args entry represents a positional, not flag documentation."""
+    inner = token[1:-1] if token.startswith("[") and token.endswith("]") else token
+    return not inner.startswith("-")
+
+
 def _complete_leaf_command(node: CommandDef, remaining: list[str], current: str, is_partial: bool) -> None:
     """Emit positional hints and flag completions for a leaf command node."""
     positional_rest = [arg for arg in remaining if not arg.startswith("-")]
-    expected_positionals = node.args.split() if node.args else []
+    expected_positionals = [t for t in _split_args_tokens(node.args) if _is_positional_hint(t)]
     used = set(remaining)
     flags = node.flag_tuples
 

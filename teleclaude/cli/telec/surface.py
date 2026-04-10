@@ -95,7 +95,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 flags=[
                     _H,
-                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
                     Flag("--project", desc="Project directory path (optional; defaults to cwd)"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
@@ -173,7 +173,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--args", desc="Command arguments"),
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
-                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
                     Flag("--subfolder", desc="Subdirectory within the project"),
                     Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                     Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
@@ -213,7 +213,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--session", "-s", "Session ID"),
-                    Flag("--computer", desc="Target computer (optional; defaults to local)"),
+                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
             ),
@@ -284,7 +284,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List projects on local and remote computers",
                 args="[--computer <host>]",
-                flags=[_H, Flag("--computer", desc="Filter to a specific computer")],
+                flags=[_H, Flag("--computer", "-c", "Filter to a specific computer")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
         },
@@ -790,6 +790,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "patch": CommandDef(
                 desc="Patch config values",
                 args="[--yaml '...']",
+                flags=[_H, Flag("--yaml", "-y", "Inline YAML patch")],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
             ),
             "validate": CommandDef(
@@ -884,7 +885,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name(s) or 'all' (default: all)"),
-                    Flag("--computer", desc="Query one or more remote computers via daemon API"),
+                    Flag("--computer", "-c", "Query one or more remote computers via daemon API"),
                     Flag("--limit", "-l", "Max results to show (default: 20)"),
                 ],
                 examples=[
@@ -900,7 +901,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
-                    Flag("--computer", desc="Fetch from a remote computer"),
+                    Flag("--computer", "-c", "Fetch from a remote computer"),
                     Flag("--thinking", desc="Include thinking blocks"),
                     Flag("--raw", desc="Show raw transcript instead of mirror text"),
                     Flag("--tail", desc="Limit output to last N chars (0=unlimited)"),
