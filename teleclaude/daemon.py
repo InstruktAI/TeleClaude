@@ -45,6 +45,7 @@ _record_import_timing("teleclaude.observability.httpx_runtime_debug", _t)
 
 _t = time.perf_counter()
 from teleclaude.chiptunes.manager import ChiptunesManager
+from teleclaude.chiptunes.types import ChiptunesState
 
 _record_import_timing("teleclaude.chiptunes.manager", _t)
 
@@ -444,7 +445,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
     def _on_chiptunes_state_change(  # pylint: disable=unused-argument
         self,
-        state: dict[str, object],  # guard: loose-dict — chiptunes worker callback payload
+        state: ChiptunesState,
     ) -> None:
         """Broadcast chiptunes_state WebSocket events from worker thread callbacks."""
         if hasattr(self, "tts_manager"):
