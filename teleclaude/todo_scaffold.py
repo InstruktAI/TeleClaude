@@ -679,6 +679,8 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         _from_main_conn.close()
 
     # --- 5h. Write DB artifacts (mark_phase "prepared" validates their existence) ---
+    import hashlib as _hashlib  # pylint: disable=import-outside-toplevel
+
     _art_db = _get_todos_db_sync(worktree_cwd)
     _art_conn = _art_db._sync_conn()  # pylint: disable=protected-access
     try:
@@ -693,10 +695,12 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
                 ("implementation-plan", f"{from_main_marker}\n# Implementation Plan: {slug}\n"),
                 ("quality-checklist", f"{from_main_marker}\n# Quality Checklist: {slug}\n"),
             ]:
+                _art_digest = _hashlib.sha256(_art_content.encode("utf-8")).hexdigest()
                 _art_conn.execute(
-                    "INSERT OR REPLACE INTO todo_artifacts (id, slug, name, content, updated_at) "  # guard: raw-sql
-                    "VALUES (?, ?, ?, ?, datetime('now'))",
-                    (_art_id, slug, _art_name, _art_content),
+                    "INSERT OR REPLACE INTO todo_artifacts "  # guard: raw-sql
+                    "(id, slug, name, content, digest, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, datetime('now'))",
+                    (_art_id, slug, _art_name, _art_content, _art_digest),
                 )
             _art_conn.commit()
     finally:
