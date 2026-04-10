@@ -2,7 +2,7 @@
 #
 # Worktree Preparation Script
 # Prepares a git worktree for TeleClaude work by:
-#   1. Installing Python dependencies (isolated .venv)
+#   1. Reusing the project-root Python environment via .venv symlink
 #   2. Generating config.yml (isolated worktree database)
 #   3. Symlinking .env from main repo
 #
@@ -65,18 +65,24 @@ fi
 
 print_info "Preparing worktree: $SLUG"
 
-# Step 1: Install Python dependencies
-print_info "Installing Python dependencies..."
+# Step 1: Link shared Python environment
+print_info "Linking shared Python environment..."
 cd "$WORKTREE_DIR"
 
-# Symlink lockfile from main repo if missing
-if [ ! -f "uv.lock" ] && [ -f "$TOOL_ROOT/uv.lock" ]; then
-    ln -sf "../../uv.lock" uv.lock
+# Require the root environment to exist; worktree prep does not provision Python.
+if [ ! -x "$TARGET_ROOT/.venv/bin/python" ]; then
+    print_error "Root Python environment missing: $TARGET_ROOT/.venv/bin/python"
+    print_error "Run make install (or uv sync --group dev) in the project root first."
+    exit 1
 fi
 
-uv sync --group dev
+# Replace any existing worktree-local virtualenv with a symlink to the root one.
+if [ -e ".venv" ] || [ -L ".venv" ]; then
+    rm -rf ".venv"
+fi
+ln -s "../../.venv" ".venv"
 
-print_success "Dependencies installed"
+print_success "Shared .venv linked"
 
 # Step 2: Generate config.yml
 print_info "Generating config.yml..."
@@ -87,7 +93,7 @@ if [ ! -f "$TARGET_ROOT/config.yml" ]; then
 fi
 
 # Copy main config with worktree-local database path
-# Use worktree venv to ensure PyYAML is available
+# Use the shared project environment to ensure PyYAML is available
 "$WORKTREE_DIR/.venv/bin/python" << PYTHON_SCRIPT
 import sys
 import yaml
@@ -133,6 +139,6 @@ print_success ".env symlink created"
 
 print_success "Worktree preparation complete: $SLUG"
 print_info "Ready for work with:"
-print_info "  - Isolated .venv/"
+print_info "  - Shared root .venv/"
 print_info "  - Isolated database (worktree teleclaude.db)"
 print_info "  - Shared secrets (.env symlink)"
