@@ -72,6 +72,84 @@ def test_build_tree_nests_initiated_sessions_under_their_parent_session() -> Non
 
 
 @pytest.mark.unit
+def test_build_tree_detached_child_renders_as_project_root_session() -> None:
+    computers = [
+        ComputerDisplayInfo(
+            ComputerDTO(name="c1", status="online", user="alice", host="host", is_local=True),
+            session_count=0,
+            recent_activity=False,
+        )
+    ]
+    projects = [ProjectDTO(computer="c1", name="proj", path="/repo", description=None)]
+    sessions = [
+        SessionDTO(session_id="s1", title="root", status="idle", project_path="/repo", computer="c1"),
+        SessionDTO(
+            session_id="s2",
+            title="detached",
+            status="idle",
+            project_path="/repo/trees/w1",
+            computer="c1",
+            initiator_session_id="s1",
+            detached=True,
+        ),
+    ]
+
+    roots = build_tree(computers, projects, sessions)
+    project_node = roots[0].children[0]
+    first_session = project_node.children[0]
+    second_session = project_node.children[1]
+
+    assert is_session_node(first_session)
+    assert is_session_node(second_session)
+    assert first_session.data.session.session_id == "s1"
+    assert second_session.data.session.session_id == "s2"
+    assert second_session.parent is project_node
+
+
+@pytest.mark.unit
+def test_build_tree_nests_non_detached_children_under_detached_root() -> None:
+    computers = [
+        ComputerDisplayInfo(
+            ComputerDTO(name="c1", status="online", user="alice", host="host", is_local=True),
+            session_count=0,
+            recent_activity=False,
+        )
+    ]
+    projects = [ProjectDTO(computer="c1", name="proj", path="/repo", description=None)]
+    sessions = [
+        SessionDTO(session_id="s1", title="root", status="idle", project_path="/repo", computer="c1"),
+        SessionDTO(
+            session_id="s2",
+            title="detached",
+            status="idle",
+            project_path="/repo/trees/w1",
+            computer="c1",
+            initiator_session_id="s1",
+            detached=True,
+        ),
+        SessionDTO(
+            session_id="s3",
+            title="child-of-detached",
+            status="idle",
+            project_path="/repo/trees/w1",
+            computer="c1",
+            initiator_session_id="s2",
+            detached=False,
+        ),
+    ]
+
+    roots = build_tree(computers, projects, sessions)
+    detached_root = roots[0].children[0].children[1]
+    nested_child = detached_root.children[0]
+
+    assert is_session_node(detached_root)
+    assert is_session_node(nested_child)
+    assert detached_root.data.session.session_id == "s2"
+    assert nested_child.data.session.session_id == "s3"
+    assert nested_child.parent is detached_root
+
+
+@pytest.mark.unit
 def test_build_tree_cross_project_child_renders_as_top_level_in_own_project() -> None:
     """Child session in a different project should not nest under its initiator.
 

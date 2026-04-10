@@ -85,6 +85,10 @@ Items created via `telec todo from-main` have stub requirements and implementati
 For these items, the scope lane is not applicable — skip it and note "Ad-hoc
 review" in the findings header. All other lanes remain mandatory. The reviewer should focus
 on whether the delivered code meets project quality policies.
+The build handoff is already complete before review starts: `from-main` auto-commits the
+worktree handoff and emits `planning.todo_dumped` with `kind=built`, which the lifecycle
+router turns into a detached `/next-work` dispatch. Review these items as delivered ad-hoc
+work, not as manually dispatched build sessions waiting for another handoff step.
 
 ### 4. Lane detail reference
 

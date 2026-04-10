@@ -221,6 +221,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         session_id=session_id,
         working_slug=working_slug,
         initiator_session_id=initiator_session_id,
+        detached=cmd.skip_listener_registration,
         human_email=human_email,
         human_role=human_role,
         principal=principal,

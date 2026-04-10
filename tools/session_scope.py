@@ -17,8 +17,13 @@ import os
 import sys
 from pathlib import Path
 
+from teleclaude.git import InvalidGitRepositoryError, Repo
 from teleclaude.session_identity import get_session_id
-from teleclaude.todo_scaffold import _collect_session_touched_files  # pylint: disable=protected-access
+from teleclaude.todo_scaffold import (  # pylint: disable=protected-access
+    TranscriptUnavailable,
+    _classify_porcelain_status,
+    _collect_session_touched_files,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -67,6 +72,17 @@ def _filter_by_mode(mode: str, touched: set[str], project_root: Path) -> list[st
     return sorted(test_set)
 
 
+def _fallback_worktree_status_files(project_root: Path) -> set[str]:
+    """Return changed files from git status for transcript-less live sessions."""
+    try:
+        repo = Repo(str(project_root))
+    except InvalidGitRepositoryError:
+        return set()
+    status_output = repo.git.status("--porcelain")
+    modified, untracked, deleted, added = _classify_porcelain_status(status_output)
+    return set(modified + untracked + deleted + added)
+
+
 def main() -> None:
     """Resolve session-touched files and print them to stdout."""
     # Testing seam: when SESSION_SCOPE_STUB_OUTPUT is set, bypass session detection
@@ -99,6 +115,10 @@ def main() -> None:
 
     try:
         touched: set[str] = _collect_session_touched_files(str(project_root))
+    except TranscriptUnavailable:
+        # Transcript-less sessions (e.g. live agents before first turn is written) fall back to
+        # the dirty worktree so scoped lint/test gates still have something to operate on.
+        touched = _fallback_worktree_status_files(project_root)
     except Exception as exc:  # pylint: disable=broad-exception-caught # all collection errors → exit 3 per protocol
         print(f"session_scope: collection failed for session {session_id}: {exc}", file=sys.stderr)
         sys.exit(3)

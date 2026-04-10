@@ -40,6 +40,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         session_id: str | None = None,
         working_slug: str | None = None,
         initiator_session_id: str | None = None,
+        detached: bool = False,
         human_email: str | None = None,
         human_role: str | None = None,
         principal: str | None = None,
@@ -68,6 +69,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             session_id: Optional explicit session ID (for AI-to-AI cross-computer sessions)
             working_slug: Optional slug of work item this session is working on
             initiator_session_id: Session ID of the AI that created this session (for AI-to-AI nesting)
+            detached: Whether the session should render as a root node despite having an initiator
             human_email: Optional email of the human user
             human_role: Optional role of the human user
             active_agent: Agent name (claude, gemini, codex)
@@ -97,6 +99,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             description=description,
             working_slug=working_slug,
             initiator_session_id=initiator_session_id,
+            detached=detached,
             human_email=human_email,
             human_role=human_role,
             principal=principal,
@@ -126,6 +129,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
             description=session.description,
             working_slug=session.working_slug,
             initiator_session_id=session.initiator_session_id,
+            detached=session.detached,
             human_email=session.human_email,
             human_role=session.human_role,
             principal=session.principal,

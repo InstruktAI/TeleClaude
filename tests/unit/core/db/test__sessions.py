@@ -100,6 +100,41 @@ async def test_create_session_uses_default_title_and_emits_started_event(db: Db)
     assert mock_emit.call_args.args[1].session_id == session.session_id
 
 
+async def test_create_session_persists_detached_true(db: Db) -> None:
+    session = await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-detached",
+        last_input_origin="telegram",
+        title="Detached",
+        session_id="sess-detached",
+        detached=True,
+        emit_session_started=False,
+    )
+
+    stored = await db.get_session(session.session_id)
+
+    assert session.detached is True
+    assert stored is not None
+    assert stored.detached is True
+
+
+async def test_create_session_defaults_detached_to_false(db: Db) -> None:
+    session = await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-attached",
+        last_input_origin="telegram",
+        title="Attached",
+        session_id="sess-attached",
+        emit_session_started=False,
+    )
+
+    stored = await db.get_session(session.session_id)
+
+    assert session.detached is False
+    assert stored is not None
+    assert stored.detached is False
+
+
 async def test_headless_command_path_persists_headless_without_emitting_started_event(
     db: Db,
     monkeypatch: pytest.MonkeyPatch,

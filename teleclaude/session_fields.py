@@ -24,7 +24,14 @@ class SessionSnapshotTimestampFields:  # pylint: disable=too-many-instance-attri
 
 
 @dataclass(kw_only=True)
-class SessionSnapshotIdentityFields:
+class SessionSnapshotDetachmentField:
+    """Shared detachment flag carried by session snapshots and DTOs."""
+
+    detached: bool = False
+
+
+@dataclass(kw_only=True)
+class SessionSnapshotIdentityFields(SessionSnapshotDetachmentField):
     """Shared identity fields carried by session snapshots and DTOs."""
 
     last_output_digest: str | None = None
@@ -51,7 +58,15 @@ class SessionDTOTimestampFields(BaseModel):
     last_output_summary_at: str | None = None
 
 
-class SessionDTOIdentityFields(BaseModel):
+class SessionDTODetachmentField(BaseModel):
+    """Shared detachment flag carried by session API DTOs."""
+
+    model_config = ConfigDict(frozen=True)
+
+    detached: bool = False
+
+
+class SessionDTOIdentityFields(SessionDTODetachmentField):
     """Shared identity fields carried by session API DTOs."""
 
     model_config = ConfigDict(frozen=True)

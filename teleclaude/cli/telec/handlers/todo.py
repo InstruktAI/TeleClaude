@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import shlex
+import sys
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -447,6 +449,29 @@ def _handle_todo_from_main(args: list[str]) -> None:
         raise SystemExit(1) from exc
 
     print(output)
+
+    _log = get_logger(__name__)
+    try:
+        envelope = EventEnvelope(
+            event="domain.software-development.planning.todo_dumped",
+            source="telec-cli",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            description=f"Todo scaffolded from main: {slug}",
+            payload={"slug": slug, "kind": "built", "project_root": project_root},
+        )
+        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
+    except Exception:
+        _log.warning("Todo scaffolded from main but notification emission failed: %s", slug)
+        recovery_command = (
+            "telec sessions run --command /next-work "
+            f"--args {shlex.quote(slug)} --project {shlex.quote(project_root)} --detach"
+        )
+        print(
+            "Warning: worker handoff did not start automatically. "
+            f"Run this command to continue manually:\n{recovery_command}",
+            file=sys.stderr,
+        )
 
 
 # ---------------------------------------------------------------------------

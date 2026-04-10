@@ -9,6 +9,7 @@ from typing import Any
 
 import yaml
 from instrukt_ai_logging import get_logger
+from sqlalchemy import text  # guard: raw-sql - narrow sync lookup must tolerate pre-migration local DBs
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.models import JsonDict
@@ -20,6 +21,15 @@ from teleclaude.types.todos import DorState, TodoState
 _DEFAULT_STATE = TodoState(dor=DorState(status="needs_work", score=0)).model_dump(exclude_none=True)
 
 _BUG_STATE = TodoState(kind="bug").model_dump(exclude_none=True)
+
+
+class TranscriptUnavailable(ValueError):
+    """Raised when a session has no resolvable transcript to scope changes from.
+
+    Subclass of ValueError so legacy callers catching ValueError still work, while
+    allowing precise routing (e.g. scoped-gate fallback to git status) via an
+    explicit except clause instead of string-matching the formatted message.
+    """
 
 
 def _templates_root() -> Path:
@@ -469,6 +479,43 @@ def _clean_main_working_tree(  # pylint: disable=too-many-branches
 _scaffold_logger = get_logger(__name__)
 
 
+def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str | None, str | None]:
+    """Load the minimal session metadata needed to discover transcript files.
+
+    Uses raw SQL projected to the three columns the transcript discovery needs
+    so the lookup keeps working against local session DBs that have not yet
+    applied newer schema migrations.
+    """
+    from sqlmodel import Session as SqlSession  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
+
+    with SqlSession(_create_sync_engine()) as db_session:
+        row = db_session.exec(  # type: ignore[call-overload]
+            text(
+                "SELECT active_agent, native_log_file, native_session_id "  # guard: raw-sql
+                "FROM sessions WHERE session_id = :session_id"
+            ).bindparams(session_id=session_id)
+        ).first()
+        try:
+            active_agent_raw, native_log_file_raw, native_session_id_raw = row
+        except (TypeError, ValueError):
+            from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
+
+            fallback_row = db_session.get(db_models.Session, session_id)
+            if not fallback_row:
+                raise ValueError(f"Session {session_id} not found in database") from None
+            active_agent_raw = getattr(fallback_row, "active_agent", None)
+            native_log_file_raw = getattr(fallback_row, "native_log_file", None)
+            native_session_id_raw = getattr(fallback_row, "native_session_id", None)
+
+    return (
+        str(active_agent_raw) if active_agent_raw else None,
+        str(native_log_file_raw) if native_log_file_raw else None,
+        str(native_session_id_raw) if native_session_id_raw else None,
+    )
+
+
 def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: disable=too-many-locals
     """Extract files touched by the current agent session from its transcript.
 
@@ -481,36 +528,25 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
         ValueError: If session ID is missing, transcript is unavailable,
             or no touched files can be determined.
     """
-    from sqlmodel import Session as SqlSession  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
     from teleclaude.core.agents import AgentName, get_default_agent  # pylint: disable=import-outside-toplevel
     from teleclaude.core.codex_transcript import (  # pylint: disable=import-outside-toplevel
         discover_codex_transcript_path,
         discover_current_codex_transcript_path,
     )
     from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals  # pylint: disable=import-outside-toplevel
-    from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
     from teleclaude.utils.transcript import extract_effective_tool_calls  # pylint: disable=import-outside-toplevel
 
     session_id = _get_session_id()
     if not session_id:
         raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_identity.json not found)")
 
-    with SqlSession(_create_sync_engine()) as db_session:
-        row = db_session.get(db_models.Session, session_id)
-
-    if not row:
-        raise ValueError(f"Session {session_id} not found in database")
-
+    active_agent_raw, native_log_file, native_session_id = _load_session_transcript_metadata(session_id)
     try:
-        agent_name = AgentName.from_str(getattr(row, "active_agent", None) or get_default_agent())
+        agent_name = AgentName.from_str(str(active_agent_raw) if active_agent_raw else get_default_agent())
     except ValueError:
         agent_name = AgentName.CLAUDE
 
     transcript_candidates: list[str] = []
-    native_log_file = getattr(row, "native_log_file", None)
-    native_session_id = getattr(row, "native_session_id", None)
     if native_log_file:
         transcript_candidates.append(native_log_file)
     if not transcript_candidates and agent_name == AgentName.CODEX and native_session_id:
@@ -518,7 +554,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
         if discovered_path:
             transcript_candidates.append(discovered_path)
     if not transcript_candidates:
-        raise ValueError(f"No transcript found for session {session_id}")
+        raise TranscriptUnavailable(f"No transcript found for session {session_id}")
 
     if agent_name == AgentName.CODEX:
         current_transcript_path = discover_current_codex_transcript_path()
@@ -650,6 +686,12 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         project_root, worktree_path, modified_files + added_files, untracked_files, deleted_files
     )
 
+    # Commit the worktree handoff before cleaning main so a hook failure leaves
+    # the human's original checkout untouched for manual recovery.
+    wt_repo = Repo(str(worktree_path))
+    wt_repo.git.add("-A")
+    wt_repo.git.commit("-m", f"chore({slug}): from-main handoff")
+
     # --- 5g. Ensure roadmap entry exists (write_state requires slug→UUID resolution) ---
     worktree_cwd = str(worktree_path)
     from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
@@ -722,10 +764,5 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         "IMPORTANT: Your uncommitted changes have been transferred to the worktree.\n"
         "The repo root main branch has been cleaned. Do NOT commit, push, or sync\n"
         "any files back to the main branch. All work happens exclusively inside\n"
-        f"the worktree at {WORKTREE_DIR}/{slug}/. The main branch is off-limits.\n"
-        "\n"
-        "Next steps:\n"
-        f'  1. git -C {WORKTREE_DIR}/{slug} add -A && git -C {WORKTREE_DIR}/{slug} commit -m "your commit message"\n'
-        f"  2. telec sessions run --command /next-work --args {slug}"
-        f" --agent <agent> --mode med --detach  (choose a fitting agent)"
+        f"the worktree at {WORKTREE_DIR}/{slug}/. The main branch is off-limits."
     )

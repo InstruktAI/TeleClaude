@@ -57,6 +57,103 @@ def make_session(
 
 class TestCreateSession:
     @pytest.mark.unit
+    async def test_skip_listener_registration_marks_session_detached(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        help_desk = tmp_path / "help-desk"
+
+        parent_session = make_session(session_id="parent-1", tmux_session_name="tc-parent-1")
+        db = SimpleNamespace(
+            create_session=AsyncMock(return_value=make_session(session_id="child-1")),
+            update_origin_metadata=AsyncMock(),
+            get_session=AsyncMock(return_value=parent_session),
+        )
+
+        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                person_email="admin@example.com",
+                person_role="admin",
+                platform="terminal",
+                platform_user_id="admin@example.com",
+            )
+
+        monkeypatch.setattr(
+            _session,
+            "config",
+            SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir=str(help_desk))),
+        )
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "get_identity_resolver", lambda: SimpleNamespace(resolve=_resolve))
+
+        cmd = CreateSessionCommand(
+            project_path=str(project_path),
+            origin="terminal",
+            origin_metadata=TerminalOriginMetadata(email="admin@example.com"),
+            initiator_session_id="parent-1",
+            skip_listener_registration=True,
+        )
+
+        await _session.create_session(cmd, SimpleNamespace())
+
+        create_call = db.create_session.await_args
+        assert create_call.kwargs["initiator_session_id"] == "parent-1"
+        assert create_call.kwargs["detached"] is True
+
+    @pytest.mark.unit
+    async def test_listener_registration_sessions_remain_attached(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        project_path = tmp_path / "project"
+        project_path.mkdir()
+        help_desk = tmp_path / "help-desk"
+
+        parent_session = make_session(session_id="parent-1", tmux_session_name="tc-parent-1")
+        db = SimpleNamespace(
+            create_session=AsyncMock(return_value=make_session(session_id="child-2")),
+            update_origin_metadata=AsyncMock(),
+            get_session=AsyncMock(return_value=parent_session),
+        )
+        register_listener = AsyncMock()
+
+        def _resolve(_origin: str, _metadata: object) -> SimpleNamespace:
+            return SimpleNamespace(
+                person_email="admin@example.com",
+                person_role="admin",
+                platform="terminal",
+                platform_user_id="admin@example.com",
+            )
+
+        monkeypatch.setattr(
+            _session,
+            "config",
+            SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir=str(help_desk))),
+        )
+        monkeypatch.setattr(_session, "db", db)
+        monkeypatch.setattr(_session, "register_listener", register_listener)
+        monkeypatch.setattr(_session, "get_identity_resolver", lambda: SimpleNamespace(resolve=_resolve))
+
+        cmd = CreateSessionCommand(
+            project_path=str(project_path),
+            origin="terminal",
+            origin_metadata=TerminalOriginMetadata(email="admin@example.com"),
+            initiator_session_id="parent-1",
+            skip_listener_registration=False,
+        )
+
+        await _session.create_session(cmd, SimpleNamespace())
+
+        create_call = db.create_session.await_args
+        assert create_call.kwargs["initiator_session_id"] == "parent-1"
+        assert create_call.kwargs["detached"] is False
+        register_listener.assert_awaited_once()
+
+    @pytest.mark.unit
     async def test_restricted_sessions_are_jailed_to_help_desk(
         self,
         tmp_path: Path,

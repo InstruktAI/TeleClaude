@@ -50,7 +50,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     char_offset INTEGER DEFAULT 0,
     transcript_files TEXT DEFAULT '[]',
     visibility TEXT DEFAULT 'private',
-    turn_triggered_by_linked_output BOOLEAN NOT NULL DEFAULT 0
+    turn_triggered_by_linked_output BOOLEAN NOT NULL DEFAULT 0,
+    detached INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_sessions_computer ON sessions(computer_name);
