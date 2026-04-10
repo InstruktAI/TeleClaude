@@ -300,7 +300,7 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:
         result = repo.git.log("-1", "--format=%h", "--", todo_path)
         return result.strip() or "unknown"
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("prepare: git log failed for todo", slug=slug)
+        logger.warning("git log failed for todo", slug=slug)
         return "unknown"
 
 
@@ -381,7 +381,7 @@ class LifecycleRouterCartridge:
 
         slug = event.payload.get("slug")
         if not slug:
-            logger.warning("prepare: event missing slug, skipping", event=event.event)
+            logger.warning("event missing slug, skipping", event=event.event)
             return event
 
         # todo_dumped → route by payload.kind (no todo-state reads)
@@ -395,10 +395,10 @@ class LifecycleRouterCartridge:
         try:
             await self._assess(slug, event, context)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("prepare: assessment failed", slug=slug, event=event.event)
+            logger.exception("assessment failed", slug=slug, event=event.event)
         elapsed = time.monotonic() - start
         if elapsed > 2.0:
-            logger.warning("prepare: assessment took >2s", slug=slug, elapsed_s=round(elapsed, 2))
+            logger.warning("assessment took >2s", slug=slug, elapsed_s=round(elapsed, 2))
 
         return event
 
@@ -444,7 +444,7 @@ class LifecycleRouterCartridge:
         else:
             if kind is not None:
                 logger.warning(
-                    "lifecycle-router: unknown kind, degrading to todo lane",
+                    "unknown kind, degrading to todo lane",
                     slug=slug,
                     kind=kind,
                 )
@@ -464,14 +464,14 @@ class LifecycleRouterCartridge:
             finally:
                 await api.close()
             logger.info(
-                "lifecycle-router: dispatched lane",
+                "dispatched lane",
                 slug=slug,
                 kind=resolved_kind,
                 command=dispatch_args["command"],
             )
         except Exception:  # pylint: disable=broad-exception-caught
             logger.exception(
-                "lifecycle-router: failed to dispatch lane",
+                "failed to dispatch lane",
                 slug=slug,
                 kind=resolved_kind,
             )
@@ -485,7 +485,7 @@ class LifecycleRouterCartridge:
 
         # Skip delivered/icebox slugs
         if _is_slug_delivered_or_frozen(slug, project_root):
-            logger.debug("prepare: slug is delivered/frozen, skipping", slug=slug)
+            logger.debug("slug is delivered/frozen, skipping", slug=slug)
             return
 
         todos_db = await get_todos_db(str(project_root))
@@ -502,7 +502,7 @@ class LifecycleRouterCartridge:
             and dor_state.get("status") == "pass"
         ):
             logger.debug(
-                "prepare: already assessed at commit, skipping",
+                "already assessed at commit, skipping",
                 slug=slug,
                 commit=current_commit,
             )
@@ -517,7 +517,7 @@ class LifecycleRouterCartridge:
         dep_slugs: list[str] | None = all_deps.get(slug) or None
 
         if not req_content and not plan_content:
-            logger.info("prepare: no artifacts to assess", slug=slug)
+            logger.info("no artifacts to assess", slug=slug)
             return
 
         # Claim notification only when there is actual work to do
@@ -591,7 +591,7 @@ class LifecycleRouterCartridge:
         await todos_db.write_state(slug, state)
 
         logger.info(
-            "prepare: assessment complete",
+            "assessment complete",
             slug=slug,
             score=score,
             verdict=verdict,
@@ -611,7 +611,7 @@ class LifecycleRouterCartridge:
             else:
                 # needs_decision — leave unresolved, log blockers
                 logger.info(
-                    "prepare: needs_decision — leaving notification unresolved",
+                    "needs_decision — leaving notification unresolved",
                     slug=slug,
                     blockers=all_gaps[:5],
                 )
@@ -633,7 +633,7 @@ class LifecycleRouterCartridge:
             )
         except RuntimeError:
             # Producer not configured (e.g., in tests) — acceptable
-            logger.debug("prepare: producer not configured, skipping dor_assessed emit", slug=slug)
+            logger.debug("producer not configured, skipping dor_assessed emit", slug=slug)
 
 
 def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:

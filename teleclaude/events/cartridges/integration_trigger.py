@@ -87,7 +87,7 @@ class IntegrationTriggerCartridge:
     async def _spawn_integrator(self, slug: str, branch: str, sha: str, caller_session_id: str) -> None:
         """Spawn or wake the singleton integrator session."""
         logger.info(
-            "Integration trigger: spawning integrator for slug=%s branch=%s sha=%s caller=%s",
+            "Spawning integrator for slug=%s branch=%s sha=%s caller=%s",
             slug,
             branch,
             sha[:8] if sha else "",
@@ -97,6 +97,6 @@ class IntegrationTriggerCartridge:
             result = self._spawn_callback(slug, branch, sha, caller_session_id)
             if asyncio.iscoroutine(result):
                 await result
-            logger.info("Integration trigger: spawn callback completed for %s", slug)
+            logger.info("Spawn callback completed for %s", slug)
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("Integration trigger spawn callback failed for %s", slug)
+            logger.exception("Spawn callback failed for %s", slug)
