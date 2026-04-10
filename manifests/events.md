@@ -30,31 +30,19 @@
           "title": "Outcome Shape"
         }
       },
-      "required": [
-        "description",
-        "produces"
-      ],
+      "required": ["description", "produces"],
       "title": "ActionDescriptor",
       "type": "object"
     },
     "EventLevel": {
       "description": "Priority level for event routing and notification decisions.",
-      "enum": [
-        0,
-        1,
-        2,
-        3
-      ],
+      "enum": [0, 1, 2, 3],
       "title": "EventLevel",
       "type": "integer"
     },
     "EventVisibility": {
       "description": "Visibility scope for an event.",
-      "enum": [
-        "local",
-        "cluster",
-        "public"
-      ],
+      "enum": ["local", "cluster", "public"],
       "title": "EventVisibility",
       "type": "string"
     }
@@ -169,13 +157,8 @@
       "title": "Resolution Shape"
     }
   },
-  "required": [
-    "event",
-    "source",
-    "level"
-  ],
+  "required": ["event", "source", "level"],
   "title": "EventEnvelope",
   "type": "object"
 }
 ```
-

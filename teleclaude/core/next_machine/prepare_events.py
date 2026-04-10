@@ -6,15 +6,10 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from pathlib import Path
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine._types import (
-    PreparePhase,
-    StateValue,
-    default_state,
-)
+from teleclaude.core.next_machine._types import PreparePhase
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_main_repo_root
@@ -70,15 +65,20 @@ def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
 def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:  # pylint: disable=too-many-locals
     """Scan all active todos and invalidate those with overlapping referenced paths.
 
-    Reads state from todos.db (sync). When a todo's grounding.referenced_paths
-    overlaps with changed_paths, invalidates grounding and writes back to DB.
+    Reads state from todos.db (sync). When a todo's ``grounding.referenced_paths``
+    overlaps with ``changed_paths``, invalidation routes through the typed
+    :class:`StateWriter` + :class:`GroundingManager` boundary and the final
+    commit uses ``commit_sync`` so malformed persisted state fails fast at load.
     """
     import json as _json  # pylint: disable=import-outside-toplevel
 
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        GroundingManager,
+        StateWriter,
+    )
     from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
 
     invalidated: list[str] = []
-    now = datetime.now(UTC).isoformat()
     changed_set = set(changed_paths)
 
     project_root = resolve_main_repo_root(cwd)
@@ -92,35 +92,17 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
         ).fetchall()
 
         for row in rows:
-            state_id = row[0]
             slug = row[1]
-            state = _json.loads(row[2]) if row[2] else {}
-            grounding = state.get("grounding", {})
-            if not isinstance(grounding, dict):
-                continue
-            referenced = grounding.get("referenced_paths", [])
-            if not isinstance(referenced, list):
-                continue
-            overlap = [p for p in referenced if p in changed_set]
+            raw_state = _json.loads(row[2]) if row[2] else {}
+            writer = StateWriter(raw_state)  # fails fast on malformed persisted state
+            referenced = list(writer.grounding.referenced_paths)
+            overlap = [path for path in referenced if path in changed_set]
             if not overlap:
                 continue
 
-            grounding_defaults = default_state().get("grounding", {})
-            merged: dict[str, StateValue] = {
-                **(grounding_defaults if isinstance(grounding_defaults, dict) else {}),
-                **grounding,
-            }
-            merged["valid"] = False
-            merged["invalidated_at"] = now
-            merged["invalidation_reason"] = "files_changed"
-            state["grounding"] = merged
-            state["current"] = PreparePhase.GROUNDING_CHECK.value
-
-            conn.execute(
-                "UPDATE todo_state SET state = ?, updated_at = ? WHERE id = ?",  # guard: raw-sql
-                (_json.dumps(state), now, state_id),
-            )
-            conn.commit()
+            GroundingManager(writer).invalidate(reason="files_changed", changed_paths=overlap)
+            writer.state.current = PreparePhase.GROUNDING_CHECK.value
+            writer.commit_sync(db, slug)
 
             _emit_prepare_event(
                 "domain.software-development.prepare.grounding_invalidated",

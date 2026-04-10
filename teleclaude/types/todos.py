@@ -6,7 +6,7 @@ from typing import NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from teleclaude.core.next_machine._types import StateValue
+from teleclaude.types.state_value import StateValue
 
 
 class DorActions(BaseModel):
@@ -54,9 +54,22 @@ class GroundingState(BaseModel):
     base_sha: str = ""
     input_digest: str = ""
     referenced_paths: list[str] = Field(default_factory=list)
+    changed_paths: list[str] = Field(default_factory=list)
     last_grounded_at: str = ""
     invalidated_at: str = ""
     invalidation_reason: str = ""
+
+
+class ReviewFinding(BaseModel):
+    """Structured record for a single review finding."""
+
+    model_config = ConfigDict(extra="allow")
+    id: str = ""
+    severity: str = ""
+    summary: str = ""
+    status: str = "open"
+    resolved_at: str = ""
+    resolution_method: str = ""
 
 
 class ReviewVerdictState(BaseModel):
@@ -67,7 +80,7 @@ class ReviewVerdictState(BaseModel):
     findings_count: int = 0
     rounds: int = 0
     baseline_commit: str = ""
-    findings: list[str] = Field(default_factory=list)
+    findings: list[ReviewFinding] = Field(default_factory=list)
 
 
 class TestSpecReviewState(BaseModel):
@@ -84,7 +97,6 @@ class HistoryEntry(TypedDict):
 
     source: str
     target: str
-    transition: str
     at: str
     by: str
     metadata: NotRequired[dict[str, StateValue]]
@@ -122,7 +134,7 @@ class AuditReviewEntry(BaseModel):
     baseline_commit: str = ""
     verdict: str = ""
     rounds: int = 0
-    findings: list[str] = Field(default_factory=list)
+    findings: list[ReviewFinding] = Field(default_factory=list)
 
 
 class AuditState(BaseModel):
@@ -131,6 +143,8 @@ class AuditState(BaseModel):
     input_assessment: AuditTimestamp = Field(default_factory=AuditTimestamp)
     triangulation: AuditTimestamp = Field(default_factory=AuditTimestamp)
     requirements_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
+    test_spec_build: AuditTimestamp = Field(default_factory=AuditTimestamp)
+    test_spec_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     plan_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     plan_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     gate: AuditTimestamp = Field(default_factory=AuditTimestamp)

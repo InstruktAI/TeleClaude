@@ -256,6 +256,8 @@ def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
     from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
         resolve_canonical_project_root,
     )
+    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
         build_lifecycle_machine,
     )
@@ -263,8 +265,6 @@ def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
 
     state = read_phase_state(cwd, slug)
     machine = build_lifecycle_machine()
-
-    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
 
     project_root = resolve_canonical_project_root(cwd)
     worktree = (
@@ -277,13 +277,15 @@ def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
         actor_id=get_session_id() or "mark-phase",
         at=datetime.now(UTC).isoformat(),
     )
-    state = machine.target(state, target, ctx)
-    write_phase_state(cwd, slug, state)
-    return state
+    next_state = machine.target(state, target, ctx)
+    # Route the post-transition payload through StateWriter so the persistence
+    # path shares one validated boundary with prepare_steps/on_enter handlers.
+    writer = StateWriter(next_state)
+    return writer.commit_sync(_get_todos_db_sync(cwd), slug)
 
 
 def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
-    """Stamp a prepare sub-phase verdict in state.yaml.
+    """Stamp a prepare sub-phase verdict via the typed review boundary.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -294,19 +296,21 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     Returns:
         Updated state dict
     """
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        ReviewManager,
+        StateWriter,
+    )
+
     if phase not in _PREPARE_VERDICT_PHASES:
         raise ValueError(f"invalid prepare phase '{phase}': must be one of {', '.join(_PREPARE_VERDICT_PHASES)}")
     if verdict not in _PREPARE_VERDICT_VALUES:
         raise ValueError(f"invalid verdict '{verdict}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}")
 
+    db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
-    review_dict = state.get(phase)
-    if not isinstance(review_dict, dict):
-        review_dict = {}
-    review_dict["verdict"] = verdict
-    state[phase] = review_dict
-    write_phase_state(cwd, slug, state)
-    return state
+    writer = StateWriter(state)
+    ReviewManager(writer).stamp_verdict(phase, verdict)
+    return writer.commit_sync(db, slug)
 
 
 # ---------------------------------------------------------------------------
@@ -361,7 +365,7 @@ def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | N
 
 
 def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
-    """Write breakdown state.
+    """Write breakdown state via the typed write boundary.
 
     Args:
         cwd: Project root directory
@@ -369,9 +373,16 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         assessed: Whether breakdown assessment has been performed
         todos: List of todo slugs created from split (empty if no breakdown)
     """
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        StateWriter,
+    )
+    from teleclaude.types.todos import BreakdownState  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
-    state["breakdown"] = {"assessed": assessed, "todos": todos}  # type: ignore[dict-item]
-    write_phase_state(cwd, slug, state)
+    writer = StateWriter(state)
+    writer.state.breakdown = BreakdownState(assessed=assessed, todos=list(todos))
+    writer.commit_sync(db, slug)
 
 
 # ---------------------------------------------------------------------------
@@ -486,7 +497,7 @@ _PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_FILES.keys(), "test_specs")
 
 
 def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
-    """Stamp an artifact as produced in state.yaml by setting produced_at.
+    """Stamp an artifact as produced via the typed artifacts state.
 
     File-backed artifacts record both digest and produced_at. Directory-backed
     artifacts (currently test_specs) record produced_at only.
@@ -499,6 +510,11 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     Returns:
         Updated state dict
     """
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        StateWriter,
+    )
+    from teleclaude.types.todos import ArtifactEntry  # pylint: disable=import-outside-toplevel
+
     if artifact_key not in _PREPARE_ARTIFACT_PHASES:
         raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_PHASES)}")
 
@@ -511,19 +527,15 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
         record_artifact_produced(cwd, slug, artifact_file)
         return read_phase_state(cwd, slug)
 
+    db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
-    artifacts = state.get("artifacts", {})
-    if not isinstance(artifacts, dict):
-        artifacts = {}
-    entry = artifacts.get(artifact_key, {})
-    if not isinstance(entry, dict):
-        entry = {}
-    entry["produced_at"] = datetime.now(UTC).isoformat()
-    entry["stale"] = False
-    artifacts[artifact_key] = entry
-    state["artifacts"] = artifacts
-    write_phase_state(cwd, slug, state)
-    return state
+    writer = StateWriter(state)
+    entry = getattr(writer.state.artifacts, artifact_key, None)
+    if not isinstance(entry, ArtifactEntry):
+        raise ValueError(f"unknown artifact phase '{artifact_key}'")
+    entry.produced_at = datetime.now(UTC).isoformat()
+    entry.stale = False
+    return writer.commit_sync(db, slug)
 
 
 __all__ = [

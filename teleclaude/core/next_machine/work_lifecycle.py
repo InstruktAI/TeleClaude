@@ -16,7 +16,6 @@ from teleclaude.core.next_machine._types import (
     FINDING_ID_PATTERN,
     ItemPhase,
     StateValue,
-    default_state,
 )
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
@@ -25,8 +24,13 @@ from teleclaude.core.next_machine.git_ops import (
     has_uncommitted_changes,
     run_git_command,
 )
-from teleclaude.core.next_machine.state_io import _normalize_finalize_state
 from teleclaude.core.next_machine.state_machine import State, StateMachine, TargetContext
+from teleclaude.core.next_machine.state_mutation import (
+    GroundingManager,
+    ReviewManager,
+    StateWriter,
+)
+from teleclaude.types.todos import DorState, FinalizeModel
 
 logger = get_logger(__name__)
 
@@ -137,24 +141,26 @@ def _on_enter_build_started(state: dict[str, StateValue], ctx: TargetContext) ->
     This is the entry gate into the work lifecycle. DOR score must meet
     the threshold. Once past this handler, subsequent steps never re-check DOR.
     """
-    kind = state.get("kind")
-    if kind == "bug":
-        return state  # Bug todos skip DOR — they enter work directly
+    writer = StateWriter(state)
+    if writer.state.kind == "bug":
+        return writer.to_dict()  # Bug todos skip DOR — they enter work directly
 
-    current_dor = state.get("dor", {})
-    if isinstance(current_dor, dict):
-        score = current_dor.get("score", 0)
-        if isinstance(score, int) and score < DOR_READY_THRESHOLD:
-            raise ValueError(
-                f"DOR score {score} is below threshold {DOR_READY_THRESHOLD}. Run telec todo prepare {ctx.slug} first."
-            )
-    return state
+    dor = writer.state.dor
+    if dor is not None and dor.score < DOR_READY_THRESHOLD:
+        raise ValueError(
+            f"DOR score {dor.score} is below threshold {DOR_READY_THRESHOLD}. Run telec todo prepare {ctx.slug} first."
+        )
+    return writer.to_dict()
 
 
 def _on_enter_prepared(  # pylint: disable=too-many-locals
     state: dict[str, StateValue], ctx: TargetContext
 ) -> dict[str, StateValue]:
-    """Validate artifacts exist in DB, stamp DOR/grounding/verdicts for work readiness."""
+    """Validate artifacts exist in DB, stamp DOR/grounding/verdicts for work readiness.
+
+    Routes verdict and grounding mutations through the typed state-mutation
+    boundary so the visible review state and the audit entry cannot diverge.
+    """
     from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
     slug = ctx.slug
@@ -202,61 +208,15 @@ def _on_enter_prepared(  # pylint: disable=too-many-locals
         finally:
             conn.close()
 
-    now_iso = ctx.at
-
-    state["phase"] = ItemPhase.PENDING.value
-
-    # DOR
-    state["dor"] = {
-        "last_assessed_at": now_iso,
-        "score": 8,
-        "status": "pass",
-        "schema_version": 1,
-        "blockers": [],
-        "actions_taken": {
-            "requirements_updated": False,
-            "implementation_plan_updated": False,
-        },
-    }
-
-    # Review verdicts. Prepped todos have no requirements to review — the plan is the
-    # sole spec. Mark requirements_review as "skipped" with an explicit reason so
-    # downstream consumers and audits can distinguish an intentional skip from a
-    # forgotten review.
-    if kind == "prepped":
-        state["requirements_review"] = {
-            "verdict": "skipped",
-            "reviewed_at": now_iso,
-            "findings_count": 0,
-            "reason": "prepped",
-        }
-    else:
-        state["requirements_review"] = {
-            "verdict": "approve",
-            "reviewed_at": now_iso,
-            "findings_count": 0,
-        }
-    state["plan_review"] = {
-        "verdict": "approve",
-        "reviewed_at": now_iso,
-        "findings_count": 0,
-    }
-
-    # Grounding
-    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=ctx.project_root)
-    if rc != 0 or not current_sha.strip():
+    # Git HEAD for grounding baseline — must succeed before mutating state.
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=ctx.project_root)
+    if rc != 0 or not current_sha_raw.strip():
         raise ValueError(
             f"git rev-parse HEAD failed (rc={rc}) in {ctx.project_root} — cannot establish grounding baseline"
         )
-    grounding: dict[str, StateValue] = {
-        **default_state()["grounding"],  # type: ignore[dict-item]
-        "valid": True,
-        "base_sha": current_sha.strip(),
-        "last_grounded_at": now_iso,
-        "invalidation_reason": "",
-        "changed_paths": [],
-    }
-    # Read input digest from DB
+    current_sha = current_sha_raw.strip()
+
+    # Read input digest from DB so GroundingManager can record it on the baseline.
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
         input_row = conn.execute(
@@ -265,24 +225,46 @@ def _on_enter_prepared(  # pylint: disable=too-many-locals
         ).fetchone()
     finally:
         conn.close()
-    if input_row and input_row[0]:
-        grounding["input_digest"] = input_row[0]
-    state["grounding"] = grounding
+    input_digest = input_row[0] if input_row and input_row[0] else ""
 
-    return state
+    # Route typed mutations through the state-mutation boundary.
+    writer = StateWriter(state)
+    writer.state.phase = ItemPhase.PENDING.value
+    writer.state.dor = DorState(
+        last_assessed_at=ctx.at,
+        score=8,
+        status="pass",
+        schema_version=1,
+        blockers=[],
+    )
+
+    # Review verdicts. Prepped todos have no requirements to review — the plan is
+    # the sole spec, so requirements_review is stamped "skipped". ReviewManager
+    # keeps the visible verdict and the audit entry in sync in one call.
+    review_mgr = ReviewManager(writer)
+    if kind == "prepped":
+        review_mgr.stamp_verdict("requirements_review", "skipped")
+    else:
+        review_mgr.stamp_verdict("requirements_review", "approve")
+    review_mgr.stamp_verdict("plan_review", "approve")
+
+    # Grounding baseline refresh — advances base_sha so downstream checks start
+    # from this commit instead of whatever stale value may have been persisted.
+    GroundingManager(writer).refresh(current_sha=current_sha)
+    if input_digest:
+        writer.grounding.input_digest = input_digest
+
+    return writer.to_dict()
 
 
 def _on_enter_review_changes(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
     """Bump review_round, stamp baseline, extract finding IDs."""
-    review_round = state.get("review_round")
-    current_round = review_round if isinstance(review_round, int) else 0
-    resolved = state.get("resolved_findings")
-    resolved_ids = list(resolved) if isinstance(resolved, list) else []
+    writer = StateWriter(state)
+    writer.state.review_round += 1
 
-    state["review_round"] = current_round + 1
     head_sha = get_head_commit(ctx.worktree_path)
     if head_sha:
-        state["review_baseline_commit"] = head_sha
+        writer.state.review_baseline_commit = head_sha
     else:
         logger.warning(
             "review_baseline_commit not stamped: get_head_commit returned empty worktree=%s slug=%s",
@@ -291,25 +273,20 @@ def _on_enter_review_changes(state: dict[str, StateValue], ctx: TargetContext) -
         )
 
     findings_ids = _extract_finding_ids(ctx.project_root, ctx.slug)
-    state["unresolved_findings"] = findings_ids  # type: ignore[assignment]
-    state["resolved_findings"] = list(dict.fromkeys(str(i) for i in resolved_ids))
+    writer.state.unresolved_findings = findings_ids
+    writer.state.resolved_findings = list(dict.fromkeys(writer.state.resolved_findings))
 
-    return state
+    return writer.to_dict()
 
 
 def _on_enter_review_approved(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
     """Bump review_round, stamp baseline, merge findings."""
-    review_round = state.get("review_round")
-    current_round = review_round if isinstance(review_round, int) else 0
-    unresolved = state.get("unresolved_findings")
-    unresolved_ids = list(unresolved) if isinstance(unresolved, list) else []
-    resolved = state.get("resolved_findings")
-    resolved_ids = list(resolved) if isinstance(resolved, list) else []
+    writer = StateWriter(state)
+    writer.state.review_round += 1
 
-    state["review_round"] = current_round + 1
     head_sha = get_head_commit(ctx.worktree_path)
     if head_sha:
-        state["review_baseline_commit"] = head_sha
+        writer.state.review_baseline_commit = head_sha
     else:
         logger.warning(
             "review_baseline_commit not stamped: get_head_commit returned empty worktree=%s slug=%s",
@@ -317,18 +294,19 @@ def _on_enter_review_approved(state: dict[str, StateValue], ctx: TargetContext) 
             ctx.slug,
         )
 
-    merged = list(dict.fromkeys([*(str(i) for i in resolved_ids), *(str(i) for i in unresolved_ids)]))
-    state["resolved_findings"] = merged  # type: ignore[assignment]
-    state["unresolved_findings"] = []
+    merged = list(dict.fromkeys([*writer.state.resolved_findings, *writer.state.unresolved_findings]))
+    writer.state.resolved_findings = merged
+    writer.state.unresolved_findings = []
 
-    return state
+    return writer.to_dict()
 
 
 def _on_enter_finalize_ready(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
     """Validate worktree, no uncommitted changes, HEAD matches, write finalize sub-dict."""
+    writer = StateWriter(state)
+
     # Guard against regression from finalize_handed_off back to finalize_ready
-    finalize = state.get("finalize")
-    if isinstance(finalize, dict) and finalize.get("status") == "handed_off":
+    if writer.state.finalize.status == "handed_off":
         raise ValueError(f"cannot regress {ctx.slug} from finalize_handed_off to finalize_ready")
 
     slug = ctx.slug
@@ -361,33 +339,29 @@ def _on_enter_finalize_ready(state: dict[str, StateValue], ctx: TargetContext) -
     # at the engine level and this handler is not reached. Repeated calls do NOT re-validate
     # remote/uncommitted state — callers must rely on the initial transition validation.
 
-    now = datetime.now(UTC).isoformat()
-    state["finalize"] = {
-        "status": "ready",
-        "branch": slug,
-        "sha": branch_head,
-        "ready_at": now,
-        "worker_session_id": ctx.actor_id.strip(),
-    }
-
-    return state
+    writer.state.finalize = FinalizeModel(
+        status="ready",
+        branch=slug,
+        sha=branch_head,
+        ready_at=datetime.now(UTC).isoformat(),
+        worker_session_id=ctx.actor_id.strip(),
+    )
+    return writer.to_dict()
 
 
 def _on_enter_finalize_handoff(state: dict[str, StateValue], ctx: TargetContext) -> dict[str, StateValue]:
-    """Validate finalize.status == ready, write handed_off metadata."""
-    finalize = _normalize_finalize_state(state.get("finalize"))
-    if finalize.get("status") != "ready":
+    """Validate finalize.status == ready, write handed_off metadata via typed model."""
+    writer = StateWriter(state)
+    finalize = writer.state.finalize
+
+    if finalize.status != "ready":
         raise ValueError(f"finalize state for {ctx.slug} is not ready")
 
-    now = datetime.now(UTC).isoformat()
-    state["finalize"] = {
-        **finalize,  # type: ignore[dict-item]
-        "status": "handed_off",
-        "handoff_session_id": ctx.actor_id,
-        "handed_off_at": now,
-    }
+    finalize.status = "handed_off"
+    finalize.handoff_session_id = ctx.actor_id
+    finalize.handed_off_at = datetime.now(UTC).isoformat()
 
-    return state
+    return writer.to_dict()
 
 
 # ── Ordered lifecycle state definitions ──────────────────────────────────────

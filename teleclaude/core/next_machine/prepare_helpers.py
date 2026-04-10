@@ -1,14 +1,14 @@
 """Shared helpers for prepare-phase artifact lifecycle bookkeeping.
 
 Workers call these after producing or consuming artifacts. The machine invokes
-staleness checks on each prepare invocation. All state mutations go through
-read_phase_state/write_phase_state for atomicity.
+staleness checks on each prepare invocation. Review-finding mutations route
+through the validated ``StateWriter`` + ``ReviewManager`` boundary so the
+persisted review shape is type-checked on every write.
 """
 # pylint: disable=duplicate-code  # compute_artifact_diff/compute_todo_folder_diff are intentionally mirrored in artifacts.py
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -19,7 +19,14 @@ from teleclaude.core.next_machine.artifacts import (
 )
 from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import (
+    _get_todos_db_sync,
+    read_phase_state,
+)
+from teleclaude.core.next_machine.state_mutation import (
+    ReviewManager,
+    StateWriter,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -87,66 +94,46 @@ def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:
 
 
 def record_finding(cwd: str, slug: str, review_type: str, finding: dict[str, StateValue]) -> None:
-    """Append a structured finding to the review's findings list in state.yaml."""
+    """Append a structured finding via the typed review boundary.
+
+    Rejects duplicate finding IDs and missing IDs by raising
+    :class:`StateMutationError` before any state is persisted, so malformed
+    finding records never leave the review state in a half-updated shape.
+    """
+    db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
-    review = state.get(review_type, {})
-    if not isinstance(review, dict):
-        review = {}
-    findings: list[object] = list(review.get("findings", []) or [])  # type: ignore[arg-type]
-    findings.append(finding)
-    review["findings"] = findings  # type: ignore[assignment]
-    state[review_type] = review
-    write_phase_state(cwd, slug, state)
+    writer = StateWriter(state)
+    new_finding = ReviewManager(writer).record_finding(review_type, finding)
+    writer.commit_sync(db, slug)
 
     _emit_prepare_event(
         "domain.software-development.prepare.finding_recorded",
         {
             "slug": slug,
             "review_type": review_type,
-            "severity": finding.get("severity", ""),  # type: ignore[dict-item]
-            "summary": finding.get("summary", ""),  # type: ignore[dict-item]
+            "severity": new_finding.severity,
+            "summary": new_finding.summary,
         },
     )
 
 
 def resolve_finding(cwd: str, slug: str, review_type: str, finding_id: str, resolution_method: str) -> None:
-    """Mark a finding as resolved in state.yaml."""
-    now = datetime.now(UTC).isoformat()
+    """Mark a finding as resolved via the typed review boundary.
+
+    Raises :class:`StateMutationError` when the finding ID is unknown so that
+    the caller (e.g. a reviewer) cannot silently drop a stale resolution — the
+    concrete fix for the prior warning-and-return behavior.
+    """
+    db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
-    review = state.get(review_type, {})
-    if not isinstance(review, dict):
-        review = {}
-    findings: list[object] = list(review.get("findings", []) or [])  # type: ignore[arg-type]
-    matched = False
-    for f in findings:
-        if isinstance(f, dict) and f.get("id") == finding_id:
-            f["status"] = "resolved"
-            f["resolved_at"] = now
-            matched = True
-    if not matched:
-        logger.warning("resolve_finding: finding_id=%s not found in %s/%s", finding_id, slug, review_type)
-        return
-    review["findings"] = findings  # type: ignore[assignment]
-    state[review_type] = review
-    write_phase_state(cwd, slug, state)
+    writer = StateWriter(state)
+    ReviewManager(writer).resolve_finding(review_type, finding_id, resolution_method)
+    writer.commit_sync(db, slug)
 
     _emit_prepare_event(
         "domain.software-development.prepare.finding_resolved",
         {"slug": slug, "review_type": review_type, "finding_id": finding_id, "resolution_method": resolution_method},
     )
-
-
-def stamp_audit(state: dict[str, StateValue], phase_name: str, field: str, value: StateValue) -> None:
-    """Safely navigate the nested audit dict and write a field value in-place."""
-    audit = state.get("audit")
-    if not isinstance(audit, dict):
-        audit = {}
-        state["audit"] = audit
-    phase_entry = audit.get(phase_name)
-    if not isinstance(phase_entry, dict):
-        phase_entry = {}
-        audit[phase_name] = phase_entry
-    phase_entry[field] = value
 
 
 def record_input_consumed(cwd: str, slug: str) -> None:

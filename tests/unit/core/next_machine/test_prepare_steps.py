@@ -562,10 +562,10 @@ async def test_stale_artifact_reroute_restamps_all_stale_digests(tmp_path: Path)
             hashlib.sha256(plan_content.encode()).hexdigest(),
         ]
     )
-    await _apply_stale_artifact_reroute(mock_db, slug, state, ["requirements", "implementation_plan"])
+    persisted = await _apply_stale_artifact_reroute(mock_db, slug, state, ["requirements", "implementation_plan"])
 
-    assert state["current"] == PreparePhase.PLAN_DRAFTING.value
-    artifacts = state["artifacts"]
+    assert persisted["current"] == PreparePhase.PLAN_DRAFTING.value
+    artifacts = persisted["artifacts"]
     assert isinstance(artifacts, dict)
     req = artifacts["requirements"]
     assert isinstance(req, dict)
@@ -573,6 +573,8 @@ async def test_stale_artifact_reroute_restamps_all_stale_digests(tmp_path: Path)
     plan = artifacts["implementation_plan"]
     assert isinstance(plan, dict)
     assert plan["digest"] == hashlib.sha256(plan_content.encode()).hexdigest()
+    # The single validated write path persists exactly once through StateWriter.
+    mock_db.write_state.assert_awaited_once()
 
 
 def test_derive_project_root_strips_worktree_suffix() -> None:

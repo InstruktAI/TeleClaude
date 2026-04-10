@@ -15,11 +15,16 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhas
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, check_artifact_staleness_db
-from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch, _restamp_artifact_digest_db
+from teleclaude.core.next_machine.prepare_helpers import (
+    _ARTIFACT_CASCADE,
+    check_artifact_staleness_db,
+)
+from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root,
 )
+from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.types.todos import ArtifactEntry
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -52,12 +57,15 @@ async def _apply_stale_artifact_reroute(
     slug: str,
     state: dict[str, StateValue],
     stale_artifacts: list[str],
-) -> None:
+) -> dict[str, StateValue]:
     """Reset prepare routing when tracked artifacts have gone stale.
 
-    Restamps all stale artifact digests to match current DB content before
-    writing state. Without this, the staleness check fires again on the next
-    loop iteration and the machine never escapes the reroute.
+    Restamps all stale artifact digests to match current DB content through the
+    typed :class:`ArtifactsState` model before persisting the full validated
+    state. Without the restamp, the staleness check fires again on the next
+    loop iteration and the machine never escapes the reroute. Returns the
+    persisted state dict so the caller can continue the current loop iteration
+    against the updated baseline without a redundant DB round-trip.
     """
     earliest = stale_artifacts[0] if stale_artifacts else ""
     phase_map = {
@@ -66,11 +74,19 @@ async def _apply_stale_artifact_reroute(
         "implementation_plan": PreparePhase.PLAN_REVIEW,
     }
     stale_phase = phase_map.get(earliest, PreparePhase.INPUT_ASSESSMENT)
-    state["current"] = stale_phase.value
-    for key, _filename in _ARTIFACT_CASCADE:
-        if key in stale_artifacts:
-            await _restamp_artifact_digest_db(todos_db, state, slug, key)
-    await todos_db.write_state(slug, state)
+
+    writer = StateWriter(state)
+    writer.state.current = stale_phase.value
+    for key, filename in _ARTIFACT_CASCADE:
+        if key not in stale_artifacts:
+            continue
+        db_name = filename.removesuffix(".md") if filename.endswith(".md") else key
+        current_digest = await todos_db.artifact_digest(slug, db_name)
+        entry = getattr(writer.state.artifacts, key, None)
+        if isinstance(entry, ArtifactEntry) and current_digest and current_digest != entry.digest:
+            entry.digest = current_digest
+    payload = await writer.commit(todos_db, slug)
+
     _emit_prepare_event(
         "domain.software-development.prepare.artifact_invalidated",
         {"slug": slug, "stale_artifacts": stale_artifacts, "reason": "digest_mismatch"},
@@ -81,6 +97,7 @@ async def _apply_stale_artifact_reroute(
         stale_artifacts,
         stale_phase.value,
     )
+    return payload
 
 
 async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals
@@ -137,7 +154,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
         # Artifact staleness check (R6): run before routing
         stale_artifacts = await check_artifact_staleness_db(todos_db, resolved_slug)
         if stale_artifacts:
-            await _apply_stale_artifact_reroute(todos_db, resolved_slug, state, stale_artifacts)
+            state = await _apply_stale_artifact_reroute(todos_db, resolved_slug, state, stale_artifacts)
 
         # Resolve current phase from authoritative state value
         raw_current = str(state.get("current", "")).strip()
@@ -155,8 +172,9 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
 
             has_plan = await todos_db.artifact_exists(resolved_slug, "implementation-plan")
             if has_plan:
-                state["current"] = PreparePhase.PLAN_REVIEW.value
-                await todos_db.write_state(resolved_slug, state)
+                recovery_writer = StateWriter(state)
+                recovery_writer.state.current = PreparePhase.PLAN_REVIEW.value
+                await recovery_writer.commit(todos_db, resolved_slug)
                 logger.warning(
                     "PREPARE_RECOVERY: slug=%s invalid current=%s, unapproved plan_review, rerouting",
                     resolved_slug,
@@ -167,8 +185,9 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
             req_review = state.get("requirements_review", {})
             req_approved = isinstance(req_review, dict) and req_review.get("verdict") == "approve"
             if req_approved:
-                state["current"] = PreparePhase.PLAN_DRAFTING.value
-                await todos_db.write_state(resolved_slug, state)
+                recovery_writer = StateWriter(state)
+                recovery_writer.state.current = PreparePhase.PLAN_DRAFTING.value
+                await recovery_writer.commit(todos_db, resolved_slug)
                 logger.warning(
                     "PREPARE_RECOVERY: slug=%s had invalid current=%s with no plan, rerouting to plan_drafting",
                     resolved_slug,

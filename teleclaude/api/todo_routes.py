@@ -41,6 +41,7 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 
 if TYPE_CHECKING:
+    from teleclaude.core.next_machine.state_mutation import StateWriter
     from teleclaude.core.todos_db import TodosDb
     from teleclaude.core.todos_db._show import ShowPayload
 
@@ -211,6 +212,66 @@ def _resolve_worktree_cwd(cwd: str, slug: str, force: bool) -> str:
     raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
 
 
+async def _mark_phase_stamp_verdict(slug: str, phase: str, status: str, cwd: str) -> dict[str, str]:
+    """Commit a review verdict through the validated state mutation boundary."""
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        ReviewManager,
+        StateMutationError,
+        StateWriter,
+    )
+
+    if status not in _PREPARE_VERDICT_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
+        )
+
+    todos_db = await _get_todos_db_from_cwd(cwd)
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+    try:
+        writer = StateWriter(raw_state)
+        ReviewManager(writer).stamp_verdict(phase, status)
+        payload = await writer.commit(todos_db, slug)
+    except StateMutationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    logger.info("verdict stamped to DB: slug=%s phase=%s verdict=%s", slug, phase, status)
+    return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(payload)}
+
+
+async def _mark_phase_stamp_artifact(slug: str, phase: str, cwd: str) -> dict[str, str]:
+    """Commit an artifact production stamp through the validated state boundary."""
+    from datetime import UTC  # pylint: disable=import-outside-toplevel
+    from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        StateMutationError,
+        StateWriter,
+    )
+    from teleclaude.types.todos import ArtifactEntry  # pylint: disable=import-outside-toplevel
+
+    todos_db = await _get_todos_db_from_cwd(cwd)
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
+    try:
+        writer = StateWriter(raw_state)
+    except StateMutationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    entry = getattr(writer.state.artifacts, phase, None)
+    if not isinstance(entry, ArtifactEntry):
+        raise HTTPException(status_code=422, detail=f"unknown artifact phase '{phase}'")
+    entry.produced_at = _dt.now(UTC).isoformat()
+    entry.stale = False
+    try:
+        payload = await writer.commit(todos_db, slug)
+    except StateMutationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    logger.info("artifact stamped to DB: slug=%s artifact=%s", slug, phase)
+    return {"result": f"OK: {slug} artifacts.{phase}.produced_at stamped", "state": str(payload)}
+
+
 @router.post("/mark-phase")
 async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
     slug: Annotated[str, Body()],
@@ -233,6 +294,7 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
 
     from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
         build_lifecycle_machine,
     )
@@ -247,45 +309,11 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
         if not phase or not status:
             raise HTTPException(status_code=400, detail="either 'target' or both 'phase' and 'status' are required")
 
-        # Verdict stamp — direct DB mutation, no lifecycle machine
         if phase in _PREPARE_VERDICT_PHASES:
-            if status not in _PREPARE_VERDICT_VALUES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
-                )
-            todos_db = await _get_todos_db_from_cwd(cwd)
-            state = await todos_db.read_state(slug)
-            if state is None:
-                raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-            review_dict = state.get(phase)
-            if not isinstance(review_dict, dict):
-                review_dict = {}
-            review_dict["verdict"] = status
-            state[phase] = review_dict
-            await todos_db.write_state(slug, state)
-            logger.info("verdict stamped to DB: slug=%s phase=%s verdict=%s", slug, phase, status)
-            return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(state)}
+            return await _mark_phase_stamp_verdict(slug, phase, status, cwd)
 
-        # Artifact stamp — direct DB mutation
         if phase in _PREPARE_ARTIFACT_PHASES:
-            todos_db = await _get_todos_db_from_cwd(cwd)
-            state = await todos_db.read_state(slug)
-            if state is None:
-                raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-            artifacts = state.get("artifacts", {})
-            if not isinstance(artifacts, dict):
-                artifacts = {}
-            entry = artifacts.get(phase, {})
-            if not isinstance(entry, dict):
-                entry = {}
-            entry["produced_at"] = _dt.now(UTC).isoformat()
-            entry["stale"] = False
-            artifacts[phase] = entry
-            state["artifacts"] = artifacts
-            await todos_db.write_state(slug, state)
-            logger.info("artifact stamped to DB: slug=%s artifact=%s", slug, phase)
-            return {"result": f"OK: {slug} artifacts.{phase}.produced_at stamped", "state": str(state)}
+            return await _mark_phase_stamp_artifact(slug, phase, cwd)
 
         # Map legacy phase/status to target name
         if phase == "prepare":
@@ -335,10 +363,13 @@ async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-argume
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    await todos_db.write_state(slug, updated_state)
+    # Route persistence through StateWriter so the API path validates the
+    # post-transition payload the same way prepare_steps/on_enter handlers do.
+    writer = StateWriter(updated_state)
+    persisted_state = await writer.commit(todos_db, slug)
     logger.info("mark_phase DB-native: slug=%s target=%s", slug, resolved_target)
 
-    return {"result": f"OK: {slug} state updated - target: {resolved_target}", "state": str(updated_state)}
+    return {"result": f"OK: {slug} state updated - target: {resolved_target}", "state": str(persisted_state)}
 
 
 @router.post("/set-deps")
@@ -523,17 +554,24 @@ async def todo_split(
 ) -> _SplitResponse:
     """Split a todo into children: create child state + roadmap entries, update parent breakdown."""
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
+    from teleclaude.types.todos import BreakdownState  # pylint: disable=import-outside-toplevel
 
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
-    # Verify parent exists
+    # Verify parent exists and route the parent mutation through the validated
+    # StateWriter boundary so the breakdown update is type-checked before the
+    # transaction commits. Child state creation below is bootstrap of a fresh
+    # record — not mutation of existing persisted state — and stays on the raw
+    # default_state() path.
     parent_state = await todos_db.read_state(slug)
     if parent_state is None:
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
     parent_input = await todos_db.read_artifact(slug, "input")
-    parent_state["breakdown"] = {"assessed": True, "todos": list(children)}  # type: ignore[dict-item]
+    parent_writer = StateWriter(parent_state)
+    parent_writer.state.breakdown = BreakdownState(assessed=True, todos=list(children))
 
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():
@@ -546,7 +584,7 @@ async def todo_split(
                 if parent_input:
                     await todos_db.write_artifact(child_slug, "input", parent_input, session=session)
 
-            await todos_db.write_state(slug, parent_state, session=session)
+            await parent_writer.commit(todos_db, slug, session=session)
 
     todos_db._on_mutation()  # pylint: disable=protected-access
 
@@ -608,68 +646,84 @@ async def todo_unfreeze(
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
+def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
+    """Apply a `grounding` stamp through the typed grounding lifecycle.
+
+    ``value == "valid"`` clears any recorded invalidation; any other value
+    forces a stamped invalidation so downstream prepare machinery re-runs.
+    Both branches route through :class:`GroundingManager` so the stamp path
+    shares one contract with the rest of the grounding lifecycle.
+    """
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        GroundingManager,
+    )
+
+    grounding_manager = GroundingManager(writer)
+    if value == "valid":
+        grounding_manager.clear_invalidation()
+    else:
+        grounding_manager.invalidate(reason="stamped_invalid", changed_paths=[])
+
+
+def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
+    """Apply a `dor` stamp, parsing either a compound score/status or a bare status."""
+    from teleclaude.types.todos import DorState  # pylint: disable=import-outside-toplevel
+
+    dor_model = writer.state.dor or DorState()
+    if "," in value and ":" in value:
+        for part in value.split(","):
+            k, _, v = part.partition(":")
+            k, v = k.strip(), v.strip()
+            if k == "score":
+                dor_model.score = int(v)
+            elif k == "status":
+                dor_model.status = v
+    else:
+        dor_model.status = value
+    writer.state.dor = dor_model
+
+
 @router.post("/stamp/{slug}")
-async def stamp(  # pylint: disable=too-many-locals,too-many-branches
+async def stamp(
     slug: str,
     stamp_type: Annotated[str, Body()],
     value: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
 ) -> _StampResponse:
     """Stamp a verdict, DOR, build, or grounding value into todo state."""
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        ReviewManager,
+        StateMutationError,
+        StateWriter,
+    )
+
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    state = await todos_db.read_state(slug)
-    if state is None:
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
         raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
 
-    if stamp_type == "verdict":
-        # Determine which review sub-phase from current state
-        current = str(state.get("current", ""))
-        phase_map = {
-            "requirements_review": "requirements_review",
-            "test_spec_review": "test_spec_review",
-            "plan_review": "plan_review",
-        }
-        review_phase = phase_map.get(current)
-        if not review_phase:
-            raise HTTPException(
-                status_code=409,
-                detail=f"current state '{current}' is not a review phase",
-            )
-        review_dict = state.get(review_phase)
-        if not isinstance(review_dict, dict):
-            review_dict = {}
-        review_dict["verdict"] = value
-        state[review_phase] = review_dict
-    elif stamp_type == "build":
-        state["current"] = f"build_{value}"
-    elif stamp_type == "grounding":
-        grounding = state.get("grounding")
-        if not isinstance(grounding, dict):
-            grounding = {}
-        grounding["valid"] = value == "valid"
-        state["grounding"] = grounding
-    elif stamp_type == "dor":
-        # value format: "score:9,status:pass" or plain status like "pass"
-        dor = state.get("dor")
-        if not isinstance(dor, dict):
-            dor = {}
-        # Parse compound format: "score:9,status:pass"
-        if "," in value and ":" in value:
-            for part in value.split(","):
-                k, _, v = part.partition(":")
-                k, v = k.strip(), v.strip()
-                if k == "score":
-                    dor["score"] = int(v)
-                elif k == "status":
-                    dor["status"] = v
+    try:
+        writer = StateWriter(raw_state)
+        if stamp_type == "verdict":
+            current = writer.state.current
+            if current not in _PREPARE_VERDICT_PHASES:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"current state '{current}' is not a review phase",
+                )
+            ReviewManager(writer).stamp_verdict(current, value)
+        elif stamp_type == "build":
+            writer.state.current = f"build_{value}"
+        elif stamp_type == "grounding":
+            _apply_grounding_stamp(writer, value)
+        elif stamp_type == "dor":
+            _apply_dor_stamp(writer, value)
         else:
-            dor["status"] = value
-        state["dor"] = dor
-    else:
-        raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
-
-    await todos_db.write_state(slug, state)
+            raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
+        await writer.commit(todos_db, slug)
+    except StateMutationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
 
 

@@ -5,12 +5,12 @@ Testing whether `permissions.deny` rules restrict reads when combined with
 
 **Expected outcomes:**
 
-| Check | Expected |
-|---|---|
-| Read `~/.zshrc` | BLOCKED — home dir denied |
-| Read `~/.teleclaude/state/` | ALLOWED — added back via `--add-dir` |
-| Glob `../../teleclaude/**/*.py` | BLOCKED — outside CWD, not in `--add-dir` |
-| `telec version` | ALLOWED — Bash auto-approved, uses `~/.teleclaude/` |
+| Check                           | Expected                                            |
+| ------------------------------- | --------------------------------------------------- |
+| Read `~/.zshrc`                 | BLOCKED — home dir denied                           |
+| Read `~/.teleclaude/state/`     | ALLOWED — added back via `--add-dir`                |
+| Glob `../../teleclaude/**/*.py` | BLOCKED — outside CWD, not in `--add-dir`           |
+| `telec version`                 | ALLOWED — Bash auto-approved, uses `~/.teleclaude/` |
 
 ---
 
@@ -38,11 +38,11 @@ VERDICT: deny rules [ENFORCED|IGNORED] under --permission-mode acceptEdits + --a
 
 ## What we learned
 
-| Flag | Deny rules enforced? | Bash auto-approved? |
-|---|---|---|
-| `--dangerously-skip-permissions` | NO | YES |
-| `--permission-mode acceptEdits` | YES | NO |
-| `--permission-mode acceptEdits` + `--allowedTools 'Bash(*)'` | YES | YES ← use this |
+| Flag                                                         | Deny rules enforced? | Bash auto-approved? |
+| ------------------------------------------------------------ | -------------------- | ------------------- |
+| `--dangerously-skip-permissions`                             | NO                   | YES                 |
+| `--permission-mode acceptEdits`                              | YES                  | NO                  |
+| `--permission-mode acceptEdits` + `--allowedTools 'Bash(*)'` | YES                  | YES ← use this      |
 
 ---
 

@@ -20,7 +20,6 @@ from teleclaude.core.next_machine._types import (
     DOR_READY_THRESHOLD,
     PreparePhase,
     StateValue,
-    default_state,
 )
 from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
@@ -29,19 +28,32 @@ from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event,
     _has_test_spec_artifacts,
 )
-from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, stamp_audit
 from teleclaude.core.next_machine.prepare_scripts import (
     _fix_findings_message,
     _format_review_approved_script,
     _format_review_blocked_script,
     _format_review_needs_work_script,
 )
+from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
+
+
+def _worker_idle_post_block(slug: str) -> str:
+    """Post-block emitted after dispatching a worker — tells the orchestrator to re-enter when idle."""
+    return f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+
+
+def _reviewer_idle_post_block(slug: str) -> str:
+    """Post-block emitted after dispatching a reviewer — reads verdict when idle."""
+    return (
+        f"WHEN REVIEWER IDLES:\n"
+        f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
+    )
 
 
 def _derive_project_root(cwd: str, slug: str) -> str:
@@ -92,30 +104,21 @@ async def _find_all_live_sessions_for_slug(
     return [s.session_id for s in sessions if s.subdir == expected_subdir]
 
 
-async def _restamp_artifact_digest_db(
+async def _commit_writer(
+    writer: StateWriter,
     todos_db: TodosDb,
-    state: dict[str, StateValue],
     slug: str,
-    artifact_key: str,
+    state: dict[str, StateValue],
 ) -> None:
-    """DB-backed: re-stamp an artifact digest from the todos.db artifact table."""
-    artifacts = state.get("artifacts", {})
-    if not isinstance(artifacts, dict):
-        return
-    entry = artifacts.get(artifact_key, {})
-    if not isinstance(entry, dict):
-        return
-    # Resolve DB artifact name: cascade maps state key to filename, strip .md for DB name
-    db_name = artifact_key
-    for key, filename in _ARTIFACT_CASCADE:
-        if key == artifact_key:
-            db_name = filename.removesuffix(".md") if filename.endswith(".md") else key
-            break
-    current = await todos_db.artifact_digest(slug, db_name)
-    if current and current != entry.get("digest", ""):
-        entry["digest"] = current
-        artifacts[artifact_key] = entry
-        state["artifacts"] = artifacts
+    """Commit the writer and sync the validated payload back to *state*.
+
+    The prepare dispatcher and its callers continue to read from the in-memory
+    state dict after each step, so we refresh that dict from the validated
+    commit payload. Persistence itself is still the typed-boundary writer.
+    """
+    payload = await writer.commit(todos_db, slug)
+    state.clear()
+    state.update(payload)
 
 
 async def _prepare_step_input_assessment(
@@ -130,8 +133,8 @@ async def _prepare_step_input_assessment(
     # write state to the worktree, not repo root main.
     await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
 
-    _now = datetime.now(UTC).isoformat()
-    stamp_audit(state, "input_assessment", "started_at", _now)
+    writer = StateWriter(state)
+    writer.audit.input_assessment.started_at = datetime.now(UTC).isoformat()
 
     has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
@@ -141,9 +144,9 @@ async def _prepare_step_input_assessment(
             "domain.software-development.prepare.input_consumed",
             {"slug": slug, "phase": "input_assessment", "digest": input_digest},
         )
-        stamp_audit(state, "input_assessment", "completed_at", datetime.now(UTC).isoformat())
-        state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
-        await todos_db.write_state(slug, state)
+        writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
+        writer.state.current = PreparePhase.REQUIREMENTS_REVIEW.value
+        await _commit_writer(writer, todos_db, slug, state)
         return True, ""  # loop
 
     guidance = await compose_agent_guidance(db)
@@ -162,9 +165,7 @@ async def _prepare_step_input_assessment(
                 "triangulated discovery with a complementary partner."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
 
@@ -179,8 +180,9 @@ async def _prepare_step_triangulation(
     """TRIANGULATION: requirements.md still needs discovery or revision."""
     has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
-        state["current"] = PreparePhase.REQUIREMENTS_REVIEW.value
-        await todos_db.write_state(slug, state)
+        writer = StateWriter(state)
+        writer.state.current = PreparePhase.REQUIREMENTS_REVIEW.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -199,9 +201,7 @@ async def _prepare_step_triangulation(
                 "complementary partner before writing."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
 
@@ -214,32 +214,36 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """REQUIREMENTS_REVIEW: tailored output per state (init/approved/needs_work/blocked/needs_decision)."""
-    stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())
+    writer = StateWriter(state)
+    now = datetime.now(UTC).isoformat()
+    audit = writer.audit_entry("requirements_review")
+    audit.started_at = now
 
-    req_review = state.get("requirements_review", {})
-    verdict = (isinstance(req_review, dict) and req_review.get("verdict")) or ""
+    review = writer.review("requirements_review")
+    verdict = review.verdict
 
     # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        await _restamp_artifact_digest_db(todos_db, state, slug, "requirements")
+        current_digest = await todos_db.artifact_digest(slug, "requirements")
+        if current_digest and current_digest != writer.state.artifacts.requirements.digest:
+            writer.state.artifacts.requirements.digest = current_digest
 
     reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-requirements")
     worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-discovery")
 
     if verdict == "approve":
-        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "requirements_review", "verdict", "approve")
-        state["current"] = PreparePhase.TEST_SPEC_BUILD.value
-        await todos_db.write_state(slug, state)
+        audit.completed_at = now
+        audit.verdict = "approve"
+        writer.state.current = PreparePhase.TEST_SPEC_BUILD.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
         return False, _format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
 
     if verdict == "needs_decision":
-        findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
-        findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        state["current"] = PreparePhase.BLOCKED.value
-        await todos_db.write_state(slug, state)
+        # Architectural blocker — requires human decision before proceeding
+        open_count = sum(1 for f in review.findings if f.status != "resolved")
+        writer.state.current = PreparePhase.BLOCKED.value
+        await _commit_writer(writer, todos_db, slug, state)
         return False, (
             f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
             f"requiring human decision. Read findings via "
@@ -250,47 +254,36 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         )
 
     if verdict == "needs_work":
-        if isinstance(req_review, dict):
-            rounds = int(req_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
-            req_review["rounds"] = rounds
-            req_review["verdict"] = ""
-        else:
-            rounds = 1
+        rounds = review.rounds + 1
+        review.rounds = rounds
+        review.verdict = ""
+        # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["requirements_review"] = req_review
-            state["current"] = PreparePhase.BLOCKED.value
-            await todos_db.write_state(slug, state)
+            writer.state.current = PreparePhase.BLOCKED.value
+            await _commit_writer(writer, todos_db, slug, state)
             return False, _format_review_blocked_script(slug, "requirements", reviewer_id, worker_id)
-
-        findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
-        findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "requirements_review", "verdict", "needs_work")
-        stamp_audit(state, "requirements_review", "rounds", rounds)
-        state["requirements_review"] = req_review
-        state["current"] = PreparePhase.TRIANGULATION.value
-        await todos_db.write_state(slug, state)
+        # Count-and-pointer pattern: no file content injection (R2)
+        open_findings = [f for f in review.findings if f.status != "resolved"]
+        open_count = len(open_findings)
+        audit.completed_at = now
+        audit.verdict = "needs_work"
+        audit.rounds = rounds
+        writer.state.current = PreparePhase.TRIANGULATION.value
+        await _commit_writer(writer, todos_db, slug, state)
+        # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {
-                "slug": slug,
-                "finding_ids": [
-                    f.get("id", "")  # type: ignore[misc]
-                    for f in findings_list
-                    if isinstance(f, dict) and f.get("status") != "resolved"
-                ],
-            },
+            {"slug": slug, "finding_ids": [f.id for f in open_findings]},
         )
         if worker_id and reviewer_id:
             message = _fix_findings_message(
                 slug, "requirements", rounds, open_count, "requirements-review-findings", "requirements"
             )
             return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
-        # Fallback: dispatch a fresh discovery worker (initial baseline diff context)
-        base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
-        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
-        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        # Fallback: dispatch a fresh discovery worker with baseline diff context
+        base_sha = review.baseline_commit
+        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", base_sha)
+        folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
         findings_note = (
             f"Requirements need revision: {open_count} unresolved finding(s). "
@@ -307,22 +300,16 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
-                post_block=(
-                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-                ),
+                post_block=_worker_idle_post_block(slug),
             )
         )
 
-    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
     rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
-        req_review_dict = state.get("requirements_review", {})
-        if not isinstance(req_review_dict, dict):
-            req_review_dict = {}
-        req_review_dict["baseline_commit"] = head_sha.strip()
-        state["requirements_review"] = req_review_dict
-        stamp_audit(state, "requirements_review", "baseline_commit", head_sha.strip())
-        await todos_db.write_state(slug, state)
+        review.baseline_commit = head_sha.strip()
+        audit.baseline_commit = head_sha.strip()
+        await _commit_writer(writer, todos_db, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -336,10 +323,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                 f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN REVIEWER IDLES:\n"
-                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
-            ),
+            post_block=_reviewer_idle_post_block(slug),
         )
     )
 
@@ -352,13 +336,14 @@ async def _prepare_step_test_spec_build(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_BUILD: xfail test specs needed in worktree."""
-    stamp_audit(state, "test_spec_build", "started_at", datetime.now(UTC).isoformat())
+    writer = StateWriter(state)
+    writer.audit.test_spec_build.started_at = datetime.now(UTC).isoformat()
 
     has_test_specs = await asyncio.to_thread(_has_test_spec_artifacts, cwd, slug)
     if has_test_specs:
-        stamp_audit(state, "test_spec_build", "completed_at", datetime.now(UTC).isoformat())
-        state["current"] = PreparePhase.TEST_SPEC_REVIEW.value
-        await todos_db.write_state(slug, state)
+        writer.audit.test_spec_build.completed_at = datetime.now(UTC).isoformat()
+        writer.state.current = PreparePhase.TEST_SPEC_REVIEW.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -376,14 +361,12 @@ async def _prepare_step_test_spec_build(
                 f"requirement as a failing test. Commit the specs to the worktree branch."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
 
 
-async def _prepare_step_test_spec_review(
+async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too-many-statements
     db: Db,
     todos_db: TodosDb,
     slug: str,
@@ -391,44 +374,45 @@ async def _prepare_step_test_spec_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_REVIEW: tailored output per state."""
-    stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())
+    writer = StateWriter(state)
+    now = datetime.now(UTC).isoformat()
+    audit = writer.audit_entry("test_spec_review")
+    audit.started_at = now
 
-    spec_review = state.get("test_spec_review", {})
-    verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
+    # test_spec_review uses TestSpecReviewState (no findings/baseline_commit),
+    # so access it directly rather than via writer.review().
+    spec_review = writer.state.test_spec_review
+    verdict = spec_review.verdict
 
     reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-specs")
     worker_id = await _find_live_session_for_slug(db, slug, "/next-build-specs")
 
     if verdict == "approve":
-        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "test_spec_review", "verdict", "approve")
-        state["current"] = PreparePhase.PLAN_DRAFTING.value
-        await todos_db.write_state(slug, state)
+        audit.completed_at = now
+        audit.verdict = "approve"
+        writer.state.current = PreparePhase.PLAN_DRAFTING.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
         return False, _format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
 
     if verdict == "needs_work":
-        if isinstance(spec_review, dict):
-            rounds = int(spec_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
-            spec_review["rounds"] = rounds
-            spec_review["verdict"] = ""
-        else:
-            rounds = 1
+        rounds = spec_review.rounds + 1
+        spec_review.rounds = rounds
+        spec_review.verdict = ""
+        # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["test_spec_review"] = spec_review
-            state["current"] = PreparePhase.BLOCKED.value
-            await todos_db.write_state(slug, state)
+            writer.state.current = PreparePhase.BLOCKED.value
+            await _commit_writer(writer, todos_db, slug, state)
             return False, _format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
-
-        findings = (isinstance(spec_review, dict) and spec_review.get("findings")) or []
-        findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "test_spec_review", "verdict", "needs_work")
-        stamp_audit(state, "test_spec_review", "rounds", rounds)
-        state["test_spec_review"] = spec_review
-        state["current"] = PreparePhase.TEST_SPEC_BUILD.value
-        await todos_db.write_state(slug, state)
+        # Count open findings for relay message (test_spec_review has no typed findings list,
+        # but the relay mechanic still carries a counter so the worker knows how many items
+        # to resolve from spec-review-findings.md).
+        open_count = 0
+        audit.completed_at = now
+        audit.verdict = "needs_work"
+        audit.rounds = rounds
+        writer.state.current = PreparePhase.TEST_SPEC_BUILD.value
+        await _commit_writer(writer, todos_db, slug, state)
 
         if worker_id and reviewer_id:
             message = _fix_findings_message(
@@ -451,13 +435,12 @@ async def _prepare_step_test_spec_review(
                     f"and update xfail test specs in the worktree."
                 ),
                 next_call=f"telec todo prepare {slug}",
-                post_block=(
-                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-                ),
+                post_block=_worker_idle_post_block(slug),
             )
         )
 
     # No verdict yet — dispatch reviewer
+    await _commit_writer(writer, todos_db, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -468,10 +451,7 @@ async def _prepare_step_test_spec_review(
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`.",  # pylint: disable=line-too-long
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN REVIEWER IDLES:\n"
-                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
-            ),
+            post_block=_reviewer_idle_post_block(slug),
         )
     )
 
@@ -484,13 +464,14 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed."""
-    stamp_audit(state, "plan_drafting", "started_at", datetime.now(UTC).isoformat())
+    writer = StateWriter(state)
+    writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
 
     has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
     if has_plan:
-        stamp_audit(state, "plan_drafting", "completed_at", datetime.now(UTC).isoformat())
-        state["current"] = PreparePhase.PLAN_REVIEW.value
-        await todos_db.write_state(slug, state)
+        writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
+        writer.state.current = PreparePhase.PLAN_REVIEW.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""  # loop
 
@@ -510,9 +491,7 @@ async def _prepare_step_plan_drafting(
                 "update the holder breakdown."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
 
@@ -525,31 +504,36 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_REVIEW: tailored output per state."""
-    stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())
+    writer = StateWriter(state)
+    now = datetime.now(UTC).isoformat()
+    audit = writer.audit_entry("plan_review")
+    audit.started_at = now
 
-    plan_review = state.get("plan_review", {})
-    verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
+    review = writer.review("plan_review")
+    verdict = review.verdict
 
+    # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        await _restamp_artifact_digest_db(todos_db, state, slug, "implementation_plan")
+        current_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        if current_digest and current_digest != writer.state.artifacts.implementation_plan.digest:
+            writer.state.artifacts.implementation_plan.digest = current_digest
 
     reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-plan")
     worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-draft")
 
     if verdict == "approve":
-        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "plan_review", "verdict", "approve")
-        state["current"] = PreparePhase.GATE.value
-        await todos_db.write_state(slug, state)
+        audit.completed_at = now
+        audit.verdict = "approve"
+        writer.state.current = PreparePhase.GATE.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
         return False, _format_review_approved_script(slug, reviewer_id, worker_id, "plan")
 
     if verdict == "needs_decision":
-        findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
-        findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        state["current"] = PreparePhase.BLOCKED.value
-        await todos_db.write_state(slug, state)
+        # Architectural blocker — requires human decision before proceeding
+        open_count = sum(1 for f in review.findings if f.status != "resolved")
+        writer.state.current = PreparePhase.BLOCKED.value
+        await _commit_writer(writer, todos_db, slug, state)
         return False, (
             f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
             f"requiring human decision. Read findings via "
@@ -560,48 +544,36 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         )
 
     if verdict == "needs_work":
-        if isinstance(plan_review, dict):
-            rounds = int(plan_review.get("rounds", 0)) + 1  # type: ignore[arg-type]
-            plan_review["rounds"] = rounds
-            plan_review["verdict"] = ""
-        else:
-            rounds = 1
+        rounds = review.rounds + 1
+        review.rounds = rounds
+        review.verdict = ""
+        # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
-            state["plan_review"] = plan_review
-            state["current"] = PreparePhase.BLOCKED.value
-            await todos_db.write_state(slug, state)
+            writer.state.current = PreparePhase.BLOCKED.value
+            await _commit_writer(writer, todos_db, slug, state)
             return False, _format_review_blocked_script(slug, "plan", reviewer_id, worker_id)
-
-        findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
-        findings_list = findings if isinstance(findings, list) else []
-        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
-        stamp_audit(state, "plan_review", "verdict", "needs_work")
-        stamp_audit(state, "plan_review", "rounds", rounds)
-        state["plan_review"] = plan_review
-        state["current"] = PreparePhase.PLAN_DRAFTING.value
-        await todos_db.write_state(slug, state)
+        # Count-and-pointer pattern: no file content injection (R2)
+        open_findings = [f for f in review.findings if f.status != "resolved"]
+        open_count = len(open_findings)
+        audit.completed_at = now
+        audit.verdict = "needs_work"
+        audit.rounds = rounds
+        writer.state.current = PreparePhase.PLAN_DRAFTING.value
+        await _commit_writer(writer, todos_db, slug, state)
+        # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {
-                "slug": slug,
-                "finding_ids": [
-                    f.get("id", "")  # type: ignore[misc]
-                    for f in findings_list
-                    if isinstance(f, dict) and f.get("status") != "resolved"
-                ],
-            },
+            {"slug": slug, "finding_ids": [f.id for f in open_findings]},
         )
         if worker_id and reviewer_id:
             message = _fix_findings_message(
                 slug, "plan", rounds, open_count, "plan-review-findings", "implementation-plan"
             )
             return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
-
-        # Fallback: dispatch fresh draft worker with diff context when no live worker
-        base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
-        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
-        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        # Fallback: dispatch fresh draft worker with baseline diff context when no live worker
+        base_sha = review.baseline_commit
+        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", base_sha)
+        folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
         findings_note = (
             f"Implementation plan needs revision: {open_count} unresolved finding(s). "
@@ -618,22 +590,16 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
-                post_block=(
-                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-                ),
+                post_block=_worker_idle_post_block(slug),
             )
         )
 
-    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
     rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
-        plan_review_dict = state.get("plan_review", {})
-        if not isinstance(plan_review_dict, dict):
-            plan_review_dict = {}
-        plan_review_dict["baseline_commit"] = head_sha.strip()
-        state["plan_review"] = plan_review_dict
-        stamp_audit(state, "plan_review", "baseline_commit", head_sha.strip())
-        await todos_db.write_state(slug, state)
+        review.baseline_commit = head_sha.strip()
+        audit.baseline_commit = head_sha.strip()
+        await _commit_writer(writer, todos_db, slug, state)
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -647,10 +613,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                 f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN REVIEWER IDLES:\n"
-                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
-            ),
+            post_block=_reviewer_idle_post_block(slug),
         )
     )
 
@@ -663,14 +626,14 @@ async def _prepare_step_gate(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """GATE: DOR formal validation."""
-    stamp_audit(state, "gate", "started_at", datetime.now(UTC).isoformat())
-    dor = state.get("dor", {})
-    dor_score = dor.get("score") if isinstance(dor, dict) else None
+    writer = StateWriter(state)
+    writer.audit.gate.started_at = datetime.now(UTC).isoformat()
+    dor = writer.state.dor
 
-    if isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD:
-        stamp_audit(state, "gate", "completed_at", datetime.now(UTC).isoformat())
-        state["current"] = PreparePhase.GROUNDING_CHECK.value
-        await todos_db.write_state(slug, state)
+    if dor is not None and dor.score >= DOR_READY_THRESHOLD:
+        writer.audit.gate.completed_at = datetime.now(UTC).isoformat()
+        writer.state.current = PreparePhase.GROUNDING_CHECK.value
+        await _commit_writer(writer, todos_db, slug, state)
         return True, ""  # loop
 
     # Dispatch gate worker to run DOR assessment (in worktree — test specs live there)
@@ -687,121 +650,81 @@ async def _prepare_step_gate(
                 f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
 
 
-async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals,too-many-statements
+async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals
     todos_db: TodosDb,
     slug: str,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """GROUNDING_CHECK: mechanical freshness check (no agent dispatch)."""
-    grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
+    """GROUNDING_CHECK: mechanical freshness check (no agent dispatch).
 
-    base_sha = str(grounding_dict.get("base_sha", ""))
-    stored_input_digest = str(grounding_dict.get("input_digest", ""))
-    referenced_paths = grounding_dict.get("referenced_paths", [])
-    if not isinstance(referenced_paths, list):
-        referenced_paths = []
+    Routes the freshness decision through :class:`GroundingManager` so the
+    baseline capture, invalidate and refresh code paths share one contract.
+    """
+    writer = StateWriter(state)
+    grounding_mgr = GroundingManager(writer)
+    base_sha = writer.grounding.base_sha
 
-    # Get current HEAD
-    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
-    current_sha = current_sha.strip() if rc == 0 else ""
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
+    current_sha = current_sha_raw.strip() if rc == 0 else ""
 
-    # Get current input digest
     input_path = Path(cwd) / "todos" / slug / "input.md"
     current_input_digest = ""
     if input_path.exists():
         current_input_digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
 
-    now = datetime.now(UTC).isoformat()
-
-    # First grounding: capture state and transition to PREPARED
+    # First grounding: capture baseline and transition to PREPARED.
     if not base_sha:
-        grounding_dict["base_sha"] = current_sha
-        grounding_dict["input_digest"] = current_input_digest
-        grounding_dict["last_grounded_at"] = now
-        grounding_dict["valid"] = True
-        state["grounding"] = grounding_dict
-        state["current"] = PreparePhase.PREPARED.value
-        await todos_db.write_state(slug, state)
+        grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
+        writer.state.current = PreparePhase.PREPARED.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
         return True, ""  # loop to PREPARED terminal
 
-    # I2: git failure is fail-closed — treat missing sha as stale if we have a stored base
-    if not current_sha and base_sha:
+    # I2: git failure is fail-closed — treat missing sha as stale.
+    if not current_sha:
         logger.warning("GROUNDING_CHECK: git rev-parse HEAD failed for %s, treating as stale", slug)
-        reason = "files_changed"
-        grounding_dict["valid"] = False
-        grounding_dict["invalidated_at"] = now
-        grounding_dict["invalidation_reason"] = reason
-        grounding_dict["changed_paths"] = []
-        state["grounding"] = grounding_dict
-        state["current"] = PreparePhase.RE_GROUNDING.value
-        await todos_db.write_state(slug, state)
+        grounding_mgr.invalidate(reason="files_changed", changed_paths=[])
+        writer.state.current = PreparePhase.RE_GROUNDING.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
-            {"slug": slug, "reason": reason, "changed_paths": []},
+            {"slug": slug, "reason": "files_changed", "changed_paths": []},
         )
         return True, ""  # loop to RE_GROUNDING
 
-    # Check for staleness
-    sha_changed = bool(current_sha and current_sha != base_sha)
-    # Backward compatibility: empty stored digest means "not yet recorded", not "changed".
-    # Also treat wrong-length digests (e.g. MD5 written by agents) as unrecorded.
-    digest_changed = bool(
-        stored_input_digest
-        and current_input_digest
-        and len(stored_input_digest) == len(current_input_digest)
-        and current_input_digest != stored_input_digest
-    )
-
-    # Check if referenced paths changed between base_sha and HEAD
-    changed_paths: list[str] = []
-    if sha_changed and referenced_paths and base_sha and current_sha:
+    # Collect files changed between base_sha and current_sha for reference-path diffing.
+    changed_files: set[str] = set()
+    if current_sha != base_sha:
         rc2, diff_output, _ = run_git_command(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
         if rc2 == 0:
             changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
-            changed_paths = [p for p in referenced_paths if p in changed_files]  # type: ignore[misc]
 
-    # Grounding staleness semantics:
-    # - Always stale when input digest changed.
-    # - If referenced paths are known, only stale when those paths changed.
-    # - Fall back to sha-level staleness only when referenced paths are unavailable.
-    references_known = bool(referenced_paths)
-    paths_stale = bool(changed_paths)
-    sha_fallback_stale = sha_changed and not references_known
-    is_stale = bool(digest_changed) or paths_stale or sha_fallback_stale
+    result = grounding_mgr.check(
+        current_sha=current_sha,
+        current_input_digest=current_input_digest,
+        changed_files=changed_files,
+    )
 
-    if is_stale:
-        reason = "input_updated" if digest_changed else "files_changed"
-        grounding_dict["valid"] = False
-        grounding_dict["invalidated_at"] = now
-        grounding_dict["invalidation_reason"] = reason
-        grounding_dict["changed_paths"] = changed_paths  # type: ignore[assignment]  # I1: persist actual changed paths
-        state["grounding"] = grounding_dict
-        state["current"] = PreparePhase.RE_GROUNDING.value
-        await todos_db.write_state(slug, state)
+    if result.is_stale:
+        grounding_mgr.invalidate(reason=result.reason, changed_paths=result.changed_paths)
+        writer.state.current = PreparePhase.RE_GROUNDING.value
+        await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event(
             "domain.software-development.prepare.grounding_invalidated",
-            {"slug": slug, "reason": reason, "changed_paths": changed_paths},
+            {"slug": slug, "reason": result.reason, "changed_paths": result.changed_paths},
         )
         return True, ""  # loop to RE_GROUNDING
 
-    # Fresh — transition to PREPARED
-    grounding_dict["base_sha"] = current_sha
-    grounding_dict["input_digest"] = current_input_digest
-    grounding_dict["last_grounded_at"] = now
-    grounding_dict["valid"] = True
-    state["grounding"] = grounding_dict
-    state["current"] = PreparePhase.PREPARED.value
-    await todos_db.write_state(slug, state)
+    # Fresh — refresh the baseline and transition to PREPARED.
+    grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
+    writer.state.current = PreparePhase.PREPARED.value
+    await _commit_writer(writer, todos_db, slug, state)
     _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
     return True, ""  # loop to PREPARED terminal
 
@@ -813,32 +736,30 @@ async def _prepare_step_re_grounding(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """RE_GROUNDING: dispatch plan update against changed files."""
-    grounding = state.get("grounding", {})
-    grounding_dict = {**default_state()["grounding"], **(grounding if isinstance(grounding, dict) else {})}  # type: ignore  # pylint: disable=line-too-long
-    changed_paths = grounding_dict.get("changed_paths", [])  # I1: actual changed paths, not all referenced
-    if not isinstance(changed_paths, list):
-        changed_paths = []
-    else:
-        changed_paths = [path for path in changed_paths if isinstance(path, str)]
+    """RE_GROUNDING: dispatch plan update against changed files.
 
-    # Advance base_sha so the next GROUNDING_CHECK compares from this point,
-    # not the original grounding — prevents infinite re-grounding loops.
-    rc, current_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
-    if rc == 0 and current_sha.strip():
-        grounding_dict["base_sha"] = current_sha.strip()
-        state["grounding"] = grounding_dict
+    Refreshes the stored grounding baseline to the current HEAD via
+    :meth:`GroundingManager.refresh` so the next grounding check starts from
+    the new commit — the concrete fix for the re-grounding loop.
+    """
+    writer = StateWriter(state)
+    grounding_mgr = GroundingManager(writer)
 
-    # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed
-    state["current"] = PreparePhase.PLAN_REVIEW.value
-    # Reset plan review verdict so fresh review runs
-    plan_review = state.get("plan_review", {})
-    if isinstance(plan_review, dict):
-        plan_review["verdict"] = ""
-    state["plan_review"] = plan_review
-    await todos_db.write_state(slug, state)
+    # Snapshot changed paths before refresh clears them from grounding state.
+    changed_paths = list(writer.grounding.changed_paths)
 
-    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."  # type: ignore[arg-type]  # pylint: disable=line-too-long
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
+    current_sha = current_sha_raw.strip() if rc == 0 else ""
+    if current_sha:
+        grounding_mgr.refresh(current_sha=current_sha)
+
+    # Set next phase to PLAN_REVIEW so re-grounded plan gets reviewed.
+    writer.state.current = PreparePhase.PLAN_REVIEW.value
+    # Reset plan review verdict so a fresh review runs.
+    writer.review("plan_review").verdict = ""
+    await _commit_writer(writer, todos_db, slug, state)
+
+    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
     guidance = await compose_agent_guidance(db)
     result = format_tool_call(
         ToolCallRequest(
@@ -854,9 +775,7 @@ async def _prepare_step_re_grounding(
                 f"against current codebase. {changed_note}"
             ),
             next_call=f"telec todo prepare {slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
-            ),
+            post_block=_worker_idle_post_block(slug),
         )
     )
     _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
@@ -870,11 +789,11 @@ async def _prepare_step_prepared(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PREPARED: terminal success state. Emits cleanup for all live slug sessions + self-end."""
-    dor = state.get("dor", {})
-    dor_score = dor.get("score") if isinstance(dor, dict) else None
-    if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
-        state["current"] = PreparePhase.GATE.value
-        await todos_db.write_state(slug, state)
+    writer = StateWriter(state)
+    dor = writer.state.dor
+    if dor is None or dor.score < DOR_READY_THRESHOLD:
+        writer.state.current = PreparePhase.GATE.value
+        await _commit_writer(writer, todos_db, slug, state)
         return True, ""  # loop back to gate
     live_sessions = await _find_all_live_sessions_for_slug(db, slug)
     return False, format_prepared(slug, session_ids_to_end=live_sessions)
@@ -882,8 +801,8 @@ async def _prepare_step_prepared(
 
 def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool, str]:
     """BLOCKED: terminal failure state."""
-    grounding = state.get("grounding", {})
-    blocker = str(grounding.get("invalidation_reason", "unknown")) if isinstance(grounding, dict) else "unknown"
+    writer = StateWriter(state)
+    blocker = writer.grounding.invalidation_reason or "unknown"
     _emit_prepare_event(
         "domain.software-development.prepare.blocked",
         {"slug": slug, "blocker": blocker},
@@ -935,9 +854,6 @@ async def _prepare_dispatch(  # pylint: disable=too-many-return-statements,too-m
     if phase == PreparePhase.BLOCKED:
         return _prepare_step_blocked(slug, state)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
-
-
-__all__ = ["_prepare_dispatch", "_restamp_artifact_digest_db"]
 
 
 __all__ = ["_prepare_dispatch"]

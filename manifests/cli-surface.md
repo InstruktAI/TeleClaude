@@ -580,7 +580,7 @@ Promote entry from icebox to roadmap
 
 ### `telec roadmap migrate-icebox`
 
-One-time migration: move icebox folders into todos/_icebox/
+One-time migration: move icebox folders into todos/\_icebox/
 
 ### `telec roadmap deliver`
 
@@ -864,4 +864,3 @@ Show observations around an anchor ID
 - `--before`: Observations before anchor (default: 3)
 - `--after`: Observations after anchor (default: 3)
 - `--project`: Filter by project name
-

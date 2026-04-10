@@ -4,7 +4,9 @@ All sub-modules import from here for shared definitions so that no circular
 dependencies arise from sub-modules importing from core.py.
 """
 
-# pylint: disable=cyclic-import  # Central type module participates in legacy next-machine import cycles.
+# pylint: disable=cyclic-import,useless-import-alias,unused-import
+# Central type module participates in legacy next-machine import cycles;
+# re-exports StateValue/StateScalar from teleclaude.types for backwards compatibility.
 
 from __future__ import annotations
 
@@ -14,8 +16,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TypedDict
 
-type StateScalar = str | bool | int | None
-type StateValue = StateScalar | list[StateValue] | dict[str, StateValue]
+# StateScalar and StateValue live in teleclaude.types.state_value so that
+# low-level Pydantic models (e.g. teleclaude.types.todos) can reference them
+# without importing from the next-machine feature package. Re-exported here
+# for backward compatibility with the historical import path.
+from teleclaude.types.state_value import StateScalar as StateScalar  # re-export
+from teleclaude.types.state_value import StateValue as StateValue  # re-export
 
 
 class FinalizeState(TypedDict, total=False):

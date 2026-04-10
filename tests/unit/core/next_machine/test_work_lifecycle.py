@@ -9,6 +9,7 @@ import pytest
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.next_machine.state_machine import TargetContext
+from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.next_machine.work_lifecycle import (
     _on_enter_finalize_handoff,
     _on_enter_finalize_ready,
@@ -200,8 +201,8 @@ def test_review_changes_happy_path(tmp_path: Path) -> None:
     mock_extract.assert_called_once_with(str(tmp_path), "test-slug")
 
 
-def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
-    """When get_head_commit returns empty, review_baseline_commit is not stamped and warning is logged."""
+def test_review_changes_empty_head_leaves_baseline_default_and_warns(tmp_path: Path) -> None:
+    """Empty get_head_commit leaves baseline at its typed default ("") and logs a warning."""
     state: StateData = {"review_round": 0, "resolved_findings": []}
 
     with (
@@ -211,22 +212,22 @@ def test_review_changes_empty_head_logs_warning(tmp_path: Path) -> None:
     ):
         result = _on_enter_review_changes(state, _ctx(tmp_path))
 
-    assert "review_baseline_commit" not in result
+    # Typed state always carries review_baseline_commit; empty head leaves the default "".
+    assert result["review_baseline_commit"] == ""
     mock_logger.warning.assert_called_once()
     assert result["review_round"] == 1
 
 
-def test_review_changes_defaults_non_int_round_to_zero(tmp_path: Path) -> None:
-    """When review_round is not an int, defaults to 0 and increments to 1."""
+def test_review_changes_rejects_non_int_round(tmp_path: Path) -> None:
+    """StateWriter rejects a non-int review_round fail-fast rather than silently coercing."""
     state: StateData = {"review_round": "garbage", "resolved_findings": []}
 
     with (
         patch(f"{_REVIEW_MODULE}.get_head_commit", return_value="abc"),
         patch(f"{_REVIEW_MODULE}._extract_finding_ids", return_value=[]),
+        pytest.raises(StateMutationError),
     ):
-        result = _on_enter_review_changes(state, _ctx(tmp_path))
-
-    assert result["review_round"] == 1
+        _on_enter_review_changes(state, _ctx(tmp_path))
 
 
 # ---------------------------------------------------------------------------
@@ -257,8 +258,8 @@ def test_review_approved_happy_path_merges_findings(tmp_path: Path) -> None:
     mock_head.assert_called_once_with(str(tmp_path))
 
 
-def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
-    """When get_head_commit returns empty, review_baseline_commit is not stamped and warning is logged."""
+def test_review_approved_empty_head_leaves_baseline_default_and_warns(tmp_path: Path) -> None:
+    """Empty get_head_commit leaves baseline at its typed default ("") and logs a warning."""
     state: StateData = {"review_round": 0, "unresolved_findings": [], "resolved_findings": []}
 
     with (
@@ -267,7 +268,7 @@ def test_review_approved_empty_head_logs_warning(tmp_path: Path) -> None:
     ):
         result = _on_enter_review_approved(state, _ctx(tmp_path))
 
-    assert "review_baseline_commit" not in result
+    assert result["review_baseline_commit"] == ""
     mock_logger.warning.assert_called_once()
     assert result["review_round"] == 1
 
