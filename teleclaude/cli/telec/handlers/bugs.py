@@ -4,15 +4,18 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
-from teleclaude.api_models import CreateSessionResponseDTO, TodoDumpRequest
-from teleclaude.cli.api_client import TelecAPIClient
+from instrukt_ai_logging import get_logger
+
+from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.slug import normalize_slug
+
+_log = get_logger(__name__)
 
 __all__ = [
     "_handle_bugs",
@@ -21,6 +24,26 @@ __all__ = [
     "_handle_bugs_report",
     "_resolve_project_by_name",
 ]
+
+
+def _emit_bug_dumped_event(slug: str, project_root: Path) -> None:
+    """Emit ``todo_dumped`` with ``kind=bug`` so the lifecycle router dispatches.
+
+    The lifecycle router owns ``/next-work`` dispatch for bug lanes; the CLI
+    only publishes the intent via the event and lets the router decide.
+    """
+    try:
+        envelope = EventEnvelope(
+            event="domain.software-development.planning.todo_dumped",
+            source="telec-cli",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            description=f"Bug dumped: {slug}",
+            payload={"slug": slug, "kind": "bug", "project_root": str(project_root)},
+        )
+        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
+    except Exception:
+        _log.warning("Bug dumped but notification emission failed: %s", slug)
 
 
 def _resolve_project_by_name(name: str) -> Path:
@@ -102,6 +125,7 @@ def _handle_bugs_create(args: list[str]) -> None:
         timeout=10.0,
     )
     if isinstance(result, dict) and result.get("status") == "ok":
+        _emit_bug_dumped_event(slug, project_root)
         print(f"Created bug: {slug}")
     elif isinstance(result, dict) and result.get("detail"):
         print(f"Error: {result['detail']}")
@@ -179,33 +203,8 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(f"Error: {detail}")
         raise SystemExit(1)
 
-    # Dispatch orchestrator on mainline — the state machine handles branches/worktrees
-    async def _dispatch_bug_fix() -> CreateSessionResponseDTO:
-        api = TelecAPIClient()
-        await api.connect()
-        try:
-            return await api.run_session(
-                command="/next-work",
-                args=slug,
-                project_path=str(project_root),
-                agent="claude",
-                thinking_mode="slow",
-                detach=True,
-            )
-        finally:
-            await api.close()
-
-    try:
-        result = asyncio.run(_dispatch_bug_fix())
-        print(f"Created bug: {slug}")
-        print(f"Orchestrator session: {result.session_id}")
-    except Exception as exc:
-        print(f"Error dispatching orchestrator: {exc}")
-        print(f"Bug created in DB: {slug}")
-        print(
-            f"Start orchestrator manually: telec sessions run --command /next-work "
-            f"--args {slug} --agent claude --mode slow --detach"
-        )
+    _emit_bug_dumped_event(slug, project_root)
+    print(f"Created bug: {slug}")
 
 
 def _handle_bugs_list(args: list[str]) -> None:

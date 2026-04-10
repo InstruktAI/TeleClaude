@@ -1,4 +1,8 @@
-"""Prepare Quality cartridge — assesses DOR quality for todo lifecycle events."""
+"""Lifecycle router cartridge — routes todo lifecycle events by payload.kind.
+
+Non-dump planning triggers flow through DOR assessment; todo_dumped events
+are dispatched to the correct orchestrator based on ``payload.kind``.
+"""
 
 from __future__ import annotations
 
@@ -358,10 +362,10 @@ def _find_project_root() -> Path:
     return resolve_main_repo_root(Path.cwd())
 
 
-class PrepareCartridge:
-    """Cartridge that handles prepare-phase events — DOR scoring and agent dispatch."""
+class LifecycleRouterCartridge:
+    """Cartridge that routes todo lifecycle events — dump dispatch and DOR scoring."""
 
-    name = "prepare"
+    name = "lifecycle-router"
 
     def describe(self) -> str:
         """Return cartridge name."""
@@ -380,9 +384,11 @@ class PrepareCartridge:
             logger.warning("prepare: event missing slug, skipping", event=event.event)
             return event
 
-        # todo_dumped → dispatch a prepare agent instead of inline assessment
+        # todo_dumped → route by payload.kind (no todo-state reads)
         if event.event == f"{_PLANNING_PREFIX}todo_dumped":
-            await self._dispatch_prepare_agent(slug)
+            kind_raw = event.payload.get("kind")
+            kind = kind_raw if isinstance(kind_raw, str) else None
+            await self._dispatch_router_lane(slug, kind)
             return event
 
         start = time.monotonic()
@@ -396,26 +402,79 @@ class PrepareCartridge:
 
         return event
 
-    async def _dispatch_prepare_agent(self, slug: str) -> None:
-        """Spawn an agent session to run /next-prepare for the dumped todo."""
-        from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
+    async def _dispatch_router_lane(self, slug: str, kind: str | None) -> None:
+        """Dispatch a todo_dumped event to the correct orchestrator based on ``kind``.
+
+        Routing is a pure function of the ``kind`` payload field: no todo state
+        is read during dispatch. Missing and unknown kinds degrade to the
+        default todo lane.
+        """
+        from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient  # pylint: disable=import-outside-toplevel
 
         project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
+        dispatch_args: RunSessionArgs
+        resolved_kind: str
+
+        if kind == "prepped":
+            resolved_kind = "prepped"
+            dispatch_args = {
+                "command": "/next-work",
+                "project_path": project_path,
+                "args": slug,
+                "detach": True,
+            }
+        elif kind == "bug":
+            resolved_kind = "bug"
+            dispatch_args = {
+                "command": "/next-work",
+                "project_path": project_path,
+                "args": slug,
+                "agent": "claude",
+                "thinking_mode": "slow",
+                "detach": True,
+            }
+        elif kind == "todo":
+            resolved_kind = "todo"
+            dispatch_args = {
+                "command": "/next-prepare",
+                "project_path": project_path,
+                "args": slug,
+                "detach": True,
+            }
+        else:
+            if kind is not None:
+                logger.warning(
+                    "lifecycle-router: unknown kind, degrading to todo lane",
+                    slug=slug,
+                    kind=kind,
+                )
+            resolved_kind = "todo"
+            dispatch_args = {
+                "command": "/next-prepare",
+                "project_path": project_path,
+                "args": slug,
+                "detach": True,
+            }
+
         try:
             api = TelecAPIClient()
             await api.connect()
             try:
-                await api.run_session(
-                    command="/next-prepare",
-                    project_path=project_path,
-                    args=slug,
-                    detach=True,
-                )
+                await api.run_session(**dispatch_args)
             finally:
                 await api.close()
-            logger.info("prepare: dispatched prepare agent for %s", slug)
+            logger.info(
+                "lifecycle-router: dispatched lane",
+                slug=slug,
+                kind=resolved_kind,
+                command=dispatch_args["command"],
+            )
         except Exception:  # pylint: disable=broad-exception-caught
-            logger.exception("prepare: failed to dispatch prepare agent", slug=slug)
+            logger.exception(
+                "lifecycle-router: failed to dispatch lane",
+                slug=slug,
+                kind=resolved_kind,
+            )
 
     async def _assess(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
         self, slug: str, _event: EventEnvelope, context: PipelineContext

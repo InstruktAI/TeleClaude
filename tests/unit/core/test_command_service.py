@@ -114,7 +114,7 @@ class TestCommandRoleMap:
         """Migrated daemon-internal callers stop calling core session services directly."""
         offenders: list[str] = []
         target_paths = (
-            "teleclaude/events/cartridges/prepare.py",
+            "teleclaude/events/cartridges/lifecycle_router.py",
             "teleclaude/hooks/whatsapp_handler.py",
         )
 

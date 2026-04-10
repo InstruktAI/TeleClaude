@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -11,20 +10,10 @@ import pytest
 bugs = importlib.import_module("teleclaude.cli.telec.handlers.bugs")
 
 
-def _close_and_return(value: object) -> Callable[[object], object]:
-    def _runner(coro: object) -> object:
-        close = getattr(coro, "close", None)
-        if callable(close):
-            close()
-        return value
-
-    return _runner
-
-
 def test_handle_bugs_dispatches_create(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 
-    monkeypatch.setattr(bugs, "_handle_bugs_create", lambda args: received.append(args))
+    monkeypatch.setattr(bugs, "_handle_bugs_create", received.append)
 
     bugs._handle_bugs(["create", "sample-bug"])
 
@@ -48,7 +37,7 @@ def test_handle_bugs_create_calls_dump_api(
     assert api_calls[0] == ("POST", "/todos/dump")
 
 
-def test_handle_bugs_report_generates_slug_and_dispatches(
+def test_handle_bugs_report_generates_slug_and_dumps(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -56,13 +45,11 @@ def test_handle_bugs_report_generates_slug_and_dispatches(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "example-bug")
     monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "fix-example-bug"})
-    monkeypatch.setattr(bugs.asyncio, "run", _close_and_return(SimpleNamespace(session_id="sess-123")))
 
     bugs._handle_bugs_report(["Example bug"])
 
     output = capsys.readouterr().out
     assert "fix-example-bug" in output
-    assert "sess-123" in output
 
 
 def _make_trusted_dir(name: str, path: str) -> SimpleNamespace:
@@ -107,7 +94,6 @@ def test_handle_bugs_report_with_project_flag(
 
     monkeypatch.setattr(bugs, "normalize_slug", lambda _text: "some-bug")
     monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "fix-some-bug"})
-    monkeypatch.setattr(bugs.asyncio, "run", _close_and_return(SimpleNamespace(session_id="sess-456")))
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
     with patch("teleclaude.config.config", cfg):
@@ -115,7 +101,6 @@ def test_handle_bugs_report_with_project_flag(
 
     output = capsys.readouterr().out
     assert "fix-some-bug" in output
-    assert "sess-456" in output
 
 
 def test_handle_bugs_create_with_project_flag(

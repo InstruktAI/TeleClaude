@@ -1,15 +1,14 @@
-"""Characterization tests for teleclaude.events.cartridges.prepare."""
+"""Characterization tests for teleclaude.events.cartridges.lifecycle_router."""
 
 from __future__ import annotations
 
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.events.cartridges.prepare import (
-    PrepareCartridge,
+from teleclaude.events.cartridges.lifecycle_router import (
+    LifecycleRouterCartridge,
     _build_dependency_section,
     _fill_plan_gaps,
     _fill_requirements_gaps,
@@ -348,13 +347,13 @@ def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None
     assert result is True
 
 
-# ── PrepareCartridge.process ───────────────────────────────────────────
+# ── LifecycleRouterCartridge.process ───────────────────────────────────
 
 
 @pytest.mark.asyncio
 async def test_non_planning_event_passes_through():
     """Events outside _PLANNING_PREFIX pass through without assessment."""
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event("system.worker.started")
     ctx = MagicMock()
 
@@ -366,7 +365,7 @@ async def test_non_planning_event_passes_through():
 @pytest.mark.asyncio
 async def test_planning_event_not_in_trigger_set_passes_through():
     """Planning events not in _TRIGGER_EVENTS pass through without assessment."""
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event("domain.software-development.planning.other_event")
     ctx = MagicMock()
 
@@ -378,7 +377,7 @@ async def test_planning_event_not_in_trigger_set_passes_through():
 @pytest.mark.asyncio
 async def test_event_without_slug_passes_through():
     """Trigger events missing slug field pass through unchanged."""
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = EventEnvelope(
         event="domain.software-development.planning.artifact_changed",
         source="test",
@@ -397,7 +396,7 @@ async def test_event_without_slug_passes_through():
 @pytest.mark.asyncio
 async def test_assessment_failure_does_not_propagate():
     """Exceptions during _assess are swallowed — event is still returned."""
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event(slug="my-slug")
     ctx = MagicMock()
 
@@ -407,55 +406,7 @@ async def test_assessment_failure_does_not_propagate():
     assert result is event
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_todo_dumped_dispatches_prepare_agent_via_edge_session_route() -> None:
-    """todo_dumped dispatches /next-prepare through the API edge instead of CommandService.run_slash_command."""
-    captured = SimpleNamespace(
-        connected=False,
-        closed=False,
-        command=None,
-        args=None,
-        project_path=None,
-        detach=None,
-    )
-
-    async def _connect() -> None:
-        captured.connected = True
-
-    async def _close() -> None:
-        captured.closed = True
-
-    async def _run_session(**kwargs: object) -> dict[str, str]:
-        captured.command = str(kwargs["command"])
-        captured.args = str(kwargs["args"])
-        captured.project_path = str(kwargs["project_path"])
-        captured.detach = bool(kwargs["detach"])
-        return {"session_id": "sess-prepare", "tmux_session_name": "tmux-prepare"}
-
-    def _fake_api_client() -> SimpleNamespace:
-        return SimpleNamespace(connect=_connect, close=_close, run_session=_run_session)
-
-    cartridge = PrepareCartridge()
-    event = _make_event("domain.software-development.planning.todo_dumped", slug="my-slug")
-    ctx = MagicMock()
-
-    with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client),
-        patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
-    ):
-        result = await cartridge.process(event, ctx)
-
-    assert result is event
-    assert captured.connected is True
-    assert captured.closed is True
-    assert captured.command == "/next-prepare"
-    assert captured.args == "my-slug"
-    assert captured.project_path == "/project"
-    assert captured.detach is True
-
-
-# ── PrepareCartridge._assess public behavior ───────────────────────────
+# ── LifecycleRouterCartridge._assess public behavior ───────────────────
 
 
 def _make_mock_todos_db(requirements: str = "", plan: str = "") -> AsyncMock:
@@ -485,13 +436,13 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
     ctx.db.update_agent_status = AsyncMock()
     ctx.db.resolve_notification = AsyncMock()
 
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event()
 
     with (
-        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock) as emit_event,
+        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock) as emit_event,
         patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)
@@ -528,13 +479,13 @@ async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
     ctx.db.update_agent_status = AsyncMock()
     ctx.db.resolve_notification = AsyncMock()
 
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event()
 
     with (
-        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare.emit_event", new_callable=AsyncMock),
+        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock),
         patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)
@@ -553,14 +504,14 @@ async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
     ctx = MagicMock()
     ctx.db.find_by_group_key = AsyncMock(return_value=None)
 
-    cartridge = PrepareCartridge()
+    cartridge = LifecycleRouterCartridge()
     event = _make_event()
 
     emit_mock = AsyncMock()
     with (
-        patch("teleclaude.events.cartridges.prepare._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.prepare._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.prepare.emit_event", emit_mock),
+        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
+        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
+        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", emit_mock),
         patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
     ):
         result = await cartridge.process(event, ctx)

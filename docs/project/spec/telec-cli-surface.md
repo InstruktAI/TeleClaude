@@ -203,9 +203,9 @@ subcommands:
     description: 'Manage bug reports and fixes.'
     subcommands:
       report:
-        description: 'Report a bug, scaffold, and dispatch fix.'
+        description: 'Scaffold a bug from a description; lifecycle router dispatches /next-work.'
       create:
-        description: 'Scaffold bug files for a slug.'
+        description: 'Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work.'
       list:
         description: 'List in-flight bug fixes with status (prefers worktree state when present).'
   auth:

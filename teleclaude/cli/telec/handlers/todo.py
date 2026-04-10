@@ -253,6 +253,11 @@ def _handle_todo_dump(args: list[str]) -> None:
         print(_usage("todo", "dump"))
         raise SystemExit(1)
 
+    # Resolve the lifecycle-router lane for this dump. The CLI stamps this as
+    # the first-class ``kind`` on the todo_dumped event so the lifecycle
+    # router can dispatch from payload alone, without re-reading todo state.
+    event_kind = "prepped" if prepped else "todo"
+
     # Create via daemon API — writes state + artifact + roadmap entry to todos.db.
     # When --prepped, kind="prepped" routes the server-side dump to write the content
     # as the implementation-plan artifact and stamp the todo as ready for build.
@@ -288,7 +293,7 @@ def _handle_todo_dump(args: list[str]) -> None:
             level=EventLevel.WORKFLOW,
             domain="software-development",
             description=f"Todo dumped: {slug}",
-            payload={"slug": slug, "project_root": str(Path.cwd())},
+            payload={"slug": slug, "kind": event_kind, "project_root": str(Path.cwd())},
         )
         tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
     except Exception:

@@ -30,7 +30,7 @@ def register_software_development(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
             idempotency_fields=["slug"],
-            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
+            lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "kind"]),
         )
     )
     catalog.register(

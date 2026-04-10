@@ -191,7 +191,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "revive": CommandDef(
                 desc="Revive session by TeleClaude session ID",
-                args="<session_id> [--agent <name>] [--attach]",
+                args="<session_id>",
                 flags=[
                     _H,
                     Flag("--agent", desc="Treat session_id as native agent session ID for the given agent"),
@@ -676,7 +676,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Bug reporting and tracking",
         subcommands={
             "report": CommandDef(
-                desc="Report a bug, scaffold, and dispatch fix",
+                desc="Scaffold a bug from a description; lifecycle router dispatches /next-work",
                 args="<description> [--slug <slug>] [--body <text>] [--project <name>]",
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
@@ -686,7 +686,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "create": CommandDef(
-                desc="Scaffold bug files for a slug",
+                desc="Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work",
                 args="<slug> [--project <name>]",
                 flags=[
                     Flag("--project", desc="Project name (from trusted_dirs)"),

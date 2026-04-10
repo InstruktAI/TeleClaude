@@ -5,8 +5,8 @@ from teleclaude.events.cartridges.correlation import CorrelationCartridge
 from teleclaude.events.cartridges.dedup import DeduplicationCartridge
 from teleclaude.events.cartridges.enrichment import EnrichmentCartridge
 from teleclaude.events.cartridges.integration_trigger import IntegrationTriggerCartridge
+from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.cartridges.notification import NotificationProjectorCartridge
-from teleclaude.events.cartridges.prepare import PrepareCartridge
 from teleclaude.events.cartridges.trust import TrustCartridge
 
 __all__ = [
@@ -15,7 +15,7 @@ __all__ = [
     "DeduplicationCartridge",
     "EnrichmentCartridge",
     "IntegrationTriggerCartridge",
+    "LifecycleRouterCartridge",
     "NotificationProjectorCartridge",
-    "PrepareCartridge",
     "TrustCartridge",
 ]

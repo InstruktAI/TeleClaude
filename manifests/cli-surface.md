@@ -8,15 +8,19 @@ Manage agent sessions
 
 List sessions (default: spawned by current, --all for all)
 
+**Usage:** `telec sessions list [--all] [--closed] [--job <value>]`
+
 **Flags:**
 
 - `--all`: Show all sessions
 - `--closed`: Include closed sessions
-- `--job`: Filter by session_metadata.job value
+- `--job`: Filter by job value
 
 ### `telec sessions start`
 
 Start a new agent session
+
+**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--title <title>] [--direct] [--detach]`
 
 **Flags:**
 
@@ -38,7 +42,7 @@ Start a new agent session
 
 Send a message to a running session
 
-**Usage:** `telec sessions send <session_id> [<message>]`
+**Usage:** `telec sessions send <session_id> [<message>] [--direct] [--close-link]`
 
 **Flags:**
 
@@ -60,7 +64,7 @@ Send a message to a running session
 
 Get recent messages from a session's transcript
 
-**Usage:** `telec sessions tail <session_id>`
+**Usage:** `telec sessions tail <session_id> [--since <ts>] [--tools] [--thinking]`
 
 **Flags:**
 
@@ -72,6 +76,8 @@ Get recent messages from a session's transcript
 ### `telec sessions run`
 
 Run a slash command on a new agent session
+
+**Usage:** `telec sessions run [--command <cmd>] [--project <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--detach] [--additional-context <ctx>]`
 
 **Flags:**
 
@@ -113,7 +119,7 @@ Revive session by TeleClaude session ID
 
 End (terminate) a session
 
-**Usage:** `telec sessions end <session_id>`
+**Usage:** `telec sessions end <session_id> [--computer <host>]`
 
 **Flags:**
 
@@ -136,7 +142,7 @@ Restart an agent session ('self' to restart own session)
 
 Send a formatted result to the session's user
 
-**Usage:** `telec sessions result <content>`
+**Usage:** `telec sessions result <content> [--format <fmt>]`
 
 **Flags:**
 
@@ -145,6 +151,8 @@ Send a formatted result to the session's user
 ### `telec sessions file`
 
 Send a file to the session's user
+
+**Usage:** `telec sessions file [--path <path>] [--filename <name>] [--caption <text>]`
 
 **Flags:**
 
@@ -156,6 +164,8 @@ Send a file to the session's user
 
 Render a rich widget to the session's user
 
+**Usage:** `telec sessions widget [--data <json>]`
+
 **Flags:**
 
 - `--data`: Widget expression as JSON
@@ -163,6 +173,8 @@ Render a rich widget to the session's user
 ### `telec sessions escalate`
 
 Escalate to an admin via Discord
+
+**Usage:** `telec sessions escalate [--customer <name>] [--reason <text>] [--summary <text>]`
 
 **Flags:**
 
@@ -186,6 +198,8 @@ Manage project inventory
 
 List projects on local and remote computers
 
+**Usage:** `telec projects list [--computer <host>]`
+
 **Flags:**
 
 - `--computer`: Filter to a specific computer
@@ -202,7 +216,7 @@ Get current availability for all agents
 
 Set dispatch status for a specific agent
 
-**Usage:** `telec agents status <agent>`
+**Usage:** `telec agents status <agent> [--status <val>] [--reason <text>] [--until <ts>] [--clear]`
 
 **Flags:**
 
@@ -219,6 +233,8 @@ Manage internal Redis Stream channels
 
 List active channels
 
+**Usage:** `telec channels list [--project <name>]`
+
 **Flags:**
 
 - `--project`: Filter by project name
@@ -227,7 +243,7 @@ List active channels
 
 Publish a message to a channel
 
-**Usage:** `telec channels publish <channel>`
+**Usage:** `telec channels publish <channel> [--data <json>]`
 
 **Flags:**
 
@@ -245,11 +261,11 @@ Fetch durable operation status by operation_id
 
 ## `telec init`
 
-Initialize docs sync, auto-rebuild watcher, and optional project enrichment
+Initialize docs sync, todo watcher services, and optional project enrichment
 
 **Notes:**
 
-- Sets up git hooks, syncs artifacts, installs file watchers.
+- Sets up git hooks, syncs artifacts, installs docs sync and todo watcher services.
 - Optionally runs AI-driven project analysis to generate doc snippets.
 - First init offers enrichment; re-init offers refresh of existing analysis.
 - Prompts for release-channel enrollment (alpha/beta/stable).
@@ -261,6 +277,8 @@ Print version, channel, and commit
 ## `telec sync`
 
 Validate, build indexes, and deploy artifacts
+
+**Usage:** `telec sync [--warn-only] [--validate-only]`
 
 **Flags:**
 
@@ -280,6 +298,8 @@ Query documentation snippets
 ### `telec docs index`
 
 List snippet IDs and metadata (phase 1)
+
+**Usage:** `telec docs index [--baseline-only] [--third-party] [--areas <types>] [--domains <names>]`
 
 **Flags:**
 
@@ -324,7 +344,7 @@ Validate todo files and state.yaml schema
 
 Run the Phase A (prepare) state machine
 
-**Usage:** `telec todo prepare [<slug>]`
+**Usage:** `telec todo prepare [<slug>] [--invalidate-check] [--changed-paths <paths>]`
 
 **Flags:**
 
@@ -347,12 +367,14 @@ Run the Phase C (integrate) state machine
 
 Mark a work or prepare phase in state.yaml
 
-**Usage:** `telec todo mark-phase <slug>`
+**Usage:** `telec todo mark-phase <slug> [--target <name>] [--phase <phase>] [--status <status>] [--force]`
 
 **Flags:**
 
-- `--phase`: Phase: build, review, prepare, requirements_review, plan_review
-- `--status`: Work: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work/needs_decision; Prepare lifecycle: prepared, gate, etc.
+- `--target`: Target state name (e.g. build_complete, review_approved, prepared)
+- `--phase`: Legacy: build, review, prepare, requirements_review, plan_review
+- `--status`: Legacy: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work/needs_decision
+- `--force`: Bypass worktree and uncommitted-changes guards
 
 ### `telec todo mark-ready`
 
@@ -362,36 +384,16 @@ Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare li
 
 **Notes:**
 
-- Promotes input.md → requirements.md, generates implementation-plan.md and quality-checklist.md.
-- Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved.
+- Requires requirements and implementation-plan artifacts to already exist with content.
+- Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved, generates quality-checklist.
 - Use for straightforward work items that don't need the full prepare ceremony.
 - Accepts multiple slugs to fast-track a batch in one call.
-
-### `telec todo mark-finalize-ready`
-
-Record finalize readiness in worktree state.yaml
-
-**Usage:** `telec todo mark-finalize-ready <slug>`
-
-**Flags:**
-
-- `--worker-session-id`: Finalizer worker session that reported FINALIZE_READY
-
-### `telec todo state`
-
-Inspect state, fire transition, or rewind
-
-**Usage:** `telec todo state <slug> [<transition>]`
-
-**Flags:**
-
-- `--rewind`: Rewind to previous state
 
 ### `telec todo set-deps`
 
 Set dependencies for a work item in the roadmap
 
-**Usage:** `telec todo set-deps <slug>`
+**Usage:** `telec todo set-deps <slug> [--after <slugs>]`
 
 **Flags:**
 
@@ -401,7 +403,7 @@ Set dependencies for a work item in the roadmap
 
 Mechanically verify artifacts for a phase (build or review)
 
-**Usage:** `telec todo verify-artifacts <slug>`
+**Usage:** `telec todo verify-artifacts <slug> [--phase <phase>]`
 
 **Flags:**
 
@@ -410,28 +412,32 @@ Mechanically verify artifacts for a phase (build or review)
 **Notes:**
 
 - Exits 0 on pass, 1 on failure.
-- Checks artifact presence and consistency — does not run tests or demo.
+- Checks artifact presence and consistency — does not run tests.
 - Integrated into next_work() before dispatching review.
 
 ### `telec todo dump`
 
 Fire-and-forget brain dump with notification trigger
 
-**Usage:** `telec todo dump <slug> <content>`
+**Usage:** `telec todo dump <slug> <content> [--after <deps>] [--draft] [--prepped]`
 
 **Flags:**
 
 - `--after`: Comma-separated dependency slugs
+- `--draft`: Create silently — skip domain event so no cartridge picks it up
+- `--prepped`: Content is a complete plan; mark todo prepped and ready for build
 
 **Notes:**
 
 - Emits todo.dumped notification for autonomous processing.
+- Use --draft to stage an idea without triggering autonomous pickup.
+- Use --prepped when content is a complete implementation plan: content becomes the implementation-plan artifact, kind=prepped, plan_review=approve, requirements_review=skipped, ready for build.
 
 ### `telec todo split`
 
 Split a todo into child items (container transition)
 
-**Usage:** `telec todo split <slug>`
+**Usage:** `telec todo split <slug> [--into <child>]`
 
 **Flags:**
 
@@ -460,6 +466,48 @@ Create a reviewed todo from uncommitted changes on main
 - Creates todo scaffold, sets state to build:complete, ready for review.
 - After running, follow the printed instructions to commit and dispatch.
 
+### `telec todo artifacts`
+
+Manage todo artifacts in the database
+
+#### `telec todo artifacts list`
+
+List artifacts for a todo
+
+**Usage:** `telec todo artifacts list <slug>`
+
+#### `telec todo artifacts read`
+
+Read a todo artifact
+
+**Usage:** `telec todo artifacts read <slug> <name>`
+
+#### `telec todo artifacts write`
+
+Write a todo artifact
+
+**Usage:** `telec todo artifacts write <slug> <name> <content>`
+
+### `telec todo show`
+
+Show full state payload for a todo
+
+**Usage:** `telec todo show <slug>`
+
+### `telec todo stamp`
+
+Stamp a verdict, build status, or DOR result into todo state
+
+**Usage:** `telec todo stamp <slug> [--verdict <v>] [--build <b>] [--dor-score <n>] [--dor-status <s>] [--grounding-invalidated]`
+
+**Flags:**
+
+- `--verdict`: approve | needs_work | needs_decision
+- `--build`: complete
+- `--dor-score`: DOR score (integer)
+- `--dor-status`: pass | fail
+- `--grounding-invalidated`: Mark grounding as invalid
+
 ## `telec roadmap`
 
 Manage the work item roadmap
@@ -467,6 +515,8 @@ Manage the work item roadmap
 ### `telec roadmap list`
 
 List roadmap entries (source of truth for todo status)
+
+**Usage:** `telec roadmap list [--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--json]`
 
 **Flags:**
 
@@ -480,7 +530,7 @@ List roadmap entries (source of truth for todo status)
 
 Add entry to the roadmap
 
-**Usage:** `telec roadmap add <slug>`
+**Usage:** `telec roadmap add <slug> [--group <label>] [--after <slugs>] [--before <slug>] [--description <text>]`
 
 **Flags:**
 
@@ -499,7 +549,7 @@ Remove entry from the roadmap
 
 Reorder an entry in the roadmap
 
-**Usage:** `telec roadmap move <slug>`
+**Usage:** `telec roadmap move <slug> [--before <slug>] [--after <slug>]`
 
 **Flags:**
 
@@ -510,7 +560,7 @@ Reorder an entry in the roadmap
 
 Set dependencies for an entry
 
-**Usage:** `telec roadmap deps <slug>`
+**Usage:** `telec roadmap deps <slug> [--after <slugs>]`
 
 **Flags:**
 
@@ -530,13 +580,13 @@ Promote entry from icebox to roadmap
 
 ### `telec roadmap migrate-icebox`
 
-One-time migration: move icebox folders into todos/_icebox/
+One-time migration: move icebox folders into todos/\_icebox/
 
 ### `telec roadmap deliver`
 
 Move entry to delivered
 
-**Usage:** `telec roadmap deliver <slug>`
+**Usage:** `telec roadmap deliver <slug> [--commit <hash>]`
 
 **Flags:**
 
@@ -548,9 +598,9 @@ Bug reporting and tracking
 
 ### `telec bugs report`
 
-Report a bug, scaffold, and dispatch fix
+Scaffold a bug from a description; lifecycle router dispatches /next-work
 
-**Usage:** `telec bugs report <description>`
+**Usage:** `telec bugs report <description> [--slug <slug>] [--body <text>] [--project <name>]`
 
 **Flags:**
 
@@ -560,9 +610,9 @@ Report a bug, scaffold, and dispatch fix
 
 ### `telec bugs create`
 
-Scaffold bug files for a slug
+Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work
 
-**Usage:** `telec bugs create <slug>`
+**Usage:** `telec bugs create <slug> [--project <name>]`
 
 **Flags:**
 
@@ -580,7 +630,7 @@ Manage content pipeline
 
 Fire-and-forget content dump to publications inbox
 
-**Usage:** `telec content dump <description-or-text>`
+**Usage:** `telec content dump <description-or-text> [--slug <slug>] [--tags <tags>] [--author <name>]`
 
 **Flags:**
 
@@ -602,6 +652,8 @@ Event catalog and platform commands
 ### `telec events list`
 
 List event schemas: type, level, domain, visibility, description, actionable
+
+**Usage:** `telec events list [--domain <name>]`
 
 **Flags:**
 
@@ -669,6 +721,7 @@ Manage people
 **Notes:**
 
 - To edit people's subscriptions, modify the person config: ~/.teleclaude/people/{name}/teleclaude.yml
+- --expertise JSON shape: {"<domain>": "<level>", "<domain>": {"<sub-area>": "<level>"}}. Levels: novice, intermediate, advanced, expert. Example: '{"python": "expert", "typescript": {"backend": "advanced", "frontend": "intermediate"}}'
 
 #### `telec config people list`
 
@@ -678,13 +731,19 @@ List people
 
 Add a person
 
+**Usage:** `telec config people add <name> --email <email> --role <role> [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>]`
+
 #### `telec config people edit`
 
 Edit a person
 
+**Usage:** `telec config people edit <name> [--email <email>] [--role <role>] [--expertise '<json>'] [--telegram-user <user>] [--telegram-id <id>]`
+
 #### `telec config people remove`
 
 Remove a person
+
+**Usage:** `telec config people remove <name>`
 
 ### `telec config env`
 
@@ -710,11 +769,23 @@ Generate invite links for a person
 
 Search and view agent session history
 
+### `telec history list`
+
+List session summaries from mirrors
+
+**Usage:** `telec history list [--identity <email>] [--project <name>] [--limit <n>]`
+
+**Flags:**
+
+- `--identity`: Filter by human identity (email or key)
+- `--project`: Filter by project name
+- `--limit`: Max results (default: 20)
+
 ### `telec history search`
 
 Search agent session transcripts
 
-**Usage:** `telec history search [terms...]`
+**Usage:** `telec history search [terms...] [--agent <name>] [--computer <host>] [--limit <n>]`
 
 **Flags:**
 
@@ -726,7 +797,7 @@ Search agent session transcripts
 
 Show full transcript for a session
 
-**Usage:** `telec history show <session-id>`
+**Usage:** `telec history show <session-id> [--agent <name>] [--computer <host>] [--thinking] [--raw] [--tail <n>]`
 
 **Flags:**
 
@@ -744,6 +815,8 @@ Search and manage memory observations
 
 List memory observations
 
+**Usage:** `telec memories list [--limit <n>] [--type <type>] [--project <name>]`
+
 **Flags:**
 
 - `--limit`: Max results (default: 50)
@@ -754,7 +827,7 @@ List memory observations
 
 Search memory observations
 
-**Usage:** `telec memories search <query>`
+**Usage:** `telec memories search <query> [--limit <n>] [--type <type>] [--project <name>]`
 
 **Flags:**
 
@@ -766,7 +839,7 @@ Search memory observations
 
 Save a memory observation
 
-**Usage:** `telec memories save <text>`
+**Usage:** `telec memories save <text> [--title <title>] [--type <type>] [--project <name>]`
 
 **Flags:**
 
@@ -784,11 +857,10 @@ Delete a memory observation by ID
 
 Show observations around an anchor ID
 
-**Usage:** `telec memories timeline <id>`
+**Usage:** `telec memories timeline <id> [--before <n>] [--after <n>] [--project <name>]`
 
 **Flags:**
 
 - `--before`: Observations before anchor (default: 3)
 - `--after`: Observations after anchor (default: 3)
 - `--project`: Filter by project name
-
