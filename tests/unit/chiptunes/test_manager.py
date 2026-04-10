@@ -8,12 +8,12 @@ import socket
 import threading
 from collections.abc import Generator, Mapping
 from pathlib import Path
-from typing import Any
 
 import pytest
 
 import teleclaude.chiptunes.manager as manager_module
 from teleclaude.chiptunes.manager import ChiptunesManager
+from teleclaude.chiptunes.types import ChiptunesState
 
 
 class _FakeWorkerServer:
@@ -172,8 +172,8 @@ class TestChiptunesManagerIPC:
     ) -> None:
         sock_path = fake_worker._socket_path
         manager = _make_manager(monkeypatch, tmp_path, sock_path)
-        changes: list[dict[str, Any]] = []
-        manager.on_state_change = lambda state: changes.append(state)
+        changes: list[ChiptunesState] = []
+        manager.on_state_change = changes.append
 
         manager._connect()
         threading.Event().wait(0.2)
@@ -226,8 +226,8 @@ class TestChiptunesManagerIPC:
     ) -> None:
         sock_path = fake_worker._socket_path
         manager = _make_manager(monkeypatch, tmp_path, sock_path)
-        changes: list[dict[str, Any]] = []
-        manager.on_state_change = lambda state: changes.append(state)
+        changes: list[ChiptunesState] = []
+        manager.on_state_change = changes.append
 
         manager._connect()
         threading.Event().wait(0.1)

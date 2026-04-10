@@ -38,6 +38,7 @@ from teleclaude.chiptunes.dislikes import disliked_paths
 from teleclaude.chiptunes.player import ChiptunesPlayer
 from teleclaude.chiptunes.sid_parser import parse_sid_file, speed_for_subtune
 from teleclaude.chiptunes.songlengths import load_songlengths, lookup_duration
+from teleclaude.chiptunes.types import ChiptunesPlayback, ChiptunesState, coerce_chiptunes_state
 from teleclaude.paths import CHIPTUNES_STATE_PATH
 
 SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
@@ -341,7 +342,12 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
             except (ValueError, OSError):
                 default_subtune = 0
             duration = lookup_duration(self._songlengths, track, subtune=default_subtune)
-            print(f"[CHIPTUNES] START: {track_label} | duration={duration:.1f}s" if duration else f"[CHIPTUNES] START: {track_label} | duration=UNKNOWN", flush=True)  # noqa: E501
+            start_message = (
+                f"[CHIPTUNES] START: {track_label} | duration={duration:.1f}s"
+                if duration
+                else f"[CHIPTUNES] START: {track_label} | duration=UNKNOWN"
+            )
+            print(start_message, flush=True)
             self._emit("track_start", track=track_label, sid_path=str(track))
 
             player.play(
@@ -477,23 +483,23 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _load_state() -> dict[str, object]:
+    def _load_state() -> ChiptunesState:
         """Read state JSON file. Returns dict or empty dict on error."""
         try:
             if STATE_PATH.exists():
-                return json.loads(STATE_PATH.read_text(encoding="utf-8"))  # type: ignore[return-value]
+                return coerce_chiptunes_state(json.loads(STATE_PATH.read_text(encoding="utf-8")))
         except (json.JSONDecodeError, OSError):
             pass
         return {}
 
-    def _build_state_snapshot(self) -> dict[str, object]:
+    def _build_state_snapshot(self) -> ChiptunesState:
         """Assemble current state dict under lock."""
         with self._lock:
             player = self._player
             position = self._paused_position_seconds
             if player is not None:
                 position = player.playback_position_seconds
-            playback: str
+            playback: ChiptunesPlayback
             if player is not None and player.is_playing:
                 playback = "playing"
             elif self._paused_requested:
@@ -543,10 +549,10 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
         if playback == "playing":
             # Restore history and track, start playing from position 0
             with self._lock:
-                self._history = [Path(p) for p in state.get("history", []) if p]  # type: ignore[union-attr]
-                self._history_index = int(state.get("history_index", -1))  # type: ignore[arg-type]
+                self._history = [Path(p) for p in state.get("history", []) if p]
+                self._history_index = state.get("history_index", -1)
                 track_path_str = state.get("track_path", "")
-                self._current_track = Path(track_path_str) if track_path_str else None  # type: ignore[arg-type]
+                self._current_track = Path(track_path_str) if track_path_str else None
                 self._enabled = True
                 self._paused_requested = False
             if self._current_track is not None:
@@ -562,12 +568,12 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
         elif playback == "paused":
             # Restore context, wait for commands
             with self._lock:
-                self._history = [Path(p) for p in state.get("history", []) if p]  # type: ignore[union-attr]
-                self._history_index = int(state.get("history_index", -1))  # type: ignore[arg-type]
+                self._history = [Path(p) for p in state.get("history", []) if p]
+                self._history_index = state.get("history_index", -1)
                 track_path_str = state.get("track_path", "")
-                self._current_track = Path(track_path_str) if track_path_str else None  # type: ignore[arg-type]
+                self._current_track = Path(track_path_str) if track_path_str else None
                 self._paused_requested = True
-                self._paused_position_seconds = max(0.0, float(state.get("position_seconds", 0.0)))  # type: ignore[arg-type]
+                self._paused_position_seconds = max(0.0, state.get("position_seconds", 0.0))
                 self._enabled = True
 
 

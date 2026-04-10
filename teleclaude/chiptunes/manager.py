@@ -15,10 +15,11 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Literal
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.chiptunes.types import ChiptunesState, coerce_chiptunes_state
 from teleclaude.paths import CHIPTUNES_WORKER_LOG_PATH
 
 if TYPE_CHECKING:
@@ -48,9 +49,9 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         self._reader_thread: threading.Thread | None = None
         self._lock = threading.Lock()
         # Last state mirror from worker events
-        self._last_state: dict[str, Any] = {}
+        self._last_state: ChiptunesState = {}
         self.on_track_start: Callable[[str, str], None] | None = None
-        self.on_state_change: Callable[[dict[str, Any]], None] | None = None
+        self.on_state_change: Callable[[ChiptunesState], None] | None = None
         self.on_command_done: Callable[[str], None] | None = None
 
     # ------------------------------------------------------------------ #
@@ -68,7 +69,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         return bool(self._last_state.get("playback") == "playing")
 
     @property
-    def last_state(self) -> dict[str, Any]:
+    def last_state(self) -> ChiptunesState:
         """Return the last known worker state dict."""
         return self._last_state
 
@@ -136,21 +137,22 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                 os.unlink(path)
             except OSError:
                 pass
-        subprocess.Popen(  # pylint: disable=consider-using-with
-            [
-                sys.executable,
-                "-m",
-                "teleclaude.chiptunes.worker",
-                "--music-dir",
-                str(self._music_dir),
-                "--volume",
-                str(self._volume),
-            ],
-            stdin=subprocess.DEVNULL,
-            stdout=open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8"),
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        with open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8") as log_file:
+            subprocess.Popen(  # pylint: disable=consider-using-with
+                [
+                    sys.executable,
+                    "-m",
+                    "teleclaude.chiptunes.worker",
+                    "--music-dir",
+                    str(self._music_dir),
+                    "--volume",
+                    str(self._volume),
+                ],
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
         for _ in range(50):
             if os.path.exists(SOCKET_PATH):
                 return
@@ -228,11 +230,10 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         if was_connected:
             self._disconnect()
             # Preserve track_path for recovery, reset playback to cold
-            self._last_state = {
-                **self._last_state,
-                "playback": "cold",
-                "position_seconds": 0.0,
-            }
+            recovered_state: ChiptunesState = self._last_state.copy()
+            recovered_state["playback"] = "cold"
+            recovered_state["position_seconds"] = 0.0
+            self._last_state = recovered_state
             logger.info("ChipTunes: worker connection lost, playback state reset to cold")
             self._fire_state_change()
 
@@ -257,8 +258,8 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
                     logger.warning("on_track_start callback error", exc_info=True)
             self._fire_state_change()
         elif event == "state_update":
-            state = raw.get("state")
-            if isinstance(state, dict):
+            state = coerce_chiptunes_state(raw.get("state"))
+            if state:
                 self._last_state = state
             self._fire_state_change()
         elif event == "command_done":

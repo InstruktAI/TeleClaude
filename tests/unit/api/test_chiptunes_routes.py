@@ -3,19 +3,20 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
 
 import pytest
 from fastapi import HTTPException
 
 from teleclaude.api import chiptunes_routes
+from teleclaude.chiptunes.types import ChiptunesState
 
 
-def _manager_stub(*, enabled: bool, last_state: dict[str, Any] | None = None) -> SimpleNamespace:
+def _manager_stub(*, enabled: bool, last_state: ChiptunesState | None = None) -> SimpleNamespace:
     enqueued: list[tuple[str, str]] = []
     return SimpleNamespace(
         enabled=enabled,
-        last_state=last_state or {
+        last_state=last_state
+        or {
             "playback": "paused",
             "track_path": "/music/space_oddity.sid",
             "position_seconds": 12.5,
