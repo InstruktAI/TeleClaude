@@ -11,6 +11,8 @@ import json
 import os
 from pathlib import Path
 
+from teleclaude.core.operation_caller_identity import get_caller_session_id
+
 _IDENTITY_FILENAME = "teleclaude_identity.json"
 
 
@@ -40,12 +42,15 @@ def _read_field(field: str) -> str | None:
 
 
 def get_session_id() -> str | None:
-    """Current TeleClaude session ID from the session identity file.
+    """Current TeleClaude session ID.
 
-    All sessions (tmux and headless) get a session-scoped TMPDIR with an
-    identity file written at bootstrap by the daemon. This is the single
-    source of truth for "which session am I in?"
+    Resolves in priority order:
+    1. Operation context override for daemon-hosted async tasks.
+    2. The session identity file in the session-scoped temporary directory.
     """
+    override = get_caller_session_id()
+    if override:
+        return override
     return _read_field("session_id")
 
 

@@ -17,6 +17,8 @@ from typing import Any, NamedTuple, TypedDict, cast
 
 import pytest
 from instrukt_ai_logging import get_logger
+from sqlmodel import SQLModel
+from sqlmodel.main import default_registry
 
 from teleclaude.core.next_machine._types import REVIEW_APPROVE_MARKER, PhaseName, StateValue
 from teleclaude.core.next_machine.path_checks import (
@@ -103,14 +105,28 @@ def _collect_scoped_test_targets(worktree_cwd: str) -> list[str]:
     return sorted(targets)
 
 
+def _reset_pytest_worker_import_state() -> None:
+    """Drop cached TeleClaude modules and reset SQLModel globals before pytest import collection.
+
+    The gate worker can start in a process that already imported TeleClaude
+    modules from a different checkout. Removing only ``sys.modules`` is not
+    enough because SQLModel keeps table metadata and mapped classes in global
+    registries. Those leftovers can make a second import of the todos models
+    fail with SQLAlchemy table redefinition errors.
+    """
+    for name in list(sys.modules):
+        if name == "teleclaude" or name.startswith("teleclaude.") or name == "tests" or name.startswith("tests."):
+            sys.modules.pop(name, None)
+    SQLModel.metadata.clear()
+    default_registry.dispose()
+
+
 def _pytest_worker(worktree_cwd: str, pytest_args: list[str], result_queue: Any) -> None:
     """Run pytest in a fresh Python process against the worktree checkout."""
     worktree_root = Path(worktree_cwd).resolve()
     canonical_root = Path(__file__).resolve().parents[3]
 
-    for name in list(sys.modules):
-        if name == "teleclaude" or name.startswith("teleclaude.") or name == "tests" or name.startswith("tests."):
-            sys.modules.pop(name, None)
+    _reset_pytest_worker_import_state()
 
     sys.path = [
         str(worktree_root),

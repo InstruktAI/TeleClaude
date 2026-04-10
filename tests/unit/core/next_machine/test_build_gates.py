@@ -2,17 +2,31 @@
 
 from __future__ import annotations
 
+import importlib
+import multiprocessing as mp
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import patch
 
 from teleclaude.core.next_machine.build_gates import (
     _collect_scoped_test_targets,
     _count_test_failures,
     _PytestRunResult,
+    _reset_pytest_worker_import_state,
     run_build_gates,
 )
 from teleclaude.core.next_machine.path_checks import check_file_has_content
+
+
+def _reimport_todos_models_after_reset(result_queue: Any) -> None:
+    """Exercise the worker reset logic in an isolated child process."""
+    models = importlib.import_module("teleclaude.core.todos_db._models")
+
+    assert models.ROADMAP_DEPS_TABLE.name == "roadmap_deps"
+    _reset_pytest_worker_import_state()
+    reloaded = importlib.import_module("teleclaude.core.todos_db._models")
+    result_queue.put(reloaded.ROADMAP_DEPS_TABLE.name)
 
 
 class _FakeGit:
@@ -111,3 +125,16 @@ def test_run_build_gates_retries_last_failed_tests_before_failing_the_gate(tmp_p
     assert passed is True
     assert output
     assert run_pytest.call_args_list[1].args[1] == ["--lf", "-m", "not expensive", "-q"]
+
+
+def test_reset_pytest_worker_import_state_allows_todos_models_reimport() -> None:
+    """Clearing only sys.modules is insufficient because SQLModel keeps global metadata."""
+    ctx = mp.get_context("spawn")
+    result_queue: Any = ctx.Queue()
+    process = ctx.Process(target=_reimport_todos_models_after_reset, args=(result_queue,))
+
+    process.start()
+    process.join(10)
+
+    assert process.exitcode == 0
+    assert result_queue.get(timeout=1) == "roadmap_deps"

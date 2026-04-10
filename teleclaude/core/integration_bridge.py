@@ -83,14 +83,14 @@ async def emit_deployment_started(  # pylint: disable=too-many-arguments
     sha: str,
     *,
     worker_session_id: str = "",
-    orchestrator_session_id: str = "",
     ready_at: str | None = None,
 ) -> str:
     """Emit deployment.started when a finalizer reports FINALIZE_READY."""
     ts = ready_at or datetime.now(UTC).isoformat()
+    caller_session_id = get_session_id() or ""
     return await emit_event(
         event="domain.software-development.deployment.started",
-        source=f"orchestrator/{orchestrator_session_id or (get_session_id() or 'unknown')}",
+        source=f"orchestrator/{caller_session_id or 'unknown'}",
         level=EventLevel.WORKFLOW,
         domain="software-development",
         description=f"Deployment started for {slug} ({branch}@{sha[:8]})",
@@ -100,7 +100,7 @@ async def emit_deployment_started(  # pylint: disable=too-many-arguments
             "branch": branch,
             "sha": sha,
             "worker_session_id": worker_session_id,
-            "orchestrator_session_id": orchestrator_session_id,
+            "caller_session_id": caller_session_id,
             "ready_at": ts,
         },
     )

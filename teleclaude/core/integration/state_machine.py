@@ -49,6 +49,7 @@ from teleclaude.core.integration.step_functions import (
     _tls,
 )
 from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
 
@@ -265,7 +266,6 @@ async def next_integrate(
     db: Db,  # pylint: disable=unknown-option-value,unused-argument — reserved for future DB-backed state
     slug: str | None,
     cwd: str,
-    caller_session_id: str | None = None,
 ) -> str:
     """Integration state machine entry point.
 
@@ -277,14 +277,11 @@ async def next_integrate(
         db: Database instance (reserved for future use).
         slug: Optional slug filter — must match next candidate in FIFO queue.
         cwd: Project root directory for git operations.
-        caller_session_id: Session ID of the calling agent (lease owner).
 
     Returns:
         Plain text instruction block for the agent to execute.
     """
-    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
-
-    session_id = caller_session_id or get_session_id() or ""
+    session_id = get_session_id() or ""
     started = perf_counter()
     state_dir = _default_state_dir()
     state_dir.mkdir(parents=True, exist_ok=True)

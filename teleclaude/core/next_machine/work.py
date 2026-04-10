@@ -734,7 +734,6 @@ async def _dispatch_finalize_handoff(
             branch=branch,
             sha=sha,
             worker_session_id=worker_session_id,
-            orchestrator_session_id=session_id,
             ready_at=finalize_state.get("ready_at"),
         )
         await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "finalize_handed_off")

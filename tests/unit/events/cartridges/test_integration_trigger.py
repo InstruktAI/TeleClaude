@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -33,14 +34,17 @@ def _make_event(
     )
 
 
-_FINALIZE_READY: FinalizeReadyPayload = {
-    "slug": "my-slug",
-    "branch": "my-slug",
-    "sha": "deadbeef1234",
-    "worker_session_id": "w-001",
-    "orchestrator_session_id": "o-001",
-    "ready_at": "2025-03-25T00:00:00Z",
-}
+_FINALIZE_READY = cast(
+    FinalizeReadyPayload,
+    {
+        "slug": "my-slug",
+        "branch": "my-slug",
+        "sha": "deadbeef1234",
+        "worker_session_id": "w-001",
+        "caller_session_id": "o-001",
+        "ready_at": "2025-03-25T00:00:00Z",
+    },
+)
 
 _REVIEW_APPROVED: ReviewApprovedPayload = {
     "slug": "my-slug",

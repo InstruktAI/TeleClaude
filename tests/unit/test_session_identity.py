@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.session_identity import (
     get_session_id,
     get_session_token,
@@ -66,6 +67,37 @@ def test_falls_back_to_tmp(tmp_path: Path) -> None:
     _write_identity(tmp_path, {"session_id": "from-tmp"})
     with patch.dict("os.environ", {"TMP": str(tmp_path)}, clear=True):
         assert get_session_id() == "from-tmp"
+
+
+@pytest.mark.unit
+def test_context_var_override_returns_value() -> None:
+    token = set_caller_session_id("override-xyz")
+    try:
+        with patch.dict("os.environ", {}, clear=True):
+            assert get_session_id() == "override-xyz"
+    finally:
+        reset_caller_session_id(token)
+
+
+@pytest.mark.unit
+def test_context_var_takes_priority_over_file(tmp_path: Path) -> None:
+    _write_identity(tmp_path, {"session_id": "file-abc"})
+    token = set_caller_session_id("override-xyz")
+    try:
+        with patch.dict("os.environ", {"TMPDIR": str(tmp_path)}, clear=False):
+            assert get_session_id() == "override-xyz"
+    finally:
+        reset_caller_session_id(token)
+
+
+@pytest.mark.unit
+def test_context_var_unset_reads_file(tmp_path: Path) -> None:
+    _write_identity(tmp_path, {"session_id": "file-abc"})
+    token = set_caller_session_id("override-xyz")
+    reset_caller_session_id(token)
+
+    with patch.dict("os.environ", {"TMPDIR": str(tmp_path)}, clear=False):
+        assert get_session_id() == "file-abc"
 
 
 # ---------------------------------------------------------------------------

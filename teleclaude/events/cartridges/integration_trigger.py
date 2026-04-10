@@ -75,7 +75,7 @@ class IntegrationTriggerCartridge:
         )
 
         if event.event == _SPAWN_EVENT and self._spawn_callback is not None:
-            caller_session_id = str(payload.get("orchestrator_session_id", ""))
+            caller_session_id = str(payload.get("caller_session_id", ""))
             await self._spawn_integrator(slug, branch, sha, caller_session_id)
 
         return event

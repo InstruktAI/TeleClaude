@@ -14,6 +14,7 @@ import pytest
 
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
 from teleclaude.core.models import SessionLaunchKind
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -52,6 +53,37 @@ def _db_row(system_role: str | None = None, job: str | None = None) -> MagicMock
     row.lifecycle_status = "active"
     row.transcript_files = "[]"
     return row
+
+
+# ---------------------------------------------------------------------------
+# Event emission helpers
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_emit_deployment_started_uses_ambient_caller_identity():
+    """deployment.started emits caller_session_id from ambient session identity."""
+    mock_emit_event = AsyncMock(return_value="entry-1")
+    token = set_caller_session_id("caller-999")
+
+    with patch("teleclaude.core.integration_bridge.emit_event", mock_emit_event):
+        from teleclaude.core.integration_bridge import emit_deployment_started
+
+        try:
+            result = await emit_deployment_started(
+                "my-slug",
+                "my-branch",
+                "deadbeef1234",
+                worker_session_id="worker-123",
+            )
+        finally:
+            reset_caller_session_id(token)
+
+    assert result == "entry-1"
+    mock_emit_event.assert_awaited_once()
+    assert mock_emit_event.call_args.kwargs["source"] == "orchestrator/caller-999"
+    assert mock_emit_event.call_args.kwargs["payload"]["caller_session_id"] == "caller-999"
+    assert "orchestrator_session_id" not in mock_emit_event.call_args.kwargs["payload"]
 
 
 # ---------------------------------------------------------------------------

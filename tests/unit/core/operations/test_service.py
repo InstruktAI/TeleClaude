@@ -13,8 +13,10 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from typing_extensions import TypedDict
 
+import teleclaude.core.operation_caller_identity as caller_identity_module
 import teleclaude.core.operation_progress as operation_progress_module
 import teleclaude.core.operations.service as service_module
+import teleclaude.session_identity as session_identity_module
 from teleclaude.core.db_models import Operation
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.operations.service import (
@@ -71,12 +73,14 @@ class _OperationValues(TypedDict, total=False):
 def reset_operations_globals() -> Iterator[None]:
     previous_service = service_module._operations_service
     token = operation_progress_module._progress_callback.set(None)
+    caller_token = caller_identity_module._caller_session_id.set(None)
     service_module._operations_service = None
     try:
         yield
     finally:
         service_module._operations_service = previous_service
         operation_progress_module._progress_callback.reset(token)
+        caller_identity_module._caller_session_id.reset(caller_token)
 
 
 def _operation(**overrides: Unpack[_OperationValues]) -> Operation:
@@ -214,7 +218,7 @@ async def test_submit_todo_work_returns_existing_request_match_without_creating_
     assert result["client_request_id"] == "req-1"
     db.find_matching_nonterminal_operation.assert_not_awaited()
     db.create_operation.assert_not_awaited()
-    assert registry.spawned_names == []
+    assert not registry.spawned_names
 
 
 @pytest.mark.unit
@@ -244,7 +248,7 @@ async def test_submit_todo_integrate_deduplicates_by_client_request_id() -> None
     assert result["client_request_id"] == "req-1"
     db.find_matching_nonterminal_operation.assert_not_awaited()
     db.create_operation.assert_not_awaited()
-    assert registry.spawned_names == []
+    assert not registry.spawned_names
 
 
 @pytest.mark.unit
@@ -328,20 +332,56 @@ async def test_run_todo_integrate_operation_uses_stored_caller_session_id() -> N
     db.complete_operation = AsyncMock()
     db.fail_operation = AsyncMock()
     service = _service(db=db, heartbeat_interval_s=0.01)
+    observed_session_ids: list[str | None] = []
 
-    with patch.object(service_module, "next_integrate", new=AsyncMock(return_value="integrated")) as next_integrate:
+    async def _next_integrate(_db_arg: object, _slug: object, _cwd: object) -> str:
+        observed_session_ids.append(session_identity_module.get_session_id())
+        return "integrated"
+
+    with patch.object(service_module, "next_integrate", new=AsyncMock(side_effect=_next_integrate)) as next_integrate:
 
         async def factory(op: Operation) -> str:
-            return await service_module.next_integrate(db, op.slug, op.cwd, op.caller_session_id)
+            return await service_module.next_integrate(db, op.slug, op.cwd)
 
-        await service._run_operation("integrate-op", "todo_integrate", factory)
+        with patch.dict("os.environ", {}, clear=True):
+            await service._run_operation("integrate-op", "todo_integrate", factory)
 
     next_integrate.assert_awaited_once_with(
         db,
         "chartest-core-operations",
         "/tmp/worktree",
-        "integrator-session",
     )
+    assert observed_session_ids == ["integrator-session"]
+    db.complete_operation.assert_awaited_once()
+    db.fail_operation.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_operation_exposes_stored_caller_session_to_session_identity() -> None:
+    operation = _operation(
+        operation_id="caller-op",
+        caller_session_id="caller-123",
+        slug="chartest-core-operations",
+        state="queued",
+    )
+    db = MagicMock()
+    db.claim_operation = AsyncMock(return_value=True)
+    db.get_operation = AsyncMock(return_value=operation)
+    db.complete_operation = AsyncMock()
+    db.fail_operation = AsyncMock()
+    service = _service(db=db, heartbeat_interval_s=0.01)
+    observed_session_ids: list[str | None] = []
+
+    async def factory(_operation: Operation) -> str:
+        observed_session_ids.append(session_identity_module.get_session_id())
+        return "ok"
+
+    with patch.dict("os.environ", {}, clear=True):
+        await service._run_operation("caller-op", OPERATION_KIND_TODO_WORK, factory)
+        assert session_identity_module.get_session_id() is None
+
+    assert observed_session_ids == ["caller-123"]
     db.complete_operation.assert_awaited_once()
     db.fail_operation.assert_not_awaited()
 
@@ -396,7 +436,7 @@ async def test_submit_todo_work_returns_running_match_without_spawning_duplicate
     )
 
     assert result["operation_id"] == "running-op"
-    assert registry.spawned_names == []
+    assert not registry.spawned_names
     db.create_operation.assert_not_awaited()
 
 
@@ -462,7 +502,7 @@ async def test_submit_todo_work_reuses_existing_request_after_integrity_error() 
     )
 
     assert result["operation_id"] == "existing-op"
-    assert registry.spawned_names == []
+    assert not registry.spawned_names
     assert db.get_operation_by_request.await_count == 2
 
 

@@ -20,6 +20,10 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine import next_create, next_prepare
 from teleclaude.core.next_machine.work import next_work
+from teleclaude.core.operation_caller_identity import (
+    reset_caller_session_id,
+    set_caller_session_id,
+)
 from teleclaude.core.operation_progress import (
     reset_progress_callback,
     set_progress_callback,
@@ -423,12 +427,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
     async def _ensure_operation_task(self, operation_id: str, *, kind: str = OPERATION_KIND_TODO_WORK) -> None:
         factories: dict[str, Callable[[Operation], Awaitable[str]]] = {
             OPERATION_KIND_TODO_WORK: lambda op: next_work(self._db, op.slug, op.cwd),
-            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(
-                self._db,
-                op.slug,
-                op.cwd,
-                op.caller_session_id,
-            ),
+            OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: lambda op: next_prepare(self._db, op.slug, op.cwd),
         }
@@ -456,6 +455,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
         heartbeat_task: asyncio.Task[None] | None = None
         stop_heartbeat = asyncio.Event()
         token: Token[Callable[[str, str, str], None] | None] | None = None
+        caller_token: Token[str | None] | None = None
         latest_progress: tuple[str, str, str] | None = None
         progress_tasks: set[asyncio.Task[None]] = set()
         completion_event = _COMPLETION_EVENTS.get(kind)
@@ -485,20 +485,15 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 task.add_done_callback(progress_tasks.discard)
 
             token = set_progress_callback(_capture_progress)
+            caller_token = set_caller_session_id(operation.caller_session_id)
             result = await coro_factory(operation)
-            if latest_progress is not None:
-                phase, decision, reason = latest_progress
-                await self._record_progress(operation_id, phase, decision, reason)
+            await self._flush_latest_progress(operation_id, latest_progress)
             await self._db.complete_operation(
                 operation_id,
                 result,
                 datetime.now(UTC).isoformat(),
             )
-            if completion_event:
-                event_bus.emit(
-                    completion_event,  # type: ignore[arg-type]
-                    {"operation_id": operation_id},  # type: ignore[arg-type]
-                )
+            self._emit_completion_event(completion_event, operation_id)
         except asyncio.CancelledError:
             await self._db.fail_operation(
                 operation_id,
@@ -513,15 +508,13 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 f"{type(exc).__name__}: {exc}",
                 datetime.now(UTC).isoformat(),
             )
-            if completion_event:
-                event_bus.emit(
-                    completion_event,  # type: ignore[arg-type]
-                    {"operation_id": operation_id, "error": str(exc)},  # type: ignore[arg-type]
-                )
+            self._emit_completion_event(completion_event, operation_id, error=str(exc))
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:
                 reset_progress_callback(token)
+            if caller_token is not None:
+                reset_caller_session_id(caller_token)
             if progress_tasks:
                 await asyncio.gather(*progress_tasks, return_exceptions=True)
             if heartbeat_task is not None:
@@ -550,6 +543,26 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             reason=reason,
             now_iso=datetime.now(UTC).isoformat(),
         )
+
+    async def _flush_latest_progress(
+        self,
+        operation_id: str,
+        latest_progress: tuple[str, str, str] | None,
+    ) -> None:
+        if latest_progress is None:
+            return
+        phase, decision, reason = latest_progress
+        await self._record_progress(operation_id, phase, decision, reason)
+
+    def _emit_completion_event(
+        self, completion_event: str | None, operation_id: str, *, error: str | None = None
+    ) -> None:
+        if not completion_event:
+            return
+        payload: dict[str, str] = {"operation_id": operation_id}
+        if error is not None:
+            payload["error"] = error
+        event_bus.emit(completion_event, payload)  # type: ignore[arg-type]
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {
