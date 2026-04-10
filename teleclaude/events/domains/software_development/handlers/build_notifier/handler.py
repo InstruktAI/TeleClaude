@@ -9,6 +9,6 @@ if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
 
-async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventEnvelope | None":  # noqa: ARG001
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Pass through build.completed events so the pipeline surfaces them to the developer."""
     return event

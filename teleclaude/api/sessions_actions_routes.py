@@ -8,7 +8,6 @@ import shlex
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING
 

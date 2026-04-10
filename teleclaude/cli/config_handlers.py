@@ -22,13 +22,13 @@ from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
 
 from teleclaude.config.loader import load_global_config, load_person_config
-from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.config.schema import (
     CredsConfig,
     GlobalConfig,
     PersonConfig,
     PersonEntry,
 )
+from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 

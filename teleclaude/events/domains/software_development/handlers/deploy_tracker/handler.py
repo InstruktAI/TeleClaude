@@ -9,6 +9,6 @@ if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
 
-async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventEnvelope | None":  # noqa: ARG001
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Pass through deploy events; failed deployments are already marked actionable in the catalog."""
     return event

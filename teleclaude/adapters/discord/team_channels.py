@@ -5,7 +5,6 @@ Handles per-person private text channels under the Team category.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 

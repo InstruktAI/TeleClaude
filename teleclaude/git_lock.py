@@ -9,7 +9,6 @@ from __future__ import annotations
 import fcntl
 from collections.abc import Generator
 from contextlib import contextmanager
-from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 

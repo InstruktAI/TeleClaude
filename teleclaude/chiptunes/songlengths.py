@@ -62,7 +62,7 @@ def lookup_duration(db: dict[str, list[float]], sid_path: Path, subtune: int = 0
         data = sid_path.read_bytes()
     except OSError:
         return None
-    md5_hex = hashlib.md5(data).hexdigest()  # noqa: S324
+    md5_hex = hashlib.md5(data).hexdigest()
     durations = db.get(md5_hex)
     if durations is None:
         return None

@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
 
-async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventEnvelope | None":  # noqa: ARG001
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Translate signal.synthesis.ready into domain.marketing.feed.synthesis_ready.
 
     Cross-domain bridge: consumes events from the signal pipeline namespace and
@@ -18,7 +18,8 @@ async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventE
     if event.event != "signal.synthesis.ready":
         return None
 
-    from teleclaude.events.envelope import EventEnvelope as Envelope, EventLevel
+    from teleclaude.events.envelope import EventEnvelope as Envelope
+    from teleclaude.events.envelope import EventLevel
 
     return Envelope(
         event="domain.marketing.feed.synthesis_ready",

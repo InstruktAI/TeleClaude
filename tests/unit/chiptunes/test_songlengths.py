@@ -56,7 +56,7 @@ class TestLookupDuration:
     def test_finds_entry_by_md5(self, tmp_path: Path) -> None:
         sid_file = tmp_path / "test.sid"
         sid_file.write_bytes(b"PSID test data")
-        md5 = hashlib.md5(b"PSID test data").hexdigest()  # noqa: S324
+        md5 = hashlib.md5(b"PSID test data").hexdigest()
         db = {md5: [120.0, 60.0]}
 
         assert lookup_duration(db, sid_file, subtune=0) == 120.0
@@ -70,7 +70,7 @@ class TestLookupDuration:
     def test_returns_first_subtune_for_out_of_range(self, tmp_path: Path) -> None:
         sid_file = tmp_path / "test.sid"
         sid_file.write_bytes(b"data")
-        md5 = hashlib.md5(b"data").hexdigest()  # noqa: S324
+        md5 = hashlib.md5(b"data").hexdigest()
         db = {md5: [90.0]}
 
         assert lookup_duration(db, sid_file, subtune=5) == 90.0

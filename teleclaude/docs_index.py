@@ -19,8 +19,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY_VALUES, TYPE_SUFFIX
-from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import load_domains
 

@@ -7,12 +7,12 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
-from teleclaude.paths import TELECLAUDE_HOME
 from teleclaude.config.schema import (
     CredsConfig,
     JobSubscription,
     SubscriptionNotification,
 )
+from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 

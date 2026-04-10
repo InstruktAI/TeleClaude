@@ -17,7 +17,9 @@ def _register_domain_pipelines(config: DomainsConfig, runner: DomainPipelineRunn
         if not domain_cfg.enabled:
             continue
         try:
-            normalized_cfg = domain_cfg if domain_cfg.name == domain_name else domain_cfg.model_copy(update={"name": domain_name})
+            normalized_cfg = (
+                domain_cfg if domain_cfg.name == domain_name else domain_cfg.model_copy(update={"name": domain_name})
+            )
             levels = build_handler_levels(domain_name)
             if not levels:
                 logger.debug("No domain handlers registered for domain '%s'", domain_name)

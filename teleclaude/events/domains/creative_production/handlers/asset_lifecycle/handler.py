@@ -9,6 +9,6 @@ if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
 
-async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventEnvelope | None":  # noqa: ARG001
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Pass through asset lifecycle events; autonomy matrix controls stakeholder notification."""
     return event

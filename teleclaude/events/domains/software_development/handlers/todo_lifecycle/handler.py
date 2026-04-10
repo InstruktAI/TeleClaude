@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from teleclaude.events.pipeline import PipelineContext
 
 
-async def process(event: "EventEnvelope", context: "PipelineContext") -> "EventEnvelope | None":
+async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
     """Observe planning events and pass them through.
 
     Notifies on DOR assessment and todo activation; silently passes other planning events.
