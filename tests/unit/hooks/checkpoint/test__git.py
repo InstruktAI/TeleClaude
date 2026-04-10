@@ -48,7 +48,7 @@ class TestGitDiffHelpers:
         def fake_repo(*_args: object, **_kwargs: object) -> MagicMock:
             return mock_repo
 
-        monkeypatch.setattr("teleclaude.git.Repo", fake_repo)
+        monkeypatch.setattr("teleclaude.hooks.checkpoint._git.Repo", fake_repo)
 
         assert _git._get_uncommitted_files("/repo") == [
             "teleclaude/hooks/inbound.py",

@@ -15,6 +15,7 @@ from teleclaude.constants import (
     CHECKPOINT_NO_ACTION_PATTERNS,
     FileCategory,
 )
+from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.utils.transcript import TurnTimeline
 
@@ -24,6 +25,7 @@ __all__ = [
     "_canonical_tool_name",
     "_categorize_files",
     "_command_likely_mutates_files",
+    "_current_branch",
     "_extract_apply_patch_paths",
     "_extract_shell_command",
     "_extract_shell_touched_paths",
@@ -72,7 +74,6 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
 
     Returns None if git is unavailable or the command fails (fail-open).
     """
-    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
     def _run_git_diff_name_only(repo: Repo) -> str:
         return repo.git.diff("--name-only", "HEAD")
@@ -115,6 +116,20 @@ def _get_uncommitted_files(project_path: str) -> list[str] | None:
         files = [f.strip() for f in output.strip().splitlines() if f.strip()]
         return files
     except Exception:
+        return None
+
+
+def _current_branch(project_path: str) -> str | None:
+    """Return the current branch name, or None if git is unavailable.
+
+    Returns None on any failure (fail-open — the caller decides how to treat
+    uncertain branch state).
+    """
+    try:
+        repo = Repo(project_path or ".", search_parent_directories=True)
+        branch = repo.git.rev_parse("--abbrev-ref", "HEAD").strip()
+        return branch or None
+    except (GitCommandError, OSError, ValueError):
         return None
 
 

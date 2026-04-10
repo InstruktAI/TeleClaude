@@ -46,6 +46,7 @@ def _run(
     human_role: str | None = None,
     branch: str = "feature",
     no_identity_file: bool = False,
+    commit_approved: bool = False,
 ) -> tuple[int, str]:
     """Run the bash wrapper via subprocess with mocked identity and fake git.
 
@@ -73,6 +74,7 @@ def _run(
         "TMPDIR": str(session_tmpdir),
         "TMUX": "test-session",  # simulate being inside tmux — enables restriction checks
         "TELECLAUDE_SYSTEM_ROLE": "",
+        "TELECLAUDE_COMMIT_APPROVED": "1" if commit_approved else "",
         "PATH": f"{fake_bin_dir}:{os.environ.get('PATH', '')}",
         "FAKE_BRANCH": branch,
     }
@@ -82,6 +84,7 @@ def _run(
         env=env,
         capture_output=True,
         text=True,
+        check=False,
     )
     return result.returncode, result.stderr
 
@@ -203,6 +206,71 @@ class TestProtectedCommitOnMain:
 
     def test_integrator_allowed(self) -> None:
         code, _ = _run(["commit", "-m", "test"], role="integrator", branch="main")
+        assert code == 0
+
+
+# ── PROTECTED: commit on main — TELECLAUDE_COMMIT_APPROVED gate ──────────────
+
+
+class TestCommitApprovedGate:
+    def test_block_error_advertises_approval_env_var(self) -> None:
+        code, stderr = _run(["commit", "-m", "test"], role="worker", branch="main")
+        assert code != 0
+        assert "TELECLAUDE_COMMIT_APPROVED" in stderr
+
+    def test_block_error_does_not_teach_system_role_escape(self) -> None:
+        _, stderr = _run(["commit", "-m", "test"], role="worker", branch="main")
+        assert "TELECLAUDE_SYSTEM_ROLE=integrator" not in stderr
+
+    def test_approved_env_var_allows_worker_commit_on_main(self) -> None:
+        code, _ = _run(
+            ["commit", "-m", "test"],
+            role="worker",
+            branch="main",
+            commit_approved=True,
+        )
+        assert code == 0
+
+    def test_approved_env_var_allows_system_commit_on_main(self) -> None:
+        code, _ = _run(
+            ["commit", "-m", "test"],
+            role="system",
+            branch="main",
+            commit_approved=True,
+        )
+        assert code == 0
+
+    def test_approved_env_var_does_not_override_orchestrator_block(self) -> None:
+        # Orchestrators cannot commit on any branch — approval env var must not bypass
+        # the orchestrator-wide restriction.
+        code, _ = _run(
+            ["commit", "-m", "test"],
+            role="orchestrator",
+            branch="main",
+            commit_approved=True,
+        )
+        assert code != 0
+
+    def test_approval_not_required_off_main(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], role="worker", branch="feature")
+        assert code == 0
+
+    def test_integrator_bypasses_without_approval(self) -> None:
+        # Integrator role authority is independent of the approval gate.
+        code, _ = _run(["commit", "-m", "test"], role="integrator", branch="main")
+        assert code == 0
+
+    def test_human_session_blocked_on_main_without_approval(self) -> None:
+        code, _ = _run(["commit", "-m", "test"], human_role="admin", branch="main")
+        assert code != 0
+
+    def test_human_session_allowed_on_main_with_approval(self) -> None:
+        code, _ = _run(
+            ["commit", "-m", "test"],
+            human_role="admin",
+            branch="main",
+            commit_approved=True,
+        )
         assert code == 0
 
 

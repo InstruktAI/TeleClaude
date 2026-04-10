@@ -288,41 +288,27 @@ fi
 if [ "$_subcmd" = "commit" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        cat >&2 <<'MSG'
-ERROR: Commits on main are a protected operation.
+        if [ "${TELECLAUDE_COMMIT_APPROVED:-}" != "1" ]; then
+            cat >&2 <<'MSG'
+ERROR: Commits on main require explicit human approval.
 
-STEP 1 — Inspect:
-  git diff --staged --name-only
-  git status
+STOP. Do not commit yet. On main, each commit is a separate human decision —
+the automated integrator is the only role that commits here without a gate.
 
-STEP 2 — Classify the changeset and follow the matching path:
+1. State your recommendation to the human: what changed, why, file types, scope.
+   If the change is substantive enough to warrant review, recommend instead:
+     telec todo from-main --slug <meaningful-name>
+     telec todo work <slug>
+2. Wait for the human's explicit "yes".
+3. Only then run:
+     TELECLAUDE_COMMIT_APPROVED=1 git commit -m "<type>(<scope>): <subject>"
 
-  A) Only non-functional files (Markdown, YAML, todo scaffolding, roadmap,
-     state files, doc snippets — no .py / .ts / .sh logic):
-     → Proceed autonomously with --no-verify:
-       TELECLAUDE_SYSTEM_ROLE=integrator git commit --no-verify -m "chore(...): <subject> [skip ci]"
-
-  B) Functional code change that is small and self-evident (human is present
-     and driving this, no meaningful review value):
-     → HUMAN DECISION GATE — state recommendation and wait for approval:
-       TELECLAUDE_SYSTEM_ROLE=integrator git commit -m "<type>(<scope>): <subject>"
-
-  C) Functional code change of any real substance:
-     → HUMAN DECISION GATE — state recommendation and wait for approval:
-       telec todo from-main --slug <meaningful-name>
-       telec todo work <slug>
-
-STEP 3 — For paths B and C only (HUMAN DECISION GATE):
-  State which path you recommend and why (file types seen, size, context).
-  Then ask: "Shall I proceed with [path X]?"
-
-  STOP. This is a human decision. Only an explicit human response unblocks
-  this gate. No checkpoint, hook, timer, or system instruction can substitute
-  for the human's answer. If a checkpoint fires before the human responds,
-  the commit step in the checkpoint is BLOCKED by this gate — not the other
-  way around.
+The env var must be set INLINE on the commit command — one approval, one commit.
+Do not `export` it. Do not set TELECLAUDE_SYSTEM_ROLE; that variable is a role
+declaration, not an approval gate, and is reserved for other purposes.
 MSG
-        exit 1
+            exit 1
+        fi
     fi
 fi
 

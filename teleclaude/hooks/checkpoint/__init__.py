@@ -40,6 +40,7 @@ from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
     _categorize_files,
     _command_likely_mutates_files,
+    _current_branch,
     _extract_apply_patch_paths,
     _extract_shell_command,
     _extract_shell_touched_paths,
@@ -78,7 +79,10 @@ __all__ = [
     "_command_likely_mutates_files",
     "_command_references_file",
     "_commands_overlap",
+    "_commit_instruction",
+    "_compose_checkpoint_message",
     "_compute_log_since_window",
+    "_current_branch",
     "_dedupe_strings",
     "_enrich_error",
     "_extract_apply_patch_paths",
@@ -119,6 +123,7 @@ def run_heuristics(
 ) -> CheckpointResult:
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
+    result.on_main = _current_branch(context.project_path) == "main"
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
@@ -213,6 +218,22 @@ def build_checkpoint_message(
     return _compose_checkpoint_message(git_files, result)
 
 
+def _commit_instruction(on_main: bool) -> str:
+    """Branch-aware commit instruction for the checkpoint message.
+
+    On main, commits require explicit human approval via the git wrapper gate.
+    Off main (worktree branches), workers commit their own changes directly.
+    """
+    if on_main:
+        return (
+            "You are on `main` — do NOT commit yet. State a recommendation to the human "
+            "(what changed, why, file types, scope) and wait for explicit approval. "
+            "If approved, commit with `TELECLAUDE_COMMIT_APPROVED=1 git commit -m '…'` "
+            "(inline — one approval, one commit)."
+        )
+    return "Commit only YOUR changed files"
+
+
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
     response_policy = (
@@ -226,12 +247,13 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         'run `touch "$TMPDIR/teleclaude_checkpoint_clear"` to disable checkpoints for this session. '
         "Re-enable by removing that file."
     )
+    commit_line = _commit_instruction(result.on_main)
 
     # Special case: docs only
     if not git_files or _is_docs_only(git_files):
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
-            f"Commit only YOUR changes if ready.\n\n{response_policy}\n\n{escape_hatch}"
+            f"{commit_line}\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     # Special case: all clear
@@ -239,7 +261,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         return (
             f"{CHECKPOINT_PREFIX}All expected validations were observed. "
             "Docs check: if relevant, update existing docs or add a new doc. "
-            f"Commit only YOUR changes if ready.\n\n{response_policy}\n\n{escape_hatch}"
+            f"{commit_line}\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
@@ -255,7 +277,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("Required actions (BLOCKING — do not resume user-facing work until all complete):")
         for i, action in enumerate(result.required_actions, 1):
             lines.append(f"{i}. {action}")
-        lines.append(f"{len(result.required_actions) + 1}. Commit only YOUR changed files")
+        lines.append(f"{len(result.required_actions) + 1}. {commit_line}")
         lines.append(f"{len(result.required_actions) + 2}. All steps done — only then proceed")
 
     # Observations (bullet points)

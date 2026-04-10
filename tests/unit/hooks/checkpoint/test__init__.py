@@ -15,6 +15,8 @@ from teleclaude.hooks.checkpoint import (
     CheckpointContext,
     CheckpointResult,
     TurnTimeline,
+    _commit_instruction,
+    _compose_checkpoint_message,
     get_checkpoint_content,
     run_heuristics,
 )
@@ -68,6 +70,95 @@ class TestRunHeuristics:
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
 
-        result = run_heuristics(["tests/unit/test_foo.py"], timeline, context)
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature"):
+            result = run_heuristics(["tests/unit/test_foo.py"], timeline, context)
 
         assert any("test policy" in action for action in result.required_actions)
+
+    @pytest.mark.unit
+    def test_on_main_flag_set_when_branch_is_main(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics(["src/app.py"], timeline, context)
+
+        assert result.on_main is True
+
+    @pytest.mark.unit
+    def test_on_main_flag_false_off_main(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["src/app.py"], timeline, context)
+
+        assert result.on_main is False
+
+    @pytest.mark.unit
+    def test_on_main_flag_false_when_branch_detection_fails(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value=None):
+            result = run_heuristics(["src/app.py"], timeline, context)
+
+        assert result.on_main is False
+
+
+class TestCommitInstruction:
+    @pytest.mark.unit
+    def test_on_main_references_approval_env_var(self) -> None:
+        instruction = _commit_instruction(on_main=True)
+        assert "TELECLAUDE_COMMIT_APPROVED=1" in instruction
+
+    @pytest.mark.unit
+    def test_off_main_does_not_mention_approval_env_var(self) -> None:
+        instruction = _commit_instruction(on_main=False)
+        assert "TELECLAUDE_COMMIT_APPROVED" not in instruction
+
+
+class TestComposeBranchAware:
+    @pytest.mark.unit
+    def test_compose_on_main_emits_approval_env_var_in_numbered_actions(self) -> None:
+        result = CheckpointResult(
+            categories=["python"],
+            required_actions=["Run tests"],
+            observations=[],
+            is_all_clear=False,
+            on_main=True,
+        )
+
+        message = _compose_checkpoint_message(["src/app.py"], result)
+
+        assert "TELECLAUDE_COMMIT_APPROVED=1" in message
+
+    @pytest.mark.unit
+    def test_compose_off_main_omits_approval_env_var(self) -> None:
+        result = CheckpointResult(
+            categories=["python"],
+            required_actions=["Run tests"],
+            observations=[],
+            is_all_clear=False,
+            on_main=False,
+        )
+
+        message = _compose_checkpoint_message(["src/app.py"], result)
+
+        assert "TELECLAUDE_COMMIT_APPROVED" not in message
+
+    @pytest.mark.unit
+    def test_compose_on_main_all_clear_variant_emits_approval_env_var(self) -> None:
+        result = CheckpointResult(is_all_clear=True, on_main=True)
+
+        message = _compose_checkpoint_message(["src/app.py"], result)
+
+        assert "TELECLAUDE_COMMIT_APPROVED=1" in message
+
+    @pytest.mark.unit
+    def test_compose_on_main_docs_only_variant_emits_approval_env_var(self) -> None:
+        result = CheckpointResult(on_main=True)
+
+        message = _compose_checkpoint_message([], result)
+
+        assert "TELECLAUDE_COMMIT_APPROVED=1" in message

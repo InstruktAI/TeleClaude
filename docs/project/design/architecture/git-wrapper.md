@@ -39,7 +39,8 @@ NEVER invoked — all sessions resolve `git` via PATH which hits the symlink.
 **Inputs:**
 
 - `$TMPDIR/teleclaude_identity.json` — per-session identity file containing `system_role`, `human_role`, `session_id`, and `session_token`. Written by daemon bootstrap.
-- `TELECLAUDE_SYSTEM_ROLE` env var — human-only escape hatch. Honored only when `human_role` is present in the identity file. Pure agent sessions ignore this variable.
+- `TELECLAUDE_SYSTEM_ROLE` env var — human-only role escalation. Honored only when `human_role` is present in the identity file. Pure agent sessions ignore this variable. Declares identity, not consent.
+- `TELECLAUDE_COMMIT_APPROVED` env var — per-commit human approval. When set to `1`, bypasses the commit-on-main gate for non-integrator roles. Orthogonal to `TELECLAUDE_SYSTEM_ROLE`: identity (role) and consent (approval) are separate concerns. Must be set inline on the commit command; exporting it weakens the one-approval-one-commit guarantee and violates the intended contract.
 - `GIT_CONFIG_COUNT/KEY/VALUE` — env vars injected by the wrapper to disable autostash
 
 **Outputs:**
@@ -70,6 +71,11 @@ Three permission tiers, applied in order for agent sessions:
 | PROTECTED   | stash (integrator), commit/push on main (integrator) | Role-gated              |
 | RESTRICTED  | commit (orchestrator)                                | Blocked on all branches |
 
+Commit-on-main has two independent bypass paths:
+
+1. **Role-based** — `_role == "integrator"` bypasses unconditionally. This is the automated integrator path.
+2. **Approval-based** — `TELECLAUDE_COMMIT_APPROVED=1` set inline bypasses the gate for any non-integrator, non-orchestrator role. This is the human-approval path. The orchestrator restriction (no commits on any branch) is not overridable by the approval env var — approval is consent to commit, not authority to commit.
+
 Human sessions (identity file has `human_role`, no `system_role`):
 
 - Git is allowed freely within the current working directory tree.
@@ -85,6 +91,12 @@ No identity (neither `system_role` nor `human_role` in identity file):
 - The env var escape hatch (`TELECLAUDE_SYSTEM_ROLE`) is only honored when
   `human_role` is present in the identity file. Agent sessions cannot
   self-escalate via environment variables.
+- `TELECLAUDE_COMMIT_APPROVED` and `TELECLAUDE_SYSTEM_ROLE` are strictly
+  separate concerns and must not be conflated. The former encodes per-action
+  human consent; the latter encodes identity/role. The commit-on-main error
+  message intentionally teaches only the approval path — the role override
+  exists for other operations (e.g., manual integrator tasks outside the
+  automated flow) and must not be advertised as a commit bypass.
 - Pre-commit's staged-file isolation uses `git checkout -- .` which goes
   through the wrapper. File-scoped checkout is allowed for all roles.
 - Branch resolution for main-branch protection uses `-C`, `--git-dir`, and
