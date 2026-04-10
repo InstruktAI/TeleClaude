@@ -176,7 +176,9 @@ def _next_monthly_occurrence(after: datetime, preferred_day: int, preferred_hour
     while True:
         last_day = calendar.monthrange(year, month)[1]
         day = min(preferred_day, last_day)
-        candidate = after.replace(year=year, month=month, day=day, hour=preferred_hour, minute=0, second=0, microsecond=0)
+        candidate = after.replace(
+            year=year, month=month, day=day, hour=preferred_hour, minute=0, second=0, microsecond=0
+        )
         if candidate >= after:
             return candidate
         if month == 12:
@@ -186,7 +188,7 @@ def _next_monthly_occurrence(after: datetime, preferred_day: int, preferred_hour
             month += 1
 
 
-def _is_first_run_due(
+def _is_first_run_due(  # pylint: disable=too-many-return-statements,too-many-branches
     schedule_config: JobScheduleConfig,
     first_seen_at: datetime | None,
     now: datetime,
@@ -365,7 +367,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return False
 
 
-def _should_run_subscription_job(
+def _should_run_subscription_job(  # pylint: disable=too-many-branches
     job_name: str,
     state: CronState,
     now: datetime,
@@ -505,6 +507,7 @@ def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> JobResult:
             text=True,
             cwd=str(_REPO_ROOT),
             timeout=timeout,
+            check=False,
         )
     except subprocess.TimeoutExpired:
         return JobResult(success=False, message=f"{job.name} timed out after {timeout}s")

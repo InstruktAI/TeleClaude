@@ -1,4 +1,5 @@
 """Chiptunes playback control endpoints."""
+# pylint: disable=invalid-name,global-statement  # module-level mutable state owned by routes
 
 from __future__ import annotations
 
@@ -33,13 +34,13 @@ def configure(manager: ChiptunesManager | None) -> None:
 
 def increment_state_version() -> None:
     """Increment the state version counter (called by daemon on state change)."""
-    global _state_version  # noqa: PLW0603
+    global _state_version
     _state_version += 1
 
 
 def clear_pending(command_id: str) -> None:
     """Clear pending command if it matches (called by daemon on command_done)."""
-    global _pending_command_id, _pending_action  # noqa: PLW0603
+    global _pending_command_id, _pending_action
     if command_id == _pending_command_id:
         _pending_command_id = ""
         _pending_action = ""
@@ -79,7 +80,7 @@ def _build_chiptunes_status() -> ChiptunesStatusDTO:
 
 def _issue_command(action: str) -> ChiptunesCommandReceiptDTO:
     """Generate uuid, enqueue command on manager, return receipt."""
-    global _state_version, _pending_command_id, _pending_action  # noqa: PLW0603
+    global _state_version, _pending_command_id, _pending_action
     manager = _require_manager()
     command_id = uuid4().hex
     _pending_command_id = command_id

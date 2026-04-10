@@ -35,16 +35,11 @@ def _find_real_git() -> str:
 # Point gitpython at the real binary BEFORE import to prevent recursion
 # through the wrapper (whose shebang is uv run).
 os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _find_real_git()
-from git import Repo as Repo  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
-from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
-    GitCommandError as GitCommandError,
-)
-from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
-    InvalidGitRepositoryError as InvalidGitRepositoryError,
-)
-from git.exc import (  # noqa: E402  # pylint: disable=useless-import-alias,wrong-import-position
-    NoSuchPathError as NoSuchPathError,
-)
+# pylint: disable=useless-import-alias,wrong-import-position,wrong-import-order
+from git import Repo as Repo  # noqa: E402
+from git.exc import GitCommandError as GitCommandError  # noqa: E402
+from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError  # noqa: E402
+from git.exc import NoSuchPathError as NoSuchPathError  # noqa: E402
 
 __all__ = [
     "GitCommandError",

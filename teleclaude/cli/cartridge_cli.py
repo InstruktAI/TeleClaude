@@ -7,7 +7,7 @@ Handles:
   telec config cartridges promote --from sandbox --to domain --domain <name> --id <name>
   telec config cartridges list [--scope sandbox] [--domain <name>] [--member <id>]
 """
-# pylint: disable=import-outside-toplevel,broad-exception-caught
+# pylint: disable=import-outside-toplevel,broad-exception-caught,import-error,no-name-in-module
 
 from __future__ import annotations
 
@@ -20,10 +20,12 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from teleclaude.events.lifecycle import LifecycleManager
-
 from teleclaude.paths import COMPANY_DIR, PERSONAL_DIR, SANDBOX_CARTRIDGES_DIR
+
+if TYPE_CHECKING:
+    from teleclaude.events.lifecycle import (  # type: ignore[import-not-found] # pyright: ignore[reportMissingImports]
+        LifecycleManager,
+    )
 
 _DEFAULT_SANDBOX_DIR = SANDBOX_CARTRIDGES_DIR
 
@@ -31,7 +33,7 @@ _DEFAULT_SANDBOX_DIR = SANDBOX_CARTRIDGES_DIR
 def _get_lifecycle_manager() -> LifecycleManager:
     """Build a LifecycleManager from global config."""
     from teleclaude.config.loader import load_global_config
-    from teleclaude.events.lifecycle import LifecycleManager
+    from teleclaude.events.lifecycle import LifecycleManager  # pyright: ignore[reportMissingImports]
 
     config = load_global_config()
     event_domains = getattr(config, "event_domains", None)
@@ -276,7 +278,7 @@ def _handle_promote_action(
     if not parsed.target_domain:
         print("Error: --domain is required when promoting between lifecycle scopes", file=sys.stderr)
         sys.exit(1)
-    from teleclaude.events.lifecycle import PromotionSpec
+    from teleclaude.events.lifecycle import PromotionSpec  # pyright: ignore[reportMissingImports]
 
     spec = PromotionSpec(
         from_scope=cartridge_scope(parsed.from_scope),
@@ -305,10 +307,11 @@ def _handle_promote_action(
 def _list_lifecycle_rows(
     manager: LifecycleManager, parsed: argparse.Namespace, cartridge_scope: type
 ) -> list[dict[str, str]]:
+    list_cartridges = manager.list_cartridges  # pylint: disable=no-member
     if parsed.domain:
-        return manager.list_cartridges(cartridge_scope.domain, parsed.domain)  # type: ignore[attr-defined]
+        return list_cartridges(cartridge_scope.domain, parsed.domain)  # type: ignore[attr-defined,no-any-return]
     if parsed.member:
-        return manager.list_cartridges(cartridge_scope.personal, parsed.member)  # type: ignore[attr-defined]
+        return list_cartridges(cartridge_scope.personal, parsed.member)  # type: ignore[attr-defined,no-any-return]
 
     from teleclaude.config.loader import load_global_config  # pylint: disable=import-outside-toplevel
 
@@ -317,7 +320,7 @@ def _list_lifecycle_rows(
     event_domains = getattr(config, "event_domains", None)
     if event_domains:
         for domain_name in event_domains.domains:
-            rows.extend(manager.list_cartridges(cartridge_scope.domain, domain_name))  # type: ignore[attr-defined]
+            rows.extend(list_cartridges(cartridge_scope.domain, domain_name))  # type: ignore[attr-defined]
     return rows
 
 
@@ -353,7 +356,7 @@ def handle_cartridge_cli(args: list[str]) -> None:
         parser.print_help()
         sys.exit(1)
 
-    from teleclaude.events.lifecycle import CartridgeScope
+    from teleclaude.events.lifecycle import CartridgeScope  # pyright: ignore[reportMissingImports]
 
     try:
         manager = _get_lifecycle_manager()

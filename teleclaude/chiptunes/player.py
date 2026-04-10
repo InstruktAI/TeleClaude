@@ -34,7 +34,7 @@ _FADE_DURATION_S = 3.0  # fade-out window before track end
 
 
 def _apply_fade(pcm: bytes, factor: float) -> bytes:
-    """Scale all int16 samples by factor (0.0–1.0)."""
+    """Scale all int16 samples by factor (0.0-1.0)."""
     samples = array.array("h")
     samples.frombytes(pcm)
     samples = array.array("h", [int(s * factor) for s in samples])
@@ -81,6 +81,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         self.on_track_end: Callable[[str | None], None] | None = None
         self._stream_device_id: int | None = None
         self._device_monitor_thread: threading.Thread | None = None
+        self._max_duration: float | None = None
 
     @property
     def is_playing(self) -> bool:
@@ -368,7 +369,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(wait_s)
         return False
 
-    def _emulation_loop(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _emulation_loop(  # noqa: C901 - pylint: disable=too-many-locals,too-many-branches,too-many-statements
         self,
         header: SIDHeader,
         start_position_seconds: float = 0.0,
@@ -410,7 +411,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             with self._position_lock:
                 self._playback_position_seconds = playback_elapsed
 
-        while not self._stop_event.is_set():
+        while not self._stop_event.is_set():  # pylint: disable=too-many-nested-blocks
             if not self._resume_event.wait(timeout=0.1):
                 continue
             if self._stop_event.is_set():
@@ -432,7 +433,11 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                         if playback_elapsed >= fade_start:
                             factor = max(0.0, 1.0 - (playback_elapsed - fade_start) / _FADE_DURATION_S)
                             if factor <= 0.0:
-                                print(f"[CHIPTUNES] FADE COMPLETE: elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True)
+                                print(
+                                    f"[CHIPTUNES] FADE COMPLETE: "
+                                    f"elapsed={playback_elapsed:.1f}s max_duration={max_duration}",
+                                    flush=True,
+                                )
                                 done = True
                                 break
                             pcm = _apply_fade(pcm, factor)
@@ -461,7 +466,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         self._playing = False
         reason = self._last_track_end_reason or ("stopped" if self._stop_event.is_set() else "track_completed")
-        print(f"[CHIPTUNES] END: reason={reason} elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True)
+        print(
+            f"[CHIPTUNES] END: reason={reason} elapsed={playback_elapsed:.1f}s max_duration={max_duration}", flush=True
+        )
         if not self._stop_event.is_set() and self._last_track_end_reason is None:
             self._notify_track_end("track_completed")
 
