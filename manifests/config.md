@@ -6,18 +6,10 @@ Model: `GlobalConfig`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `business` | BusinessConfig |  |
-| `channel_subscriptions` | array | Channel Subscriptions |
-| `deployment` | DeploymentConfig |  |
-| `description` | string | null | Description |
+| `checkout_root` | string | null | Checkout Root |
 | `event_domains` | DomainsConfig | null |  |
-| `git` | GitConfig |  |
-| `hooks` | HooksConfig |  |
-| `integrator` | IntegratorConfig |  |
 | `interests` | array | Interests |
-| `jobs` | object | Jobs |
 | `people` | array | People |
-| `project_name` | string | null | Project Name |
 | `subscriptions` | array | Subscriptions |
 
 ### Global Config — Nested Types
@@ -33,33 +25,11 @@ Model: `GlobalConfig`
 | `by_event_type` | object | By Event Type |
 | `global_default` | AutonomyLevel |  |
 
-#### BusinessConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `domains` | object | Domains |
-
-#### ChannelSubscription
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `channel` | string | Channel |
-| `filter` | object | null | Filter |
-| `target` | object | Target |
-
-#### DeploymentConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `channel` | string | Channel |
-| `pinned_minor` | string | Pinned Minor |
-
 #### DomainConfig
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `autonomy` | AutonomyMatrix |  |
-| `cartridge_path` | string | null | Cartridge Path |
 | `enabled` | boolean | Enabled |
 | `guardian` | DomainGuardianConfig |  |
 | `name` | string | Name |
@@ -77,65 +47,8 @@ Model: `GlobalConfig`
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `base_path` | string | Base Path |
 | `domains` | object | Domains |
 | `enabled` | boolean | Enabled |
-| `helpdesk_path` | string | Helpdesk Path |
-| `personal_base_path` | string | Personal Base Path |
-
-#### GitConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `checkout_root` | string | null | Checkout Root |
-
-#### HooksConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `inbound` | object | Inbound |
-| `subscriptions` | array | Subscriptions |
-
-#### InboundSourceConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `normalizer` | string | null | Normalizer |
-| `path` | string | null | Path |
-| `secret` | string | null | Secret |
-| `verify_token` | string | null | Verify Token |
-
-#### IntegratorConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `cutover` | IntegratorCutoverConfig |  |
-
-#### IntegratorCutoverConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `enabled` | boolean | Enabled |
-| `parity_evidence_accepted` | boolean | Parity Evidence Accepted |
-| `rollback_on_incomplete_parity` | boolean | Rollback On Incomplete Parity |
-
-#### JobScheduleConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `agent` | string | null | Agent |
-| `category` | string | Category |
-| `job` | string | null | Job |
-| `message` | string | null | Message |
-| `preferred_day` | integer | Preferred Day |
-| `preferred_hour` | integer | Preferred Hour |
-| `preferred_weekday` | integer | Preferred Weekday |
-| `schedule` | string | null | Schedule |
-| `script` | string | null | Script |
-| `thinking_mode` | string | null | Thinking Mode |
-| `timeout` | integer | null | Timeout |
-| `type` | string | null | Type |
-| `when` | JobWhenConfig | null |  |
 
 #### JobSubscription
 
@@ -165,14 +78,6 @@ Model: `GlobalConfig`
 | `proficiency` | string | null | Proficiency |
 | `role` | string | Role |
 | `username` | string | null | Username |
-
-#### SubscriptionConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `contract` | object | Contract |
-| `id` | string | Id |
-| `target` | object | Target |
 
 #### SubscriptionNotification
 
@@ -231,10 +136,6 @@ Model: `ProjectConfig`
 | `pinned_minor` | string | Pinned Minor |
 
 #### GitConfig
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `checkout_root` | string | null | Checkout Root |
 
 #### HooksConfig
 
@@ -425,79 +326,6 @@ Model: `PersonConfig`
       "title": "AutonomyMatrix",
       "type": "object"
     },
-    "BusinessConfig": {
-      "additionalProperties": true,
-      "description": "Business domain configuration.",
-      "properties": {
-        "domains": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "title": "Domains",
-          "type": "object"
-        }
-      },
-      "title": "BusinessConfig",
-      "type": "object"
-    },
-    "ChannelSubscription": {
-      "additionalProperties": true,
-      "description": "A subscription that routes messages from a Redis Stream channel to a target.",
-      "properties": {
-        "channel": {
-          "title": "Channel",
-          "type": "string"
-        },
-        "filter": {
-          "anyOf": [
-            {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Filter"
-        },
-        "target": {
-          "additionalProperties": true,
-          "default": {},
-          "title": "Target",
-          "type": "object"
-        }
-      },
-      "required": [
-        "channel"
-      ],
-      "title": "ChannelSubscription",
-      "type": "object"
-    },
-    "DeploymentConfig": {
-      "additionalProperties": true,
-      "description": "Release channel and version pinning.",
-      "properties": {
-        "channel": {
-          "default": "alpha",
-          "enum": [
-            "alpha",
-            "beta",
-            "stable"
-          ],
-          "title": "Channel",
-          "type": "string"
-        },
-        "pinned_minor": {
-          "default": "",
-          "title": "Pinned Minor",
-          "type": "string"
-        }
-      },
-      "title": "DeploymentConfig",
-      "type": "object"
-    },
     "DomainConfig": {
       "additionalProperties": true,
       "description": "Configuration for a single domain-specific event pipeline.",
@@ -510,18 +338,6 @@ Model: `PersonConfig`
           "default": true,
           "title": "Enabled",
           "type": "boolean"
-        },
-        "cartridge_path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Cartridge Path"
         },
         "guardian": {
           "$ref": "#/$defs/DomainGuardianConfig"
@@ -573,27 +389,12 @@ Model: `PersonConfig`
     },
     "DomainsConfig": {
       "additionalProperties": true,
-      "description": "Top-level configuration for all domain and personal event pipelines.",
+      "description": "Top-level configuration for repo-owned domain event pipelines.",
       "properties": {
         "enabled": {
           "default": true,
           "title": "Enabled",
           "type": "boolean"
-        },
-        "base_path": {
-          "default": "~/.teleclaude/company",
-          "title": "Base Path",
-          "type": "string"
-        },
-        "personal_base_path": {
-          "default": "~/.teleclaude/personal",
-          "title": "Personal Base Path",
-          "type": "string"
-        },
-        "helpdesk_path": {
-          "default": "~/.teleclaude/helpdesk",
-          "title": "Helpdesk Path",
-          "type": "string"
         },
         "domains": {
           "additionalProperties": {
@@ -604,296 +405,6 @@ Model: `PersonConfig`
         }
       },
       "title": "DomainsConfig",
-      "type": "object"
-    },
-    "GitConfig": {
-      "additionalProperties": true,
-      "description": "Git repository configuration.",
-      "properties": {
-        "checkout_root": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Checkout Root"
-        }
-      },
-      "title": "GitConfig",
-      "type": "object"
-    },
-    "HooksConfig": {
-      "additionalProperties": true,
-      "description": "Hooks and subscriptions configuration.",
-      "properties": {
-        "inbound": {
-          "additionalProperties": {
-            "$ref": "#/$defs/InboundSourceConfig"
-          },
-          "default": {},
-          "title": "Inbound",
-          "type": "object"
-        },
-        "subscriptions": {
-          "default": [],
-          "items": {
-            "$ref": "#/$defs/SubscriptionConfig"
-          },
-          "title": "Subscriptions",
-          "type": "array"
-        }
-      },
-      "title": "HooksConfig",
-      "type": "object"
-    },
-    "InboundSourceConfig": {
-      "additionalProperties": true,
-      "description": "Inbound webhook source configuration.",
-      "properties": {
-        "path": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Path"
-        },
-        "verify_token": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Verify Token"
-        },
-        "secret": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Secret"
-        },
-        "normalizer": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Normalizer"
-        }
-      },
-      "title": "InboundSourceConfig",
-      "type": "object"
-    },
-    "IntegratorConfig": {
-      "additionalProperties": true,
-      "description": "Integrator subsystem configuration.",
-      "properties": {
-        "cutover": {
-          "$ref": "#/$defs/IntegratorCutoverConfig",
-          "default": {
-            "enabled": false,
-            "parity_evidence_accepted": false,
-            "rollback_on_incomplete_parity": true
-          }
-        }
-      },
-      "title": "IntegratorConfig",
-      "type": "object"
-    },
-    "IntegratorCutoverConfig": {
-      "additionalProperties": true,
-      "description": "Integrator cutover feature flags.",
-      "properties": {
-        "enabled": {
-          "default": false,
-          "title": "Enabled",
-          "type": "boolean"
-        },
-        "parity_evidence_accepted": {
-          "default": false,
-          "title": "Parity Evidence Accepted",
-          "type": "boolean"
-        },
-        "rollback_on_incomplete_parity": {
-          "default": true,
-          "title": "Rollback On Incomplete Parity",
-          "type": "boolean"
-        }
-      },
-      "title": "IntegratorCutoverConfig",
-      "type": "object"
-    },
-    "JobScheduleConfig": {
-      "additionalProperties": true,
-      "description": "Job scheduling and execution configuration.",
-      "properties": {
-        "category": {
-          "default": "subscription",
-          "enum": [
-            "subscription",
-            "system"
-          ],
-          "title": "Category",
-          "type": "string"
-        },
-        "when": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/JobWhenConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "schedule": {
-          "anyOf": [
-            {
-              "enum": [
-                "hourly",
-                "daily",
-                "weekly",
-                "monthly"
-              ],
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Schedule"
-        },
-        "preferred_hour": {
-          "default": 6,
-          "maximum": 23,
-          "minimum": 0,
-          "title": "Preferred Hour",
-          "type": "integer"
-        },
-        "preferred_weekday": {
-          "default": 0,
-          "maximum": 6,
-          "minimum": 0,
-          "title": "Preferred Weekday",
-          "type": "integer"
-        },
-        "preferred_day": {
-          "default": 1,
-          "maximum": 31,
-          "minimum": 1,
-          "title": "Preferred Day",
-          "type": "integer"
-        },
-        "type": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Type"
-        },
-        "script": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Script"
-        },
-        "job": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Job"
-        },
-        "agent": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "claude",
-          "title": "Agent"
-        },
-        "thinking_mode": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": "fast",
-          "title": "Thinking Mode"
-        },
-        "message": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Message"
-        },
-        "timeout": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Timeout"
-        }
-      },
-      "title": "JobScheduleConfig",
       "type": "object"
     },
     "JobSubscription": {
@@ -1093,33 +604,6 @@ Model: `PersonConfig`
       "title": "PersonEntry",
       "type": "object"
     },
-    "SubscriptionConfig": {
-      "additionalProperties": true,
-      "description": "Hook subscription configuration.",
-      "properties": {
-        "id": {
-          "title": "Id",
-          "type": "string"
-        },
-        "contract": {
-          "additionalProperties": true,
-          "default": {},
-          "title": "Contract",
-          "type": "object"
-        },
-        "target": {
-          "additionalProperties": true,
-          "default": {},
-          "title": "Target",
-          "type": "object"
-        }
-      },
-      "required": [
-        "id"
-      ],
-      "title": "SubscriptionConfig",
-      "type": "object"
-    },
     "SubscriptionNotification": {
       "additionalProperties": true,
       "description": "Notification channel preference for a subscription.",
@@ -1194,84 +678,8 @@ Model: `PersonConfig`
     }
   },
   "additionalProperties": true,
-  "description": "Global-level configuration extending project config.",
+  "description": "Global-level configuration.",
   "properties": {
-    "project_name": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Project Name"
-    },
-    "description": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Description"
-    },
-    "business": {
-      "$ref": "#/$defs/BusinessConfig",
-      "default": {
-        "domains": {}
-      }
-    },
-    "hooks": {
-      "$ref": "#/$defs/HooksConfig",
-      "default": {
-        "inbound": {},
-        "subscriptions": []
-      }
-    },
-    "jobs": {
-      "additionalProperties": {
-        "$ref": "#/$defs/JobScheduleConfig"
-      },
-      "default": {},
-      "title": "Jobs",
-      "type": "object"
-    },
-    "git": {
-      "$ref": "#/$defs/GitConfig",
-      "default": {
-        "checkout_root": null
-      }
-    },
-    "integrator": {
-      "$ref": "#/$defs/IntegratorConfig",
-      "default": {
-        "cutover": {
-          "enabled": false,
-          "parity_evidence_accepted": false,
-          "rollback_on_incomplete_parity": true
-        }
-      }
-    },
-    "channel_subscriptions": {
-      "default": [],
-      "items": {
-        "$ref": "#/$defs/ChannelSubscription"
-      },
-      "title": "Channel Subscriptions",
-      "type": "array"
-    },
-    "deployment": {
-      "$ref": "#/$defs/DeploymentConfig",
-      "default": {
-        "channel": "alpha",
-        "pinned_minor": ""
-      }
-    },
     "people": {
       "default": [],
       "items": {
@@ -1320,6 +728,18 @@ Model: `PersonConfig`
         }
       ],
       "default": null
+    },
+    "checkout_root": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Checkout Root"
     }
   },
   "title": "GlobalConfig",
