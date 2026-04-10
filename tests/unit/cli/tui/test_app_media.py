@@ -34,8 +34,9 @@ class _MediaApp(app_media.TelecAppMediaMixin):
 def test_apply_chiptunes_footer_state_ignores_stale_versions_and_updates_newer_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    favorites = __import__("teleclaude.chiptunes.favorites", fromlist=["is_favorited"])
-    monkeypatch.setattr(favorites, "is_favorited", lambda path: path.endswith(".sid"))
+    # Patch the already-bound reference in app_media, not the origin module.
+    monkeypatch.setattr(app_media, "is_favorited", lambda path: path.endswith(".sid"))
+    monkeypatch.setattr(app_media, "is_disliked", lambda path: False)
     footer = SimpleNamespace(
         chiptunes_loaded=False,
         chiptunes_playback="cold",
@@ -95,16 +96,24 @@ def test_apply_chiptunes_receipt_marks_resume_and_skip_actions_as_loading() -> N
 @pytest.mark.unit
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("playing", "expected_method", "expected_action"),
-    [(True, "chiptunes_pause", "pause"), (False, "chiptunes_resume", "resume")],
+    ("playing", "expected_method", "expected_pending_action", "reconcile_expected"),
+    [
+        # Pause path tracks the receipt and schedules reconcile.
+        (True, "chiptunes_pause", "pause", True),
+        # Resume path skips receipt tracking and reconcile — WS events correct the state
+        # once the worker is up, so the button flips to "pause" immediately.
+        (False, "chiptunes_resume", "", False),
+    ],
 )
 async def test_chiptunes_play_pause_toggles_local_playing_state_and_reconciles(
     playing: bool,
     expected_method: str,
-    expected_action: str,
+    expected_pending_action: str,
+    reconcile_expected: bool,
 ) -> None:
     footer = SimpleNamespace(
         chiptunes_playing=playing,
+        chiptunes_loaded=False,
         chiptunes_pending_command_id="",
         chiptunes_pending_action="",
         chiptunes_playback="cold",
@@ -115,8 +124,11 @@ async def test_chiptunes_play_pause_toggles_local_playing_state_and_reconciles(
 
     getattr(app.api, expected_method).assert_awaited_once()
     assert footer.chiptunes_playing is (not playing)
-    assert footer.chiptunes_pending_action == expected_action
-    app._schedule_chiptunes_reconcile.assert_called_once_with()
+    assert footer.chiptunes_pending_action == expected_pending_action
+    if reconcile_expected:
+        app._schedule_chiptunes_reconcile.assert_called_once_with()
+    else:
+        app._schedule_chiptunes_reconcile.assert_not_called()
 
 
 @pytest.mark.unit
