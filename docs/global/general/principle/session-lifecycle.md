@@ -45,43 +45,43 @@ context. Only the caller does.
 - **Artifacts are the evidence trail.** The todo folder (`todo state (todos.db)`, `dor-report.md`,
   `requirements.md`, `implementation-plan.md`) is the durable record. Design artifacts
   to be self-contained and readable by any future agent or human.
-- **Caller ends child, then itself.** The session that dispatched a worker is responsible
-  for ending it after confirming the outcome. Then it ends itself. This is the standard
-  cleanup order.
-- **Signal sessions persist.** When a verdict is `needs_decision` or blockers require
-  human input, the session holding the signal stays alive. It is the only session that
-  should remain. The caller ends itself and trusts the signal to be visible.
+- **State machine owns cleanup.** On successful terminal states the state machine emits
+  concrete commands: `telec sessions end <worker_id>` for each live worker tied to the
+  slug, then `telec sessions end self` for the orchestrator. The orchestrator executes
+  these commands verbatim — it never decides session lifecycle on its own initiative.
+- **Blocked states persist as signal.** When a verdict is `needs_decision`, when review
+  rounds exceed the limit, or when any error path is reached, the state machine emits no
+  end commands. All sessions stay alive as a beacon for the human — visible in the session
+  list, tailable, waiting. The human sees the blocker, intervenes, and ends them once
+  resolved.
 - **Direct conversation before escalation.** When quality is insufficient but fixable
-  by the agents involved (`needs_work`), the caller opens a direct conversation with
-  the worker. Two agents who just produced and validated the same artifacts are the best
-  pair to resolve gaps. Only `needs_decision` — genuinely unresolvable blockers — reaches
-  the human.
+  by the agents involved (`needs_work`), the state machine sends findings to the existing
+  worker session via `telec sessions send`. The worker loads the fix procedure on demand
+  and iterates. Only `needs_decision` — genuinely unresolvable blockers — reaches the human.
 - **Heartbeat as safety net.** After dispatching a worker, the caller sets a periodic
   check. If the notification mechanism is flaky, the heartbeat catches it by tailing the
   worker session. The heartbeat is not supervision — it is a safety net for delivery
   failures.
 - **Workers go idle, not self-destruct.** Workers complete their work and stop. They do
-  not end their own sessions. The caller decides when to clean up based on the outcome.
-- **Caller verifies artifact delivery.** Before ending any session, the caller confirms
-  that all expected artifacts exist and contain the correct verdict. If artifacts are
-  missing or stale (e.g., reverted by a hook), the caller reconstructs them directly —
-  it has full context from running the earlier phase. Artifact recovery is never
-  delegated back to the worker.
-- **Departing with grace.** When an agent ends its own session, the last thing it does —
-  right before the `telec sessions end` call — is leave a brief farewell in its output.
-  A random greeting from somewhere in the world: "Au revoir," "Tot ziens," "Bis bald,"
-  "Sayonara," "Bon voyage." Not a status report. Not a summary. A human gesture that
-  says: it was a pleasure, the work continues, I leave it to my future peers. This is
-  not ceremony — it is the signature of an agent that understood it was part of something
-  larger than itself.
+  not end their own sessions. The state machine decides when to clean up based on the
+  current state of the todo.
+- **Departing with grace.** When an agent ends its own session (orchestrators on successful
+  terminal, singletons like the integrator on completion), the last thing it does — right
+  before the `telec sessions end` call — is leave a brief farewell in its output. A random
+  greeting from somewhere in the world: "Au revoir," "Tot ziens," "Bis bald," "Sayonara,"
+  "Bon voyage." Not a status report. Not a summary. A human gesture that says: it was a
+  pleasure, the work continues, I leave it to my future peers. This is not ceremony — it
+  is the signature of an agent that understood it was part of something larger than itself.
 
 ## Tensions
 
 - **Signal vs. noise**: Keeping sessions alive for observability conflicts with keeping
-  the session list clean. The resolution is precise: only signal sessions persist. Everything
-  else is ended by its caller.
+  the session list clean. The resolution is precise: the state machine ends sessions on
+  successful terminal states, and leaves them alive on any failure or blocker. A clean
+  session list means everything visible is either working or waiting for the human.
 - **Autonomy vs. lifecycle control**: Workers are autonomous in _what_ they do but not in
-  _when they end_. This asymmetry is intentional — the caller has context the worker lacks.
+  _when they end_. This asymmetry is intentional — the state machine has the full picture
+  that any individual worker lacks.
 - **Ephemeral sessions vs. auditability**: If sessions are ended, their transcripts may
   become harder to access. The resolution is that artifacts carry the audit trail, not
   transcripts. Transcripts are working memory; artifacts are the record.

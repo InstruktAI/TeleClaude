@@ -6,10 +6,9 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine._types import PAREN_OPEN, REVIEW_DIFF_NOTE
+from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 
 __all__ = [
-    "POST_COMPLETION",
     "REVIEW_DIFF_NOTE",
     "ToolCallRequest",
     "format_error",
@@ -20,226 +19,21 @@ __all__ = [
     "format_uncommitted_changes",
 ]
 
-POST_COMPLETION: dict[str, str] = {
-    "next-build": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec todo mark-phase {args} --phase build --status complete
-3. Call {next_call}
-4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
-   - Send the failure details to the builder (do NOT end the session)
-   - Wait for builder to report completion again
-   - Repeat from step 2
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-bugs-fix": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec todo mark-phase {args} --phase build --status complete
-3. Call {next_call}
-4. If next_work returns BUILD GATES FAILED or ARTIFACT VERIFICATION FAILED:
-   - Send the failure details to the builder (do NOT end the session)
-   - Wait for builder to report completion again
-   - Repeat from step 2
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-review-build": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id> to extract verdict
-2. If verdict is APPROVE:
-   a. telec sessions end <session_id>
-   b. telec todo mark-phase {args} --target review_approved
-   c. Call {next_call}
-3. If verdict is REQUEST CHANGES — PEER CONVERSATION PROTOCOL (keep reviewer alive):
-   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --target review_changes_requested
-   c. Dispatch fixer: telec sessions run --command /next-fix-review --args {args} \\
-        --project <project-root> --subfolder trees/{args}
-   d. Save <reviewer_session_id> and <fixer_session_id>
-   e. Tell the reviewer to start a direct conversation with the fixer:
-        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \\
-        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \\
-        Collaborate until all findings are resolved, then persist the full review-findings artifact \\
-        with telec todo artifacts write {args} review-findings <content> and set the verdict \\
-        by arithmetic: APPROVE only when unresolved Critical and Important counts are both zero. \\
-        Report FIX COMPLETE." (you will use regular send, NOT --direct)
-   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
-   g. When fixer reports FIX COMPLETE:
-      - Read the review-findings artifact verdict
-      - If APPROVE: telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>,
-          telec todo mark-phase {args} --target review_approved,
-          call {next_call}
-      - If still REQUEST CHANGES: telec sessions end <fixer_session_id>,
-          telec sessions end <reviewer_session_id>,
-          call {next_call} (state machine manages the round count and limit)
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-fix-review": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec sessions end <session_id>
-3. telec todo mark-phase {args} --target review_pending
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-defer": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>. Confirm deferrals_processed in state.yaml
-2. telec sessions end <session_id>
-3. Call {next_call}
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-finalize": """# state.yaml lives in the worktree only — never commit it to main directly.
-
-WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>.
-2. Accept completion only for the dispatched worker session `<session_id>`.
-   Ignore notifications from any other session.
-3. Confirm worker reported exactly `FINALIZE_READY: {args}` in session `<session_id>` transcript.
-   If missing: send worker feedback to report FINALIZE_READY and stop (do NOT apply).
-4. telec todo mark-phase {args} --target finalize_ready
-5. telec sessions end <session_id>
-6. Call {next_call}
-7. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-8. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-prepare-discovery": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec todo mark-phase {args} --phase requirements --status complete
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-prepare-draft": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec todo mark-phase {args} --phase implementation_plan --status complete
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-build-specs": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id>
-2. telec todo mark-phase {args} --phase test_specs --status complete
-3. telec sessions end <session_id>
-4. Call {next_call}
-5. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-6. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-review-specs": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id> to extract verdict
-2. If verdict is APPROVE:
-   a. telec todo mark-phase {args} --phase test_spec_review --status approve
-   b. telec sessions end <session_id>
-   c. Call {next_call}
-3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
-   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --phase test_spec_review --status needs_work
-   c. Dispatch fixer: telec sessions run --command /next-build-specs --args {args} \
-        --project <project-root> --subfolder trees/{args}
-   d. Save <reviewer_session_id> and <fixer_session_id>
-   e. Tell the reviewer to start a direct conversation with the fixer:
-        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
-        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
-        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
-   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
-   g. When fixer reports FIX COMPLETE:
-      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
-      - telec todo mark-phase {args} --phase test_specs --status complete
-      - Call {next_call}
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-review-requirements": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id> to extract verdict
-2. If verdict is APPROVE:
-   a. telec todo mark-phase {args} --phase requirements_review --status approve
-   b. telec sessions end <session_id>
-   c. Call {next_call}
-3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
-   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --phase requirements_review --status needs_work
-   c. Dispatch fixer: telec sessions run --command /next-prepare-discovery --args {args} \
-        --project <project-root>
-   d. Save <reviewer_session_id> and <fixer_session_id>
-   e. Tell the reviewer to start a direct conversation with the fixer:
-        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
-        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
-        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
-   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
-   g. When fixer reports FIX COMPLETE:
-      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
-      - telec todo mark-phase {args} --phase requirements --status complete
-      - Call {next_call}
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-    "next-review-plan": """WHEN WORKER COMPLETES:
-(You received this notification without blocking — never add blocking checks.)
-1. Inspect worker output via telec sessions tail <session_id> to extract verdict
-2. If verdict is APPROVE:
-   a. telec todo mark-phase {args} --phase plan_review --status approve
-   b. telec sessions end <session_id>
-   c. Call {next_call}
-3. If verdict is NEEDS WORK — PEER CONVERSATION PROTOCOL (keep reviewer alive):
-   a. DO NOT end the reviewer session — keep it alive throughout peer iteration
-   b. telec todo mark-phase {args} --phase plan_review --status needs_work
-   c. Dispatch fixer: telec sessions run --command /next-prepare-draft --args {args} \
-        --project <project-root>
-   d. Save <reviewer_session_id> and <fixer_session_id>
-   e. Tell the reviewer to start a direct conversation with the fixer:
-        telec sessions send <reviewer_session_id> "A fixer is active at <fixer_session_id>. \
-        Start a direct conversation: telec sessions send <fixer_session_id> '<your findings summary>' --direct. \
-        Collaborate until all findings are resolved, then report FIX COMPLETE." (you will use regular send, NOT --direct)
-   f. Wait for fixer to complete (monitor via heartbeat; do not poll continuously)
-   g. When fixer reports FIX COMPLETE:
-      - telec sessions end <fixer_session_id>, telec sessions end <reviewer_session_id>
-      - telec todo mark-phase {args} --phase implementation_plan --status complete
-      - Call {next_call}
-4. Non-recoverable errors (FATAL/BLOCKER reported by worker):
-   - Do NOT end the session — keep it alive as a signal for human investigation
-   - Report the error status and session ID to the user for manual intervention
-5. Never send no-op acknowledgements/keepalives (e.g., "No new input", "Remain idle", "Continue standing by").
-""",
-}
-
 
 class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
-    """Structured request mapping for orchestrator tool-call formatting."""
+    """Structured request mapping for orchestrator tool-call formatting.
+
+    Fields consumed by format_tool_call:
+        command: SlashCommand enum or string (required)
+        args: worker arguments (required)
+        project: project root path (required)
+        guidance: agent selection guidance text (required)
+        subfolder: worktree subfolder relative to project (required)
+        post_block: tailored WHEN-WORKER-COMPLETES instructions (optional)
+        pre_dispatch: pre-dispatch steps (optional)
+        additional_context: extra context for the worker (optional)
+        note: trailing note appended to the output (optional)
+    """
 
 
 def _command_text(value: object) -> str:
@@ -247,21 +41,6 @@ def _command_text(value: object) -> str:
     if hasattr(value, "value"):
         return str(value.value)  # pyright: ignore[reportAttributeAccessIssue]  # guarded by hasattr
     return str(value)
-
-
-def _format_post_completion(request: ToolCallRequest) -> str:
-    """Format the post-completion instructions block for a tool call."""
-    command = _command_text(request["command"])
-    post_completion = POST_COMPLETION.get(command, "")
-    if not post_completion:
-        return ""
-
-    next_call_display = str(request.get("next_call", "")).strip()
-    if next_call_display and PAREN_OPEN not in next_call_display and " " not in next_call_display:
-        next_call_display = f"{next_call_display}()"
-    completion_args = request.get("completion_args")
-    completion_value = completion_args if completion_args is not None else request["args"]
-    return post_completion.format(args=completion_value, next_call=next_call_display)
 
 
 def _format_pre_dispatch_block(pre_dispatch: str) -> str:
@@ -287,14 +66,19 @@ def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
 
 
 def format_tool_call(request: ToolCallRequest) -> str:
-    """Format a literal tool call for the orchestrator to execute."""
+    """Format a literal tool call for the orchestrator to execute.
+
+    The dispatch plumbing (STEP 1/2/3, tailing discipline, heartbeat rule,
+    no-op suppression) is emitted on every dispatch. The tailored post_block
+    describes what to do when the worker idles. It is appended verbatim.
+    """
     raw_command = _command_text(request["command"]).lstrip("/")
     formatted_command = f"/{raw_command}"
     args = str(request["args"])
     project = str(request["project"])
     guidance = str(request["guidance"])
     subfolder = str(request["subfolder"])
-    post_completion = _format_post_completion(request)
+    post_block = str(request.get("post_block", ""))
     pre_dispatch_block = _format_pre_dispatch_block(str(request.get("pre_dispatch", "")))
     additional_context_flag, additional_context_block = _format_additional_context(request)
 
@@ -311,21 +95,17 @@ Dispatch metadata: command="{formatted_command}" args="{args}" project="{project
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" \
   --agent "<your selection>" --mode "<your selection>" --subfolder "{subfolder}"{additional_context_flag}
-Legacy dispatch marker: command="{formatted_command}" subfolder="{subfolder}"
 Save the returned session_id.
-Command metadata: command="{formatted_command}" args="{args}" subfolder="{subfolder}".
 
 STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
 Bash(command="sleep 300", run_in_background=true)
 Save the returned task_id.
 Save the current time as <marker_timestamp> for the tailing discipline.
-Do NOT block on this timer. Do NOT try to read its output. You will be notified automatically when it fires.
+The timer runs in the background; notifications and timer completion arrive in your conversation.
 
 STEP 3 - WAIT:
 Tell the user: "Dispatched session <session_id>. Waiting for completion."
-Do NOT call any more tools UNTIL one of the events below fires.
-Do NOT block on the background timer — notifications and timer completion arrive in your conversation automatically.
-When an event fires, you MUST immediately act on it — do NOT wait for user input.
+Act on the next event that fires in your conversation — notification or timer completion.
 
 TAILING DISCIPLINE:
 - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
@@ -338,40 +118,23 @@ Status semantics:
 - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
 - `unknown`: no `last_activity` has been recorded yet.
 
-HEARTBEAT RULE (applies to every agent):
+HEARTBEAT RULE:
+- On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+- Update <marker_timestamp> to the latest message timestamp when new messages appear.
+- If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+- If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+- If `agent_status` is `unknown`: wait for the next event.
 
-A) NOTIFICATION ARRIVES OR TIMER COMPLETES:
-   - Tail the session (first time: full window; subsequent: --since <marker_timestamp>).
-   - Update <marker_timestamp> to the latest message timestamp when new messages appear.
-   - Inspect `agent_status` in the JSON response.
-   - If `agent_status` is `active`: the current turn is still in progress. Reset the non-blocking heartbeat timer and WAIT again.
-   - If `agent_status` is `idle`: the current turn is settled. Inspect the returned messages and proceed to WHEN WORKER COMPLETES section below.
-   - If `agent_status` is `unknown`: no activity has been recorded yet. Keep waiting unless the worker appears stalled for other reasons.
+FEEDBACK MESSAGES:
+- When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+- Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
 
-C) YOU SEND ANOTHER MESSAGE TO THE AGENT BECAUSE IT NEEDS FEEDBACK OR HELP:
-   - Cancel the old timer: KillShell(shell_id=<task_id>)
-   - Start a new non-blocking heartbeat timer: Bash(command="sleep 300", run_in_background=true)
-   - Save the new task_id for the reset timer
+{post_block}
 
-D) NO-OP SUPPRESSION (NON-CHATTY ORCHESTRATION):
-   - Never send no-op follow-ups like "No new input", "No further input", "Remain idle", or "Continue standing by".
-   - Only send telec sessions send when there is actionable content:
-     1) concrete gate failure details,
-     2) a direct answer to an explicit worker question, or
-     3) a user-directed change in plan.
-   - If none apply, do not send another worker message; continue the state-machine loop.
-
-{post_completion}
-
-ORCHESTRATION PRINCIPLE: Guide process, don't dictate implementation.
-You are an orchestrator, not a micromanager. Workers have full autonomy.
-- NEVER run tests, lint, or make in/targeting worktrees
-- NEVER edit or commit files in worktrees
-- NEVER cd into worktrees — stay in the main repo root
-- End a worker session only when it is no longer part of the active loop.
-- NEVER send no-op acknowledgements/keepalive chatter to workers
-- Trust the process gates (pre-commit hooks, mark_phase clerical checks)
-- If mark_phase rejects, the state machine routes to the fix — do NOT fix it yourself"""
+ORCHESTRATION PRINCIPLE:
+You are an orchestrator. Execute the state machine's output verbatim. \
+The state machine owns session lifecycle, dispatch decisions, and mark-phase transitions. \
+Trust the process gates (pre-commit hooks, mark_phase clerical checks)."""
     note = str(request.get("note", ""))
     if note:
         result += f"\n\nNOTE: {note}"
@@ -386,11 +149,22 @@ def format_error(code: str, message: str, next_call: str = "") -> str:
     return result
 
 
-def format_prepared(slug: str) -> str:
-    """Format a 'prepared' message indicating work item is ready."""
-    return f"""PREPARED: {slug} is ready for work.
+def format_prepared(slug: str, session_ids_to_end: list[str] | None = None) -> str:
+    """Format the PREPARED terminal message for the prepare state machine.
 
-DECISION REQUIRED: Continue preparation work, or start the build/review cycle with telec todo work {slug}."""
+    When session_ids_to_end is provided, the output begins with end commands
+    for each session followed by `telec sessions end self` to end the
+    orchestrator. This is the single cleanup point for the prepare lifecycle.
+    """
+    cleanup = ""
+    if session_ids_to_end:
+        end_lines = "\n".join(f"telec sessions end {sid}" for sid in session_ids_to_end)
+        cleanup = f"{end_lines}\ntelec sessions end self\n\n"
+    return (
+        f"{cleanup}PREPARED: {slug} is ready for work.\n\n"
+        f"DECISION REQUIRED: Continue preparation work, or start the build/review cycle "
+        f"with telec todo work {slug}."
+    )
 
 
 def format_uncommitted_changes(slug: str) -> str:
@@ -401,7 +175,11 @@ NEXT: Resolve these changes according to the commit policy, then call telec todo
 
 
 def format_finalize_handoff_complete(slug: str, next_call: str, child_session_ids: list[str] | None = None) -> str:
-    """Format the slug-scoped handoff step after finalize readiness is recorded."""
+    """Format the slug-scoped handoff step after finalize readiness is recorded.
+
+    Ends worker sessions only — the work orchestrator continues to the next
+    queued slug. The work orchestrator self-ends only when the queue is empty.
+    """
     steps: list[str] = []
     steps.append(
         f'1. Report: "Candidate {slug} handed off to the integration event chain. '

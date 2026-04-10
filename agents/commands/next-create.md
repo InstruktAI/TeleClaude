@@ -46,7 +46,7 @@ Run the creative state machine and execute its instructions verbatim.
      - **ART_ITERATION_REQUIRED**: relay feedback to the artist.
      - **VISUAL_DRAFTS_REQUIRED**: dispatch frontender worker(s) exactly as instructed.
      - **VISUALS_PENDING_APPROVAL**: present visuals, collect human approval.
-     - **VISUAL_ITERATION_REQUIRED**: dispatch revision with feedback.
+     - **VISUAL_ITERATION_REQUIRED**: relay feedback to the frontender.
   4. At human gates (PENDING_CONFIRMATION, PENDING_APPROVAL): park and wait for the human. Do not set a timer. Do not auto-advance.
   5. At worker dispatches: start a timer and wait for completion.
   6. After each step, call the machine again.

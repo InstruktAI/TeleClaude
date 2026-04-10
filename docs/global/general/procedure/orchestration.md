@@ -29,17 +29,13 @@ This is a document-quality check, not a code review. The orchestrator does not r
 
 ### Orchestration Loop
 
-1. Invoke the work state machine with an optional slug.
-2. Receive instruction block.
-3. Follow instructions verbatim:
-   - Dispatch worker (`telec sessions run`)
-   - Start non-blocking heartbeat timer (sleep 300)
-   - Stop and wait
-4. When notification arrives OR timer expires:
-   - Follow POST_COMPLETION steps
-   - Execute any durable bookkeeping transition emitted there before advancing
-   - Invoke the work state machine again
-5. Repeat until exit condition.
+1. Invoke the state machine (`telec todo work`, `telec todo prepare`, or `telec todo create`) with an optional slug.
+2. Receive the instruction block.
+3. Execute the instructions verbatim. The state machine output is a linear script — follow it top-to-bottom without branching or decision-making.
+4. When a notification arrives OR the heartbeat timer expires, invoke the state machine again.
+5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
+
+The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The only orchestrator-owned behaviors are heartbeat management, tailing discipline, and the Codex false-notification guard.
 
 ### Container Slug Handling
 
@@ -60,17 +56,8 @@ to the dispatch time. All session inspection follows this protocol:
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
 2. **Codex false-notification guard.** Codex emits turn-complete notifications for internal sub-agent completions, not only when the main session finishes. When the worker is Codex, do not act on the notification immediately. Tail the session with `--since <marker>` and check whether the new output contains a final deliverable (commit, verdict, or completion report matching the expected outcome). If not, update the marker, reset the heartbeat timer, and continue waiting. A Codex worker may only be considered complete after two consecutive tails (across two heartbeats) confirm no new output and the last output contains the expected deliverable. This guard does not apply to Claude or Gemini workers, whose notifications reliably indicate session completion.
 3. **(Claude/Gemini only)** Tail the session with `--since <marker>` to retrieve the final output. Verify it matches the intended outcome.
-4. Execute POST_COMPLETION steps (orchestrator responsibility):
-   - Persist any durable state transition emitted by the instruction block before calling the state machine again. This is often a `telec todo mark-phase ...` command, but the exact transition is phase-specific and owned by the state machine output.
-   - **Terminate worker session** — unless the outcome requires a follow-up dispatch to the same worker (e.g. `needs_work` → fix cycle). End idle workers: `telec sessions end <session_id> --computer <computer>` ← ORCHESTRATOR OWNS THIS
-   - Execute any phase-specific cleanup from the state machine instruction
-5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`).
-6. Send `telec sessions send` only when actionable:
-   - gate failure details to fix,
-   - explicit answer to a worker question,
-   - or a user-directed plan change.
-7. If none apply, invoke the state machine again instead of messaging the worker.
-8. Invoke the work state machine to continue.
+4. Invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo create` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
+5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 
 ### When Timer Expires
 
@@ -106,10 +93,9 @@ When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator must c
    - `todos.db` state
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
-   - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request.
-   - If only non-critical findings remain and the implementation is stable, mark `review=approved`, capture residual work as follow-up/deferred items, and continue lifecycle progression.
-3. Always end the active worker session before applying this decision.
-4. Record rationale in todo artifacts so the closure is auditable.
+   - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request. Sessions stay alive as signal for the human.
+   - If only non-critical findings remain and the implementation is stable, mark `review=approved`, capture residual work as follow-up/deferred items, and continue lifecycle progression. The state machine will emit cleanup commands on the next successful terminal.
+3. Record rationale in todo artifacts so the closure is auditable.
 
 - Point workers to `telec todo artifacts read {slug} requirements` or `implementation-plan.md`.
 - Reference project docs or standards.

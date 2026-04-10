@@ -6,7 +6,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -83,25 +82,55 @@ def _visuals_pending_approval(slug: str, cwd: str) -> str:
     )
 
 
-def _creative_complete(slug: str) -> str:
+def _creative_complete(slug: str, live_sessions: list[str]) -> str:
+    end_lines = "\n".join(f"telec sessions end {sid}" for sid in live_sessions)
+    cleanup = f"{end_lines}\ntelec sessions end self\n\n" if live_sessions else "telec sessions end self\n\n"
     return (
         f"CREATIVE_COMPLETE: {slug}\n\n"
         f"All creative artifacts are confirmed and approved:\n"
         f"  - design-spec.md: confirmed\n"
         f"  - art/: approved\n"
         f"  - html/: approved\n\n"
-        f"The todo is ready for the prepare phase.\n"
-        f"End all creative worker sessions and proceed to:\n"
+        f"Execute in order:\n\n"
+        f"{cleanup}"
+        f"The todo is ready for the prepare phase:\n"
         f"  telec todo prepare {slug}"
     )
 
 
-def _creative_blocked(slug: str) -> str:
+def _creative_blocked(slug: str, live_sessions: list[str]) -> str:
+    sessions_block = "\n".join(f"  - {sid}" for sid in live_sessions) if live_sessions else "  (no live sessions)"
     return (
         f"BLOCKED: {slug}\n\n"
         f"The creative machine encountered a condition it cannot resolve.\n"
-        f"Check `telec todo show {slug}` for details. End worker sessions\n"
-        f"and report the blocker to the human."
+        f"Check `telec todo show {slug}` for details.\n\n"
+        f"Live sessions kept alive for human inspection:\n"
+        f"{sessions_block}"
+    )
+
+
+def _format_creative_iteration_script(
+    slug: str,
+    worker_session_id: str,
+    phase_label: str,
+    workspace_subdir: str,
+) -> str:
+    """Script for ART/VISUAL iteration: send feedback to the live worker."""
+    message = (
+        f"Iteration round for {phase_label}: the human reviewed your output and requested changes. "
+        f"Read the feedback (look for the most recent human message and any updated review context), "
+        f"revise the artifacts in {workspace_subdir}, and report when ready for re-review."
+    )
+    escaped = message.replace('"', '\\"')
+    return (
+        f"{phase_label.upper()} ITERATION REQUIRED: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f'telec sessions send {worker_session_id} "{escaped}"\n\n'
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"Wait for the worker to idle.\n"
+        f"When the worker idles, call telec todo create {slug}."
     )
 
 
@@ -175,12 +204,24 @@ async def _find_next_creative_slug(todos_db: TodosDb) -> str | None:
     return None
 
 
-async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guidance: str) -> str:
+async def _creative_instruction(  # pylint: disable=too-many-return-statements
+    db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str
+) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
-    builders = {
-        CreativePhase.DESIGN_DISCOVERY_REQUIRED: lambda: _design_discovery_required(slug),
-        CreativePhase.DESIGN_SPEC_PENDING_CONFIRMATION: lambda: _design_spec_pending_confirmation(slug),
-        CreativePhase.ART_GENERATION_REQUIRED: lambda: format_tool_call(
+    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
+        _find_all_live_sessions_for_slug,
+        _find_live_session_for_slug,
+    )
+
+    creative_subdir = f"workspace/{slug}"
+    post_block = f"WHEN WORKER IDLES:\nCall telec todo create {slug}. The state machine emits the next action."
+
+    if phase == CreativePhase.DESIGN_DISCOVERY_REQUIRED:
+        return _design_discovery_required(slug)
+    if phase == CreativePhase.DESIGN_SPEC_PENDING_CONFIRMATION:
+        return _design_spec_pending_confirmation(slug)
+    if phase == CreativePhase.ART_GENERATION_REQUIRED:
+        return format_tool_call(
             ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_ART,
                 args=slug,
@@ -189,10 +230,17 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 subfolder="",
                 note="Design spec confirmed. Dispatch artist to generate mood board images.",
                 next_call=f"telec todo create {slug}",
+                post_block=post_block,
             )
-        ),
-        CreativePhase.ART_PENDING_APPROVAL: lambda: _art_pending_approval(slug, cwd),
-        CreativePhase.ART_ITERATION_REQUIRED: lambda: format_tool_call(
+        )
+    if phase == CreativePhase.ART_PENDING_APPROVAL:
+        return _art_pending_approval(slug, cwd)
+    if phase == CreativePhase.ART_ITERATION_REQUIRED:
+        artist_id = await _find_live_session_for_slug(db, slug, "/next-create-art", subdir_override=creative_subdir)
+        if artist_id is not None:
+            return _format_creative_iteration_script(slug, artist_id, "art", f"workspace/{slug}/art/")
+        # Fallback: dispatch fresh artist when no live session
+        return format_tool_call(
             ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_ART,
                 args=slug,
@@ -201,11 +249,15 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 subfolder="",
                 note="Human requested art changes. Dispatch artist with feedback for revision.",
                 next_call=f"telec todo create {slug}",
-                additional_context="ITERATION: The human reviewed the art and wants changes. "
-                "Read the feedback and revise the images in workspace/{slug}/art/.",
+                additional_context=(
+                    "ITERATION: The human reviewed the art and wants changes. "
+                    f"Read the feedback and revise the images in workspace/{slug}/art/."
+                ),
+                post_block=post_block,
             )
-        ),
-        CreativePhase.VISUAL_DRAFTS_REQUIRED: lambda: format_tool_call(
+        )
+    if phase == CreativePhase.VISUAL_DRAFTS_REQUIRED:
+        return format_tool_call(
             ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_HTML,
                 args=slug,
@@ -214,10 +266,18 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 subfolder="",
                 note="Art approved. Dispatch frontender to produce HTML+CSS visual artifacts.",
                 next_call=f"telec todo create {slug}",
+                post_block=post_block,
             )
-        ),
-        CreativePhase.VISUALS_PENDING_APPROVAL: lambda: _visuals_pending_approval(slug, cwd),
-        CreativePhase.VISUAL_ITERATION_REQUIRED: lambda: format_tool_call(
+        )
+    if phase == CreativePhase.VISUALS_PENDING_APPROVAL:
+        return _visuals_pending_approval(slug, cwd)
+    if phase == CreativePhase.VISUAL_ITERATION_REQUIRED:
+        frontender_id = await _find_live_session_for_slug(
+            db, slug, "/next-create-html", subdir_override=creative_subdir
+        )
+        if frontender_id is not None:
+            return _format_creative_iteration_script(slug, frontender_id, "visual", f"workspace/{slug}/html/")
+        return format_tool_call(
             ToolCallRequest(
                 command=SlashCommand.NEXT_CREATE_HTML,
                 args=slug,
@@ -226,17 +286,20 @@ async def _creative_instruction(slug: str, cwd: str, phase: CreativePhase, guida
                 subfolder="",
                 note="Human requested visual changes. Dispatch frontender with feedback for revision.",
                 next_call=f"telec todo create {slug}",
-                additional_context="ITERATION: The human reviewed the visuals and wants changes. "
-                "Read the feedback and revise the HTML+CSS in workspace/{slug}/html/.",
+                additional_context=(
+                    "ITERATION: The human reviewed the visuals and wants changes. "
+                    f"Read the feedback and revise the HTML+CSS in workspace/{slug}/html/."
+                ),
+                post_block=post_block,
             )
-        ),
-        CreativePhase.CREATIVE_COMPLETE: lambda: _creative_complete(slug),
-        CreativePhase.BLOCKED: lambda: _creative_blocked(slug),
-    }
-    builder: Callable[[], str] = builders.get(
-        phase, lambda: f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
-    )
-    return builder()
+        )
+    if phase == CreativePhase.CREATIVE_COMPLETE:
+        live_sessions = await _find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
+        return _creative_complete(slug, live_sessions)
+    if phase == CreativePhase.BLOCKED:
+        live_sessions = await _find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
+        return _creative_blocked(slug, live_sessions)
+    return f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
 
 
 async def next_create(db: Db, slug: str | None, cwd: str) -> str:
@@ -277,7 +340,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
         await todos_db.write_state(resolved_slug, state)
 
     guidance = await compose_agent_guidance(db)
-    return await _creative_instruction(resolved_slug, cwd, phase, guidance)
+    return await _creative_instruction(db, resolved_slug, cwd, phase, guidance)
 
 
 __all__ = ["next_create"]

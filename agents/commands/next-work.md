@@ -45,12 +45,12 @@ Run the next-work state machine and execute its instructions verbatim.
   - **Finalizers**: always `fast`.
 - Follow the orchestration loop:
   1. Call the state machine.
-  2. Dispatch the worker exactly as instructed.
-  3. Start the timer and stop.
-  4. On completion or timeout, follow POST_COMPLETION steps.
-  5. If the machine returns `REVIEW_ROUND_LIMIT`, apply the orchestrator-owned pragmatic closure path from `general/procedure/orchestration` (do not punt by default).
-  6. Do not send no-op follow-ups to workers (`No new input`, `Remain idle`, `Continue standing by`). Send only actionable guidance.
-  7. Repeat until the state machine returns COMPLETE / NO_READY_ITEMS / non-recoverable error.
+  2. Execute the returned script verbatim. The script contains dispatch commands, `telec sessions send` relays, session-end commands, or terminal cleanup — execute them in order.
+  3. Start the heartbeat timer and stop.
+  4. On completion or timer event, call the state machine again.
+  5. If the machine returns `REVIEW_ROUND_LIMIT`, apply the orchestrator-owned pragmatic closure path from `general/procedure/orchestration`.
+  6. Do not send no-op follow-ups to workers. Only send `telec sessions send` when the state machine output explicitly instructs it.
+  7. Repeat until the state machine emits `telec sessions end self` — that is the terminal signal that the work queue is empty.
 
 ## Discipline
 

@@ -10,6 +10,7 @@ import pytest
 import yaml
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, PreparePhase, StateValue
+from teleclaude.core.next_machine.prepare import _apply_stale_artifact_reroute
 from teleclaude.core.next_machine.prepare_steps import (
     _derive_project_root,
     _prepare_dispatch,
@@ -122,7 +123,6 @@ async def test_prepare_step_re_grounding_resets_plan_review_and_dispatches_redra
 @pytest.mark.asyncio
 async def test_prepare_dispatch_returns_blocked_message_for_blocked_phase() -> None:
     """BLOCKED phase returns a message identifying the slug and invalidation reason."""
-    todos_db = _mock_todos_db()
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
             db=AsyncMock(),
@@ -139,14 +139,17 @@ async def test_prepare_dispatch_returns_blocked_message_for_blocked_phase() -> N
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(tmp_path: Path) -> None:
-    """Approved test spec review transitions state to PLAN_DRAFTING."""
+    """Approved test spec review transitions state to PLAN_DRAFTING and emits a cleanup script."""
     todo_dir = tmp_path / "todos" / "slug-e"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {"test_spec_review": {"verdict": "approve"}}
 
+    mock_db = AsyncMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
+
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
-            db=AsyncMock(),
+            db=mock_db,
             todos_db=_mock_todos_db(),
             slug="slug-e",
             cwd=str(tmp_path),
@@ -154,21 +157,24 @@ async def test_prepare_dispatch_advances_approved_spec_review_to_plan_drafting(t
             state=state,
         )
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert instruction
     assert state["current"] == PreparePhase.PLAN_DRAFTING.value
 
 
 @pytest.mark.asyncio
 async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: Path) -> None:
-    """Approved plan review transitions state to GATE."""
+    """Approved plan review transitions state to GATE and emits a cleanup script."""
     todo_dir = tmp_path / "todos" / "slug-f"
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {"plan_review": {"verdict": "approve"}}
 
+    mock_db = AsyncMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
+
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_dispatch(
-            db=AsyncMock(),
+            db=mock_db,
             todos_db=_mock_todos_db(),
             slug="slug-f",
             cwd=str(tmp_path),
@@ -176,8 +182,8 @@ async def test_prepare_dispatch_advances_approved_plan_review_to_gate(tmp_path: 
             state=state,
         )
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert instruction
     assert state["current"] == PreparePhase.GATE.value
 
 
@@ -188,12 +194,15 @@ async def test_prepare_dispatch_records_baseline_and_dispatches_plan_review(tmp_
     _write_state(todo_dir, {})
     state: dict[str, StateValue] = {}
 
+    mock_db = AsyncMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
+
     with (
         patch("teleclaude.core.next_machine.prepare_steps.run_git_command", return_value=(0, "abc123\n", "")),
         patch("teleclaude.core.next_machine.prepare_steps.compose_agent_guidance", return_value="guidance"),
     ):
         keep_going, instruction = await _prepare_dispatch(
-            db=AsyncMock(),
+            db=mock_db,
             todos_db=_mock_todos_db(),
             slug="slug-g",
             cwd=str(tmp_path),
@@ -448,14 +457,16 @@ async def test_requirements_review_approve_restamps_digest_when_reviewer_modifie
 
     todos_db = _mock_todos_db()
     todos_db.artifact_digest = AsyncMock(return_value=new_digest)
+    mock_db = AsyncMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
 
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
         keep_going, instruction = await _prepare_step_requirements_review(
-            AsyncMock(), todos_db, "slug-rv1", str(tmp_path), state
+            mock_db, todos_db, "slug-rv1", str(tmp_path), state
         )
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert instruction
     assert state["current"] == PreparePhase.TEST_SPEC_BUILD.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
@@ -476,14 +487,14 @@ async def test_plan_review_approve_restamps_digest_when_reviewer_modified_artifa
 
     todos_db = _mock_todos_db()
     todos_db.artifact_digest = AsyncMock(return_value=new_digest)
+    mock_db = AsyncMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
 
     with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
-        keep_going, instruction = await _prepare_step_plan_review(
-            AsyncMock(), todos_db, "slug-rv2", str(tmp_path), state
-        )
+        keep_going, instruction = await _prepare_step_plan_review(mock_db, todos_db, "slug-rv2", str(tmp_path), state)
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert instruction
     assert state["current"] == PreparePhase.GATE.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
@@ -524,8 +535,6 @@ async def test_grounding_check_reads_input_from_worktree_cwd(tmp_path: Path) -> 
 @pytest.mark.asyncio
 async def test_stale_artifact_reroute_restamps_all_stale_digests(tmp_path: Path) -> None:
     """_apply_stale_artifact_reroute restamps stale artifact digests to prevent infinite staleness loops."""
-    from teleclaude.core.next_machine.prepare import _apply_stale_artifact_reroute
-
     slug = "slug-reroute"
     todo_dir = tmp_path / "todos" / slug
     todo_dir.mkdir(parents=True)
@@ -571,3 +580,146 @@ def test_derive_project_root_strips_worktree_suffix() -> None:
     assert _derive_project_root("/project/trees/my-slug", "my-slug") == "/project"
     assert _derive_project_root("/project", "my-slug") == "/project"
     assert _derive_project_root("/a/b/c/trees/slug", "slug") == "/a/b/c"
+
+
+# ---------------------------------------------------------------------------
+# Session lifecycle — state machine owns every end command and every relay
+# ---------------------------------------------------------------------------
+
+
+class _FakeSession:  # pylint: disable=too-few-public-methods
+    """Minimal stand-in for a core Session DTO used by _find_live_session_for_slug."""
+
+    def __init__(self, session_id: str, title: str, subdir: str) -> None:
+        self.session_id = session_id
+        self.title = title
+        self.subdir = subdir
+
+
+def _db_with_sessions(sessions: list[_FakeSession]) -> AsyncMock:
+    """Async Db mock with list_sessions returning the provided fake sessions."""
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=sessions)
+    return db
+
+
+@pytest.mark.asyncio
+async def test_spec_review_needs_work_relays_findings_to_live_worker(tmp_path: Path) -> None:
+    """When the spec review verdict is needs_work and a live builder exists, the state
+    machine must send findings via telec sessions send to the existing worker — not
+    dispatch a fresh session. Catches the original bug where 10 sessions spawned per run."""
+    slug = "slug-relay"
+    state: dict[str, StateValue] = {
+        "test_spec_review": {
+            "verdict": "needs_work",
+            "rounds": 0,
+            "findings": [{"id": "f1", "status": "open"}],
+        },
+    }
+
+    reviewer = _FakeSession("rev-abc", "/next-review-specs slug-relay", f"trees/{slug}")
+    worker = _FakeSession("bld-xyz", "/next-build-specs slug-relay", f"trees/{slug}")
+    db = _db_with_sessions([reviewer, worker])
+
+    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
+        _prepare_step_test_spec_review,
+    )
+
+    with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
+        keep_going, instruction = await _prepare_step_test_spec_review(db, _mock_todos_db(), slug, str(tmp_path), state)
+
+    assert keep_going is False
+    # Must instruct a session send to the live builder, not a fresh run
+    assert "telec sessions send bld-xyz" in instruction
+    assert "telec sessions run" not in instruction
+    # Must reference the fix procedure for the agent to load on demand
+    assert "software-development/procedure/lifecycle/fix-review-findings" in instruction
+    # Must NOT end any session on a fix round — sessions stay alive across rounds
+    assert "telec sessions end" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_review_approved_ends_both_phase_sessions(tmp_path: Path) -> None:
+    """Plan review APPROVED must emit end commands for the live reviewer and worker of
+    this phase. Without this, the orchestrator would leave stale sessions behind at every
+    phase transition."""
+    slug = "slug-approved"
+    state: dict[str, StateValue] = {"plan_review": {"verdict": "approve"}}
+
+    reviewer = _FakeSession("rev-111", "/next-review-plan slug-approved", f"trees/{slug}")
+    worker = _FakeSession("drf-222", "/next-prepare-draft slug-approved", f"trees/{slug}")
+    db = _db_with_sessions([reviewer, worker])
+
+    with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
+        keep_going, instruction = await _prepare_step_plan_review(db, _mock_todos_db(), slug, str(tmp_path), state)
+
+    assert keep_going is False
+    assert "telec sessions end rev-111" in instruction
+    assert "telec sessions end drf-222" in instruction
+    # Must NOT emit sessions end self — phase transition, not terminal
+    assert "telec sessions end self" not in instruction
+    assert state["current"] == PreparePhase.GATE.value
+
+
+@pytest.mark.asyncio
+async def test_prepared_terminal_ends_all_slug_sessions_and_self(tmp_path: Path) -> None:
+    """PREPARED must emit end commands for every live session tied to the slug AND
+    `telec sessions end self` to close the orchestrator. Without this, the orchestrator
+    would hang indefinitely after a successful preparation."""
+    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
+        _prepare_step_prepared,
+    )
+
+    slug = "slug-prep"
+    state: dict[str, StateValue] = {"dor": {"score": DOR_READY_THRESHOLD}}
+
+    sessions = [
+        _FakeSession("sess-1", "/next-review-plan slug-prep", f"trees/{slug}"),
+        _FakeSession("sess-2", "/next-prepare-draft slug-prep", f"trees/{slug}"),
+        _FakeSession("sess-unrelated", "/next-build other-slug", "trees/other-slug"),
+    ]
+    db = _db_with_sessions(sessions)
+
+    keep_going, instruction = await _prepare_step_prepared(db, _mock_todos_db(), slug, state)
+
+    assert keep_going is False
+    assert "telec sessions end sess-1" in instruction
+    assert "telec sessions end sess-2" in instruction
+    assert "telec sessions end self" in instruction
+    # Must not touch unrelated-slug session
+    assert "sess-unrelated" not in instruction
+    _ = tmp_path  # fixture kept for signature symmetry
+
+
+@pytest.mark.asyncio
+async def test_spec_review_blocked_at_max_rounds_keeps_sessions_alive(tmp_path: Path) -> None:
+    """When review rounds exceed the maximum, the state machine must emit a BLOCKED
+    message that lists live sessions but does NOT end them. Catches the regression
+    where blocked paths mistakenly ended signal sessions before the human could inspect."""
+    slug = "slug-blocked"
+    state: dict[str, StateValue] = {
+        "test_spec_review": {
+            "verdict": "needs_work",
+            "rounds": 999,  # deliberately far above DEFAULT_MAX_REVIEW_ROUNDS
+            "findings": [{"id": "f1", "status": "open"}],
+        },
+    }
+
+    reviewer = _FakeSession("rev-b", "/next-review-specs slug-blocked", f"trees/{slug}")
+    worker = _FakeSession("bld-b", "/next-build-specs slug-blocked", f"trees/{slug}")
+    db = _db_with_sessions([reviewer, worker])
+
+    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
+        _prepare_step_test_spec_review,
+    )
+
+    with patch("teleclaude.core.next_machine.prepare_steps._emit_prepare_event"):
+        keep_going, instruction = await _prepare_step_test_spec_review(db, _mock_todos_db(), slug, str(tmp_path), state)
+
+    assert keep_going is False
+    assert "BLOCKED" in instruction
+    # Live session IDs are referenced for human inspection
+    assert "rev-b" in instruction
+    assert "bld-b" in instruction
+    # No end commands — sessions persist as signal
+    assert "telec sessions end" not in instruction

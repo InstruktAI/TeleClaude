@@ -30,6 +30,13 @@ def _mock_todos_db() -> AsyncMock:
     return db
 
 
+def _mock_db(live_sessions: list[object] | None = None) -> AsyncMock:
+    """Mock core Db with async list_sessions returning the provided session rows (or none)."""
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=live_sessions or [])
+    return db
+
+
 def _ensure_roadmap_db(cwd: str, slug: str) -> None:
     """Insert a roadmap entry in the DB so write_phase_state succeeds."""
     import uuid  # pylint: disable=import-outside-toplevel
@@ -226,7 +233,8 @@ def _build_review_state(findings: list[dict[str, StateValue]], verdict: str = ""
 @pytest.mark.asyncio
 @patch("teleclaude.core.next_machine.core._emit_prepare_event")
 async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_path: Path) -> None:
-    """All findings resolved (no open) → verdict APPROVE, transitions to PLAN_DRAFTING."""
+    """APPROVED verdict advances current to TEST_SPEC_BUILD and emits a cleanup script."""
+    from teleclaude.core.next_machine._types import PreparePhase
     from teleclaude.core.next_machine.core import (
         _prepare_step_requirements_review,
         write_phase_state,
@@ -248,11 +256,10 @@ async def test_all_findings_resolved_yields_approve(mock_emit: MagicMock, tmp_pa
     state = _build_review_state(findings, verdict="approve")
     write_phase_state(cwd, slug, state)
 
-    mock_db = MagicMock()
-    keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
+    keep_going, _instruction = await _prepare_step_requirements_review(_mock_db(), _mock_todos_db(), slug, cwd, state)
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False  # approved branch emits its own cleanup script
+    assert state["current"] == PreparePhase.TEST_SPEC_BUILD.value
 
 
 @pytest.mark.asyncio
@@ -273,14 +280,14 @@ async def test_unresolved_substantive_yields_needs_work(mock_emit: MagicMock, tm
     state = _build_review_state(findings, verdict="needs_work")
     write_phase_state(cwd, slug, state)
 
-    mock_db = MagicMock()
-
     with patch(
         "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
+        keep_going, instruction = await _prepare_step_requirements_review(
+            _mock_db(), _mock_todos_db(), slug, cwd, state
+        )
 
     assert keep_going is False
     assert instruction
@@ -304,8 +311,7 @@ async def test_unresolved_architectural_yields_blocked(mock_emit: MagicMock, tmp
     state = _build_review_state(findings, verdict="needs_decision")
     write_phase_state(cwd, slug, state)
 
-    mock_db = MagicMock()
-    keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
+    keep_going, instruction = await _prepare_step_requirements_review(_mock_db(), _mock_todos_db(), slug, cwd, state)
 
     assert keep_going is False
     assert instruction
@@ -345,13 +351,14 @@ async def test_v1_state_no_findings_key_does_not_raise(mock_emit: MagicMock, tmp
     }
     write_phase_state(cwd, slug, state)
 
-    mock_db = MagicMock()
     with patch(
         "teleclaude.core.next_machine.prepare_steps.compose_agent_guidance",
         new_callable=AsyncMock,
         return_value="guidance",
     ):
-        keep_going, instruction = await _prepare_step_requirements_review(mock_db, _mock_todos_db(), slug, cwd, state)
+        keep_going, instruction = await _prepare_step_requirements_review(
+            _mock_db(), _mock_todos_db(), slug, cwd, state
+        )
 
     assert keep_going is False
     assert instruction

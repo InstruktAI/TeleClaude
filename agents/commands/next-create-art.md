@@ -48,7 +48,7 @@ Generate mood board images for the slug and stay in session for iteration.
 - Generate mood board images using `nano_banana_helper.py generate` with prompts derived from the design spec's emotional register, color palette, and visual identity.
 - Save all images to `workspace/{slug}/art/` (filesystem, not DB-backed).
 - For iteration, use `nano_banana_helper.py edit` with the previous image as input.
-- Report completion and wait for feedback. Do not end the session — the orchestrator may relay iteration requests.
+- Report completion and wait for the next message. Iterations may arrive as new messages after the human reviews your output.
 
 ## Discipline
 

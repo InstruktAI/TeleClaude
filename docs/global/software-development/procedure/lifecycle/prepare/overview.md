@@ -40,89 +40,16 @@ Call `telec todo prepare [slug]`. Read the returned instruction block.
 
 ### 2. Execute the instruction
 
-The state machine returns one of the following instruction types:
+The state machine returns a linear script for the current state. The orchestrator executes it verbatim and then calls `telec todo prepare [slug]` again. Each phase follows the same loop: the state machine dispatches a worker when needed, relays review findings to the existing worker when a review returns `needs_work`, or emits cleanup commands on a successful terminal. The orchestrator never decides session lifecycle or branches on verdict — the state machine owns both.
 
-#### INPUT ASSESSMENT / REQUIREMENTS DISCOVERY REQUIRED
+Phases the state machine drives through:
 
-`input.md` exists and `requirements.md` is still missing or needs rework. Dispatch
-`next-prepare-discovery` to a worker session.
-
-The discovery worker owns requirements production. It decides whether solo discovery
-is enough or whether to triangulate with a complementary partner. Both paths converge
-to the same output: `requirements.md`.
-
-After requirements are written or revised, the orchestrator persists the artifact
-transition with `telec todo mark-phase {slug} --phase requirements --status complete`,
-ends the worker session, and calls `telec todo prepare [slug]` again.
-
-#### REQUIREMENTS REVIEW REQUIRED
-
-`requirements.md` exists but is not yet approved. Dispatch a reviewer to
-validate requirements against the quality standard (completeness, testability,
-grounding, review-awareness). The reviewer writes a verdict to `todo state (todos.db)`.
-
-The orchestrator persists the review transition before advancing:
-
-- APPROVE → `telec todo mark-phase {slug} --phase requirements_review --status approve`
-- NEEDS WORK → `telec todo mark-phase {slug} --phase requirements_review --status needs_work`
-
-On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
-On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
-fixer reports done it marks `requirements` complete before calling again.
-
-#### TEST SPECIFICATION REQUIRED
-
-Requirements are approved but test specifications have not been written.
-Dispatch `next-prepare-test-spec` to a worker session. The test spec worker
-writes expected-failure-marked tests encoding the behavioral requirements.
-These test specs define the contract the builder must satisfy.
-
-After test specs are written, the orchestrator persists the artifact transition
-with `telec todo mark-phase {slug} --phase test_specs --status complete`, ends
-the worker session, and calls `telec todo prepare [slug]` again.
-
-#### TEST SPEC REVIEW REQUIRED
-
-Test specifications exist but are not yet approved. Dispatch a reviewer to
-validate test specs for behavioral focus, convention compliance, and no
-implementation leakage. The reviewer writes a verdict to `todo state (todos.db)`.
-
-The orchestrator persists the review transition before advancing:
-
-- APPROVE → `telec todo mark-phase {slug} --phase test_spec_review --status approve`
-- NEEDS WORK → `telec todo mark-phase {slug} --phase test_spec_review --status needs_work`
-
-On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
-On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
-fixer reports done it marks `test_specs` complete before calling again.
-
-#### PLAN DRAFTING REQUIRED
-
-Requirements and test specifications are approved but `implementation-plan.md` does not exist.
-Dispatch `next-prepare-draft` to a worker session. The draft agent grounds the
-approved requirements and test specs, decides whether the work is atomic, and either:
-
-- writes `implementation-plan.md`, or
-- splits the todo into dependent child work items and updates the holder breakdown.
-
-After the plan is written or the split is materialized, call
-`telec todo mark-phase {slug} --phase implementation_plan --status complete`,
-end the worker session, and then call `telec todo prepare [slug]` again.
-
-#### PLAN REVIEW REQUIRED
-
-`implementation-plan.md` exists but is not yet approved. Dispatch a reviewer
-to validate the plan against policies, DoD gates, and review lane expectations.
-The reviewer writes a verdict to `todo state (todos.db)`.
-
-The orchestrator persists the review transition before advancing:
-
-- APPROVE → `telec todo mark-phase {slug} --phase plan_review --status approve`
-- NEEDS WORK → `telec todo mark-phase {slug} --phase plan_review --status needs_work`
-
-On approval it ends the reviewer session and calls `telec todo prepare [slug]` again.
-On NEEDS WORK it keeps the reviewer alive, dispatches the fixer flow, and when the
-fixer reports done it marks `implementation_plan` complete before calling again.
+- **Input assessment / requirements discovery** — dispatches `next-prepare-discovery` when `requirements.md` is missing.
+- **Requirements review** — dispatches `next-review-requirements`; on `needs_work` relays findings to the live discovery worker via `telec sessions send`; on `approve` ends the phase workers.
+- **Test specification build** — dispatches `next-build-specs` when xfail specs are missing.
+- **Test spec review** — dispatches `next-review-specs`; on `needs_work` relays findings to the live spec builder; on `approve` ends the phase workers.
+- **Plan drafting** — dispatches `next-prepare-draft` when `implementation-plan.md` is missing.
+- **Plan review** — dispatches `next-review-plan`; on `needs_work` relays findings to the live draft worker; on `approve` ends the phase workers.
 
 #### GATE REQUIRED
 
@@ -159,13 +86,11 @@ Call `telec todo prepare [slug]` again.
 
 #### PREPARED
 
-Terminal state. The todo is ready for build. Sync to worktree if needed.
-End all worker sessions and end yourself.
+Terminal success state. The state machine emits the cleanup script: `telec sessions end <id>` for each live worker tied to the slug, then `telec sessions end self` for the orchestrator. Execute verbatim.
 
 #### BLOCKER
 
-The machine encountered a condition it cannot resolve (missing input, human
-decision needed, superseded todo). Report the blocker and stop.
+The machine encountered a condition it cannot resolve (missing input, human decision needed, review rounds exhausted). The state machine emits a blocker report that lists live session IDs for human inspection. No end commands are emitted — sessions stay alive as signal for the human.
 
 ### 3. Supervision
 
@@ -173,17 +98,8 @@ After dispatching a worker:
 
 1. Set a heartbeat timer.
 2. Wait for the worker notification.
-3. On notification: call `telec todo prepare [slug]` again to advance.
-   Only do this after executing any emitted `telec todo mark-phase ...` transition.
-4. If the worker stalls (heartbeat fires with no progress), open a direct
-   conversation to resolve. If still stuck after two iterations, record
-   blockers and stop.
-
-### 4. Cleanup
-
-- **PREPARED**: end all worker sessions, then end yourself.
-- **BLOCKER**: report the blocker. End worker sessions. End yourself.
-  The todo folder is the durable evidence trail.
+3. On notification: call `telec todo prepare [slug]` again to advance. The state machine reads the latest state and emits the next action.
+4. If the worker stalls (heartbeat fires with no progress), open a direct conversation to resolve. If still stuck after two iterations, record blockers and stop.
 
 ### HITL boundary
 
@@ -224,7 +140,7 @@ overlap after an integration delivery.
    `implementation-plan.md`.
 2. Each artifact reviewed and approved before the next phase begins.
 3. Grounding metadata in `todo state (todos.db)` for staleness detection.
-4. All sessions ended on completion.
+4. State machine-driven session cleanup on the PREPARED terminal.
 
 ## Recovery
 

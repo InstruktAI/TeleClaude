@@ -200,10 +200,11 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         )
 
     _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "no_ready_items")
-    return "", format_error(
-        "NO_READY_ITEMS",
-        "No ready items found in roadmap.",
-        next_call="Call telec todo prepare to prepare items first.",
+    return "", (
+        "NO_READY_ITEMS: No ready items found in roadmap.\n\n"
+        "Execute:\n\n"
+        "telec sessions end self\n\n"
+        "The work queue is empty. Call telec todo prepare to prepare items first when new work arrives."
     )
 
 
@@ -471,9 +472,9 @@ async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-p
     dispatch_started: float,
     dispatch_state: _DispatchState,
 ) -> str:
-    """Dispatch fix-review, build, or review based on the current pre-finalize state."""
+    """Dispatch fix-forward, build, or review based on the current pre-finalize state."""
     if dispatch_state.review_status == PhaseStatus.CHANGES_REQUESTED.value:
-        return await _dispatch_fix_review(db, cwd, resolved_slug, phase_slug, dispatch_started)
+        return await _dispatch_fix_forward_to_builder(db, cwd, resolved_slug, phase_slug, dispatch_started)
     if dispatch_state.build_status != PhaseStatus.COMPLETE.value:
         return await _dispatch_build_phase(db, todos_db, cwd, resolved_slug, phase_slug, dispatch_started)
     return await _dispatch_review_phase(
@@ -481,37 +482,58 @@ async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-p
     )
 
 
-async def _dispatch_fix_review(
+async def _dispatch_fix_forward_to_builder(
     db: Db,
     cwd: str,
     resolved_slug: str,
     phase_slug: str,
     dispatch_started: float,
 ) -> str:
-    """Dispatch the fixer loop after review requested changes."""
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_fix_review")
-    return format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_FIX_REVIEW,
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            note=(
-                "PEER CONVERSATION NOTE: If you still have the reviewer session alive from the "
-                "previous review dispatch, prefer the direct conversation pattern from "
-                "POST_COMPLETION[next-review-build] instead of a fresh fix-review dispatch: "
-                "send fixer and reviewer session IDs to each other with --direct to let them "
-                "iterate without context-destroying churn. This fallback path is for when the "
-                "reviewer session has already ended."
+    """Send review findings to the existing builder session instead of dispatching a fresh fixer."""
+    _ = cwd  # retained for call-site symmetry with other dispatch helpers
+    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
+        _find_live_session_for_slug,
+    )
+
+    builder_id = await _find_live_session_for_slug(db, resolved_slug, "/next-build")
+    if builder_id is None:
+        builder_id = await _find_live_session_for_slug(db, resolved_slug, "/next-bugs-fix")
+    reviewer_id = await _find_live_session_for_slug(db, resolved_slug, "/next-review-build")
+    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "fix_forward_to_builder")
+
+    if builder_id is None:
+        return format_error(
+            "BUILDER_NOT_ALIVE",
+            (
+                f"Review requested changes for {resolved_slug}, but no live builder session exists "
+                f"to relay findings to. The builder should remain alive across review rounds. "
+                f"Manual intervention required."
             ),
+            next_call=f"telec todo work {resolved_slug}",
         )
+
+    message = (
+        f"Review requested changes for {resolved_slug}. "
+        f"Findings artifact: `review-findings`. Target: source code in the worktree. "
+        f"Required read: software-development/procedure/lifecycle/fix-review-findings. "
+        f"Address the findings and report FIX COMPLETE. "
+        f"Read findings via: telec todo artifacts read {resolved_slug} review-findings"
+    )
+    escaped = message.replace('"', '\\"')
+    reviewer_wait = (
+        f"Wait for reviewer session {reviewer_id} to report idle."
+        if reviewer_id
+        else "Wait for the builder to report FIX COMPLETE, then call the next step."
+    )
+    return (
+        f"REVIEW CHANGES REQUESTED: {resolved_slug}\n\n"
+        f"Execute in order:\n\n"
+        f'telec sessions send {builder_id} "{escaped}"\n\n'
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"{reviewer_wait}\n"
+        f"When the signal arrives, call telec todo work {resolved_slug}."
     )
 
 
@@ -531,6 +553,11 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
         return format_error("NO_AGENTS", str(exc))
 
     pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started"
+    post_block = (
+        f"WHEN WORKER IDLES:\n"
+        f"Call telec todo work {resolved_slug}. The state machine emits the next action "
+        f"(advance to review, relay build-gate failures, or terminal cleanup)."
+    )
     is_bug = await todos_db.is_bug_todo(resolved_slug)
     if is_bug:
         _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
@@ -543,6 +570,7 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
                 subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
                 next_call=f"telec todo work {resolved_slug}",
                 pre_dispatch=pre_dispatch,
+                post_block=post_block,
             )
         )
 
@@ -556,6 +584,7 @@ async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             pre_dispatch=pre_dispatch,
+            post_block=post_block,
         )
     )
 
@@ -609,6 +638,12 @@ async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(cwd, resolved_slug)}",
+            post_block=(
+                f"WHEN REVIEWER IDLES:\n"
+                f"Call telec todo work {resolved_slug}. The state machine will read the "
+                f"verdict and emit the next action (advance to finalize, relay findings to "
+                f"the existing builder, or terminal cleanup)."
+            ),
         )
     )
 
@@ -784,6 +819,9 @@ async def _dispatch_deferrals(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo work {resolved_slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -827,6 +865,10 @@ async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-
             subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
             next_call=f"telec todo work {resolved_slug}",
             note=note,
+            post_block=(
+                f"WHEN WORKER REPORTS FINALIZE_READY:\n"
+                f"Call telec todo work {resolved_slug}. The state machine will drive the finalize handoff."
+            ),
         )
     )
 

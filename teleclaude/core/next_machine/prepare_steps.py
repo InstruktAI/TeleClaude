@@ -30,6 +30,12 @@ from teleclaude.core.next_machine.prepare_events import (
     _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, stamp_audit
+from teleclaude.core.next_machine.prepare_scripts import (
+    _fix_findings_message,
+    _format_review_approved_script,
+    _format_review_blocked_script,
+    _format_review_needs_work_script,
+)
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
@@ -50,6 +56,40 @@ def _derive_project_root(cwd: str, slug: str) -> str:
     if cwd.endswith(suffix):
         return cwd[: -len(suffix)]
     return cwd
+
+
+async def _find_live_session_for_slug(
+    db: Db,
+    slug: str,
+    command_prefix: str,
+    subdir_override: str | None = None,
+) -> str | None:
+    """Return the session_id of a live session dispatched for this slug+command.
+
+    Live means closed_at is null. Matches by subdir (defaults to trees/{slug})
+    and session title starting with the command prefix (e.g. "/next-review-specs").
+    Returns None when no matching live session exists.
+    """
+    sessions = await db.list_sessions(include_closed=False)
+    expected_subdir = subdir_override if subdir_override is not None else f"{WORKTREE_DIR}/{slug}"
+    for session in sessions:
+        if session.subdir != expected_subdir:
+            continue
+        title = (session.title or "").lstrip()
+        if title.startswith(command_prefix):
+            return session.session_id
+    return None
+
+
+async def _find_all_live_sessions_for_slug(
+    db: Db,
+    slug: str,
+    subdir_override: str | None = None,
+) -> list[str]:
+    """Return all live session_ids dispatched for this slug, regardless of command."""
+    sessions = await db.list_sessions(include_closed=False)
+    expected_subdir = subdir_override if subdir_override is not None else f"{WORKTREE_DIR}/{slug}"
+    return [s.session_id for s in sessions if s.subdir == expected_subdir]
 
 
 async def _restamp_artifact_digest_db(
@@ -122,6 +162,9 @@ async def _prepare_step_input_assessment(
                 "triangulated discovery with a complementary partner."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -156,6 +199,9 @@ async def _prepare_step_triangulation(
                 "complementary partner before writing."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -167,7 +213,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """REQUIREMENTS_REVIEW: awaiting review verdict."""
+    """REQUIREMENTS_REVIEW: tailored output per state (init/approved/needs_work/blocked/needs_decision)."""
     stamp_audit(state, "requirements_review", "started_at", datetime.now(UTC).isoformat())
 
     req_review = state.get("requirements_review", {})
@@ -177,16 +223,18 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
     if verdict:
         await _restamp_artifact_digest_db(todos_db, state, slug, "requirements")
 
+    reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-requirements")
+    worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-discovery")
+
     if verdict == "approve":
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "requirements_review", "verdict", "approve")
         state["current"] = PreparePhase.TEST_SPEC_BUILD.value
         await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
-        return True, ""  # loop
+        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
 
     if verdict == "needs_decision":
-        # Architectural blocker — requires human decision before proceeding
         findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
@@ -208,38 +256,21 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             req_review["verdict"] = ""
         else:
             rounds = 1
-        # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["requirements_review"] = req_review
             state["current"] = PreparePhase.BLOCKED.value
             await todos_db.write_state(slug, state)
-            return False, (
-                f"BLOCKED: {slug} requirements review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
-                f"Manual resolution required.\n\n"
-                f"Before acting, load the relevant worker role:\n"
-                f"  telec docs index\n"
-                f"Then use telec docs get to load the procedure for the role you are assuming."
-            )
-        # Count-and-pointer pattern: no file content injection (R2)
+            return False, _format_review_blocked_script(slug, "requirements", reviewer_id, worker_id)
+
         findings = (isinstance(req_review, dict) and req_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        findings_note = (
-            f"Requirements need revision: {open_count} unresolved finding(s). "
-            f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
-        )
         stamp_audit(state, "requirements_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "requirements_review", "verdict", "needs_work")
         stamp_audit(state, "requirements_review", "rounds", rounds)
         state["requirements_review"] = req_review
         state["current"] = PreparePhase.TRIANGULATION.value
         await todos_db.write_state(slug, state)
-        # Compute diff context for re-dispatch (I-2)
-        base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
-        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
-        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
-        additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
-        # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
             {
@@ -250,6 +281,20 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                     if isinstance(f, dict) and f.get("status") != "resolved"
                 ],
             },
+        )
+        if worker_id and reviewer_id:
+            message = _fix_findings_message(
+                slug, "requirements", rounds, open_count, "requirements-review-findings", "requirements"
+            )
+            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+        # Fallback: dispatch a fresh discovery worker (initial baseline diff context)
+        base_sha = (isinstance(req_review, dict) and req_review.get("baseline_commit")) or ""
+        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", str(base_sha))
+        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
+        findings_note = (
+            f"Requirements need revision: {open_count} unresolved finding(s). "
+            f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -262,10 +307,13 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
+                post_block=(
+                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+                ),
             )
         )
 
-    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor
     rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
         req_review_dict = state.get("requirements_review", {})
@@ -288,6 +336,10 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
                 f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN REVIEWER IDLES:\n"
+                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
+            ),
         )
     )
 
@@ -324,6 +376,9 @@ async def _prepare_step_test_spec_build(
                 f"requirement as a failing test. Commit the specs to the worktree branch."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -335,11 +390,14 @@ async def _prepare_step_test_spec_review(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """TEST_SPEC_REVIEW: awaiting test spec review verdict."""
+    """TEST_SPEC_REVIEW: tailored output per state."""
     stamp_audit(state, "test_spec_review", "started_at", datetime.now(UTC).isoformat())
 
     spec_review = state.get("test_spec_review", {})
     verdict = (isinstance(spec_review, dict) and spec_review.get("verdict")) or ""
+
+    reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-specs")
+    worker_id = await _find_live_session_for_slug(db, slug, "/next-build-specs")
 
     if verdict == "approve":
         stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
@@ -347,7 +405,7 @@ async def _prepare_step_test_spec_review(
         state["current"] = PreparePhase.PLAN_DRAFTING.value
         await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
-        return True, ""  # loop
+        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
 
     if verdict == "needs_work":
         if isinstance(spec_review, dict):
@@ -356,24 +414,29 @@ async def _prepare_step_test_spec_review(
             spec_review["verdict"] = ""
         else:
             rounds = 1
-        # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["test_spec_review"] = spec_review
             state["current"] = PreparePhase.BLOCKED.value
             await todos_db.write_state(slug, state)
-            return False, (
-                f"BLOCKED: {slug} test spec review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
-                f"Manual resolution required.\n\n"
-                f"Before acting, load the relevant worker role:\n"
-                f"  telec docs index\n"
-                f"Then use telec docs get to load the procedure for the role you are assuming."
-            )
+            return False, _format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
+
+        findings = (isinstance(spec_review, dict) and spec_review.get("findings")) or []
+        findings_list = findings if isinstance(findings, list) else []
+        open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
         stamp_audit(state, "test_spec_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "test_spec_review", "verdict", "needs_work")
         stamp_audit(state, "test_spec_review", "rounds", rounds)
         state["test_spec_review"] = spec_review
         state["current"] = PreparePhase.TEST_SPEC_BUILD.value
         await todos_db.write_state(slug, state)
+
+        if worker_id and reviewer_id:
+            message = _fix_findings_message(
+                slug, "test spec", rounds, open_count, "spec-review-findings", "test spec files in the worktree"
+            )
+            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+
+        # Fallback: dispatch fresh spec builder when no live worker is available
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
             ToolCallRequest(
@@ -384,9 +447,13 @@ async def _prepare_step_test_spec_review(
                 subfolder=f"{WORKTREE_DIR}/{slug}",
                 note=(
                     f"Test specs need revision (round {rounds}). "
-                    f"Review feedback and update xfail test specs in the worktree."
+                    f"Read findings via `telec todo artifacts read {slug} spec-review-findings` "
+                    f"and update xfail test specs in the worktree."
                 ),
                 next_call=f"telec todo prepare {slug}",
+                post_block=(
+                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+                ),
             )
         )
 
@@ -399,8 +466,12 @@ async def _prepare_step_test_spec_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and write verdict to state.yaml test_spec_review.verdict.",  # pylint: disable=line-too-long
+            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`.",  # pylint: disable=line-too-long
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN REVIEWER IDLES:\n"
+                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
+            ),
         )
     )
 
@@ -439,6 +510,9 @@ async def _prepare_step_plan_drafting(
                 "update the holder breakdown."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -450,15 +524,17 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """PLAN_REVIEW: awaiting plan review verdict."""
+    """PLAN_REVIEW: tailored output per state."""
     stamp_audit(state, "plan_review", "started_at", datetime.now(UTC).isoformat())
 
     plan_review = state.get("plan_review", {})
     verdict = (isinstance(plan_review, dict) and plan_review.get("verdict")) or ""
 
-    # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
         await _restamp_artifact_digest_db(todos_db, state, slug, "implementation_plan")
+
+    reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-plan")
+    worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-draft")
 
     if verdict == "approve":
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
@@ -466,10 +542,9 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         state["current"] = PreparePhase.GATE.value
         await todos_db.write_state(slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
-        return True, ""  # loop
+        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "plan")
 
     if verdict == "needs_decision":
-        # Architectural blocker — requires human decision before proceeding
         findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
@@ -491,38 +566,21 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             plan_review["verdict"] = ""
         else:
             rounds = 1
-        # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             state["plan_review"] = plan_review
             state["current"] = PreparePhase.BLOCKED.value
             await todos_db.write_state(slug, state)
-            return False, (
-                f"BLOCKED: {slug} plan review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
-                f"Manual resolution required.\n\n"
-                f"Before acting, load the relevant worker role:\n"
-                f"  telec docs index\n"
-                f"Then use telec docs get to load the procedure for the role you are assuming."
-            )
-        # Count-and-pointer pattern: no file content injection (R2)
+            return False, _format_review_blocked_script(slug, "plan", reviewer_id, worker_id)
+
         findings = (isinstance(plan_review, dict) and plan_review.get("findings")) or []
         findings_list = findings if isinstance(findings, list) else []
         open_count = sum(1 for f in findings_list if isinstance(f, dict) and f.get("status") != "resolved")
-        findings_note = (
-            f"Implementation plan needs revision: {open_count} unresolved finding(s). "
-            f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
-        )
         stamp_audit(state, "plan_review", "completed_at", datetime.now(UTC).isoformat())
         stamp_audit(state, "plan_review", "verdict", "needs_work")
         stamp_audit(state, "plan_review", "rounds", rounds)
         state["plan_review"] = plan_review
         state["current"] = PreparePhase.PLAN_DRAFTING.value
         await todos_db.write_state(slug, state)
-        # Compute diff context for re-dispatch (I-2)
-        base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
-        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
-        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
-        additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
-        # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
             {
@@ -533,6 +591,21 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                     if isinstance(f, dict) and f.get("status") != "resolved"
                 ],
             },
+        )
+        if worker_id and reviewer_id:
+            message = _fix_findings_message(
+                slug, "plan", rounds, open_count, "plan-review-findings", "implementation-plan"
+            )
+            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+
+        # Fallback: dispatch fresh draft worker with diff context when no live worker
+        base_sha = (isinstance(plan_review, dict) and plan_review.get("baseline_commit")) or ""
+        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", str(base_sha))
+        folder_diff = compute_todo_folder_diff(cwd, slug, str(base_sha))
+        additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
+        findings_note = (
+            f"Implementation plan needs revision: {open_count} unresolved finding(s). "
+            f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -545,10 +618,13 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                 note=findings_note,
                 next_call=f"telec todo prepare {slug}",
                 additional_context=additional_context,
+                post_block=(
+                    f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+                ),
             )
         )
 
-    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
+    # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor
     rc, head_sha, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     if rc == 0 and head_sha.strip():
         plan_review_dict = state.get("plan_review", {})
@@ -571,6 +647,10 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
                 f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work`."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN REVIEWER IDLES:\n"
+                f"Call telec todo prepare {slug}. The state machine will read the verdict and emit the next action."
+            ),
         )
     )
 
@@ -607,6 +687,9 @@ async def _prepare_step_gate(
                 f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
 
@@ -771,21 +854,30 @@ async def _prepare_step_re_grounding(
                 f"against current codebase. {changed_note}"
             ),
             next_call=f"telec todo prepare {slug}",
+            post_block=(
+                f"WHEN WORKER IDLES:\nCall telec todo prepare {slug}. The state machine emits the next action."
+            ),
         )
     )
     _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
     return False, result
 
 
-async def _prepare_step_prepared(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> tuple[bool, str]:
-    """PREPARED: terminal success state. Guards against invalid DOR score."""
+async def _prepare_step_prepared(
+    db: Db,
+    todos_db: TodosDb,
+    slug: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """PREPARED: terminal success state. Emits cleanup for all live slug sessions + self-end."""
     dor = state.get("dor", {})
     dor_score = dor.get("score") if isinstance(dor, dict) else None
     if not (isinstance(dor_score, int) and dor_score >= DOR_READY_THRESHOLD):
         state["current"] = PreparePhase.GATE.value
         await todos_db.write_state(slug, state)
         return True, ""  # loop back to gate
-    return False, format_prepared(slug)
+    live_sessions = await _find_all_live_sessions_for_slug(db, slug)
+    return False, format_prepared(slug, session_ids_to_end=live_sessions)
 
 
 def _prepare_step_blocked(slug: str, state: dict[str, StateValue]) -> tuple[bool, str]:
@@ -839,7 +931,7 @@ async def _prepare_dispatch(  # pylint: disable=too-many-return-statements,too-m
     if phase == PreparePhase.RE_GROUNDING:
         return await _prepare_step_re_grounding(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PREPARED:
-        return await _prepare_step_prepared(todos_db, slug, state)
+        return await _prepare_step_prepared(db, todos_db, slug, state)
     if phase == PreparePhase.BLOCKED:
         return _prepare_step_blocked(slug, state)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"

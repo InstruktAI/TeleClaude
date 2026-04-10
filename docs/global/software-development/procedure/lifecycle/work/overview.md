@@ -44,37 +44,26 @@ gate failures back to the builder, and retries the same post-completion loop.
 
 After build completes, the state machine dispatches a reviewer via `next-review-build`.
 The reviewer runs parallel review lanes (scope, code, principles, security, tests,
-errors, types, comments, docs) and delivers a verdict.
-
-The orchestrator persists the review transition before advancing:
-
-- APPROVE → `telec todo mark-phase {slug} --target review_approved`
-- REQUEST CHANGES → `telec todo mark-phase {slug} --target review_changes_requested`
-
-On approval it ends the reviewer session and calls `telec todo work [slug]` again.
-On requested changes it keeps the reviewer alive, dispatches a fixer, and follows
-the fix/re-review loop.
+errors, types, comments, docs) and stamps a verdict. On the next `telec todo work`
+call the state machine reads the verdict and emits the next action: advance the phase
+on APPROVE, or relay findings to the existing builder on REQUEST CHANGES.
 
 ### 4. Fix (if needed)
 
-On REQUEST CHANGES, the state machine dispatches a fixer via `next-fix-review`.
-The fixer addresses Critical and Important findings minimally. The cycle returns
-to Review. Review/fix loops are capped by `max_review_rounds` (default 3).
-
-When the fixer reports completion, the orchestrator ends the fixer session, marks
-the review as pending again via `telec todo mark-phase {slug} --target review_pending`,
-and re-enters `telec todo work [slug]`.
+On REQUEST CHANGES, the state machine finds the live builder session and sends the
+findings via `telec sessions send`. The builder loads the fix procedure on demand
+(`software-development/procedure/lifecycle/fix-review-findings`) and addresses the
+findings without losing context. Review/fix loops are capped by `max_review_rounds`
+(default 3). No fresh fixer session is dispatched — the original builder handles the
+fix cycle.
 
 ### 5. Finalize
 
 On APPROVE, the state machine dispatches a finalizer via `next-finalize`. The
 finalizer integrates latest main into the worktree, resolves conflicts, pushes
-the branch, and reports FINALIZE_READY. The orchestrator records durable finalize
-state and hands off to integration.
-
-The finalize handoff is also persisted before re-entry:
-`telec todo mark-phase {slug} --target finalize_ready`, then the finalizer session
-is ended and `telec todo work [slug]` is called again.
+the branch, and reports FINALIZE_READY. The state machine then drives the finalize
+handoff, emitting end commands for the slug's workers. The work orchestrator advances
+to the next ready slug (or self-ends if the queue is empty).
 
 ### 6. Deferrals
 
@@ -107,7 +96,7 @@ build-gate failures until they pass or a blocker remains.
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/fix-review.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/fix-review-findings.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md

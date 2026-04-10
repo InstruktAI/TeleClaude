@@ -26,7 +26,7 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, dispa
 
 - Reviewed and approved `requirements.md` and `implementation-plan.md`
 - Gate verdict stamped via `telec todo stamp`
-- All sessions ended on completion
+- State machine-driven session cleanup on the PREPARED terminal
 
 ## Steps
 

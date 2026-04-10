@@ -32,6 +32,9 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_next_work_reports_no_ready_items_when_resolution_finds_nothing() -> None:
+    """When the work queue is empty, the state machine must emit NO_READY_ITEMS
+    AND `telec sessions end self` to close the orchestrator. Without self-end
+    the orchestrator would hang indefinitely at an empty queue."""
     db = AsyncMock()
     todos_db = _mock_todos_db()
 
@@ -44,7 +47,8 @@ async def test_next_work_reports_no_ready_items_when_resolution_finds_nothing() 
     ):
         result = await next_work(db, None, "/repo")
 
-    assert result
+    assert "NO_READY_ITEMS" in result
+    assert "telec sessions end self" in result
 
 
 @pytest.mark.asyncio
@@ -172,3 +176,56 @@ async def test_dispatch_review_approved_routes_to_finalize_when_no_deferrals_are
 
     emit_review_approved_mock.assert_awaited_once()
     assert result
+
+
+# ---------------------------------------------------------------------------
+# Session lifecycle — fix-forward relay to live builder on review changes
+# ---------------------------------------------------------------------------
+
+
+class _FakeSession:  # pylint: disable=too-few-public-methods
+    def __init__(self, session_id: str, title: str, subdir: str) -> None:
+        self.session_id = session_id
+        self.title = title
+        self.subdir = subdir
+
+
+@pytest.mark.asyncio
+async def test_review_changes_requested_relays_findings_to_live_builder() -> None:
+    """When the reviewer stamps CHANGES_REQUESTED, the work state machine must send
+    findings to the existing builder via telec sessions send instead of dispatching
+    a fresh fixer session. Catches the context-loss bug where every review round
+    spawned a new fixer."""
+    dispatch_state = _DispatchState(
+        state={},
+        build_status=PhaseStatus.COMPLETE.value,
+        review_status=PhaseStatus.CHANGES_REQUESTED.value,
+        finalize_state={"status": "pending"},
+    )
+
+    builder = _FakeSession("bld-keep", "/next-build slug-relay", "trees/slug-relay")
+    reviewer = _FakeSession("rev-keep", "/next-review-build slug-relay", "trees/slug-relay")
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=[builder, reviewer])
+    todos_db = _mock_todos_db()
+
+    result = await _dispatch_pre_review(
+        db,
+        todos_db,
+        "/repo",
+        "/repo/trees/slug-relay",
+        "slug-relay",
+        "slug-relay",
+        0.0,
+        dispatch_state,
+    )
+
+    # Must relay to the existing builder, not dispatch a fresh fixer
+    assert "telec sessions send bld-keep" in result
+    assert "telec sessions run" not in result
+    # Must reference the fix procedure
+    assert "software-development/procedure/lifecycle/fix-review-findings" in result
+    # Must NOT end any session — the fix round is iterative, not terminal
+    assert "telec sessions end" not in result
+    # The reviewer is still alive; the script must wait on its next idle
+    assert "rev-keep" in result

@@ -168,9 +168,6 @@ from teleclaude.core.next_machine.git_ops import (
 
 # ── output formatting ──────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.output_formatting import (
-    POST_COMPLETION as POST_COMPLETION,
-)
-from teleclaude.core.next_machine.output_formatting import (
     format_error as format_error,
 )
 from teleclaude.core.next_machine.output_formatting import (
