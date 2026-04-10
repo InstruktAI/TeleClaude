@@ -33,7 +33,7 @@ class TodosDbArtifactsMixin:
     async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
         """Resolve slug to roadmap id for artifact reads. Prefers active/icebox, falls back to delivered."""
         result = await session.exec(
-            select(TodoRoadmap.id, ROADMAP_TABLE.c.status)
+            select(TodoRoadmap.id)
             .where(ROADMAP_TABLE.c.slug == slug)
             .order_by(
                 # active/icebox first, delivered last
@@ -41,11 +41,11 @@ class TodosDbArtifactsMixin:
             )
             .limit(1)
         )
-        row = result.first()
-        if row is None:
+        roadmap_id = result.first()
+        if roadmap_id is None:
             msg = f"No roadmap entry for slug {slug!r}"
             raise ValueError(msg)
-        return str(row[0])
+        return str(roadmap_id)
 
     async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
         """Resolve slug to roadmap id for artifact writes. Raises if slug has no active roadmap entry."""
@@ -72,30 +72,30 @@ class TodosDbArtifactsMixin:
     def _resolve_artifact_id_sync(self, slug: str) -> str:
         """Resolve slug to roadmap id for synchronous artifact operations."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            row = session.exec(
-                select(TodoRoadmap.id, ROADMAP_TABLE.c.status)
+            roadmap_id = session.exec(
+                select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
                 .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
-            if row is None:
+            if roadmap_id is None:
                 msg = f"No roadmap entry for slug {slug!r}"
                 raise ValueError(msg)
-            return str(row[0])
+            return str(roadmap_id)
 
     def read_artifact_sync(self, slug: str, name: str) -> str:
         """Read artifact content synchronously. Returns empty string if not found."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
-            row = session.exec(
-                select(TodoRoadmap.id, ROADMAP_TABLE.c.status)
+            roadmap_id = session.exec(
+                select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
                 .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
-            if row is None:
+            if roadmap_id is None:
                 msg = f"No roadmap entry for slug {slug!r}"
                 raise ValueError(msg)
-            artifact = session.get(TodoArtifact, (str(row[0]), name))
+            artifact = session.get(TodoArtifact, (str(roadmap_id), name))
             return artifact.content if artifact is not None else ""
 
     async def write_artifact(  # pylint: disable=too-many-arguments
