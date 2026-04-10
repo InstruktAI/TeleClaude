@@ -310,7 +310,9 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.chiptunes_manager.on_command_done = self._on_chiptunes_command_done
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
-        self.chiptunes_manager.start()
+        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+
+        chiptunes_routes.configure(manager=self.chiptunes_manager)
         logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
 
         # Mutable runtime settings with debounced JSON persistence
@@ -660,10 +662,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         logger.info("[STARTUP] Bootstrapping daemon runtime (usually 10-25s)")
         try:
             await self.lifecycle.startup()
-
-            from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
-
-            chiptunes_routes.configure(manager=self.chiptunes_manager)
 
             startup_elapsed = time.perf_counter() - daemon_start_started_at
             if startup_elapsed >= SLOW_STARTUP_WARNING_S:
