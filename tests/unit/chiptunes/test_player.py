@@ -206,11 +206,10 @@ class TestChiptunesPlayer:
         player.on_track_end = reasons.append
         monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
 
-        # 5 seconds max, 50Hz PAL = 250 frames max (fade starts at 2s = frame 100)
+        # Fade starts AT max_duration and lasts _FADE_DURATION_S (3.0s).
+        # 5s listed + 3s fade = 8s total at 50Hz PAL = 400 frames, plus batch-boundary slack.
         player._emulation_loop(_header(flags=4), max_duration=5.0)
 
         assert player.track_end_reason == "track_completed"
         assert reasons == ["track_completed"]
-        # Should have run ~250 frames (5s * 50fps), give or take frame boundaries
-        assert 245 <= driver.play_calls <= 255
-
+        assert 395 <= driver.play_calls <= 410
