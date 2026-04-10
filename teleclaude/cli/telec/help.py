@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef, Flag
 
@@ -474,7 +475,11 @@ def _print_completion(value: str, description: str) -> None:
 def _handle_completion() -> None:
     """Handle shell completion requests."""
     comp_line = os.environ.get("COMP_LINE", "")
-    parts = comp_line.split()
+    try:
+        parts = shlex.split(comp_line, posix=True)
+    except ValueError:
+        # Unbalanced quote while the user is still typing — fall back to naive split.
+        parts = comp_line.split()
 
     # Remove "telec" from parts if present
     if parts and parts[0] == "telec":
@@ -498,23 +503,14 @@ def _handle_completion() -> None:
                 _print_completion(c, _COMMAND_DESCRIPTIONS.get(c, ""))
         return
 
-    # Command-specific completions
-    if cmd in ("sync", "watch") and cmd in CLI_SURFACE:
-        _complete_flags(CLI_SURFACE[cmd].flag_tuples, rest, current, is_partial)
-    elif cmd in {
-        "todo",
-        "roadmap",
-        "config",
-        "sessions",
-        "agents",
-        "channels",
-        "docs",
-        "computers",
-        "projects",
-        "bugs",
-        "auth",
-    }:
+    # Schema-driven dispatch: hand off to the right completer based on the command shape.
+    cmd_def = CLI_SURFACE.get(cmd)
+    if cmd_def is None or cmd_def.hidden:
+        return
+    if cmd_def.subcommands:
         _complete_subcmd(cmd, rest, current, is_partial)
+    elif cmd_def.flags:
+        _complete_flags(cmd_def.flag_tuples, rest, current, is_partial)
 
 
 def _flag_used(flag_tuple: tuple[str | None, str, str], used: set[str]) -> bool:
@@ -562,25 +558,42 @@ def _complete_flags(
 
 
 def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: bool) -> None:
-    """Complete commands with subcommands (todo, roadmap, config, etc.)."""
-    cmd_def = CLI_SURFACE[cmd_name]
+    """Complete commands with (possibly nested) subcommands."""
+    # Walk as deep as possible into the subcommand tree, matching only child keys.
+    node: CommandDef = CLI_SURFACE[cmd_name]
+    consumed = 0
+    for token in rest:
+        child = node.subcommands.get(token) if node.subcommands else None
+        if child is None:
+            break
+        node = child
+        consumed += 1
 
-    # Subcommand completion: no args yet, or partially typing subcommand name
-    if not rest or (len(rest) == 1 and is_partial):
-        for subcommand, desc in cmd_def.subcmd_tuples:
-            if not is_partial or subcommand.startswith(current):
-                _print_completion(subcommand, desc)
+    remaining = rest[consumed:]
+
+    if node.subcommands:
+        if not remaining or (len(remaining) == 1 and is_partial):
+            for subcommand, desc in node.subcmd_tuples:
+                if not is_partial or not remaining or subcommand.startswith(current):
+                    _print_completion(subcommand, desc)
         return
 
-    # Subcommand-level completion: positional args + flags
-    flags, positional_rest, expected_positionals, used = _subcommand_completion_context(cmd_def, rest)
+    _complete_leaf_command(node, remaining, current, is_partial)
+
+
+def _complete_leaf_command(node: CommandDef, remaining: list[str], current: str, is_partial: bool) -> None:
+    """Emit positional hints and flag completions for a leaf command node."""
+    positional_rest = [arg for arg in remaining if not arg.startswith("-")]
+    expected_positionals = node.args.split() if node.args else []
+    used = set(remaining)
+    flags = node.flag_tuples
+
     if is_partial and current.startswith("-"):
         for flag in flags:
             if _flag_matches(flag, current) and not _flag_used(flag, used):
                 _print_flag(flag)
         return
 
-    # Show positional arg hints for args not yet provided
     for i, arg_hint in enumerate(expected_positionals):
         if i >= len(positional_rest):
             _print_completion(arg_hint, "required" if arg_hint.startswith("<") else "optional")
@@ -588,14 +601,3 @@ def _complete_subcmd(cmd_name: str, rest: list[str], current: str, is_partial: b
     for flag in flags:
         if not _flag_used(flag, used):
             _print_flag(flag)
-
-
-def _subcommand_completion_context(
-    cmd_def: CommandDef, rest: list[str]
-) -> tuple[list[tuple[str | None, str, str]], list[str], list[str], set[str]]:
-    sub_def = cmd_def.subcommands.get(rest[0])
-    flags = sub_def.flag_tuples if sub_def and sub_def.flags else cmd_def.flag_tuples
-    positional_rest = [arg for arg in rest[1:] if not arg.startswith("-")]
-    expected_positionals = sub_def.args.split() if sub_def and sub_def.args else []
-    used = set(rest[1:])
-    return flags, positional_rest, expected_positionals, used
