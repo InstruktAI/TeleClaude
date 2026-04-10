@@ -240,6 +240,42 @@ def extract_last_user_message_with_timestamp(
     return None
 
 
+def extract_last_turn_boundary_timestamp(
+    transcript_path: str,
+    agent_name: AgentName,
+) -> datetime | None:
+    """Return the timestamp of the last genuine user message in the transcript.
+
+    A "genuine" user message is a real human turn — not an agent-generated
+    tool_result message. The returned timestamp identifies the start of the
+    current assistant turn and is the anchor used by output delivery to
+    detect turn boundaries between two cadence ticks.
+
+    Returns:
+        The parsed timestamp, or None if the transcript is unreadable,
+        empty, contains no genuine user messages, or the latest genuine user
+        message has no parseable timestamp.
+    """
+    try:
+        entries = _get_entries_for_agent(transcript_path, agent_name)
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None
+    if not entries:
+        return None
+
+    for entry in reversed(entries):
+        message = normalize_transcript_entry_message(entry)
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        if _is_user_tool_result_only_message(message):
+            continue
+        entry_ts = entry.get("timestamp")
+        if isinstance(entry_ts, str):
+            return _parse_timestamp(entry_ts)
+        return None
+    return None
+
+
 def extract_last_agent_message(
     transcript_path: str,
     agent_name: AgentName,

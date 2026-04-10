@@ -21,11 +21,13 @@ from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
+from teleclaude.utils.transcript import extract_last_turn_boundary_timestamp
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
 if TYPE_CHECKING:
@@ -560,8 +562,9 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     async def clear_turn_state(self, session: Session) -> None:
         """Reset char_offset, clear output_message_id, and seal last_delivered_at.
 
-        Note: No longer called from the lifecycle layer. The cadence loop
-        manages delivery bookkeeping via _detect_turn_boundary (R3).
+        Called from send_output_update when a new-turn boundary is detected so
+        the next delivery starts a fresh tracking message instead of editing a
+        stale one from the previous turn.
         """
         await self._set_char_offset(session, 0)
         await self._set_origin_field(
@@ -570,6 +573,50 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             last_delivered_at=datetime.now(UTC).isoformat(),
         )
         logger.debug("Turn state cleared: adapter=%s session=%s", self.ADAPTER_KEY, session.session_id)
+
+    async def _maybe_clear_on_turn_boundary(self, session: Session) -> None:
+        """Reset per-adapter delivery state when a new turn has started.
+
+        Compares the transcript's latest genuine user message timestamp to the
+        anchor persisted in origin_metadata. When it advances, the previous
+        turn's tracking message must not be edited with new-turn content — it
+        would overwrite displayed output and, on overflow, silently bury
+        chunk 1 inside a stale message that has already scrolled away.
+        """
+        transcript_path = session.native_log_file
+        active_agent = session.active_agent
+        if not transcript_path or not active_agent:
+            return
+        try:
+            agent_name = AgentName.from_str(active_agent)
+        except ValueError:
+            return
+
+        latest_user_ts = extract_last_turn_boundary_timestamp(transcript_path, agent_name)
+        if latest_user_ts is None:
+            return
+
+        stored_raw = self._origin_field(session, "turn_anchor_ts")
+        stored_ts = _parse_timestamp(stored_raw) if isinstance(stored_raw, str) else None
+
+        if stored_ts is None:
+            # First delivery on this adapter — record the anchor without clearing.
+            await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat())
+            return
+
+        if latest_user_ts <= stored_ts:
+            return
+
+        # New turn: clear delivery state so the next render creates a fresh message.
+        await self.clear_turn_state(session)
+        await self._set_origin_field(session, turn_anchor_ts=latest_user_ts.isoformat())
+        logger.debug(
+            "Turn boundary detected: adapter=%s session=%s previous_anchor=%s new_anchor=%s",
+            self.ADAPTER_KEY,
+            session.session_id,
+            stored_ts.isoformat(),
+            latest_user_ts.isoformat(),
+        )
 
     async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
@@ -585,6 +632,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     ) -> str | None:
         """Handle live output pushed by the daemon-owned coordinator."""
         _ = (started_at, last_output_changed_at, is_final, exit_code, render_markdown)
+        await self._maybe_clear_on_turn_boundary(session)
         return await self.send_threaded_output(session, output, multi_message=multi_message, delivery_ts=delivery_ts)
 
     async def _clear_output_message_id(self, session: Session) -> None:

@@ -333,3 +333,128 @@ class TestSendThreadedOutput:
 
         assert result == "msg-1"
         set_last_delivered_at.assert_awaited_once_with(session, delivery_ts)
+
+
+# ---------------------------------------------------------------------------
+# Turn boundary detection in send_output_update
+# ---------------------------------------------------------------------------
+
+
+class TestMaybeClearOnTurnBoundary:
+    """The adapter must detect a new turn and reset delivery state.
+
+    Without this, the polling coordinator reuses a stale output_message_id
+    across turns, so each turn's content silently overwrites the previous
+    one and overflow chunk 1 lands in a buried (invisible) message.
+    """
+
+    @pytest.mark.unit
+    async def test_first_delivery_records_anchor_without_clearing(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(native_log_file="/tmp/log", active_agent="claude")
+        ts = datetime(2026, 4, 10, 14, 0, 0, tzinfo=UTC)
+
+        with (
+            patch(
+                "teleclaude.adapters.ui_adapter.extract_last_turn_boundary_timestamp",
+                return_value=ts,
+            ),
+            patch.object(adapter, "_origin_field", return_value=None),
+            patch.object(adapter, "clear_turn_state", AsyncMock()) as clear_state,
+            patch.object(adapter, "_set_origin_field", AsyncMock()) as set_origin_field,
+        ):
+            await adapter._maybe_clear_on_turn_boundary(session)
+
+        clear_state.assert_not_awaited()
+        set_origin_field.assert_awaited_once_with(session, turn_anchor_ts=ts.isoformat())
+
+    @pytest.mark.unit
+    async def test_same_turn_does_not_clear(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(native_log_file="/tmp/log", active_agent="claude")
+        ts = datetime(2026, 4, 10, 14, 0, 0, tzinfo=UTC)
+
+        with (
+            patch(
+                "teleclaude.adapters.ui_adapter.extract_last_turn_boundary_timestamp",
+                return_value=ts,
+            ),
+            patch.object(adapter, "_origin_field", return_value=ts.isoformat()),
+            patch.object(adapter, "clear_turn_state", AsyncMock()) as clear_state,
+            patch.object(adapter, "_set_origin_field", AsyncMock()) as set_origin_field,
+        ):
+            await adapter._maybe_clear_on_turn_boundary(session)
+
+        clear_state.assert_not_awaited()
+        set_origin_field.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_new_turn_clears_state_and_advances_anchor(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(native_log_file="/tmp/log", active_agent="claude")
+        previous = datetime(2026, 4, 10, 14, 0, 0, tzinfo=UTC)
+        latest = datetime(2026, 4, 10, 14, 5, 0, tzinfo=UTC)
+
+        with (
+            patch(
+                "teleclaude.adapters.ui_adapter.extract_last_turn_boundary_timestamp",
+                return_value=latest,
+            ),
+            patch.object(adapter, "_origin_field", return_value=previous.isoformat()),
+            patch.object(adapter, "clear_turn_state", AsyncMock()) as clear_state,
+            patch.object(adapter, "_set_origin_field", AsyncMock()) as set_origin_field,
+        ):
+            await adapter._maybe_clear_on_turn_boundary(session)
+
+        clear_state.assert_awaited_once_with(session)
+        set_origin_field.assert_awaited_once_with(session, turn_anchor_ts=latest.isoformat())
+
+    @pytest.mark.unit
+    async def test_no_user_message_is_noop(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(native_log_file="/tmp/log", active_agent="claude")
+
+        with (
+            patch(
+                "teleclaude.adapters.ui_adapter.extract_last_turn_boundary_timestamp",
+                return_value=None,
+            ),
+            patch.object(adapter, "clear_turn_state", AsyncMock()) as clear_state,
+            patch.object(adapter, "_set_origin_field", AsyncMock()) as set_origin_field,
+        ):
+            await adapter._maybe_clear_on_turn_boundary(session)
+
+        clear_state.assert_not_awaited()
+        set_origin_field.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_missing_transcript_or_agent_is_noop(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()  # no native_log_file, no active_agent
+
+        with (
+            patch(
+                "teleclaude.adapters.ui_adapter.extract_last_turn_boundary_timestamp",
+            ) as extract,
+            patch.object(adapter, "clear_turn_state", AsyncMock()) as clear_state,
+        ):
+            await adapter._maybe_clear_on_turn_boundary(session)
+
+        extract.assert_not_called()
+        clear_state.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_send_output_update_runs_turn_boundary_check_before_delivery(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        calls: list[str] = []
+
+        async def record_boundary(_session: Session) -> None:
+            calls.append("boundary")
+
+        async def record_threaded(*_args: object, **_kwargs: object) -> str:
+            calls.append("threaded")
+            return "msg-1"
+
+        with (
+            patch.object(adapter, "_maybe_clear_on_turn_boundary", AsyncMock(side_effect=record_boundary)),
+            patch.object(adapter, "send_threaded_output", AsyncMock(side_effect=record_threaded)),
+        ):
+            result = await adapter.send_output_update(session, "body", 0.0, 0.0)
+
+        assert result == "msg-1"
+        assert calls == ["boundary", "threaded"]
