@@ -497,7 +497,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     if not session_id:
         raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_identity.json not found)")
 
-    with SqlSession(_create_sync_engine()) as db_session:  # type: ignore[arg-type]
+    with SqlSession(_create_sync_engine()) as db_session:
         row = db_session.get(db_models.Session, session_id)
 
     if not row:

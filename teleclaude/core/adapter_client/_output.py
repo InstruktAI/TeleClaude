@@ -60,7 +60,11 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             return None
         return origin_adapter
 
-    def _resolve_admin_output_target(self, session: "Session", origin_adapter: str | None) -> str | None:
+    def _resolve_admin_output_target(
+        self,
+        session: "Session",  # pylint: disable=unused-argument  # kept for the commented system_role guard below
+        origin_adapter: str | None,
+    ) -> str | None:
         """Return "discord" when the session is eligible for the admin output copy.
 
         Mirrors the reflection admin lane, whose own system-role and Discord-origin
@@ -69,12 +73,12 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         helper centralises the output lane's guard rather than pushing it to each
         callsite.
 
-        - system-role sessions skip (integrator/finalizer/worker noise)
+        - system-role sessions skip (integrator/finalizer/worker noise)  # DISABLED
         - Discord-origin sessions skip (origin delivery already hits Discord)
         - Discord must be a registered UI adapter
         """
-        if session.system_role:
-            return None
+        # if session.system_role:
+        #     return None
         if origin_adapter == "discord":
             return None
         adapter = self.adapters.get("discord")

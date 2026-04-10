@@ -15,7 +15,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude import config as teleclaude_config
-from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord._runtime import AsyncDiscordCallable, cast_async_callable, recoverable_operation_errors
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
@@ -543,7 +543,7 @@ class InputHandlersMixin:
             destination_id,
         )
         if destination_id is None:
-            raise AdapterError(f"Session {session.session_id} missing discord channel mapping")
+            raise ChannelNotProvisionedError(f"Session {session.session_id} has no discord channel mapping yet")
 
         channel = await self._get_channel(destination_id)
         if channel is None:

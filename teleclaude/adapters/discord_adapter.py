@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord import (
     ChannelOperationsMixin,
     GatewayHandlersMixin,
@@ -247,11 +247,18 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         task_factory: Callable[[UiAdapter, Session], Awaitable[object]],
         display_title: str,
     ) -> object | None:
-        """Treat stale Discord channel metadata cleanup as a handled lane outcome."""
+        """Absorb expected lane outcomes (unprovisioned channel, stale metadata cleanup)."""
         del task_factory, display_title
 
+        if isinstance(error, ChannelNotProvisionedError):
+            logger.info(
+                "[DISCORD_RECOVER] Lane skipped — no Discord channel yet for session %s",
+                session.session_id,
+            )
+            return None
+
         if isinstance(error, AdapterError) and "metadata cleared" in str(error):
-            logger.warning(
+            logger.info(
                 "[DISCORD_RECOVER] Lane skipped after stale Discord metadata was cleared for session %s: %s",
                 session.session_id,
                 error,

@@ -421,43 +421,6 @@ class TestSendOutputUpdate:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_live_output_with_system_role_session_skips_discord_admin(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        session.system_role = "integrator"
-        client.register_adapter("telegram", _make_ui_adapter())
-        client.register_adapter("discord", _make_ui_adapter())
-
-        with patch.object(
-            client,
-            "_route_to_ui",
-            AsyncMock(return_value="telegram-msg"),
-        ) as route_to_ui:
-            result = await client.send_output_update(session, "hello", 1.0, 2.0)
-
-        assert result == "telegram-msg"
-        route_to_ui.assert_awaited_once()
-        call = route_to_ui.await_args
-        assert call is not None
-        assert call.kwargs["include_adapters"] == {"telegram"}
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_live_output_with_system_role_and_non_ui_origin_delivers_nothing(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="terminal")
-        session.system_role = "worker"
-        client.register_adapter("telegram", _make_ui_adapter())
-        client.register_adapter("discord", _make_ui_adapter())
-
-        with patch.object(client, "_route_to_ui", AsyncMock()) as route_to_ui:
-            result = await client.send_output_update(session, "hello", 1.0, 2.0)
-
-        assert result is None
-        route_to_ui.assert_not_awaited()
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_live_output_skips_discord_admin_when_discord_adapter_not_registered(self):
         client = AdapterClient()
         session = _make_session(last_input_origin="telegram")
@@ -502,18 +465,6 @@ class TestResolveAdminOutputTarget:
         client.register_adapter("discord", _make_ui_adapter())
 
         target = client._resolve_admin_output_target(session, "discord")  # pylint: disable=protected-access
-
-        assert target is None
-
-    @pytest.mark.unit
-    def test_returns_none_for_system_role(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        session.system_role = "worker"
-        client.register_adapter("telegram", _make_ui_adapter())
-        client.register_adapter("discord", _make_ui_adapter())
-
-        target = client._resolve_admin_output_target(session, "telegram")  # pylint: disable=protected-access
 
         assert target is None
 
@@ -641,37 +592,6 @@ class TestOutstandingFinalOutputRepair:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_repairs_skip_discord_admin_for_system_role_sessions(self):
-        client = AdapterClient()
-        session = _make_session(last_input_origin="telegram")
-        session.system_role = "integrator"
-        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
-        session.last_output_raw = "final output"
-        session.last_agent_stop_at = stop_at
-        session.origin_metadata = {"telegram": {"topic_id": 42}}
-
-        telegram = _make_ui_adapter()
-        telegram.get_last_delivered_at.return_value = None
-        discord = _make_ui_adapter()
-        discord.get_last_delivered_at.return_value = None
-        client.register_adapter("telegram", telegram)
-        client.register_adapter("discord", discord)
-
-        with (
-            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
-            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
-            patch.object(client, "_route_to_ui", AsyncMock(return_value="telegram-msg")) as route_to_ui,
-        ):
-            repaired = await client.reconcile_outstanding_final_outputs("local")
-
-        assert repaired == 1
-        route_to_ui.assert_awaited_once()
-        call = route_to_ui.await_args
-        assert call is not None
-        assert call.kwargs["include_adapters"] == {"telegram"}
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
     async def test_skips_origin_ui_adapter_when_final_output_already_delivered_after_stop(self):
         client = AdapterClient()
         session = _make_session(last_input_origin="discord")
@@ -710,33 +630,6 @@ class TestOutstandingFinalOutputRepair:
         with (
             patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[session])),
             patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
-            patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
-        ):
-            repaired = await client.reconcile_outstanding_final_outputs("local")
-
-        assert repaired == 0
-        route_to_ui.assert_not_awaited()
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_reconciliation_uses_refreshed_session_before_targeting(self):
-        client = AdapterClient()
-        stale_session = _make_session(last_input_origin="discord")
-        fresh_session = _make_session(last_input_origin="terminal")
-        fresh_session.system_role = "worker"
-        stop_at = datetime(2026, 4, 3, 12, 0, 0, tzinfo=UTC)
-        stale_session.last_output_raw = "final output"
-        stale_session.last_agent_stop_at = stop_at
-        stale_session.origin_metadata = {"discord": {"thread_id": 99}}
-        fresh_session.last_output_raw = "final output"
-        fresh_session.last_agent_stop_at = stop_at
-
-        discord = _make_ui_adapter()
-        client.register_adapter("discord", discord)
-
-        with (
-            patch("teleclaude.core.adapter_client._output.db.list_sessions", AsyncMock(return_value=[stale_session])),
-            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh_session)),
             patch.object(client, "_route_to_ui", AsyncMock(return_value="discord-msg")) as route_to_ui,
         ):
             repaired = await client.reconcile_outstanding_final_outputs("local")

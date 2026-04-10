@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord_adapter import DiscordAdapter
 from teleclaude.core.models import DiscordAdapterMetadata, Session
 
@@ -98,7 +98,28 @@ async def test_recover_lane_error_swallows_stale_metadata_cleanup() -> None:
         )
 
     assert result is None
-    mock_logger.warning.assert_called_once()
+    mock_logger.info.assert_called_once()
+    mock_logger.warning.assert_not_called()
+    mock_logger.error.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_recover_lane_error_swallows_channel_not_provisioned() -> None:
+    adapter = _make_adapter()
+    session = _make_session()
+
+    with patch("teleclaude.adapters.discord_adapter.logger") as mock_logger:
+        result = await adapter.recover_lane_error(
+            session,
+            ChannelNotProvisionedError("Session session-1 has no discord channel mapping yet"),
+            AsyncMock(),
+            "Session",
+        )
+
+    assert result is None
+    mock_logger.info.assert_called_once()
+    mock_logger.warning.assert_not_called()
+    mock_logger.error.assert_not_called()
 
 
 @pytest.mark.asyncio
