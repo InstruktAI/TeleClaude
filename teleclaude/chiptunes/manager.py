@@ -73,15 +73,6 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         """Return the last known worker state dict."""
         return self._last_state
 
-    def start(self) -> None:
-        """Ensure worker is running and connect (no start command)."""
-        self._enabled = True
-        threading.Thread(
-            target=self._ensure_and_connect,
-            daemon=True,
-            name="chiptunes-start",
-        ).start()
-
     def stop(self) -> None:
         """Stop playback and terminate the worker."""
         self._enabled = False
@@ -121,12 +112,6 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
     # ------------------------------------------------------------------ #
     # Worker lifecycle                                                     #
     # ------------------------------------------------------------------ #
-
-    def _ensure_and_connect(self) -> None:
-        if not self._enabled:
-            return
-        self._ensure_worker()
-        self._connect()
 
     def _ensure_worker(self) -> None:
         """Launch the worker subprocess if not already running."""
