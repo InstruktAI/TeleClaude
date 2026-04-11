@@ -17,7 +17,7 @@ VENV_ACTIVATE="${REPO_ROOT}/.venv/bin/activate"
 
 if [ ! -f "${VENV_ACTIVATE}" ]; then
   echo "ERROR: missing virtualenv activation script: ${VENV_ACTIVATE}" >&2
-  echo "Run 'uv sync --extra test' from ${REPO_ROOT} first." >&2
+  echo "Run 'uv sync' from ${REPO_ROOT} first." >&2
   exit 2
 fi
 

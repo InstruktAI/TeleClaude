@@ -212,7 +212,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="dependencies",
         include_patterns=["pyproject.toml", "requirements*.txt"],
-        instruction="Install updated dependencies: `uv sync --extra test`",
+        instruction="Install updated dependencies: `uv sync`",
         evidence_substrings=["uv sync", "make install", "pip install"],
         precedence=20,
     ),
