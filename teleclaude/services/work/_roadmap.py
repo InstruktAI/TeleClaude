@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.roadmap import assemble_roadmap_from_db
@@ -40,21 +40,18 @@ class RoadmapOps:
             delivered_only=delivered_only,
         )
 
-    # guard: loose-dict-func - roadmap entry shape mirrors TodosDb row, typed wrapper TBD
-    async def get_entry(self, slug: str) -> dict[str, Any] | None:
-        """Return a single roadmap entry by slug, or None if not found."""
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
-        entries = await db.list_roadmap()
-        for entry in entries:
-            if entry["slug"] == slug:
-                return {
-                    "slug": entry["slug"],
-                    "position": entry["position"],
-                    "group": entry["group_slug"],
-                    "description": entry["description"],
-                    "status": entry["status"],
-                    "delivered_at": entry["delivered_at"],
-                }
+    def get_entry(self, slug: str, *, include_icebox: bool = True, include_delivered: bool = True) -> TodoDTO | None:
+        """Return a single roadmap entry as a TodoDTO, or None if not found.
+
+        Uses the same rich projection as entries() — callers get consistent
+        domain types whether they ask for one or many.
+        """
+        for todo in self.entries(
+            include_icebox=include_icebox,
+            include_delivered=include_delivered,
+        ):
+            if todo.slug == slug:
+                return todo
         return None
 
     async def dependencies(self, slug: str) -> list[str]:
