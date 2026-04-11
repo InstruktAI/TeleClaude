@@ -12,7 +12,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.chiptunes.sid_cpu import SIDDriver
-from teleclaude.chiptunes.sid_parser import SIDHeader, is_pal, parse_sid_file, speed_for_subtune
+from teleclaude.chiptunes.sid_parser import SIDHeader, is_pal, parse_sid_file
 from teleclaude.chiptunes.sid_renderer import SIDRenderer
 
 try:
@@ -377,13 +377,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
     ) -> None:
         """Background thread: emulate CPU + SID and push PCM chunks to the queue."""
         pal = is_pal(header)
-        frame_rate = 50.0 if pal else 60.0
-        frame_duration = 1.0 / frame_rate
-
         subtune = max(0, header.start_song - 1)
-        speed = speed_for_subtune(header, subtune)
-        if speed == "CIA":
-            logger.warning("CIA-timer subtune: using VBI frame rate as fallback")
 
         try:
             driver = SIDDriver(header)
@@ -393,7 +387,9 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 volume=self._volume,
             )
             driver.init_tune(subtune)
-            logger.debug("ChipTunes: emulation started (subtune=%d, pal=%s, speed=%s)", subtune, pal, speed)
+            frame_rate = driver.frame_rate(pal)
+            frame_duration = 1.0 / frame_rate
+            logger.debug("ChipTunes: emulation started (subtune=%d, pal=%s, frame_rate=%.3f)", subtune, pal, frame_rate)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.error("SID init failed: %s", exc)
             self._playing = False

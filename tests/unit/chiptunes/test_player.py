@@ -44,9 +44,15 @@ class _FakeDriver:
         self.header = header
         self.init_calls: list[int] = []
         self.play_calls = 0
+        self.frame_rate_calls: list[bool] = []
+        self.frame_rate_value = 50.0
 
     def init_tune(self, subtune: int) -> None:
         self.init_calls.append(subtune)
+
+    def frame_rate(self, pal: bool) -> float:
+        self.frame_rate_calls.append(pal)
+        return self.frame_rate_value
 
     def play_frame(self) -> list[tuple[int, int]]:
         self.play_calls += 1
@@ -187,6 +193,29 @@ class TestChiptunesPlayer:
         assert player.playback_position_seconds == pytest.approx(1.0 / 50.0)
         assert player.track_end_reason == "emulation_error"
         assert reasons == ["emulation_error"]
+
+    def test_emulation_loop_uses_driver_frame_rate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _SingleFrameDriver(_FakeDriver):
+            def play_frame(self) -> list[tuple[int, int]]:
+                self.play_calls += 1
+                if self.play_calls > 1:
+                    raise RuntimeError("track ended")
+                return [(0, self.play_calls)]
+
+        driver = _SingleFrameDriver(_header(flags=4))
+        driver.frame_rate_value = 75.0
+        renderer = _FakeRenderer(sample_rate=48000, pal=True, volume=0.5)
+        monkeypatch.setattr(player_module, "SIDDriver", lambda header: driver)
+        monkeypatch.setattr(player_module, "SIDRenderer", lambda sample_rate, pal, volume: renderer)
+        player = player_module.ChiptunesPlayer(volume=0.5)
+        monkeypatch.setattr(player, "_enqueue_pcm", lambda pcm, frame_duration: True)
+
+        player._emulation_loop(_header(flags=4))
+
+        assert driver.frame_rate_calls == [True]
+        assert renderer.frames[0][0] == [(0, 1)]
+        assert renderer.frames[0][1] == pytest.approx(1.0 / 75.0)
+        assert player.playback_position_seconds == pytest.approx(1.0 / 75.0)
 
     def test_max_duration_triggers_fade_and_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Track ends with fade-out when max_duration is reached."""

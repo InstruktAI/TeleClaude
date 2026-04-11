@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -42,6 +43,7 @@ class _FakePlayer:
         self.stop_calls = 0
         self.pause_calls = 0
         self.resume_calls = 0
+        self.max_duration: float | None = None
         self.is_playing = False
         self.is_paused = False
         self.playback_position_seconds = 0.0
@@ -58,6 +60,7 @@ class _FakePlayer:
         max_duration: float | None = None,
     ) -> None:
         self.play_calls.append((track, start_paused, start_position_seconds))
+        self.max_duration = max_duration
         self.is_paused = start_paused
         self.is_playing = not start_paused
         self.playback_position_seconds = start_position_seconds
@@ -104,6 +107,19 @@ def _make_worker(
 
 @pytest.mark.unit
 class TestWorkerProcess:
+    def test_is_unplayable_allows_cia_tracks(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        track = tmp_path / "cia.sid"
+        track.write_bytes(b"PSIDmore")
+        monkeypatch.setattr(worker_module, "parse_sid_file", lambda path: SimpleNamespace(start_song=1, speed=1))
+
+        assert worker_module._is_unplayable(track) is False
+
+    def test_is_unplayable_still_filters_rsid(self, tmp_path: Path) -> None:
+        track = tmp_path / "rsid.sid"
+        track.write_bytes(b"RSIDmore")
+
+        assert worker_module._is_unplayable(track) is True
+
     def test_start_plays_first_track_and_emits_event(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         track = tmp_path / "Lazy_Jones.sid"
         worker = _make_worker(monkeypatch, tmp_path, tracks=[track])

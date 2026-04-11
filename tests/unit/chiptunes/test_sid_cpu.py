@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -21,7 +22,7 @@ class _ScriptedCPU:
         self.cc = 0
         self.stack_words: list[int] = []
 
-    def stackPushWord(self, word: int) -> None:
+    def stackPushWord(self, word: int) -> None:  # pylint: disable=invalid-name
         self.stack_words.append(word)
 
     def step(self) -> None:
@@ -63,11 +64,56 @@ class TestSIDInterceptMMU:
 
         assert mmu.read(0xD400) == 0x12
         assert mmu.flush_writes() == [(0, 0x12), (24, 0x34)]
-        assert mmu.flush_writes() == []
+        assert not mmu.flush_writes()
+
+    def test_captures_cia_timer_low_write(self) -> None:
+        mmu = sid_cpu.SIDInterceptMMU(bytearray(65536))
+
+        mmu.write(0xDC04, 0x34)
+
+        assert mmu.cia_timer_period() == 0x0034
+
+    def test_captures_cia_timer_high_write(self) -> None:
+        mmu = sid_cpu.SIDInterceptMMU(bytearray(65536))
+
+        mmu.write(0xDC05, 0x12)
+
+        assert mmu.cia_timer_period() == 0x1200
+
+    def test_cia_timer_combines_low_and_high(self) -> None:
+        mmu = sid_cpu.SIDInterceptMMU(bytearray(65536))
+
+        mmu.write(0xDC04, 0x34)
+        mmu.write(0xDC05, 0x12)
+
+        assert mmu.cia_timer_period() == 0x1234
+
+    def test_cia_timer_period_zero_when_not_written(self) -> None:
+        mmu = sid_cpu.SIDInterceptMMU(bytearray(65536))
+
+        assert mmu.cia_timer_period() == 0
+
+    def test_ignores_writes_outside_cia_range(self) -> None:
+        mmu = sid_cpu.SIDInterceptMMU(bytearray(65536))
+
+        mmu.write(0xDC00, 0x11)
+        mmu.write(0xDC06, 0x22)
+        mmu.write(0xDC08, 0x33)
+
+        assert mmu.cia_timer_period() == 0
 
 
 @pytest.mark.unit
 class TestSIDDriver:
+    @staticmethod
+    def _make_driver(
+        monkeypatch: pytest.MonkeyPatch, script: list[Callable[[_ScriptedCPU], None]]
+    ) -> sid_cpu.SIDDriver:
+        monkeypatch.setattr(sid_cpu, "_py65emu_available", True)
+        monkeypatch.setattr(sid_cpu, "_CPU", _ScriptedCPU)
+        _ScriptedCPU.script = script
+        return sid_cpu.SIDDriver(_header())
+
     def test_init_requires_py65emu(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sid_cpu, "_py65emu_available", False)
 
@@ -94,12 +140,13 @@ class TestSIDDriver:
         driver = sid_cpu.SIDDriver(_header())
 
         driver.init_tune(2)
+        cpu = cast(_ScriptedCPU, driver._cpu)
 
-        assert driver._cpu.r.a == 2
-        assert driver._cpu.r.x == 0
-        assert driver._cpu.r.y == 0
-        assert driver._cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]
-        assert driver._mmu.flush_writes() == []
+        assert cpu.r.a == 2
+        assert cpu.r.x == 0
+        assert cpu.r.y == 0
+        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]  # pylint: disable=no-member
+        assert not driver._mmu.flush_writes()
 
     def test_play_frame_returns_captured_sid_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sid_cpu, "_py65emu_available", True)
@@ -123,6 +170,64 @@ class TestSIDDriver:
         driver = sid_cpu.SIDDriver(_header())
 
         driver._run_to_return(0x2345)
+        cpu = cast(_ScriptedCPU, driver._cpu)
 
-        assert driver._cpu.r.pc == 0x2345
-        assert driver._cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]
+        assert cpu.r.pc == 0x2345
+        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]  # pylint: disable=no-member
+
+    def test_frame_rate_vbi_pal_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        driver = self._make_driver(
+            monkeypatch,
+            [lambda cpu: setattr(cpu.r, "pc", sid_cpu._SENTINEL_ADDR)],
+        )
+
+        driver.init_tune()
+
+        assert driver.frame_rate(True) == 50.0
+
+    def test_frame_rate_vbi_ntsc_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        driver = self._make_driver(
+            monkeypatch,
+            [lambda cpu: setattr(cpu.r, "pc", sid_cpu._SENTINEL_ADDR)],
+        )
+
+        driver.init_tune()
+
+        assert driver.frame_rate(False) == 60.0
+
+    def test_frame_rate_cia_pal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        driver = self._make_driver(
+            monkeypatch,
+            [
+                lambda cpu: cpu._mmu.write(0xDC04, 0x00),
+                lambda cpu: cpu._mmu.write(0xDC05, 0x14),
+                lambda cpu: setattr(cpu.r, "pc", sid_cpu._SENTINEL_ADDR),
+            ],
+        )
+
+        driver.init_tune()
+
+        assert driver.frame_rate(True) == pytest.approx(985248 / 0x1400)
+
+    def test_frame_rate_cia_clamped_low(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        driver = self._make_driver(
+            monkeypatch,
+            [
+                lambda cpu: cpu._mmu.write(0xDC04, 0x01),
+                lambda cpu: setattr(cpu.r, "pc", sid_cpu._SENTINEL_ADDR),
+            ],
+        )
+
+        driver.init_tune()
+
+        assert driver.frame_rate(True) == 200.0
+
+    def test_frame_rate_cia_clamped_high(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        driver = self._make_driver(
+            monkeypatch,
+            [lambda cpu: setattr(cpu.r, "pc", sid_cpu._SENTINEL_ADDR)],
+        )
+        driver.init_tune()
+        driver._cia_timer_period = 200000
+
+        assert driver.frame_rate(True) == 10.0

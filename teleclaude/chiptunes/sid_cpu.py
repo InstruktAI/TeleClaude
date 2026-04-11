@@ -24,11 +24,16 @@ logger = get_logger(__name__)
 # SID register range on the C64 memory map
 _SID_BASE = 0xD400
 _SID_END = 0xD418  # inclusive — 25 registers $D400–$D418
+_CIA_TIMER_A_LO = 0xDC04
+_CIA_TIMER_A_HI = 0xDC05
 
 _MAX_CYCLES_PER_FRAME = 100_000  # runaway protection
 
 # Sentinel return address pushed before JSR stubs so we know when the routine returns
 _SENTINEL_ADDR = 0xFFFF
+
+_PAL_CLOCK = 985248
+_NTSC_CLOCK = 1022730
 
 
 class SIDInterceptMMU(MMU):  # type: ignore[misc]
@@ -38,6 +43,8 @@ class SIDInterceptMMU(MMU):  # type: ignore[misc]
         super().__init__()
         self._ram = ram
         self._sid_writes: list[tuple[int, int]] = []
+        self._cia_timer_low = 0
+        self._cia_timer_high = 0
 
     def read(self, addr: int) -> int:
         """Read a byte from the 64KB address space."""
@@ -48,12 +55,20 @@ class SIDInterceptMMU(MMU):  # type: ignore[misc]
         addr &= 0xFFFF
         if _SID_BASE <= addr <= _SID_END:
             self._sid_writes.append((addr - _SID_BASE, value & 0xFF))
+        elif addr == _CIA_TIMER_A_LO:
+            self._cia_timer_low = value & 0xFF
+        elif addr == _CIA_TIMER_A_HI:
+            self._cia_timer_high = value & 0xFF
         self._ram[addr] = value & 0xFF
 
     def flush_writes(self) -> list[tuple[int, int]]:
         """Drain and return captured SID register writes."""
         writes, self._sid_writes = self._sid_writes, []
         return writes
+
+    def cia_timer_period(self) -> int:
+        """Return the captured CIA #1 Timer A latch value."""
+        return self._cia_timer_low | (self._cia_timer_high << 8)
 
 
 class SIDDriver:
@@ -75,6 +90,7 @@ class SIDDriver:
         self._ram[header.load_address : end] = header.payload
 
         self._cpu = _CPU(self._mmu)
+        self._cia_timer_period = 0
 
     def init_tune(self, subtune: int = 0) -> None:
         """Execute the SID init routine for a subtune (0-based)."""
@@ -82,6 +98,7 @@ class SIDDriver:
         self._cpu.r.x = 0
         self._cpu.r.y = 0
         self._run_to_return(self._header.init_address)
+        self._cia_timer_period = self._mmu.cia_timer_period()
         # Discard any SID writes during init (they're part of setup, not audio)
         self._mmu.flush_writes()
 
@@ -89,6 +106,13 @@ class SIDDriver:
         """Execute one SID play frame and return captured register writes."""
         self._run_to_return(self._header.play_address)
         return self._mmu.flush_writes()
+
+    def frame_rate(self, pal: bool) -> float:
+        """Return the tune's playback rate in frames per second."""
+        if self._cia_timer_period > 0:
+            clock = _PAL_CLOCK if pal else _NTSC_CLOCK
+            return max(10.0, min(200.0, clock / self._cia_timer_period))
+        return 50.0 if pal else 60.0
 
     def _run_to_return(self, start_addr: int) -> None:
         """Execute from start_addr until the routine RTS back to sentinel."""
