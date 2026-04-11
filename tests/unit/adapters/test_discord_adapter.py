@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
-from teleclaude.adapters.discord_adapter import DiscordAdapter
+from teleclaude.adapters.discord_adapter import DISCORD_TYPING_INTERVAL_S, DiscordAdapter
+from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.core.models import DiscordAdapterMetadata, Session
 
 pytestmark = pytest.mark.unit
@@ -147,3 +148,10 @@ async def test_convert_markdown_for_platform_normalizes_markdown_links() -> None
     assert rendered == (
         "`session-output-routing.md`: `/Users/test/project/docs/project/spec/session-output-routing.md`"
     )
+
+
+def test_get_action_throttle_interval_uses_discord_typing_window() -> None:
+    adapter = _make_adapter()
+    adapter._action_throttler = AdapterActionThrottler()
+
+    assert adapter.get_action_throttle_interval_s("typing") == pytest.approx(DISCORD_TYPING_INTERVAL_S)
