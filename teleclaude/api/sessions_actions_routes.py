@@ -276,6 +276,23 @@ def _build_codex_loader_message(command_name: str, slug: str) -> str:
     )
 
 
+def _rewrite_codex_next_startup_message(startup_message: str, *, effective_agent: str) -> str:
+    """Rewrite Codex `/next-*` startup messages to the loader prompt instruction."""
+    if effective_agent != "codex":
+        return startup_message
+
+    stripped_message = startup_message.lstrip()
+    if not stripped_message.startswith("/next-"):
+        return startup_message
+
+    command_token, _, remainder = stripped_message.partition(" ")
+    normalized_cmd = command_token.lstrip("/")
+    normalized_args = remainder.strip()
+    if not normalized_args:
+        raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
+    return _build_codex_loader_message(normalized_cmd, normalized_args)
+
+
 def _prepare_run_session(
     request: RunSessionRequest,
     identity: CallerIdentity,
@@ -285,11 +302,7 @@ def _prepare_run_session(
     normalized_cmd = request.command.lstrip("/")
     normalized_args = request.args.strip()
     full_command = f"/{normalized_cmd} {normalized_args}" if normalized_args else f"/{normalized_cmd}"
-    startup_message = full_command
-    if effective_agent == "codex" and normalized_cmd.startswith("next-"):
-        if not normalized_args:
-            raise HTTPException(status_code=400, detail=f"/{normalized_cmd} requires a slug argument")
-        startup_message = _build_codex_loader_message(normalized_cmd, normalized_args)
+    startup_message = _rewrite_codex_next_startup_message(full_command, effective_agent=effective_agent)
     if request.additional_context:
         full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
         startup_message = f"{startup_message}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"

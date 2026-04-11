@@ -20,7 +20,10 @@ from teleclaude.api.auth import (
     clearance_sessions_start,
 )
 from teleclaude.api.session_access import check_session_access
-from teleclaude.api.sessions_actions_routes import _infer_role_from_message
+from teleclaude.api.sessions_actions_routes import (
+    _infer_role_from_message,
+    _rewrite_codex_next_startup_message,
+)
 from teleclaude.api_models import (
     CreateSessionRequest,
     CreateSessionResponseDTO,
@@ -319,11 +322,19 @@ async def _build_launch_intent(
     if launch_kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
         if request.message is None:
             raise HTTPException(status_code=400, detail="message required for agent_then_message")
-        direct_message, caller_session = await _build_direct_launch_message(request, identity)
+        effective_agent = _effective_launch_agent(validated_request_agent)
+        startup_message = _rewrite_codex_next_startup_message(
+            request.message,
+            effective_agent=effective_agent,
+        )
+        launch_request = (
+            request.model_copy(update={"message": startup_message}) if startup_message != request.message else request
+        )
+        direct_message, caller_session = await _build_direct_launch_message(launch_request, identity)
         return (
             SessionLaunchIntent(
                 kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-                agent=_effective_launch_agent(validated_request_agent),
+                agent=effective_agent,
                 thinking_mode=thinking_mode,
                 message=direct_message,
             ),

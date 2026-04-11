@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import shlex
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,8 +15,9 @@ from fastapi import HTTPException
 from teleclaude.api import sessions_routes
 from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
-from teleclaude.core.models import SessionSnapshot
+from teleclaude.core.models import SessionLaunchKind, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
+from teleclaude.paths import COMMANDS_DIR
 
 
 def _make_request(headers: dict[str, str] | None = None) -> SimpleNamespace:
@@ -344,3 +346,59 @@ class TestSessionsRoutes:
 
         assert metadata.system_role is None
         assert metadata.job is None
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_rewrites_codex_next_message_to_loader_prompt(self) -> None:
+        """Codex session creation rewrites `/next-*` startup messages at the API boundary."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            agent="codex",
+            message="/next-review-build chartest-api-routes",
+        )
+        identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
+
+        with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="codex"):
+            metadata, _initiator, _title, launch_intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        expected_startup_message = (
+            f"Read {COMMANDS_DIR / 'next-review-build.md'} and follow it exactly as "
+            "the active instruction set for this session.\n\n"
+            "Treat the following as provided inputs to that instruction set:\n"
+            "- slug: chartest-api-routes"
+        )
+        assert metadata.title == "/next-review-build chartest-api-routes"
+        assert metadata.system_role == "worker"
+        assert metadata.job == "reviewer"
+        assert metadata.auto_command == f"agent_then_message codex slow {shlex.quote(expected_startup_message)}"
+        assert launch_intent is not None
+        assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+        assert launch_intent.message == expected_startup_message
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_prepare_create_session_keeps_non_codex_next_message_raw(self) -> None:
+        """Non-Codex session creation keeps `/next-*` messages unchanged."""
+        request = CreateSessionRequest(
+            computer="local",
+            project_path="/repo/demo",
+            agent="claude",
+            message="/next-review-build chartest-api-routes",
+        )
+        identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
+
+        with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="claude"):
+            metadata, _initiator, _title, launch_intent, _caller = await sessions_routes._prepare_create_session(
+                request, identity
+            )
+
+        assert metadata.title == "/next-review-build chartest-api-routes"
+        assert metadata.auto_command == (
+            f"agent_then_message claude slow {shlex.quote('/next-review-build chartest-api-routes')}"
+        )
+        assert launch_intent is not None
+        assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+        assert launch_intent.message == "/next-review-build chartest-api-routes"
