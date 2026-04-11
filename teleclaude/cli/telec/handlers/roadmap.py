@@ -64,13 +64,13 @@ def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
     import json
 
-    from teleclaude.core.roadmap import assemble_roadmap_from_db
+    from teleclaude.services.work import get_work_service
 
     parsed = _parse_roadmap_show_args(args)
     project_root = _resolve_roadmap_project_root()
 
-    todos = assemble_roadmap_from_db(
-        str(project_root),
+    svc = get_work_service(str(project_root))
+    todos = svc.roadmap.entries(
         include_icebox=parsed["include_icebox"],
         icebox_only=parsed["icebox_only"],
         include_delivered=parsed["include_delivered"],
