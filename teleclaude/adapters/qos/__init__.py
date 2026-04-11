@@ -1,1 +1,1 @@
-"""Adapter output QoS: coalescing and fairness scheduling for adapter output."""
+"""Adapter QoS helpers for throttling, coalescing, and fairness scheduling."""

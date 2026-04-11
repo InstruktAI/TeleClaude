@@ -27,7 +27,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 - **Output**: The `OutputPoller` reads from `tmux` and emits `OutputEvent`s.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
-- **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to UI adapters via the event bus. The `active` status fires on `session_start` (agent confirmed alive) and is the sole trigger for typing indicators on adapters. Once the agent is confirmed alive (`native_session_id` set), `accepted` also fires typing on subsequent turns. Other statuses provide decoration only (footer emoji, status badges).
+- **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted` and `active`, but `active_output` is observer-only and must not trigger direct platform API calls.
 
 ### 3. Termination
 

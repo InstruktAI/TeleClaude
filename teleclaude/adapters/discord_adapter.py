@@ -21,14 +21,13 @@ from teleclaude.adapters.discord import (
     MessageOperationsMixin,
     RelayOperationsMixin,
 )
+from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import (
-    SessionUpdatedContext,
-)
+from teleclaude.core.events import SessionUpdatedContext
 from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
@@ -44,6 +43,8 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
+
+DISCORD_TYPING_INTERVAL_S = 5.0
 
 
 class DiscordClientLike(Protocol):  # pylint: disable=too-few-public-methods
@@ -217,6 +218,12 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         """Read Discord section from origin_metadata."""
         return DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
 
+    def get_action_throttle_interval_s(self, action_kind: str) -> float:
+        """Discord typing indicators persist long enough for a coarse pulse cadence."""
+        if action_kind == "typing":
+            return DISCORD_TYPING_INTERVAL_S
+        return super().get_action_throttle_interval_s(action_kind)
+
     async def send_typing_indicator(self, session: Session) -> None:
         """Send typing indicator to Discord thread."""
         discord_meta = self._dc(session)
@@ -231,7 +238,12 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
             return
         typing_fn = getattr(thread, "typing", None)
         if typing_fn and callable(typing_fn):
-            await typing_fn()  # type: ignore[unused-ignore]
+            recoverable_errors = recoverable_operation_errors(self._discord)
+            try:
+                await typing_fn()  # type: ignore[unused-ignore]
+            except recoverable_errors as exc:
+                logger.debug("Typing failed for session %s: %s", session.session_id, exc)
+                return
             logger.debug("Typing fired: session=%s thread=%s", session.session_id, discord_meta.thread_id)
         else:
             logger.debug(

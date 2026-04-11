@@ -10,6 +10,7 @@ UI adapters provide:
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -18,6 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
@@ -442,6 +444,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
+        self._action_throttler = AdapterActionThrottler()
 
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
@@ -711,6 +714,37 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """
         # No-op default implementation
 
+    def get_action_throttle_interval_s(self, action_kind: str) -> float:
+        """Return the minimum interval between adapter control actions."""
+        if action_kind == "typing":
+            return 5.0
+        return 0.0
+
+    def _action_throttle_key(self, session: Session, action_kind: str) -> str:
+        """Build the adapter-local throttle key for an outbound action."""
+        return f"{self.ADAPTER_KEY}:{session.session_id}:{action_kind}"
+
+    async def _run_throttled_action(
+        self,
+        session: Session,
+        action_kind: str,
+        action: Callable[[], Awaitable[object]],
+    ) -> object | None:
+        """Run an adapter action only when outside the configured throttle window."""
+        now = time.monotonic()
+        interval = self.get_action_throttle_interval_s(action_kind)
+        throttle_key = self._action_throttle_key(session, action_kind)
+        if not self._action_throttler.allow(throttle_key, min_interval_s=interval, now=now):
+            logger.debug(
+                "Adapter action throttled: adapter=%s session=%s action=%s interval_s=%.3f",
+                self.ADAPTER_KEY,
+                session.session_id,
+                action_kind,
+                interval,
+            )
+            return None
+        return await action()
+
     async def _dispatch_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         session: Session,
@@ -830,11 +864,11 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
     async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
         """Handle lifecycle status transitions.
 
-        Fires typing indicator and session badge on 'accepted', typing indicator
-        on 'active' and 'active_output' to keep the indicator alive during long
-        tool-use sequences.
+        Fires throttled typing on 'accepted' and 'active'. Session badges are
+        emitted once on 'accepted'. 'active_output' is observer-only and does
+        not trigger direct adapter API calls.
         """
-        if context.status in ("active", "accepted", "active_output"):
+        if context.status in ("active", "accepted"):
             session = await db.get_session(context.session_id)
             if session and session.lifecycle_status != "headless":
                 logger.debug(
@@ -844,7 +878,11 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     self.ADAPTER_KEY,
                 )
                 try:
-                    await self.send_typing_indicator(session)
+                    await self._run_throttled_action(
+                        session,
+                        "typing",
+                        lambda: self.send_typing_indicator(session),
+                    )
                 except (OSError, RuntimeError, ValueError):
                     logger.debug(
                         "Typing indicator failed for session %s on status %s",
@@ -853,7 +891,11 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     )
                 if context.status == "accepted":
                     try:
-                        await self._send_session_badge(session)
+                        await self._run_throttled_action(
+                            session,
+                            "session_badge",
+                            lambda: self._send_session_badge(session),
+                        )
                     except (OSError, RuntimeError, ValueError):
                         logger.debug(
                             "Session badge failed for session %s",

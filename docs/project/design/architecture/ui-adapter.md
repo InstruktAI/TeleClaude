@@ -185,14 +185,14 @@ sequenceDiagram
 
 UI adapters fire platform typing indicators in response to lifecycle status events. This provides immediate user feedback that the agent is working.
 
-| Status          | Trigger                   | Adapter Action                                                                            |
-| --------------- | ------------------------- | ----------------------------------------------------------------------------------------- |
-| `accepted`      | `user_prompt_submit` hook | Fire `send_typing_indicator()` (subsequent turns only — requires `native_session_id` set) |
-| `active`        | `session_start` hook      | Fire `send_typing_indicator()` (agent confirmed alive)                                    |
-| `active_output` | `tool_use` hook           | Footer/badge decoration only                                                              |
-| `completed`     | `agent_stop` hook         | Footer/badge decoration only                                                              |
+| Status          | Trigger                   | Adapter Action                   |
+| --------------- | ------------------------- | -------------------------------- |
+| `accepted`      | `user_prompt_submit` hook | Request a throttled typing pulse |
+| `active`        | `session_start` hook      | Request a throttled typing pulse |
+| `active_output` | `tool_use` hook           | No direct adapter API call       |
+| `completed`     | `agent_stop` hook         | Footer/badge decoration only     |
 
-Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). The `active` status fires on `session_start` (agent confirmed alive) and is the sole trigger for typing indicators on adapters. Once the agent is confirmed alive (`native_session_id` set), `accepted` also fires typing on subsequent turns. Other statuses provide decoration only (footer emoji, status badges).
+Typing is naturally replaced by output from the polling cadence (`send_output_update` at ~1s). UI adapters may only issue throttled typing pulses from lifecycle status transitions; tool-use churn must never call platform typing APIs directly. `active_output` remains an observer status for internal and websocket consumers, not a direct UI side-effect trigger.
 
 ### 8. Voice Message Processing
 

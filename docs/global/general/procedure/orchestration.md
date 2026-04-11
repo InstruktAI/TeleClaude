@@ -35,7 +35,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 4. When a notification arrives OR the heartbeat timer expires, invoke the state machine again.
 5. Repeat until the state machine emits a terminal cleanup script that includes `telec sessions end self`.
 
-The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The only orchestrator-owned behaviors are heartbeat management, tailing discipline, and the Codex false-notification guard.
+The state machine owns every concrete decision: dispatch, session ending, phase transitions, fix relay, terminal cleanup. The orchestrator never decides session lifecycle or branches on verdict — if the script says `telec sessions end <id>`, end that session; if the script says `telec sessions send <id> "..."`, send that message. The only orchestrator-owned behaviors are heartbeat management and tailing discipline.
 
 ### Container Slug Handling
 
@@ -50,22 +50,32 @@ to the dispatch time. All session inspection follows this protocol:
 - **First tail** (after dispatch): use a full window (`telec sessions tail <session_id> --tools --thinking`) to establish context. Save the timestamp of the last message as the marker.
 - **All subsequent tails**: use `--since <marker>` to retrieve only new output. This avoids re-reading content already seen and makes progress detection trivial — if `--since` returns no new messages, nothing happened.
 - After every tail, update the marker to the latest message timestamp from the response.
+- Each `telec sessions tail` response includes `last_input_at`, `last_activity`, `last_agent_stop_at`, and computed `agent_status`.
+
+Status semantics:
+
+- `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+- `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+- `unknown`: no `last_activity` has been recorded yet.
 
 ### When Notification Arrives
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the worker was dispatched, pause and confirm with the user before proceeding. The notification's implicit instruction ("continue the loop") may be stale.
-2. **Codex false-notification guard.** Codex emits turn-complete notifications for internal sub-agent completions, not only when the main session finishes. When the worker is Codex, do not act on the notification immediately. Tail the session with `--since <marker>` and check whether the new output contains a final deliverable (commit, verdict, or completion report matching the expected outcome). If not, update the marker, reset the heartbeat timer, and continue waiting. A Codex worker may only be considered complete after two consecutive tails (across two heartbeats) confirm no new output and the last output contains the expected deliverable. This guard does not apply to Claude or Gemini workers, whose notifications reliably indicate session completion.
-3. **(Claude/Gemini only)** Tail the session with `--since <marker>` to retrieve the final output. Verify it matches the intended outcome.
-4. Invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo create` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
-5. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
+2. Tail the session (first time: full window; subsequent tails: `--since <marker>`).
+3. Update the marker to the latest message timestamp when new messages appear.
+4. If `agent_status` is `active`, reset the heartbeat timer and continue waiting.
+5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo create` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
+6. If `agent_status` is `unknown`, continue waiting for the next event.
+7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 
 ### When Timer Expires
 
 1. **Check for user intervention first.** If the user has sent messages, spoken to the worker directly, or changed direction since the timer was set, the timer's intent is stale — discard the encoded instructions and re-evaluate from the current state. Do not blindly resume the orchestration loop.
-2. Tail the session with `--since <marker>`.
-   - If new messages appear: the worker is progressing. Update the marker to the latest message timestamp. Reset timer and continue waiting.
-   - If no new messages appear: the worker may be stuck. Investigate (check for errors, context exhaustion) or escalate to the user.
-3. Always update the marker after each tail.
+2. Tail the session (first time: full window; subsequent tails: `--since <marker>`).
+3. Update the marker to the latest message timestamp when new messages appear.
+4. If `agent_status` is `active`, reset the heartbeat timer and continue waiting.
+5. If `agent_status` is `idle`, invoke the state machine again and execute its returned script verbatim.
+6. If `agent_status` is `unknown`, continue waiting for the next event.
 
 ### When Worker Needs Help
 

@@ -11,8 +11,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.core.events import SessionStatusContext
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -120,6 +122,7 @@ def client() -> MagicMock:
 def adapter(client: MagicMock) -> _ConcreteAdapter:
     with patch("teleclaude.adapters.ui_adapter.event_bus"):
         inst = _ConcreteAdapter(client)
+    inst._action_throttler = AdapterActionThrottler()
     return inst
 
 
@@ -294,6 +297,70 @@ class TestSendSessionBadge:
             await adapter._send_session_badge(session)
 
         send_msg.assert_not_awaited()
+
+
+class TestHandleSessionStatus:
+    @pytest.mark.unit
+    async def test_active_status_sends_typing_indicator(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        context = SessionStatusContext(
+            session_id=session.session_id,
+            status="active",
+            reason="agent_session_started",
+            timestamp="2026-04-11T00:00:00+00:00",
+        )
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
+        ):
+            await adapter._handle_session_status("session_status", context)
+
+        send_typing_indicator.assert_awaited_once_with(session)
+
+    @pytest.mark.unit
+    async def test_active_output_status_does_not_send_typing_indicator(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        context = SessionStatusContext(
+            session_id=session.session_id,
+            status="active_output",
+            reason="output_observed",
+            timestamp="2026-04-11T00:00:00+00:00",
+        )
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
+        ):
+            await adapter._handle_session_status("session_status", context)
+
+        send_typing_indicator.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_accepted_status_badge_still_sends_when_typing_is_throttled(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        context = SessionStatusContext(
+            session_id=session.session_id,
+            status="accepted",
+            reason="user_prompt_accepted",
+            timestamp="2026-04-11T00:00:00+00:00",
+        )
+        adapter._action_throttler.allow(
+            f"{adapter.ADAPTER_KEY}:{session.session_id}:typing",
+            min_interval_s=adapter.get_action_throttle_interval_s("typing"),
+            now=100.0,
+        )
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch("teleclaude.adapters.ui_adapter.time.monotonic", return_value=101.0),
+            patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
+            patch.object(adapter, "_send_session_badge", AsyncMock()) as send_session_badge,
+        ):
+            await adapter._handle_session_status("session_status", context)
+
+        send_typing_indicator.assert_not_awaited()
+        send_session_badge.assert_awaited_once_with(session)
 
 
 # ---------------------------------------------------------------------------
