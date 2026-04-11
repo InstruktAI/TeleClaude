@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import ANY, MagicMock, patch
+from unittest.mock import ANY, MagicMock, call, patch
 
 import pytest
 
@@ -41,6 +41,8 @@ def _make_repo_ns(
         status=MagicMock(return_value=status),
         diff=MagicMock(return_value=diff_stat),
         show=MagicMock(side_effect=show_ref),
+        add=MagicMock(),
+        commit=MagicMock(),
         checkout=MagicMock(),
         reset=MagicMock(),
         update_environment=update_environment,
@@ -93,10 +95,17 @@ class TestCreateFromMainSkeleton:
         worktree_path.mkdir(parents=True)
         (worktree_path / "src").mkdir(parents=True)
 
-        repo = _make_repo_ns()
+        main_repo = _make_repo_ns()
+        worktree_repo = _make_repo_ns(status="")
+        call_order = MagicMock()
+        call_order.attach_mock(worktree_repo.git.commit, "worktree_commit")
+        call_order.attach_mock(main_repo.git.checkout, "main_checkout")
+
+        def _repo_factory(path: str) -> SimpleNamespace:
+            return worktree_repo if Path(path) == worktree_path else main_repo
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.git.Repo", side_effect=_repo_factory),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -110,7 +119,8 @@ class TestCreateFromMainSkeleton:
         # Verify output
         assert "Todo created: test-slug" in output
         assert "trees/test-slug/" in output
-        assert "/next-work" in output
+        assert "/next-work" not in output
+        assert "telec sessions run" not in output
 
         # Verify todo scaffold was created
         todo_dir = project / "todos" / "test-slug"
@@ -139,8 +149,14 @@ class TestCreateFromMainSkeleton:
         assert (worktree_path / "src" / "app.py").exists()
         assert (worktree_path / "src" / "new.py").exists()
 
+        worktree_repo.git.add.assert_called_once_with("-A")
+        worktree_repo.git.commit.assert_called_once_with("-m", "chore(test-slug): from-main handoff")
+        assert call_order.mock_calls.index(call.worktree_commit("-m", "chore(test-slug): from-main handoff")) < (
+            call_order.mock_calls.index(call.main_checkout("HEAD", "--", "src/app.py"))
+        )
+
         # Verify main was cleaned — modified files restored from HEAD
-        repo.git.checkout.assert_any_call("HEAD", "--", "src/app.py")
+        main_repo.git.checkout.assert_any_call("HEAD", "--", "src/app.py")
 
         # Verify untracked file removed from main
         assert not (project / "src" / "new.py").exists()
@@ -621,6 +637,9 @@ def test_all_files_skips_session_scoping(tmp_path: Path) -> None:
         git=SimpleNamespace(
             status=MagicMock(return_value=" M src/app.py\nA  src/staged.py"),
             diff=MagicMock(return_value=""),
+            show=MagicMock(return_value=""),
+            add=MagicMock(),
+            commit=MagicMock(),
             checkout=MagicMock(),
             reset=MagicMock(),
             update_environment=update_environment,

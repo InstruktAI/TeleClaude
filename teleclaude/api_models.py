@@ -152,6 +152,7 @@ class SessionDTO(SessionDTOTimestampFields, SessionDTOIdentityFields):
                 "native_session_id": session.native_session_id,
                 "tmux_session_name": session.tmux_session_name,
                 "initiator_session_id": session.initiator_session_id,
+                "detached": getattr(session, "detached", False),
                 "computer": session.computer,
                 "human_email": session.human_email,
                 "human_role": session.human_role,

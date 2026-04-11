@@ -539,7 +539,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Transfers uncommitted changes from main into a worktree for review.",
                     "File scoping is automatic: only files touched by the current session are transferred.",
                     "Creates todo scaffold, sets state to build:complete, ready for review.",
-                    "After running, follow the printed instructions to commit and dispatch.",
+                    "After running, the worktree handoff is auto-committed and the "
+                    "lifecycle router dispatches detached /next-work.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

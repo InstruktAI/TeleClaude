@@ -423,6 +423,14 @@ class LifecycleRouterCartridge:
                 "args": slug,
                 "detach": True,
             }
+        elif kind == "built":
+            resolved_kind = "built"
+            dispatch_args = {
+                "command": "/next-work",
+                "project_path": project_path,
+                "args": slug,
+                "detach": True,
+            }
         elif kind == "bug":
             resolved_kind = "bug"
             dispatch_args = {

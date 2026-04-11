@@ -170,6 +170,24 @@ async def test_prepped_lane_routes_to_next_work() -> None:
 
 
 @pytest.mark.asyncio
+async def test_built_lane_routes_to_detached_next_work() -> None:
+    router = _router_type()()
+    captured, factory = _fake_api_client()
+
+    with (
+        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
+    ):
+        result = await router.process(_make_event(kind="built"), MagicMock())
+
+    assert result is not None
+    assert captured.kwargs is not None
+    assert captured.kwargs["command"] == "/next-work"
+    assert captured.kwargs["args"] == "my-slug"
+    assert captured.kwargs["detach"] is True
+
+
+@pytest.mark.asyncio
 async def test_bug_lane_routes_to_next_work_with_bug_reasoning_profile() -> None:
     router = _router_type()()
     captured, factory = _fake_api_client()

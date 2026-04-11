@@ -150,7 +150,7 @@ def build_tree(  # pylint: disable=too-many-locals,too-many-branches
     session_lookup = {s.session_id: s for s in sessions}
     for session in sessions:
         initiator_id = session.initiator_session_id
-        if initiator_id and initiator_id in session_lookup:
+        if initiator_id and initiator_id in session_lookup and not session.detached:
             initiator = session_lookup[initiator_id]
             if _same_project(session.project_path, initiator.project_path):
                 sessions_by_initiator.setdefault(initiator_id, []).append(session)

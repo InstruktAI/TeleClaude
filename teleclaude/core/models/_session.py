@@ -151,6 +151,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
     description: str | None = None
     initiated_by_ai: bool = False
     initiator_session_id: str | None = None
+    detached: bool = False
     output_message_id: str | None = None
     notification_sent: bool = False
     native_session_id: str | None = None
@@ -274,6 +275,9 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
         notification_sent_val = data.get("notification_sent")
         notification_sent = bool(notification_sent_val) if notification_sent_val is not None else False
 
+        detached_val = data.get("detached")
+        detached = bool(detached_val) if detached_val is not None else False
+
         tui_capture_started_val = data.get("tui_capture_started")
         tui_capture_started = bool(tui_capture_started_val) if tui_capture_started_val is not None else False
 
@@ -297,6 +301,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             description=_get_optional_str("description"),
             initiated_by_ai=initiated_by_ai,
             initiator_session_id=_get_optional_str("initiator_session_id"),
+            detached=detached,
             output_message_id=_get_optional_str("output_message_id"),
             last_input_origin=_get_optional_str("last_input_origin"),
             notification_sent=notification_sent,
