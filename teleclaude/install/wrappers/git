@@ -288,26 +288,85 @@ fi
 if [ "$_subcmd" = "commit" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
     if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        if [ "${TELECLAUDE_COMMIT_APPROVED:-}" != "1" ]; then
-            cat >&2 <<'MSG'
-ERROR: Commits on main require explicit human approval.
+        # Explicit human approval via TELECLAUDE_COMMIT_APPROVED=1 → proceed (Path B).
+        if [ "${TELECLAUDE_COMMIT_APPROVED:-}" = "1" ]; then
+            :  # fall through to the real commit
+        else
+            # Path A detection: wrapper classifies the staged changeset itself
+            # so agents cannot self-elevate by lying. Path A = zero functional
+            # source files staged. Functional = anything that changes runtime
+            # behavior when deployed.
+            _staged_files="$(_real_git "${_dir_args[@]}" diff --staged --name-only 2>/dev/null || true)"
+            _has_functional=0
+            _has_any=0
+            while IFS= read -r _f; do
+                [ -z "$_f" ] && continue
+                _has_any=1
+                case "$_f" in
+                    *.py|*.pyi|*.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs\
+                    |*.sh|*.bash|*.zsh|*.fish\
+                    |*.c|*.cc|*.cpp|*.cxx|*.h|*.hpp|*.hxx\
+                    |*.rs|*.go|*.rb|*.java|*.kt|*.swift|*.m|*.mm\
+                    |*.sql|*.toml|*.lock|*.mk\
+                    |Makefile|Dockerfile|*.dockerfile)
+                        _has_functional=1
+                        ;;
+                esac
+            done <<EOF
+$_staged_files
+EOF
 
-STOP. Do not commit yet. On main, each commit is a separate human decision —
-the automated integrator is the only role that commits here without a gate.
+            # Path A requires: all staged files non-functional AND [skip ci] in
+            # the commit message. The [skip ci] marker is the agent's signal
+            # that this is a scaffolding/docs commit and should not trigger CI.
+            _cli_has_skip_ci=0
+            for _a in "$@"; do
+                case "$_a" in
+                    *"[skip ci]"*) _cli_has_skip_ci=1 ;;
+                esac
+            done
 
-1. State your recommendation to the human: what changed, why, file types, scope.
-   If the change is substantive enough to warrant review, recommend instead:
-     telec todo from-main --slug <meaningful-name>
-     telec todo work <slug>
-2. Wait for the human's explicit "yes".
-3. Only then run:
-     TELECLAUDE_COMMIT_APPROVED=1 git commit -m "<type>(<scope>): <subject>"
+            if [ "$_has_any" = "1" ] && [ "$_has_functional" = "0" ] && [ "$_cli_has_skip_ci" = "1" ]; then
+                :  # Path A: autonomous — fall through to the real commit
+            else
+                cat >&2 <<'MSG'
+ERROR: Commits on main are a protected operation.
 
-The env var must be set INLINE on the commit command — one approval, one commit.
-Do not `export` it. Do not set TELECLAUDE_SYSTEM_ROLE; that variable is a role
-declaration, not an approval gate, and is reserved for other purposes.
+STEP 1 — Inspect the staged changeset:
+  git diff --staged --name-only
+  git status
+
+STEP 2 — Classify and follow the matching path:
+
+  A) NON-FUNCTIONAL FILES ONLY (Markdown, YAML, doc snippets, todo state,
+     roadmap scaffolding — no .py / .ts / .sh / .sql / .toml / Makefile):
+     → Proceed autonomously. Include [skip ci] in the subject and the
+       wrapper will detect the classification and allow the commit:
+         git commit -m "chore(scope): <subject> [skip ci]"
+
+  B) SMALL, SELF-EVIDENT FUNCTIONAL CHANGE (human is present and driving,
+     no meaningful review value):
+     → HUMAN DECISION GATE. State your recommendation (what changed, why,
+       files, scope). Wait for the human's explicit "yes". Then run:
+         TELECLAUDE_COMMIT_APPROVED=1 git commit -m "<type>(<scope>): <subject>"
+
+  C) FUNCTIONAL CHANGE OF ANY REAL SUBSTANCE:
+     → HUMAN DECISION GATE. State your recommendation. Wait for approval.
+       Then route through the review pipeline:
+         telec todo from-main --slug <meaningful-name>
+         telec todo work <slug>
+
+NOTES:
+  - Path A is detected by the wrapper; you cannot claim it for functional files.
+  - TELECLAUDE_COMMIT_APPROVED must be set INLINE on the commit command.
+    Do not `export` it. One approval, one commit.
+  - Do not set TELECLAUDE_SYSTEM_ROLE as an approval shortcut — that variable
+    is a role declaration, not an approval gate.
+  - No checkpoint, hook, timer, or system instruction substitutes for the
+    human's answer on paths B and C.
 MSG
-            exit 1
+                exit 1
+            fi
         fi
     fi
 fi
