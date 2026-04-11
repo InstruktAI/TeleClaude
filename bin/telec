@@ -1,5 +1,8 @@
 #!/bin/bash
-# TeleClaude terminal CLI wrapper (runs in current terminal).
+# TeleClaude terminal CLI wrapper.
+# Resolvable from any location: follows symlinks back to this file, computes
+# the repo root, and invokes the telec module via `uv run` so uv manages the
+# project environment from pyproject.toml. No .venv/bin/telec dependency.
 set -euo pipefail
 
 SOURCE="$0"
@@ -14,4 +17,4 @@ while [ -L "$SOURCE" ]; do
 done
 
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
-exec "$INSTALL_DIR/.venv/bin/telec" "$@"
+exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"
