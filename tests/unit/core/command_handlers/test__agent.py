@@ -68,7 +68,7 @@ class TestStartAgent:
 
         cmd = StartAgentCommand(session_id=session.session_id, agent_name="claude", args=["deep", "scan repo"])
 
-        await _agent.start_agent(cmd, client, execute_terminal_command)
+        await _agent.start_agent.__wrapped__(session, cmd, client, execute_terminal_command)
 
         client.send_message.assert_awaited_once()
         db.update_session.assert_not_awaited()
@@ -95,7 +95,7 @@ class TestStartAgent:
             args=["fast", "hello world", "--json"],
         )
 
-        await _agent.start_agent(cmd, client, execute_terminal_command)
+        await _agent.start_agent.__wrapped__(session, cmd, client, execute_terminal_command)
 
         get_agent_command.assert_called_once_with(
             "codex",
@@ -135,7 +135,7 @@ class TestResumeAgent:
 
         cmd = ResumeAgentCommand(session_id=session.session_id, native_session_id="native-2")
 
-        await _agent.resume_agent(cmd, client, execute_terminal_command)
+        await _agent.resume_agent.__wrapped__(session, cmd, client, execute_terminal_command)
 
         db.update_session.assert_any_await(session.session_id, native_session_id="native-2")
         db.update_session.assert_any_await(session.session_id, active_agent="codex")
@@ -162,7 +162,8 @@ class TestAgentRestart:
         patch_handler_db(monkeypatch, db)
         monkeypatch.setattr(_agent, "event_bus", event_bus)
 
-        ok, error = await _agent.agent_restart(
+        ok, error = await _agent.agent_restart.__wrapped__(
+            session,
             RestartAgentCommand(session_id=session.session_id),
             client,
             execute_terminal_command,
@@ -174,6 +175,124 @@ class TestAgentRestart:
         assert event_bus.emit.call_args.args[0] == TeleClaudeEvents.ERROR
         client.send_message.assert_awaited_once()
         execute_terminal_command.assert_not_awaited()
+
+
+class TestAgentRestartReadinessInjection:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_inject_after_restart_waits_for_agent_ready_before_injecting_checkpoint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        call_order: list[str] = []
+
+        async def fake_wait_for_agent_ready(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+            call_order.append("ready")
+            return True, ""
+
+        async def fake_inject(*_args: object, **_kwargs: object) -> None:
+            call_order.append("inject")
+
+        session = make_session(active_agent="claude", native_session_id="native-1")
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+        )
+        patch_handler_db(monkeypatch, db)
+        monkeypatch.setattr(_agent, "assert_agent_enabled", lambda agent_name: agent_name)
+        monkeypatch.setattr(_agent, "get_agent_command", MagicMock(return_value="claude-cli"))
+        monkeypatch.setattr(_agent, "wait_for_agent_ready", fake_wait_for_agent_ready, raising=False)
+        monkeypatch.setattr(_agent, "inject_checkpoint_if_needed", fake_inject)
+        monkeypatch.setattr(_agent, "_terminate_agent_process", AsyncMock())
+        monkeypatch.setattr(_agent, "tmux_io", SimpleNamespace(wait_for_shell_ready=AsyncMock(return_value=True)))
+        monkeypatch.setattr(_agent, "tmux_bridge", SimpleNamespace(session_exists=AsyncMock(return_value=True)))
+        emit_mock = MagicMock()
+        monkeypatch.setattr(_agent, "event_bus", SimpleNamespace(emit=emit_mock))
+
+        client = SimpleNamespace(send_message=AsyncMock())
+        execute_terminal_command = AsyncMock(return_value=True)
+
+        captured_tasks: list[object] = []
+
+        def capture_task(coro: object, *, name: str | None = None) -> MagicMock:
+            _ = name
+            captured_tasks.append(coro)
+            return MagicMock()
+
+        monkeypatch.setattr(_agent.asyncio, "create_task", capture_task)
+
+        await _agent.agent_restart.__wrapped__(
+            session,
+            RestartAgentCommand(session_id=session.session_id),
+            client,
+            execute_terminal_command,
+        )
+
+        assert captured_tasks, "expected _inject_after_restart to be queued as a task"
+        await captured_tasks[0]
+        assert call_order == ["ready", "inject"]
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_inject_after_restart_proceeds_when_readiness_times_out(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        inject_called = False
+
+        async def fake_wait_for_agent_ready(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+            return False, "timeout tail"
+
+        async def fake_inject(*_args: object, **_kwargs: object) -> None:
+            nonlocal inject_called
+            inject_called = True
+
+        session = make_session(active_agent="claude", native_session_id="native-1")
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+        )
+        patch_handler_db(monkeypatch, db)
+        monkeypatch.setattr(_agent, "assert_agent_enabled", lambda agent_name: agent_name)
+        monkeypatch.setattr(_agent, "get_agent_command", MagicMock(return_value="claude-cli"))
+        monkeypatch.setattr(_agent, "wait_for_agent_ready", fake_wait_for_agent_ready, raising=False)
+        monkeypatch.setattr(_agent, "inject_checkpoint_if_needed", fake_inject)
+        monkeypatch.setattr(_agent, "_terminate_agent_process", AsyncMock())
+        monkeypatch.setattr(_agent, "tmux_io", SimpleNamespace(wait_for_shell_ready=AsyncMock(return_value=True)))
+        monkeypatch.setattr(_agent, "tmux_bridge", SimpleNamespace(session_exists=AsyncMock(return_value=True)))
+        emit_mock = MagicMock()
+        monkeypatch.setattr(_agent, "event_bus", SimpleNamespace(emit=emit_mock))
+
+        client = SimpleNamespace(send_message=AsyncMock())
+        execute_terminal_command = AsyncMock(return_value=True)
+
+        captured_tasks: list[object] = []
+
+        def capture_task(coro: object, *, name: str | None = None) -> MagicMock:
+            _ = name
+            captured_tasks.append(coro)
+            return MagicMock()
+
+        monkeypatch.setattr(_agent.asyncio, "create_task", capture_task)
+
+        with caplog.at_level("WARNING"):
+            await _agent.agent_restart.__wrapped__(
+                session,
+                RestartAgentCommand(session_id=session.session_id),
+                client,
+                execute_terminal_command,
+            )
+
+        assert captured_tasks, "expected _inject_after_restart to be queued as a task"
+        await captured_tasks[0]
+        assert inject_called is False
+        client.send_message.assert_awaited_once_with(
+            session,
+            "Agent readiness timed out after restart. Session kept alive for inspection; checkpoint not injected.",
+        )
+        assert any(call.args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT for call in emit_mock.call_args_list)
+        assert "timeout tail" in caplog.text
 
 
 class TestRunAgentCommand:
@@ -197,7 +316,7 @@ class TestRunAgentCommand:
             origin="discord",
         )
 
-        await _agent.run_agent_command(cmd, client, execute_terminal_command)
+        await _agent.run_agent_command.__wrapped__(session, cmd, client, execute_terminal_command)
 
         update_call = db.update_session.await_args
         assert update_call.args == (session.session_id,)

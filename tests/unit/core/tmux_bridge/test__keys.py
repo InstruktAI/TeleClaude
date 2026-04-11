@@ -84,18 +84,15 @@ class TestSendKeys:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_keys_existing_tmux_uses_literal_mode_for_bracketed_paste_and_gemini_bang(self) -> None:
-        processes = [_completed_process(), _completed_process()]
-
         with (
             patch(
                 "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
+                new=AsyncMock(return_value=_completed_process()),
             ) as mock_exec,
             patch(
                 "teleclaude.core.tmux_bridge._keys.communicate_with_timeout",
-                new=AsyncMock(side_effect=[(b"", b""), (b"", b"")]),
+                new=AsyncMock(return_value=(b"", b"")),
             ),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()) as mock_sleep,
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -104,7 +101,9 @@ class TestSendKeys:
             )
 
         assert result is True
-        assert mock_exec.await_args_list[0].args == (
+        assert mock_exec.await_count == 1
+        argv = mock_exec.await_args.args
+        assert argv == (
             _keys.config.computer.tmux_binary,
             "send-keys",
             "-t",
@@ -112,15 +111,66 @@ class TestSendKeys:
             "-l",
             "--",
             r"run\!",
-        )
-        assert mock_exec.await_args_list[1].args == (
-            _keys.config.computer.tmux_binary,
+            ";",
             "send-keys",
             "-t",
             "tmux-alpha",
             "C-m",
         )
-        mock_sleep.assert_awaited_once_with(1.0)
+
+
+class TestSendKeysChaining:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_delivers_text_and_enter_in_single_tmux_invocation_when_enter_requested(self) -> None:
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ) as mock_exec,
+            patch(
+                "teleclaude.core.tmux_bridge._keys.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"")),
+            ),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
+        ):
+            await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="hello",
+                active_agent=None,
+            )
+
+        assert mock_exec.await_count == 1
+        argv = mock_exec.await_args.args
+        assert "hello" in argv
+        assert "C-m" in argv
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_introduces_no_artificial_delay_between_text_and_enter(self) -> None:
+        sleeps: list[float] = []
+
+        async def record_sleep(duration: float) -> None:
+            sleeps.append(duration)
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ),
+            patch(
+                "teleclaude.core.tmux_bridge._keys.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"")),
+            ),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock(side_effect=record_sleep)),
+        ):
+            await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="hello",
+                active_agent=None,
+            )
+
+        assert len(sleeps) == 0, sleeps
 
 
 class TestSendKeysToTty:

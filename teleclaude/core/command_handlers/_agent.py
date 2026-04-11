@@ -11,12 +11,19 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import AgentRestartDispatchedPayload, ErrorEventContext, TeleClaudeEvents
+from teleclaude.core.events import (
+    AgentRestartDispatchedPayload,
+    ErrorEventContext,
+    SessionLifecycleContext,
+    TeleClaudeEvents,
+)
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, Session, ThinkingMode
+from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
 from teleclaude.types.commands import (
     RestartAgentCommand,
     ResumeAgentCommand,
@@ -347,7 +354,32 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
     async def _inject_after_restart() -> None:
-        await asyncio.sleep(5)
+        ready_for_injection, readiness_tail = await wait_for_agent_ready(
+            target_agent,
+            session,
+            AGENT_PROMPT_READY_TIMEOUT_S,
+            AGENT_START_STABILIZE_QUIET_S,
+        )
+        if not ready_for_injection:
+            logger.warning(
+                "agent_restart readiness timeout: session=%s timeout_s=%.1f — checkpoint not injected",
+                session.session_id,
+                AGENT_PROMPT_READY_TIMEOUT_S,
+            )
+            logger.warning(
+                "agent_restart readiness timeout tail: session=%s tail=%r",
+                session.session_id,
+                readiness_tail[-160:],
+            )
+            event_bus.emit(
+                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+                SessionLifecycleContext(session_id=session.session_id),
+            )
+            await client.send_message(
+                session,
+                "Agent readiness timed out after restart. Session kept alive for inspection; checkpoint not injected.",
+            )
+            return
         if cmd.self_restart:
             # Self-restart: inject minimal continuation prompt instead of full checkpoint.
             # The agent has full context via --resume; it just needs a stimulus.

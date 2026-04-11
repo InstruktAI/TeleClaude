@@ -80,17 +80,17 @@ class TestShellGuardrails:
         with (
             patch(
                 "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=[_completed_process(), _completed_process()]),
+                new=AsyncMock(return_value=_completed_process()),
             ) as mock_exec,
             patch(
                 "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
-                new=AsyncMock(side_effect=[(b"", b""), (b"", b"")]),
+                new=AsyncMock(return_value=(b"", b"")),
             ),
-            patch("teleclaude.core.tmux_bridge._session.asyncio.sleep", new=AsyncMock()) as mock_sleep,
         ):
             await _session._apply_shell_guardrails("tmux-alpha", teleclaude_bin)
 
-        assert mock_exec.await_args_list[0].args == (
+        assert mock_exec.await_count == 1
+        assert mock_exec.await_args.args == (
             _session.config.computer.tmux_binary,
             "send-keys",
             "-t",
@@ -98,15 +98,33 @@ class TestShellGuardrails:
             "-l",
             "--",
             expected_guardrail,
-        )
-        assert mock_exec.await_args_list[1].args == (
-            _session.config.computer.tmux_binary,
+            ";",
             "send-keys",
             "-t",
             "tmux-alpha",
             "C-m",
         )
-        mock_sleep.assert_awaited_once_with(0.2)
+
+
+class TestGuardrailsChaining:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_apply_shell_guardrails_delivers_text_and_enter_in_single_tmux_invocation(self) -> None:
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ) as mock_exec,
+            patch(
+                "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"")),
+            ),
+        ):
+            await _session._apply_shell_guardrails("tmux-alpha", "/fake/bin")
+
+        assert mock_exec.await_count == 1
+        argv = mock_exec.await_args.args
+        assert "C-m" in argv
 
 
 class TestCreateAndEnsureSession:
@@ -125,18 +143,11 @@ class TestCreateAndEnsureSession:
             patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=session_tmp),
             patch(
                 "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
-                new=AsyncMock(
-                    side_effect=[
-                        _completed_process(),
-                        _completed_process(),
-                        _completed_process(),
-                        _completed_process(),
-                    ]
-                ),
+                new=AsyncMock(side_effect=[_completed_process(), _completed_process()]),
             ) as mock_exec,
             patch(
                 "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
-                new=AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b""), (b"", b"")]),
+                new=AsyncMock(side_effect=[(b"", b""), (b"", b"")]),
             ),
             patch("teleclaude.core.tmux_bridge._session._apply_shell_guardrails", new=AsyncMock()) as mock_guardrails,
         ):
@@ -175,17 +186,19 @@ class TestCreateAndEnsureSession:
             "tmux-alpha",
             "-u",
             "NO_COLOR",
-        )
-        assert mock_exec.await_args_list[2].args == (
-            _session.config.computer.tmux_binary,
+            ";",
+            "run-shell",
+            f"printf {_session._SETUP_STEP_NO_COLOR_DONE}",
+            ";",
             "set-option",
             "-t",
             "tmux-alpha",
             "destroy-unattached",
             "off",
-        )
-        assert mock_exec.await_args_list[3].args == (
-            _session.config.computer.tmux_binary,
+            ";",
+            "run-shell",
+            f"printf {_session._SETUP_STEP_DESTROY_DONE}",
+            ";",
             "set-hook",
             "-t",
             "tmux-alpha",
@@ -260,6 +273,63 @@ class TestCreateAndEnsureSession:
             session_id="sess-1",
             env_vars={"VOICE": "alloy"},
         )
+
+
+class TestCreateSessionChaining:
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_tmux_session_chains_post_create_setup_commands(self) -> None:
+        with (
+            patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=Path("/tmp/fake")),
+            patch(
+                "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ) as mock_exec,
+            patch(
+                "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"")),
+            ),
+            patch("teleclaude.core.tmux_bridge._session._apply_shell_guardrails", new=AsyncMock()),
+        ):
+            await _session._create_tmux_session(
+                name="tmux-alpha",
+                working_dir="/workspace/demo",
+                session_id="sess-1",
+            )
+
+        assert mock_exec.await_count == 2
+        setup_argv = mock_exec.await_args_list[1].args
+        assert "set-environment" in setup_argv
+        assert "set-option" in setup_argv
+        assert "set-hook" in setup_argv
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_create_tmux_session_logs_the_specific_setup_step_when_chain_fails(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        with (
+            patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=Path("/tmp/fake")),
+            patch(
+                "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=[_completed_process(), _completed_process(returncode=1)]),
+            ),
+            patch(
+                "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
+                new=AsyncMock(side_effect=[(b"", b""), (_session._SETUP_STEP_NO_COLOR_DONE.encode(), b"readonly")]),
+            ),
+            patch("teleclaude.core.tmux_bridge._session._apply_shell_guardrails", new=AsyncMock()),
+        ):
+            with caplog.at_level("WARNING"):
+                result = await _session._create_tmux_session(
+                    name="tmux-alpha",
+                    working_dir="/workspace/demo",
+                    session_id="sess-1",
+                )
+
+        assert result is True
+        assert "set-option destroy-unattached off" in caplog.text
 
 
 class TestUpdateSessionEnvironment:

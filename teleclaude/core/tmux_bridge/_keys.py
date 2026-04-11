@@ -179,6 +179,8 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     # start a long-lived process that would inherit the pipe, so this is safe.
     # Always send with -l for literal interpretation (prevents shell/key-name expansion).
     cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
+    if send_enter:
+        cmd_text.extend([";", "send-keys", "-t", session_name, "C-m"])
     if has_bracketed_paste:
         logger.debug("Unwrapped bracketed paste markers for literal tmux send: %s", send_text[:80])
     result = await asyncio.create_subprocess_exec(
@@ -188,35 +190,12 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
 
     if result.returncode != 0:
         logger.error(
-            "Failed to send text to session %s: returncode=%d, stderr=%s",
+            "Failed to send keys to session %s: returncode=%d, stderr=%s",
             session_name,
             result.returncode,
             stderr.decode().strip(),
         )
         return False
-
-    # Small delay to ensure text is buffered by tmux before we send Enter.
-    # Investigation: Reducing to 0.1s causes test flakiness and missed Enter key delivery on
-    # slow hosts. 1.0s is conservative but keeps the path reliable. The inbound queue
-    # now bears the latency cost; adapter responsiveness is unaffected.
-    await asyncio.sleep(1.0)
-
-    # Send Enter key once if requested
-    if send_enter:
-        cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-        result = await asyncio.create_subprocess_exec(
-            *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-
-        if result.returncode != 0:
-            logger.error(
-                "Failed to send Enter to session %s: returncode=%d, stderr=%s",
-                session_name,
-                result.returncode,
-                stderr.decode().strip(),
-            )
-            return False
 
     return True
 

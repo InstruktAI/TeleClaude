@@ -19,6 +19,19 @@ from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, commu
 
 logger = get_logger(__name__)
 
+_SETUP_STEP_NO_COLOR_DONE = "__tc_setup_no_color_done__"
+_SETUP_STEP_DESTROY_DONE = "__tc_setup_destroy_done__"
+
+
+def _describe_setup_chain_failure(stdout: bytes) -> str:
+    """Infer the failed setup step from chain markers emitted by prior steps."""
+    output = stdout.decode("utf-8", errors="ignore")
+    if _SETUP_STEP_DESTROY_DONE in output:
+        return "set-hook client-detached run-shell true"
+    if _SETUP_STEP_NO_COLOR_DONE in output:
+        return "set-option destroy-unattached off"
+    return "set-environment -u NO_COLOR"
+
 
 def _get_session_tmp_basedir() -> Path:
     override = os.environ.get("TELECLAUDE_SESSION_TMPDIR_BASE")
@@ -166,44 +179,51 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
             return False
 
         # Strip NO_COLOR from the session environment as a safe default.
-        # The variable is inherited from the parent shell; removing it here
-        # lets CLIs emit colors.  The TUI pane manager may re-set NO_COLOR=1
-        # for peaceful theming levels (0, 1) when the pane is displayed.
+        # The variable is often re-set by the TUI pane manager for peaceful theming,
+        # but agent CLIs need ANSI output available while they run inside the tmux pane.
+        cmd_setup = [
+            config.computer.tmux_binary,
+            "set-environment",
+            "-t",
+            name,
+            "-u",
+            "NO_COLOR",
+            ";",
+            "run-shell",
+            f"printf {_SETUP_STEP_NO_COLOR_DONE}",
+            ";",
+            "set-option",
+            "-t",
+            name,
+            "destroy-unattached",
+            "off",
+            ";",
+            "run-shell",
+            f"printf {_SETUP_STEP_DESTROY_DONE}",
+            ";",
+            "set-hook",
+            "-t",
+            name,
+            "client-detached",
+            "run-shell true",
+        ]
         try:
-            unset_cmd = [config.computer.tmux_binary, "set-environment", "-t", name, "-u", "NO_COLOR"]
-            unset_result = await asyncio.create_subprocess_exec(
-                *unset_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            setup_result = await asyncio.create_subprocess_exec(
+                *cmd_setup, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
-            await communicate_with_timeout(unset_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-        except (OSError, ValueError, SubprocessTimeoutError):
-            pass  # Best-effort; color loss is cosmetic, not critical.
-
-        # Ensure detach does NOT destroy the session (respect persistent TC sessions).
-        try:
-            option_cmd = [config.computer.tmux_binary, "set-option", "-t", name, "destroy-unattached", "off"]
-            opt_result = await asyncio.create_subprocess_exec(
-                *option_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            setup_out, setup_err = await communicate_with_timeout(
+                setup_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux session setup chain"
             )
-            _, opt_err = await communicate_with_timeout(opt_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-            if opt_result.returncode != 0:
+            if setup_result.returncode != 0:
+                failed_step = _describe_setup_chain_failure(setup_out)
                 logger.warning(
-                    "Failed to set destroy-unattached off for %s: %s",
+                    "Session setup command failed for %s: step=%s stderr=%s",
                     name,
-                    opt_err.decode().strip(),
-                )
-            hook_cmd = [config.computer.tmux_binary, "set-hook", "-t", name, "client-detached", "run-shell true"]
-            hook_result = await asyncio.create_subprocess_exec(
-                *hook_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            _, hook_err = await communicate_with_timeout(hook_result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
-            if hook_result.returncode != 0:
-                logger.warning(
-                    "Failed to set client-detached hook for %s: %s",
-                    name,
-                    hook_err.decode().strip(),
+                    failed_step,
+                    setup_err.decode().strip(),
                 )
         except (OSError, ValueError, SubprocessTimeoutError) as e:
-            logger.warning("Failed to set destroy-unattached off for %s: %s", name, e)
+            logger.warning("Session setup chain exception for %s: %s", name, e)
 
         await _apply_shell_guardrails(name, teleclaude_bin)
 
@@ -246,32 +266,23 @@ async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> Non
             "-l",
             "--",
             guardrail_cmd,
+            ";",
+            "send-keys",
+            "-t",
+            session_name,
+            "C-m",
         ]
         result = await asyncio.create_subprocess_exec(
             *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail text")
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail chain")
         if result.returncode != 0:
             logger.warning(
-                "Shell guardrail text failed for %s: %s",
+                "Shell guardrail send failed for %s: %s",
                 session_name,
                 stderr.decode().strip() if stderr else "",
             )
             return
-
-        await asyncio.sleep(0.2)
-
-        cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-        result = await asyncio.create_subprocess_exec(
-            *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail enter")
-        if result.returncode != 0:
-            logger.warning(
-                "Shell guardrail enter failed for %s: %s",
-                session_name,
-                stderr.decode().strip() if stderr else "",
-            )
     except (OSError, ValueError, SubprocessTimeoutError) as e:
         logger.warning("Shell guardrails failed for %s: %s", session_name, e)
 
