@@ -444,8 +444,8 @@ def _validate_job_when_or_schedule(
                 has_valid_when = True
             except ValidationError as exc:
                 err_list = exc.errors()
-                first = err_list[0] if err_list else {"msg": "invalid when config"}  # type: ignore[typeddict-item]
-                errors.append(f"{config_path}: jobs.{name}.when {first['msg']}")
+                first_msg = err_list[0]["msg"] if err_list else "invalid when config"
+                errors.append(f"{config_path}: jobs.{name}.when {first_msg}")
     if has_valid_when:
         return errors
     schedule = job_cfg.get("schedule")

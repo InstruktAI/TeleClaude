@@ -20,6 +20,7 @@ from teleclaude.core.db import db
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
+    AgentHookEventType,
     AgentOutputPayload,
     AgentSessionStartPayload,
 )
@@ -212,7 +213,7 @@ _strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments  # p
 
 async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     session_id: str,
-    event_type: str,
+    event_type: AgentHookEventType,
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
     *,
     tool_name: str | None = None,
@@ -239,7 +240,7 @@ async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     await emit_agent_event(
         AgentEventContext(
             session_id=session_id,
-            event_type=event_type,  # type: ignore[arg-type]
+            event_type=event_type,
             data=payload,
         )
     )

@@ -193,7 +193,6 @@ module = [
   "teleclaude.adapters.telegram_adapter",
   "teleclaude.hooks.receiver",
   "teleclaude.hooks.receiver.*",
-  "teleclaude.core.codex_watcher",
   "teleclaude.config",
 ]
 disallow_any_expr = false

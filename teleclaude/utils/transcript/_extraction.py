@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Callable, Iterable
 from datetime import datetime
 from pathlib import Path
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.visibility import is_internal_user_text
 
 from ._iterators import (
@@ -383,7 +385,7 @@ def parse_session_transcript(  # pylint: disable=too-many-arguments
     if not path.exists():
         return f"Transcript file not found: {transcript_path}"
 
-    iterators = {
+    iterators: dict[AgentName, Callable[..., Iterable[JsonDict]]] = {
         AgentName.CLAUDE: _iter_claude_entries,
         AgentName.GEMINI: _iter_gemini_entries,
         AgentName.CODEX: _iter_codex_entries,
@@ -394,7 +396,7 @@ def parse_session_transcript(  # pylint: disable=too-many-arguments
 
     tail_fn = _apply_tail_limit_codex if agent_name == AgentName.CODEX else _apply_tail_limit
     rendered = _render_transcript_from_entries(
-        iter_fn(path),  # type: ignore[operator]
+        iter_fn(path),  # type: ignore[arg-type]
         title,
         since_timestamp,
         until_timestamp,

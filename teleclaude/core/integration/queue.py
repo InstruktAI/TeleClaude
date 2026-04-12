@@ -410,9 +410,10 @@ def _optional_str(value: object, *, field_name: str) -> str | None:
 
 def _status_from_value(value: object) -> QueueStatus:
     allowed: tuple[QueueStatus, ...] = ("queued", "in_progress", "integrated", "blocked", "superseded")
-    if value not in allowed:
-        raise IntegrationQueueError(f"invalid queue status {value!r}")
-    return value  # type: ignore[return-value]
+    for status in allowed:
+        if value == status:
+            return status
+    raise IntegrationQueueError(f"invalid queue status {value!r}")
 
 
 def _optional_status_from_value(value: object) -> QueueStatus | None:

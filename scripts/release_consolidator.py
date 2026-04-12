@@ -28,6 +28,8 @@ from typing_extensions import TypedDict
 
 
 class ContractChange(TypedDict, total=False):
+    """A single API or contract change entry."""
+
     surface: str
     item: str
     change_type: str
@@ -35,6 +37,8 @@ class ContractChange(TypedDict, total=False):
 
 
 class LaneReport(TypedDict):
+    """Parsed output from a single release-review lane."""
+
     classification: str
     rationale: str
     contract_changes: list[ContractChange]
@@ -42,6 +46,8 @@ class LaneReport(TypedDict):
 
 
 class ArbiterDecision(TypedDict):
+    """Final release decision emitted by the consensus arbiter."""
+
     release_authorized: bool
     quorum_met: bool
     target_version: str
@@ -116,7 +122,7 @@ def load_report(path: Path) -> LaneReport | None:
     data = cast(dict[str, object], data_obj)  # guard: loose-dict - JSON parsed data — release report
 
     classification = data.get("classification")
-    if classification not in VALID_CLASSIFICATIONS:
+    if not isinstance(classification, str) or classification not in VALID_CLASSIFICATIONS:
         print(f"WARNING: {path} invalid classification: {classification!r}", file=sys.stderr)
         return None
 
@@ -128,14 +134,14 @@ def load_report(path: Path) -> LaneReport | None:
         return None
 
     return LaneReport(
-        classification=cast(str, classification),
+        classification=classification,
         rationale=rationale,
         contract_changes=[cast(ContractChange, item) for item in contract_changes if isinstance(item, dict)],
         release_notes=release_notes,
     )
 
 
-def resolve_consensus(
+def resolve_consensus(  # pylint: disable=too-many-locals
     reports: dict[str, LaneReport | None],
     enabled_agents: list[str],
 ) -> ArbiterDecision:
@@ -252,7 +258,7 @@ def _pick_arbiter(reports: dict[str, LaneReport], enabled_agents: list[str]) -> 
     return None
 
 
-def _decision(
+def _decision(  # pylint: disable=too-many-arguments
     *,
     authorized: bool,
     quorum_met: bool,
@@ -272,6 +278,7 @@ def _decision(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """CLI entry point: load lane reports, run consensus, write decision JSON."""
     parser = argparse.ArgumentParser(description="Consensus arbiter for release reports")
     parser.add_argument("--claude-report", type=Path, default=Path("claude-report.json"))
     parser.add_argument("--codex-report", type=Path, default=Path("codex-report.json"))
@@ -295,7 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         "gemini": args.gemini_report,
     }
     reports: dict[str, LaneReport | None] = {
-        name: load_report(report_paths[name]) if name in enabled_agents else None for name in report_paths
+        name: load_report(path) if name in enabled_agents else None for name, path in report_paths.items()
     }
 
     decision = resolve_consensus(reports, enabled_agents)
