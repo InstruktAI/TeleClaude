@@ -1,43 +1,64 @@
-"""Characterization tests for teleclaude.project_manifest."""
+"""Tests for teleclaude.project_manifest root-only registry."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-import teleclaude.project_manifest as project_manifest
+from teleclaude import project_manifest
+
+pytestmark = pytest.mark.unit
 
 
-def test_entry_from_raw_normalizes_strings_and_resolves_paths(tmp_path: Path) -> None:
-    index_path = tmp_path / "docs" / "project" / "index.yaml"
-    project_root = tmp_path / "repo"
+def test_load_roots_returns_empty_list_when_manifest_missing(tmp_path: Path) -> None:
+    assert project_manifest.load_roots(tmp_path / "projects.yaml") == []
 
-    entry = project_manifest._entry_from_raw(
-        {
-            "name": " Alpha ",
-            "description": 7,
-            "index_path": str(index_path),
-            "project_root": str(project_root),
-        }
+
+def test_load_roots_returns_normalized_absolute_paths(tmp_path: Path) -> None:
+    project_a = tmp_path / "alpha"
+    project_b = tmp_path / "beta"
+    project_a.mkdir()
+    project_b.mkdir()
+
+    manifest_path = tmp_path / "projects.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump({"projects": [str(project_a), str(project_b)]}),
+        encoding="utf-8",
     )
 
-    assert entry == project_manifest.ProjectManifestEntry(
-        name="Alpha",
-        description="",
-        index_path=str(index_path.resolve()),
-        project_root=str(project_root.resolve()),
+    roots = project_manifest.load_roots(manifest_path)
+
+    assert roots == [project_a.resolve(), project_b.resolve()]
+
+
+def test_load_roots_dedupes_and_skips_non_existent_roots(tmp_path: Path) -> None:
+    live = tmp_path / "live"
+    live.mkdir()
+    dead = tmp_path / "dead"  # never created
+
+    manifest_path = tmp_path / "projects.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "projects": [
+                    str(live),
+                    str(live),  # duplicate — must collapse
+                    str(dead),  # missing directory — dropped
+                ]
+            }
+        ),
+        encoding="utf-8",
     )
 
+    assert project_manifest.load_roots(manifest_path) == [live.resolve()]
 
-def test_load_manifest_filters_out_entries_with_missing_index_files(tmp_path: Path) -> None:
-    live_root = tmp_path / "live"
-    live_root.mkdir()
-    live_index = live_root / "index.yaml"
-    live_index.write_text("snippets: []\n", encoding="utf-8")
 
-    dead_root = tmp_path / "dead"
-    dead_root.mkdir()
+def test_load_roots_ignores_legacy_metadata_format(tmp_path: Path) -> None:
+    """Legacy entries with name/description/index_path are coerced to root-only."""
+    project_root = tmp_path / "legacy"
+    project_root.mkdir()
 
     manifest_path = tmp_path / "projects.yaml"
     manifest_path.write_text(
@@ -45,80 +66,92 @@ def test_load_manifest_filters_out_entries_with_missing_index_files(tmp_path: Pa
             {
                 "projects": [
                     {
-                        "name": "Live",
-                        "description": "kept",
-                        "index_path": str(live_index),
-                        "project_root": str(live_root),
-                    },
-                    {
-                        "name": "Dead",
-                        "description": "dropped",
-                        "index_path": str(dead_root / "index.yaml"),
-                        "project_root": str(dead_root),
-                    },
+                        "name": "Legacy",
+                        "description": "old shape",
+                        "index_path": str(project_root / "docs" / "project" / "index.yaml"),
+                        "project_root": str(project_root),
+                    }
                 ]
-            },
-            sort_keys=False,
+            }
         ),
         encoding="utf-8",
     )
 
-    entries = project_manifest.load_manifest(manifest_path)
-
-    assert entries == [
-        project_manifest.ProjectManifestEntry(
-            name="Live",
-            description="kept",
-            index_path=str(live_index.resolve()),
-            project_root=str(live_root.resolve()),
-        )
-    ]
+    assert project_manifest.load_roots(manifest_path) == [project_root.resolve()]
 
 
-def test_register_project_updates_existing_entry_and_sorts_by_name(tmp_path: Path) -> None:
+def test_load_roots_returns_empty_on_malformed_yaml(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "projects.yaml"
+    manifest_path.write_text("::not yaml::", encoding="utf-8")
+
+    assert project_manifest.load_roots(manifest_path) == []
+
+
+def test_register_root_writes_new_manifest_with_single_entry(tmp_path: Path) -> None:
+    project_root = tmp_path / "alpha"
+    project_root.mkdir()
     manifest_path = tmp_path / "state" / "projects.yaml"
-    alpha_root = tmp_path / "alpha"
-    zeta_root = tmp_path / "zeta"
-    alpha_root.mkdir()
-    zeta_root.mkdir()
-    alpha_index = alpha_root / "index.yaml"
-    zeta_index = zeta_root / "index.yaml"
-    alpha_index.write_text("snippets: []\n", encoding="utf-8")
-    zeta_index.write_text("snippets: []\n", encoding="utf-8")
 
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    project_manifest.register_root(path=manifest_path, project_root=project_root)
+
+    payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    assert payload == {"projects": [str(project_root.resolve())]}
+
+
+def test_register_root_is_idempotent_for_repeated_calls(tmp_path: Path) -> None:
+    project_root = tmp_path / "alpha"
+    project_root.mkdir()
+    manifest_path = tmp_path / "projects.yaml"
+
+    project_manifest.register_root(path=manifest_path, project_root=project_root)
+    project_manifest.register_root(path=manifest_path, project_root=project_root)
+
+    payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+    assert payload == {"projects": [str(project_root.resolve())]}
+
+
+def test_register_root_preserves_prior_roots_and_appends_new(tmp_path: Path) -> None:
+    existing = tmp_path / "existing"
+    existing.mkdir()
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    manifest_path = tmp_path / "projects.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump({"projects": [str(existing)]}),
+        encoding="utf-8",
+    )
+
+    project_manifest.register_root(path=manifest_path, project_root=fresh)
+
+    roots = project_manifest.load_roots(manifest_path)
+    assert set(roots) == {existing.resolve(), fresh.resolve()}
+
+
+def test_register_root_migrates_legacy_metadata_format_to_root_only(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    manifest_path = tmp_path / "projects.yaml"
     manifest_path.write_text(
         yaml.safe_dump(
             {
                 "projects": [
                     {
-                        "name": "Zeta",
-                        "description": "existing",
-                        "index_path": str(zeta_index),
-                        "project_root": str(zeta_root),
-                    },
-                    {
-                        "name": "Old Alpha",
-                        "description": "stale",
-                        "index_path": str(alpha_index),
-                        "project_root": str(alpha_root),
-                    },
+                        "name": "Legacy",
+                        "description": "",
+                        "index_path": str(legacy / "docs" / "project" / "index.yaml"),
+                        "project_root": str(legacy),
+                    }
                 ]
-            },
-            sort_keys=False,
+            }
         ),
         encoding="utf-8",
     )
 
-    project_manifest.register_project(
-        path=manifest_path,
-        project_root=alpha_root,
-        project_name="Alpha",
-        description="updated",
-        index_path=alpha_index,
-    )
+    project_manifest.register_root(path=manifest_path, project_root=fresh)
 
     payload = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
-    assert [entry["name"] for entry in payload["projects"]] == ["Alpha", "Zeta"]
-    assert payload["projects"][0]["description"] == "updated"
-    assert payload["projects"][0]["project_root"] == str(alpha_root.resolve())
+    # No nested metadata keys survived; roots are strings only.
+    assert all(isinstance(entry, str) for entry in payload["projects"])
+    assert set(payload["projects"]) == {str(legacy.resolve()), str(fresh.resolve())}

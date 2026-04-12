@@ -172,9 +172,65 @@ def test_run_due_jobs_waits_for_first_script_job_occurrence() -> None:
         datetime_mock.now.return_value = datetime(2026, 4, 4, 9, 30, tzinfo=UTC)
         results = runner.run_due_jobs()
 
-    assert results == {}
+    assert not results
     run_mock.assert_not_called()
     state.mark_success.assert_not_called()
+    state.mark_failed.assert_not_called()
+
+
+@pytest.mark.unit
+def test_run_due_jobs_routes_log_bug_hunter_through_orchestrator() -> None:
+    """``log_bug_hunter`` must run through the project catalog/orchestrator.
+
+    Regression guard for F2: the runner previously called ``_run_agent_job``
+    for every agent-type job, which spawns a single session rooted at the
+    local repository. ``log_bug_hunter`` is cross-project and must iterate
+    registered projects via :class:`ProjectJobOrchestrator` instead.
+    """
+    state = SimpleNamespace(
+        ensure_first_seen=Mock(
+            return_value=SimpleNamespace(
+                first_seen_at=datetime(2026, 4, 4, 9, 0, tzinfo=UTC),
+                last_run=None,
+                last_status="never",
+            )
+        ),
+        mark_success=Mock(),
+        mark_failed=Mock(),
+    )
+    schedules = {
+        "log_bug_hunter": SimpleNamespace(
+            category="system",
+            type="agent",
+            timeout=None,
+            schedule=None,
+            when=SimpleNamespace(every="60m", at=None, weekdays=None),
+            job="log-bug-hunter",
+            agent="codex",
+            thinking_mode="fast",
+            message=None,
+            script=None,
+            preferred_hour=6,
+            preferred_weekday=0,
+            preferred_day=1,
+        )
+    }
+
+    with (
+        patch("teleclaude.cron.runner._acquire_pidlock", return_value=True),
+        patch("teleclaude.cron.runner.CronState.load", return_value=state),
+        patch("teleclaude.cron.runner.discover_jobs", return_value=[]),
+        patch("teleclaude.cron.runner._load_job_schedules", return_value=schedules),
+        patch("teleclaude.cron.runner._run_log_bug_hunter_orchestrated", return_value=True) as orch_mock,
+        patch("teleclaude.cron.runner._run_agent_job") as agent_mock,
+        patch("teleclaude.cron.runner._scan_and_notify"),
+    ):
+        results = runner.run_due_jobs(force=True)
+
+    assert results == {"log_bug_hunter": True}
+    orch_mock.assert_called_once()
+    agent_mock.assert_not_called()
+    state.mark_success.assert_called_once_with("log_bug_hunter")
     state.mark_failed.assert_not_called()
 
 

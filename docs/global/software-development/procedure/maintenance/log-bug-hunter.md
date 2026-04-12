@@ -23,16 +23,21 @@ The log-bug-hunter is one bug _source_ feeding the same pipeline that
 
 ## Preconditions
 
-1. The runner is executing as the `log-bug-hunter` job.
-2. `instrukt-ai-logs teleclaude --since 1h` is available and returns structured log output.
-3. The agent has read access to the codebase for diagnosis.
-4. The agent can commit fixes to the current branch (main).
-5. Previous run reports are available for deduplication at `~/.teleclaude/jobs/log-bug-hunter/runs/`.
+1. The runner is executing as the `log-bug-hunter` job for a specific project.
+2. The agent is running inside the target project's root directory and knows
+   the project's `project_slug` (the session is dispatched by
+   `LogBugHunterService` bound to that project).
+3. `instrukt-ai-logs {project_slug} --since 1h` is available and returns
+   structured log output.
+4. The agent has read access to the codebase for diagnosis.
+5. The agent can commit fixes to the current branch (main).
+6. Previous run reports are available for deduplication at `~/.teleclaude/jobs/log-bug-hunter/runs/`.
 
 ## Steps
 
-1. Collect logs from the last hour:
-   - Run `instrukt-ai-logs teleclaude --since 1h`.
+1. Collect logs from the last hour for the current project:
+   - Run `instrukt-ai-logs {project_slug} --since 1h`, substituting the
+     project slug of the project you are running in.
    - If no output or tool unavailable, write a "nothing to process" report and stop.
 
 2. Extract error signals:

@@ -1,4 +1,10 @@
-"""Daemon-owned scheduler for the log bug hunter job."""
+"""Per-project executor for the log bug hunter job.
+
+One :class:`LogBugHunterService` instance is bound to a single project. The
+orchestrator that iterates subscribed projects (see the project-jobs
+orchestrator) owns cross-project scheduling; this service only decides whether
+the given project should dispatch a new session based on its recent logs.
+"""
 
 from __future__ import annotations
 
@@ -17,13 +23,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import ROLE_SYSTEM
 from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
-from teleclaude.paths import LOG_BUG_HUNTER_STATE_PATH, REPO_ROOT
 from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
 
 LOG_BUG_HUNTER_JOB = "log_bug_hunter"
-LOG_BUG_HUNTER_INTERVAL_S = 300.0
 LOG_BUG_HUNTER_LOG_WINDOW = "1h"
 LOG_BUG_HUNTER_AGENT = "codex"
 LOG_BUG_HUNTER_THINKING_MODE = "fast"
@@ -87,33 +91,23 @@ class LogBugHunterState:
 
 
 class LogBugHunterService:
-    """Checks recent daemon logs and dispatches the bug hunter when needed."""
+    """Checks a single project's recent logs and dispatches the bug hunter when needed."""
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments
         self,
         *,
         create_session: Callable[[CreateSessionCommand], Awaitable[dict[str, str]]],
         list_active_sessions: Callable[[], Awaitable[list[Session]]],
-        project_root: Path = REPO_ROOT,
-        state_path: Path = LOG_BUG_HUNTER_STATE_PATH,
+        project_root: Path,
+        project_slug: str,
+        state_path: Path,
     ) -> None:
         self._create_session = create_session
         self._list_active_sessions = list_active_sessions
         self._project_root = project_root
+        self._project_slug = project_slug
         self._state_path = state_path
         self._state = self._load_state()
-
-    async def run_loop(self) -> None:
-        """Run the scheduler loop until cancelled."""
-        while True:
-            try:
-                await self.maybe_dispatch()
-            except asyncio.CancelledError:
-                logger.debug("log bug hunter scheduler loop cancelled")
-                raise
-            except Exception as exc:  # pylint: disable=broad-exception-caught
-                logger.error("log bug hunter scheduler iteration failed: %s", exc, exc_info=True)
-            await asyncio.sleep(LOG_BUG_HUNTER_INTERVAL_S)
 
     async def maybe_dispatch(self, *, now: datetime | None = None) -> bool:
         """Dispatch only when the last hour of logs contains candidate errors."""
@@ -174,7 +168,7 @@ class LogBugHunterService:
     def _run_recent_log_query(self) -> tuple[bool, str]:
         try:
             completed = subprocess.run(
-                ["instrukt-ai-logs", "teleclaude", "--since", LOG_BUG_HUNTER_LOG_WINDOW],
+                ["instrukt-ai-logs", self._project_slug, "--since", LOG_BUG_HUNTER_LOG_WINDOW],
                 check=False,
                 capture_output=True,
                 text=True,
@@ -194,15 +188,26 @@ class LogBugHunterService:
         return True, stdout
 
     async def _has_active_job_session(self) -> bool:
+        """Return True when ``log_bug_hunter`` is active **for this project**.
+
+        The orchestrator hands every executor the same computer-wide session
+        list, so the executor must scope the check to its own ``project_root``.
+        Matching only on ``session.job`` would let the first dispatched project
+        silently starve every other subscribed project in the catalog.
+        """
         sessions = await self._list_active_sessions()
-        return any((session.job or "").strip() == LOG_BUG_HUNTER_JOB for session in sessions)
+        project_root_str = str(self._project_root)
+        return any(
+            (session.job or "").strip() == LOG_BUG_HUNTER_JOB and (session.project_path or "") == project_root_str
+            for session in sessions
+        )
 
     async def _dispatch_job_session(self) -> str:
         result = await self._create_session(
             CreateSessionCommand(
                 project_path=str(self._project_root),
                 origin=InputOrigin.TERMINAL.value,
-                title="Job: log_bug_hunter",
+                title=f"Job: log_bug_hunter [{self._project_slug}]",
                 launch_intent=SessionLaunchIntent(
                     kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                     agent=LOG_BUG_HUNTER_AGENT,

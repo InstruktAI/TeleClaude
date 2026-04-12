@@ -13,16 +13,17 @@ The Teleclaude Config surface defines how the daemon and CLI are initialized and
 
 ### Two config files, three levels
 
-Configuration lives in two files. `GlobalConfig` extends `ProjectConfig`, so all
-project keys are valid at global level — but not the reverse. `ProjectConfig`
-explicitly rejects global-only keys (`people`, `ops`, `creds`, `notifications`,
-`timezone`). See `teleclaude/config/schema.py` for the Pydantic models.
+Configuration lives in two files. `GlobalConfig` and `ProjectConfig` are
+separate Pydantic models: global config owns the machine-wide keys, while the
+project config owns repository-local metadata and explicitly rejects
+global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
+`teleclaude/config/schema.py` for the authoritative model definitions.
 
-| File                  | Location                                     | Model           | Owns                                                                                                    |
-| --------------------- | -------------------------------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
-| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                              |
-| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
-| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                   |
+| File                  | Location                                     | Model           | Owns                                                                                                                    |
+| --------------------- | -------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                              |
+| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
+| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                                   |
 
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
@@ -35,7 +36,8 @@ symlink. Replacing it with a symlink to the global config breaks validation beca
 Valid in both project and global configs.
 
 ```yaml
-project_name: string
+project_slug: string # canonical machine identity; required in project configs
+project_name: string # human-readable display name
 description: string
 business:
   domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)
@@ -109,6 +111,25 @@ environment_variables:
 ### Maintenance
 
 This spec must be updated whenever config keys or env vars are added, renamed, or removed. The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with this spec.
+
+### Project registry
+
+Registered project roots live in `~/.teleclaude/projects.yaml`, a root-only
+registry — it stores only absolute project paths:
+
+```yaml
+projects:
+  - /abs/path/to/project-a
+  - /abs/path/to/project-b
+```
+
+All per-project metadata (`project_slug`, `project_name`, `jobs`, docs index
+location, etc.) lives in each project's own `teleclaude.yml` and is loaded
+through `ProjectCatalogService`. `telec init` is the sole writer of the
+registry; `telec sync` no longer registers projects. `project_slug` is the
+canonical machine identity used for the log namespace
+(`instrukt-ai-logs {project_slug}`), the cross-project docs namespace, and
+service-level project lookup. `project_name` remains display-only.
 
 ## Known caveats
 

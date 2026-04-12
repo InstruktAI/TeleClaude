@@ -505,7 +505,7 @@ class TestInteriorLoadingElimination:
 
         with (
             patch("teleclaude.config.loader.load_project_config") as mock_load,
-            patch("teleclaude.context_selector.get_project_name", return_value="Test"),
+            patch("teleclaude.context_selector.get_project_slug", return_value="test"),
             patch("teleclaude.context_selector._load_selected_snippets", return_value=[]),
         ):
             # Pass domains= to bypass _load_project_domains entirely; the test
@@ -536,7 +536,7 @@ class TestInteriorLoadingElimination:
 
         with (
             patch("teleclaude.config.loader.load_project_config") as mock_load,
-            patch("teleclaude.context_selector.get_project_name", return_value="Supplied"),
+            patch("teleclaude.context_selector.get_project_slug", return_value="supplied"),
             patch("teleclaude.context_selector._load_selected_snippets", return_value=[]),
         ):
             build_context_output(

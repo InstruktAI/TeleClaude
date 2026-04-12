@@ -1,4 +1,4 @@
-"""Tests for the daemon-owned log bug hunter scheduler."""
+"""Tests for the per-project log bug hunter scheduler."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ def _make_service(
     *,
     create_session: AsyncMock | None = None,
     list_active_sessions: AsyncMock | None = None,
+    project_slug: str = "demo",
 ) -> LogBugHunterService:
     async def _create_session(_cmd: object) -> dict[str, str]:
         return {"session_id": "sess-1"}
@@ -29,7 +30,8 @@ def _make_service(
         create_session=create_session or _create_session,
         list_active_sessions=list_active_sessions or _list_active_sessions,
         project_root=tmp_path,
-        state_path=tmp_path / "log-bug-hunter-state.json",
+        project_slug=project_slug,
+        state_path=tmp_path / f"{project_slug}.json",
     )
 
 
@@ -39,7 +41,7 @@ def test_has_candidate_error_signals_detects_traceback() -> None:
 
 
 def test_load_state_round_trips_serialized_fields(tmp_path: Path) -> None:
-    state_path = tmp_path / "log-bug-hunter-state.json"
+    state_path = tmp_path / "demo.json"
     state_path.write_text(
         json.dumps(
             {
@@ -71,7 +73,7 @@ async def test_maybe_dispatch_marks_clean_logs_without_dispatch(tmp_path: Path) 
         dispatched = await service.maybe_dispatch(now=datetime(2026, 4, 6, 8, 0, tzinfo=UTC))
 
     assert dispatched is False
-    state = json.loads((tmp_path / "log-bug-hunter-state.json").read_text(encoding="utf-8"))
+    state = json.loads((tmp_path / "demo.json").read_text(encoding="utf-8"))
     assert state["last_status"] == "clean"
     assert state["last_error"] is None
 
@@ -84,7 +86,7 @@ async def test_maybe_dispatch_records_failure_on_empty_output(tmp_path: Path) ->
         dispatched = await service.maybe_dispatch(now=datetime(2026, 4, 6, 8, 0, tzinfo=UTC))
 
     assert dispatched is False
-    state = json.loads((tmp_path / "log-bug-hunter-state.json").read_text(encoding="utf-8"))
+    state = json.loads((tmp_path / "demo.json").read_text(encoding="utf-8"))
     assert state["last_status"] == "failed"
     assert state["last_error"] == "log query returned no output"
 
@@ -103,15 +105,17 @@ async def test_maybe_dispatch_spawns_session_when_candidate_errors_present(tmp_p
 
     assert dispatched is True
     create_session.assert_awaited_once()
-    state = json.loads((tmp_path / "log-bug-hunter-state.json").read_text(encoding="utf-8"))
+    state = json.loads((tmp_path / "demo.json").read_text(encoding="utf-8"))
     assert state["last_status"] == "dispatched"
     assert state["last_session_id"] == "sess-99"
 
 
 @pytest.mark.asyncio
-async def test_maybe_dispatch_skips_when_log_bug_hunter_session_already_active(tmp_path: Path) -> None:
+async def test_maybe_dispatch_skips_when_same_project_session_already_active(tmp_path: Path) -> None:
+    """An active log_bug_hunter session for **this** project must block dispatch."""
+
     async def _list_active_sessions() -> list[SimpleNamespace]:
-        return [SimpleNamespace(job="log_bug_hunter")]
+        return [SimpleNamespace(job="log_bug_hunter", project_path=str(tmp_path))]
 
     create_session = AsyncMock(return_value={"session_id": "sess-should-not-run"})
     service = _make_service(tmp_path, create_session=create_session, list_active_sessions=_list_active_sessions)
@@ -125,5 +129,46 @@ async def test_maybe_dispatch_skips_when_log_bug_hunter_session_already_active(t
 
     assert dispatched is False
     create_session.assert_not_awaited()
-    state = json.loads((tmp_path / "log-bug-hunter-state.json").read_text(encoding="utf-8"))
+    state = json.loads((tmp_path / "demo.json").read_text(encoding="utf-8"))
     assert state["last_status"] == "already-running"
+
+
+@pytest.mark.asyncio
+async def test_maybe_dispatch_allows_dispatch_when_other_project_session_active(tmp_path: Path) -> None:
+    """A log_bug_hunter session for a **different** project must not block this one.
+
+    Regression guard for the round-2 review finding: the orchestrator passes the
+    same computer-wide session list into every per-project executor, so
+    ``_has_active_job_session`` has to scope its check to the executor's own
+    ``project_root`` — not just match on ``session.job``. Previously, the first
+    project to dispatch would starve every subsequent project in the catalog.
+    """
+    other_project_root = tmp_path / "other"
+    other_project_root.mkdir()
+    beta_project_root = tmp_path / "beta"
+    beta_project_root.mkdir()
+
+    async def _list_active_sessions() -> list[SimpleNamespace]:
+        return [SimpleNamespace(job="log_bug_hunter", project_path=str(other_project_root))]
+
+    create_session = AsyncMock(return_value={"session_id": "sess-beta"})
+    service = LogBugHunterService(
+        create_session=create_session,
+        list_active_sessions=_list_active_sessions,
+        project_root=beta_project_root,
+        project_slug="beta",
+        state_path=beta_project_root / "beta.json",
+    )
+
+    with patch.object(
+        service,
+        "_fetch_recent_logs",
+        AsyncMock(return_value=(True, "ERROR daemon blew up\nTraceback (most recent call last):")),
+    ):
+        dispatched = await service.maybe_dispatch(now=datetime(2026, 4, 6, 8, 0, tzinfo=UTC))
+
+    assert dispatched is True
+    create_session.assert_awaited_once()
+    state = json.loads((beta_project_root / "beta.json").read_text(encoding="utf-8"))
+    assert state["last_status"] == "dispatched"
+    assert state["last_session_id"] == "sess-beta"

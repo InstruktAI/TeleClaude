@@ -14,10 +14,11 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL
-from teleclaude.docs_index import extract_required_reads, get_project_name
+from teleclaude.docs_index import extract_required_reads, get_project_slug
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
-from teleclaude.project_manifest import load_manifest
 from teleclaude.required_reads import strip_required_reads_section
+from teleclaude.services.project_catalog import get_project_catalog_service
+from teleclaude.slug import normalize_slug
 from teleclaude.utils import resolve_project_config_path
 
 logger = get_logger(__name__)
@@ -192,17 +193,18 @@ def _output_scope(snippet: SnippetMeta, *, global_snippets_root: Path) -> str:
 
 
 def _load_manifest_by_name() -> dict[str, tuple[Path, Path, str]]:
-    """Map lowercase project name to (index_path, project_root, canonical_name)."""
+    """Map project slug to ``(index_path, project_root, canonical_slug)``.
+
+    Keys are slugs (the canonical machine identity) since cross-project
+    snippet ID prefixes are expected to be slugs after the registry
+    simplification. The canonical third tuple value is the slug itself so
+    that ``source_project`` comparisons throughout the module become
+    slug-based.
+    """
+    catalog = get_project_catalog_service()
     projects: dict[str, tuple[Path, Path, str]] = {}
-    for entry in load_manifest():
-        key = entry.name.strip().lower()
-        if not key:
-            continue
-        projects[key] = (
-            Path(entry.index_path).expanduser().resolve(),
-            Path(entry.project_root).expanduser().resolve(),
-            entry.name,
-        )
+    for node in catalog.list_projects():
+        projects[node.slug] = (node.docs_index_path, node.root, node.slug)
     return projects
 
 
@@ -477,18 +479,21 @@ def _resolve_requires(  # pylint: disable=too-many-locals
 
 
 def _build_project_catalog_output() -> str:
-    manifest_entries = sorted(load_manifest(), key=lambda entry: entry.name.lower())
+    catalog_nodes = sorted(
+        get_project_catalog_service().list_projects(),
+        key=lambda node: node.slug,
+    )
     parts = [
         "# PHASE 0: Project Catalog",
         "# Available projects registered in ~/.teleclaude/projects.yaml",
         "",
     ]
-    if not manifest_entries:
+    if not catalog_nodes:
         parts.append("No registered projects found.")
     else:
-        for entry in manifest_entries:
-            description = entry.description or "(no description)"
-            parts.append(f"{entry.name.lower()}: {description}")
+        for node in catalog_nodes:
+            description = (node.config.description or "").strip() or "(no description)"
+            parts.append(f"{node.slug}: {description}")
     parts.extend(
         [
             "",
@@ -505,7 +510,7 @@ def _load_selected_snippets(  # pylint: disable=too-many-arguments
     project_index: Path,
     global_index: Path,
     global_root: Path,
-    current_project_name: str,
+    current_project_slug: str,
     manifest_projects: dict[str, tuple[Path, Path, str]],
 ) -> list[SnippetMeta]:
     snippets = _load_index(
@@ -518,7 +523,7 @@ def _load_selected_snippets(  # pylint: disable=too-many-arguments
         snippets.extend(
             _load_index(
                 project_index,
-                source_project=current_project_name,
+                source_project=current_project_slug,
                 rewrite_project_prefix=False,
                 project_root=project_root,
             )
@@ -583,7 +588,7 @@ def _include_snippet_factory(  # pylint: disable=too-many-arguments
     effective_human_role: str | None,
     requested_ids: set[str],
     projects: list[str] | None,
-    current_project_name: str,
+    current_project_slug: str,
     global_snippets_root: Path,
     domain_config: dict[str, Path],
     project_domain_roots: dict[str, Path],
@@ -599,9 +604,7 @@ def _include_snippet_factory(  # pylint: disable=too-many-arguments
             )
         if snippet.scope != "project":
             return True
-        is_cross_project = (
-            bool(snippet.source_project) and snippet.source_project.lower() != current_project_name.lower()
-        )
+        is_cross_project = bool(snippet.source_project) and snippet.source_project.lower() != current_project_slug
         if requested_ids and snippet.snippet_id in requested_ids and is_cross_project:
             return True
         if projects and is_cross_project:
@@ -736,14 +739,23 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
     global_root = GLOBAL_SNIPPETS_DIR.parent.parent
     global_snippets_root = GLOBAL_SNIPPETS_DIR
 
-    # Resolve project name from config when available (avoids interior config loading)
+    # Resolve project slug from config when available (avoids interior config loading).
+    # The slug is the canonical cross-project identity: comparisons against
+    # ``snippet.source_project`` and cross-project prefix matching are all
+    # slug-based after the catalog service migration.
+    #
+    # When ``config`` is supplied but ``config.project`` is ``None`` (person
+    # workspace), ``teleclaude.yml`` is not a ``ProjectConfig`` and must not
+    # be re-read by ``get_project_slug`` — fall back to the directory name.
     if config is not None:
         if config.project is not None:
-            current_project_name = config.project.project_name or project_root.name
+            current_project_slug = config.project.project_slug or normalize_slug(
+                config.project.project_name or project_root.name
+            )
         else:
-            current_project_name = project_root.name
+            current_project_slug = normalize_slug(project_root.name)
     else:
-        current_project_name = get_project_name(project_root)
+        current_project_slug = get_project_slug(project_root)
 
     manifest_projects = _load_manifest_by_name() if (projects or snippet_ids) else {}
 
@@ -757,7 +769,7 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
         project_index=project_index,
         global_index=global_index,
         global_root=global_root,
-        current_project_name=current_project_name,
+        current_project_slug=current_project_slug,
         manifest_projects=manifest_projects,
     )
 
@@ -800,7 +812,7 @@ def build_context_output(  # pylint: disable=missing-function-docstring,too-many
         effective_human_role=effective_human_role,
         requested_ids=requested_ids,
         projects=projects,
-        current_project_name=current_project_name,
+        current_project_slug=current_project_slug,
         global_snippets_root=global_snippets_root,
         domain_config=domain_config,
         project_domain_roots=project_domain_roots,

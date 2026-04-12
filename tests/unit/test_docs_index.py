@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 import teleclaude.docs_index as docs_index
+from teleclaude.slug import normalize_slug
 
 
 def test_normalize_frontmatter_single_quotes_renders_scalar_values_as_strings() -> None:
@@ -82,7 +83,9 @@ def test_build_index_payload_for_global_root_includes_baseline_and_rewrites_path
     assert snippets["baseline/policy/shared"]["visibility"] == "internal"
     assert snippets["project/spec/api"]["path"] == "docs/spec/api.md"
     assert snippets["project/spec/api"]["visibility"] == "public"
-    assert {entry["source_project"] for entry in payload["snippets"]} == {project_root.name}
+    # ``source_project`` is the project slug (the canonical machine identity
+    # used for cross-project snippet lookups), not the raw directory name.
+    assert {entry["source_project"] for entry in payload["snippets"]} == {normalize_slug(project_root.name)}
 
 
 def test_write_third_party_index_yaml_writes_entries_and_removes_empty_index(tmp_path: Path) -> None:

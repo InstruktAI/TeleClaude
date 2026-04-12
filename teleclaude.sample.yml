@@ -1,4 +1,6 @@
 # teleclaude.yml
+# project_slug: your-project-slug
+# project_name: Your Project
 # business:
 #   domains:
 #     software-development: docs  # default

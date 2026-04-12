@@ -12,12 +12,14 @@ from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
 from teleclaude.install.configure_agent_cli import main as configure_agent_cli
+from teleclaude.project_manifest import register_root
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
 from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
+from teleclaude.slug import normalize_slug, validate_slug
 
 logger = get_logger(__name__)
 
@@ -176,6 +178,59 @@ def _offer_enrichment(project_root: Path) -> None:
             print("Skipping enrichment. You can run it later with: telec init")
 
 
+def _ensure_project_slug(project_root: Path) -> None:
+    """Ensure ``teleclaude.yml`` carries a valid ``project_slug`` entry.
+
+    ``project_slug`` is the canonical machine identity used by the project
+    catalog service, cross-project snippet resolution, and job subscription.
+    When the config file already defines a valid slug we leave it alone; when
+    absent, we derive one from ``project_name`` (or the directory name) and
+    persist it via an in-place rewrite that preserves surrounding keys.
+
+    This step runs **after** ``sync_project_artifacts`` so it can rely on
+    ``ensure_project_config`` having already materialized a bare
+    ``teleclaude.yml`` for fresh projects. Missing files and undecodable
+    YAML raise :class:`RuntimeError` — ``project_slug`` is a hard init
+    invariant, not an optional enhancement.
+    """
+    config_path = project_root / "teleclaude.yml"
+    if not config_path.exists():
+        raise RuntimeError(
+            f"cannot write project_slug: {config_path} does not exist after sync",
+        )
+
+    yaml_rt = YAML()
+    yaml_rt.preserve_quotes = True
+    try:
+        raw = yaml_rt.load(config_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        raise RuntimeError(f"cannot read {config_path} to write project_slug: {exc}") from exc
+    if not isinstance(raw, dict):
+        raw = {}
+
+    existing = raw.get("project_slug")
+    if isinstance(existing, str) and existing.strip():
+        try:
+            validate_slug(existing.strip())
+            return
+        except ValueError:
+            # Fall through and overwrite an invalid slug.
+            pass
+
+    seed = raw.get("project_name") if isinstance(raw.get("project_name"), str) else None
+    slug = normalize_slug(seed or project_root.name)
+    if not slug:
+        raise RuntimeError(
+            f"cannot derive a valid project_slug for {project_root}: "
+            "neither project_name nor the directory name normalized to a usable slug",
+        )
+
+    raw["project_slug"] = slug
+    buffer = io.StringIO()
+    yaml_rt.dump(raw, buffer)
+    config_path.write_text(buffer.getvalue(), encoding="utf-8")
+
+
 def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude.
 
@@ -189,7 +244,13 @@ def init_project(project_root: Path) -> None:
     setup_git_filters(project_root)
     update_gitattributes(project_root)
     install_precommit_hook(project_root)
+    # Sync runs first — ``ensure_project_config`` materializes a bare
+    # ``teleclaude.yml`` when the project is fresh. Only after that can
+    # ``_ensure_project_slug`` guarantee the canonical machine identity is
+    # present before the project is registered with the catalog.
     sync_project_artifacts(project_root)
+    _ensure_project_slug(project_root)
+    register_root(project_root=project_root)
     from teleclaude.project_setup.domain_seeds import seed_event_domains  # pylint: disable=import-outside-toplevel
 
     seed_event_domains(project_root)

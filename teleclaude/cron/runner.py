@@ -367,6 +367,105 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
         return False
 
 
+def _run_log_bug_hunter_orchestrated() -> bool:  # pylint: disable=too-many-locals
+    """Dispatch ``log_bug_hunter`` across all subscribed registered projects.
+
+    Unlike other agent jobs — which spawn a single session rooted at the
+    local repository — ``log_bug_hunter`` is cross-project by design. This
+    helper walks :class:`ProjectCatalogService`, filters projects whose
+    ``teleclaude.yml:jobs`` subscribes to ``log_bug_hunter``, and runs a
+    per-project :class:`LogBugHunterService` via :class:`ProjectJobOrchestrator`.
+    Returns ``True`` when the iteration completes without an uncaught
+    exception. Per-project failures are isolated and persisted by the
+    service's own state; they do not fail the whole job.
+    """
+    # Imports are local so that cron_runner startup stays lean and importing
+    # this module does not pull in the daemon API client at module load time.
+    from typing import cast  # pylint: disable=import-outside-toplevel
+
+    from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
+    from teleclaude.config import config as global_config  # pylint: disable=import-outside-toplevel
+    from teleclaude.constants import ROLE_SYSTEM  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.models import Session  # pylint: disable=import-outside-toplevel
+    from teleclaude.paths import LOG_BUG_HUNTER_STATE_DIR  # pylint: disable=import-outside-toplevel
+    from teleclaude.services.log_bug_hunter_service import (  # pylint: disable=import-outside-toplevel
+        LOG_BUG_HUNTER_JOB,
+        LogBugHunterService,
+    )
+    from teleclaude.services.project_catalog import (  # pylint: disable=import-outside-toplevel
+        ProjectNode,
+        get_project_catalog_service,
+    )
+    from teleclaude.services.project_jobs import ProjectJobOrchestrator  # pylint: disable=import-outside-toplevel
+    from teleclaude.types.commands import CreateSessionCommand  # pylint: disable=import-outside-toplevel
+
+    catalog = get_project_catalog_service()
+    catalog.refresh()
+    computer = global_config.computer.name
+
+    async def _orchestrate() -> bool:
+        client = TelecAPIClient()
+        await client.connect()
+        try:
+
+            async def _create_session(cmd: CreateSessionCommand) -> dict[str, str]:
+                intent = cmd.launch_intent
+                if intent is None:
+                    raise ValueError("log_bug_hunter dispatch requires a launch_intent")
+                response = await client.create_session(
+                    computer=computer,
+                    project_path=cmd.project_path,
+                    agent=intent.agent or "codex",
+                    thinking_mode=intent.thinking_mode or "fast",
+                    title=cmd.title or f"Job: {LOG_BUG_HUNTER_JOB}",
+                    message=intent.message or "",
+                    metadata={
+                        "system_role": cmd.system_role or ROLE_SYSTEM,
+                        "job": cmd.job or LOG_BUG_HUNTER_JOB,
+                        "job_type": "agent",
+                    },
+                )
+                return {"session_id": response.session_id}
+
+            async def _list_active_sessions() -> list[Session]:
+                # The service only reads ``session.job`` — ``SessionDTO`` carries
+                # the same attribute, so we cast at this narrow boundary instead
+                # of round-tripping through the core model.
+                dtos = await client.list_sessions(computer=computer)
+                return cast(list[Session], dtos)
+
+            async def _run_for_project(node: ProjectNode) -> bool:
+                service = LogBugHunterService(
+                    create_session=_create_session,
+                    list_active_sessions=_list_active_sessions,
+                    project_root=node.root,
+                    project_slug=node.slug,
+                    state_path=LOG_BUG_HUNTER_STATE_DIR / f"{node.slug}.json",
+                )
+                return await service.maybe_dispatch()
+
+            orchestrator = ProjectJobOrchestrator(
+                catalog=catalog,
+                job_slug=LOG_BUG_HUNTER_JOB,
+                run_for_project=_run_for_project,
+            )
+            results = await orchestrator.run_once()
+            logger.info(
+                "log_bug_hunter orchestration complete",
+                project_count=len(results),
+                dispatched=[slug for slug, dispatched in results if dispatched],
+            )
+            return True
+        finally:
+            await client.close()
+
+    try:
+        return asyncio.run(_orchestrate())
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.error("log_bug_hunter orchestration crashed", error=str(exc))
+        return False
+
+
 def _should_run_subscription_job(  # pylint: disable=too-many-branches
     job_name: str,
     state: CronState,
@@ -528,6 +627,17 @@ def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> JobResult:
     return JobResult(success=False, message=detail)
 
 
+def _dispatch_agent_job(job_name: str, schedule_config: JobScheduleConfig) -> bool:
+    """Route an agent-type job to the correct executor.
+
+    ``log_bug_hunter`` is cross-project and must walk the project catalog;
+    every other agent job spawns a single session rooted at the local repo.
+    """
+    if job_name == "log_bug_hunter":
+        return _run_log_bug_hunter_orchestrated()
+    return _run_agent_job(job_name, schedule_config)
+
+
 def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
     *,
     force: bool = False,
@@ -607,7 +717,7 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
             continue
 
         if is_agent_job:
-            success = _run_agent_job(job_name, schedule_config)
+            success = _dispatch_agent_job(job_name, schedule_config)
             if success:
                 state.mark_success(job_name)
             else:

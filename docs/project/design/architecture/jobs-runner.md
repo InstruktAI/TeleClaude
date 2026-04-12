@@ -116,14 +116,35 @@ other runners (log-bug-hunter) monitor daemon health.
 
 #### Components
 
-| Component   | Path                           | Role                                                               |
-| ----------- | ------------------------------ | ------------------------------------------------------------------ |
-| CLI entry   | `scripts/cron_runner.py`       | Argument parsing, logging setup, invokes engine                    |
-| Engine      | `teleclaude/cron/runner.py`    | Config loading, job discovery, schedule evaluation, execution loop |
-| State       | `teleclaude/cron/state.py`     | JSON persistence of per-job run history                            |
-| Discovery   | `teleclaude/cron/discovery.py` | Config-driven subscriber discovery for jobs                        |
-| Job base    | `jobs/base.py`                 | Abstract `Job` class, `JobResult`                                  |
-| Job modules | `jobs/*.py`                    | Concrete job implementations                                       |
+| Component                | Path                                               | Role                                                                            |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------- |
+| CLI entry                | `scripts/cron_runner.py`                           | Argument parsing, logging setup, invokes engine                                 |
+| Engine                   | `teleclaude/cron/runner.py`                        | Config loading, job discovery, schedule evaluation, execution loop              |
+| State                    | `teleclaude/cron/state.py`                         | JSON persistence of per-job run history                                         |
+| Discovery                | `teleclaude/cron/discovery.py`                     | Config-driven subscriber discovery for jobs                                     |
+| Project catalog          | `teleclaude/services/project_catalog/`             | Lazy, cached view of registered project roots + configs                         |
+| Project-job orchestrator | `teleclaude/services/project_jobs/orchestrator.py` | Generic: walks the catalog, filters by `config.jobs`, runs executor per project |
+| Job base                 | `jobs/base.py`                                     | Abstract `Job` class, `JobResult`                                               |
+| Job modules              | `jobs/*.py`                                        | Concrete job implementations                                                    |
+
+#### Cross-project iteration
+
+Jobs that fan out across all registered projects (e.g., `log_bug_hunter`) do
+**not** re-implement project discovery. They consume two shared services:
+
+1. `ProjectCatalogService` — lazy singleton that reads the root-only
+   `~/.teleclaude/projects.yaml` registry and hydrates each entry into a
+   `ProjectNode` (`root`, `slug`, loaded `teleclaude.yml` config).
+2. `ProjectJobOrchestrator` — generic iterator that takes a catalog, a target
+   `job_slug`, and an injected async `run_for_project(node)` callable. It
+   yields only projects whose `config.jobs` subscribes to `job_slug`, invokes
+   the runner per project, and isolates per-project exceptions so one broken
+   project cannot stop the rest.
+
+Per-job services (e.g., `LogBugHunterService`) are **one-project executors**.
+They accept `project_root` and `project_slug` and run a single iteration —
+the cross-project loop lives in `ProjectJobOrchestrator`, not inside the
+job service.
 
 ## Inputs/Outputs
 

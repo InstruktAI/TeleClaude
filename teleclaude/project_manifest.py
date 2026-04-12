@@ -1,10 +1,13 @@
-"""Manage the project manifest (projects.yaml) for multi-project discovery."""
+"""Root-only project registry persisted at ``~/.teleclaude/projects.yaml``.
+
+The manifest stores just the list of absolute project root paths. All metadata
+(project name, description, jobs, docs index path) lives in each project's own
+``teleclaude.yml`` and is loaded through the project catalog service.
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict, cast
 
 import yaml
 
@@ -13,56 +16,23 @@ from teleclaude.paths import PROJECTS_MANIFEST_PATH
 MANIFEST_PATH = PROJECTS_MANIFEST_PATH
 
 
-@dataclass(frozen=True)
-class ProjectManifestEntry:
-    """Single entry in the project manifest."""
-
-    name: str
-    description: str
-    index_path: str
-    project_root: str
-
-
-class ProjectManifestPayload(TypedDict):
-    """Wire format for a single manifest entry."""
-
-    name: str
-    description: str
-    index_path: str
-    project_root: str
-
-
-class ProjectManifestFile(TypedDict):
-    """Top-level manifest file schema."""
-
-    projects: list[ProjectManifestPayload]
-
-
 def _normalize_manifest_path(path: Path) -> Path:
     return path.expanduser().resolve()
 
 
-def _entry_from_raw(item: object) -> ProjectManifestEntry | None:
-    if not isinstance(item, dict):
-        return None
-    raw_item = cast(dict[str, object], item)  # guard: loose-dict - TOML parsed data — shape varies per manifest version
-    name = raw_item.get("name")
-    description = raw_item.get("description")
-    index_path = raw_item.get("index_path")
-    project_root = raw_item.get("project_root")
-    if not isinstance(name, str) or not isinstance(index_path, str) or not isinstance(project_root, str):
-        return None
-    if not isinstance(description, str):
-        description = ""
-    return ProjectManifestEntry(
-        name=name.strip(),
-        description=description.strip(),
-        index_path=str(Path(index_path).expanduser().resolve()),
-        project_root=str(Path(project_root).expanduser().resolve()),
-    )
+def _coerce_root(raw: object) -> Path | None:
+    """Accept either a string path or a legacy ``{project_root: ...}`` dict."""
+    if isinstance(raw, str):
+        text = raw.strip()
+        return Path(text).expanduser().resolve() if text else None
+    if isinstance(raw, dict):
+        candidate = raw.get("project_root")
+        if isinstance(candidate, str) and candidate.strip():
+            return Path(candidate).expanduser().resolve()
+    return None
 
 
-def _parse_manifest_data(raw_data: object) -> list[ProjectManifestEntry]:
+def _parse_manifest_data(raw_data: object) -> list[Path]:
     if isinstance(raw_data, dict):
         raw_entries = raw_data.get("projects")
     elif isinstance(raw_data, list):
@@ -72,19 +42,19 @@ def _parse_manifest_data(raw_data: object) -> list[ProjectManifestEntry]:
     if not isinstance(raw_entries, list):
         return []
 
-    entries: list[ProjectManifestEntry] = []
-    seen_roots: set[str] = set()
-    for raw_entry in raw_entries:
-        parsed = _entry_from_raw(raw_entry)
-        if not parsed or parsed.project_root in seen_roots:
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for entry in raw_entries:
+        root = _coerce_root(entry)
+        if root is None or root in seen:
             continue
-        seen_roots.add(parsed.project_root)
-        entries.append(parsed)
-    return entries
+        seen.add(root)
+        roots.append(root)
+    return roots
 
 
-def load_manifest(path: Path = MANIFEST_PATH) -> list[ProjectManifestEntry]:
-    """Load and filter manifest entries to those whose index files exist."""
+def load_roots(path: Path = MANIFEST_PATH) -> list[Path]:
+    """Load registered project roots whose directories still exist on disk."""
     manifest_path = _normalize_manifest_path(path)
     if not manifest_path.exists():
         return []
@@ -94,68 +64,33 @@ def load_manifest(path: Path = MANIFEST_PATH) -> list[ProjectManifestEntry]:
     except (yaml.YAMLError, OSError):
         return []
 
-    entries = _parse_manifest_data(raw_data)
-    live_entries: list[ProjectManifestEntry] = []
-    for entry in entries:
-        if Path(entry.index_path).exists():
-            live_entries.append(entry)
-    return live_entries
+    roots = _parse_manifest_data(raw_data)
+    return [root for root in roots if root.is_dir()]
 
 
-def register_project(  # pylint: disable=too-many-locals
-    path: Path,
-    project_root: Path,
-    project_name: str,
-    description: str,
-    index_path: Path,
-) -> None:
-    """Register or update a project in the manifest file."""
-    manifest_path = _normalize_manifest_path(path)
+def register_root(*, path: Path | None = None, project_root: Path) -> None:
+    """Idempotently append ``project_root`` to the registry file.
+
+    ``path`` defaults to the module-level ``MANIFEST_PATH`` when omitted. We
+    resolve the default at call time (not at function-definition time) so
+    tests that monkeypatch ``project_manifest.MANIFEST_PATH`` observe the
+    override without needing to reload the module.
+    """
+    manifest_path = _normalize_manifest_path(path if path is not None else MANIFEST_PATH)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
 
-    entries = load_manifest(manifest_path)
-    normalized_root = str(project_root.expanduser().resolve())
-    normalized_index = str(index_path.expanduser().resolve())
-    normalized_name = project_name.strip()
-    normalized_description = description.strip()
+    normalized = project_root.expanduser().resolve()
 
-    updated = False
-    next_entries: list[ProjectManifestEntry] = []
-    for entry in entries:
-        if entry.project_root == normalized_root:
-            next_entries.append(
-                ProjectManifestEntry(
-                    name=normalized_name,
-                    description=normalized_description,
-                    index_path=normalized_index,
-                    project_root=normalized_root,
-                )
-            )
-            updated = True
-            continue
-        next_entries.append(entry)
+    existing_raw: object = None
+    if manifest_path.exists():
+        try:
+            existing_raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
+        except (yaml.YAMLError, OSError):
+            existing_raw = None
 
-    if not updated:
-        next_entries.append(
-            ProjectManifestEntry(
-                name=normalized_name,
-                description=normalized_description,
-                index_path=normalized_index,
-                project_root=normalized_root,
-            )
-        )
+    roots = _parse_manifest_data(existing_raw)
+    if normalized not in roots:
+        roots.append(normalized)
 
-    next_entries.sort(key=lambda e: e.name.lower())
-    payload: ProjectManifestFile = {
-        "projects": [
-            {
-                "name": entry.name,
-                "description": entry.description,
-                "index_path": entry.index_path,
-                "project_root": entry.project_root,
-            }
-            for entry in next_entries
-        ]
-    }
-    dumped = yaml.safe_dump(payload, sort_keys=False)
-    manifest_path.write_text(dumped, encoding="utf-8")
+    payload = {"projects": [str(root) for root in roots]}
+    manifest_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")

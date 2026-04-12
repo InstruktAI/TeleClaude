@@ -21,6 +21,7 @@ from teleclaude.config.loader import load_project_config
 from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY_VALUES, TYPE_SUFFIX
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
+from teleclaude.slug import normalize_slug
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import load_domains
 
@@ -379,14 +380,28 @@ def ensure_project_config(project_root: Path) -> None:
     )
 
 
-def get_project_name(project_root: Path) -> str:
-    """Get project name from config or directory name."""
+def get_project_slug(project_root: Path) -> str:
+    """Return the canonical slug identifying *project_root*.
+
+    Priority:
+    1. ``config.project_slug`` when set in ``teleclaude.yml``.
+    2. Slugified ``config.project_name`` when available.
+    3. Slugified directory name as a final fallback.
+
+    The slug is the machine identity used as the ``source_project`` field
+    in ``index.yaml`` entries and as the cross-project prefix for snippet
+    IDs (e.g., ``alpha/spec/overview``). Falling back through name and
+    directory ensures projects authored before ``project_slug`` was
+    required still resolve to a stable, lowercase key.
+    """
     config_file = project_root / "teleclaude.yml"
     if config_file.exists():
         config = load_project_config(config_file)
+        if config.project_slug:
+            return config.project_slug
         if config.project_name:
-            return config.project_name
-    return project_root.name
+            return normalize_slug(config.project_name)
+    return normalize_slug(project_root.name)
 
 
 # ---------------------------------------------------------------------------
@@ -430,7 +445,7 @@ def check_global_collisions(  # pylint: disable=too-many-branches,too-many-local
             if snippet_id:
                 global_snippets[snippet_id] = source_project
 
-    current_project = get_project_name(project_root)
+    current_project = get_project_slug(project_root)
     collisions = []
     for snippet in snippets:
         snippet_id = snippet["id"]
@@ -557,9 +572,9 @@ def build_index_payload(  # pylint: disable=too-many-branches,too-many-locals,to
     snippets.sort(key=lambda e: e["id"])
     check_global_collisions(snippets, project_root, snippets_root)
 
-    project_name = get_project_name(project_root)
+    project_slug = get_project_slug(project_root)
     for snippet in snippets:
-        snippet["source_project"] = project_name
+        snippet["source_project"] = project_slug
 
     try:
         rel_path = snippets_root.relative_to(project_root)

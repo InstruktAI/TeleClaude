@@ -78,9 +78,30 @@ Source: `teleclaude/project_setup/hooks.py:install_precommit_hook()`
 Runs `telec sync` (warn-only mode) to build snippet indexes, inflate
 `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to agent runtimes.
 
+This step happens before slug persistence because `sync_project_artifacts()`
+materializes a bare `teleclaude.yml` for fresh projects. `telec init` then
+rewrites that file in place to guarantee `project_slug` exists before the
+project is registered.
+
 Source: `teleclaude/project_setup/sync.py:sync_project_artifacts()`
 
-### 8. Seed event domains
+### 8. Ensure `project_slug` and register the project root
+
+Reads `teleclaude.yml`, ensures `project_slug` is set (deriving one from
+`project_name` or the directory name via `normalize_slug` when missing or
+invalid), and writes it back in place using comment-preserving YAML. Then
+appends the absolute project root to `~/.teleclaude/projects.yaml`
+idempotently.
+
+`telec init` is the **sole** writer of the project registry. `telec sync`
+must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
+is visible to `ProjectCatalogService` and every consumer that iterates
+projects (docs cross-project namespace, job orchestration, etc.).
+
+Source: `teleclaude/project_setup/init_flow.py:_ensure_project_slug()`
+and `teleclaude/project_manifest.py:register_root()`
+
+### 9. Seed event domains
 
 Merges default event domain configurations into the global config
 (`~/.teleclaude/teleclaude.yml`) under `event_domains.domains`. Idempotent — skips
@@ -91,7 +112,7 @@ that all projects share.
 
 Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
-### 9. Install file watchers
+### 10. Install file watchers
 
 Installs a platform-specific file watcher that triggers `telec sync` (or `telec watch`)
 when docs, agents, or config files change:
@@ -103,7 +124,7 @@ when docs, agents, or config files change:
 
 Source: `teleclaude/project_setup/sync.py:install_docs_watch()`
 
-### 10. Release channel enrollment (interactive)
+### 11. Release channel enrollment (interactive)
 
 Prompts for the deployment release channel (`alpha`/`beta`/`stable`) and persists the
 choice to `teleclaude.yml` under `deployment.channel`. Stable channel requires a
@@ -111,7 +132,7 @@ choice to `teleclaude.yml` under `deployment.channel`. Stable channel requires a
 
 Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 
-### 11. AI-driven project enrichment (interactive)
+### 12. AI-driven project enrichment (interactive)
 
 Detects whether the project already has `telec-init` generated snippets:
 
@@ -132,6 +153,7 @@ Source: `teleclaude/project_setup/init_flow.py:_offer_enrichment()`
 
 - Agent hooks and wrappers installed globally.
 - Git filters, `.gitattributes`, and pre-commit hooks configured for the project.
+- `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
 - Artifacts synced and indexes built.
 - Event domains seeded in global config (if not already populated).
 - File watcher installed for the project.

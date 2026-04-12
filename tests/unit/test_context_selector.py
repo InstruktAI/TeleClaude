@@ -144,8 +144,8 @@ def test_build_context_output_emits_requested_public_body_and_denied_private_sni
     )
     monkeypatch.setattr(
         context_selector,
-        "get_project_name",
-        lambda _root: "Alpha",  # pyright: ignore[reportUnknownLambdaType]
+        "get_project_slug",
+        lambda _root: "alpha",  # pyright: ignore[reportUnknownLambdaType]
     )
 
     output = context_selector.build_context_output(

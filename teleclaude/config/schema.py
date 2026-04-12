@@ -9,6 +9,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from teleclaude.events.domain_config import DomainsConfig
+from teleclaude.slug import validate_slug
 
 
 class AgentDispatchConfig(BaseModel):
@@ -298,6 +299,7 @@ class ProjectConfig(BaseModel):
     """Project-level configuration."""
 
     model_config = ConfigDict(extra="allow")
+    project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
     business: BusinessConfig = BusinessConfig()
@@ -307,6 +309,22 @@ class ProjectConfig(BaseModel):
     integrator: IntegratorConfig = IntegratorConfig()
     channel_subscriptions: list[ChannelSubscription] = []
     deployment: DeploymentConfig = DeploymentConfig()
+
+    @field_validator("project_slug")
+    @classmethod
+    def validate_project_slug(cls, value: str | None) -> str | None:
+        """Enforce slug format when the field is set.
+
+        Empty/missing values are accepted here so legacy configs still load;
+        ``telec init`` fills the value during registration.
+        """
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            return None
+        validate_slug(stripped)
+        return stripped
 
     @model_validator(mode="before")
     @classmethod

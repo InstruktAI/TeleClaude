@@ -89,3 +89,23 @@ class TestSchemaValidators:
     def test_person_config_rejects_project_only_keys(self) -> None:
         with pytest.raises(ValidationError, match="Keys not allowed at per-person level: business"):
             PersonConfig.model_validate({"business": {}})
+
+    @pytest.mark.unit
+    def test_project_slug_defaults_to_none_for_legacy_configs(self) -> None:
+        config = ProjectConfig.model_validate({"project_name": "Alpha"})
+        assert config.project_slug is None
+
+    @pytest.mark.unit
+    def test_project_slug_accepts_well_formed_slug_and_trims_whitespace(self) -> None:
+        config = ProjectConfig.model_validate({"project_slug": "  alpha-one  "})
+        assert config.project_slug == "alpha-one"
+
+    @pytest.mark.unit
+    def test_project_slug_rejects_invalid_characters(self) -> None:
+        with pytest.raises(ValidationError, match="Invalid slug"):
+            ProjectConfig.model_validate({"project_slug": "Alpha One"})
+
+    @pytest.mark.unit
+    def test_project_slug_empty_string_is_normalized_to_none(self) -> None:
+        config = ProjectConfig.model_validate({"project_slug": "   "})
+        assert config.project_slug is None

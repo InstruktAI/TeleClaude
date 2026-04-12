@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -114,7 +113,6 @@ class TestSyncBootstrapOrdering:
         monkeypatch.setattr(sync, "get_errors", lambda: [])
         monkeypatch.setattr(sync, "clear_errors", lambda: None)
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _: None)
-        monkeypatch.setattr(sync, "_register_project_manifest", lambda _: None)
 
         def fake_build_all_indexes(_: Path) -> list[Path]:
             call_order.append("build_all_indexes")
@@ -133,36 +131,35 @@ class TestSyncBootstrapOrdering:
         assert call_order.index("build_all_indexes") < call_order.index("_run_distribute")
 
 
-class TestRegisterProjectManifest:
-    def test_uses_trimmed_project_name_and_description(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        config_path = tmp_path / "teleclaude.yml"
-        config_path.write_text("project: demo", encoding="utf-8")
-        calls: list[tuple[Path, Path, str, str, Path]] = []
+class TestSyncDoesNotRegisterProject:
+    """Post-migration: ``telec sync`` MUST NOT write to the project registry.
 
-        def fake_load_project_config(path: Path) -> SimpleNamespace:
-            assert path == config_path
-            return SimpleNamespace(project_name=" Demo ", description=" Example ")
+    Registration is now owned exclusively by ``telec init``. The registry
+    module and its public symbols must not appear anywhere in ``sync``.
+    """
 
-        def fake_register_project(
-            path: Path,
-            project_root: Path,
-            project_name: str,
-            description: str,
-            index_path: Path,
-        ) -> None:
-            calls.append((path, project_root, project_name, description, index_path))
+    def test_sync_module_does_not_import_project_manifest(self) -> None:
+        source = Path(sync.__file__).read_text(encoding="utf-8")
+        assert "project_manifest" not in source
+        assert "register_project" not in source
+        assert "register_root" not in source
 
-        monkeypatch.setattr(sync, "load_project_config", fake_load_project_config)
-        monkeypatch.setattr(sync, "register_project", fake_register_project)
+    def test_sync_pipeline_does_not_touch_manifest_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        """The sync pipeline must never write to ``~/.teleclaude/projects.yaml``."""
+        from teleclaude import project_manifest  # pylint: disable=import-outside-toplevel
 
-        sync._register_project_manifest(tmp_path)
+        manifest_path = tmp_path / "state" / "projects.yaml"
+        monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 
-        assert calls == [
-            (
-                sync.MANIFEST_PATH,
-                tmp_path,
-                "Demo",
-                "Example",
-                tmp_path / "docs" / "project" / "index.yaml",
-            )
-        ]
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
+        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _: None)
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _: None)
+        monkeypatch.setattr(sync, "build_all_indexes", lambda _: [])
+        monkeypatch.setattr(sync, "_run_distribute", lambda _pr, **_kw: None)
+
+        assert sync.sync(tmp_path / "project") is True
+        assert not manifest_path.exists()

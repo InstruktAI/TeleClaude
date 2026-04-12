@@ -178,7 +178,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _pr: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _pr: [])
         monkeypatch.setattr(sync, "build_all_indexes", lambda _pr: [])
-        monkeypatch.setattr(sync, "_register_project_manifest", lambda _pr: None)
         monkeypatch.setattr(sync, "_run_distribute", lambda _pr, **_kw: None)
 
         m.clear_errors()
