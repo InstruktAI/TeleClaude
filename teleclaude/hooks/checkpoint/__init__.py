@@ -138,6 +138,12 @@ def run_heuristics(
         if not category.instruction:
             continue  # e.g., hook runtime — no action needed
 
+        # Daemon restart is a main-branch concern. Off main (worktree branches),
+        # the running daemon is installed from main and unaffected by worktree
+        # edits; restart is the integrator's responsibility after merge.
+        if "make restart" in category.instruction and not result.on_main:
+            continue
+
         evidence_seen = False
         if category.evidence_substrings:
             if category.evidence_must_follow_last_mutation:
@@ -348,7 +354,7 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
             scope="turn",
         )
 
-        touched_files, _saw_mutation_signal = _extract_turn_file_signals(timeline, project_path)
+        touched_files, _ = _extract_turn_file_signals(timeline, project_path)
         effective_files = sorted(touched_files)
 
         # Intentionally no full-session fallback:

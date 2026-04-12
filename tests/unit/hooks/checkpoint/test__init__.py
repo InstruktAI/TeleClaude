@@ -105,6 +105,53 @@ class TestRunHeuristics:
 
         assert result.on_main is False
 
+    @pytest.mark.unit
+    def test_daemon_code_off_main_suppresses_make_restart(self) -> None:
+        """Workers on branch/worktree must not be told to restart the daemon.
+
+        The running daemon is installed from main; worktree edits do not affect
+        it until integration. Restart is the integrator's concern.
+        """
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["teleclaude/core/daemon.py"], timeline, context)
+
+        assert not any("make restart" in action for action in result.required_actions)
+        assert not any("make status" in action for action in result.required_actions)
+
+    @pytest.mark.unit
+    def test_config_off_main_suppresses_make_restart(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["config.yml"], timeline, context)
+
+        assert not any("make restart" in action for action in result.required_actions)
+
+    @pytest.mark.unit
+    def test_daemon_code_on_main_still_requires_make_restart(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics(["teleclaude/core/daemon.py"], timeline, context)
+
+        assert any("make restart" in action for action in result.required_actions)
+
+    @pytest.mark.unit
+    def test_tui_reload_instruction_still_fires_off_main(self) -> None:
+        """Only daemon restart is main-gated; TUI reload applies regardless of branch."""
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["teleclaude/cli/tui/app.py"], timeline, context)
+
+        assert any("SIGUSR2" in action or "USR2" in action for action in result.required_actions)
+
 
 class TestCommitInstruction:
     @pytest.mark.unit
