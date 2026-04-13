@@ -339,7 +339,6 @@ clearance_todos_create = require_clearance("telec todo co-create")
 clearance_todos_prepare = require_clearance("telec todo prepare")
 clearance_todos_work = require_clearance("telec todo work")
 clearance_todos_integrate = require_clearance("telec todo integrate")
-clearance_todos_mark_phase = require_clearance("telec todo mark-phase")
 clearance_todos_set_deps = require_clearance("telec todo set-deps")
 clearance_operations_get = require_clearance("telec operations get")
 clearance_agents_status = require_clearance("telec agents status")
@@ -377,7 +376,6 @@ __all__ = [
     "clearance_sessions_widget",
     "clearance_todos_create",
     "clearance_todos_integrate",
-    "clearance_todos_mark_phase",
     "clearance_todos_prepare",
     "clearance_todos_set_deps",
     "clearance_todos_work",

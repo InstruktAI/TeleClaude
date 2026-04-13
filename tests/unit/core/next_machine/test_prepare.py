@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.core.next_machine._types import PreparePhase
 from teleclaude.core.next_machine.prepare import next_prepare
 
 _PREPARE = "teleclaude.core.next_machine.prepare"
@@ -17,7 +16,7 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
     db = AsyncMock()
     db.slug_in_roadmap = AsyncMock(return_value=overrides.get("in_roadmap", True))
     db.add_to_roadmap = AsyncMock(return_value=True)
-    db.read_state = AsyncMock(return_value=overrides.get("state", {"current": "input_assessment"}))
+    db.read_state = AsyncMock(return_value=overrides.get("state", {"schema_version": 1, "phase": "pending"}))
     db.write_state = AsyncMock()
     return db
 
@@ -26,7 +25,7 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
 async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
     """next_prepare must resolve worktree paths to the project root."""
     db = AsyncMock()
-    todos_db = _mock_todos_db(state={"current": PreparePhase.GATE.value})
+    todos_db = _mock_todos_db(state={"schema_version": 1, "phase": "in_progress"})
 
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo") as mock_resolve,
@@ -74,7 +73,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
 @pytest.mark.asyncio
 async def test_next_prepare_uses_derived_phase_and_returns_dispatch_instruction() -> None:
     db = AsyncMock()
-    todos_db = _mock_todos_db(state={"current": PreparePhase.GATE.value})
+    todos_db = _mock_todos_db(state={"schema_version": 1, "phase": "in_progress"})
 
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),

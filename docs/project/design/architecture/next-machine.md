@@ -63,7 +63,7 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- Phase completion marks via mark_phase tool
+- Phase derived from stamped primitives (verdicts, DOR, grounding, git commits)
 - Dependency resolution via set_dependencies tool
 
 ## Invariants
@@ -200,5 +200,5 @@ sequenceDiagram
 - **Git Not Available**: Worktree commands fail. Machine returns error; manual git setup required.
 - **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.
-- **Phase Mark Failure**: mark_phase tool fails due to uncommitted changes. Worker must commit before marking.
+- **Stamp Failure**: `telec todo stamp` fails due to validation (e.g., uncommitted changes for finalize-ready). Worker must resolve before stamping.
 - **Finalize Contention**: Multiple orchestrators reach finalize simultaneously. Serialized by the singleton integrator's lease; each candidate is queued and processed in order.

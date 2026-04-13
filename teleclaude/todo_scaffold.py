@@ -616,7 +616,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         RuntimeError: If scaffold push or worktree creation fails
     """
     from teleclaude.core.next_machine.slug_resolution import set_item_phase  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_io import mark_phase  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_io import apply_prepared_state  # pylint: disable=import-outside-toplevel
     from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
         _create_or_attach_worktree,
         _decide_worktree_prep,
@@ -720,7 +720,7 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
     finally:
         _from_main_conn.close()
 
-    # --- 5h. Write DB artifacts (mark_phase "prepared" validates their existence) ---
+    # --- 5h. Write DB artifacts (apply_prepared_state validates their existence) ---
     import hashlib as _hashlib  # pylint: disable=import-outside-toplevel
 
     _art_db = _get_todos_db_sync(worktree_cwd)
@@ -749,9 +749,11 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         _art_conn.close()
 
     # --- 5i. Set state for review dispatch (before cleaning main — atomic) ---
+    # apply_prepared_state stamps DOR, grounding baseline, and prepare review
+    # verdicts so derive_prepare_phase resolves to PREPARED. The build handoff
+    # commit above means derive_work_phase resolves to BUILD_COMPLETE naturally.
     set_item_phase(worktree_cwd, slug, "in_progress")
-    mark_phase(worktree_cwd, slug, "prepared")
-    mark_phase(worktree_cwd, slug, "build_complete")
+    apply_prepared_state(worktree_cwd, slug)
 
     # --- 5h. Clean main working tree (only after all worktree operations succeed) ---
     _clean_main_working_tree(repo, project_root, modified_files, untracked_files, added_files)

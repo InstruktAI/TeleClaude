@@ -82,8 +82,9 @@ class TestHandleTodoStamp:
         from teleclaude.cli.telec.handlers.todo import _handle_todo_stamp
 
         with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
-            _handle_todo_stamp(["my-slug", "--verdict", "approve"])
+            _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "requirements_review"])
 
         body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
         assert body["stamp_type"] == "verdict"
         assert body["value"] == "approve"
+        assert body["phase"] == "requirements_review"

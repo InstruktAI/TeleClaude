@@ -38,16 +38,10 @@ from teleclaude.core.next_machine._types import (
     DOR_READY_THRESHOLD as DOR_READY_THRESHOLD,
 )
 from teleclaude.core.next_machine._types import (
-    FINDING_ID_PATTERN as FINDING_ID_PATTERN,
-)
-from teleclaude.core.next_machine._types import (
     NEXT_WORK_PHASE_LOG as NEXT_WORK_PHASE_LOG,
 )
 from teleclaude.core.next_machine._types import (
     PAREN_OPEN as PAREN_OPEN,
-)
-from teleclaude.core.next_machine._types import (
-    REVIEW_APPROVE_MARKER as REVIEW_APPROVE_MARKER,
 )
 from teleclaude.core.next_machine._types import (
     REVIEW_DIFF_NOTE as REVIEW_DIFF_NOTE,
@@ -103,19 +97,10 @@ from teleclaude.core.next_machine.build_gates import (
     _count_test_failures as _count_test_failures,
 )
 from teleclaude.core.next_machine.build_gates import (
-    _extract_checklist_section as _extract_checklist_section,
-)
-from teleclaude.core.next_machine.build_gates import (
-    _is_review_findings_template as _is_review_findings_template,
-)
-from teleclaude.core.next_machine.build_gates import (
     format_build_gate_failure as format_build_gate_failure,
 )
 from teleclaude.core.next_machine.build_gates import (
     run_build_gates as run_build_gates,
-)
-from teleclaude.core.next_machine.build_gates import (
-    verify_artifacts as verify_artifacts,
 )
 
 # ── top-level state machines ───────────────────────────────────────────────────
@@ -185,20 +170,11 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.output_formatting import (
     format_uncommitted_changes as format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.path_checks import (
-    _is_scaffold_template as _is_scaffold_template,
-)
-from teleclaude.core.next_machine.path_checks import (
-    check_file_has_content as check_file_has_content,
-)
 from teleclaude.core.next_machine.prepare import next_prepare as next_prepare
 
 # ── prepare events ────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.prepare_events import (
     _emit_prepare_event as _emit_prepare_event,
-)
-from teleclaude.core.next_machine.prepare_events import (
-    _has_test_spec_artifacts as _has_test_spec_artifacts,
 )
 from teleclaude.core.next_machine.prepare_events import (
     invalidate_stale_preparations as invalidate_stale_preparations,
@@ -217,9 +193,6 @@ from teleclaude.core.next_machine.slug_resolution import (
     get_item_phase as get_item_phase,
 )
 from teleclaude.core.next_machine.slug_resolution import (
-    is_ready_for_work as is_ready_for_work,
-)
-from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root as resolve_canonical_project_root,
 )
 from teleclaude.core.next_machine.slug_resolution import (
@@ -234,10 +207,13 @@ from teleclaude.core.next_machine.slug_resolution import (
 
 # ── state I/O ──────────────────────────────────────────────────────────────────
 from teleclaude.core.next_machine.state_io import (
-    _PREPARE_ARTIFACT_PHASES as _PREPARE_ARTIFACT_PHASES,
+    _BUILD_VERDICT_PHASE as _BUILD_VERDICT_PHASE,
 )
 from teleclaude.core.next_machine.state_io import (
-    _PREPARE_PHASE_VALUES as _PREPARE_PHASE_VALUES,
+    _BUILD_VERDICT_VALUES as _BUILD_VERDICT_VALUES,
+)
+from teleclaude.core.next_machine.state_io import (
+    _PREPARE_ARTIFACT_PHASES as _PREPARE_ARTIFACT_PHASES,
 )
 from teleclaude.core.next_machine.state_io import (
     _PREPARE_VERDICT_PHASES as _PREPARE_VERDICT_PHASES,
@@ -246,7 +222,7 @@ from teleclaude.core.next_machine.state_io import (
     _PREPARE_VERDICT_VALUES as _PREPARE_VERDICT_VALUES,
 )
 from teleclaude.core.next_machine.state_io import (
-    check_review_status as check_review_status,
+    apply_prepared_state as apply_prepared_state,
 )
 from teleclaude.core.next_machine.state_io import (
     get_state_path as get_state_path,
@@ -256,18 +232,6 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     is_bug_todo as is_bug_todo,
-)
-from teleclaude.core.next_machine.state_io import (
-    is_build_complete as is_build_complete,
-)
-from teleclaude.core.next_machine.state_io import (
-    is_review_approved as is_review_approved,
-)
-from teleclaude.core.next_machine.state_io import (
-    is_review_changes_requested as is_review_changes_requested,
-)
-from teleclaude.core.next_machine.state_io import (
-    mark_phase as mark_phase,
 )
 from teleclaude.core.next_machine.state_io import (
     read_breakdown_state as read_breakdown_state,
@@ -280,6 +244,9 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     stamp_artifact as stamp_artifact,
+)
+from teleclaude.core.next_machine.state_io import (
+    stamp_finalize_ready as stamp_finalize_ready,
 )
 from teleclaude.core.next_machine.state_io import (
     stamp_verdict as stamp_verdict,

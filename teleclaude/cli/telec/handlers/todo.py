@@ -26,7 +26,6 @@ __all__ = [
     "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_validate",
-    "_handle_todo_verify_artifacts",
 ]
 
 
@@ -34,10 +33,10 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     """Handle telec todo mark-ready <slug> [<slug> ...].
 
     Fast-track one or more TODOs to work-ready state, bypassing the full prepare lifecycle.
-    Validates required artifacts exist, then targets the 'prepared' state which stamps
-    DOR, grounding, and review verdicts.
+    Validates required artifacts exist, then stamps DOR, grounding, and review verdicts so
+    ``derive_prepare_phase`` resolves to ``PREPARED``.
     """
-    from teleclaude.core.next_machine.state_io import mark_phase
+    from teleclaude.core.next_machine.state_io import apply_prepared_state
 
     if not args:
         print("Usage: telec todo mark-ready <slug> [<slug> ...]")
@@ -52,7 +51,7 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     failed = 0
     for slug in slugs:
         try:
-            mark_phase(cwd, slug, "prepared")
+            apply_prepared_state(cwd, slug)
             print(f"✓ {slug} fast-tracked to work-ready (prepared)")
         except (ValueError, FileNotFoundError) as exc:
             print(str(exc))
@@ -67,7 +66,6 @@ def _handle_todo(args: list[str]) -> None:
     from teleclaude.cli.tool_commands import (
         handle_todo_create,
         handle_todo_integrate,
-        handle_todo_mark_phase,
         handle_todo_prepare,
         handle_todo_set_deps,
         handle_todo_work,
@@ -90,12 +88,8 @@ def _handle_todo(args: list[str]) -> None:
         handle_todo_work(args[1:])
     elif subcommand == "integrate":
         handle_todo_integrate(args[1:])
-    elif subcommand == "mark-phase":
-        handle_todo_mark_phase(args[1:])
     elif subcommand == "set-deps":
         handle_todo_set_deps(args[1:])
-    elif subcommand == "verify-artifacts":
-        _handle_todo_verify_artifacts(args[1:])
     elif subcommand == "dump":
         _handle_todo_dump(args[1:])
     elif subcommand == "split":
@@ -155,50 +149,6 @@ def _handle_todo_validate(args: list[str]) -> None:
         print(f"✓ Todo {slug} is valid")
     else:
         print("✓ All active todos are valid")
-
-
-def _handle_todo_verify_artifacts(args: list[str]) -> None:
-    """Handle telec todo verify-artifacts <slug> --phase <build|review>."""
-    from teleclaude.core.next_machine.core import is_bug_todo, verify_artifacts
-
-    slug: str | None = None
-    phase: str | None = None
-    cwd = str(Path.cwd())
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg in ("--phase",) and i + 1 < len(args):
-            phase = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "verify-artifacts"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "verify-artifacts"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if slug is None:
-        print("Missing required argument: <slug>")
-        print(_usage("todo", "verify-artifacts"))
-        raise SystemExit(1)
-    if phase is None:
-        print("Missing required flag: --phase <build|review>")
-        print(_usage("todo", "verify-artifacts"))
-        raise SystemExit(1)
-    if phase not in ("build", "review"):
-        print(f"Invalid phase: {phase!r} (expected 'build' or 'review')")
-        raise SystemExit(1)
-
-    is_bug = is_bug_todo(cwd, slug)
-    passed, report = verify_artifacts(cwd, slug, phase, is_bug=is_bug)
-    print(report)
-    raise SystemExit(0 if passed else 1)
 
 
 def _handle_todo_dump(args: list[str]) -> None:
@@ -574,10 +524,20 @@ def _handle_artifacts_write(args: list[str]) -> None:
 
 
 def _handle_todo_stamp(args: list[str]) -> None:
-    """Handle telec todo stamp <slug> --verdict|--build|--dor-score|--dor-status|--grounding-invalidated."""
+    """Handle telec todo stamp.
+
+    Supported flag combinations:
+      --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
+      --dor-score <n> [--dor-status <s>]
+      --dor-status <s>
+      --grounding-invalidated
+      --specs-built
+      --finalize-ready
+    """
     slug: str | None = None
     stamp_type: str | None = None
     value: str | None = None
+    phase: str | None = None
     dor_score: str | None = None
     dor_status: str | None = None
 
@@ -588,9 +548,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
             stamp_type = "verdict"
             value = args[i + 1]
             i += 2
-        elif arg == "--build" and i + 1 < len(args):
-            stamp_type = "build"
-            value = args[i + 1]
+        elif arg == "--phase" and i + 1 < len(args):
+            phase = args[i + 1]
             i += 2
         elif arg == "--dor-score" and i + 1 < len(args):
             dor_score = args[i + 1]
@@ -601,6 +560,14 @@ def _handle_todo_stamp(args: list[str]) -> None:
         elif arg == "--grounding-invalidated":
             stamp_type = "grounding"
             value = "invalid"
+            i += 1
+        elif arg == "--specs-built":
+            stamp_type = "specs_built"
+            value = "true"
+            i += 1
+        elif arg == "--finalize-ready":
+            stamp_type = "finalize_ready"
+            value = ""
             i += 1
         elif not arg.startswith("-"):
             slug = arg
@@ -619,19 +586,36 @@ def _handle_todo_stamp(args: list[str]) -> None:
         value = ",".join(parts)
 
     if not slug:
-        print("Usage: telec todo stamp <slug> --verdict approve|needs_work")
+        print("Usage: telec todo stamp <slug> --verdict approve --phase <phase>")
         raise SystemExit(1)
-    if not stamp_type or not value:
-        print("Missing stamp flag (--verdict, --build, --dor-score, --dor-status, --grounding-invalidated)")
+    if not stamp_type:
+        print(
+            "Missing stamp flag (--verdict, --dor-score, --dor-status, "
+            "--grounding-invalidated, --specs-built, --finalize-ready)"
+        )
         raise SystemExit(1)
+    if stamp_type == "verdict" and not phase:
+        print("--verdict requires --phase <phase>")
+        raise SystemExit(1)
+
+    body: dict[str, str] = {
+        "stamp_type": stamp_type,
+        "value": value or "",
+        "cwd": str(Path.cwd()),
+    }
+    if phase:
+        body["phase"] = phase
 
     result = tool_api_request(
         "POST",
         f"/todos/stamp/{slug}",
-        json_body={"stamp_type": stamp_type, "value": value, "cwd": str(Path.cwd())},
+        json_body=body,
     )
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Stamped {stamp_type}={value} for {slug}")
+        label = f"{stamp_type}={value}" if value else stamp_type
+        if phase:
+            label = f"{label} phase={phase}"
+        print(f"Stamped {label} for {slug}")
     else:
         print(result)
 

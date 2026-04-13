@@ -10,7 +10,6 @@ dependencies arise from sub-modules importing from core.py.
 
 from __future__ import annotations
 
-import re
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
@@ -78,6 +77,24 @@ class PreparePhase(str, Enum):
     BLOCKED = "blocked"
 
 
+class WorkPhase(str, Enum):
+    """Derived work lifecycle phases.
+
+    Phase is never cached in state; it is derived from primitives (stamped
+    verdicts, git commits, gate runs) on every next_work loop iteration.
+    """
+
+    BUILD_STARTED = "build_started"
+    BUILD_COMPLETE = "build_complete"
+    REVIEW_CHANGES_REQUESTED = "review_changes_requested"
+    REVIEW_APPROVED = "review_approved"
+    FINALIZE_READY = "finalize_ready"
+    HANDED_OFF = "handed_off"
+
+
+WORK_PHASE_ORDER: list[str] = [phase.value for phase in WorkPhase]
+
+
 class CreativePhase(str, Enum):
     """All valid creative lifecycle phases for the state machine."""
 
@@ -100,6 +117,7 @@ class CreativePhase(str, Enum):
 
 
 _PREPARE_LOOP_LIMIT = 20
+_WORK_LOOP_LIMIT = 10
 
 DOR_READY_THRESHOLD = 8
 
@@ -111,10 +129,8 @@ class WorktreeScript(str, Enum):
 
 
 SCRIPTS_KEY = "scripts"
-REVIEW_APPROVE_MARKER = "[x] APPROVE"
 PAREN_OPEN = "("
 DEFAULT_MAX_REVIEW_ROUNDS = 3
-FINDING_ID_PATTERN = re.compile(r"\bR\d+-F\d+\b")
 NEXT_WORK_PHASE_LOG = "NEXT_WORK_PHASE"
 _PREP_STATE_VERSION = 1
 _WORKTREE_PREP_STATE_REL = ".teleclaude/worktree-prep-state.json"

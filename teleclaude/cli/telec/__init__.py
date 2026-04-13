@@ -97,7 +97,6 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_remove,
     _handle_todo_split,
     _handle_todo_validate,
-    _handle_todo_verify_artifacts,
 )
 
 # Re-export help functions
@@ -212,7 +211,6 @@ __all__ = [
     "_handle_todo_remove",
     "_handle_todo_split",
     "_handle_todo_validate",
-    "_handle_todo_verify_artifacts",
     "_handle_version",
     "_handle_watch",
     "_handle_whoami",

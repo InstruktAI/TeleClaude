@@ -203,7 +203,7 @@ sequenceDiagram
     B->>B: Satisfy test specs, implement tasks, commit per task
     B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
-    O->>O: telec todo mark-phase slug --build complete
+    O->>O: telec todo work slug (re-derives BUILD_COMPLETE from gates)
     O->>O: telec sessions end builder-session
 
     O->>SM: telec todo work slug
@@ -214,7 +214,7 @@ sequenceDiagram
     R->>R: Run review lanes (code, tests, security, types, ...)
     R->>R: Write review-findings.md
     R-->>O: REVIEW COMPLETE: slug - Verdict: APPROVE
-    O->>O: telec todo mark-phase slug --review approved
+    O->>O: telec todo stamp slug --verdict approve --phase build_review
     O->>O: telec sessions end reviewer-session
 
     O->>SM: telec todo work slug
@@ -251,7 +251,7 @@ sequenceDiagram
     Note over O,F: Review Round 1
     O->>R: telec sessions run --command /next-review-build --args slug --mode slow
     R-->>O: Verdict: REQUEST CHANGES (3 findings)
-    O->>O: telec todo mark-phase slug --review changes_requested
+    O->>O: telec todo stamp slug --verdict changes_requested --phase build_review
     O->>O: telec sessions end reviewer-session
 
     O->>SM: telec todo work slug
@@ -269,7 +269,7 @@ sequenceDiagram
     Note over O,F: Review Round 2
     O->>R: telec sessions run --command /next-review-build --args slug --mode slow
     R-->>O: Verdict: APPROVE
-    O->>O: telec todo mark-phase slug --review approved
+    O->>O: telec todo stamp slug --verdict approve --phase build_review
 ```
 
 ### Command dispatch map

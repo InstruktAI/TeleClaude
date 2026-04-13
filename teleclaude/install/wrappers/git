@@ -381,7 +381,7 @@ fi
 
 # ── ORCHESTRATOR RESTRICTION: no commit on any branch ────────────────────────
 if [ "$_subcmd" = "commit" ] && [ "$_role" = "orchestrator" ]; then
-    echo "ERROR: Orchestrators cannot commit. Use telec machine commands (mark-phase, etc.)." >&2
+    echo "ERROR: Orchestrators cannot commit. Use telec machine commands (telec todo stamp, etc.)." >&2
     exit 1
 fi
 

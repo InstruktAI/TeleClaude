@@ -133,8 +133,9 @@ FEEDBACK MESSAGES:
 
 ORCHESTRATION PRINCIPLE:
 You are an orchestrator. Execute the state machine's output verbatim. \
-The state machine owns session lifecycle, dispatch decisions, and mark-phase transitions. \
-Trust the process gates (pre-commit hooks, mark_phase clerical checks)."""
+The state machine owns session lifecycle and dispatch decisions; phase is derived \
+each call from stamped primitives (verdicts, git commits, DOR, grounding). \
+Trust the process gates (pre-commit hooks, stamp clerical checks)."""
     note = str(request.get("note", ""))
     if note:
         result += f"\n\nNOTE: {note}"

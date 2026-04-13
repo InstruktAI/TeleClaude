@@ -40,7 +40,6 @@ handle_operations = _todo.handle_operations
 handle_operations_get = _todo.handle_operations_get
 handle_todo_create = _todo.handle_todo_create
 handle_todo_integrate = _todo.handle_todo_integrate
-handle_todo_mark_phase = _todo.handle_todo_mark_phase
 handle_todo_prepare = _todo.handle_todo_prepare
 handle_todo_set_deps = _todo.handle_todo_set_deps
 handle_todo_work = _todo.handle_todo_work
@@ -71,7 +70,6 @@ __all__ = [
     "handle_sessions_widget",
     "handle_todo_create",
     "handle_todo_integrate",
-    "handle_todo_mark_phase",
     "handle_todo_prepare",
     "handle_todo_set_deps",
     "handle_todo_work",

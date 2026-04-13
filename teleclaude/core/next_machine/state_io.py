@@ -1,29 +1,23 @@
 """State I/O — pure read/write operations for work-item state files.
 
-All state read/write, mark operations, review helpers, and phase status checks.
-No imports from core.py (circular-import guard).
+All state read/write, review helpers, and phase status checks. No imports from
+core.py (circular-import guard).
 """
 
 # pylint: disable=cyclic-import  # State helpers and lifecycle/slug adapters still cross-reference during migration.
 
 from __future__ import annotations
 
-import copy
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    REVIEW_APPROVE_MARKER,
     FinalizeState,
-    ItemPhase,
-    PhaseName,
-    PhaseStatus,
-    PreparePhase,
     StateValue,
     default_state,
 )
@@ -35,6 +29,7 @@ from teleclaude.core.next_machine.file_io import (
     write_text_sync,
 )
 from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -80,15 +75,25 @@ def _get_todos_db_sync(cwd: str) -> TodosDb:
 # Internal constants
 # ---------------------------------------------------------------------------
 
-# Nested keys that require deep-merge to preserve sub-key defaults
-_DEEP_MERGE_KEYS = frozenset({"requirements_review", "plan_review", "grounding", "artifacts", "audit"})
-
-# Valid prepare sub-phases that accept verdicts via mark-phase
+# Valid prepare sub-phases that accept verdicts
 _PREPARE_VERDICT_PHASES = ("requirements_review", "test_spec_review", "plan_review")
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
-# Valid prepare_phase values for direct phase advancement
-_PREPARE_PHASE_VALUES = tuple(p.value for p in PreparePhase)
+# Build-review verdict phase and allowed values
+_BUILD_VERDICT_PHASE = "build_review"
+_BUILD_VERDICT_VALUES = ("approve", "changes_requested")
+
+
+# ---------------------------------------------------------------------------
+# Schema migrator registry
+# ---------------------------------------------------------------------------
+
+# Migrators translate legacy persisted state to the current v1 shape. Empty by
+# default: when a stale schema_version is encountered and no migrator is
+# registered, ``read_phase_state`` wipes the row and writes a fresh
+# ``TodoState.defaults()`` so the next-machine loop derives phase from the
+# remaining primitives (artifacts, git commits, DOR stamps).
+_SCHEMA_MIGRATORS: dict[int, Callable[[dict[str, StateValue]], dict[str, StateValue]]] = {}
 
 
 # ---------------------------------------------------------------------------
@@ -99,35 +104,6 @@ _PREPARE_PHASE_VALUES = tuple(p.value for p in PreparePhase)
 def get_state_path(cwd: str, slug: str) -> Path:
     """Get path to state.yaml in worktree."""
     return Path(cwd) / "todos" / slug / "state.yaml"
-
-
-def _deep_merge_state(defaults: dict[str, StateValue], persisted: dict[str, StateValue]) -> dict[str, StateValue]:
-    """Recursively merge persisted state onto defaults for nested dict keys.
-
-    For keys in _DEEP_MERGE_KEYS: merge sub-dicts recursively so that sub-keys
-    introduced in default_state() are added to older persisted state shapes.
-    For all other keys: persisted wins outright (shallow update behaviour).
-    """
-    result = copy.deepcopy(defaults)
-    for key, value in persisted.items():
-        if key in _DEEP_MERGE_KEYS:
-            default_val = result.get(key)
-            if isinstance(default_val, dict) and isinstance(value, dict):
-                # Recurse one level: merge nested dicts
-                merged_nested: dict[str, StateValue] = copy.deepcopy(default_val)
-                for nested_key, nested_val in value.items():
-                    if isinstance(merged_nested.get(nested_key), dict) and isinstance(nested_val, dict):
-                        inner: dict[str, StateValue] = copy.deepcopy(merged_nested[nested_key])  # type: ignore[arg-type]  # pylint: disable=line-too-long
-                        inner.update(nested_val)
-                        merged_nested[nested_key] = inner
-                    else:
-                        merged_nested[nested_key] = nested_val
-                result[key] = merged_nested
-            else:
-                result[key] = value
-        else:
-            result[key] = value
-    return result
 
 
 def _normalize_finalize_state(raw: object) -> FinalizeState:
@@ -146,86 +122,37 @@ def _normalize_finalize_state(raw: object) -> FinalizeState:
     return finalize
 
 
-def _migrate_v1_to_v2(state: dict[str, StateValue]) -> dict[str, StateValue]:
-    """Migrate a v1 bag-of-fields state dict to v2 format.
-
-    Derives ``current`` from the legacy field combination using precedence:
-    finalize → review → build → prepare_phase → fallback.
-    Removes legacy top-level fields (build, review, prepare_phase).
-    """
-    result = dict(state)
-
-    # Derive current from legacy fields (furthest-progressed wins)
-    finalize = result.get("finalize")
-    finalize_status = finalize.get("status") if isinstance(finalize, dict) else None
-    review = result.get("review", "")
-    build = result.get("build", "")
-    prepare_phase = str(result.get("prepare_phase", "")).strip()
-
-    if finalize_status == "handed_off":
-        current = "finalize_handed_off"
-    elif finalize_status == "ready":
-        current = "finalize_ready"
-    elif review == PhaseStatus.APPROVED.value:
-        current = "review_approved"
-    elif review == PhaseStatus.CHANGES_REQUESTED.value:
-        current = "review_changes_requested"
-    elif review in (PhaseStatus.PENDING.value, "started") and build == PhaseStatus.COMPLETE.value:
-        current = "review_pending"
-    elif build == PhaseStatus.COMPLETE.value:
-        current = "build_complete"
-    elif build == "started":
-        current = "build_started"
-    elif prepare_phase and prepare_phase in _PREPARE_PHASE_VALUES:
-        current = prepare_phase
-    else:
-        current = "input_assessment"
-
-    result["current"] = current
-    result["schema_version"] = 2
-    result["history"] = result.get("history", [])
-
-    # Remove legacy fields
-    for key in ("build", "review", "prepare_phase"):
-        result.pop(key, None)
-
-    return result
-
-
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
 
-    Returns default state if no state exists in the database.
-    V2 blobs are returned directly (self-contained).
-    V1 blobs are deep-merged with defaults and migrated to v2.
+    Returns default state if no state exists in the database. Schema v1 blobs
+    are returned as-is. Any other ``schema_version`` is routed through the
+    migrator registry; if no migrator matches, the row is reset to a fresh
+    v1 default and rewritten. Artifacts and roadmap rows are untouched.
     """
     db = _get_todos_db_sync(cwd)
-    state = db.read_state_sync(slug)
-
-    if state is None:
+    raw = db.read_state_sync(slug)
+    if raw is None:
         return default_state()
 
-    # V2: self-contained, skip deep-merge
-    if state.get("schema_version") == 2:
-        if "finalize" in state:
-            state["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
-        return state
+    version_raw = raw.get("schema_version")
+    version = version_raw if isinstance(version_raw, int) else 0
 
-    # V1: deep-merge with defaults, then migrate
-    merged = _deep_merge_state(default_state(), state)
-    merged["finalize"] = _normalize_finalize_state(state.get("finalize"))  # type: ignore[assignment]
+    if version == 1:
+        if "finalize" in raw:
+            raw["finalize"] = _normalize_finalize_state(raw.get("finalize"))  # type: ignore[assignment]
+        return raw
 
-    # Legacy phase migration (coarse-grained pending/in_progress/done)
-    if "phase" not in state:
-        build = state.get(PhaseName.BUILD.value)
-        if isinstance(build, str) and build != PhaseStatus.PENDING.value:
-            merged["phase"] = ItemPhase.IN_PROGRESS.value
-        else:
-            merged["phase"] = ItemPhase.PENDING.value
-    elif state.get("phase") == "ready":
-        merged["phase"] = ItemPhase.PENDING.value
+    migrator = _SCHEMA_MIGRATORS.get(version)
+    if migrator is not None:
+        migrated = migrator(raw)
+        db.write_state_sync(slug, migrated)
+        return migrated
 
-    return _migrate_v1_to_v2(merged)
+    logger.warning("schema_reset slug=%s from_version=%s", slug, version)
+    fresh = TodoState.defaults().model_dump()
+    db.write_state_sync(slug, fresh)
+    return fresh
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
@@ -235,63 +162,29 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
 
 
 # ---------------------------------------------------------------------------
-# Mark operations
+# Stamp operations
 # ---------------------------------------------------------------------------
 
 
-def mark_phase(cwd: str, slug: str, target: str) -> dict[str, StateValue]:
-    """Target a lifecycle state, routing through the StateMachine engine.
-
-    Moves to the named target state. On_enter handlers on the state definition
-    handle all side effects (review bookkeeping, grounding, finalize validation).
-
-    Args:
-        cwd: Worktree or project root directory
-        slug: Work item slug
-        target: Target state name (e.g. "prepared", "build_complete", "review_approved")
-
-    Returns:
-        Updated state dict
-    """
-    from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
-        resolve_canonical_project_root,
-    )
-    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        build_lifecycle_machine,
-    )
-    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
-
-    state = read_phase_state(cwd, slug)
-    machine = build_lifecycle_machine()
-
-    project_root = resolve_canonical_project_root(cwd)
-    worktree = (
-        str(Path(project_root) / WORKTREE_DIR / slug) if (Path(project_root) / WORKTREE_DIR / slug).exists() else cwd
-    )
-    ctx = TargetContext(
-        worktree_path=worktree,
-        project_root=project_root,
-        slug=slug,
-        actor_id=get_session_id() or "mark-phase",
-        at=datetime.now(UTC).isoformat(),
-    )
-    next_state = machine.target(state, target, ctx)
-    # Route the post-transition payload through StateWriter so the persistence
-    # path shares one validated boundary with prepare_steps/on_enter handlers.
-    writer = StateWriter(next_state)
-    return writer.commit_sync(_get_todos_db_sync(cwd), slug)
-
-
 def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
-    """Stamp a prepare sub-phase verdict via the typed review boundary.
+    """Stamp a review phase verdict via the typed state boundary.
+
+    Handles both prepare sub-phases (requirements_review, test_spec_review,
+    plan_review) via :class:`ReviewManager`, and the work build_review phase
+    via direct mutation on :class:`BuildReviewState` (which is not a
+    ``ReviewVerdictState`` and has no audit entry).
+
+    For build_review: when the stored ``baseline_commit`` is empty (first
+    stamp), it is initialized from the current worktree HEAD so round 2+
+    re-review dispatch can scope the diff to commits since the last verdict.
 
     Args:
         cwd: Project root directory (not worktree)
         slug: Work item slug
-        phase: Prepare sub-phase (requirements_review, plan_review)
-        verdict: Verdict value (approve, needs_work)
+        phase: Review phase key (requirements_review, test_spec_review,
+            plan_review, or build_review)
+        verdict: Verdict value — prepare phases accept approve/needs_work/
+            needs_decision; build_review accepts approve/changes_requested
 
     Returns:
         Updated state dict
@@ -301,8 +194,32 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         StateWriter,
     )
 
+    if phase == _BUILD_VERDICT_PHASE:
+        if verdict not in _BUILD_VERDICT_VALUES:
+            raise ValueError(
+                f"invalid build_review verdict '{verdict}': must be one of {', '.join(_BUILD_VERDICT_VALUES)}"
+            )
+        db = _get_todos_db_sync(cwd)
+        state = read_phase_state(cwd, slug)
+        writer = StateWriter(state)
+        build_review = writer.state.build_review
+        build_review.verdict = verdict
+        if not build_review.baseline_commit:
+            from teleclaude.constants import WORKTREE_DIR  # pylint: disable=import-outside-toplevel
+            from teleclaude.core.next_machine.git_ops import get_head_commit  # pylint: disable=import-outside-toplevel
+
+            project_root = _project_root_from_cwd(cwd)
+            worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
+            head = get_head_commit(worktree_path)
+            if head:
+                build_review.baseline_commit = head
+        return writer.commit_sync(db, slug)
+
     if phase not in _PREPARE_VERDICT_PHASES:
-        raise ValueError(f"invalid prepare phase '{phase}': must be one of {', '.join(_PREPARE_VERDICT_PHASES)}")
+        raise ValueError(
+            f"invalid review phase '{phase}': must be one of "
+            f"{', '.join((*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE))}"
+        )
     if verdict not in _PREPARE_VERDICT_VALUES:
         raise ValueError(f"invalid verdict '{verdict}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}")
 
@@ -313,41 +230,287 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     return writer.commit_sync(db, slug)
 
 
+def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylint: disable=too-many-locals
+    """Stamp finalize state to ``ready`` after verifying the worktree is clean.
+
+    The worktree must exist, have no uncommitted changes, and the worktree HEAD,
+    local branch ref, and remote branch ref must all resolve to the same commit.
+    On success, writes a :class:`FinalizeModel` with ``status="ready"`` and
+    records the current session id as ``worker_session_id``.
+
+    Args:
+        cwd: Project root directory (not worktree)
+        slug: Work item slug
+
+    Returns:
+        Updated state dict
+
+    Raises:
+        RuntimeError: when any validation step fails.
+    """
+    from teleclaude.constants import WORKTREE_DIR  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.git_ops import (  # pylint: disable=import-outside-toplevel
+        get_head_commit,
+        get_ref_commit,
+        get_remote_branch_head,
+        has_uncommitted_changes,
+    )
+    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
+    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
+    from teleclaude.types.todos import FinalizeModel  # pylint: disable=import-outside-toplevel
+
+    project_root = _project_root_from_cwd(cwd)
+    worktree_path = Path(project_root) / WORKTREE_DIR / slug
+    if not worktree_path.exists():
+        raise RuntimeError(f"finalize_ready: worktree not found at {worktree_path}")
+    if has_uncommitted_changes(project_root, slug):
+        raise RuntimeError(
+            f"finalize_ready: worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit before finalizing"
+        )
+
+    worktree_head = get_head_commit(str(worktree_path))
+    branch_head = get_ref_commit(project_root, slug)
+    if not worktree_head or not branch_head or worktree_head != branch_head:
+        raise RuntimeError(
+            f"finalize_ready: worktree HEAD ({worktree_head!r}) does not match branch ref {slug!r} ({branch_head!r})"
+        )
+
+    remote_head = get_remote_branch_head(project_root, slug)
+    if not remote_head or remote_head != branch_head:
+        raise RuntimeError(
+            f"finalize_ready: remote branch {slug!r} ({remote_head!r}) "
+            f"does not match local branch ({branch_head!r}) — push first"
+        )
+
+    db = _get_todos_db_sync(cwd)
+    state = read_phase_state(cwd, slug)
+    writer = StateWriter(state)
+    worker_session_id = (get_session_id() or "").strip()
+    writer.state.finalize = FinalizeModel(
+        status="ready",
+        branch=slug,
+        sha=branch_head,
+        ready_at=datetime.now(UTC).isoformat(),
+        worker_session_id=worker_session_id,
+    )
+    return writer.commit_sync(db, slug)
+
+
+_QUALITY_CHECKLIST_TEMPLATE = """\
+# Quality Checklist: {slug}
+
+This checklist is the execution projection of `definition-of-done.md` for this todo.
+
+Ownership:
+
+- Build section: Builder updates only this section.
+- Review section: Reviewer updates only this section.
+- Finalize section: Finalizer updates only this section.
+
+## Build Gates (Builder)
+
+- [ ] Requirements implemented according to scope
+- [ ] Implementation-plan task checkboxes all `[x]`
+- [ ] Tests pass (`make test`)
+- [ ] Lint passes (`make lint`)
+- [ ] No silent deferrals in implementation plan
+- [ ] Code committed
+- [ ] User-facing verification evidence recorded
+- [ ] Browser-based frontend or web UI changes smoke-tested with Playwright
+- [ ] Working tree clean
+- [ ] Comments/docstrings updated where behavior changed
+
+## Review Gates (Reviewer)
+
+- [ ] Requirements traced to implemented behavior
+- [ ] Deferrals justified and not hiding required scope
+- [ ] Findings written in `review-findings.md`
+- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
+- [ ] Critical issues resolved or explicitly blocked
+- [ ] Test coverage and regression risk assessed
+- [ ] User-facing verification evidence reviewed
+- [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
+
+## Finalize Gates (Finalizer)
+
+- [ ] Review verdict is APPROVE
+- [ ] Build gates all checked
+- [ ] Review gates all checked
+- [ ] Merge to main complete
+- [ ] Delivery logged in `todos/delivered.md`
+- [ ] Roadmap updated
+- [ ] Todo/worktree cleanup complete
+"""
+
+
+def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
+    """Return True when the DB artifact has non-trivial content beyond whitespace/headings."""
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        row = conn.execute(
+            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+            (slug, artifact_name),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        return False
+    text: str = row[0] or ""
+    lines = [ln for ln in text.strip().splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    return len(lines) > 0
+
+
+def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
+    """Stamp all primitives required for ``derive_prepare_phase`` to return PREPARED.
+
+    Fast-track path used by ``telec todo mark-ready``, ``telec todo from-main``, and
+    prepped ``telec todo dump`` to short-circuit the full prepare lifecycle. Validates
+    that requirements and implementation-plan artifacts exist, generates the
+    quality-checklist artifact when missing, then stamps DOR pass, the current git
+    HEAD as the grounding baseline, and the prepare review verdicts (requirements
+    is stamped ``skipped`` for prepped todos — there is no requirements artifact to
+    review).
+
+    Args:
+        cwd: Project root directory (not worktree)
+        slug: Work item slug
+
+    Returns:
+        Updated state dict
+
+    Raises:
+        ValueError: when a required artifact is missing or git HEAD cannot be read.
+    """
+    # pylint: disable=too-many-locals,too-many-statements
+    from teleclaude.core.next_machine.git_ops import run_git_command  # pylint: disable=import-outside-toplevel
+    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
+        GroundingManager,
+        ReviewManager,
+        StateWriter,
+    )
+    from teleclaude.types.todos import DorState  # pylint: disable=import-outside-toplevel
+
+    project_root = _project_root_from_cwd(cwd)
+    db = _get_todos_db_sync(cwd)
+    state = read_phase_state(cwd, slug)
+    kind = state.get("kind")
+
+    if kind not in ("prepped", "bug") and not _has_artifact_content(cwd, slug, "requirements"):
+        raise ValueError(f"Missing requirements artifact with content for {slug}")
+    if kind != "bug" and not _has_artifact_content(cwd, slug, "implementation-plan"):
+        raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
+
+    if not _has_artifact_content(cwd, slug, "quality-checklist"):
+        import hashlib as _hl  # pylint: disable=import-outside-toplevel
+
+        checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
+        now_iso = datetime.now(UTC).isoformat()
+        digest = _hl.sha256(checklist_content.encode("utf-8")).hexdigest()
+        conn = db._sync_conn()  # pylint: disable=protected-access
+        try:
+            id_row = conn.execute(
+                "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql
+                (slug,),
+            ).fetchone()
+            row_id = id_row[0] if id_row else slug
+            conn.execute(
+                "INSERT INTO todo_artifacts "  # guard: raw-sql
+                "(id, slug, name, content, digest, updated_by, updated_at) "
+                "VALUES (?, ?, 'quality-checklist', ?, ?, 'apply_prepared_state', ?) "
+                "ON CONFLICT(id, name) DO UPDATE SET "
+                "content = excluded.content, digest = excluded.digest, "
+                "updated_by = excluded.updated_by, updated_at = excluded.updated_at",
+                (row_id, slug, checklist_content, digest, now_iso),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
+    if rc != 0 or not current_sha_raw.strip():
+        msg = f"git rev-parse HEAD failed (rc={rc}) in {project_root} — cannot establish grounding baseline"
+        raise ValueError(msg)
+    current_sha = current_sha_raw.strip()
+
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        input_row = conn.execute(
+            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = 'input' LIMIT 1",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+    finally:
+        conn.close()
+    input_digest = input_row[0] if input_row and input_row[0] else ""
+
+    now_iso = datetime.now(UTC).isoformat()
+    writer = StateWriter(state)
+    writer.state.dor = DorState(
+        last_assessed_at=now_iso,
+        score=8,
+        status="pass",
+        schema_version=1,
+        blockers=[],
+    )
+
+    review_mgr = ReviewManager(writer)
+    if kind in ("prepped", "bug"):
+        review_mgr.stamp_verdict("requirements_review", "skipped")
+    else:
+        review_mgr.stamp_verdict("requirements_review", "approve")
+
+    if kind in ("bug", "prepped"):
+        # Bugs and prepped todos bypass test specs entirely
+        review_mgr.stamp_verdict("test_spec_review", "skipped")
+        writer.state.artifacts.test_specs.produced_at = now_iso
+    if kind == "bug":
+        review_mgr.stamp_verdict("plan_review", "skipped")
+    else:
+        review_mgr.stamp_verdict("plan_review", "approve")
+
+    GroundingManager(writer).refresh(current_sha=current_sha)
+    if input_digest:
+        writer.grounding.input_digest = input_digest
+
+    return writer.commit_sync(db, slug)
+
+
 # ---------------------------------------------------------------------------
 # Review state helpers
 # ---------------------------------------------------------------------------
 
 
 def _review_scope_note(cwd: str, slug: str) -> str:
-    """Build an iterative review scope note from state.yaml metadata."""
-    state = read_phase_state(cwd, slug)
-    review_round_raw = state.get("review_round")
-    max_rounds_raw = state.get("max_review_rounds")
-    review_round = review_round_raw if isinstance(review_round_raw, int) else 0
-    max_rounds = max_rounds_raw if isinstance(max_rounds_raw, int) else DEFAULT_MAX_REVIEW_ROUNDS
-    next_round = review_round + 1
-    baseline = state.get("review_baseline_commit")
-    baseline_sha = baseline if isinstance(baseline, str) else ""
-    unresolved = state.get("unresolved_findings")
-    unresolved_ids = unresolved if isinstance(unresolved, list) else []
+    """Build an iterative review scope note from build_review state.
 
-    unresolved_text = ", ".join(str(x) for x in unresolved_ids) if unresolved_ids else "none"
+    Used by the work-review step handler when dispatching re-review messages
+    to a live reviewer session. Reads the ``build_review`` substructure on v1
+    state; earlier schemas are reset on read.
+    """
+    state = read_phase_state(cwd, slug)
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+    round_raw = build_review.get("round")
+    review_round = round_raw if isinstance(round_raw, int) else 0
+    next_round = review_round + 1
+    baseline = build_review.get("baseline_commit")
+    baseline_sha = baseline if isinstance(baseline, str) else ""
     baseline_text = baseline_sha if baseline_sha else "unset (initial full review)"
     return (
-        f"Review iteration: round {next_round}/{max_rounds}. "
+        f"Review iteration: round {next_round}/{DEFAULT_MAX_REVIEW_ROUNDS}. "
         "Round 1 is full-scope. Round 2+ must be incremental: review only commits since "
-        f"{baseline_text} plus unresolved IDs [{unresolved_text}]."
+        f"{baseline_text}."
     )
 
 
 def _is_review_round_limit_reached(cwd: str, slug: str) -> tuple[bool, int, int]:
-    """Return whether next review round would exceed configured max."""
+    """Return whether next review round would exceed the hard cap."""
     state = read_phase_state(cwd, slug)
-    review_round_raw = state.get("review_round")
-    max_rounds_raw = state.get("max_review_rounds")
-    review_round = review_round_raw if isinstance(review_round_raw, int) else 0
-    max_rounds = max_rounds_raw if isinstance(max_rounds_raw, int) else DEFAULT_MAX_REVIEW_ROUNDS
-    return (review_round + 1) > max_rounds, review_round, max_rounds
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+    round_raw = build_review.get("round")
+    review_round = round_raw if isinstance(round_raw, int) else 0
+    return (review_round + 1) > DEFAULT_MAX_REVIEW_ROUNDS, review_round, DEFAULT_MAX_REVIEW_ROUNDS
 
 
 def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | None:
@@ -360,8 +523,13 @@ def read_breakdown_state(cwd: str, slug: str) -> dict[str, bool | list[str]] | N
     breakdown = state.get("breakdown")
     if breakdown is None or not isinstance(breakdown, dict):
         return None
-    # At this point breakdown is dict with bool/list values from json
-    return dict(breakdown)  # type: ignore
+    result: dict[str, bool | list[str]] = {}
+    for key, value in breakdown.items():
+        if isinstance(value, bool):
+            result[key] = value
+        elif isinstance(value, list):
+            result[key] = [str(item) for item in value]
+    return result
 
 
 def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str]) -> None:
@@ -386,41 +554,8 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
 
 
 # ---------------------------------------------------------------------------
-# Phase status checks
+# Misc helpers
 # ---------------------------------------------------------------------------
-
-
-_BUILD_COMPLETE_STATES = frozenset(
-    {
-        "build_complete",
-        "review_pending",
-        "review_changes_requested",
-        "review_approved",
-        "finalize_ready",
-        "finalize_handed_off",
-    }
-)
-
-
-def is_build_complete(cwd: str, slug: str) -> bool:
-    """Check if build phase is complete (current is at or past build_complete)."""
-    state = read_phase_state(cwd, slug)
-    current = str(state.get("current", ""))
-    return current in _BUILD_COMPLETE_STATES
-
-
-def is_review_approved(cwd: str, slug: str) -> bool:
-    """Check if review phase is approved."""
-    state = read_phase_state(cwd, slug)
-    current = str(state.get("current", ""))
-    return current in ("review_approved", "finalize_ready", "finalize_handed_off")
-
-
-def is_review_changes_requested(cwd: str, slug: str) -> bool:
-    """Check if review requested changes."""
-    state = read_phase_state(cwd, slug)
-    current = str(state.get("current", ""))
-    return current == "review_changes_requested"
 
 
 def has_pending_deferrals(cwd: str, slug: str) -> bool:
@@ -461,34 +596,7 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
     return state.get("kind") == "prepped"
 
 
-def check_review_status(cwd: str, slug: str) -> str:
-    """Check review status for a work item.
-
-    Returns:
-        - "missing" if review-findings artifact doesn't exist
-        - "approved" if contains "[x] APPROVE"
-        - "changes_requested" otherwise
-    """
-    db = _get_todos_db_sync(cwd)
-    conn = db._sync_conn()  # pylint: disable=protected-access
-    try:
-        row = conn.execute(
-            "SELECT content FROM todo_artifacts WHERE slug = ? AND name = 'review-findings' LIMIT 1",  # guard: raw-sql
-            (slug,),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    if row is None:
-        return "missing"
-
-    content: str = row[0]
-    if REVIEW_APPROVE_MARKER in content:
-        return PhaseStatus.APPROVED.value
-    return PhaseStatus.CHANGES_REQUESTED.value
-
-
-# Artifact keys that can be stamped via mark-phase after worker output is verified.
+# Artifact keys that can be stamped after worker output is verified.
 _PREPARE_ARTIFACT_FILES = {
     "requirements": "requirements.md",
     "implementation_plan": "implementation-plan.md",
@@ -539,25 +647,24 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
 
 
 __all__ = [
+    "_BUILD_VERDICT_PHASE",
+    "_BUILD_VERDICT_VALUES",
     "_file_sha256",
     "_get_todos_db_sync",
     "_is_review_round_limit_reached",
     "_normalize_finalize_state",
     "_project_root_from_cwd",
     "_review_scope_note",
-    "check_review_status",
+    "apply_prepared_state",
     "get_state_path",
     "has_pending_deferrals",
     "is_bug_todo",
-    "is_build_complete",
     "is_prepped_todo",
-    "is_review_approved",
-    "is_review_changes_requested",
-    "mark_phase",
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
     "stamp_artifact",
+    "stamp_finalize_ready",
     "stamp_verdict",
     "write_breakdown_state",
     "write_phase_state",

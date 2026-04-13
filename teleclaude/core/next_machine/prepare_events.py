@@ -1,4 +1,4 @@
-"""Prepare state machine — lifecycle events and artifact checks.
+"""Prepare state machine — lifecycle events and grounding invalidation.
 
 No imports from core.py (circular-import guard).
 """
@@ -6,10 +6,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-from pathlib import Path
 
-from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine._types import PreparePhase
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_main_repo_root
@@ -44,22 +41,6 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
             asyncio.run(_emit())
         except Exception:  # pylint: disable=broad-exception-caught
             pass  # Never block prepare on event emission failure
-
-
-def _has_test_spec_artifacts(cwd: str, slug: str) -> bool:
-    """Check if xfail-marked test spec files exist in the worktree."""
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    if not worktree_path.is_dir():
-        return False
-    # Look for test files containing xfail markers
-    for test_file in worktree_path.rglob("test_*.py"):
-        try:
-            content = test_file.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if "xfail" in content:
-            return True
-    return False
 
 
 def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:  # pylint: disable=too-many-locals
@@ -101,7 +82,6 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
                 continue
 
             GroundingManager(writer).invalidate(reason="files_changed", changed_paths=overlap)
-            writer.state.current = PreparePhase.GROUNDING_CHECK.value
             writer.commit_sync(db, slug)
 
             _emit_prepare_event(
@@ -117,6 +97,5 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
 
 __all__ = [
     "_emit_prepare_event",
-    "_has_test_spec_artifacts",
     "invalidate_stale_preparations",
 ]

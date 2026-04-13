@@ -171,8 +171,13 @@ def _derive_creative_phase(
     return phase
 
 
-async def _find_next_creative_slug(todos_db: TodosDb) -> str | None:
-    """Find the next active slug that needs creative work from DB."""
+async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
+    """Find the next active slug that needs creative work from DB.
+
+    Phase is never cached — each candidate is re-derived from workspace
+    artifacts and DB flags so that CREATIVE_COMPLETE slugs are skipped
+    without trusting stale state.
+    """
     entries = await todos_db.list_roadmap()
     delivered = await todos_db.delivered_slugs()
 
@@ -190,15 +195,15 @@ async def _find_next_creative_slug(todos_db: TodosDb) -> str | None:
             continue
 
         creative = state.get("creative")
-        if not isinstance(creative, dict):
-            creative = {}
-
-        creative_phase_val = creative.get("phase", "")
-        if creative_phase_val == CreativePhase.CREATIVE_COMPLETE.value:
-            continue
+        creative_state = creative if isinstance(creative, dict) else {}
 
         has_design_spec = await todos_db.artifact_exists(slug, "design-spec")
-        if creative or has_design_spec:
+        workspace_dir = Path(cwd) / "workspace" / slug
+        phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
+        if phase == CreativePhase.CREATIVE_COMPLETE:
+            continue
+
+        if creative_state or has_design_spec:
             return slug
 
     return None
@@ -312,7 +317,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
 
     todos_db = await get_todos_db(cwd)
 
-    resolved_slug = slug or await _find_next_creative_slug(todos_db)
+    resolved_slug = slug or await _find_next_creative_slug(todos_db, cwd)
     if not resolved_slug:
         return "NO_CREATIVE_ITEMS: No work items require creative work. Nothing to do."
 
@@ -333,11 +338,6 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)
-    if "creative" not in state or not isinstance(state.get("creative"), dict):
-        state["creative"] = {}
-    if isinstance(state["creative"], dict):
-        state["creative"]["phase"] = phase.value
-        await todos_db.write_state(resolved_slug, state)
 
     guidance = await compose_agent_guidance(db)
     return await _creative_instruction(db, resolved_slug, cwd, phase, guidance)

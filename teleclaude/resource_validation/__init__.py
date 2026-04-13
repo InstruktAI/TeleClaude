@@ -583,20 +583,11 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
             errors.append(f"{slug}: state file schema violation: {exc}")
 
     # 2. Required files for Ready state
-    # If not yet building and score >= 8, requirements and implementation plan MUST exist
+    # If DOR score >= 8, requirements and implementation plan MUST exist.
     if state_path.exists():
         try:
             state = TodoState.model_validate(yaml.safe_load(state_path.read_text(encoding="utf-8")))
-            _work_states = {
-                "build_started",
-                "build_complete",
-                "review_pending",
-                "review_approved",
-                "review_changes_requested",
-                "finalize_ready",
-                "finalize_handed_off",
-            }
-            if state.current not in _work_states and state.dor and state.dor.score >= 8:
+            if state.dor and state.dor.score >= 8:
                 if not (todo_dir / "requirements.md").exists():
                     errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")
                 if not (todo_dir / "implementation-plan.md").exists():

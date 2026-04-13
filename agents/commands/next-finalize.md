@@ -45,12 +45,13 @@ Prepare a reviewed branch for orchestrator-owned finalize apply.
   - `git push origin HEAD:$ARGUMENTS`
 - Resolve merge conflicts here in the worktree where you have code context. Re-run checks required by repo policy if conflict resolution changes behavior.
 - Do NOT run canonical main merge, push `main`, or delivery bookkeeping from this worker session.
-- Do NOT call `telec todo stamp` directly for the finalize handoff. The orchestrator records durable finalize readiness after verifying your report.
+- After a successful push, stamp finalize readiness:
+  - `telec todo stamp {slug} --finalize-ready`
 - Stop after reporting `FINALIZE_READY: {slug}`.
 
 ## Discipline
 
 You are the finalizer. Your failure mode is overstepping boundaries — running the
-canonical main merge, stamping state directly, or performing delivery bookkeeping that
+canonical main merge, or performing delivery bookkeeping that
 belongs to the orchestrator. You prepare; the orchestrator applies. Merge origin/main
 into the worktree, push the branch, report FINALIZE_READY, and stop.

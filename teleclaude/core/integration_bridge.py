@@ -32,7 +32,7 @@ async def emit_review_approved(
     *,
     approved_at: str | None = None,
 ) -> str:
-    """Emit review.approved when mark-phase review approved succeeds."""
+    """Emit review.approved when a build review verdict stamps as approve."""
     ts = approved_at or datetime.now(UTC).isoformat()
     return await emit_event(
         event="domain.software-development.review.approved",

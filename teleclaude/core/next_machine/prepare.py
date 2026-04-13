@@ -1,5 +1,10 @@
 """Prepare stage — Phase A state machine for collaborative architect work.
 
+Each loop iteration re-derives :class:`PreparePhase` from the state primitives
+(stamped verdicts, DOR score, artifact presence, grounding validity) via
+:func:`derive_prepare_phase`, then routes through :func:`_prepare_dispatch`.
+No persistent ``current`` value, no mark-phase calls.
+
 No imports from core.py (circular-import guard).
 """
 
@@ -11,15 +16,16 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, PreparePhase, StateValue
+from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
+from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.prepare_helpers import (
     _ARTIFACT_CASCADE,
     check_artifact_staleness_db,
 )
-from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.slug_resolution import (
     resolve_canonical_project_root,
 )
@@ -33,21 +39,24 @@ logger = get_logger(__name__)
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
-    """Find next slug needing preparation from DB roadmap and artifact state."""
+    """Find next slug needing preparation by deriving phase from primitives.
+
+    Returns the first roadmap entry whose derived prepare phase is not PREPARED
+    (i.e., still has prepare work remaining). Skips items already marked done.
+    """
+    from teleclaude.core.next_machine._types import PreparePhase as _PP  # pylint: disable=import-outside-toplevel
+
     entries = await todos_db.list_roadmap()
     for entry in entries:
         slug = entry["slug"]
         state = await todos_db.read_state(slug)
         if state is None:
             continue
-        phase = state.get("phase")
-        if phase == "done":
+        item_phase = state.get("phase")
+        if item_phase == "done":
             continue
-        has_requirements = await todos_db.artifact_exists(slug, "requirements")
-        has_impl_plan = await todos_db.artifact_exists(slug, "implementation-plan")
-        if not has_requirements or not has_impl_plan:
-            return slug
-        if phase == "pending":
+        derived = await derive_prepare_phase(state, todos_db, slug)
+        if derived != _PP.PREPARED:
             return slug
     return None
 
@@ -58,25 +67,23 @@ async def _apply_stale_artifact_reroute(
     state: dict[str, StateValue],
     stale_artifacts: list[str],
 ) -> dict[str, StateValue]:
-    """Reset prepare routing when tracked artifacts have gone stale.
+    """Refresh digests for stale artifacts and invalidate downstream review verdicts.
 
-    Restamps all stale artifact digests to match current DB content through the
-    typed :class:`ArtifactsState` model before persisting the full validated
-    state. Without the restamp, the staleness check fires again on the next
-    loop iteration and the machine never escapes the reroute. Returns the
-    persisted state dict so the caller can continue the current loop iteration
-    against the updated baseline without a redundant DB round-trip.
+    A stale artifact means the on-disk content diverged from the stamped
+    digest. After restamping the current digest the loop re-derives the
+    phase, but derivation still has to see a reason to re-route — otherwise
+    we'd advance through an already-approved downstream review against
+    potentially outdated content. We clear the downstream review verdicts
+    (requirements → test specs → plan) so derivation lands back on the first
+    stale review phase.
     """
-    earliest = stale_artifacts[0] if stale_artifacts else ""
-    phase_map = {
-        "input": PreparePhase.INPUT_ASSESSMENT,
-        "requirements": PreparePhase.PLAN_DRAFTING,
-        "implementation_plan": PreparePhase.PLAN_REVIEW,
+    downstream_map = {
+        "input": ("requirements_review", "test_spec_review", "plan_review"),
+        "requirements": ("test_spec_review", "plan_review"),
+        "implementation_plan": ("plan_review",),
     }
-    stale_phase = phase_map.get(earliest, PreparePhase.INPUT_ASSESSMENT)
 
     writer = StateWriter(state)
-    writer.state.current = stale_phase.value
     for key, filename in _ARTIFACT_CASCADE:
         if key not in stale_artifacts:
             continue
@@ -85,32 +92,41 @@ async def _apply_stale_artifact_reroute(
         entry = getattr(writer.state.artifacts, key, None)
         if isinstance(entry, ArtifactEntry) and current_digest and current_digest != entry.digest:
             entry.digest = current_digest
+        for review_key in downstream_map.get(key, ()):
+            review = getattr(writer.state, review_key, None)
+            if review is not None and getattr(review, "verdict", "") == "approve":
+                review.verdict = ""
+
     payload = await writer.commit(todos_db, slug)
+    state.clear()
+    state.update(payload)
 
     _emit_prepare_event(
         "domain.software-development.prepare.artifact_invalidated",
         {"slug": slug, "stale_artifacts": stale_artifacts, "reason": "digest_mismatch"},
     )
     logger.info(
-        "ARTIFACT_STALENESS slug=%s stale=%s routing_to=%s",
+        "ARTIFACT_STALENESS slug=%s stale=%s routing_to=derive",
         slug,
         stale_artifacts,
-        stale_phase.value,
     )
-    return payload
+    return state
 
 
 async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals
     """Phase A state machine for collaborative architect work.
 
-    Reads durable state from todos.db, determines the current prepare phase,
-    executes the next step, and returns structured tool-call instructions for
-    the orchestrator.
+    Reads durable state from todos.db, derives the current prepare phase via
+    :func:`derive_prepare_phase` on every iteration, executes the next step,
+    and returns structured tool-call instructions for the orchestrator.
     """
     from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
         resolve_holder_children_db,
     )
     from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
+
+    # Silence unused-import warnings for the helpers re-exported here.
+    _ = _commit_writer
 
     cwd = resolve_canonical_project_root(cwd)
     todos_db = await get_todos_db(cwd)
@@ -144,59 +160,17 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
         await todos_db.add_to_roadmap(resolved_slug)
         logger.info("AUTO_ROADMAP_ADD slug=%s machine=prepare", resolved_slug)
 
-    # Dispatch loop
     for _iter in range(_PREPARE_LOOP_LIMIT):
         state = await todos_db.read_state(resolved_slug)
         if state is None:
             msg = f"Contract violation: no state record for slug {resolved_slug!r}"
             raise RuntimeError(msg)
 
-        # Artifact staleness check (R6): run before routing
         stale_artifacts = await check_artifact_staleness_db(todos_db, resolved_slug)
         if stale_artifacts:
             state = await _apply_stale_artifact_reroute(todos_db, resolved_slug, state, stale_artifacts)
 
-        # Resolve current phase from authoritative state value
-        raw_current = str(state.get("current", "")).strip()
-        try:
-            phase = PreparePhase(raw_current)
-        except ValueError:
-            # Unknown phase — verify prepare is actually complete before
-            # declaring PREPARED.  If plan_review lacks an approve verdict,
-            # the lifecycle was skipped (e.g. a phantom value landed in
-            # current).  Route back to the first incomplete gate.
-            plan_review = state.get("plan_review", {})
-            plan_approved = isinstance(plan_review, dict) and plan_review.get("verdict") == "approve"
-            if plan_approved:
-                return f"PREPARED: {resolved_slug} is past the prepare lifecycle (current={raw_current})."
-
-            has_plan = await todos_db.artifact_exists(resolved_slug, "implementation-plan")
-            if has_plan:
-                recovery_writer = StateWriter(state)
-                recovery_writer.state.current = PreparePhase.PLAN_REVIEW.value
-                await recovery_writer.commit(todos_db, resolved_slug)
-                logger.warning(
-                    "PREPARE_RECOVERY: slug=%s invalid current=%s, unapproved plan_review, rerouting",
-                    resolved_slug,
-                    raw_current,
-                )
-                continue  # re-enter loop with corrected phase
-
-            req_review = state.get("requirements_review", {})
-            req_approved = isinstance(req_review, dict) and req_review.get("verdict") == "approve"
-            if req_approved:
-                recovery_writer = StateWriter(state)
-                recovery_writer.state.current = PreparePhase.PLAN_DRAFTING.value
-                await recovery_writer.commit(todos_db, resolved_slug)
-                logger.warning(
-                    "PREPARE_RECOVERY: slug=%s had invalid current=%s with no plan, rerouting to plan_drafting",
-                    resolved_slug,
-                    raw_current,
-                )
-                continue
-
-            return f"PREPARED: {resolved_slug} is past the prepare lifecycle (current={raw_current})."
-
+        phase = await derive_prepare_phase(state, todos_db, resolved_slug)
         logger.info(
             "NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d",
             resolved_slug,

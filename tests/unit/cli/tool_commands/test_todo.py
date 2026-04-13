@@ -44,8 +44,11 @@ def test_handle_todo_work_polls_until_terminal_state(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(receipt_module, "print_json", print_json)
     monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
     monkeypatch.setattr(todo_commands.uuid, "uuid4", lambda: "req-1")
-    monkeypatch.setattr(receipt_module.time, "sleep", lambda delay: sleep_calls.append(delay))
-    api_call = lambda *_args, **_kwargs: next(responses)  # noqa: E731
+    monkeypatch.setattr(receipt_module.time, "sleep", sleep_calls.append)
+
+    def api_call(*_args: object, **_kwargs: object) -> object:  # pylint: disable=unused-argument
+        return next(responses)
+
     monkeypatch.setattr(todo_commands, "tool_api_call", api_call)
     monkeypatch.setattr(receipt_module, "tool_api_call", api_call)
 
@@ -68,7 +71,7 @@ def test_handle_todo_integrate_polls_until_terminal_state(monkeypatch: pytest.Mo
     monkeypatch.setattr(todo_commands, "print_json", print_json)
     monkeypatch.setattr(receipt_module, "print_json", print_json)
     monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
-    monkeypatch.setattr(receipt_module.time, "sleep", lambda delay: sleep_calls.append(delay))
+    monkeypatch.setattr(receipt_module.time, "sleep", sleep_calls.append)
     monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
     monkeypatch.setattr(receipt_module, "tool_api_call", tool_api_call)
 
@@ -83,19 +86,11 @@ def test_handle_todo_integrate_polls_until_terminal_state(monkeypatch: pytest.Mo
 def test_handle_operations_routes_get(monkeypatch: pytest.MonkeyPatch) -> None:
     received: list[list[str]] = []
 
-    monkeypatch.setattr(todo_commands, "handle_operations_get", lambda args: received.append(args))
+    monkeypatch.setattr(todo_commands, "handle_operations_get", received.append)
 
     todo_commands.handle_operations(["get", "op-1"])
 
     assert received == [["op-1"]]
-
-
-def test_handle_todo_mark_phase_requires_slug(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exc_info:
-        todo_commands.handle_todo_mark_phase(["--phase", "build", "--status", "complete"])
-
-    assert exc_info.value.code == 1
-    assert "slug is required" in capsys.readouterr().err
 
 
 def test_handle_todo_set_deps_posts_repeated_after_values(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -113,18 +108,3 @@ def test_handle_todo_set_deps_posts_repeated_after_values(monkeypatch: pytest.Mo
         "/todos/set-deps",
         json_body={"slug": "sample-slug", "after": ["dep-a", "dep-b"], "cwd": "/tmp/project"},
     )
-
-
-def test_handle_mark_phase_passes_force_flag(monkeypatch: pytest.MonkeyPatch) -> None:
-    """--force flag is forwarded in the request body."""
-    tool_api_call = MagicMock(return_value={"result": "OK"})
-    print_json = MagicMock()
-
-    monkeypatch.setattr(todo_commands, "tool_api_call", tool_api_call)
-    monkeypatch.setattr(todo_commands, "print_json", print_json)
-    monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
-
-    todo_commands.handle_todo_mark_phase(["my-slug", "--phase", "build", "--status", "complete", "--force"])
-
-    call_body = tool_api_call.call_args.kwargs.get("json_body") or tool_api_call.call_args[1].get("json_body")
-    assert call_body["force"] is True

@@ -19,7 +19,6 @@ __all__ = [
     "handle_operations_get",
     "handle_todo_create",
     "handle_todo_integrate",
-    "handle_todo_mark_phase",
     "handle_todo_prepare",
     "handle_todo_set_deps",
     "handle_todo_work",
@@ -263,71 +262,6 @@ def handle_operations_get(args: list[str]) -> None:
         raise SystemExit(1)
 
     data = tool_api_call("GET", f"/operations/{operation_id}")
-    print_json(data)
-
-
-def handle_todo_mark_phase(args: list[str]) -> None:
-    """Mark a work or prepare phase in state.yaml.
-
-    Usage: telec todo mark-phase <slug> --target <state>
-           telec todo mark-phase <slug> --phase <phase> --status <status>  (legacy)
-
-    Target mode (preferred):
-      Directly targets a lifecycle state. All side effects are handled by
-      the state machine's on_enter handlers.
-
-    Legacy mode (--phase/--status):
-      Maps to a target state internally. Kept for backward compatibility.
-
-    Options:
-      <slug>            Work item slug
-      --target <state>  Target state name (e.g. build_complete, review_approved, prepared)
-      --phase <p>       Legacy: build, review, prepare, requirements_review, plan_review, etc.
-      --status <s>      Legacy: pending, started, complete, approved, changes_requested, etc.
-      --force           Bypass worktree, uncommitted-changes guards
-
-    Examples:
-      telec todo mark-phase my-slug --target build_complete
-      telec todo mark-phase my-slug --target review_approved
-      telec todo mark-phase my-slug --target prepared
-      telec todo mark-phase my-slug --target finalize_ready
-      telec todo mark-phase my-slug --phase build --status complete  (legacy)
-    """
-    if "--help" in args or "-h" in args:
-        print(handle_todo_mark_phase.__doc__ or "")
-        return
-
-    body: dict[str, object] = {"cwd": os.getcwd()}  # guard: loose-dict - JSON request body
-
-    i = 0
-    while i < len(args):
-        if args[i] == "--target" and i + 1 < len(args):
-            body["target"] = args[i + 1]
-            i += 2
-        elif args[i] == "--phase" and i + 1 < len(args):
-            body["phase"] = args[i + 1]
-            i += 2
-        elif args[i] == "--status" and i + 1 < len(args):
-            body["status"] = args[i + 1]
-            i += 2
-        elif args[i] == "--force":
-            body["force"] = True
-            i += 1
-        elif not args[i].startswith("-"):
-            body["slug"] = args[i]
-            i += 1
-        else:
-            i += 1
-
-    if not body.get("slug"):
-        print("Error: slug is required", file=sys.stderr)
-        raise SystemExit(1)
-
-    if not body.get("target") and (not body.get("phase") or not body.get("status")):
-        print("Error: --target or both --phase and --status are required", file=sys.stderr)
-        raise SystemExit(1)
-
-    data = tool_api_call("POST", "/todos/mark-phase", json_body=body)
     print_json(data)
 
 

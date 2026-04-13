@@ -1,15 +1,15 @@
 """Todo/workflow REST endpoints for the telec CLI tool subcommands.
 
-Exposes the next-machine state machine functions (prepare, work)
-and roadmap mutation operations (mark-phase, set-deps) as REST endpoints
-with dual-factor caller identity enforcement.
+Exposes the next-machine state machine functions (prepare, work) and roadmap
+mutation operations as REST endpoints with dual-factor caller identity
+enforcement. Verdict, DOR, grounding, and finalize stamps all flow through
+``/stamp/{slug}`` — there is no legacy ``mark-phase`` routing.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -20,20 +20,17 @@ from teleclaude.api.auth import (
     CallerIdentity,
     clearance_todos_create,
     clearance_todos_integrate,
-    clearance_todos_mark_phase,
     clearance_todos_prepare,
     clearance_todos_set_deps,
     clearance_todos_work,
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine.core import (
-    _PREPARE_ARTIFACT_PHASES,
-    _PREPARE_PHASE_VALUES,
+    _BUILD_VERDICT_PHASE,
+    _BUILD_VERDICT_VALUES,
     _PREPARE_VERDICT_PHASES,
     _PREPARE_VERDICT_VALUES,
-    has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
@@ -196,182 +193,6 @@ async def todo_integrate(  # pyright: ignore
     )
 
 
-_BUILD_TERMINAL_STATES = frozenset(
-    {"build_complete", "review_pending", "review_approved", "finalize_ready", "finalize_handed_off"}
-)
-
-
-def _resolve_worktree_cwd(cwd: str, slug: str, force: bool) -> str:
-    """Resolve effective cwd for worktree-scoped operations."""
-    project_root = resolve_canonical_project_root(cwd)
-    worktree_path = Path(project_root) / WORKTREE_DIR / slug
-    if worktree_path.exists():
-        return str(worktree_path)
-    if force:
-        return cwd
-    raise HTTPException(status_code=404, detail=f"worktree not found at {worktree_path}")
-
-
-async def _mark_phase_stamp_verdict(slug: str, phase: str, status: str, cwd: str) -> dict[str, str]:
-    """Commit a review verdict through the validated state mutation boundary."""
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        ReviewManager,
-        StateMutationError,
-        StateWriter,
-    )
-
-    if status not in _PREPARE_VERDICT_VALUES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"invalid verdict '{status}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}",
-        )
-
-    todos_db = await _get_todos_db_from_cwd(cwd)
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-    try:
-        writer = StateWriter(raw_state)
-        ReviewManager(writer).stamp_verdict(phase, status)
-        payload = await writer.commit(todos_db, slug)
-    except StateMutationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    logger.info("verdict stamped to DB: slug=%s phase=%s verdict=%s", slug, phase, status)
-    return {"result": f"OK: {slug} state updated - {phase}.verdict: {status}", "state": str(payload)}
-
-
-async def _mark_phase_stamp_artifact(slug: str, phase: str, cwd: str) -> dict[str, str]:
-    """Commit an artifact production stamp through the validated state boundary."""
-    from datetime import UTC  # pylint: disable=import-outside-toplevel
-    from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        StateMutationError,
-        StateWriter,
-    )
-    from teleclaude.types.todos import ArtifactEntry  # pylint: disable=import-outside-toplevel
-
-    todos_db = await _get_todos_db_from_cwd(cwd)
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-    try:
-        writer = StateWriter(raw_state)
-    except StateMutationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    entry = getattr(writer.state.artifacts, phase, None)
-    if not isinstance(entry, ArtifactEntry):
-        raise HTTPException(status_code=422, detail=f"unknown artifact phase '{phase}'")
-    entry.produced_at = _dt.now(UTC).isoformat()
-    entry.stale = False
-    try:
-        payload = await writer.commit(todos_db, slug)
-    except StateMutationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    logger.info("artifact stamped to DB: slug=%s artifact=%s", slug, phase)
-    return {"result": f"OK: {slug} artifacts.{phase}.produced_at stamped", "state": str(payload)}
-
-
-@router.post("/mark-phase")
-async def todo_mark_phase(  # pyright: ignore  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals,too-many-return-statements,too-many-statements
-    slug: Annotated[str, Body()],
-    phase: Annotated[str | None, Body()] = None,
-    status: Annotated[str | None, Body()] = None,
-    target: Annotated[str | None, Body()] = None,
-    cwd: Annotated[str | None, Body()] = None,
-    _identity: CallerIdentity = Depends(clearance_todos_mark_phase),
-    force: Annotated[bool, Body()] = False,
-) -> dict[str, str]:
-    """Mark a work phase as complete/approved in state.yaml.
-
-    Supports both the new `target` param (direct state name) and the legacy
-    `phase`/`status` pair. When `target` is provided, it takes precedence.
-
-    DB-native: reads state from todos.db, applies transition via the pure
-    lifecycle machine, writes result back to todos.db. No filesystem I/O.
-    """
-    from datetime import UTC  # pylint: disable=import-outside-toplevel
-    from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.core.next_machine.state_machine import TargetContext  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        build_lifecycle_machine,
-    )
-    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
-
-    if not cwd:
-        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
-
-    resolved_target: str | None = target
-
-    if not resolved_target:
-        if not phase or not status:
-            raise HTTPException(status_code=400, detail="either 'target' or both 'phase' and 'status' are required")
-
-        if phase in _PREPARE_VERDICT_PHASES:
-            return await _mark_phase_stamp_verdict(slug, phase, status, cwd)
-
-        if phase in _PREPARE_ARTIFACT_PHASES:
-            return await _mark_phase_stamp_artifact(slug, phase, cwd)
-
-        # Map legacy phase/status to target name
-        if phase == "prepare":
-            if status not in _PREPARE_PHASE_VALUES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"invalid prepare status '{status}': must be one of {', '.join(_PREPARE_PHASE_VALUES)}",
-                )
-            resolved_target = status
-        elif phase in ("build", "review"):
-            resolved_target = f"{phase}_{status}"
-        else:
-            all_phases = ("build", "review", "prepare", *_PREPARE_VERDICT_PHASES, *_PREPARE_ARTIFACT_PHASES)
-            raise HTTPException(
-                status_code=400, detail=f"invalid phase '{phase}': must be one of {', '.join(all_phases)}"
-            )
-
-    # --- Lifecycle transition via pure state machine ---
-
-    project_root = resolve_canonical_project_root(cwd)
-    worktree = cwd
-    if resolved_target in _BUILD_TERMINAL_STATES:
-        worktree = _resolve_worktree_cwd(cwd, slug, force)
-
-    if not force and resolved_target in ("build_complete",):
-        if has_uncommitted_changes(project_root, slug):
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"worktree {WORKTREE_DIR}/{slug} has uncommitted changes"
-                    " — commit them before marking phase complete"
-                ),
-            )
-
-    todos_db = await _get_todos_db_from_cwd(cwd)
-    state = await todos_db.read_state(slug)
-    if state is None:
-        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-
-    machine = build_lifecycle_machine()
-    actor_id = get_session_id() or "mark-phase"
-    now = _dt.now(UTC).isoformat()
-    ctx = TargetContext(worktree_path=worktree, project_root=project_root, slug=slug, actor_id=actor_id, at=now)
-
-    try:
-        updated_state = machine.target(state, resolved_target, ctx)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-    # Route persistence through StateWriter so the API path validates the
-    # post-transition payload the same way prepare_steps/on_enter handlers do.
-    writer = StateWriter(updated_state)
-    persisted_state = await writer.commit(todos_db, slug)
-    logger.info("mark_phase DB-native: slug=%s target=%s", slug, resolved_target)
-
-    return {"result": f"OK: {slug} state updated - target: {resolved_target}", "state": str(persisted_state)}
-
-
 @router.post("/set-deps")
 async def todo_set_deps(  # pyright: ignore
     slug: Annotated[str, Body()],
@@ -491,10 +312,10 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
 
     Kind variants (see TodoDumpRequest for the full contract):
       - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
-      - "bug": writes a "bug" artifact; enters the bug-fix lane with state.current=prepared.
-      - "prepped": writes the content as an "implementation-plan" artifact; after the
-        transaction commits, stamps state as prepared via the lifecycle machine so the
-        todo is immediately ready for build, skipping the prepare phase entirely.
+      - "bug": writes a "bug" artifact; stamps DOR/grounding/verdicts via
+        apply_prepared_state so derive_prepare_phase resolves to PREPARED immediately.
+      - "prepped": writes the content as an "implementation-plan" artifact; stamps
+        all prepare primitives so the todo is immediately ready for build.
     """
     from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
 
@@ -510,7 +331,6 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         state = default_state()
         if request.kind == "bug":
             state["kind"] = "bug"
-            state["current"] = "prepared"
         elif request.kind == "prepped":
             state["kind"] = "prepped"
 
@@ -530,12 +350,14 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
 
         todos_db._on_mutation()  # pylint: disable=protected-access
 
-        if request.kind == "prepped":
-            # Run the lifecycle machine's on_enter for "prepared" — stamps DOR, grounding,
-            # plan_review=approve, requirements_review=skipped, and writes quality-checklist.
-            from teleclaude.core.next_machine.state_io import mark_phase  # pylint: disable=import-outside-toplevel
+        if request.kind in ("prepped", "bug"):
+            # Stamp DOR, grounding baseline, plan_review=approve, and
+            # requirements_review=skipped so derive_prepare_phase resolves to PREPARED.
+            from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+                apply_prepared_state,
+            )
 
-            mark_phase(effective_cwd, slug, "prepared")
+            apply_prepared_state(effective_cwd, slug)
             todos_db._on_mutation()  # pylint: disable=protected-access
 
         return _SlugStatusResponse(status="ok", slug=slug)
@@ -683,21 +505,61 @@ def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
     writer.state.dor = dor_model
 
 
+_ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
+
+
 @router.post("/stamp/{slug}")
-async def stamp(
+async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals
     slug: str,
     stamp_type: Annotated[str, Body()],
-    value: Annotated[str, Body()],
+    value: Annotated[str, Body()] = "",
+    phase: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
 ) -> _StampResponse:
-    """Stamp a verdict, DOR, build, or grounding value into todo state."""
+    """Stamp a verdict, DOR, grounding, specs-built, or finalize-ready value.
+
+    Verdict stamps require an explicit ``phase`` body field — derivation-based
+    state no longer tracks a persistent ``current`` pointer. Accepted phases
+    are the three prepare review keys and ``build_review`` for the work lane.
+    """
+    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+        stamp_finalize_ready,
+        stamp_verdict,
+    )
     from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        ReviewManager,
         StateMutationError,
         StateWriter,
     )
 
     effective_cwd = cwd or _default_cwd()
+
+    if stamp_type == "verdict":
+        if not phase:
+            raise HTTPException(status_code=400, detail="verdict stamp requires explicit 'phase' body field")
+        if phase not in _ALL_VERDICT_PHASES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"invalid verdict phase '{phase}': must be one of {', '.join(_ALL_VERDICT_PHASES)}",
+            )
+        allowed_values = _BUILD_VERDICT_VALUES if phase == _BUILD_VERDICT_PHASE else _PREPARE_VERDICT_VALUES
+        if value not in allowed_values:
+            raise HTTPException(
+                status_code=400,
+                detail=f"invalid verdict '{value}' for phase '{phase}': must be one of {', '.join(allowed_values)}",
+            )
+        try:
+            await asyncio.to_thread(stamp_verdict, effective_cwd, slug, phase, value)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
+
+    if stamp_type == "finalize_ready":
+        try:
+            await asyncio.to_thread(stamp_finalize_ready, effective_cwd, slug)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
+
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     raw_state = await todos_db.read_state(slug)
     if raw_state is None:
@@ -705,20 +567,16 @@ async def stamp(
 
     try:
         writer = StateWriter(raw_state)
-        if stamp_type == "verdict":
-            current = writer.state.current
-            if current not in _PREPARE_VERDICT_PHASES:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"current state '{current}' is not a review phase",
-                )
-            ReviewManager(writer).stamp_verdict(current, value)
-        elif stamp_type == "build":
-            writer.state.current = f"build_{value}"
-        elif stamp_type == "grounding":
+        if stamp_type == "grounding":
             _apply_grounding_stamp(writer, value)
         elif stamp_type == "dor":
             _apply_dor_stamp(writer, value)
+        elif stamp_type == "specs_built":
+            from datetime import UTC  # pylint: disable=import-outside-toplevel
+            from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
+
+            writer.state.artifacts.test_specs.produced_at = _dt.now(UTC).isoformat()
+            writer.state.artifacts.test_specs.stale = False
         else:
             raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
         await writer.commit(todos_db, slug)

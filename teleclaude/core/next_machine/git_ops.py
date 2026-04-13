@@ -24,7 +24,7 @@ logger = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Git primitives (public, used by work_lifecycle on_enter handlers)
+# Git primitives (public, consumed by work dispatch and phase derivation)
 # ---------------------------------------------------------------------------
 
 
@@ -209,8 +209,8 @@ def _merge_origin_main_into_worktree(worktree_cwd: str, slug: str) -> str:
         return ""
 
     # Defense-in-depth: commit any pending changes before merging.
-    # mark-phase auto-commits, so this should be a no-op. If it isn't,
-    # something upstream failed to commit — surface the anomaly.
+    # Workers commit their own changes, so this should be a no-op. If it
+    # isn't, something upstream failed to commit — surface the anomaly.
     status = repo.git.status("--porcelain")
     if status.strip():
         repo.git.add("-A")

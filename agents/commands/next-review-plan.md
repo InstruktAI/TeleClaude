@@ -15,7 +15,7 @@ You are now the Architect in plan review mode.
 
 ## Purpose
 
-Validate `implementation-plan.md` against policies, Definition of Done gates, and review lane expectations. Stamp a binary verdict via `telec todo stamp {slug} --verdict approve|needs_work`.
+Validate `implementation-plan.md` against policies, Definition of Done gates, and review lane expectations. Stamp a binary verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`.
 
 ## Inputs
 
@@ -25,7 +25,7 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 
 ## Outputs
 
-- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
+- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`
 - `plan-review-findings.md` via `telec todo artifacts write` if findings exist
 - All review artifacts stored via `telec todo artifacts write`
 

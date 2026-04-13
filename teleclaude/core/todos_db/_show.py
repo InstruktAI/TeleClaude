@@ -2,40 +2,83 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
-from teleclaude.core.next_machine._types import PreparePhase, StateValue
-from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES
+from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.next_machine._types import PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase, derive_work_phase
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
-# Phase grouping boundaries — indices into LIFECYCLE_STATES.
-# Prepare: input_assessment .. prepared (indices 0..10)
-# Work:    build_started .. finalize_handed_off (indices 11..17)
-_PREPARE_STATES = {s.value for s in PreparePhase if s != PreparePhase.BLOCKED}
 
-# Map `current` values to the human-readable phase name used in `current.phase`.
+# Map derived phase value → human-readable phase label for CurrentBlock.phase.
 _PHASE_LABEL: dict[str, str] = {
-    "input_assessment": "input_assessment",
-    "triangulation": "triangulation",
-    "requirements_review": "requirements_review",
-    "test_spec_build": "test_spec_build",
-    "test_spec_review": "test_spec_review",
-    "plan_drafting": "plan_drafting",
-    "plan_review": "plan_review",
-    "gate": "gate",
-    "grounding_check": "grounding_check",
-    "re_grounding": "re_grounding",
-    "prepared": "prepared",
-    "build_started": "build",
-    "build_complete": "build",
-    "review_pending": "review",
-    "review_changes_requested": "review",
-    "review_approved": "review",
-    "finalize_ready": "finalize",
-    "finalize_handed_off": "finalize",
+    PreparePhase.INPUT_ASSESSMENT.value: "input_assessment",
+    PreparePhase.TRIANGULATION.value: "triangulation",
+    PreparePhase.REQUIREMENTS_REVIEW.value: "requirements_review",
+    PreparePhase.TEST_SPEC_BUILD.value: "test_spec_build",
+    PreparePhase.TEST_SPEC_REVIEW.value: "test_spec_review",
+    PreparePhase.PLAN_DRAFTING.value: "plan_drafting",
+    PreparePhase.PLAN_REVIEW.value: "plan_review",
+    PreparePhase.GATE.value: "gate",
+    PreparePhase.GROUNDING_CHECK.value: "grounding_check",
+    PreparePhase.RE_GROUNDING.value: "re_grounding",
+    PreparePhase.PREPARED.value: "prepared",
+    WorkPhase.BUILD_STARTED.value: "build",
+    WorkPhase.BUILD_COMPLETE.value: "build",
+    WorkPhase.REVIEW_CHANGES_REQUESTED.value: "review",
+    WorkPhase.REVIEW_APPROVED.value: "review",
+    WorkPhase.FINALIZE_READY.value: "finalize",
+    WorkPhase.HANDED_OFF.value: "finalize",
 }
+
+# Ordered list of derived phase values for previous/next navigation.
+_LIFECYCLE_ORDER: list[str] = [
+    PreparePhase.INPUT_ASSESSMENT.value,
+    PreparePhase.REQUIREMENTS_REVIEW.value,
+    PreparePhase.TEST_SPEC_BUILD.value,
+    PreparePhase.TEST_SPEC_REVIEW.value,
+    PreparePhase.PLAN_DRAFTING.value,
+    PreparePhase.PLAN_REVIEW.value,
+    PreparePhase.GATE.value,
+    PreparePhase.GROUNDING_CHECK.value,
+    PreparePhase.PREPARED.value,
+    WorkPhase.BUILD_STARTED.value,
+    WorkPhase.BUILD_COMPLETE.value,
+    WorkPhase.REVIEW_CHANGES_REQUESTED.value,
+    WorkPhase.REVIEW_APPROVED.value,
+    WorkPhase.FINALIZE_READY.value,
+    WorkPhase.HANDED_OFF.value,
+]
+
+# Derived values where the show payload reports state="done" (phase complete).
+_DONE_PHASE_VALUES: frozenset[str] = frozenset(
+    {
+        PreparePhase.PREPARED.value,
+        WorkPhase.BUILD_COMPLETE.value,
+        WorkPhase.REVIEW_APPROVED.value,
+        WorkPhase.HANDED_OFF.value,
+    }
+)
+
+# Values belonging to the prepare lifecycle for stage classification.
+_PREPARE_VALUES: frozenset[str] = frozenset(
+    {
+        PreparePhase.INPUT_ASSESSMENT.value,
+        PreparePhase.TRIANGULATION.value,
+        PreparePhase.REQUIREMENTS_REVIEW.value,
+        PreparePhase.TEST_SPEC_BUILD.value,
+        PreparePhase.TEST_SPEC_REVIEW.value,
+        PreparePhase.PLAN_DRAFTING.value,
+        PreparePhase.PLAN_REVIEW.value,
+        PreparePhase.GATE.value,
+        PreparePhase.GROUNDING_CHECK.value,
+        PreparePhase.RE_GROUNDING.value,
+        PreparePhase.BLOCKED.value,
+    }
+)
 
 
 # ── Typed payload shapes ────────────────────────────────────────────────────
@@ -75,101 +118,94 @@ class ShowPayload(TypedDict, total=False):
 # ── Derivation helpers ──────────────────────────────────────────────────────
 
 
-def _derive_stage(current: str, *, delivered: bool) -> str:
-    """Derive stage from current lifecycle state."""
+def _project_root_from_db(todos_db: TodosDb) -> Path:
+    """Return the project root directory inferred from a TodosDb instance."""
+    db_path = todos_db._db_path  # pylint: disable=protected-access
+    return db_path.parent.parent if db_path.parent.name == ".teleclaude" else db_path.parent
+
+
+def _worktree_cwd_for(project_root: Path, slug: str) -> str:
+    """Return the worktree directory for ``slug`` under the project root."""
+    return str(project_root / WORKTREE_DIR / slug)
+
+
+async def _derive_phase_value(
+    state: dict[str, StateValue],
+    todos_db: TodosDb,
+    slug: str,
+    worktree_cwd: str,
+) -> str:
+    """Return the derived phase value for a slug from prepare + work primitives."""
+    prep = await derive_prepare_phase(state, todos_db, slug)
+    if prep != PreparePhase.PREPARED:
+        return str(prep.value)
+    work = derive_work_phase(state, worktree_cwd, slug)
+    return str(work.value)
+
+
+def _derive_stage(current_value: str, *, delivered: bool) -> str:
+    """Classify current value into stage bucket (delivered/prepare/work)."""
     if delivered:
         return "delivered"
-    if current in _PREPARE_STATES:
+    if current_value in _PREPARE_VALUES:
         return "prepare"
-    if current.startswith("integration"):
-        return "integrate"
     return "work"
 
 
-def _is_phase_done(  # pylint: disable=too-many-return-statements
-    current: str, state: dict[str, StateValue]
-) -> bool:
-    """Determine whether the current phase has a completion marker."""
-    if current == "delivered":
-        return True
-
-    if current in ("requirements_review", "test_spec_review", "plan_review"):
-        section = state.get(current)
-        return isinstance(section, dict) and bool(section.get("verdict"))
-
-    if current == "build_complete":
-        return True
-    if current == "build_started":
-        return False
-    if current == "review_approved":
-        return True
-    if current in ("review_pending", "review_changes_requested"):
-        return False
-    if current == "finalize_handed_off":
-        return True
-    if current == "finalize_ready":
-        return False
-    if current == "prepared":
-        return True
-    if current in ("gate", "grounding_check", "re_grounding"):
-        dor = state.get("dor")
-        return isinstance(dor, dict) and bool(dor.get("status"))
-
-    return False
-
-
-def _derive_current_block(current: str, state: dict[str, StateValue]) -> CurrentBlock:
+def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> CurrentBlock:
     """Build the ``current`` block for the payload."""
-    phase = _PHASE_LABEL.get(current, current)
-    done = _is_phase_done(current, state)
+    phase = _PHASE_LABEL.get(current_value, current_value)
+    done = current_value in _DONE_PHASE_VALUES
 
     block = CurrentBlock(phase=phase, state="done" if done else "in_progress")
 
-    if current == "review_approved":
+    if current_value == WorkPhase.REVIEW_APPROVED.value:
         block["status"] = "approved"
-    elif current == "review_changes_requested":
+    elif current_value == WorkPhase.REVIEW_CHANGES_REQUESTED.value:
         block["status"] = "changes_requested"
-    elif current == "review_pending":
-        block["status"] = "pending"
 
-    review_round = state.get("review_round")
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+    review_round = build_review.get("round", 0)
     if isinstance(review_round, int) and review_round > 0:
         block["round"] = review_round
 
     return block
 
 
-def _derive_previous(current: str) -> str | None:
-    """Return the previous phase name, or None if at the start."""
+def _derive_previous(current_value: str) -> str | None:
+    """Return the label of the phase immediately before ``current_value``."""
     try:
-        idx = LIFECYCLE_STATES.index(current)
+        idx = _LIFECYCLE_ORDER.index(current_value)
     except ValueError:
         return None
     if idx == 0:
         return None
-    prev_state = LIFECYCLE_STATES[idx - 1]
-    return _PHASE_LABEL.get(prev_state, prev_state)
+    prev_value = _LIFECYCLE_ORDER[idx - 1]
+    return _PHASE_LABEL.get(prev_value, prev_value)
 
 
-def _derive_next(current: str, state: dict[str, StateValue]) -> str | None:
-    """Return the next phase name, or None if not done or at the end."""
-    if not _is_phase_done(current, state):
+def _derive_next(current_value: str) -> str | None:
+    """Return the label of the phase immediately after ``current_value`` when done."""
+    if current_value not in _DONE_PHASE_VALUES:
         return None
     try:
-        idx = LIFECYCLE_STATES.index(current)
+        idx = _LIFECYCLE_ORDER.index(current_value)
     except ValueError:
         return None
-    if idx >= len(LIFECYCLE_STATES) - 1:
+    if idx >= len(_LIFECYCLE_ORDER) - 1:
         return None
-    next_state = LIFECYCLE_STATES[idx + 1]
-    return _PHASE_LABEL.get(next_state, next_state)
+    next_value = _LIFECYCLE_ORDER[idx + 1]
+    return _PHASE_LABEL.get(next_value, next_value)
 
 
-def _build_blocked_by(
+async def _build_blocked_by(  # pylint: disable=too-many-arguments,too-many-positional-arguments
     slug: str,
     deps: dict[str, list[str]],
     delivered_slugs: set[str],
     all_states: dict[str, dict[str, StateValue]],
+    todos_db: TodosDb,
+    project_root: Path,
     *,
     visited: set[str] | None = None,
 ) -> list[BlockerEntry] | None:
@@ -190,13 +226,22 @@ def _build_blocked_by(
         blocker = BlockerEntry(slug=dep_slug)
 
         dep_state = all_states.get(dep_slug)
-        if dep_state:
-            dep_current = str(dep_state.get("current", "input_assessment"))
+        if dep_state is not None:
+            dep_worktree = _worktree_cwd_for(project_root, dep_slug)
+            dep_current = await _derive_phase_value(dep_state, todos_db, dep_slug, dep_worktree)
             blocker["stage"] = _derive_stage(dep_current, delivered=False)
             blocker["current"] = dep_current
 
         if dep_slug not in visited:
-            nested = _build_blocked_by(dep_slug, deps, delivered_slugs, all_states, visited=visited)
+            nested = await _build_blocked_by(
+                dep_slug,
+                deps,
+                delivered_slugs,
+                all_states,
+                todos_db,
+                project_root,
+                visited=visited,
+            )
             if nested:
                 blocker["blocked_by"] = nested
 
@@ -222,7 +267,9 @@ async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-bra
             return None
         is_delivered = True
 
-    current = str(state.get("current", "input_assessment"))
+    project_root = _project_root_from_db(todos_db)
+    worktree_cwd = _worktree_cwd_for(project_root, slug)
+    current_value = await _derive_phase_value(state, todos_db, slug, worktree_cwd)
 
     delivered_slugs = await todos_db.delivered_slugs()
 
@@ -233,7 +280,7 @@ async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-bra
             description = entry.get("description")
             break
 
-    payload = ShowPayload(slug=slug, stage=_derive_stage(current, delivered=is_delivered))
+    payload = ShowPayload(slug=slug, stage=_derive_stage(current_value, delivered=is_delivered))
 
     if description:
         payload["description"] = description
@@ -248,17 +295,24 @@ async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-bra
             if dep_state:
                 all_states[dep_slug] = dep_state
 
-        blocked_by = _build_blocked_by(slug, deps, delivered_slugs, all_states)
+        blocked_by = await _build_blocked_by(
+            slug,
+            deps,
+            delivered_slugs,
+            all_states,
+            todos_db,
+            project_root,
+        )
         if blocked_by:
             payload["blocked_by"] = blocked_by
 
-    previous = _derive_previous(current)
+    previous = _derive_previous(current_value)
     if previous:
         payload["previous"] = previous
 
-    payload["current"] = _derive_current_block(current, state)
+    payload["current"] = _derive_current_block(current_value, state)
 
-    next_phase = _derive_next(current, state)
+    next_phase = _derive_next(current_value)
     if next_phase:
         payload["next"] = next_phase
 

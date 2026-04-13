@@ -1,8 +1,8 @@
-"""Pydantic models for Todo state management."""
+"""Pydantic models for Todo state management (schema v1)."""
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -92,14 +92,26 @@ class TestSpecReviewState(BaseModel):
     rounds: int = 0
 
 
-class HistoryEntry(TypedDict):
-    """A single state transition history entry."""
+class BuildReviewState(BaseModel):
+    """Verdict state for the work (build) review phase.
 
-    source: str
-    target: str
+    Unlike prepare reviews, the build review tracks a baseline_commit so that
+    re-review dispatch can restrict diff scope to commits since the last
+    verdict. ``round`` increments on every ``changes_requested`` verdict.
+    """
+
+    verdict: str = ""
+    round: int = 0
+    baseline_commit: str = ""
+
+
+class Event(BaseModel):
+    """Audit log entry for a state transition or stamp side-effect."""
+
     at: str
-    by: str
-    metadata: NotRequired[dict[str, StateValue]]
+    actor: str
+    kind: str
+    details: dict[str, StateValue] = Field(default_factory=dict)
 
 
 class ArtifactEntry(BaseModel):
@@ -108,6 +120,8 @@ class ArtifactEntry(BaseModel):
     digest: str = ""
     produced_at: str = ""
     stale: bool = False
+    approved: bool = False
+    confirmed: bool = False
 
 
 class ArtifactsState(BaseModel):
@@ -117,6 +131,9 @@ class ArtifactsState(BaseModel):
     requirements: ArtifactEntry = Field(default_factory=ArtifactEntry)
     test_specs: ArtifactEntry = Field(default_factory=ArtifactEntry)
     implementation_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    art: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    visuals: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    design_spec: ArtifactEntry = Field(default_factory=ArtifactEntry)
 
 
 class AuditTimestamp(BaseModel):
@@ -151,27 +168,33 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (v2 schema)."""
+    """Canonical state for a TeleClaude work item (v1 schema).
 
-    schema_version: int = 2
+    v1 is a strict, derivation-ready schema: phase is never cached here.
+    Callers derive it from primitives (verdict stamps, git commits, artifact
+    presence, DOR score, grounding validity) on every read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: Literal[1] = 1
     phase: str = "pending"
     kind: str = "todo"  # "todo" | "bug"
-    current: str = "input_assessment"
-    history: list[HistoryEntry] = Field(default_factory=list)
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
-    review_round: int = 0
-    max_review_rounds: int = 3
-    review_baseline_commit: str = ""
-    unresolved_findings: list[str] = Field(default_factory=list)
-    resolved_findings: list[str] = Field(default_factory=list)
     grounding: GroundingState = Field(default_factory=GroundingState)
+    dor: DorState | None = None
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)
     plan_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
+    build_review: BuildReviewState = Field(default_factory=BuildReviewState)
     artifacts: ArtifactsState = Field(default_factory=ArtifactsState)
+    creative: dict[str, StateValue] | None = None
     audit: AuditState = Field(default_factory=AuditState)
-    dor: DorState | None = None
-    requirements: ReviewVerdictState | None = None
-    plan: ReviewVerdictState | None = None
+    events: list[Event] = Field(default_factory=list)
+
+    @classmethod
+    def defaults(cls) -> TodoState:
+        """Return a fresh v1 TodoState used by schema reset and scaffolding."""
+        return cls()

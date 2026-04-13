@@ -1,5 +1,10 @@
 """Work stage — Phase B state machine for deterministic builder work.
 
+Loop shaped like :func:`teleclaude.core.next_machine.prepare.next_prepare`:
+each iteration re-derives :class:`WorkPhase` from state primitives + the
+worktree git log + build-gate results, then routes through
+:func:`_work_dispatch`. No persistent ``current`` value, no mark-phase calls.
+
 No imports from core.py (circular-import guard).
 """
 
@@ -8,63 +13,39 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.db import Db
-from teleclaude.core.integration_bridge import emit_branch_pushed, emit_deployment_started, emit_review_approved
 from teleclaude.core.next_machine._types import (
     _SINGLE_FLIGHT_GUARD,
+    _WORK_LOOP_LIMIT,
     NEXT_WORK_PHASE_LOG,
-    REVIEW_DIFF_NOTE,
-    FinalizeState,
     ItemPhase,
-    PhaseName,
-    PhaseStatus,
-    StateValue,
-)
-from teleclaude.core.next_machine.build_gates import (
-    format_build_gate_failure,
-    run_build_gates,
-    verify_artifacts,
 )
 from teleclaude.core.next_machine.git_ops import (
-    _has_meaningful_diff,
     _merge_origin_main_into_worktree,
-    compose_agent_guidance,
-    get_head_commit,
     get_stash_entries,
-    has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.output_formatting import (
-    ToolCallRequest,
     format_error,
-    format_finalize_handoff_complete,
     format_stash_debt,
-    format_tool_call,
-    format_uncommitted_changes,
 )
+from teleclaude.core.next_machine.phase_derivation import derive_work_phase
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
     resolve_canonical_project_root,
     resolve_slug_async,
     set_item_phase_db,
 )
-from teleclaude.core.next_machine.state_io import (
-    _is_review_round_limit_reached,
-    _normalize_finalize_state,
-    _review_scope_note,
-    mark_phase,
-)
+from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import (
     ensure_worktree_with_policy_async,
 )
-from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -74,23 +55,6 @@ logger = get_logger(__name__)
 # Single-flight lock registry — one per (canonical_cwd, slug) pair.
 # _SINGLE_FLIGHT_GUARD is the threading.Lock protecting mutations; defined in _types.
 _SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
-
-
-def _derive_work_statuses(current: str) -> tuple[str, str]:
-    """Derive build and review status from the authoritative current state value."""
-    from teleclaude.core.next_machine.work_lifecycle import (  # pylint: disable=import-outside-toplevel
-        CURRENT_TO_BUILD_REVIEW,
-    )
-
-    return CURRENT_TO_BUILD_REVIEW.get(current, ("pending", "pending"))
-
-
-@dataclass(frozen=True)
-class _DispatchState:
-    state: dict[str, StateValue]
-    build_status: str
-    review_status: str
-    finalize_state: FinalizeState
 
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
@@ -126,11 +90,13 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         logger.debug("Operation progress emission skipped", exc_info=True)
 
 
-async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals
+async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals,too-many-return-statements
     """Phase B state machine for deterministic builder work.
 
-    Executes the build/review/fix/finalize cycle on prepared work items.
-    Only considers items with current "prepared" and satisfied dependencies.
+    Reads durable state from ``todos.db``, derives the current work phase via
+    :func:`derive_work_phase`, executes the corresponding step via
+    :func:`_work_dispatch`, and loops until a step returns an instruction or
+    the loop limit is reached.
 
     Args:
         db: Database instance
@@ -159,7 +125,63 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
     if ensure_error is not None:
         return ensure_error
 
-    return await _dispatch_next_work(db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug)
+    # Merge origin/main into the worktree once before the loop so the phase
+    # derivation sees a baseline consistent with integrated main.
+    merge_started = perf_counter()
+    merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
+    if merge_err:
+        _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
+        return format_error("MERGE_MAIN_FAILED", merge_err)
+    _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", "merge_main_applied")
+
+    # Ensure item phase is IN_PROGRESS on first work entry.
+    current_phase = await _get_item_phase_db(todos_db, resolved_slug)
+    if current_phase == ItemPhase.PENDING.value:
+        await set_item_phase_db(todos_db, resolved_slug, ItemPhase.IN_PROGRESS.value)
+
+    # Dispatch loop — each iteration re-derives phase from primitives and dispatches.
+    for _iter in range(_WORK_LOOP_LIMIT):
+        state = await todos_db.read_state(resolved_slug)
+        if state is None:
+            return format_error(
+                "NO_STATE",
+                f"No state record for {resolved_slug}. Run telec todo prepare {resolved_slug} first.",
+                next_call=f"telec todo prepare {resolved_slug}",
+            )
+
+        phase = derive_work_phase(state, worktree_cwd, resolved_slug)
+        logger.info(
+            "NEXT_WORK_PHASE slug=%s phase=%s iter=%d",
+            resolved_slug,
+            phase.value,
+            _iter,
+        )
+
+        dispatch_started = perf_counter()
+        keep_going, instruction = await _work_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug=resolved_slug,
+            cwd=cwd,
+            worktree_cwd=worktree_cwd,
+            phase=phase,
+            state=state,
+        )
+        _log_next_work_phase(
+            phase_slug,
+            "dispatch_decision",
+            dispatch_started,
+            "run" if keep_going else "dispatch",
+            phase.value,
+        )
+        if not keep_going:
+            return instruction
+
+    return (
+        f"LOOP_LIMIT: work state machine for {resolved_slug} exceeded "
+        f"{_WORK_LOOP_LIMIT} internal transitions. "
+        f"Inspect state for {resolved_slug} for stuck state."
+    )
 
 
 async def _normalize_next_work_cwd(cwd: str) -> str:
@@ -290,7 +312,7 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
     """Validate dispatch concerns only: done check and dependency satisfaction.
 
     Per-step prerequisites (DOR, artifacts, freshness) are handled by
-    on_enter handlers in the lifecycle machine — not here.
+    derivation + step handlers in the work loop — not here.
     """
     if phase == ItemPhase.DONE.value:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "item_done")
@@ -308,11 +330,7 @@ async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-argumen
 
 
 async def _validate_work_preconditions(cwd: str, resolved_slug: str) -> str | None:
-    """Validate environmental preconditions only: stash debt.
-
-    Per-step prerequisites (artifacts, freshness) are handled by
-    on_enter handlers in the lifecycle machine.
-    """
+    """Validate environmental preconditions only: stash debt."""
     preconditions_started = perf_counter()
     stash_entries = await asyncio.to_thread(get_stash_entries, cwd)
     if stash_entries:
@@ -377,500 +395,6 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
             next_call="Inspect daemon logs for worktree setup failure, fix the repository or branch state, then retry.",
         )
     return worktree_cwd, None
-
-
-async def _dispatch_next_work(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    db: Db, todos_db: TodosDb, cwd: str, worktree_cwd: str, resolved_slug: str, phase_slug: str
-) -> str:  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    """Dispatch the appropriate next-work tool call from worktree-owned state."""
-    dispatch_started = perf_counter()
-    dispatch_state, state_error = await _prepare_dispatch_state(
-        todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started
-    )
-    if state_error is not None:
-        return state_error
-    if dispatch_state.review_status == PhaseStatus.APPROVED.value:
-        return await _dispatch_review_approved(
-            db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
-        )
-    return await _dispatch_pre_review(
-        db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state
-    )
-
-
-async def _prepare_dispatch_state(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    todos_db: TodosDb,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-) -> tuple[_DispatchState, str | None]:
-    """Load worktree phase state, claiming the item and repairing stale transitions."""
-    # Merge origin/main BEFORE the uncommitted-changes check so that files
-    # deleted on main (e.g. todos/) don't appear as false-positive drift.
-    merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
-    if merge_err:
-        _log_next_work_phase(phase_slug, "merge_main", dispatch_started, "error", "merge_main_failed")
-        return _DispatchState({}, "", "", {}), format_error("MERGE_MAIN_FAILED", merge_err)
-
-    if has_uncommitted_changes(cwd, resolved_slug):
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
-        return _DispatchState({}, "", "", {}), format_uncommitted_changes(resolved_slug)
-
-    current_phase = await _get_item_phase_db(todos_db, resolved_slug)
-    if current_phase == ItemPhase.PENDING.value:
-        await set_item_phase_db(todos_db, resolved_slug, ItemPhase.IN_PROGRESS.value)
-
-    state = await todos_db.read_state(resolved_slug)
-    current = str(state.get("current", ""))
-
-    # Derive build/review status from authoritative current value
-    build_status, review_status = _derive_work_statuses(current)
-
-    finalize_state = _normalize_finalize_state(state.get("finalize"))
-    review_status = await _repair_stale_review_approval(
-        worktree_cwd, resolved_slug, phase_slug, state, review_status, finalize_state
-    )
-    return _DispatchState(state, build_status, review_status, finalize_state), None
-
-
-async def _repair_stale_review_approval(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    state: dict[str, StateValue],
-    review_status: str,
-    finalize_state: FinalizeState,
-) -> str:
-    """Reset approved review state when new meaningful commits landed after approval."""
-    finalize_status = finalize_state.get("status", "pending")
-    if review_status != PhaseStatus.APPROVED.value or finalize_status in ("ready", "handed_off"):
-        return review_status
-
-    baseline_raw = state.get("review_baseline_commit")
-    baseline = baseline_raw if isinstance(baseline_raw, str) else ""
-    head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
-    if not (baseline and head_sha and baseline != head_sha):
-        return review_status
-    if not await asyncio.to_thread(_has_meaningful_diff, worktree_cwd, baseline, head_sha):
-        return review_status
-
-    repair_started = perf_counter()
-    await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "review_pending")
-    _log_next_work_phase(phase_slug, "state_repair", repair_started, "run", "review_approval_stale_baseline")
-    return PhaseStatus.PENDING.value
-
-
-async def _dispatch_pre_review(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    db: Db,
-    todos_db: TodosDb,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    dispatch_state: _DispatchState,
-) -> str:
-    """Dispatch fix-forward, build, or review based on the current pre-finalize state."""
-    if dispatch_state.review_status == PhaseStatus.CHANGES_REQUESTED.value:
-        return await _dispatch_fix_forward_to_builder(db, cwd, resolved_slug, phase_slug, dispatch_started)
-    if dispatch_state.build_status != PhaseStatus.COMPLETE.value:
-        return await _dispatch_build_phase(db, todos_db, cwd, resolved_slug, phase_slug, dispatch_started)
-    return await _dispatch_review_phase(
-        db, todos_db, cwd, worktree_cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
-    )
-
-
-async def _dispatch_fix_forward_to_builder(
-    db: Db,
-    cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-) -> str:
-    """Send review findings to the existing builder session instead of dispatching a fresh fixer."""
-    _ = cwd  # retained for call-site symmetry with other dispatch helpers
-    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
-        _find_live_session_for_slug,
-    )
-
-    builder_id = await _find_live_session_for_slug(db, resolved_slug, "/next-build")
-    if builder_id is None:
-        builder_id = await _find_live_session_for_slug(db, resolved_slug, "/next-bugs-fix")
-    reviewer_id = await _find_live_session_for_slug(db, resolved_slug, "/next-review-build")
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "fix_forward_to_builder")
-
-    if builder_id is None:
-        return format_error(
-            "BUILDER_NOT_ALIVE",
-            (
-                f"Review requested changes for {resolved_slug}, but no live builder session exists "
-                f"to relay findings to. The builder should remain alive across review rounds. "
-                f"Manual intervention required."
-            ),
-            next_call=f"telec todo work {resolved_slug}",
-        )
-
-    message = (
-        f"Review requested changes for {resolved_slug}. "
-        f"Findings artifact: `review-findings`. Target: source code in the worktree. "
-        f"Required read: software-development/procedure/lifecycle/fix-review-findings. "
-        f"Address the findings and report FIX COMPLETE. "
-        f"Read findings via: telec todo artifacts read {resolved_slug} review-findings"
-    )
-    escaped = message.replace('"', '\\"')
-    reviewer_wait = (
-        f"Wait for reviewer session {reviewer_id} to report idle."
-        if reviewer_id
-        else "Wait for the builder to report FIX COMPLETE, then call the next step."
-    )
-    return (
-        f"REVIEW CHANGES REQUESTED: {resolved_slug}\n\n"
-        f"Execute in order:\n\n"
-        f'telec sessions send {builder_id} "{escaped}"\n\n'
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id.\n"
-        f"{reviewer_wait}\n"
-        f"When the signal arrives, call telec todo work {resolved_slug}."
-    )
-
-
-async def _dispatch_build_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    db: Db,
-    todos_db: TodosDb,
-    cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-) -> str:
-    """Dispatch build or bug-fix work when the build phase is incomplete."""
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-
-    pre_dispatch = f"telec todo mark-phase {resolved_slug} --phase build --status started"
-    post_block = (
-        f"WHEN WORKER IDLES:\n"
-        f"Call telec todo work {resolved_slug}. The state machine emits the next action "
-        f"(advance to review, relay build-gate failures, or terminal cleanup)."
-    )
-    is_bug = await todos_db.is_bug_todo(resolved_slug)
-    if is_bug:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_bugs_fix")
-        return format_tool_call(
-            ToolCallRequest(
-                command=SlashCommand.NEXT_BUGS_FIX,
-                args=resolved_slug,
-                project=cwd,
-                guidance=guidance,
-                subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-                next_call=f"telec todo work {resolved_slug}",
-                pre_dispatch=pre_dispatch,
-                post_block=post_block,
-            )
-        )
-
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_build")
-    return format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_BUILD,
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            pre_dispatch=pre_dispatch,
-            post_block=post_block,
-        )
-    )
-
-
-async def _dispatch_review_phase(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-    db: Db,
-    todos_db: TodosDb,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    state: dict[str, StateValue],
-) -> str:
-    """Run build/review gates, then dispatch review when eligible."""
-    review_round_raw = state.get("review_round")
-    review_round = review_round_raw if isinstance(review_round_raw, int) else 0
-
-    gate_error = await _run_review_gates(todos_db, worktree_cwd, resolved_slug, phase_slug, review_round)
-    if gate_error is not None:
-        return gate_error
-
-    limit_reached, current_round, max_rounds = _is_review_round_limit_reached(cwd, resolved_slug)
-    if limit_reached:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "review_round_limit")
-        return format_error(
-            "REVIEW_ROUND_LIMIT",
-            (
-                f"Review rounds exceeded for {resolved_slug}: "
-                f"current={current_round}, max={max_rounds}. "
-                f"Manual resolution required.\n\n"
-                f"Before acting, load the relevant worker role:\n"
-                f"  telec docs index\n"
-                f"Then use telec docs get to load the procedure for the role you are assuming."
-            ),
-            next_call=f"telec todo work {resolved_slug}",
-        )
-
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_review")
-    return format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_REVIEW_BUILD,
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            note=f"{REVIEW_DIFF_NOTE}\n\n{_review_scope_note(cwd, resolved_slug)}",
-            post_block=(
-                f"WHEN REVIEWER IDLES:\n"
-                f"Call telec todo work {resolved_slug}. The state machine will read the "
-                f"verdict and emit the next action (advance to finalize, relay findings to "
-                f"the existing builder, or terminal cleanup)."
-            ),
-        )
-    )
-
-
-async def _run_review_gates(
-    todos_db: TodosDb,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    review_round: int,
-) -> str | None:
-    """Execute build gates and artifact verification before review dispatch."""
-    gate_started = perf_counter()
-    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, resolved_slug)
-    if not gates_passed:
-        return await _handle_gate_failure(
-            worktree_cwd,
-            resolved_slug,
-            phase_slug,
-            review_round,
-            gate_started,
-            gate_output,
-            "build_gates_failed_post_review" if review_round > 0 else "build_gates_failed",
-        )
-    _log_next_work_phase(phase_slug, "gate_execution", gate_started, "run", "build_gates_passed")
-
-    verify_started = perf_counter()
-    is_bug = await todos_db.is_bug_todo(resolved_slug)
-    artifacts_passed, artifacts_output = await asyncio.to_thread(
-        verify_artifacts, worktree_cwd, resolved_slug, PhaseName.BUILD.value, is_bug=is_bug
-    )
-    if artifacts_passed:
-        _log_next_work_phase(phase_slug, "gate_execution", verify_started, "run", "artifact_verification_passed")
-        return None
-
-    return await _handle_gate_failure(
-        worktree_cwd,
-        resolved_slug,
-        phase_slug,
-        review_round,
-        verify_started,
-        artifacts_output,
-        "artifact_verification_failed_post_review" if review_round > 0 else "artifact_verification_failed",
-    )
-
-
-async def _handle_gate_failure(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    review_round: int,
-    started_at: float,
-    gate_output: str,
-    log_detail: str,
-) -> str:
-    """Apply retry-state bookkeeping after a failed build/review gate."""
-    _log_next_work_phase(phase_slug, "gate_execution", started_at, "error", log_detail)
-    if review_round == 0:
-        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "build_started")
-    return format_build_gate_failure(resolved_slug, gate_output, f"telec todo work {resolved_slug}")
-
-
-async def _dispatch_review_approved(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    db: Db,
-    todos_db: TodosDb,
-    cwd: str,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    dispatch_state: _DispatchState,
-) -> str:
-    """Handle review-approved states: finalize handoff, deferrals, or finalize dispatch."""
-    finalize_status = dispatch_state.finalize_state.get("status")
-    if finalize_status == "handed_off":
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "skip", "finalize_already_handed_off")
-        return format_error(
-            "FINALIZE_ALREADY_HANDED_OFF",
-            f"{resolved_slug} has already been handed off to integration. Continue the queue without a slug.",
-            next_call="telec todo work",
-        )
-    if finalize_status == "ready":
-        return await _dispatch_finalize_handoff(
-            db, worktree_cwd, resolved_slug, phase_slug, dispatch_state.finalize_state
-        )
-    if await todos_db.has_pending_deferrals(resolved_slug):
-        return await _dispatch_deferrals(db, cwd, resolved_slug, phase_slug, dispatch_started)
-    return await _dispatch_finalize_prepare(
-        db, todos_db, cwd, resolved_slug, phase_slug, dispatch_started, dispatch_state.state
-    )
-
-
-async def _dispatch_finalize_handoff(
-    db: Db,
-    worktree_cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    finalize_state: FinalizeState,
-) -> str:
-    """Emit finalize handoff events and mark the finalize state as handed off."""
-    branch = finalize_state.get("branch", "").strip()
-    sha = finalize_state.get("sha", "").strip()
-    worker_session_id = finalize_state.get("worker_session_id", "").strip()
-    if not branch or not sha:
-        _log_next_work_phase(phase_slug, "dispatch_decision", perf_counter(), "error", "finalize_state_invalid")
-        return format_error(
-            "FINALIZE_STATE_INVALID",
-            f"{resolved_slug} finalize state is missing branch or sha; re-run finalize prepare.",
-            next_call=f"telec todo work {resolved_slug}",
-        )
-
-    session_id = get_session_id() or ""
-    handoff_started = perf_counter()
-    try:
-        await emit_branch_pushed(
-            branch=branch,
-            sha=sha,
-            remote="origin",
-            pusher=f"finalizer/{worker_session_id}" if worker_session_id else "",
-        )
-        await emit_deployment_started(
-            slug=resolved_slug,
-            branch=branch,
-            sha=sha,
-            worker_session_id=worker_session_id,
-            ready_at=finalize_state.get("ready_at"),
-        )
-        await asyncio.to_thread(mark_phase, worktree_cwd, resolved_slug, "finalize_handed_off")
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "error", "finalize_handoff_failed")
-        return format_error(
-            "FINALIZE_HANDOFF_FAILED",
-            f"Failed to emit finalize handoff for {resolved_slug}: {type(exc).__name__}: {exc}",
-            next_call=f"telec todo work {resolved_slug}",
-        )
-
-    _log_next_work_phase(phase_slug, "dispatch_decision", handoff_started, "run", "finalize_handoff_emitted")
-    child_session_ids = await _list_child_session_ids(db, session_id)
-    return format_finalize_handoff_complete(resolved_slug, "telec todo work", child_session_ids)
-
-
-async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
-    """List child sessions spawned by the current orchestrator session."""
-    if not session_id:
-        return []
-    try:
-        child_sessions = await db.list_sessions(initiator_session_id=session_id)
-        return [session.session_id for session in child_sessions]
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
-        return []
-
-
-async def _dispatch_deferrals(
-    db: Db,
-    cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-) -> str:
-    """Dispatch pending deferral handling for a review-approved slug."""
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_defer")
-    return format_tool_call(
-        ToolCallRequest(
-            command="next-defer",
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            post_block=(
-                f"WHEN WORKER IDLES:\nCall telec todo work {resolved_slug}. The state machine emits the next action."
-            ),
-        )
-    )
-
-
-async def _dispatch_finalize_prepare(  # pylint: disable=too-many-arguments,too-many-positional-arguments
-    db: Db,
-    todos_db: TodosDb,
-    cwd: str,
-    resolved_slug: str,
-    phase_slug: str,
-    dispatch_started: float,
-    state: dict[str, StateValue],
-) -> str:
-    """Dispatch finalize preparation after review approval."""
-    if has_uncommitted_changes(cwd, resolved_slug):
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "uncommitted_changes")
-        return format_uncommitted_changes(resolved_slug)
-    try:
-        guidance = await compose_agent_guidance(db)
-    except RuntimeError as exc:
-        _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "error", "no_agents")
-        return format_error("NO_AGENTS", str(exc))
-
-    review_round_val = state.get("review_round")
-    review_round = review_round_val if isinstance(review_round_val, int) else 1
-    session_id = get_session_id() or ""
-    try:
-        await emit_review_approved(slug=resolved_slug, reviewer_session_id=session_id, review_round=review_round)
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("Failed to emit review.approved event for %s", resolved_slug, exc_info=True)
-
-    is_bug = await todos_db.is_bug_todo(resolved_slug)
-    note = "BUG FIX: Skip delivery bookkeeping. Delete todo directory after merge." if is_bug else ""
-    _log_next_work_phase(phase_slug, "dispatch_decision", dispatch_started, "run", "dispatch_finalize")
-    return format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_FINALIZE,
-            args=resolved_slug,
-            project=cwd,
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{resolved_slug}",
-            next_call=f"telec todo work {resolved_slug}",
-            note=note,
-            post_block=(
-                f"WHEN WORKER REPORTS FINALIZE_READY:\n"
-                f"Call telec todo work {resolved_slug}. The state machine will drive the finalize handoff."
-            ),
-        )
-    )
 
 
 __all__ = ["next_work"]

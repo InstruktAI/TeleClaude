@@ -95,17 +95,13 @@ async def _get_item_phase_db(
 
 
 async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
-    """Check if item is at or beyond 'prepared' — ready for work dispatch."""
-    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
+    """Check if the derived prepare phase has reached PREPARED — ready for work dispatch."""
+    from teleclaude.core.next_machine.phase_derivation import is_prepared  # pylint: disable=import-outside-toplevel
 
     state = await todos_db.read_state(slug)
     if state is None:
         return False
-    current = str(state.get("current", ""))
-    try:
-        return LIFECYCLE_STATES.index(current) >= LIFECYCLE_STATES.index("prepared")
-    except ValueError:
-        return False
+    return await is_prepared(state, todos_db, slug)
 
 
 async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
@@ -225,9 +221,6 @@ def get_item_phase(cwd: str, slug: str) -> str:
 
     state = todos_db.read_state_sync(slug)
     if state is not None:
-        current = state.get("current")
-        if isinstance(current, str) and current:
-            return current
         phase = state.get("phase")
         if isinstance(phase, str) and phase:
             return phase
@@ -237,19 +230,6 @@ def get_item_phase(cwd: str, slug: str) -> str:
 
     msg = f"Slug '{slug}' has no state in DB, is not delivered, and is not in roadmap. Cannot determine phase."
     raise ValueError(msg)
-
-
-def is_ready_for_work(cwd: str, slug: str) -> bool:
-    """Sync legacy: check whether an item is at or beyond prepared."""
-    from teleclaude.core.next_machine.state_io import read_phase_state  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.work_lifecycle import LIFECYCLE_STATES  # pylint: disable=import-outside-toplevel
-
-    state = read_phase_state(cwd, slug)
-    current = str(state.get("current", ""))
-    try:
-        return LIFECYCLE_STATES.index(current) >= LIFECYCLE_STATES.index("prepared")
-    except ValueError:
-        return False
 
 
 async def slug_in_roadmap(todos_db: TodosDb, slug: str) -> bool:
@@ -273,7 +253,6 @@ __all__ = [
     "_get_item_phase_db",
     "_is_ready_for_work_db",
     "get_item_phase",
-    "is_ready_for_work",
     "resolve_canonical_project_root",
     "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",

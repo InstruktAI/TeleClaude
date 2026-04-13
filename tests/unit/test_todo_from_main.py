@@ -112,7 +112,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase") as mock_phase,
+            patch(f"{_SI}.apply_prepared_state") as mock_phase,
         ):
             output = create_from_main_skeleton(str(project), "test-slug", description="Test changes")
 
@@ -161,13 +161,11 @@ class TestCreateFromMainSkeleton:
         # Verify untracked file removed from main
         assert not (project / "src" / "new.py").exists()
 
-        # Verify state was set: prepared then build_complete
-        assert mock_phase.call_count == 2
-        mock_phase.assert_any_call(str(worktree_path), "test-slug", "prepared")
-        mock_phase.assert_any_call(str(worktree_path), "test-slug", "build_complete")
+        # Verify apply_prepared_state was called to stamp DOR, grounding, verdicts
+        mock_phase.assert_called_once_with(str(worktree_path), "test-slug")
 
     def test_db_roadmap_and_artifacts_bootstrapped(self, tmp_path: Path) -> None:
-        """DB roadmap entry and stub artifacts exist before mark_phase is called."""
+        """DB roadmap entry and stub artifacts exist before apply_prepared_state is called."""
         project = _setup_project(tmp_path)
         worktree_path = project / "trees" / "test-slug"
         worktree_path.mkdir(parents=True)
@@ -183,7 +181,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
             patch(
                 "teleclaude.core.next_machine.state_io.resolve_main_repo_root",
                 return_value=Path(project),
@@ -234,7 +232,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "del-slug")
 
@@ -253,7 +251,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "not-a-repo-slug")
 
@@ -273,7 +271,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "no-desc")
 
@@ -302,7 +300,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "scoped-slug")
 
@@ -358,7 +356,7 @@ class TestCreateFromMainSkeleton:
                 f"{_WT}._decide_worktree_prep",
                 return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
             ),
-            patch(f"{_SI}.mark_phase"),
+            patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "all-slug", all_files=True)
 
@@ -656,7 +654,7 @@ def test_all_files_skips_session_scoping(tmp_path: Path) -> None:
             f"{_WT}._decide_worktree_prep",
             return_value=SimpleNamespace(should_prepare=False, inputs_digest="x"),
         ),
-        patch(f"{_SI}.mark_phase"),
+        patch(f"{_SI}.apply_prepared_state"),
     ):
         create_from_main_skeleton(str(project), "all-files-slug", all_files=True)
 

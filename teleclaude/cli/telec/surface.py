@@ -440,24 +440,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
-            "mark-phase": CommandDef(
-                desc="Mark a work or prepare phase in state.yaml",
-                args="<slug> [--target <name>] [--phase <phase>] [--status <status>] [--force]",
-                flags=[
-                    _H,
-                    Flag("--target", desc="Target state name (e.g. build_complete, review_approved, prepared)"),
-                    Flag("--phase", desc="Legacy: build, review, prepare, requirements_review, plan_review"),
-                    Flag(
-                        "--status",
-                        desc=(
-                            "Legacy: pending/started/complete/approved/changes_requested; "
-                            "Prepare verdict: approve/needs_work/needs_decision"
-                        ),
-                    ),
-                    Flag("--force", desc="Bypass worktree and uncommitted-changes guards"),
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
             "mark-ready": CommandDef(
                 desc="Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare lifecycle",
                 args="<slug> [<slug> ...]",
@@ -479,20 +461,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--after", desc="Dependency slug (repeatable)"),
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
-            "verify-artifacts": CommandDef(
-                desc="Mechanically verify artifacts for a phase (build or review)",
-                args="<slug> [--phase <phase>]",
-                flags=[
-                    _H,
-                    Flag("--phase", desc="Phase: build or review"),
-                ],
-                notes=[
-                    "Exits 0 on pass, 1 on failure.",
-                    "Checks artifact presence and consistency — does not run tests.",
-                    "Integrated into next_work() before dispatching review.",
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "dump": CommandDef(
                 desc="Fire-and-forget brain dump with notification trigger",
@@ -578,20 +546,33 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "stamp": CommandDef(
-                desc="Stamp a verdict, build status, or DOR result into todo state",
+                desc="Stamp a verdict, DOR result, or readiness marker into todo state",
                 args=(
-                    "<slug> [--verdict <v>] [--build <b>] [--dor-score <n>]"
+                    "<slug> [--verdict <v> --phase <p>] [--dor-score <n>]"
                     " [--dor-status <s>] [--grounding-invalidated]"
+                    " [--specs-built] [--finalize-ready]"
                 ),
                 flags=[
                     _H,
-                    Flag("--verdict", desc="approve | needs_work | needs_decision"),
-                    Flag("--build", desc="complete"),
+                    Flag("--verdict", desc="approve | changes_requested | needs_work | needs_decision"),
+                    Flag(
+                        "--phase",
+                        desc=(
+                            "Review phase the verdict belongs to "
+                            "(requirements_review, test_spec_review, plan_review, build_review)"
+                        ),
+                    ),
                     Flag("--dor-score", desc="DOR score (integer)"),
                     Flag("--dor-status", desc="pass | fail"),
                     Flag("--grounding-invalidated", desc="Mark grounding as invalid"),
+                    Flag("--specs-built", desc="Mark test specifications as delivered"),
+                    Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
-                examples=["telec todo stamp my-slug --verdict approve"],
+                examples=[
+                    "telec todo stamp my-slug --verdict approve --phase plan_review",
+                    "telec todo stamp my-slug --verdict changes_requested --phase build_review",
+                    "telec todo stamp my-slug --finalize-ready",
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
         },

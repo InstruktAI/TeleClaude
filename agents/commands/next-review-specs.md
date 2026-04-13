@@ -26,7 +26,7 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 ## Outputs
 
 - `spec-review-findings.md` via `telec todo artifacts write`
-- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work`
+- Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`
 
 ## Steps
 
