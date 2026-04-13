@@ -31,12 +31,11 @@ def pid_is_alive(pid: int) -> bool:
     return True
 
 
-async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-arguments,redefined-outer-name
+async def send_keys(
     session_name: str,
     text: str,
     session_id: str | None = None,
     working_dir: str = "~",
-    send_enter: bool = True,
     active_agent: str | None = None,
 ) -> bool:
     """Send keys (text) to a tmux session, creating a new session if needed.
@@ -50,7 +49,6 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         text: Text to send
         session_id: TeleClaude session ID (used for env var + TMPDIR injection on tmux recreation)
         working_dir: Working directory if creating new session (default: ~)
-        send_enter: If True, send Enter key after text. Set to False for arrow keys. (default: True)
         active_agent: Active agent name (e.g., "gemini") for agent-specific escaping
 
     Returns:
@@ -69,7 +67,6 @@ async def send_keys(  # pylint: disable=too-many-arguments,too-many-positional-a
         return await _send_keys_tmux(
             session_name=session_name,
             text=text,
-            send_enter=send_enter,
             active_agent=active_agent,
         )
 
@@ -82,7 +79,6 @@ async def send_keys_existing_tmux(
     session_name: str,
     text: str,
     *,
-    send_enter: bool = True,  # pylint: disable=redefined-outer-name
     active_agent: str | None = None,
 ) -> bool:
     """Send keys to an existing tmux session (do not auto-create).
@@ -95,7 +91,6 @@ async def send_keys_existing_tmux(
         return await _send_keys_tmux(
             session_name=session_name,
             text=text,
-            send_enter=send_enter,
             active_agent=active_agent,
         )
     except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
@@ -159,7 +154,6 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     *,
     session_name: str,
     text: str,
-    send_enter: bool,
     active_agent: str | None,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
@@ -179,8 +173,6 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     # start a long-lived process that would inherit the pipe, so this is safe.
     # Always send with -l for literal interpretation (prevents shell/key-name expansion).
     cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
-    if send_enter:
-        cmd_text.extend([";", "send-keys", "-t", session_name, "C-m"])
     if has_bracketed_paste:
         logger.debug("Unwrapped bracketed paste markers for literal tmux send: %s", send_text[:80])
     result = await asyncio.create_subprocess_exec(
@@ -191,6 +183,26 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     if result.returncode != 0:
         logger.error(
             "Failed to send keys to session %s: returncode=%d, stderr=%s",
+            session_name,
+            result.returncode,
+            stderr.decode().strip(),
+        )
+        return False
+
+    # Keep a small buffer between text injection and submit. This submit path is
+    # shared by checkpoints, direct conversation, listener notifications, and
+    # regular sessions send delivery.
+    await asyncio.sleep(0.2)
+
+    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+
+    if result.returncode != 0:
+        logger.error(
+            "Failed to send Enter to session %s: returncode=%d, stderr=%s",
             session_name,
             result.returncode,
             stderr.decode().strip(),

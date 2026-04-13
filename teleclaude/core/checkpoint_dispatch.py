@@ -137,7 +137,6 @@ async def inject_checkpoint_if_needed(  # pylint: disable=too-many-arguments,too
     delivered = await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
         text=checkpoint_text,
-        send_enter=True,
     )
     if not delivered:
         logger.warning(

@@ -458,7 +458,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             session,
             sanitized_message,
             working_dir=working_dir,
-            send_enter=True,  # Send Enter immediately
             active_agent=session.active_agent,
         )
         if not pasted:

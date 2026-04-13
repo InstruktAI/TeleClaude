@@ -386,7 +386,6 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=session.tmux_session_name or "",
                 text="Session restarted. Continue pending work or remain idle.",
-                send_enter=True,
             )
         else:
             await inject_checkpoint_if_needed(

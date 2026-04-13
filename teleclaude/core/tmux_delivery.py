@@ -21,7 +21,6 @@ async def deliver_listener_message(session_id: str, tmux_session: str, message: 
     delivered = await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_session,
         text=message,
-        send_enter=True,
     )
     if delivered:
         return True

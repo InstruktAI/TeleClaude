@@ -49,7 +49,6 @@ async def _revive_headless_and_send(
     session: Session,
     text: str,
     *,
-    send_enter: bool,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None,
     working_dir: str,
 ) -> bool:
@@ -86,7 +85,6 @@ async def _revive_headless_and_send(
         await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=wrapped_resume,
-            send_enter=True,
             active_agent=session.active_agent,
         )
         logger.info(
@@ -106,7 +104,6 @@ async def _revive_headless_and_send(
     return await tmux_bridge.send_keys_existing_tmux(
         session_name=tmux_name,
         text=text,
-        send_enter=send_enter,
         active_agent=active_agent,
     )
 
@@ -115,7 +112,6 @@ async def _send_to_tmux(
     session: Session,
     text: str,
     *,
-    send_enter: bool,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
@@ -124,13 +120,15 @@ async def _send_to_tmux(
         return await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
             text=text,
-            send_enter=send_enter,
             active_agent=active_agent,
         )
 
     if session.lifecycle_status == "headless":
         return await _revive_headless_and_send(
-            session, text, send_enter=send_enter, active_agent=active_agent, working_dir=working_dir
+            session,
+            text,
+            active_agent=active_agent,
+            working_dir=working_dir,
         )
 
     logger.warning(
@@ -144,7 +142,6 @@ async def process_text(
     session: Session,
     text: str,
     *,
-    send_enter: bool = True,  # pylint: disable=redefined-outer-name  # Matches tmux_bridge API signature
     active_agent: str | None = None,
     working_dir: str,
 ) -> bool:
@@ -152,7 +149,6 @@ async def process_text(
     return await _send_to_tmux(
         session,
         text,
-        send_enter=send_enter,
         active_agent=active_agent,
         working_dir=working_dir,
     )

@@ -121,7 +121,7 @@ class RelayOperationsMixin:
         context_block = self._compile_relay_context(messages)
 
         # Inject context into the AI session's tmux
-        await send_keys_existing_tmux(session.tmux_session_name, context_block, send_enter=True)
+        await send_keys_existing_tmux(session.tmux_session_name, context_block)
 
         # Clear relay state and restore active lifecycle
         await db.update_session(
