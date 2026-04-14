@@ -56,8 +56,11 @@ if [ -n "$md_files" ]; then
 fi
 
 # Remove empty CLAUDE.md files (created by agent sessions without content)
+# Uses rg (ripgrep) which respects .gitignore and skips .venv — milliseconds
+# vs 28+ seconds for a bare `find` that walks 75k+ directories.
 REPO_ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-for claude_md in $(find "$REPO_ROOT" -name "CLAUDE.md" -not -path "*/trees/*" -not -path "*/.git/*" 2>/dev/null); do
+for claude_md in $(cd "$REPO_ROOT" && rg --files -g "CLAUDE.md" 2>/dev/null); do
+  claude_md="$REPO_ROOT/$claude_md"
   # Strip claude-mem-context tags and whitespace — if nothing remains, delete
   cleaned=$(sed 's/<\/*claude-mem-context>//g' "$claude_md" | tr -d '[:space:]')
   if [ -z "$cleaned" ]; then
