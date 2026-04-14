@@ -60,7 +60,7 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 7. **DB-persisted state**: Checkpoint state lives in the sessions table (`last_checkpoint_at`, `last_message_sent_at`). No in-memory state. Survives daemon restarts.
 
-8. **Post-restart unconditional injection**: After an agent restart via the API, a checkpoint is injected after a 5-second delay regardless of the 30-second threshold.
+8. **Post-restart unconditional injection**: After an agent restart via the API, checkpoint injection bypasses the 30-second threshold but still waits for agent prompt readiness before sending the continuation prompt or checkpoint.
 
 9. **Session-scoped hook escape hatch (Claude/Gemini hook route)**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, it is consumed and `agent_stop` passes through immediately. For Claude re-entry (`stop_hook_active=true`), the receiver allows at most one extra block by using a per-session `teleclaude_checkpoint_recheck` marker; subsequent re-entry passes through (consumed) to avoid infinite loops. State is reset on real `user_prompt_submit`.
 
@@ -191,11 +191,10 @@ sequenceDiagram
 
     API->>Handler: POST /sessions/{id}/agent-restart
     Handler->>Tmux: Kill old process, start new with --resume
-    Handler->>Handler: Schedule async task (5s delay)
+    Handler->>Handler: Schedule async readiness task
+    Handler->>Handler: Wait for agent prompt readiness
 
-    Note over Handler: 5 seconds pass...
-
-    Handler->>Tmux: send_keys(CHECKPOINT_MESSAGE)
+    Handler->>Tmux: send_keys(context-aware checkpoint or continuation prompt)
     Handler->>DB: Set last_checkpoint_at
 ```
 
