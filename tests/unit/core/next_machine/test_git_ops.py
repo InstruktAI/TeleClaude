@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from git.exc import GitCommandError
 
@@ -14,13 +14,14 @@ from teleclaude.core.next_machine.git_ops import (
     compose_agent_guidance,
     get_stash_entries,
     has_uncommitted_changes,
+    review_surface_overlap_files,
 )
 
 
 def test_build_git_hook_env_moves_venv_bin_to_front_and_sets_virtual_env(tmp_path: Path) -> None:
     env = build_git_hook_env(str(tmp_path), {"PATH": "/usr/bin:/bin"})
 
-    assert env["PATH"].split(":")[0] == str(tmp_path / ".venv" / "bin")
+    assert env["PATH"].split(":", maxsplit=1)[0] == str(tmp_path / ".venv" / "bin")
     assert env["VIRTUAL_ENV"] == str(tmp_path / ".venv")
 
 
@@ -63,8 +64,6 @@ def test_get_stash_entries_returns_empty_on_git_command_error(tmp_path: Path) ->
 
 
 def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:
-    from unittest.mock import MagicMock
-
     mock_repo = MagicMock()
     mock_repo.git.log.return_value = "todos/slug/file.md\n.teleclaude/run.json\n"
 
@@ -72,6 +71,17 @@ def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:
         meaningful = _has_meaningful_diff("/repo", "base", "head")
 
     assert meaningful is False
+
+
+def test_review_surface_overlap_files_returns_only_meaningful_overlap() -> None:
+    mock_repo = MagicMock()
+    mock_repo.git.log.return_value = "src/feature.py\ntodos/slug/state.yaml\nsrc/other.py\n"
+    mock_repo.git.diff.return_value = "src/feature.py\n.teleclaude/runtime.json\n"
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):
+        overlap = review_surface_overlap_files("/repo", "before", "after")
+
+    assert overlap == ["src/feature.py"]
 
 
 async def test_compose_agent_guidance_lists_enabled_agents_and_skips_unavailable() -> None:

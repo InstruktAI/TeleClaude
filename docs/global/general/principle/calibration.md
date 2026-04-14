@@ -3,7 +3,7 @@ id: 'general/principle/calibration'
 type: 'principle'
 domain: 'general'
 scope: 'global'
-description: "Set the baseline communication register from the human's proficiency level. Attunement fine-tunes in real time; calibration sets the floor."
+description: 'Set the baseline communication register from the human''s proficiency level. Attunement fine-tunes in real time; calibration sets the floor.'
 ---
 
 # Calibration — Principle

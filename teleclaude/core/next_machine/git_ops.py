@@ -276,6 +276,42 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
         return True  # Fail-safe: assume meaningful diff, invalidate approval
 
 
+def review_surface_overlap_files(cwd: str, previous_head: str, current_head: str) -> list[str]:
+    """Return overlapping meaningful files between newly merged commits and the current review surface."""
+    infra_prefixes = ("todos/", ".teleclaude/")
+    try:
+        repo = Repo(cwd)
+        landed_output = repo.git.log(
+            "--no-merges",
+            "--name-only",
+            "--pretty=format:",
+            f"{previous_head}..{current_head}",
+        )
+        landed_files = {
+            path
+            for path in landed_output.splitlines()
+            if path.strip() and not any(path.startswith(prefix) for prefix in infra_prefixes)
+        }
+        if not landed_files:
+            return []
+
+        surface_output = repo.git.diff("--name-only", "origin/main...HEAD")
+        surface_files = {
+            path
+            for path in surface_output.splitlines()
+            if path.strip() and not any(path.startswith(prefix) for prefix in infra_prefixes)
+        }
+        if not surface_files:
+            return []
+        return sorted(landed_files & surface_files)
+    except (GitCommandError, OSError) as exc:
+        logger.warning(
+            "review_surface_overlap_files failed",
+            extra={"cwd": cwd, "previous_head": previous_head, "current_head": current_head, "error": str(exc)},
+        )
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Agent availability guidance
 # ---------------------------------------------------------------------------

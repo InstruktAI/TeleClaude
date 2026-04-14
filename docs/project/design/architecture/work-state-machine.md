@@ -79,6 +79,7 @@ finalize:
 review_round: 0 # counter for review iterations
 max_review_rounds: 3 # limit (configurable)
 review_baseline_commit: '' # SHA for incremental review scope
+review_dispatch_head: '' # HEAD currently owned by the live reviewer
 
 unresolved_findings: [] # R1-F1, R1-F2, ...
 resolved_findings: [] # R1-F1, R1-F2, ...
@@ -89,6 +90,9 @@ resolved_findings: [] # R1-F1, R1-F2, ...
 - **Routing from state**: all routing decisions derive from `build` and `review` fields in `todo state (todos.db)`. No internal state.
 - **Build gates before review**: diff-scoped tests must pass before dispatching a reviewer.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
+- **Reviewer reuse**: when review is already in flight for a slug, the state machine reuses the live reviewer session instead of dispatching a second reviewer.
+- **Verdict reconciliation**: `review-findings` is authoritative only for the currently dispatched review head (`review_dispatch_head`). Stale findings from an older round must not short-circuit a fresh re-review.
+- **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Stale approval guard**: if new commits exist between `review_baseline_commit` and current HEAD, the machine resets `review=pending` to force a fresh review.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
 - **Finalize serialization**: only one finalize may run at a time; the integration queue serializes delivery.
@@ -143,7 +147,7 @@ flowchart TD
     FinalizeCheck{"finalize.status?"}
 
     DispatchBuild["Dispatch /next-build"]
-    DispatchReview["Dispatch /next-review-build"]
+    DispatchReview["Dispatch or reuse /next-review-build"]
     DispatchFix["Dispatch /next-fix-review"]
     DispatchDefer["Dispatch /next-defer"]
     DispatchFinalize["Dispatch /next-finalize"]
@@ -215,9 +219,9 @@ sequenceDiagram
     R->>R: Write review-findings.md
     R-->>O: REVIEW COMPLETE: slug - Verdict: APPROVE
     O->>O: telec todo stamp slug --verdict approve --phase build_review
-    O->>O: telec sessions end reviewer-session
 
     O->>SM: telec todo work slug
+    SM->>SM: Read review-findings and reconcile verdict
     SM-->>O: DISPATCH /next-finalize
 
     Note over O,F: Finalize Phase
@@ -236,7 +240,9 @@ sequenceDiagram
 
 ### Review/fix loop (sequence diagram)
 
-When the reviewer requests changes, the machine dispatches a fixer. The fixer and reviewer may communicate directly via peer conversation protocol.
+When the reviewer requests changes, the machine reuses the live builder and keeps the
+reviewer session as the review owner for follow-up. The builder and reviewer may
+communicate directly via peer conversation protocol.
 
 ```mermaid
 sequenceDiagram
@@ -252,22 +258,21 @@ sequenceDiagram
     O->>R: telec sessions run --command /next-review-build --args slug --mode slow
     R-->>O: Verdict: REQUEST CHANGES (3 findings)
     O->>O: telec todo stamp slug --verdict changes_requested --phase build_review
-    O->>O: telec sessions end reviewer-session
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /next-fix-review
+    SM->>SM: Read review-findings and reconcile verdict
+    SM-->>O: RELAY FINDINGS TO EXISTING BUILDER
 
     Note over O,F: Fix Round 1
-    O->>F: telec sessions run --command /next-fix-review --args slug
+    O->>F: telec sessions send builder-session "address findings"
     Note over R,F: Peer conversation protocol:<br/>Fixer and Reviewer may DM<br/>each other via --direct link
     F-->>O: FIX COMPLETE: slug (3/3 addressed)
-    O->>O: telec sessions end fixer-session
 
     O->>SM: telec todo work slug
-    SM-->>O: DISPATCH /next-review-build
+    SM-->>O: REUSE LIVE REVIEWER or DISPATCH /next-review-build if none is alive
 
     Note over O,F: Review Round 2
-    O->>R: telec sessions run --command /next-review-build --args slug --mode slow
+    O->>R: telec sessions send reviewer-session "ground shifted / please continue" or wait on existing review
     R-->>O: Verdict: APPROVE
     O->>O: telec todo stamp slug --verdict approve --phase build_review
 ```

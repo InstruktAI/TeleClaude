@@ -42,11 +42,18 @@ retries the same post-completion loop.
 
 ### 3. Review
 
-After build completes, the state machine dispatches a reviewer via `next-review-build`.
+After build completes, the state machine dispatches a reviewer via `next-review-build`
+and records the exact HEAD under review. While that reviewer is still alive, the state
+machine must reuse it instead of dispatching a second reviewer. On the next
+`telec todo work` call the machine first checks whether a live reviewer already owns
+the slug. If so, it either keeps waiting on that reviewer, or sends a targeted
+follow-up when merged `origin/main` changes overlap the current review surface.
+
 The reviewer runs parallel review lanes (scope, code, principles, security, tests,
-errors, types, comments, docs) and stamps a verdict. On the next `telec todo work`
-call the state machine reads the verdict and emits the next action: advance the phase
-on APPROVE, or relay findings to the existing builder on REQUEST CHANGES.
+errors, types, comments, docs) and writes `review-findings`. When the reviewer idles,
+the next `telec todo work` call reconciles the verdict from `review-findings` and emits
+the next action: advance the phase on APPROVE, or relay findings to the existing builder
+on REQUEST CHANGES.
 
 ### 4. Fix (if needed)
 
@@ -55,7 +62,8 @@ findings via `telec sessions send`. The builder loads the fix procedure on deman
 (`software-development/procedure/lifecycle/fix-review-findings`) and addresses the
 findings without losing context. Review/fix loops are capped by `max_review_rounds`
 (default 3). No fresh fixer session is dispatched — the original builder handles the
-fix cycle.
+fix cycle, and the next review round reuses the same reviewer session when it is still
+alive.
 
 ### 5. Finalize
 

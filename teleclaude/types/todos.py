@@ -103,6 +103,7 @@ class BuildReviewState(BaseModel):
     verdict: str = ""
     round: int = 0
     baseline_commit: str = ""
+    dispatch_head: str = ""
 
 
 class Event(BaseModel):

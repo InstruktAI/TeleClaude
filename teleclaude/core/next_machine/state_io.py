@@ -495,10 +495,16 @@ def _review_scope_note(cwd: str, slug: str) -> str:
     next_round = review_round + 1
     baseline = build_review.get("baseline_commit")
     baseline_sha = baseline if isinstance(baseline, str) else ""
-    baseline_text = baseline_sha if baseline_sha else "unset (initial full review)"
+    if next_round == 1:
+        target_text = baseline_sha if baseline_sha else "current HEAD"
+        return (
+            f"Review iteration: round 1/{DEFAULT_MAX_REVIEW_ROUNDS}. "
+            f"Round 1 is full-scope. Review the current worktree state at {target_text}."
+        )
+    baseline_text = baseline_sha if baseline_sha else "unset"
     return (
         f"Review iteration: round {next_round}/{DEFAULT_MAX_REVIEW_ROUNDS}. "
-        "Round 1 is full-scope. Round 2+ must be incremental: review only commits since "
+        "Round 2+ must be incremental: review only commits since "
         f"{baseline_text}."
     )
 

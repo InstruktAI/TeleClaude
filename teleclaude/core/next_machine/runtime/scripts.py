@@ -1,0 +1,141 @@
+"""Shared script and message formatters for next-machine actor orchestration."""
+
+from __future__ import annotations
+
+from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
+
+
+def format_fix_findings_message(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    slug: str,
+    phase_label: str,
+    rounds: int,
+    open_count: int,
+    findings_artifact: str,
+    target_artifact: str,
+) -> str:
+    """Build the findings relay message sent to an existing worker session."""
+    return (
+        f"Round {rounds} {phase_label} review: {open_count} unresolved finding(s). "
+        f"Findings artifact: `{findings_artifact}`. "
+        f"Target artifact: `{target_artifact}`. "
+        f"Required read: software-development/procedure/lifecycle/fix-review-findings. "
+        f"Address the findings and report FIX COMPLETE. "
+        f"Read findings via: telec todo artifacts read {slug} {findings_artifact}"
+    )
+
+
+def format_review_approved_script(
+    slug: str,
+    reviewer_session_id: str | None,
+    worker_session_id: str | None,
+    phase_label: str,
+) -> str:
+    """Script for APPROVED variant: end phase sessions, then re-enter the state machine."""
+    end_lines: list[str] = []
+    if reviewer_session_id:
+        end_lines.append(f"telec sessions end {reviewer_session_id}")
+    if worker_session_id:
+        end_lines.append(f"telec sessions end {worker_session_id}")
+    end_block = "\n".join(end_lines) if end_lines else "(no live sessions for this phase to end)"
+    return (
+        f"{phase_label.upper()} REVIEW APPROVED: {slug}\n\nExecute in order:\n\n{end_block}\ntelec todo prepare {slug}"
+    )
+
+
+def format_review_needs_work_script(
+    slug: str,
+    worker_session_id: str,
+    reviewer_session_id: str,
+    message: str,
+    *,
+    next_step: str,
+) -> str:
+    """Script for NEEDS_WORK variant: send findings to an existing worker and wait."""
+    escaped = message.replace('"', '\\"')
+    return (
+        f"REVIEW NEEDS WORK: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f'telec sessions send {worker_session_id} "{escaped}"\n\n'
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"Wait for reviewer session {reviewer_session_id} to report idle.\n"
+        f"When the reviewer idles, call {next_step}."
+    )
+
+
+def format_review_blocked_script(
+    slug: str,
+    phase_label: str,
+    reviewer_session_id: str | None,
+    worker_session_id: str | None,
+) -> str:
+    """Script for BLOCKED variant: keep live sessions available for human inspection."""
+    live_sessions: list[str] = []
+    if reviewer_session_id:
+        live_sessions.append(f"Reviewer: {reviewer_session_id}")
+    if worker_session_id:
+        live_sessions.append(f"Worker: {worker_session_id}")
+    sessions_block = "\n".join(f"  - {line}" for line in live_sessions) if live_sessions else "  (no live sessions)"
+    return (
+        f"BLOCKED: {slug} {phase_label} review exceeded {DEFAULT_MAX_REVIEW_ROUNDS} rounds. "
+        f"Manual resolution required.\n\n"
+        f"Live sessions kept alive for human inspection:\n"
+        f"{sessions_block}\n\n"
+        f"Before acting, load the relevant worker role:\n"
+        f"  telec docs index\n"
+        f"Then use telec docs get to load the procedure for the role you are assuming."
+    )
+
+
+def format_review_in_progress_script(slug: str, reviewer_id: str, *, next_step: str) -> str:
+    """Script for continuing to watch an already-running reviewer session."""
+    return (
+        f"REVIEW IN PROGRESS: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f"Do not dispatch a new reviewer. Reuse live reviewer session {reviewer_id}.\n"
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"Wait for reviewer session {reviewer_id} to report idle.\n"
+        f"When the signal arrives, call {next_step}."
+    )
+
+
+def _truncate_file_list(paths: list[str], limit: int = 6) -> str:
+    """Render a compact comma-separated path list for reviewer follow-up messages."""
+    if len(paths) <= limit:
+        return ", ".join(paths)
+    shown = ", ".join(paths[:limit])
+    return f"{shown}, and {len(paths) - limit} more"
+
+
+# pylint: disable=too-many-arguments
+def format_review_ground_shift_script(
+    slug: str,
+    reviewer_id: str,
+    previous_head: str,
+    current_head: str,
+    overlapping_files: list[str],
+    *,
+    next_step: str,
+) -> str:
+    """Script for nudging an existing reviewer when merged code overlaps reviewed files."""
+    file_list = _truncate_file_list(overlapping_files)
+    message = (
+        f"Ground shifted for {slug}: origin/main merge advanced the review target from {previous_head} to "
+        f"{current_head}. Keep focus on this todo only. Re-check only the overlapping reviewed files "
+        f"({file_list}) and continue the same review session. If the merged changes are irrelevant to your "
+        "existing findings, keep your current scope and verdict logic unchanged."
+    )
+    escaped = message.replace('"', '\\"')
+    return (
+        f"REVIEW GROUND SHIFTED: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f'telec sessions send {reviewer_id} "{escaped}"\n\n'
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"Wait for reviewer session {reviewer_id} to report idle.\n"
+        f"When the signal arrives, call {next_step}."
+    )

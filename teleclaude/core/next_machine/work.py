@@ -29,6 +29,7 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.git_ops import (
     _merge_origin_main_into_worktree,
+    get_head_commit,
     get_stash_entries,
 )
 from teleclaude.core.next_machine.output_formatting import (
@@ -128,10 +129,12 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
     # Merge origin/main into the worktree once before the loop so the phase
     # derivation sees a baseline consistent with integrated main.
     merge_started = perf_counter()
+    head_before_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
     merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
     if merge_err:
         _log_next_work_phase(phase_slug, "merge_main", merge_started, "error", "merge_main_failed")
         return format_error("MERGE_MAIN_FAILED", merge_err)
+    head_after_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
     _log_next_work_phase(phase_slug, "merge_main", merge_started, "run", "merge_main_applied")
 
     # Ensure item phase is IN_PROGRESS on first work entry.
@@ -166,6 +169,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
             worktree_cwd=worktree_cwd,
             phase=phase,
             state=state,
+            head_before_merge=head_before_merge,
+            head_after_merge=head_after_merge,
         )
         _log_next_work_phase(
             phase_slug,

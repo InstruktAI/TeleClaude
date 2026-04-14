@@ -16,6 +16,10 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
+from teleclaude.core.next_machine.runtime.sessions import (
+    find_all_live_sessions_for_slug,
+    find_live_session_for_slug,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -213,11 +217,6 @@ async def _creative_instruction(  # pylint: disable=too-many-return-statements
     db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str
 ) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
-    from teleclaude.core.next_machine.prepare_steps import (  # pylint: disable=import-outside-toplevel
-        _find_all_live_sessions_for_slug,
-        _find_live_session_for_slug,
-    )
-
     creative_subdir = f"workspace/{slug}"
     post_block = f"WHEN WORKER IDLES:\nCall telec todo create {slug}. The state machine emits the next action."
 
@@ -241,7 +240,7 @@ async def _creative_instruction(  # pylint: disable=too-many-return-statements
     if phase == CreativePhase.ART_PENDING_APPROVAL:
         return _art_pending_approval(slug, cwd)
     if phase == CreativePhase.ART_ITERATION_REQUIRED:
-        artist_id = await _find_live_session_for_slug(db, slug, "/next-create-art", subdir_override=creative_subdir)
+        artist_id = await find_live_session_for_slug(db, slug, "/next-create-art", subdir_override=creative_subdir)
         if artist_id is not None:
             return _format_creative_iteration_script(slug, artist_id, "art", f"workspace/{slug}/art/")
         # Fallback: dispatch fresh artist when no live session
@@ -277,9 +276,7 @@ async def _creative_instruction(  # pylint: disable=too-many-return-statements
     if phase == CreativePhase.VISUALS_PENDING_APPROVAL:
         return _visuals_pending_approval(slug, cwd)
     if phase == CreativePhase.VISUAL_ITERATION_REQUIRED:
-        frontender_id = await _find_live_session_for_slug(
-            db, slug, "/next-create-html", subdir_override=creative_subdir
-        )
+        frontender_id = await find_live_session_for_slug(db, slug, "/next-create-html", subdir_override=creative_subdir)
         if frontender_id is not None:
             return _format_creative_iteration_script(slug, frontender_id, "visual", f"workspace/{slug}/html/")
         return format_tool_call(
@@ -299,10 +296,10 @@ async def _creative_instruction(  # pylint: disable=too-many-return-statements
             )
         )
     if phase == CreativePhase.CREATIVE_COMPLETE:
-        live_sessions = await _find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
+        live_sessions = await find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
         return _creative_complete(slug, live_sessions)
     if phase == CreativePhase.BLOCKED:
-        live_sessions = await _find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
+        live_sessions = await find_all_live_sessions_for_slug(db, slug, subdir_override=creative_subdir)
         return _creative_blocked(slug, live_sessions)
     return f"UNKNOWN_PHASE: {slug} — phase={phase.value}. Inspect state.yaml."
 

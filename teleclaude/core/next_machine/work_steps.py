@@ -50,8 +50,8 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.prepare_steps import (
     _commit_writer,
     _derive_project_root,
-    _find_live_session_for_slug,
 )
+from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
 
@@ -160,7 +160,7 @@ async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-ma
             )
 
     command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
-    builder_id = await _find_live_session_for_slug(db, slug, f"/{command.value}")
+    builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
         return False, (
             f"BUILDER ACTIVE: {slug}\n\n"
@@ -194,23 +194,24 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
     cwd: str,
     worktree_cwd: str,
     state: dict[str, StateValue],
+    head_before_merge: str,
+    head_after_merge: str,
 ) -> tuple[bool, str]:
     """BUILD_COMPLETE: dispatch a reviewer, or relay a re-review to the live one.
 
-    Round 0: no reviewer has been dispatched yet — always dispatch fresh.
-    Round 1+: if a live reviewer session exists, relay via ``telec sessions send``
-    so the reviewer can review only commits since its last baseline. Otherwise
-    dispatch fresh.
+    Before dispatching, reconciles live-review progress via the review runtime:
+    detects ground shifts from merge, tracks dispatch HEAD, and reuses active
+    reviewer sessions across rounds.
     """
-    _ = todos_db  # state already loaded by caller
+    from teleclaude.core.next_machine.review_runtime import (  # pylint: disable=import-outside-toplevel
+        ReviewDispatchContext,
+        resolve_pending_review_state,
+    )
+
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
     round_num = round_raw if isinstance(round_raw, int) else 0
-    baseline_raw = build_review.get("baseline_commit", "")
-    baseline = baseline_raw if isinstance(baseline_raw, str) else ""
-
-    reviewer_id = await _find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
 
     if round_num > DEFAULT_MAX_REVIEW_ROUNDS:
         return False, format_error(
@@ -221,6 +222,21 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
             ),
             next_call=f"telec todo work {slug}",
         )
+
+    # Reconcile live-review state: detects ground shifts, reuses active reviewers.
+    resolution = await resolve_pending_review_state(
+        ReviewDispatchContext(db=db, todos_db=todos_db, worktree_cwd=worktree_cwd, slug=slug),
+        state,
+        head_before_merge=head_before_merge,
+        head_after_merge=head_after_merge,
+    )
+    if resolution.instruction is not None:
+        return False, resolution.instruction
+
+    # No live reviewer claimed the review — dispatch a fresh one.
+    baseline_raw = build_review.get("baseline_commit", "")
+    baseline = baseline_raw if isinstance(baseline_raw, str) else ""
+    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
 
     if round_num > 0 and reviewer_id is not None:
         head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
@@ -291,6 +307,7 @@ async def _work_step_review_changes_requested(  # pylint: disable=too-many-argum
         writer = StateWriter(state)
         review = writer.state.build_review
         review.verdict = ""
+        review.dispatch_head = ""
         review.round = review.round + 1
         _append_event(
             state,
@@ -302,10 +319,10 @@ async def _work_step_review_changes_requested(  # pylint: disable=too-many-argum
         return True, ""  # loop — re-derive phase
 
     # Fix not yet committed: relay findings to live builder.
-    builder_id = await _find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
+    builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
     if builder_id is None:
-        builder_id = await _find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUGS_FIX.value}")
-    reviewer_id = await _find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
+        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUGS_FIX.value}")
+    reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
 
     if builder_id is None:
         return False, format_error(
@@ -516,6 +533,8 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
     worktree_cwd: str,
     phase: WorkPhase,
     state: dict[str, StateValue],
+    head_before_merge: str,
+    head_after_merge: str,
 ) -> tuple[bool, str]:
     """Dispatch to the appropriate work phase handler.
 
@@ -523,9 +542,16 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
     caller loops and re-derives the phase. When False, ``instruction`` is the
     orchestrator script to return verbatim.
     """
+    common_kwargs = dict(db=db, todos_db=todos_db, slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, state=state)
+    if phase == WorkPhase.BUILD_COMPLETE:
+        return await _work_step_build_complete(
+            **common_kwargs,
+            head_before_merge=head_before_merge,
+            head_after_merge=head_after_merge,
+        )
+
     handlers = {
         WorkPhase.BUILD_STARTED: _work_step_build_started,
-        WorkPhase.BUILD_COMPLETE: _work_step_build_complete,
         WorkPhase.REVIEW_CHANGES_REQUESTED: _work_step_review_changes_requested,
         WorkPhase.REVIEW_APPROVED: _work_step_review_approved,
         WorkPhase.FINALIZE_READY: _work_step_finalize_ready,
@@ -538,7 +564,7 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
             f"No handler for work phase: {phase.value}",
             next_call=f"telec todo work {slug}",
         )
-    return await handler(db=db, todos_db=todos_db, slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, state=state)
+    return await handler(**common_kwargs)
 
 
 __all__ = ["_work_dispatch"]
