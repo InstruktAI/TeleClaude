@@ -9,6 +9,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
+from teleclaude.core.conversation_messages import is_conversation_bridge_message
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
@@ -233,17 +234,25 @@ async def deliver_inbound(
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
     # DB update must precede broadcast so echo guard reads the persisted state.
-    await db.update_session(
-        session_id,
-        last_message_sent=message_text[:200],
-        last_message_sent_at=datetime.now(UTC).isoformat(),
-        last_input_origin=row["origin"],
-    )
+    accepted_at = datetime.now(UTC).isoformat()
+    if is_conversation_bridge_message(message_text):
+        await db.update_session(
+            session_id,
+            last_message_sent=message_text[:200],
+            last_message_sent_at=accepted_at,
+            last_input_origin=row["origin"],
+            last_conversation_injected_at=accepted_at,
+        )
+    else:
+        await db.update_session(
+            session_id,
+            last_message_sent=message_text[:200],
+            last_message_sent_at=accepted_at,
+            last_input_origin=row["origin"],
+        )
 
-    linked_output_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
-    direct_conversation_prefix = f"{TELECLAUDE_SYSTEM_PREFIX} Direct Conversation]"
-    is_system_message = message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not (
-        message_text.startswith(linked_output_prefix) or message_text.startswith(direct_conversation_prefix)
+    is_system_message = message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not is_conversation_bridge_message(
+        message_text
     )
 
     active_agent = session.active_agent

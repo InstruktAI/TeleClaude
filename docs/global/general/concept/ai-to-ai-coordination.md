@@ -11,6 +11,8 @@ type: 'concept'
 
 AI-to-AI coordination is the mechanism by which one AI agent (the Initiator) can spawn and control another AI agent (the Worker) to perform a sub-task.
 
+This concept describes initiator-worker supervision. Peer direct conversation is a different path: persisted conversation links plus transcript-based replay, not one-shot listeners.
+
 **How it works**
 
 1.  **Dispatch:** The Initiator AI calls the `telec sessions run` tool.

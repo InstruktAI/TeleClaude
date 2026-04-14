@@ -4,6 +4,7 @@ import os
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy import text
 
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core import db_models
@@ -22,7 +23,6 @@ def test_to_core_session_reads_system_role_and_job_from_columns() -> None:
         initiated_by_ai=1,
         notification_sent=0,
         tui_capture_started=1,
-        turn_triggered_by_linked_output=True,
         char_offset="7",
         lifecycle_status=None,
         visibility=None,
@@ -38,7 +38,6 @@ def test_to_core_session_reads_system_role_and_job_from_columns() -> None:
     assert session.initiated_by_ai is True
     assert session.notification_sent is False
     assert session.tui_capture_started is True
-    assert session.turn_triggered_by_linked_output is True
     assert session.char_offset == 7
     assert session.lifecycle_status == "active"
     assert session.visibility is None
@@ -66,3 +65,18 @@ async def test_initialize_in_memory_cleans_up_temp_file() -> None:
 
     assert temp_db_path is not None
     assert os.path.exists(temp_db_path) is False
+
+
+@pytest.mark.asyncio
+async def test_initialize_sessions_schema_excludes_dead_linked_output_column() -> None:
+    db = DbBase(DB_IN_MEMORY)
+    await db.initialize()
+
+    async with db._session() as session:
+        result = await session.exec(text("SELECT name FROM pragma_table_info('sessions')"))  # guard: raw-sql
+        rows = result.fetchall()
+
+    columns = {str(row[0]) for row in rows}
+    assert "turn_triggered_by_linked_output" not in columns
+
+    await db.close()

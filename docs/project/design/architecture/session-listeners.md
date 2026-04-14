@@ -18,6 +18,8 @@ Allow AI sessions to wait on other sessions and receive stop notifications.
 - Listeners are in-memory and not persisted across daemon restarts.
 - Daemon restarts drop listeners; callers must re-register.
 
+This design covers orchestrator-style stop notifications only. It does **not** own persisted peer conversation. Direct conversation uses conversation links plus transcript-based conversation delivery, not session listeners.
+
 ## Inputs/Outputs
 
 **Inputs:**
@@ -41,6 +43,7 @@ Allow AI sessions to wait on other sessions and receive stop notifications.
 - **Deduplication by Caller**: Only one listener per (caller, target) pair; duplicates ignored.
 - **Multiple Callers Allowed**: Many callers can listen to same target (e.g., 4 AIs waiting for a dependency).
 - **Caller Cleanup**: All listeners registered by a caller are removed when caller session ends.
+- **Not Used for Peer Conversation**: Direct links survive restart through database-backed conversation links and directional delivery cursors. Listener loss on restart does not define direct-conversation behavior.
 
 ## Primary flows
 
@@ -170,3 +173,5 @@ cleanup loop wired to this helper.
 - **Concurrent Pop**: Two events fire for same target. First pop succeeds, second returns empty list. No crash.
 - **Memory Growth**: Listeners accumulate if callers don't clean up. Bounded by active session count \* max dependencies.
 - **Race on Cleanup**: Caller ends while target fires stop event simultaneously. Both operations succeed; no corruption.
+
+Direct conversation recovery is owned elsewhere. Restart-safe peer replay is handled by the conversation delivery system, not by restoring this in-memory registry.

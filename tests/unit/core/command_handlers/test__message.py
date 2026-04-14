@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
+from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX, format_system_message
 from teleclaude.core.command_handlers import _message
 from teleclaude.core.db import InboundQueueRow
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
@@ -257,6 +257,72 @@ class TestWaitForSessionReady:
 
 
 class TestDeliverInbound:
+    @pytest.mark.unit
+    async def test_conversation_bridge_message_records_conversation_anchor(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session(active_agent="claude")
+        row = make_row(
+            session_id=session.session_id,
+            content=format_system_message(
+                'Linked output from "Peer" (peer-001) on remote',
+                "Need review on the latest change.",
+            ),
+        )
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        client = SimpleNamespace(
+            break_threaded_turn=AsyncMock(),
+        )
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
+        )
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        update_kwargs = db.update_session.await_args_list[0].kwargs
+        assert "last_conversation_injected_at" in update_kwargs
+
+    @pytest.mark.unit
+    async def test_plain_human_message_does_not_record_conversation_anchor(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session(active_agent="claude")
+        row = make_row(session_id=session.session_id, content="Please explain the latest failure.")
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        client = SimpleNamespace(
+            break_threaded_turn=AsyncMock(),
+        )
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
+        )
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        update_kwargs = db.update_session.await_args_list[0].kwargs
+        assert "last_conversation_injected_at" not in update_kwargs
+
     @pytest.mark.unit
     async def test_system_message_skips_tmux_injection(self, monkeypatch: pytest.MonkeyPatch) -> None:
         session = make_session(active_agent="claude")

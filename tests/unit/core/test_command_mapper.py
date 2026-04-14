@@ -80,6 +80,17 @@ class TestCommandMapperRedis:
         assert cmd.text == "hello world"
 
     @pytest.mark.unit
+    def test_message_command_maps_platform_message_id_to_source_message_id(self):
+        cmd = CommandMapper.map_redis_input(
+            "message hello world",
+            origin="terminal",
+            session_id="sess-2",
+            metadata=MessageMetadata(origin="terminal", platform_message_id="linked:delivery:001"),
+        )
+        assert isinstance(cmd, ProcessMessageCommand)
+        assert cmd.source_message_id == "linked:delivery:001"
+
+    @pytest.mark.unit
     def test_key_command_returns_keys_command(self):
         cmd = CommandMapper.map_redis_input("cancel", origin="telegram", session_id="sess-3")
         assert isinstance(cmd, KeysCommand)

@@ -11,6 +11,8 @@ from teleclaude.config import config
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_delivery import deliver_pending_conversation_updates
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -41,6 +43,7 @@ from ._helpers import (
     _is_checkpoint_prompt,
     _is_codex_input_already_recorded,
     _is_codex_synthetic_prompt_event,
+    _to_utc,
 )
 
 if TYPE_CHECKING:
@@ -48,6 +51,8 @@ if TYPE_CHECKING:
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
+
+_LINKED_OUTPUT_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
 
 
 class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coordinator tracks per-session runtime state
@@ -401,10 +406,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         if is_terminal_input:
             update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
 
-        # Track what triggered this turn for echo suppression in handle_agent_stop.
-        _linked_prefix_check = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
-        update_kwargs["turn_triggered_by_linked_output"] = prompt_text.strip().startswith(_linked_prefix_check)
-
         # Single DB update for all fields
         await db.update_session(session_id, **update_kwargs)
         await db.update_last_activity(session_id)
@@ -432,6 +433,13 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Fetch session early for logic checks
         session = await db.get_session(session_id)
+        linked_prompt_at = (
+            session.last_message_sent_at
+            if session is not None
+            and isinstance(session.last_message_sent_at, datetime)
+            and (session.last_message_sent or "").strip().startswith(_LINKED_OUTPUT_PREFIX)
+            else None
+        )
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
@@ -461,7 +469,14 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
 
-        await self._finalize_agent_stop(session_id, session, payload, link_output, source_computer)
+        await self._finalize_agent_stop(
+            session_id,
+            session,
+            payload,
+            link_output,
+            source_computer,
+            linked_prompt_at=linked_prompt_at,
+        )
 
     async def _record_agent_stop_input(
         self,
@@ -472,6 +487,17 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         """Backfill missing Codex input metadata and user prompt events."""
         input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
         recovered_input_text: str | None = None
+
+        prompt_already_accepted = (
+            session is not None
+            and isinstance(session.last_message_sent_at, datetime)
+            and (
+                not isinstance(session.last_output_at, datetime)
+                or _to_utc(session.last_message_sent_at) > _to_utc(session.last_output_at)
+            )
+        )
+        if prompt_already_accepted:
+            return
 
         codex_input = await self._extract_user_input_for_codex(session_id, payload)
         if isinstance(codex_input, tuple) and len(codex_input) == 2:
@@ -552,16 +578,28 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         payload: AgentStopPayload,
         link_output: str | None,
         source_computer: str | None,
+        *,
+        linked_prompt_at: datetime | None = None,
     ) -> None:
         """Complete stop fan-out, listener notification, forwarding, and checkpoint injection."""
-        is_linked_echo = session is not None and session.turn_triggered_by_linked_output
-        if is_linked_echo:
-            logger.debug("Suppressing linked fan-out for session %s (turn triggered by linked output)", session_id)
-        if link_output and link_output.strip() and not is_linked_echo:
-            await self._fanout_linked_stop_output(session_id, link_output, source_computer=source_computer)
-
-        if session is not None and session.turn_triggered_by_linked_output:
-            await db.update_session(session_id, turn_triggered_by_linked_output=False)
+        fanout_output = link_output
+        used_conversation_replay = False
+        if session is not None and isinstance(session.last_conversation_injected_at, datetime):
+            await deliver_pending_conversation_updates(
+                session_id,
+                client=self.client,
+                command_service=get_command_service(),
+                source_computer=source_computer,
+            )
+            used_conversation_replay = True
+        elif linked_prompt_at is not None:
+            fanout_output = await self._extract_agent_output_since(
+                session_id,
+                payload,
+                since_timestamp=linked_prompt_at,
+            )
+        if not used_conversation_replay and fanout_output and fanout_output.strip():
+            await self._fanout_linked_stop_output(session_id, fanout_output, source_computer=source_computer)
 
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None

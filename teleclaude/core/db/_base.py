@@ -78,15 +78,13 @@ class DbBase:
             tui_capture_started=bool(row.tui_capture_started) if row.tui_capture_started is not None else False,
             last_message_sent=row.last_message_sent,
             last_message_sent_at=DbBase._coerce_datetime(row.last_message_sent_at),
+            last_conversation_injected_at=DbBase._coerce_datetime(row.last_conversation_injected_at),
             last_output_raw=row.last_output_raw,
             last_output_at=DbBase._coerce_datetime(row.last_output_at),
             last_tool_done_at=DbBase._coerce_datetime(row.last_tool_done_at),
             last_tool_use_at=DbBase._coerce_datetime(row.last_tool_use_at),
             last_checkpoint_at=DbBase._coerce_datetime(row.last_checkpoint_at),
             last_agent_stop_at=DbBase._coerce_datetime(row.last_agent_stop_at),
-            turn_triggered_by_linked_output=bool(row.turn_triggered_by_linked_output)
-            if hasattr(row, "turn_triggered_by_linked_output")
-            else False,
             last_output_summary=row.last_output_summary,
             last_output_digest=row.last_output_digest,
             working_slug=row.working_slug,

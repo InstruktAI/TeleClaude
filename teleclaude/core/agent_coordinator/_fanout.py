@@ -32,6 +32,7 @@ from teleclaude.utils.transcript import (
     extract_last_agent_message,
     extract_last_user_message_with_timestamp,
     extract_recent_transcript_turns,
+    get_assistant_messages_since,
 )
 
 from ._helpers import (
@@ -146,6 +147,71 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
             return None
 
         return last_message
+
+    # pylint: disable=too-many-locals,too-many-branches
+    async def _extract_agent_output_since(
+        self,
+        session_id: str,
+        payload: "AgentStopPayload",
+        since_timestamp: datetime,
+    ) -> str | None:
+        """Extract assistant text emitted after the provided prompt timestamp."""
+        session = await db.get_session(session_id)
+        transcript_path = payload.transcript_path or (session.native_log_file if session else None)
+        if not transcript_path:
+            logger.debug("Incremental extract skipped (missing transcript path)", session=session_id)
+            return None
+
+        raw_agent_name = payload.raw.get("agent_name")
+        agent_name_value = raw_agent_name if isinstance(raw_agent_name, str) and raw_agent_name else None
+        if not agent_name_value and session and session.active_agent:
+            agent_name_value = session.active_agent
+        if not agent_name_value:
+            logger.debug("Incremental extract skipped (missing agent name)", session=session_id)
+            return None
+
+        try:
+            agent_name = AgentName.from_str(agent_name_value)
+        except ValueError:
+            logger.warning("Incremental extract skipped (unknown agent '%s')", agent_name_value)
+            return None
+
+        assistant_messages = get_assistant_messages_since(
+            transcript_path,
+            agent_name,
+            since_timestamp=since_timestamp,
+        )
+        if not assistant_messages:
+            return None
+
+        collected: list[str] = []
+        for message in assistant_messages:
+            content = message.get("content")
+            if isinstance(content, str):
+                text = content.strip()
+                if text:
+                    collected.append(text)
+                continue
+            if not isinstance(content, list):
+                continue
+
+            message_parts: list[str] = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") not in {"text", "output_text"}:
+                    continue
+                text = str(block.get("text", "")).strip()
+                if text:
+                    message_parts.append(text)
+            if message_parts:
+                collected.append("\n\n".join(message_parts))
+
+        rendered = "\n\n".join(part for part in collected if part).strip()
+        if not rendered:
+            logger.debug("Incremental extract skipped (no assistant text after prompt)", session=session_id)
+            return None
+        return rendered
 
     async def _summarize_output(self, session_id: str, raw_output: str) -> str | None:
         """Summarize raw agent output via LLM.

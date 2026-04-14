@@ -34,13 +34,20 @@ This is for **peer collaboration** — agents that need to discuss, harmonize, o
    ```
    The anchor is gravity. Peer conversation is orbit. Gravity always wins.
 2. **Send the introduction with `direct=true`.** Use `telec sessions send` or `telec sessions start` with the `direct` flag:
+
    ```
    telec sessions send(computer="local", session_id="...", message="...", direct=true)
    ```
+
    ```
    telec sessions start(computer="local", ..., message="...", direct=true)
    ```
-   The `direct` flag establishes a direct link between the two sessions. Once established, each agent's turn-complete output is automatically shared with the peer — no further tool calls needed. Include in the introduction message:
+
+   The `direct` flag establishes a persisted direct link between the two sessions. Once established, TeleClaude mirrors visible conversation activity to the peer from transcript truth:
+   - Assistant output is mirrored as `[TeleClaude Linked output from ...]`
+   - Plain human input that lands after the conversation anchor is mirrored as `[TeleClaude Human in the Loop from ...]`
+
+   Delivery progress is tracked per source-target pair, so daemon restarts replay unseen mirrored segments instead of dropping them. No follow-up tool calls are needed for ordinary back-and-forth. Include in the introduction message:
    - Your own session ID (for the peer's reference).
    - The topic or context for the conversation.
    - **Protocol negotiation line** — declare the communication register:
@@ -48,7 +55,8 @@ This is for **peer collaboration** — agents that need to discuss, harmonize, o
      - Human initiated or observing: `PROTOCOL: L1 prose, human in loop` (ask the human what level they prefer)
      - If unsure: omit the protocol line; default to L1 prose. The peer can propose compression.
        See the Agent Shorthand principle for the four compression levels, phase-locked switching, and symbol vocabulary.
-3. **Converse by talking, not by tooling.** Once the direct link is established, your regular text output IS your message. The system automatically delivers your turn-complete output to the peer. **Do NOT use `telec sessions send` for follow-up messages** — it hides your output inside a tool call, making it invisible to human observers. Just speak. Your words arrive.
+
+3. **Converse by talking, not by tooling.** Once the direct link is established, your regular text output is mirrored to the peer automatically. If a human interjects into your session after the anchor is set, that human input is mirrored too with the explicit Human-in-the-Loop wrapper. **Do NOT use `telec sessions send` for follow-up messages** — it hides your output inside a tool call, making it invisible to human observers and bypasses the normal conversation replay path. Just speak. Your words arrive.
 4. **Close.** When the conversation is complete, no cleanup is needed. No subscriptions were created.
 
 ### Fallback: manual unsubscribe
@@ -106,7 +114,8 @@ The test: before sending a message, ask "does this message change the other agen
 
 ## Outputs
 
-- A direct messaging channel between two peer agents with no polling overhead.
+- A persisted direct conversation link between two peer sessions.
+- Automatic replay of unseen assistant output and human-in-the-loop input across daemon restarts.
 
 ## Recovery
 

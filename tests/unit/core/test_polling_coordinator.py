@@ -377,6 +377,46 @@ class TestProjectSessionFromTranscript:
         adapter_client.broadcast_user_input.assert_not_awaited()
 
     @pytest.mark.unit
+    async def test_older_transcript_timestamp_does_not_rewind_accepted_prompt_timestamp(self):
+        accepted_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        session = Session(
+            session_id="sess-direct-1",
+            computer_name="local",
+            tmux_session_name="tmux-direct-1",
+            title="Untitled",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+            last_message_sent='[TeleClaude Linked output from "Peer" (sess-peer) on peer-host]',
+            last_message_sent_at=accepted_ts,
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("older human prompt", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+        mock_db.update_session.assert_not_awaited()
+        assert result.last_message_sent_at == accepted_ts
+
+    @pytest.mark.unit
     async def test_system_role_session_persists_prompt_without_human_reflection(self):
         session = Session(
             session_id="sess-integrator-1",

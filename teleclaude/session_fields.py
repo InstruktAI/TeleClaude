@@ -87,6 +87,7 @@ class SessionRecentOutputFields:
 
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
+    last_conversation_injected_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
@@ -101,7 +102,6 @@ class SessionRecentToolFields:
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
-    turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None
 
 
@@ -110,6 +110,7 @@ class SessionRecentOutputColumns(SQLModel):
 
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
+    last_conversation_injected_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
@@ -123,5 +124,4 @@ class SessionRecentToolColumns(SQLModel):
     last_tool_use_at: datetime | None = None
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
-    turn_triggered_by_linked_output: bool = False
     working_slug: str | None = None

@@ -490,7 +490,7 @@ async def _project_user_reflection(
     adapter_client: "AdapterClient",
 ) -> "Session":
     """Project the latest authoritative user message from transcript into canonical state."""
-    # pylint: disable=too-many-locals
+    # pylint: disable=too-many-locals,too-many-return-statements
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -509,14 +509,15 @@ async def _project_user_reflection(
     if not user_text.strip():
         return session
 
-    transcript_iso = transcript_ts.astimezone(UTC).isoformat() if isinstance(transcript_ts, datetime) else None
-    current_iso = (
-        session.last_message_sent_at.astimezone(UTC).isoformat()
-        if isinstance(session.last_message_sent_at, datetime)
-        else None
+    transcript_dt = transcript_ts.astimezone(UTC) if isinstance(transcript_ts, datetime) else None
+    current_dt = (
+        session.last_message_sent_at.astimezone(UTC) if isinstance(session.last_message_sent_at, datetime) else None
     )
-    changed = transcript_iso != current_iso
-    if not changed:
+    transcript_iso = transcript_dt.isoformat() if transcript_dt is not None else None
+    current_iso = current_dt.isoformat() if current_dt is not None else None
+    if current_dt is not None and transcript_dt is not None and transcript_dt <= current_dt:
+        return session
+    if transcript_iso == current_iso:
         return session
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value

@@ -11,6 +11,8 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_server import APIServer
 from teleclaude.config import config
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_delivery import reconcile_outstanding_conversation_deliveries
 from teleclaude.core.db import db
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
@@ -106,6 +108,13 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
         logger.info("[STARTUP] Starting adapters (usually 3-12s total)")
         await self.client.start()
         logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
+        await self._complete_startup_after_adapters()
+
+        self._started = True
+        logger.info("Lifecycle startup completed in %.3fs", time.perf_counter() - startup_started_at)
+
+    async def _complete_startup_after_adapters(self) -> None:
+        """Finish startup tasks that require adapters and routing to be ready."""
         repaired_output_count = await self.client.reconcile_outstanding_final_outputs(config.computer.name)
         if repaired_output_count:
             logger.info("Repaired final output delivery for %d session(s)", repaired_output_count)
@@ -124,9 +133,13 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
         logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()
         logger.info("Inbound queue manager started")
-
-        self._started = True
-        logger.info("Lifecycle startup completed in %.3fs", time.perf_counter() - startup_started_at)
+        repaired_conversation_count = await reconcile_outstanding_conversation_deliveries(
+            config.computer.name,
+            client=self.client,
+            command_service=get_command_service(),
+        )
+        if repaired_conversation_count:
+            logger.info("Repaired conversation delivery for %d mirrored segment(s)", repaired_conversation_count)
 
     async def _warm_local_sessions_cache(self) -> None:
         """Seed cache with current local sessions for initial UI state."""

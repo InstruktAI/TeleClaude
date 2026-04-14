@@ -7,6 +7,7 @@ The Db class is assembled here via mixin inheritance.
 from teleclaude.paths import MAIN_DB_PATH
 
 from ._base import DbBase
+from ._conversation_delivery import DbConversationDeliveryMixin
 from ._hooks import DbHooksMixin
 from ._inbound import DbInboundMixin
 from ._links import DbLinksMixin
@@ -27,6 +28,7 @@ from ._webhooks import DbWebhooksMixin
 
 
 class Db(  # pylint: disable=too-many-ancestors  # The DB facade is intentionally composed from focused mixins.
+    DbConversationDeliveryMixin,
     DbTokensMixin,
     DbLinksMixin,
     DbListenersMixin,

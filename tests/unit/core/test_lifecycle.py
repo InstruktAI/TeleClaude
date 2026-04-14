@@ -70,6 +70,12 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
         patch("teleclaude.core.lifecycle.set_operations_service"),
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
         patch("teleclaude.core.inbound_queue.get_inbound_queue_manager", return_value=inbound_queue_manager),
+        patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
+        patch(
+            "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",
+            new_callable=AsyncMock,
+            return_value=0,
+        ),
     ):
         await lifecycle.startup()
 
@@ -117,7 +123,19 @@ async def test_startup_repairs_outstanding_final_output_after_adapter_start():
         patch("teleclaude.core.lifecycle.set_operations_service"),
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
         patch("teleclaude.core.inbound_queue.get_inbound_queue_manager", return_value=inbound_queue_manager),
+        patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
+        patch(
+            "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",
+            new_callable=AsyncMock,
+            return_value=0,
+        ) as reconcile_conversations,
     ):
         await lifecycle.startup()
 
     client.reconcile_outstanding_final_outputs.assert_awaited_once()
+    reconcile_conversations.assert_awaited_once()
+    reconcile_args = reconcile_conversations.await_args
+    assert reconcile_args is not None
+    assert reconcile_args.args[0] == "unknown"
+    assert reconcile_args.kwargs["client"] is client
+    assert reconcile_args.kwargs["command_service"] is not None

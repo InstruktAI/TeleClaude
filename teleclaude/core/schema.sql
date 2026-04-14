@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     tui_capture_started INTEGER DEFAULT 0,
     last_message_sent TEXT,
     last_message_sent_at TEXT,
+    last_conversation_injected_at TEXT,
     last_output_raw TEXT,
     last_output_at TEXT,
     last_output_summary TEXT,
@@ -50,7 +51,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     char_offset INTEGER DEFAULT 0,
     transcript_files TEXT DEFAULT '[]',
     visibility TEXT DEFAULT 'private',
-    turn_triggered_by_linked_output BOOLEAN NOT NULL DEFAULT 0,
     detached INTEGER NOT NULL DEFAULT 0
 );
 
@@ -175,6 +175,19 @@ CREATE TABLE IF NOT EXISTS conversation_link_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_conversation_link_members_session ON conversation_link_members(session_id);
+
+CREATE TABLE IF NOT EXISTS conversation_delivery_state (
+    link_id TEXT NOT NULL,
+    source_session_id TEXT NOT NULL,
+    target_session_id TEXT NOT NULL,
+    delivered_through_ts TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (link_id, source_session_id, target_session_id),
+    FOREIGN KEY (link_id) REFERENCES conversation_links(link_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_delivery_source_target
+ON conversation_delivery_state(source_session_id, target_session_id);
 
 -- Notification outbox
 CREATE TABLE IF NOT EXISTS notification_outbox (

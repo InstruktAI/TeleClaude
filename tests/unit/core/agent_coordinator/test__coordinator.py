@@ -1,5 +1,5 @@
 """Characterization tests for teleclaude.core.agent_coordinator._coordinator."""
-# pylint: disable=protected-access
+# pylint: disable=protected-access,too-many-lines
 # pylint: disable=line-too-long,use-implicit-booleaness-not-comparison,unused-argument
 
 from __future__ import annotations
@@ -642,6 +642,114 @@ class TestHandleAgentStop:
         coord._finalize_agent_stop.assert_awaited_once()
         finalize_args = coord._finalize_agent_stop.await_args.args
         assert finalize_args[3] == "final output"
+
+    @pytest.mark.unit
+    async def test_passes_linked_prompt_timestamp_to_finalize(self):
+        coord = _make_coordinator()
+        linked_at = datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC)
+        session = _make_session(
+            last_message_sent='[TeleClaude Linked output from "Peer" (sess-peer) on peer-host]',
+            last_message_sent_at=linked_at,
+        )
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.source_computer = None
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.refresh_session_title_from_transcript",
+                new_callable=AsyncMock,
+                return_value=session,
+            ),
+        ):
+            mock_db.get_session = AsyncMock(side_effect=[session, session])
+            mock_db.update_session = AsyncMock()
+            coord._record_agent_stop_input = AsyncMock()
+            coord._record_agent_stop_output = AsyncMock(return_value=("final output", None))
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._signal_headless_activity = AsyncMock()
+            coord._finalize_agent_stop = AsyncMock()
+            await coord.handle_agent_stop(context)
+
+        assert coord._finalize_agent_stop.await_args.kwargs["linked_prompt_at"] == linked_at
+
+    @pytest.mark.unit
+    async def test_record_agent_stop_input_skips_codex_backfill_when_prompt_already_accepted(self):
+        coord = _make_coordinator()
+        session = _make_session(
+            last_message_sent="accepted prompt",
+            last_message_sent_at=datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC),
+            last_output_at=datetime(2026, 4, 14, 10, 23, 0, tzinfo=UTC),
+        )
+
+        coord._extract_user_input_for_codex = AsyncMock()
+        coord._emit_activity_event = MagicMock()
+        with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
+            mock_db.update_session = AsyncMock()
+            await coord._record_agent_stop_input("sess-001", MagicMock(), session)
+
+        coord._extract_user_input_for_codex.assert_not_awaited()
+        mock_db.update_session.assert_not_awaited()
+
+
+class TestFinalizeAgentStop:
+    @pytest.mark.unit
+    async def test_fans_out_assistant_delta_after_linked_prompt(self):
+        coord = _make_coordinator()
+        linked_at = datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC)
+        coord._extract_agent_output_since = AsyncMock(return_value="assistant reply")
+        coord._fanout_linked_stop_output = AsyncMock()
+        coord._notify_session_listener = AsyncMock()
+        coord._forward_stop_to_initiator = AsyncMock()
+        coord._maybe_inject_checkpoint = AsyncMock()
+
+        payload = MagicMock()
+        payload.raw = {}
+
+        await coord._finalize_agent_stop(
+            "sess-001",
+            _make_session(),
+            payload,
+            "stale link output",
+            None,
+            linked_prompt_at=linked_at,
+        )
+
+        coord._extract_agent_output_since.assert_awaited_once_with(
+            "sess-001",
+            payload,
+            since_timestamp=linked_at,
+        )
+        coord._fanout_linked_stop_output.assert_awaited_once_with(
+            "sess-001",
+            "assistant reply",
+            source_computer=None,
+        )
+
+    @pytest.mark.unit
+    async def test_skips_fanout_when_no_assistant_delta_after_linked_prompt(self):
+        coord = _make_coordinator()
+        coord._extract_agent_output_since = AsyncMock(return_value=None)
+        coord._fanout_linked_stop_output = AsyncMock()
+        coord._notify_session_listener = AsyncMock()
+        coord._forward_stop_to_initiator = AsyncMock()
+        coord._maybe_inject_checkpoint = AsyncMock()
+
+        payload = MagicMock()
+        payload.raw = {}
+
+        await coord._finalize_agent_stop(
+            "sess-001",
+            _make_session(),
+            payload,
+            "stale link output",
+            None,
+            linked_prompt_at=datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC),
+        )
+
+        coord._fanout_linked_stop_output.assert_not_awaited()
 
 
 class TestHandleToolUse:

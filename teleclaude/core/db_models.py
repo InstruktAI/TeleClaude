@@ -300,6 +300,19 @@ class ConversationLinkMemberRow(SQLModel, table=True):
     joined_at: str
 
 
+class ConversationDeliveryStateRow(SQLModel, table=True):
+    """conversation_delivery_state table."""
+
+    __tablename__ = "conversation_delivery_state"
+    __table_args__ = {"extend_existing": True}
+
+    link_id: str = Field(primary_key=True)
+    source_session_id: str = Field(primary_key=True)
+    target_session_id: str = Field(primary_key=True)
+    delivered_through_ts: str | None = None
+    updated_at: str
+
+
 class MemoryManualSession(SQLModel, table=True):
     """memory_manual_sessions table."""
 

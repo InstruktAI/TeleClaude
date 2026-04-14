@@ -147,6 +147,7 @@ class CommandMapper:
                 actor_id=metadata.actor_id if metadata else None,
                 actor_name=metadata.actor_name if metadata else None,
                 actor_avatar_url=metadata.actor_avatar_url if metadata else None,
+                source_message_id=metadata.platform_message_id if metadata else None,
             )
 
         if cmd_name == "agent":
