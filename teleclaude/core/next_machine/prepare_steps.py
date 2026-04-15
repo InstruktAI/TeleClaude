@@ -23,11 +23,11 @@ from teleclaude.core.next_machine.artifacts import compute_artifact_diff, comput
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.prepare_scripts import (
-    _fix_findings_message,
-    _format_review_approved_script,
-    _format_review_blocked_script,
-    _format_review_needs_work_script,
+from teleclaude.core.next_machine.runtime.scripts import (
+    format_fix_findings_message,
+    format_review_approved_script,
+    format_review_blocked_script,
+    format_review_needs_work_script,
 )
 from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
@@ -194,7 +194,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         audit.verdict = "approve"
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
-        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
+        return False, format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
@@ -216,7 +216,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
-            return False, _format_review_blocked_script(slug, "requirements", reviewer_id, worker_id)
+            return False, format_review_blocked_script(slug, "requirements", reviewer_id, worker_id)
         # Count-and-pointer pattern: no file content injection (R2)
         open_findings = [f for f in review.findings if f.status != "resolved"]
         open_count = len(open_findings)
@@ -230,10 +230,12 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             {"slug": slug, "finding_ids": [f.id for f in open_findings]},
         )
         if worker_id and reviewer_id:
-            message = _fix_findings_message(
+            message = format_fix_findings_message(
                 slug, "requirements", rounds, open_count, "requirements-review-findings", "requirements"
             )
-            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+            return False, format_review_needs_work_script(
+                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
+            )
         # Fallback: dispatch a fresh discovery worker with baseline diff context
         base_sha = review.baseline_commit
         req_diff = compute_artifact_diff(cwd, slug, "requirements", base_sha)
@@ -347,7 +349,7 @@ async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too
         audit.verdict = "approve"
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
-        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
+        return False, format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
 
     if verdict == "needs_work":
         rounds = spec_review.rounds + 1
@@ -356,7 +358,7 @@ async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too
         # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
-            return False, _format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
+            return False, format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
         # Clear produced_at so derivation routes back to TEST_SPEC_BUILD on the next
         # iteration. The builder will re-stamp it when the revised specs land.
         writer.state.artifacts.test_specs.produced_at = ""
@@ -370,10 +372,12 @@ async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too
         await _commit_writer(writer, todos_db, slug, state)
 
         if worker_id and reviewer_id:
-            message = _fix_findings_message(
+            message = format_fix_findings_message(
                 slug, "test spec", rounds, open_count, "spec-review-findings", "test spec files in the worktree"
             )
-            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+            return False, format_review_needs_work_script(
+                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
+            )
 
         # Fallback: dispatch fresh spec builder when no live worker is available
         guidance = await compose_agent_guidance(db)
@@ -480,7 +484,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         audit.verdict = "approve"
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
-        return False, _format_review_approved_script(slug, reviewer_id, worker_id, "plan")
+        return False, format_review_approved_script(slug, reviewer_id, worker_id, "plan")
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
@@ -502,7 +506,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
         # I3: block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
-            return False, _format_review_blocked_script(slug, "plan", reviewer_id, worker_id)
+            return False, format_review_blocked_script(slug, "plan", reviewer_id, worker_id)
         # Count-and-pointer pattern: no file content injection (R2)
         open_findings = [f for f in review.findings if f.status != "resolved"]
         open_count = len(open_findings)
@@ -516,10 +520,12 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             {"slug": slug, "finding_ids": [f.id for f in open_findings]},
         )
         if worker_id and reviewer_id:
-            message = _fix_findings_message(
+            message = format_fix_findings_message(
                 slug, "plan", rounds, open_count, "plan-review-findings", "implementation-plan"
             )
-            return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
+            return False, format_review_needs_work_script(
+                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
+            )
         # Fallback: dispatch fresh draft worker with baseline diff context when no live worker
         base_sha = review.baseline_commit
         plan_diff = compute_artifact_diff(cwd, slug, "implementation-plan", base_sha)

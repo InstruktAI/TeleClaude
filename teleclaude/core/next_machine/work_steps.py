@@ -542,10 +542,14 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
     caller loops and re-derives the phase. When False, ``instruction`` is the
     orchestrator script to return verbatim.
     """
-    common_kwargs = dict(db=db, todos_db=todos_db, slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, state=state)
     if phase == WorkPhase.BUILD_COMPLETE:
         return await _work_step_build_complete(
-            **common_kwargs,
+            db=db,
+            todos_db=todos_db,
+            slug=slug,
+            cwd=cwd,
+            worktree_cwd=worktree_cwd,
+            state=state,
             head_before_merge=head_before_merge,
             head_after_merge=head_after_merge,
         )
@@ -564,7 +568,7 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
             f"No handler for work phase: {phase.value}",
             next_call=f"telec todo work {slug}",
         )
-    return await handler(**common_kwargs)
+    return await handler(db=db, todos_db=todos_db, slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, state=state)
 
 
 __all__ = ["_work_dispatch"]

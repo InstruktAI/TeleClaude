@@ -13,33 +13,63 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
 
 RECENTLY_DELIVERED_HOURS = 72
 
-# v2 current values that indicate prepare-phase territory
-_PREPARE_CURRENT_VALUES: dict[str, str] = {
-    "input_assessment": "input_assessment",
-    "triangulation": "triangulation",
-    "requirements_review": "requirements_review",
-    "test_spec_build": "test_spec_build",
-    "test_spec_review": "test_spec_review",
-    "plan_drafting": "plan_drafting",
-    "plan_review": "plan_review",
-    "gate": "gate",
-    "grounding_check": "grounding_check",
-    "re_grounding": "re_grounding",
-    "prepared": "prepared",
-    "blocked": "blocked",
-}
+DOR_READY_THRESHOLD = 7
 
 
-def _derive_prepare_phase_from_current(current: str | None) -> str | None:
-    """Derive prepare_phase from v2 current field for display."""
-    if not current:
-        return None
-    return _PREPARE_CURRENT_VALUES.get(current)
+def _derive_prepare_phase(  # pylint: disable=too-many-return-statements,too-many-locals
+    state: dict[str, StateValue], *, has_req: bool, has_plan: bool
+) -> str | None:
+    """Lightweight sync prepare-phase derivation from v1 state primitives.
+
+    Mirrors phase_derivation.derive_prepare_phase but sync and uses the
+    artifact existence flag already resolved by the caller.
+    """
+    req_review_raw = state.get("requirements_review")
+    req_review = req_review_raw if isinstance(req_review_raw, dict) else {}
+    req_verdict = req_review.get("verdict", "")
+
+    if not has_req and req_verdict != "skipped":
+        return "input_assessment"
+    if req_verdict not in ("approve", "skipped"):
+        return "requirements_review"
+
+    artifacts_raw = state.get("artifacts")
+    artifacts = artifacts_raw if isinstance(artifacts_raw, dict) else {}
+    test_specs_raw = artifacts.get("test_specs")
+    test_specs = test_specs_raw if isinstance(test_specs_raw, dict) else {}
+    if not test_specs.get("produced_at"):
+        return "test_spec_build"
+
+    spec_review_raw = state.get("test_spec_review")
+    spec_review = spec_review_raw if isinstance(spec_review_raw, dict) else {}
+    if spec_review.get("verdict", "") not in ("approve", "skipped"):
+        return "test_spec_review"
+
+    plan_review_raw = state.get("plan_review")
+    plan_review = plan_review_raw if isinstance(plan_review_raw, dict) else {}
+    plan_verdict = plan_review.get("verdict", "")
+    if plan_verdict not in ("approve", "skipped"):
+        return "plan_review" if has_plan else "plan_drafting"
+
+    dor_raw = state.get("dor")
+    dor = dor_raw if isinstance(dor_raw, dict) else {}
+    score_raw = dor.get("score", 0)
+    score: int = score_raw if isinstance(score_raw, int) else 0
+    if score < DOR_READY_THRESHOLD:
+        return "gate"
+
+    grounding_raw = state.get("grounding")
+    grounding = grounding_raw if isinstance(grounding_raw, dict) else {}
+    if not grounding.get("valid"):
+        return "grounding_check"
+
+    return "prepared"
 
 
 def _non_empty_str(value: object) -> str | None:
@@ -119,45 +149,6 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
 
             todo_build_started_at = time.perf_counter()
             state = json.loads(state_row[0]) if state_row else {}
-            current = str(state.get("current", ""))
-
-            # Derive build/review status from current
-            build_status: str | None = None
-            review_status: str | None = None
-            if current in ("build_started",):
-                build_status = "started"
-            elif current in (
-                "build_complete",
-                "review_pending",
-                "review_changes_requested",
-                "review_approved",
-                "finalize_ready",
-                "finalize_handed_off",
-            ):
-                build_status = "complete"
-            if current in ("review_pending",):
-                review_status = "pending"
-            elif current in ("review_approved", "finalize_ready", "finalize_handed_off"):
-                review_status = "approved"
-            elif current == "review_changes_requested":
-                review_status = "changes_requested"
-
-            dor = state.get("dor")
-            dor_score = dor.get("score", 0) if isinstance(dor, dict) else 0
-
-            finalize = state.get("finalize")
-            finalize_status = finalize.get("status") if isinstance(finalize, dict) else None
-
-            prepare_phase = _derive_prepare_phase_from_current(current)
-            integration_phase = _non_empty_str(state.get("integration_phase"))
-
-            todo_status = row[5]  # active/icebox/delivered
-            if todo_status == "active" and build_status:
-                todo_status = "in_progress"
-            elif todo_status == "active" and current in ("prepared",):
-                todo_status = "ready"
-            elif todo_status == "active" and prepare_phase:
-                todo_status = "in_progress"
 
             # Check artifact existence from DB (by id)
             artifact_query_started_at = time.perf_counter()
@@ -176,6 +167,56 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                 (row_id,),
             ).fetchall()
             artifact_query_total_dt += time.perf_counter() - artifact_query_started_at
+
+            # --- Derive display values from v1 state primitives ---
+
+            dor_raw = state.get("dor")
+            dor_score = dor_raw.get("score", 0) if isinstance(dor_raw, dict) else 0
+
+            finalize_raw = state.get("finalize")
+            finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
+            finalize_status = finalize.get("status") or None
+
+            build_review_raw = state.get("build_review")
+            build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+            verdict = build_review.get("verdict", "")
+
+            # Build status: derived from finalize, build_review verdict, phase
+            build_status: str | None = None
+            review_status: str | None = None
+            if finalize_status in ("ready", "handed_off"):
+                build_status = "complete"
+                review_status = "approved"
+            elif verdict == "approve":
+                build_status = "complete"
+                review_status = "approved"
+            elif verdict == "changes_requested":
+                build_status = "complete"
+                review_status = "changes_requested"
+            elif verdict:
+                build_status = "complete"
+                review_status = "pending"
+            elif state.get("phase") == "in_progress":
+                build_status = "started"
+
+            # Prepare phase: only shown when not yet in work phase
+            prepare_phase: str | None = None
+            if not build_status:
+                prepare_phase = _derive_prepare_phase(
+                    state, has_req=has_req_row is not None, has_plan=has_plan_row is not None
+                )
+
+            integration_phase = _non_empty_str(state.get("integration_phase"))
+
+            todo_status = row[5]  # active/icebox/delivered
+            if todo_status == "delivered" and not integration_phase:
+                integration_phase = "candidate_delivered"
+            if todo_status == "active" and build_status:
+                todo_status = "in_progress"
+            elif todo_status == "active" and prepare_phase == "prepared":
+                todo_status = "ready"
+            elif todo_status == "active" and prepare_phase:
+                todo_status = "in_progress"
 
             todos.append(
                 TodoDTO(

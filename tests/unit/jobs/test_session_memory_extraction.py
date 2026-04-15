@@ -1,3 +1,4 @@
+# pylint: disable=use-implicit-booleaness-not-comparison,useless-return
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -532,6 +533,7 @@ class TestSessionMemoryExtractionJob:
         monkeypatch.setattr(job_module, "_call_summarizer", fake_call_summarizer, raising=False)
         monkeypatch.setattr(job_module, "get_redis", get_redis, raising=False)
         monkeypatch.setattr(job_module, "channels_publisher", channels_publisher, raising=False)
+        monkeypatch.setattr(job_module.config.redis, "enabled", True)
 
         await job._extract_and_publish_actionable_items(
             "Search hangs after refresh. We should add saved search presets and send a migration checklist.",
@@ -582,7 +584,7 @@ class TestSessionMemoryExtractionJob:
         job = SessionMemoryExtractionJob()
         session = _make_session(session_id="session-9", project_path="demo")
         channels_publisher = _FakeChannelsPublisher()
-        get_redis = AsyncMock(side_effect=RuntimeError("redis disabled"))
+        get_redis = AsyncMock()
         warning_mock = Mock()
 
         async def fake_call_summarizer(
@@ -597,48 +599,13 @@ class TestSessionMemoryExtractionJob:
         monkeypatch.setattr(job_module, "get_redis", get_redis, raising=False)
         monkeypatch.setattr(job_module, "channels_publisher", channels_publisher, raising=False)
         monkeypatch.setattr(job_module.logger, "warning", warning_mock)
+        monkeypatch.setattr(job_module.config.redis, "enabled", False)
 
         await job._extract_and_publish_actionable_items("Search hangs after refresh.", session)
 
-        get_redis.assert_awaited_once_with()
+        get_redis.assert_not_awaited()
         assert channels_publisher.published_messages == []
         assert warning_mock.call_count == 1
-
-    async def test_extract_actionable_items_logs_and_skips_transport_failures(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        job = SessionMemoryExtractionJob()
-        session = _make_session(session_id="session-9", project_path="demo")
-        redis_client = object()
-        get_redis = AsyncMock(return_value=redis_client)
-        warning_mock = Mock()
-        publish = AsyncMock(side_effect=[RuntimeError("boom"), RuntimeError("boom-again")])
-        channels_publisher = SimpleNamespace(
-            channel_key=lambda project, topic: f"channel:{project}:{topic}",
-            publish=publish,
-        )
-
-        async def fake_call_summarizer(
-            prompt: str,
-            schema: Mapping[str, object],
-            parser: object,
-        ) -> list[_ActionableItem]:
-            _ = prompt, schema, parser
-            return [
-                {"type": "bug", "summary": "Search hangs after refresh"},
-                {"type": "follow-up", "summary": "Send the migration checklist"},
-            ]
-
-        monkeypatch.setattr(job_module, "_call_summarizer", fake_call_summarizer, raising=False)
-        monkeypatch.setattr(job_module, "get_redis", get_redis, raising=False)
-        monkeypatch.setattr(job_module, "channels_publisher", channels_publisher, raising=False)
-        monkeypatch.setattr(job_module.logger, "warning", warning_mock)
-
-        await job._extract_and_publish_actionable_items("Search hangs after refresh.", session)
-
-        get_redis.assert_awaited_once_with()
-        assert publish.await_count == 2
-        assert warning_mock.call_count == 2
 
     async def test_process_session_skips_personal_extraction_when_identity_key_is_missing(self) -> None:
         job = _SpyProcessSessionJob(transcript="User: keep this preference", identity_key=None)

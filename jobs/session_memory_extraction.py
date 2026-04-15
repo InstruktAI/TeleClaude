@@ -172,13 +172,21 @@ class SessionMemoryExtractionJob(Job):
                 items_processed=0,
             )
 
+        errors: list[str] = []
+        processed = 0
         for session in sessions:
-            await self._process_session(session)
+            try:
+                await self._process_session(session)
+                processed += 1
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                errors.append(f"{session.session_id}: {exc}")
+                logger.warning("Session extraction failed for %s: %s", session.session_id, exc)
 
         return JobResult(
-            success=True,
-            message=f"Extracted {len(sessions)} session(s)",
-            items_processed=len(sessions),
+            success=len(errors) == 0,
+            message=f"Extracted {processed}/{len(sessions)} session(s)",
+            items_processed=processed,
+            errors=errors if errors else None,
         )
 
     async def _find_sessions_needing_extraction(self) -> list[Session]:
@@ -378,6 +386,10 @@ class SessionMemoryExtractionJob(Job):
             _parse_actionable_response,
         )
         if not items:
+            return
+
+        if not config.redis.enabled:
+            logger.warning("Skipping actionable item publish for session %s: redis unavailable", session.session_id)
             return
 
         redis_client = await get_redis()

@@ -1,4 +1,4 @@
-# pylint: disable=invalid-name,unused-argument
+# pylint: disable=invalid-name,unused-argument,duplicate-code
 """Remove turn_triggered_by_linked_output from sessions."""
 
 from __future__ import annotations
