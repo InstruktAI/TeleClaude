@@ -19,6 +19,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.db.connection_factory import create_async_db_engine, create_sync_db_engine
 
+from ._legacy_import import maybe_auto_import_legacy_markdown_todos
 from ._models import TODOS_DB_TABLES
 
 logger = get_logger(__name__)
@@ -265,6 +266,8 @@ def _bootstrap_todos_db(db_path: str) -> None:
         SQLModel.metadata.create_all(sync_engine, tables=TODOS_DB_TABLES)
     finally:
         sync_engine.dispose()
+
+    maybe_auto_import_legacy_markdown_todos(db_path)
 
 
 class TodosDbBase:  # pylint: disable=too-many-instance-attributes
