@@ -138,10 +138,10 @@ def run_heuristics(
         if not category.instruction:
             continue  # e.g., hook runtime — no action needed
 
-        # Daemon restart is a main-branch concern. Off main (worktree branches),
-        # the running daemon is installed from main and unaffected by worktree
-        # edits; restart is the integrator's responsibility after merge.
-        if "make restart" in category.instruction and not result.on_main:
+        # Main-only categories (setup, deps, daemon restart) are irrelevant in
+        # worktrees — the running system is installed from main and unaffected
+        # until integration. These are the integrator's responsibility.
+        if category.main_only and not result.on_main:
             continue
 
         evidence_seen = False

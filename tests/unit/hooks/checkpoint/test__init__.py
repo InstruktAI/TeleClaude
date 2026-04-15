@@ -132,6 +132,28 @@ class TestRunHeuristics:
         assert not any("make restart" in action for action in result.required_actions)
 
     @pytest.mark.unit
+    def test_setup_off_main_suppresses_make_install(self) -> None:
+        """Setup changes in worktrees don't affect the running system."""
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["templates/foo.j2"], timeline, context)
+
+        assert not any("make install" in action for action in result.required_actions)
+
+    @pytest.mark.unit
+    def test_deps_off_main_suppresses_uv_sync(self) -> None:
+        """Dependency changes in worktrees don't affect the running virtualenv."""
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="feature-x"):
+            result = run_heuristics(["pyproject.toml"], timeline, context)
+
+        assert not any("uv sync" in action for action in result.required_actions)
+
+    @pytest.mark.unit
     def test_daemon_code_on_main_still_requires_make_restart(self) -> None:
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
@@ -142,8 +164,18 @@ class TestRunHeuristics:
         assert any("make restart" in action for action in result.required_actions)
 
     @pytest.mark.unit
+    def test_setup_on_main_still_requires_make_install(self) -> None:
+        timeline = TurnTimeline(has_data=True, tool_calls=[])
+        context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics(["templates/foo.j2"], timeline, context)
+
+        assert any("make install" in action for action in result.required_actions)
+
+    @pytest.mark.unit
     def test_tui_reload_instruction_still_fires_off_main(self) -> None:
-        """Only daemon restart is main-gated; TUI reload applies regardless of branch."""
+        """TUI reload is not main-gated; it applies regardless of branch."""
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         context = CheckpointContext(agent_name=AgentName.CLAUDE, project_path="/repo")
 

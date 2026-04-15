@@ -181,7 +181,7 @@ TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`
 
 
 @dataclass(frozen=True)
-class FileCategory:
+class FileCategory:  # pylint: disable=too-many-instance-attributes
     """Maps file patterns to checkpoint action instructions."""
 
     name: str
@@ -190,6 +190,7 @@ class FileCategory:
     instruction: str = ""
     evidence_substrings: list[str] = field(default_factory=list)
     evidence_must_follow_last_mutation: bool = False
+    main_only: bool = False  # Skip instruction when not on main (worktree branches)
     precedence: int = 0  # Lower = earlier in required actions
 
 
@@ -207,6 +208,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         ],
         instruction="Run `make install` (setup changed: templates, hook installers, or git filters)",
         evidence_substrings=["make install", "telec init"],
+        main_only=True,
         precedence=10,
     ),
     FileCategory(
@@ -214,6 +216,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         include_patterns=["pyproject.toml", "requirements*.txt"],
         instruction="Install updated dependencies: `uv sync`",
         evidence_substrings=["uv sync", "make install", "pip install"],
+        main_only=True,
         precedence=20,
     ),
     FileCategory(
@@ -222,6 +225,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/tui/**", "teleclaude/utils/**"],
         instruction="Run `make restart` then `make status`",
         evidence_substrings=["make restart"],
+        main_only=True,
         precedence=30,
     ),
     FileCategory(
@@ -236,6 +240,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         include_patterns=["config.yml"],
         instruction="Run `make restart` then `make status`",
         evidence_substrings=["make restart"],
+        main_only=True,
         precedence=30,
     ),
     FileCategory(
