@@ -19,11 +19,11 @@ project config owns repository-local metadata and explicitly rejects
 global-only keys (`people`, `ops`, `creds`, `notifications`, `timezone`). See
 `teleclaude/config/schema.py` for the authoritative model definitions.
 
-| File                  | Location                                     | Model           | Owns                                                                                                                    |
-| --------------------- | -------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                              |
-| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
-| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                                   |
+| File                  | Location                                     | Model           | Owns                                                                                                                                |
+| --------------------- | -------------------------------------------- | --------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| **Global config**     | `~/.teleclaude/teleclaude.yml`               | `GlobalConfig`  | All project keys + `people`, `subscriptions`, `interests`, `event_domains`                                                          |
+| **Project config**    | `<project-root>/teleclaude.yml`              | `ProjectConfig` | `project_slug`, `project_name`, `language`, `business`, `jobs`, `hooks`, `git`, `integrator`, `deployment`, `channel_subscriptions` |
+| **Per-person config** | `~/.teleclaude/people/{name}/teleclaude.yml` | `PersonConfig`  | `creds`, `subscriptions`, `interests`, `invite_token`                                                                               |
 
 **The project config is a regular file committed to the repository.** It is never a
 symlink. Replacing it with a symlink to the global config breaks validation because
@@ -38,6 +38,7 @@ Valid in both project and global configs.
 ```yaml
 project_slug: string # canonical machine identity; required in project configs
 project_name: string # human-readable display name
+language: string # optional project language selector for quality tooling and init skeletons
 description: string
 business:
   domains: mapping[string, string] # domain-name → "docs" (enables doc scope filtering)

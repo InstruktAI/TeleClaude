@@ -1,0 +1,45 @@
+[project]
+name = "{{project_name}}"
+version = "0.1.0"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["{{project_name}}", "tools", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "C90", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 20
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+
+[tool.pylint.'MESSAGES CONTROL']
+enable = ["import-outside-toplevel"]
+fail-on = ["import-outside-toplevel"]
+
+[tool.pylint.'SIMILARITIES']
+min-similarity-lines = 10
+
+[tool.pylint.'FORMAT']
+max-line-length = 120
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+
+[tool.guardrails]
+max_ignore_files = 8
+max_global_ignores = 8
+max_per_file_ignores = 50
+max_override_sections = 13
+max_module_lines = 1000
+required_rule_groups = ["E", "F", "I", "C90", "B", "UP", "RUF"]

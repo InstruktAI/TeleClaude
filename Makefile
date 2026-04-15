@@ -74,7 +74,7 @@ format:
 
 lint:
 	@echo "Running lint checks..."
-	@./tools/lint.sh
+	@telec lint
 	@echo "✓ Lint checks passed"
 
 lint-cycles:
@@ -107,7 +107,7 @@ test-agents:
 
 test:
 	@echo "Running repo-wide tests..."
-	@./tools/test.sh
+	@telec test
 	@echo "✓ All tests passed"
 
 coverage:

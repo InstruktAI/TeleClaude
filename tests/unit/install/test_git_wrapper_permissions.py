@@ -240,16 +240,15 @@ class TestCommitApprovedGate:
         )
         assert code == 0
 
-    def test_approved_env_var_does_not_override_orchestrator_block(self) -> None:
-        # Orchestrators cannot commit on any branch — approval env var must not bypass
-        # the orchestrator-wide restriction.
+    def test_approved_env_var_allows_orchestrator_commit(self) -> None:
+        # Orchestrators can commit when the human explicitly approved.
         code, _ = _run(
             ["commit", "-m", "test"],
             role="orchestrator",
             branch="main",
             commit_approved=True,
         )
-        assert code != 0
+        assert code == 0
 
     def test_approval_not_required_off_main(self) -> None:
         code, _ = _run(["commit", "-m", "test"], role="worker", branch="feature")

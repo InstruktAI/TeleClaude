@@ -1,6 +1,7 @@
 # teleclaude.yml
 # project_slug: your-project-slug
 # project_name: Your Project
+# language: python  # optional; enables language-aware quality tooling and init skeletons
 # business:
 #   domains:
 #     software-development: docs  # default

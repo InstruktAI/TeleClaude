@@ -79,6 +79,7 @@ from teleclaude.cli.telec.handlers.misc import (
     _revive_session_via_api,
     _send_revive_enter_via_api,
 )
+from teleclaude.cli.telec.handlers.quality import handle_lint, handle_test
 from teleclaude.cli.telec.handlers.roadmap import (
     _handle_roadmap,
     _handle_roadmap_add,
@@ -377,6 +378,8 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.HISTORY: lambda: _handle_history(args),
         TelecCommand.MEMORIES: lambda: _handle_memories(args),
         TelecCommand.SIGNALS: lambda: _handle_signals(args),
+        TelecCommand.LINT: lambda: handle_lint(args),
+        TelecCommand.TEST: lambda: handle_test(args),
     }
     return handlers.get(cmd_enum)
 

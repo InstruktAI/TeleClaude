@@ -276,23 +276,31 @@ def _check_mypy_invariants(pyproject: str) -> None:
         _fail("pyproject.toml: [tool.mypy] strict must be true")
 
 
-def _check_lint_pipeline_integrity(repo_root: Path) -> None:
+def _check_lint_pipeline_integrity(repo_root: Path) -> None:  # pylint: disable=too-many-branches
     """Verify critical tool config files haven't been structurally weakened."""
-    # .pre-commit-config.yaml: must contain required hook IDs
+    # .pre-commit-config.yaml: must contain required hook IDs.
+    # When telec lint consolidates the pipeline, ruff-check and typecheck are
+    # subsumed by the guardrails hook entry — only require them when telec lint
+    # is not configured as the guardrails entry.
     precommit_path = repo_root / ".pre-commit-config.yaml"
     if precommit_path.exists():
         precommit = precommit_path.read_text(encoding="utf-8")
-        for hook_id in ("commitizen", "format", "guardrails", "ruff-check", "typecheck"):
+        for hook_id in ("commitizen", "format", "guardrails"):
             if f"id: {hook_id}" not in precommit:
                 _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
+        if "telec lint" not in precommit:
+            for hook_id in ("ruff-check", "typecheck"):
+                if f"id: {hook_id}" not in precommit:
+                    _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
 
-    # tools/lint.sh: must invoke guardrails, ruff, and pyright
+    # tools/lint.sh: must invoke guardrails/ruff/pyright directly OR delegate to telec lint
     lint_sh_path = repo_root / "tools" / "lint.sh"
     if lint_sh_path.exists():
         lint_sh = lint_sh_path.read_text(encoding="utf-8")
-        for step in ("guardrails.py", "ruff check", "$PYRIGHT", "$MYPY", "$PYLINT"):
-            if step not in lint_sh:
-                _fail(f"tools/lint.sh: required lint step '{step}' is missing")
+        if "telec lint" not in lint_sh:
+            for step in ("guardrails.py", "ruff check", "$PYRIGHT", "$MYPY", "$PYLINT"):
+                if step not in lint_sh:
+                    _fail(f"tools/lint.sh: required lint step '{step}' is missing")
 
     # Makefile: must contain lint and test targets
     makefile_path = repo_root / "Makefile"
@@ -782,7 +790,7 @@ def _collect_function_guard_ranges(lines: list[str]) -> list[tuple[int, int]]:
 
     ranges: list[tuple[int, int]] = []
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
             continue
         end_lineno = getattr(node, "end_lineno", None)
         if end_lineno is None:

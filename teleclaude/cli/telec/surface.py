@@ -974,6 +974,18 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
+    "lint": CommandDef(
+        desc="Run language-aware lint pipeline",
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+    ),
+    "test": CommandDef(
+        desc="Run language-aware test suite",
+        flags=[
+            _H,
+            Flag("--expensive", desc="Include expensive/slow tests"),
+        ],
+        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+    ),
 }
 # Help-only expansion for action groups; config people/env are now real leaf subcommands.
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}

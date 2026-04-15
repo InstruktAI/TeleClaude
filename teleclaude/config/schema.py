@@ -302,6 +302,7 @@ class ProjectConfig(BaseModel):
     project_slug: str | None = None
     project_name: str | None = None
     description: str | None = None
+    language: str | None = None
     business: BusinessConfig = BusinessConfig()
     hooks: HooksConfig = HooksConfig()
     jobs: dict[str, JobScheduleConfig] = {}

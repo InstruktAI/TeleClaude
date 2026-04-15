@@ -18,6 +18,7 @@ from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
+from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
 from teleclaude.slug import normalize_slug, validate_slug
 
@@ -249,6 +250,7 @@ def init_project(project_root: Path) -> None:
     # ``_ensure_project_slug`` guarantee the canonical machine identity is
     # present before the project is registered with the catalog.
     sync_project_artifacts(project_root)
+    deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
     from teleclaude.project_setup.domain_seeds import seed_event_domains  # pylint: disable=import-outside-toplevel

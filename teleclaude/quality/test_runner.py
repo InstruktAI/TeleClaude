@@ -1,0 +1,123 @@
+"""Test runner — the ``telec test`` implementation.
+
+Worktree-aware test execution with companion file mapping, expensive test
+exclusion, and pytest argument construction.
+"""
+
+from __future__ import annotations
+
+import logging
+import subprocess
+import sys
+import tomllib
+from pathlib import Path
+
+from teleclaude.quality.scope import (
+    is_worktree,
+    resolve_session_scope,
+    validate_scoped_paths,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def map_source_to_companion(source_path: str) -> str:
+    """Map a source file to its test companion.
+
+    ``teleclaude/x/y.py`` becomes ``tests/unit/x/test_y.py``.
+    """
+    parts = source_path.split("/")
+    if len(parts) < 2:
+        return f"tests/unit/test_{parts[0]}"
+    # Strip leading package directory, prepend tests/unit/, prefix filename with test_
+    subpath = parts[1:]
+    subpath[-1] = f"test_{subpath[-1]}"
+    return "tests/unit/" + "/".join(subpath)
+
+
+def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[str]:
+    """Map source files to companion test files, include directly-touched tests.
+
+    Companions that do not exist on disk are omitted. Results are deduplicated
+    and sorted for determinism.
+    """
+    targets: set[str] = set()
+
+    for f in touched_files:
+        if f.startswith("tests/"):
+            if (project_root / f).exists():
+                targets.add(f)
+        elif f.endswith(".py"):
+            companion = map_source_to_companion(f)
+            if (project_root / companion).exists():
+                targets.add(companion)
+
+    return sorted(targets)
+
+
+def run_pytest(args: list[str]) -> int:
+    """Run pytest with the given arguments. Returns exit code.
+
+    Justified subprocess: pytest is an external tool invocation.
+    """
+    result = subprocess.run(["pytest", *args], check=False)
+    return result.returncode
+
+
+class TestRunner:
+    """Orchestrates worktree-aware test execution.
+
+    Determines test targets (companion-mapped in worktree, configured dirs
+    otherwise) and runs pytest with appropriate marker exclusions.
+    """
+
+    def __init__(self, project_root: Path, include_expensive: bool = False) -> None:
+        self._project_root = project_root
+        self._include_expensive = include_expensive
+
+    def resolve_targets(self) -> list[str]:
+        """Resolve the test targets based on worktree context."""
+        if is_worktree(self._project_root):
+            logger.info("Worktree detected — mapping session-touched files to test companions")
+            try:
+                scoped = resolve_session_scope(self._project_root)
+            except (RuntimeError, OSError) as exc:
+                logger.error("Scope resolution failed in worktree context: %s", exc)
+                sys.exit(1)
+            validated = validate_scoped_paths(list(scoped), self._project_root)
+            targets = resolve_test_targets(self._project_root, set(validated))
+            if not targets:
+                logger.info("No test companions found for session-touched files — skipping")
+                sys.exit(0)
+            return targets
+
+        logger.info("Non-worktree context — using configured test directories")
+        return self._read_configured_test_paths()
+
+    def build_pytest_args(self, targets: list[str]) -> list[str]:
+        """Construct pytest CLI arguments from targets and configuration."""
+        args = list(targets)
+        if not self._include_expensive:
+            args.extend(["-m", "not expensive"])
+        args.append("-q")
+        return args
+
+    def run(self, targets: list[str] | None = None) -> None:
+        """Run pytest against the given or resolved targets."""
+        if targets is None:
+            targets = self.resolve_targets()
+        args = self.build_pytest_args(targets)
+        exit_code = run_pytest(args)
+        if exit_code != 0:
+            sys.exit(exit_code)
+
+    def _read_configured_test_paths(self) -> list[str]:
+        """Read testpaths from [tool.pytest.ini_options] in pyproject.toml."""
+        pyproject = self._project_root / "pyproject.toml"
+        if pyproject.exists():
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+            testpaths = data.get("tool", {}).get("pytest", {}).get("ini_options", {}).get("testpaths", [])
+            if testpaths:
+                return list(testpaths)
+        return ["tests/unit", "tests/integration"]

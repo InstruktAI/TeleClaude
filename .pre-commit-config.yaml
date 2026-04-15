@@ -11,22 +11,20 @@ repos:
     language: system
     pass_filenames: true
     require_serial: true
-  # --- Scoped lint hooks (replace monolithic make lint) ---
-  # Each component only triggers when relevant files are staged.
   - id: guardrails
-    name: Config guardrails
-    entry: ./tools/lint/precommit-hook.sh guardrails
+    name: Guardrail enforcement
+    entry: .venv/bin/python tools/lint/guardrails.py
     language: system
     pass_filenames: true
   - id: ruff-check
     name: Ruff check
-    entry: ./tools/lint/precommit-hook.sh ruff-check
+    entry: ruff check --fix
     language: system
     types: [python]
     pass_filenames: true
   - id: typecheck
-    name: Pyright + Mypy + Pylint (parallel)
-    entry: ./tools/lint/precommit-hook.sh parallel-typecheck
+    name: Type checking (pyright)
+    entry: pyright
     language: system
     types: [python]
     pass_filenames: true

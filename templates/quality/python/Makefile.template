@@ -1,0 +1,10 @@
+.PHONY: lint test format
+
+lint:
+	@telec lint
+
+test:
+	@telec test
+
+format:
+	@echo "Formatting code..."
