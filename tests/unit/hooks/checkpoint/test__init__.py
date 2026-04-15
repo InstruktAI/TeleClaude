@@ -20,17 +20,25 @@ from teleclaude.hooks.checkpoint import (
     get_checkpoint_content,
     run_heuristics,
 )
+from teleclaude.session_scoping import ScopedPathsResult
 
 
 class TestGetCheckpointContent:
     @pytest.mark.unit
-    def test_uses_effective_turn_timeline_for_codex(self) -> None:
+    def test_uses_shared_session_scoping_turn_delta_for_codex(self) -> None:
         timeline = TurnTimeline(has_data=True, tool_calls=[])
         result = CheckpointResult(
             categories=["python"],
             required_actions=["stub action"],
             observations=[],
             is_all_clear=False,
+        )
+        scoped_paths = ScopedPathsResult(
+            paths=("src/app.py",),
+            scope_mode="turn_delta",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
         )
 
         with (
@@ -40,12 +48,13 @@ class TestGetCheckpointContent:
                 return_value=timeline,
             ) as extract_effective_mock,
             patch(
-                "teleclaude.hooks.checkpoint._extract_turn_file_signals",
-                return_value=({"src/app.py"}, True),
-            ) as extract_files_mock,
+                "teleclaude.hooks.checkpoint.resolve_scoped_paths",
+                return_value=scoped_paths,
+            ) as resolve_scoped_mock,
             patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result),
         ):
             checkpoint_text = get_checkpoint_content(
+                session_id="session-1",
                 transcript_path="/tmp/parent.jsonl",
                 agent_name=AgentName.CODEX,
                 project_path="/repo",
@@ -60,7 +69,14 @@ class TestGetCheckpointContent:
             native_session_id="parent-thread",
             scope="turn",
         )
-        extract_files_mock.assert_called_once_with(timeline, "/repo")
+        resolve_scoped_mock.assert_called_once_with(
+            session_id="session-1",
+            workspace_root="/repo",
+            agent_name="codex",
+            scope_mode="turn_delta",
+            transcript_path="/tmp/parent.jsonl",
+            native_session_id="parent-thread",
+        )
         assert checkpoint_text is not None
 
 

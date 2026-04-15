@@ -246,6 +246,7 @@ def _maybe_checkpoint_output(
     logger.debug("Checkpoint eval for session %s (%.1fs elapsed)", session_id, elapsed)
 
     checkpoint_reason = get_checkpoint_content(
+        session_id=session_id,
         transcript_path=transcript_path,
         agent_name=_resolve_agent_enum(agent),
         project_path=project_path,

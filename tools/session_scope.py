@@ -20,6 +20,7 @@ from pathlib import Path
 from teleclaude.git import InvalidGitRepositoryError, Repo
 from teleclaude.session_identity import get_session_id
 from teleclaude.todo_scaffold import (  # pylint: disable=protected-access
+    NoSessionTouchedFiles,
     TranscriptUnavailable,
     _classify_porcelain_status,
     _collect_session_touched_files,
@@ -119,6 +120,9 @@ def main() -> None:
         # Transcript-less sessions (e.g. live agents before first turn is written) fall back to
         # the dirty worktree so scoped lint/test gates still have something to operate on.
         touched = _fallback_worktree_status_files(project_root)
+    except NoSessionTouchedFiles:
+        # A clean worktree or a session with no owned dirty files is a valid empty scope.
+        touched = set()
     except Exception as exc:  # pylint: disable=broad-exception-caught # all collection errors → exit 3 per protocol
         print(f"session_scope: collection failed for session {session_id}: {exc}", file=sys.stderr)
         sys.exit(3)

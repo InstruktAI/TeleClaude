@@ -1,7 +1,7 @@
 """Context-aware checkpoint builder for agent stop boundaries.
 
 Thin consumer of transcript.py — never reads or parses transcripts directly.
-Uses git diff for file-based signals and TurnTimeline for transcript-based signals.
+Uses session_scoping.resolve_scoped_paths for turn-local file attribution and TurnTimeline for transcript-based signals.
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
@@ -59,16 +59,16 @@ from teleclaude.hooks.checkpoint._models import (
     CheckpointResult,
     TranscriptObservability,
 )
+from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
 logger = get_logger(__name__)
 
 __all__ = [
-    # Public API
     "CheckpointContext",
     "CheckpointResult",
+    "ScopedPathsResult",
     "TranscriptObservability",
-    # Re-exported internals (used by tests and hooks)
     "_canonical_tool_name",
     "_categorize_files",
     "_check_edit_hygiene",
@@ -312,6 +312,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 
 
 def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    session_id: str,
     transcript_path: str | None,
     agent_name: AgentName,
     project_path: str,
@@ -321,8 +322,8 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
 ) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
 
-    Top-level entry point that orchestrates git diff, transcript extraction,
-    and message building.
+    Top-level entry point that orchestrates session-scoped path resolution,
+    transcript extraction, and message building.
 
     Returns:
     - str: checkpoint payload when agent action is required or confirmation is useful.
@@ -354,8 +355,15 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
             scope="turn",
         )
 
-        touched_files, _ = _extract_turn_file_signals(timeline, project_path)
-        effective_files = sorted(touched_files)
+        scoped_paths = resolve_scoped_paths(
+            session_id=session_id,
+            workspace_root=project_path,
+            agent_name=agent_name.value,
+            scope_mode="turn_delta",
+            transcript_path=transcript_path,
+            native_session_id=native_session_id,
+        )
+        effective_files = list(scoped_paths.paths)
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
@@ -377,6 +385,9 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": len(effective_files),
+                    "workspace_kind": scoped_paths.workspace_kind,
+                    "strategy": scoped_paths.strategy,
+                    "ledger_updated": scoped_paths.ledger_updated,
                     "categories": result.categories,
                     "required_actions": len(result.required_actions),
                     "observations": len(result.observations),
@@ -395,6 +406,9 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
                     "changed_files": len(effective_files),
+                    "workspace_kind": scoped_paths.workspace_kind,
+                    "strategy": scoped_paths.strategy,
+                    "ledger_updated": scoped_paths.ledger_updated,
                     "categories": result.categories,
                     "required_actions": len(result.required_actions),
                     "observations": len(result.observations),
@@ -418,6 +432,9 @@ def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-posit
                 "timeline_has_data": timeline.has_data,
                 "timeline_records": len(timeline.tool_calls),
                 "changed_files": len(effective_files),
+                "workspace_kind": scoped_paths.workspace_kind,
+                "strategy": scoped_paths.strategy,
+                "ledger_updated": scoped_paths.ledger_updated,
                 "categories": result.categories,
                 "required_actions": len(result.required_actions),
                 "observations": len(result.observations),

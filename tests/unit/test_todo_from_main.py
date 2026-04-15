@@ -5,12 +5,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import ANY, MagicMock, call, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.todo_scaffold import _collect_session_touched_files, create_from_main_skeleton
+from teleclaude.session_scoping import ScopedPathsResult
+from teleclaude.todo_scaffold import NoSessionTouchedFiles, _collect_session_touched_files, create_from_main_skeleton
 
 # Patch targets — these are lazy-imported inside create_from_main_skeleton
 _WT = "teleclaude.core.next_machine.worktrees"
@@ -388,17 +389,21 @@ class TestCollectSessionTouchedFiles:
     _AGENT_NAME = "teleclaude.core.agents.AgentName"
     _CURRENT_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_current_codex_transcript_path"
     _DISCOVER_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_codex_transcript_path"
-    _EXTRACT_EFFECTIVE_TURNS = "teleclaude.utils.transcript.extract_effective_tool_calls"
-    _EXTRACT_SIGNALS = "teleclaude.hooks.checkpoint._git._extract_turn_file_signals"
+    _RESOLVE_SCOPED_PATHS = "teleclaude.session_scoping.resolve_scoped_paths"
 
     def test_happy_path_returns_touched_files(self) -> None:
-        """Returns set of files from transcript parsing pipeline."""
+        """Returns set of files from the shared session-scoping API."""
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
 
-        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
-        expected_files = {"src/app.py", "src/utils.py"}
+        scoped_paths = ScopedPathsResult(
+            paths=("src/app.py", "src/utils.py"),
+            scope_mode="session_dirty",
+            workspace_kind="git_shared",
+            strategy="claude_structured_fallback",
+            ledger_updated=False,
+        )
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-123"),
@@ -406,8 +411,7 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
-            patch(self._EXTRACT_SIGNALS, return_value=(expected_files, True)),
+            patch(self._RESOLVE_SCOPED_PATHS, return_value=scoped_paths),
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -415,7 +419,7 @@ class TestCollectSessionTouchedFiles:
 
             result = _collect_session_touched_files("/project")
 
-        assert result == expected_files
+        assert result == {"src/app.py", "src/utils.py"}
 
     def test_missing_session_id_raises(self) -> None:
         """Raises ValueError when session marker file is not found."""
@@ -459,12 +463,10 @@ class TestCollectSessionTouchedFiles:
             _collect_session_touched_files("/project")
 
     def test_empty_timeline_raises(self) -> None:
-        """Raises ValueError when transcript parsing returns no touched files."""
+        """Raises ValueError when shared session scoping returns no touched files."""
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
-
-        mock_timeline = SimpleNamespace(has_data=False, tool_calls=[])
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-empty"),
@@ -472,9 +474,17 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
-            patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
-            pytest.raises(ValueError, match="Could not determine session-touched files"),
+            patch(
+                self._RESOLVE_SCOPED_PATHS,
+                return_value=ScopedPathsResult(
+                    paths=(),
+                    scope_mode="session_dirty",
+                    workspace_kind="git_shared",
+                    strategy="claude_structured_fallback",
+                    ledger_updated=False,
+                ),
+            ),
+            pytest.raises(NoSessionTouchedFiles, match="Could not determine session-touched files"),
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -483,12 +493,10 @@ class TestCollectSessionTouchedFiles:
             _collect_session_touched_files("/project")
 
     def test_no_touched_files_raises(self) -> None:
-        """Raises ValueError when transcript parses but yields no file signals."""
+        """Raises ValueError when shared session scoping yields no owned dirty files."""
         mock_row = SimpleNamespace(native_log_file="/tmp/transcript.jsonl")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
-
-        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-no-files"),
@@ -496,9 +504,17 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._GET_AGENT, return_value="claude"),
             patch(self._AGENT_NAME) as mock_agent_name,
-            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
-            patch(self._EXTRACT_SIGNALS, return_value=(set(), False)),
-            pytest.raises(ValueError, match="Could not determine session-touched files"),
+            patch(
+                self._RESOLVE_SCOPED_PATHS,
+                return_value=ScopedPathsResult(
+                    paths=(),
+                    scope_mode="session_dirty",
+                    workspace_kind="git_shared",
+                    strategy="claude_structured_fallback",
+                    ledger_updated=False,
+                ),
+            ),
+            pytest.raises(NoSessionTouchedFiles, match="Could not determine session-touched files"),
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
@@ -507,7 +523,7 @@ class TestCollectSessionTouchedFiles:
             _collect_session_touched_files("/project")
 
     def test_codex_prefers_live_thread_transcript_when_db_points_to_stale_subagent(self) -> None:
-        """Codex sessions recover from stale DB transcript pointers using CODEX_THREAD_ID."""
+        """Codex sessions pass the live transcript hint into shared session scoping."""
         mock_row = SimpleNamespace(
             active_agent="codex",
             native_log_file="/tmp/stale-subagent.jsonl",
@@ -516,33 +532,42 @@ class TestCollectSessionTouchedFiles:
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
 
-        stale_timeline = SimpleNamespace(has_data=True, tool_calls=[])
-        live_timeline = SimpleNamespace(has_data=True, tool_calls=[])
-        expected_files = {"teleclaude/daemon_hook_outbox.py"}
+        scoped_paths = ScopedPathsResult(
+            paths=("teleclaude/daemon_hook_outbox.py",),
+            scope_mode="session_dirty",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
+        )
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._CURRENT_CODEX_TRANSCRIPT, return_value="/tmp/live-parent.jsonl"),
-            patch(self._EXTRACT_EFFECTIVE_TURNS, side_effect=[live_timeline, stale_timeline]),
-            patch(self._EXTRACT_SIGNALS, side_effect=[(expected_files, True), (set(), True)]),
+            patch(self._RESOLVE_SCOPED_PATHS, return_value=scoped_paths) as resolve_scoped_mock,
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
             result = _collect_session_touched_files("/project")
 
-        assert result == expected_files
+        assert result == {"teleclaude/daemon_hook_outbox.py"}
+        assert resolve_scoped_mock.call_args.kwargs["transcript_path"] == "/tmp/live-parent.jsonl"
 
     def test_codex_discovers_transcript_from_native_session_id_when_log_is_missing(self) -> None:
-        """Codex sessions fall back to transcript discovery when native_log_file is empty."""
+        """Codex sessions fall back to transcript discovery before calling shared scoping."""
         mock_row = SimpleNamespace(active_agent="codex", native_log_file=None, native_session_id="native-parent")
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
 
-        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
-        expected_files = {"teleclaude/todo_scaffold.py"}
+        scoped_paths = ScopedPathsResult(
+            paths=("teleclaude/todo_scaffold.py",),
+            scope_mode="session_dirty",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
+        )
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
@@ -550,18 +575,18 @@ class TestCollectSessionTouchedFiles:
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._DISCOVER_CODEX_TRANSCRIPT, return_value="/tmp/discovered-parent.jsonl"),
             patch(self._CURRENT_CODEX_TRANSCRIPT, return_value=None),
-            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline),
-            patch(self._EXTRACT_SIGNALS, return_value=(expected_files, True)),
+            patch(self._RESOLVE_SCOPED_PATHS, return_value=scoped_paths) as resolve_scoped_mock,
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
             result = _collect_session_touched_files("/project")
 
-        assert result == expected_files
+        assert result == {"teleclaude/todo_scaffold.py"}
+        assert resolve_scoped_mock.call_args.kwargs["transcript_path"] == "/tmp/discovered-parent.jsonl"
 
-    def test_codex_uses_effective_timeline_union_for_touched_files(self) -> None:
-        """Codex sessions consume the shared effective timeline abstraction."""
+    def test_from_main_uses_session_dirty_scope(self) -> None:
+        """from-main requests session_dirty from the shared session-scoping API."""
         mock_row = SimpleNamespace(
             active_agent="codex",
             native_log_file="/tmp/parent.jsonl",
@@ -570,42 +595,42 @@ class TestCollectSessionTouchedFiles:
         mock_db = MagicMock()
         mock_db.get.return_value = mock_row
 
-        mock_timeline = SimpleNamespace(has_data=True, tool_calls=[])
+        scoped_paths = ScopedPathsResult(
+            paths=(
+                "teleclaude/core/codex_transcript.py",
+                "teleclaude/todo_scaffold.py",
+                "tests/unit/core/test_codex_transcript.py",
+            ),
+            scope_mode="session_dirty",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
+        )
 
         with (
             patch("teleclaude.todo_scaffold._get_session_id", return_value="sess-codex"),
             patch(self._SYNC_ENGINE, return_value=MagicMock()),
             patch(self._SQL_SESSION) as mock_session_cls,
             patch(self._CURRENT_CODEX_TRANSCRIPT, return_value="/tmp/parent.jsonl"),
-            patch(self._EXTRACT_EFFECTIVE_TURNS, return_value=mock_timeline) as extract_effective_mock,
-            patch(
-                self._EXTRACT_SIGNALS,
-                return_value=(
-                    {
-                        "teleclaude/todo_scaffold.py",
-                        "teleclaude/core/codex_transcript.py",
-                        "tests/unit/core/test_codex_transcript.py",
-                    },
-                    True,
-                ),
-            ),
+            patch(self._RESOLVE_SCOPED_PATHS, return_value=scoped_paths) as resolve_scoped_mock,
         ):
             mock_session_cls.return_value.__enter__ = MagicMock(return_value=mock_db)
             mock_session_cls.return_value.__exit__ = MagicMock(return_value=False)
 
             result = _collect_session_touched_files("/project")
 
-        extract_effective_mock.assert_called_once_with(
-            "/tmp/parent.jsonl",
-            ANY,
-            native_session_id="parent-thread",
-            scope="session",
-        )
-
         assert result == {
             "teleclaude/todo_scaffold.py",
             "teleclaude/core/codex_transcript.py",
             "tests/unit/core/test_codex_transcript.py",
+        }
+        assert resolve_scoped_mock.call_args.kwargs == {
+            "session_id": "sess-codex",
+            "workspace_root": "/project",
+            "agent_name": "codex",
+            "scope_mode": "session_dirty",
+            "transcript_path": "/tmp/parent.jsonl",
+            "native_session_id": "parent-thread",
         }
 
 

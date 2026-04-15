@@ -32,18 +32,27 @@ def _import_session_scope():
     return mod
 
 
+def _base_env() -> dict[str, str]:
+    """Run the script with this checkout first on PYTHONPATH."""
+    env = os.environ.copy()
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{_REPO_ROOT}{os.pathsep}{existing}" if existing else str(_REPO_ROOT)
+    return env
+
+
 def _run(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [sys.executable, str(_SCRIPT), *args],
         capture_output=True,
         text=True,
+        env=_base_env(),
         check=False,
     )
 
 
 def _run_no_session(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the script with a clean TMPDIR that has no session identity file."""
-    env = os.environ.copy()
+    env = _base_env()
     with tempfile.TemporaryDirectory() as empty_tmpdir:
         env["TMPDIR"] = empty_tmpdir
         env.pop("TMP", None)
@@ -61,7 +70,7 @@ def _run_with_fake_session(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the script with a fake session identity file in TMPDIR."""
     import json  # pylint: disable=import-outside-toplevel
 
-    env = os.environ.copy()
+    env = _base_env()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a fake session identity file
         identity_file = Path(tmpdir) / "teleclaude_identity.json"
@@ -335,3 +344,32 @@ def test_non_transcript_valueerror_collection_failure_exits_3(
     assert exc_info.value.code == 3
     assert fallback_called is False
     assert "db lookup failed" in capsys.readouterr().err
+
+
+def test_no_session_touched_files_returns_empty_scope(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Clean worktrees with no owned dirty files should emit an empty scope, not exit 3."""
+    mod = _import_session_scope()
+    fallback_called = False
+
+    def _raise_no_files(_project_root: str) -> set[str]:
+        raise mod.NoSessionTouchedFiles("Could not determine session-touched files from transcript.")
+
+    def _unexpected_fallback(_project_root: Path) -> set[str]:
+        nonlocal fallback_called
+        fallback_called = True
+        return {"teleclaude/foo.py"}
+
+    monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
+    monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
+    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_no_files)
+    monkeypatch.setattr(mod, "_fallback_worktree_status_files", _unexpected_fallback)
+
+    mod.main()
+
+    captured = capsys.readouterr()
+    assert fallback_called is False
+    assert captured.out == ""
+    assert captured.err == ""

@@ -22,6 +22,7 @@ if [ ! -f "${VENV_ACTIVATE}" ]; then
 fi
 
 . "${VENV_ACTIVATE}"
+export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 
 # Force tests to use sandboxed config and env files
 export TELECLAUDE_CONFIG_PATH="${TELECLAUDE_CONFIG_PATH:-tests/integration/config.yml}"
