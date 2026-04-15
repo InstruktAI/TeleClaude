@@ -10,14 +10,19 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import asyncio
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, StateValue
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance
+from teleclaude.core.next_machine.git_ops import (
+    _merge_origin_main_into_worktree,
+    compose_agent_guidance,
+)
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
@@ -158,6 +163,15 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
     if not await todos_db.slug_in_roadmap(resolved_slug):
         await todos_db.add_to_roadmap(resolved_slug)
         logger.info("AUTO_ROADMAP_ADD slug=%s machine=prepare", resolved_slug)
+
+    # Merge origin/main into the worktree (if it exists) so the grounding
+    # check sees files that landed from other deliveries. Mirrors the same
+    # pattern used by the work machine (work.py).
+    worktree_path = Path(cwd) / WORKTREE_DIR / resolved_slug
+    if worktree_path.is_dir():
+        merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, str(worktree_path), resolved_slug)
+        if merge_err:
+            logger.warning("PREPARE_MERGE_MAIN slug=%s error=%s", resolved_slug, merge_err)
 
     for _iter in range(_PREPARE_LOOP_LIMIT):
         state = await todos_db.read_state(resolved_slug)
