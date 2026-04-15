@@ -365,28 +365,25 @@ input.md                  Worktree created            Merge to main
 # Create a new todo
 telec todo create my-feature
 
-# See what got scaffolded
-ls todos/my-feature/
-
 # Check the roadmap
 telec roadmap list
 
 # See current state
-cat todos/my-feature/todo state (todos.db)
+telec todo show my-feature
 ```
 
 **Under the hood:**
 
-- `telec todo create` scaffolds the directory with `input.md` and `todo state (todos.db)`
+- `telec todo create` creates a roadmap entry and initial state in `todos.db`
 - The state machine tracks phases: `prepare` (discovery → draft → review → gate) and `work` (build → review → fix → finalize)
 - Each transition has formal quality gates (DOR = Definition of Ready, DOD = Definition of Done)
-- State is tracked in `todo state (todos.db)` — agents update this as they progress
-- The roadmap (`todos.db` roadmap) tracks ordering, dependencies, and status across all items
+- State is tracked in `todos.db` — agents update this as they progress
+- The roadmap in `todos.db` tracks ordering, dependencies, and status across all items
 
-**Where to find files:**
+**Where to find things:**
 
-- Todo directory: [`todos/`](todos/)
-- Roadmap: [`todos.db` roadmap](todos/roadmap 'todos.db')
+- Roadmap and state: `todos.db` (via `telec roadmap list`, `telec todo show <slug>`)
+- Artifacts: `todos.db` artifact tables (via `telec todo artifacts list <slug>`)
 - State machine: [`teleclaude/todo/`](teleclaude/todo/)
 - Delivered archive: `todos.db` delivered entries
 
@@ -416,18 +413,18 @@ telec todo prepare my-feature
 **Demo interaction:**
 
 ```bash
-# Write a rough idea
-echo "Add a health check endpoint that returns service status" > todos/my-feature/input.md
+# Write a rough idea as the input artifact
+telec todo artifacts write my-feature input "Add a health check endpoint that returns service status"
 
 # Run the prepare orchestrator (dispatches workers automatically)
 telec todo prepare my-feature
 
 # Check progress
-cat todos/my-feature/todo state (todos.db)
+telec todo show my-feature
 
 # See the generated artifacts
-ls todos/my-feature/
-# input.md  requirements.md  implementation-plan.md  dor-report.md  todo state (todos.db)
+telec todo artifacts list my-feature
+# input  requirements  implementation-plan  dor-report
 ```
 
 **Under the hood:**
@@ -473,7 +470,7 @@ ls trees/my-feature/
 # When done, it reports back
 
 # Check build status
-cat todos/my-feature/todo state (todos.db)
+telec todo show my-feature
 ```
 
 **Under the hood:**
@@ -620,15 +617,15 @@ telec roadmap unfreeze low-priority-item
 - `todos.db` roadmap is the single source of truth
 - Each entry tracks: slug, status, DOR score, dependencies, container membership
 - Dependencies use `after:` — the item won't be started until all dependencies are delivered
-- The icebox (`todos/_icebox/`) holds frozen items that aren't on the active roadmap
+- The icebox holds frozen items that aren't on the active roadmap (`telec roadmap freeze/unfreeze`)
 - Container items can be split into sub-items with `telec todo split`
-- Status progression: `pending` → `ready` → `in_progress` → delivered (moved to `delivered.yaml`)
+- Status progression: `pending` → `ready` → `in_progress` → delivered
 
-**Where to find files:**
+**Where to find things:**
 
-- Roadmap file: [`todos.db` roadmap](todos/roadmap 'todos.db')
+- Roadmap: `todos.db` (via `telec roadmap list`)
 - Delivered archive: `todos.db` delivered entries
-- Icebox: [`todos/_icebox/`](todos/_icebox/)
+- Icebox: `todos.db` frozen entries (via `telec roadmap list --icebox-only`)
 
 ---
 

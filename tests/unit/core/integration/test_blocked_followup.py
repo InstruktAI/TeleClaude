@@ -67,14 +67,17 @@ def test_ensure_follow_up_uses_preferred_slug_when_provided(tmp_path: Path) -> N
     assert link.follow_up_slug == "custom-slug"
 
 
-def test_ensure_follow_up_creates_todo_files(tmp_path: Path) -> None:
+def test_ensure_follow_up_creates_todo_artifacts_in_db(tmp_path: Path) -> None:
     store = _make_store(tmp_path)
     payload = _make_payload()
     link = store.ensure_follow_up(payload)
-    todo_dir = tmp_path / "todos" / link.follow_up_slug
-    assert (todo_dir / "requirements.md").exists()
-    assert (todo_dir / "implementation-plan.md").exists()
-    assert (todo_dir / "state.yaml").exists()
+
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+    db = _get_todos_db_sync(str(tmp_path))
+    assert db.read_artifact_sync(link.follow_up_slug, "requirements") is not None
+    assert db.read_artifact_sync(link.follow_up_slug, "implementation-plan") is not None
+    assert db.read_state_sync(link.follow_up_slug) is not None
 
 
 def test_ensure_follow_up_is_idempotent_for_same_candidate(tmp_path: Path) -> None:

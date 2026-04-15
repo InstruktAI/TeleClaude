@@ -11,7 +11,7 @@ dependencies arise from sub-modules importing from core.py.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import TypedDict
 
@@ -174,25 +174,6 @@ class EnsureWorktreeResult:
     created: bool
     prepared: bool
     prep_reason: str
-
-
-@dataclass
-class RoadmapEntry:
-    """Single roadmap or icebox manifest entry."""
-
-    slug: str
-    group: str | None = None
-    after: list[str] = field(default_factory=list)
-    description: str | None = None
-
-
-class RoadmapDict(TypedDict, total=False):
-    """Serialized roadmap entry shape stored in YAML manifests."""
-
-    slug: str
-    group: str
-    after: list[str]
-    description: str
 
 
 def default_state() -> dict[str, StateValue]:

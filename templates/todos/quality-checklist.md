@@ -38,6 +38,5 @@ Ownership:
 - [ ] Build gates all checked
 - [ ] Review gates all checked
 - [ ] Merge to main complete
-- [ ] Delivery logged in `todos/delivered.md`
-- [ ] Roadmap updated
-- [ ] Todo/worktree cleanup complete
+- [ ] Delivery logged in roadmap (status: delivered)
+- [ ] Worktree cleanup complete

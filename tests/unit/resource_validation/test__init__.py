@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -12,11 +14,7 @@ import teleclaude.resource_validation as resource_validation
 pytestmark = pytest.mark.unit
 
 
-def test_validate_all_todos_skips_icebox_subfolder(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    todos_root = tmp_path / "todos"
-    (todos_root / "_icebox" / "frozen").mkdir(parents=True)
-    (todos_root / "active").mkdir(parents=True)
-
+def test_validate_all_todos_enumerates_active_slugs_from_db(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     seen: list[str] = []
 
     def _fake_validate_todo(slug: str, root: Path) -> list[str]:
@@ -26,7 +24,23 @@ def test_validate_all_todos_skips_icebox_subfolder(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(resource_validation, "validate_todo", _fake_validate_todo)
 
-    errors = resource_validation.validate_all_todos(tmp_path)
+    conn = sqlite3.connect(":memory:")
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT, slug TEXT, position INTEGER, status TEXT, created_at TEXT, updated_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap VALUES ('1', 'active-slug', 1, 'active', '', '')",
+    )
+    conn.execute(
+        "INSERT INTO roadmap VALUES ('2', 'frozen-slug', 2, 'icebox', '', '')",
+    )
+    conn.commit()
 
-    assert errors == []
-    assert seen == ["active"]
+    mock_db = MagicMock()
+    mock_db._sync_conn.return_value = conn
+
+    with patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=mock_db):
+        errors = resource_validation.validate_all_todos(tmp_path)
+
+    assert not errors
+    assert seen == ["active-slug"]

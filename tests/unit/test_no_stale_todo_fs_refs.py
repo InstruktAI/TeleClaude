@@ -31,11 +31,21 @@ _SCANNED_DIRS = [
     _REPO_ROOT / "agents" / "commands",
     _REPO_ROOT / "docs" / "global",
     _REPO_ROOT / "docs" / "project",
+    _REPO_ROOT / "demos",
+    _REPO_ROOT / "manifests",
+    _REPO_ROOT / "templates" / "todos",
+]
+
+_SCANNED_FILES = [
+    _REPO_ROOT / "README.md",
 ]
 
 
 def _markdown_files() -> list[Path]:
     files: list[Path] = []
+    for f in _SCANNED_FILES:
+        if f.exists():
+            files.append(f)
     for d in _SCANNED_DIRS:
         if d.exists():
             files.extend(sorted(d.rglob("*.md")))

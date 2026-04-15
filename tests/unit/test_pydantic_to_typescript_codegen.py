@@ -59,7 +59,6 @@ _TODO_PREVIOUSLY_MISSING = [
     "delivered_at",
     "after",
     "group",
-    "todo_path",
 ]
 
 

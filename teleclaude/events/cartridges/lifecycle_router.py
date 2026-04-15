@@ -286,22 +286,13 @@ def _fill_plan_gaps(plan_content: str, gaps: list[str]) -> tuple[str, list[str]]
 # ── State & Report I/O ────────────────────────────────────────────────────────
 
 
-def _get_todo_commit(slug: str, project_root: Path) -> str:
-    """Get short git commit hash for the todo folder.
+def _get_todo_commit(slug: str, project_root: Path) -> str:  # pylint: disable=unused-argument
+    """Todo state lives in todos.db, not git-tracked files.
 
-    Returns 'unknown' on failure; callers must not treat consecutive 'unknown'
-    values as idempotency evidence (see _assess idempotency guard).
+    Always returns 'unknown' to disable git-based idempotency.
+    Callers already handle 'unknown' gracefully (the DOR assessment proceeds).
     """
-    from teleclaude.git import Repo  # pylint: disable=import-outside-toplevel
-
-    todo_path = f"todos/{slug}/"
-    try:
-        repo = Repo(str(project_root))
-        result = repo.git.log("-1", "--format=%h", "--", todo_path)
-        return result.strip() or "unknown"
-    except Exception:  # pylint: disable=broad-exception-caught
-        logger.warning("git log failed for todo", slug=slug)
-        return "unknown"
+    return "unknown"
 
 
 def _build_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments

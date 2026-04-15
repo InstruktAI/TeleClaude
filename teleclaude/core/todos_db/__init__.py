@@ -10,7 +10,6 @@ from ._base import TodosDbBase
 from ._roadmap import TodosDbRoadmapMixin
 from ._rows import ArtifactVersionRow, RoadmapRow
 from ._state import TodosDbStateMixin
-from .reconcile import reconcile_filesystem_to_db
 
 
 class TodosDb(
@@ -20,13 +19,6 @@ class TodosDb(
     TodosDbBase,
 ):
     """Database interface for todo lifecycle state and artifacts."""
-
-    async def reconcile(self) -> dict[str, int]:
-        """Reconcile filesystem todos against this database instance."""
-        project_root = (
-            self._db_path.parent.parent if self._db_path.parent.name == ".teleclaude" else self._db_path.parent
-        )
-        return await reconcile_filesystem_to_db(str(project_root), self)
 
 
 _instances: dict[str, TodosDb] = {}

@@ -101,11 +101,6 @@ _SCHEMA_MIGRATORS: dict[int, Callable[[dict[str, StateValue]], dict[str, StateVa
 # ---------------------------------------------------------------------------
 
 
-def get_state_path(cwd: str, slug: str) -> Path:
-    """Get path to state.yaml in worktree."""
-    return Path(cwd) / "todos" / slug / "state.yaml"
-
-
 def _normalize_finalize_state(raw: object) -> FinalizeState:
     finalize: FinalizeState = {"status": "pending"}
     if not isinstance(raw, dict):
@@ -337,9 +332,8 @@ Ownership:
 - [ ] Build gates all checked
 - [ ] Review gates all checked
 - [ ] Merge to main complete
-- [ ] Delivery logged in `todos/delivered.md`
-- [ ] Roadmap updated
-- [ ] Todo/worktree cleanup complete
+- [ ] Delivery logged in roadmap (status: delivered)
+- [ ] Worktree cleanup complete
 """
 
 
@@ -603,11 +597,11 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
 
 
 # Artifact keys that can be stamped after worker output is verified.
-_PREPARE_ARTIFACT_FILES = {
-    "requirements": "requirements.md",
-    "implementation_plan": "implementation-plan.md",
+_PREPARE_ARTIFACT_NAMES = {
+    "requirements": "requirements",
+    "implementation_plan": "implementation-plan",
 }
-_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_FILES.keys(), "test_specs")
+_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), "test_specs")
 
 
 def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
@@ -632,13 +626,13 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     if artifact_key not in _PREPARE_ARTIFACT_PHASES:
         raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_PHASES)}")
 
-    artifact_file = _PREPARE_ARTIFACT_FILES.get(artifact_key)
-    if artifact_file is not None:
+    artifact_name = _PREPARE_ARTIFACT_NAMES.get(artifact_key)
+    if artifact_name is not None:
         from teleclaude.core.next_machine.artifacts import (  # pylint: disable=import-outside-toplevel
             record_artifact_produced,
         )
 
-        record_artifact_produced(cwd, slug, artifact_file)
+        record_artifact_produced(cwd, slug, artifact_name)
         return read_phase_state(cwd, slug)
 
     db = _get_todos_db_sync(cwd)
@@ -662,7 +656,6 @@ __all__ = [
     "_project_root_from_cwd",
     "_review_scope_note",
     "apply_prepared_state",
-    "get_state_path",
     "has_pending_deferrals",
     "is_bug_todo",
     "is_prepped_todo",

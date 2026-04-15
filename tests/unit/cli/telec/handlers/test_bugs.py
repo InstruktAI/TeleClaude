@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import importlib
+import json
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -120,23 +122,48 @@ def test_handle_bugs_create_with_project_flag(
     assert "Created bug: my-bug" in capsys.readouterr().out
 
 
-def test_handle_bugs_list_uses_worktree_state_when_present(
+def test_handle_bugs_list_queries_db_for_bug_kind_todos(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    slug = "sample-bug"
-    todo_dir = tmp_path / "todos" / slug
-    todo_dir.mkdir(parents=True)
-    (todo_dir / "bug.md").write_text("# bug\n", encoding="utf-8")
-    (todo_dir / "state.yaml").write_text("build: pending\nreview: pending\n", encoding="utf-8")
-
-    worktree_state = tmp_path / bugs.WORKTREE_DIR / slug / "todos" / slug / "state.yaml"
-    worktree_state.parent.mkdir(parents=True)
-    worktree_state.write_text("build: complete\nreview: changes_requested\n", encoding="utf-8")
-
+    """Bug list queries todos.db for kind=bug todos and derives status from build_review verdict."""
     monkeypatch.chdir(tmp_path)
+
+    # Set up a minimal todos.db with a bug-kind todo
+    db_dir = tmp_path / ".teleclaude"
+    db_dir.mkdir()
+    db_path = db_dir / "todos.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT, position INT, "
+        "group_slug TEXT, description TEXT, status TEXT, delivered_at TEXT, "
+        "delivered_commit TEXT, children TEXT, created_at TEXT, updated_at TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE todo_state (id TEXT PRIMARY KEY, slug TEXT, state TEXT, created_at TEXT, updated_at TEXT)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, position, status, created_at, updated_at) "
+        "VALUES ('id1', 'fix-crash', 1, 'active', '', '')"
+    )
+    state = json.dumps({"kind": "bug", "phase": "review_pending", "build_review": {"verdict": "changes_requested"}})
+    conn.execute(
+        "INSERT INTO todo_state (id, slug, state, created_at, updated_at) VALUES ('id1', 'fix-crash', ?, '', '')",
+        (state,),
+    )
+    conn.commit()
+    conn.close()
+
+    # Mock _get_todos_db_sync to return a DB pointing at our test DB
+    mock_db = MagicMock()
+    mock_db._sync_conn.return_value = sqlite3.connect(str(db_path))
+
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.state_io._get_todos_db_sync",
+        lambda _cwd: mock_db,
+    )
 
     bugs._handle_bugs_list([])
 
     output = capsys.readouterr().out
-    assert slug in output
+    assert "fix-crash" in output
     assert "fixing" in output

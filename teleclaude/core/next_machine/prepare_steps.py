@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -237,7 +236,7 @@ async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,
             return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
         # Fallback: dispatch a fresh discovery worker with baseline diff context
         base_sha = review.baseline_commit
-        req_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/requirements.md", base_sha)
+        req_diff = compute_artifact_diff(cwd, slug, "requirements", base_sha)
         folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
         findings_note = (
@@ -523,7 +522,7 @@ async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many
             return False, _format_review_needs_work_script(slug, worker_id, reviewer_id, message)
         # Fallback: dispatch fresh draft worker with baseline diff context when no live worker
         base_sha = review.baseline_commit
-        plan_diff = compute_artifact_diff(cwd, slug, f"todos/{slug}/implementation-plan.md", base_sha)
+        plan_diff = compute_artifact_diff(cwd, slug, "implementation-plan", base_sha)
         folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
         findings_note = (
@@ -626,10 +625,10 @@ async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals
     rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
     current_sha = current_sha_raw.strip() if rc == 0 else ""
 
-    input_path = Path(cwd) / "todos" / slug / "input.md"
     current_input_digest = ""
-    if input_path.exists():
-        current_input_digest = hashlib.sha256(input_path.read_bytes()).hexdigest()
+    input_content = todos_db.read_artifact_sync(slug, "input")
+    if input_content:
+        current_input_digest = hashlib.sha256(input_content.encode("utf-8")).hexdigest()
 
     # First grounding: capture baseline. Derivation routes to PREPARED next.
     if not base_sha:

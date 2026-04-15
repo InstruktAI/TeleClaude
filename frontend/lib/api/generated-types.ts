@@ -407,7 +407,6 @@ export interface TodoInfo {
   files: string[];
   after?: string[];
   group?: string | null;
-  todo_path?: string | null;
   delivered_at?: string | null;
   prepare_phase?: string | null;
   integration_phase?: string | null;

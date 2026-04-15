@@ -12,7 +12,6 @@ Called by ``telec sync`` and pre-commit hooks. Read-only — never modifies file
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 import frontmatter
@@ -556,72 +555,48 @@ def validate_jobs_config(project_root: Path) -> list[str]:
 
 
 def validate_todo(slug: str, project_root: Path) -> list[str]:
-    """Validate a todo directory structure and state.yaml schema (with state.json fallback)."""
-    todos_root = project_root / "todos"
-    todo_dir = todos_root / slug
-    if not todo_dir.is_dir():
-        return [f"Todo directory missing: {todo_dir}"]
+    """Validate a todo's state and artifacts in todos.db."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    errors = []
+    db = _get_todos_db_sync(str(project_root))
+    errors: list[str] = []
 
-    # 1. state.yaml schema validation (with state.json fallback)
-    state_path = todo_dir / "state.yaml"
-    # Backward compat: fall back to state.json
-    if not state_path.exists():
-        legacy_path = todo_dir / "state.json"
-        if legacy_path.exists():
-            state_path = legacy_path
+    # 1. State must exist and validate against schema
+    state_raw = db.read_state_sync(slug)
+    if state_raw is None:
+        errors.append(f"{slug}: missing state in todos.db")
+        return errors
 
-    if not state_path.exists():
-        errors.append(f"{slug}: missing state.yaml")
-    else:
-        try:
-            content = state_path.read_text(encoding="utf-8")
-            data = yaml.safe_load(content)
-            TodoState.model_validate(data)
-        except (yaml.YAMLError, OSError, ValueError) as exc:
-            errors.append(f"{slug}: state file schema violation: {exc}")
+    try:
+        state = TodoState.model_validate(state_raw)
+    except (ValueError, ValidationError) as exc:
+        errors.append(f"{slug}: state schema violation: {exc}")
+        return errors
 
-    # 2. Required files for Ready state
-    # If DOR score >= 8, requirements and implementation plan MUST exist.
-    if state_path.exists():
-        try:
-            state = TodoState.model_validate(yaml.safe_load(state_path.read_text(encoding="utf-8")))
-            if state.dor and state.dor.score >= 8:
-                if not (todo_dir / "requirements.md").exists():
-                    errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements.md")
-                if not (todo_dir / "implementation-plan.md").exists():
-                    errors.append(
-                        f"{slug}: marked as Ready (score {state.dor.score}) but missing implementation-plan.md"
-                    )
-        except (yaml.YAMLError, OSError, ValueError):
-            pass  # already reported in schema check
+    # 2. Required artifacts for Ready state
+    if state.dor and state.dor.score >= 8:
+        if not db.read_artifact_sync(slug, "requirements"):
+            errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements artifact")
+        if not db.read_artifact_sync(slug, "implementation-plan"):
+            errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing implementation-plan artifact")
 
     return errors
 
 
 def validate_all_todos(project_root: Path) -> list[str]:
-    """Enumerate and validate all active todos."""
-    todos_root = project_root / "todos"
-    if not todos_root.is_dir():
-        return []
+    """Enumerate and validate all active todos from todos.db."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    # Exclude delivered and icebox
-    delivered = set()
-    delivered_path = todos_root / "delivered.md"
-    if delivered_path.exists():
-        # simple regex to extract slugs from markdown table
-        delivered = set(re.findall(r"\|\s*([a-z0-9-]+)\s*\|", delivered_path.read_text(encoding="utf-8")))
+    db = _get_todos_db_sync(str(project_root))
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        rows = conn.execute(
+            "SELECT slug FROM roadmap WHERE status = 'active' ORDER BY position",  # guard: raw-sql
+        ).fetchall()
+    finally:
+        conn.close()
 
-    errors = []
-    if not todos_root.exists():
-        return []
-
-    for entry in todos_root.iterdir():
-        if entry.is_dir() and entry.name not in delivered:
-            # Skip hidden dirs, __pycache__, and the _icebox subfolder
-            if entry.name.startswith(".") or entry.name == "__pycache__" or entry.name == "_icebox":
-                continue
-            errors.extend(validate_todo(entry.name, project_root))
-
+    errors: list[str] = []
+    for (slug,) in rows:
+        errors.extend(validate_todo(slug, project_root))
     return errors

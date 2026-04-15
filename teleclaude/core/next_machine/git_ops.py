@@ -145,20 +145,15 @@ def has_uncommitted_changes(cwd: str, slug: str) -> bool:
             return False
 
         # Orchestrator control files are expected to drift while mirroring main
-        # planning state into worktrees. The slug todo subtree can also appear
-        # as untracked on older worktree branches before the first commit.
+        # planning state into worktrees.
         ignored = {
             ".teleclaude",
             ".teleclaude/",
             _WORKTREE_PREP_STATE_REL,
-            f"todos/{slug}",
-            f"todos/{slug}/",
         }
         for path in dirty_paths:
             normalized = path.replace("\\", "/")
             if normalized.startswith(".teleclaude/"):
-                continue
-            if normalized in ignored or normalized.startswith(f"todos/{slug}/"):
                 continue
             if normalized not in ignored:
                 return True
@@ -245,7 +240,7 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
     """Return True if non-infrastructure commits exist between baseline and head.
 
     Filters out:
-    - Files under todos/ and .teleclaude/
+    - Files under .teleclaude/
     - Files changed exclusively by merge commits
 
     Computes files changed by non-merge commits directly (via --no-merges) rather than
@@ -255,7 +250,7 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
 
     Returns True on git errors (fail-safe: assume meaningful diff, invalidate).
     """
-    infra_prefixes = ("todos/", ".teleclaude/")
+    infra_prefixes = (".teleclaude/",)
     try:
         repo = Repo(cwd)
         log_output = repo.git.log(
@@ -278,7 +273,7 @@ def _has_meaningful_diff(cwd: str, baseline: str, head: str) -> bool:
 
 def review_surface_overlap_files(cwd: str, previous_head: str, current_head: str) -> list[str]:
     """Return overlapping meaningful files between newly merged commits and the current review surface."""
-    infra_prefixes = ("todos/", ".teleclaude/")
+    infra_prefixes = (".teleclaude/",)
     try:
         repo = Repo(cwd)
         landed_output = repo.git.log(

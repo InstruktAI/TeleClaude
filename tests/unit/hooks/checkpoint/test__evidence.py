@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -60,7 +61,7 @@ class TestEvidenceChecks:
             ]
         )
 
-        assert _check_error_state(timeline) == []
+        assert not _check_error_state(timeline)
 
     @pytest.mark.unit
     def test_check_error_state_reports_unresolved_failed_test_commands(self) -> None:
@@ -96,8 +97,6 @@ class TestEditHygieneAndSlugAlignment:
 
     @pytest.mark.unit
     def test_check_slug_alignment_uses_files_from_the_plan_table(self, tmp_path: Path) -> None:
-        plan_path = tmp_path / "todos" / "chartest-hooks" / "implementation-plan.md"
-        plan_path.parent.mkdir(parents=True)
         plan_text = (
             "# Implementation Plan\n\n"
             "## Files to Change\n"
@@ -106,7 +105,8 @@ class TestEditHygieneAndSlugAlignment:
             "| `teleclaude/hooks/inbound.py` | Add tests |\n"
             "| `tests/unit/hooks/test_inbound.py` | Add coverage |\n"
         )
-        plan_path.write_text(plan_text, encoding="utf-8")
+        mock_db = MagicMock()
+        mock_db.read_artifact_sync.return_value = plan_text
         context = CheckpointContext(
             agent_name="claude",
             project_path=str(tmp_path),
@@ -117,8 +117,9 @@ class TestEditHygieneAndSlugAlignment:
             "teleclaude/hooks/inbound.py",
             "tests/unit/hooks/test_inbound.py",
         }
-        assert len(_check_slug_alignment(["docs/guide.md"], context)) == 1
-        assert _check_slug_alignment(["tests/unit/hooks/test_inbound.py"], context) == []
+        with patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=mock_db):
+            assert len(_check_slug_alignment(["docs/guide.md"], context)) == 1
+            assert not _check_slug_alignment(["tests/unit/hooks/test_inbound.py"], context)
 
 
 class TestEvidenceUtilities:

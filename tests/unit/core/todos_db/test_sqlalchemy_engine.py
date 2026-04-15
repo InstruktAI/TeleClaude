@@ -235,39 +235,8 @@ class TestArtifactVersioningPreserved:
             await db.close()
 
 
-# ---------------------------------------------------------------------------
-# R5: Reconciliation logic preserved
-# ---------------------------------------------------------------------------
-
-
-class TestReconciliationPreserved:
-    """todos.db reconciliation logic works via SQLAlchemy engine."""
-
-    async def test_reconcile_is_idempotent(self, tmp_path: Path) -> None:
-        """Calling reconcile() twice produces no duplicate rows or errors.
-
-        Singleton caching and idempotent initialization are both verified:
-        the second call must not raise and must not double the row count.
-        """
-        from teleclaude.core.todos_db import TodosDb
-
-        db = TodosDb(str(tmp_path / "todos.db"))
-        await db.initialize()
-        try:
-            await db.add_entry(slug="reconcile-test", position=1, description="Reconcile test")
-            await db.reconcile()  # pyright: ignore[reportAttributeAccessIssue]
-            entries_after_first = await db.list_entries()
-            count_first = sum(1 for e in entries_after_first if getattr(e, "slug", None) == "reconcile-test")
-
-            await db.reconcile()  # pyright: ignore[reportAttributeAccessIssue]
-            entries_after_second = await db.list_entries()
-            count_second = sum(1 for e in entries_after_second if getattr(e, "slug", None) == "reconcile-test")
-
-            assert count_second == count_first == 1, (
-                f"Reconcile is not idempotent: first={count_first}, second={count_second}"
-            )
-        finally:
-            await db.close()
+class TestSingletonCaching:
+    """Verify TodosDb singleton caching behavior."""
 
     def test_singleton_caching_returns_same_instance(self, tmp_path: Path) -> None:
         """Constructing TodosDb with the same path twice returns the same instance.

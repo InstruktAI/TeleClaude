@@ -189,7 +189,6 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                     dor_score=dor_score if dor_score else None,
                     after=deps_map.get(slug, []),
                     group=row[3],
-                    todo_path=f"todos/{slug}/",
                     delivered_at=row[6],
                     prepare_phase=prepare_phase,
                     integration_phase=integration_phase,

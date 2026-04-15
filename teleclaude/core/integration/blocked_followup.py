@@ -178,26 +178,38 @@ class BlockedFollowUpStore:
         return attempt
 
     def _ensure_follow_up_todo(self, link: BlockedFollowUpLink) -> None:
-        todo_dir = self._todos_root / link.follow_up_slug
-        todo_dir.mkdir(parents=True, exist_ok=True)
+        import uuid  # pylint: disable=import-outside-toplevel
 
-        requirements_path = todo_dir / "requirements.md"
-        if not requirements_path.exists():
-            requirements_path.write_text(
-                _render_requirements(link),
-                encoding="utf-8",
-            )
+        from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
+        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-        plan_path = todo_dir / "implementation-plan.md"
-        if not plan_path.exists():
-            plan_path.write_text(
-                _render_implementation_plan(link),
-                encoding="utf-8",
-            )
+        project_root = str(self._todos_root.parent)
+        db = _get_todos_db_sync(project_root)
+        slug = link.follow_up_slug
 
-        state_path = todo_dir / "state.yaml"
-        if not state_path.exists():
-            state_path.write_text("build: pending\nreview: pending\n", encoding="utf-8")
+        if not db.resolve_id_sync(slug):
+            conn = db._sync_conn()  # pylint: disable=protected-access
+            try:
+                now = datetime.now(tz=UTC).isoformat()
+                max_pos = conn.execute(
+                    "SELECT COALESCE(MAX(position), 0) + 1 FROM roadmap",  # guard: raw-sql
+                ).fetchone()[0]
+                conn.execute(
+                    "INSERT INTO roadmap "  # guard: raw-sql
+                    "(id, slug, position, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, 'active', ?, ?)",
+                    (str(uuid.uuid4()), slug, max_pos, now, now),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+            db.write_state_sync(slug, default_state())
+
+        if not db.read_artifact_sync(slug, "requirements"):
+            db.write_artifact_sync(slug, "requirements", _render_requirements(link))
+
+        if not db.read_artifact_sync(slug, "implementation-plan"):
+            db.write_artifact_sync(slug, "implementation-plan", _render_implementation_plan(link))
 
     def _load_state(self) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)

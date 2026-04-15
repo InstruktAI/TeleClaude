@@ -11,7 +11,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
-from teleclaude.constants import WORKTREE_DIR
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.slug import normalize_slug
 
@@ -208,8 +207,8 @@ def _handle_bugs_report(args: list[str]) -> None:
 
 
 def _handle_bugs_list(args: list[str]) -> None:
-    """Handle telec bugs list."""
-    import yaml
+    """Handle telec bugs list — queries todos.db for bug-kind todos."""
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
     project_root = Path.cwd()
 
@@ -225,50 +224,47 @@ def _handle_bugs_list(args: list[str]) -> None:
             print(_usage("bugs", "list"))
             raise SystemExit(1)
 
-    todos_dir = project_root / "todos"
-    if not todos_dir.exists():
+    db = _get_todos_db_sync(str(project_root))
+    conn = db._sync_conn()  # pylint: disable=protected-access
+    try:
+        rows = conn.execute(
+            "SELECT r.slug, s.state FROM roadmap r "  # guard: raw-sql
+            "JOIN todo_state s ON r.id = s.id "
+            "WHERE r.status = 'active' "
+            "AND json_extract(s.state, '$.kind') = 'bug' "
+            "ORDER BY r.position",
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
         print("No bugs found")
         return
 
-    bugs = []
-    for todo_dir in sorted(todos_dir.iterdir()):
-        if not todo_dir.is_dir() or todo_dir.name.startswith("."):
-            continue
+    import json  # pylint: disable=import-outside-toplevel
 
-        bug_md = todo_dir / "bug.md"
-        state_yaml = todo_dir / "state.yaml"
-        worktree_state = project_root / WORKTREE_DIR / todo_dir.name / "todos" / todo_dir.name / "state.yaml"
-        state_path = worktree_state if worktree_state.exists() else state_yaml
+    bugs: list[tuple[str, str]] = []
+    for slug, state_json in rows:
+        state = json.loads(state_json) if state_json else {}
+        phase = str(state.get("phase", "pending"))
+        build_review = state.get("build_review", {})
+        finalize = state.get("finalize", {})
 
-        if not bug_md.exists():
-            continue
+        verdict = str(build_review.get("verdict", "")) if isinstance(build_review, dict) else ""
+        finalize_status = str(finalize.get("status", "")) if isinstance(finalize, dict) else ""
 
-        # Read state to determine status
-        status = "unknown"
-        if state_path.exists():
-            try:
-                state = yaml.safe_load(state_path.read_text())
-                build = state.get("build", "pending")
-                review = state.get("review", "pending")
+        if verdict == "approve" or finalize_status not in ("", "pending"):
+            status = "approved"
+        elif verdict == "changes_requested":
+            status = "fixing"
+        elif phase in ("build_complete", "review_pending"):
+            status = "reviewing"
+        elif phase == "build_started":
+            status = "building"
+        else:
+            status = "pending"
 
-                if review == "approved":
-                    status = "approved"
-                elif review == "changes_requested":
-                    status = "fixing"
-                elif build == "complete":
-                    status = "reviewing"
-                elif build in ("started", "complete"):
-                    status = "building"
-                else:
-                    status = "pending"
-            except (yaml.YAMLError, OSError):
-                pass
-
-        bugs.append((todo_dir.name, status))
-
-    if not bugs:
-        print("No bugs found")
-        return
+        bugs.append((slug, status))
 
     print(f"Bug fixes ({len(bugs)}):\n")
     print(f"{'Slug':<40} {'Status':<15}")

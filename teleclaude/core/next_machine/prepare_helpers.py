@@ -20,9 +20,9 @@ logger = get_logger(__name__)
 # Canonical cascade order for staleness detection. Upstream changes invalidate
 # all downstream review verdicts.
 _ARTIFACT_CASCADE: list[tuple[str, str]] = [
-    ("input", "input.md"),
-    ("requirements", "requirements.md"),
-    ("implementation_plan", "implementation-plan.md"),
+    ("input", "input"),
+    ("requirements", "requirements"),
+    ("implementation_plan", "implementation-plan"),
 ]
 
 

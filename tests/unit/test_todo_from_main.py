@@ -122,28 +122,18 @@ class TestCreateFromMainSkeleton:
         assert "/next-work" not in output
         assert "telec sessions run" not in output
 
-        # Verify todo scaffold was created
-        todo_dir = project / "todos" / "test-slug"
-        assert todo_dir.exists()
-        assert (todo_dir / "requirements.md").exists()
-        assert (todo_dir / "implementation-plan.md").exists()
-        assert (todo_dir / "state.yaml").exists()
+        # Verify todo artifacts were written to DB
+        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-        requirements = (todo_dir / "requirements.md").read_text(encoding="utf-8")
-        implementation_plan = (todo_dir / "implementation-plan.md").read_text(encoding="utf-8")
-        quality_checklist = (todo_dir / "quality-checklist.md").read_text(encoding="utf-8")
+        db = _get_todos_db_sync(str(worktree_path))
+        requirements = db.read_artifact_sync("test-slug", "requirements") or ""
+        implementation_plan = db.read_artifact_sync("test-slug", "implementation-plan") or ""
+        quality_checklist = db.read_artifact_sync("test-slug", "quality-checklist") or ""
 
         assert requirements.startswith("<!-- from-main:")
         assert "Test changes" in requirements
         assert implementation_plan.startswith("<!-- from-main:")
         assert quality_checklist.startswith("<!-- from-main:")
-        assert sorted(path.name for path in todo_dir.iterdir()) == [
-            "implementation-plan.md",
-            "input.md",
-            "quality-checklist.md",
-            "requirements.md",
-            "state.yaml",
-        ]
 
         # Verify files were transferred to worktree
         assert (worktree_path / "src" / "app.py").exists()
@@ -275,7 +265,10 @@ class TestCreateFromMainSkeleton:
         ):
             create_from_main_skeleton(str(project), "no-desc")
 
-        req_content = (project / "todos" / "no-desc" / "requirements.md").read_text()
+        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+        db = _get_todos_db_sync(str(worktree_path))
+        req_content = db.read_artifact_sync("no-desc", "requirements") or ""
         assert "See diff for details." in req_content
 
     def test_session_scoping_filters_to_touched_files_only(self, tmp_path: Path) -> None:

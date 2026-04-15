@@ -332,7 +332,7 @@ Remove a todo and its roadmap entry
 
 ### `telec todo validate`
 
-Validate todo files and state.yaml schema
+Validate todo state schema
 
 **Usage:** `telec todo validate [slug]`
 
@@ -365,7 +365,7 @@ Run the Phase C (integrate) state machine
 
 ### `telec todo mark-phase`
 
-Mark a work or prepare phase in state.yaml
+Mark a work or prepare phase in todo state
 
 **Usage:** `telec todo mark-phase <slug> [--target <name>] [--phase <phase>] [--status <status>] [--force]`
 

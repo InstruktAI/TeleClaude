@@ -6,21 +6,18 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state
 
 
 def artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
     """Read artifact digest from todos.db."""
-    # Strip .md extension for DB lookup (DB stores "requirements", not "requirements.md")
-    db_name = artifact_name.removesuffix(".md") if artifact_name.endswith(".md") else artifact_name
     db = _get_todos_db_sync(cwd)
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
         row = conn.execute(
             "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
-            (slug, db_name),
+            (slug, artifact_name),
         ).fetchone()
         return row[0] if row else ""
     finally:
@@ -29,7 +26,7 @@ def artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
 
 def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
     """Record artifact production metadata in state.yaml."""
-    key = _filename_to_artifact_key(artifact_name)
+    key = _artifact_name_to_state_key(artifact_name)
     digest = artifact_digest(cwd, slug, artifact_name)
     now = datetime.now(UTC).isoformat()
 
@@ -53,14 +50,9 @@ def record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
     )
 
 
-def compute_artifact_diff(cwd: str, slug: str, artifact_path: str, base_sha: str) -> str:  # pylint: disable=unused-argument
-    """Run git diff {base_sha}..HEAD -- {artifact_path} and return the diff output."""
-    if not base_sha:
-        return ""
-    rc, stdout, _ = run_git_command(["diff", f"{base_sha}..HEAD", "--", artifact_path], cwd=cwd)
-    if rc != 0:
-        return ""
-    return stdout
+def compute_artifact_diff(cwd: str, slug: str, artifact_name: str, base_sha: str) -> str:  # pylint: disable=unused-argument
+    """No filesystem file to diff — artifacts live in todos.db."""
+    return ""
 
 
 def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:  # pylint: disable=unused-argument
@@ -68,10 +60,11 @@ def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:  # pyli
     return ""
 
 
-def _filename_to_artifact_key(filename: str) -> str:
+def _artifact_name_to_state_key(artifact_name: str) -> str:
+    """Map a DB artifact name to its state dict key."""
     mapping = {
-        "input.md": "input",
-        "requirements.md": "requirements",
-        "implementation-plan.md": "implementation_plan",
+        "input": "input",
+        "requirements": "requirements",
+        "implementation-plan": "implementation_plan",
     }
-    return mapping.get(filename, filename.replace(".", "_").replace("-", "_"))
+    return mapping.get(artifact_name, artifact_name.replace(".", "_").replace("-", "_"))

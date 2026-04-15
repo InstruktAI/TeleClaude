@@ -69,7 +69,7 @@ async def _apply_stale_artifact_reroute(
 ) -> dict[str, StateValue]:
     """Refresh digests for stale artifacts and invalidate downstream review verdicts.
 
-    A stale artifact means the on-disk content diverged from the stamped
+    A stale artifact means the DB-stored content diverged from the stamped
     digest. After restamping the current digest the loop re-derives the
     phase, but derivation still has to see a reason to re-route — otherwise
     we'd advance through an already-approved downstream review against
@@ -84,11 +84,10 @@ async def _apply_stale_artifact_reroute(
     }
 
     writer = StateWriter(state)
-    for key, filename in _ARTIFACT_CASCADE:
+    for key, artifact_name in _ARTIFACT_CASCADE:
         if key not in stale_artifacts:
             continue
-        db_name = filename.removesuffix(".md") if filename.endswith(".md") else key
-        current_digest = await todos_db.artifact_digest(slug, db_name)
+        current_digest = await todos_db.artifact_digest(slug, artifact_name)
         entry = getattr(writer.state.artifacts, key, None)
         if isinstance(entry, ArtifactEntry) and current_digest and current_digest != entry.digest:
             entry.digest = current_digest

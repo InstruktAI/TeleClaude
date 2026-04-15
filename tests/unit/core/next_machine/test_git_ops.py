@@ -25,7 +25,7 @@ def test_build_git_hook_env_moves_venv_bin_to_front_and_sets_virtual_env(tmp_pat
     assert env["VIRTUAL_ENV"] == str(tmp_path / ".venv")
 
 
-def test_has_uncommitted_changes_ignores_slug_local_and_orchestrator_paths(tmp_path: Path) -> None:
+def test_has_uncommitted_changes_ignores_orchestrator_paths(tmp_path: Path) -> None:
     worktree = tmp_path / "trees" / "slug-a"
     worktree.mkdir(parents=True)
 
@@ -33,7 +33,7 @@ def test_has_uncommitted_changes_ignores_slug_local_and_orchestrator_paths(tmp_p
         patch("teleclaude.core.next_machine.git_ops.Repo", return_value=SimpleNamespace()),
         patch(
             "teleclaude.core.next_machine.git_ops._dirty_paths",
-            return_value=["todos/slug-a/state.yaml", ".teleclaude/runtime.json"],
+            return_value=[".teleclaude/runtime.json"],
         ),
     ):
         dirty = has_uncommitted_changes(str(tmp_path), "slug-a")
@@ -65,7 +65,7 @@ def test_get_stash_entries_returns_empty_on_git_command_error(tmp_path: Path) ->
 
 def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:
     mock_repo = MagicMock()
-    mock_repo.git.log.return_value = "todos/slug/file.md\n.teleclaude/run.json\n"
+    mock_repo.git.log.return_value = ".teleclaude/run.json\n.teleclaude/todos.db\n"
 
     with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):
         meaningful = _has_meaningful_diff("/repo", "base", "head")
@@ -75,7 +75,7 @@ def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:
 
 def test_review_surface_overlap_files_returns_only_meaningful_overlap() -> None:
     mock_repo = MagicMock()
-    mock_repo.git.log.return_value = "src/feature.py\ntodos/slug/state.yaml\nsrc/other.py\n"
+    mock_repo.git.log.return_value = "src/feature.py\n.teleclaude/todos.db\nsrc/other.py\n"
     mock_repo.git.diff.return_value = "src/feature.py\n.teleclaude/runtime.json\n"
 
     with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):

@@ -71,12 +71,6 @@ from teleclaude.core.next_machine._types import (
     PreparePhase as PreparePhase,
 )
 from teleclaude.core.next_machine._types import (
-    RoadmapDict as RoadmapDict,
-)
-from teleclaude.core.next_machine._types import (
-    RoadmapEntry as RoadmapEntry,
-)
-from teleclaude.core.next_machine._types import (
     StateScalar as StateScalar,
 )
 from teleclaude.core.next_machine._types import (
@@ -223,9 +217,6 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state as apply_prepared_state,
-)
-from teleclaude.core.next_machine.state_io import (
-    get_state_path as get_state_path,
 )
 from teleclaude.core.next_machine.state_io import (
     has_pending_deferrals as has_pending_deferrals,

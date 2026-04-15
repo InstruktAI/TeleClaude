@@ -4,7 +4,6 @@
 
 import re
 import shlex
-from pathlib import Path
 
 from teleclaude.constants import (
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
@@ -401,13 +400,11 @@ def _check_slug_alignment(
     if not context.working_slug:
         return observations
 
-    plan_path = Path(context.project_path) / "todos" / context.working_slug / "implementation-plan.md"
-    if not plan_path.exists():
-        return observations
+    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    try:
-        plan_text = plan_path.read_text(encoding="utf-8")
-    except OSError:
+    db = _get_todos_db_sync(context.project_path)
+    plan_text = db.read_artifact_sync(context.working_slug, "implementation-plan")
+    if not plan_text:
         return observations
 
     # Extract file paths from "Files to Change" table

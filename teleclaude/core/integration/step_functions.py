@@ -127,11 +127,15 @@ def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
     return stdout.strip() if rc == 0 else ""
 
 
-def _read_file_safe(path: Path) -> str:
+def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
+    """Read a todo artifact from todos.db, returning empty string on failure."""
     try:
-        return path.read_text(encoding="utf-8")
+        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
+
+        db = _get_todos_db_sync(cwd)
+        return db.read_artifact_sync(slug, name)
     except Exception:  # pylint: disable=broad-exception-caught
-        logger.debug("_read_file_safe failed for %s", path, exc_info=True)
+        logger.debug("_read_artifact_safe failed for %s/%s", slug, name, exc_info=True)
         return ""
 
 
@@ -556,8 +560,8 @@ def _do_merge(  # pylint: disable=too-many-locals
         # Clean merge — read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
-        requirements = _read_file_safe(Path(cwd) / "todos" / key.slug / "requirements.md")
-        impl_plan = _read_file_safe(Path(cwd) / "todos" / key.slug / "implementation-plan.md")
+        requirements = _read_artifact_safe(cwd, key.slug, "requirements")
+        impl_plan = _read_artifact_safe(cwd, key.slug, "implementation-plan")
 
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
         checkpoint.error_context = {"merge_type": "clean"}
@@ -623,8 +627,8 @@ def _step_awaiting_commit(
     if merge_type == "clean":  # pylint: disable=no-else-return
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
-        requirements = _read_file_safe(Path(cwd) / "todos" / key.slug / "requirements.md")
-        impl_plan = _read_file_safe(Path(cwd) / "todos" / key.slug / "implementation-plan.md")
+        requirements = _read_artifact_safe(cwd, key.slug, "requirements")
+        impl_plan = _read_artifact_safe(cwd, key.slug, "implementation-plan")
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
         conflicted_files = list((checkpoint.error_context or {}).get("conflicted_files", []))
