@@ -380,7 +380,8 @@ if [ "$_subcmd" = "push" ]; then
 fi
 
 # ── ORCHESTRATOR RESTRICTION: no commit on any branch ────────────────────────
-if [ "$_subcmd" = "commit" ] && [ "$_role" = "orchestrator" ]; then
+# Bypassed when the human explicitly approved (TELECLAUDE_COMMIT_APPROVED=1).
+if [ "$_subcmd" = "commit" ] && [ "$_role" = "orchestrator" ] && [ "${TELECLAUDE_COMMIT_APPROVED:-}" != "1" ]; then
     echo "ERROR: Orchestrators cannot commit. Use telec machine commands (telec todo stamp, etc.)." >&2
     exit 1
 fi
