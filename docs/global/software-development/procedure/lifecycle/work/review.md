@@ -283,9 +283,11 @@ Verdict rules — **verdict is arithmetic, not judgement:**
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.
 
-Commit all files in the worktree. Do not edit `todo state (todos.db)` in the reviewer session
-(the orchestrator records the verdict), but do commit any orchestrator-written
-changes alongside review findings. Report summary and verdict to the caller.
+Commit all files in the worktree. Stamp the verdict into todo state:
+`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`.
+The state machine derives phase from stamped primitives — if the reviewer does not
+stamp, the orchestrator will be instructed to nudge the reviewer to do so.
+Report summary and verdict to the caller.
 
 ## Report format
 

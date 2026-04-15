@@ -60,6 +60,7 @@ Work state lives in `todos.db` state.
 ## Preconditions
 
 - Work item exists in `todos.db` roadmap.
+- On the first DB-backed access to an old project, TeleClaude auto-imports legacy markdown todo indexes into an empty `todos.db`. Detection requires an empty database plus at least one legacy index file (`roadmap.md`, `icebox.md`, `delivered.md`, or `bugs.md`).
 
 ## Steps
 
@@ -76,6 +77,7 @@ Work state lives in `todos.db` state.
 
 - Each state machine is crash-safe — re-calling resumes from last persisted state.
 - If blocked, record deferrals and reschedule the work item.
+- Legacy-project import is one-shot. After the first successful import, TeleClaude stays DB-backed and does not re-read the markdown indexes on later calls.
 
 ## See also
 

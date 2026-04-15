@@ -443,7 +443,7 @@ def check_global_collisions(  # pylint: disable=too-many-branches,too-many-local
             snippet_id = entry.get("id")
             source_project = entry.get("source_project", "unknown")
             if snippet_id:
-                global_snippets[snippet_id] = source_project
+                global_snippets[snippet_id] = normalize_slug(source_project)
 
     current_project = get_project_slug(project_root)
     collisions = []

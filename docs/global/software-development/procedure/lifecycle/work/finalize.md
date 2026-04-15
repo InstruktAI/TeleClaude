@@ -47,21 +47,19 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    FINALIZE_READY: {slug}
    ```
 
-6. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
-   The orchestrator records durable finalize-ready state after verifying the report.
+6. Stamp finalize readiness: `telec todo stamp {slug} --finalize-ready`.
+7. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
 
 ### Stage B — Orchestrator: finalize handoff
 
-1. Verify worker output contains `FINALIZE_READY: {slug}`.
-2. Record durable finalize-ready state for the slug.
-3. Re-run the work state machine for the same slug:
+1. Re-run the work state machine for the same slug:
 
    ```bash
    telec todo work {slug}
    ```
 
-4. The slug-specific rerun emits the integration handoff facts from durable state.
-5. Continue the orchestration loop without a slug:
+2. The slug-specific rerun emits the integration handoff facts from durable state.
+3. Continue the orchestration loop without a slug:
 
    ```bash
    telec todo work
