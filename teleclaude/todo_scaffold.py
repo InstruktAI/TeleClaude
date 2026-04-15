@@ -24,6 +24,10 @@ class TranscriptUnavailable(ValueError):
     """
 
 
+class NoSessionTouchedFiles(ValueError):
+    """Raised when session scoping succeeds but owns no transferable paths."""
+
+
 def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-many-locals
     """Remove a todo and all its references. Best-effort: removes whatever exists.
 
@@ -216,8 +220,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
         discover_codex_transcript_path,
         discover_current_codex_transcript_path,
     )
-    from teleclaude.hooks.checkpoint._git import _extract_turn_file_signals  # pylint: disable=import-outside-toplevel
-    from teleclaude.utils.transcript import extract_effective_tool_calls  # pylint: disable=import-outside-toplevel
+    from teleclaude.session_scoping import resolve_scoped_paths  # pylint: disable=import-outside-toplevel
 
     session_id = _get_session_id()
     if not session_id:
@@ -229,42 +232,36 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     except ValueError:
         agent_name = AgentName.CLAUDE
 
-    transcript_candidates: list[str] = []
-    if native_log_file:
-        transcript_candidates.append(native_log_file)
-    if not transcript_candidates and agent_name == AgentName.CODEX and native_session_id:
-        discovered_path = discover_codex_transcript_path(native_session_id)
-        if discovered_path:
-            transcript_candidates.append(discovered_path)
-    if not transcript_candidates:
-        raise TranscriptUnavailable(f"No transcript found for session {session_id}")
-
+    transcript_path = native_log_file
     if agent_name == AgentName.CODEX:
         current_transcript_path = discover_current_codex_transcript_path()
-        if current_transcript_path and current_transcript_path not in transcript_candidates:
-            transcript_candidates.insert(0, current_transcript_path)
+        if current_transcript_path:
+            transcript_path = current_transcript_path
+        elif not transcript_path and native_session_id:
+            transcript_path = discover_codex_transcript_path(native_session_id)
 
-    attempted_transcripts: list[str] = []
-    for transcript_path in transcript_candidates:
-        attempted_transcripts.append(transcript_path)
-        timeline = extract_effective_tool_calls(
-            transcript_path,
-            agent_name,
-            native_session_id=native_session_id,
-            scope="session",
-        )
-        touched_files, _saw_mutation = _extract_turn_file_signals(timeline, project_path)
+    if not transcript_path and agent_name != AgentName.CODEX:
+        raise TranscriptUnavailable(f"No transcript found for session {session_id}")
+    if not transcript_path and not native_session_id:
+        raise TranscriptUnavailable(f"No transcript found for session {session_id}")
 
-        if touched_files:
-            _scaffold_logger.debug(
-                "Session %s touched %d files: %s", session_id, len(touched_files), sorted(touched_files)
-            )
-            return touched_files
+    scoped_paths = resolve_scoped_paths(
+        session_id=session_id,
+        workspace_root=project_path,
+        agent_name=agent_name.value,
+        scope_mode="session_dirty",
+        transcript_path=transcript_path,
+        native_session_id=native_session_id,
+    )
 
-    attempted = ", ".join(attempted_transcripts) if attempted_transcripts else "<none>"
-    raise ValueError(
+    if scoped_paths.paths:
+        touched_files = set(scoped_paths.paths)
+        _scaffold_logger.debug("Session %s touched %d files: %s", session_id, len(touched_files), sorted(touched_files))
+        return touched_files
+
+    raise NoSessionTouchedFiles(
         f"Could not determine session-touched files from transcript.\n"
-        f"Session: {session_id}, attempted transcripts: {attempted}"
+        f"Session: {session_id}, attempted transcript: {transcript_path or '<none>'}"
     )
 
 

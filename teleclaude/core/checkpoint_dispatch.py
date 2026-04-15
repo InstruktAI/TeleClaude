@@ -108,6 +108,7 @@ async def inject_checkpoint_if_needed(  # pylint: disable=too-many-arguments,too
 
     checkpoint_text = await asyncio.to_thread(
         checkpoint_module.get_checkpoint_content,
+        session_id=session_id,
         transcript_path=transcript_path,
         agent_name=agent_enum_ckpt,
         project_path=project_path,
