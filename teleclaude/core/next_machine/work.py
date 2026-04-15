@@ -244,7 +244,10 @@ async def _resolve_explicit_work_slug(
     """Resolve and validate an explicitly requested slug."""
     deps = await todos_db.load_deps()
     is_bug = await todos_db.is_bug_todo(slug)
-    if not is_bug and not await todos_db.slug_in_roadmap(slug):
+    delivered = set()
+    if not is_bug:
+        delivered = await todos_db.delivered_slugs()
+    if not is_bug and slug not in delivered and not await todos_db.slug_in_roadmap(slug):
         await todos_db.add_to_roadmap(slug)
         logger.info("AUTO_ROADMAP_ADD slug=%s machine=work", slug)
         deps = await todos_db.load_deps()
