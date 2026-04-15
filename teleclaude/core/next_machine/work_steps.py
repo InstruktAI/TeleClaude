@@ -23,11 +23,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.integration_bridge import (
-    emit_branch_pushed,
-    emit_deployment_started,
-    emit_review_approved,
-)
+from teleclaude.core.integration_bridge import emit_review_approved
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
     DOR_READY_THRESHOLD,
@@ -433,76 +429,6 @@ async def _work_step_review_approved(  # pylint: disable=too-many-arguments,too-
     )
 
 
-async def _work_step_finalize_ready(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-    *,
-    db: Db,
-    todos_db: TodosDb,
-    slug: str,
-    cwd: str,
-    worktree_cwd: str,
-    state: dict[str, StateValue],
-) -> tuple[bool, str]:
-    """FINALIZE_READY: emit integration events and advance finalize to handed_off.
-
-    Validates worktree branch/sha are populated, emits branch_pushed and
-    deployment_started events, then stamps ``finalize.status = "handed_off"``
-    so the next loop iteration derives HANDED_OFF.
-    """
-    _ = db, cwd, worktree_cwd
-    finalize_raw = state.get("finalize")
-    finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
-    branch_raw = finalize.get("branch", "")
-    branch = branch_raw.strip() if isinstance(branch_raw, str) else ""
-    sha_raw = finalize.get("sha", "")
-    sha = sha_raw.strip() if isinstance(sha_raw, str) else ""
-    worker_session_raw = finalize.get("worker_session_id", "")
-    worker_session_id = worker_session_raw.strip() if isinstance(worker_session_raw, str) else ""
-    ready_at_raw = finalize.get("ready_at", "")
-    ready_at = ready_at_raw if isinstance(ready_at_raw, str) else ""
-
-    if not branch or not sha:
-        return False, format_error(
-            "FINALIZE_STATE_INVALID",
-            f"{slug} finalize state is missing branch or sha; re-run finalize prepare.",
-            next_call=f"telec todo work {slug}",
-        )
-
-    try:
-        await emit_branch_pushed(
-            branch=branch,
-            sha=sha,
-            remote="origin",
-            pusher=f"finalizer/{worker_session_id}" if worker_session_id else "",
-        )
-        await emit_deployment_started(
-            slug=slug,
-            branch=branch,
-            sha=sha,
-            worker_session_id=worker_session_id,
-            ready_at=ready_at or None,
-        )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.error("finalize handoff failed for %s", slug, exc_info=True)
-        return False, format_error(
-            "FINALIZE_HANDOFF_FAILED",
-            f"Failed to emit finalize handoff for {slug}: {type(exc).__name__}: {exc}",
-            next_call=f"telec todo work {slug}",
-        )
-
-    writer = StateWriter(state)
-    writer.state.finalize.status = "handed_off"
-    writer.state.finalize.handed_off_at = datetime.now(UTC).isoformat()
-    writer.state.finalize.handoff_session_id = get_session_id() or ""
-    _append_event(
-        state,
-        actor="work_state_machine",
-        kind="finalize_handed_off",
-        details={"slug": slug, "branch": branch, "sha": sha},
-    )
-    await _commit_writer(writer, todos_db, slug, state)
-    return True, ""  # loop — next iter derives HANDED_OFF
-
-
 async def _work_step_handed_off(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     *,
     db: Db,
@@ -558,7 +484,6 @@ async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positio
         WorkPhase.BUILD_STARTED: _work_step_build_started,
         WorkPhase.REVIEW_CHANGES_REQUESTED: _work_step_review_changes_requested,
         WorkPhase.REVIEW_APPROVED: _work_step_review_approved,
-        WorkPhase.FINALIZE_READY: _work_step_finalize_ready,
         WorkPhase.HANDED_OFF: _work_step_handed_off,
     }
     handler = handlers.get(phase)

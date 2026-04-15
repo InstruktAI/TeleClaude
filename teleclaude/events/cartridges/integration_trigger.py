@@ -1,11 +1,9 @@
-"""Integration trigger cartridge — spawns integrator on deployment.started.
+"""Integration trigger cartridge — spawns integrator on todo_finalize_ready.
 
-Stateless: reacts to ``deployment.started`` (finalize ready) by immediately
-spawning or waking the singleton integrator session.  The integrator's own
-state machine scans worktree state.yaml files to find candidates — no
-in-memory event accumulation needed here.
-
-Other integration lifecycle events pass through for observability.
+Stateless: reacts to ``planning.todo_finalize_ready`` (emitted by the
+finalize-ready stamp) by immediately spawning or waking the singleton
+integrator session. The integrator's own state machine scans worktree
+state to find candidates — no in-memory event accumulation needed here.
 """
 
 from __future__ import annotations
@@ -21,26 +19,16 @@ from teleclaude.events.pipeline import PipelineContext
 
 logger = get_logger(__name__)
 
-_SPAWN_EVENT = "domain.software-development.deployment.started"
-
-INTEGRATION_EVENT_TYPES = frozenset(
-    {
-        "domain.software-development.review.approved",
-        "domain.software-development.branch.pushed",
-        _SPAWN_EVENT,
-        "domain.software-development.deployment.completed",
-        "domain.software-development.deployment.failed",
-    }
-)
+_SPAWN_EVENT = "domain.software-development.planning.todo_finalize_ready"
 
 IntegratorSpawnCallback = Callable[[str, str, str, str], Coroutine[Any, Any, Any] | None]
 
 
 class IntegrationTriggerCartridge:
-    """Spawn the integrator when ``deployment.started`` fires.
+    """Spawn the integrator when ``todo_finalize_ready`` fires.
 
-    The integrator state machine scans worktree state for finalize-ready
-    candidates.  This cartridge only needs to ensure the session exists.
+    The integrator state machine scans worktree state for handed-off
+    candidates. This cartridge only needs to ensure the session exists.
     """
 
     name = "integration-trigger"
@@ -57,8 +45,8 @@ class IntegrationTriggerCartridge:
         self._spawn_callback = spawn_callback
 
     async def process(self, event: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
-        """On deployment.started, spawn the integrator. All events pass through."""
-        if event.event not in INTEGRATION_EVENT_TYPES:
+        """On todo_finalize_ready, spawn the integrator. All other events pass through."""
+        if event.event != _SPAWN_EVENT:
             return event
 
         payload = event.payload
@@ -74,9 +62,9 @@ class IntegrationTriggerCartridge:
             sha[:8] if sha else "",
         )
 
-        if event.event == _SPAWN_EVENT and self._spawn_callback is not None:
-            caller_session_id = str(payload.get("caller_session_id", ""))
-            await self._spawn_integrator(slug, branch, sha, caller_session_id)
+        if self._spawn_callback is not None:
+            worker_session_id = str(payload.get("worker_session_id", ""))
+            await self._spawn_integrator(slug, branch, sha, worker_session_id)
 
         return event
 

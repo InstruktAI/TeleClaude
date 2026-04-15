@@ -8,6 +8,7 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,8 @@ from teleclaude.core.next_machine.file_io import (
     read_text_sync,
     write_text_sync,
 )
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_main_repo_root
 from teleclaude.types.todos import TodoState
 
@@ -226,12 +229,13 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
 
 
 def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylint: disable=too-many-locals
-    """Stamp finalize state to ``ready`` after verifying the worktree is clean.
+    """Stamp finalize state and emit the integration trigger event.
 
     The worktree must exist, have no uncommitted changes, and the worktree HEAD,
     local branch ref, and remote branch ref must all resolve to the same commit.
-    On success, writes a :class:`FinalizeModel` with ``status="ready"`` and
-    records the current session id as ``worker_session_id``.
+    On success, writes a :class:`FinalizeModel` with ``status="handed_off"``
+    and emits ``planning.todo_finalize_ready`` so the integration trigger
+    cartridge can spawn the integrator immediately.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -281,14 +285,56 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylin
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     worker_session_id = (get_session_id() or "").strip()
+    now = datetime.now(UTC).isoformat()
     writer.state.finalize = FinalizeModel(
-        status="ready",
+        status="handed_off",
         branch=slug,
         sha=branch_head,
-        ready_at=datetime.now(UTC).isoformat(),
+        ready_at=now,
         worker_session_id=worker_session_id,
+        handed_off_at=now,
+        handoff_session_id=worker_session_id,
     )
-    return writer.commit_sync(db, slug)
+    result = writer.commit_sync(db, slug)
+
+    _emit_finalize_ready_event(slug, branch_head, worker_session_id)
+
+    return result
+
+
+def _emit_finalize_ready_event(slug: str, sha: str, worker_session_id: str) -> None:
+    """Fire-and-forget todo_finalize_ready event (threadsafe).
+
+    Called from a sync context (asyncio.to_thread). Schedules the async
+    emit on the running event loop via run_coroutine_threadsafe.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        logger.debug("no running loop, skipping finalize_ready emit for %s", slug)
+        return
+
+    async def _emit() -> None:
+        try:
+            await emit_event(
+                event="domain.software-development.planning.todo_finalize_ready",
+                source=f"finalizer/{worker_session_id or 'unknown'}",
+                level=EventLevel.WORKFLOW,
+                domain="software-development",
+                visibility=EventVisibility.LOCAL,
+                entity=slug,
+                description=f"Finalize ready for {slug} (sha {sha[:8]})",
+                payload={
+                    "slug": slug,
+                    "branch": slug,
+                    "sha": sha,
+                    "worker_session_id": worker_session_id,
+                },
+            )
+        except RuntimeError:
+            logger.debug("producer not configured, skipping finalize_ready emit for %s", slug)
+
+    asyncio.run_coroutine_threadsafe(_emit(), loop)
 
 
 _QUALITY_CHECKLIST_TEMPLATE = """\

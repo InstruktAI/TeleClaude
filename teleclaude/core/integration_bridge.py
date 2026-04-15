@@ -50,62 +50,6 @@ async def emit_review_approved(
     )
 
 
-async def emit_branch_pushed(
-    branch: str,
-    sha: str,
-    remote: str,
-    *,
-    pushed_at: str | None = None,
-    pusher: str = "",
-) -> str:
-    """Emit branch.pushed when a worktree branch is pushed to origin before integration."""
-    ts = pushed_at or datetime.now(UTC).isoformat()
-    return await emit_event(
-        event="domain.software-development.branch.pushed",
-        source=f"finalizer/{(get_session_id() or 'unknown')}",
-        level=EventLevel.WORKFLOW,
-        domain="software-development",
-        description=f"Branch pushed: {remote}/{branch}@{sha[:8]}",
-        entity=branch,
-        payload={
-            "branch": branch,
-            "sha": sha,
-            "remote": remote,
-            "pushed_at": ts,
-            "pusher": pusher or f"orchestrator/{(get_session_id() or 'unknown')}",
-        },
-    )
-
-
-async def emit_deployment_started(  # pylint: disable=too-many-arguments
-    slug: str,
-    branch: str,
-    sha: str,
-    *,
-    worker_session_id: str = "",
-    ready_at: str | None = None,
-) -> str:
-    """Emit deployment.started when a finalizer reports FINALIZE_READY."""
-    ts = ready_at or datetime.now(UTC).isoformat()
-    caller_session_id = get_session_id() or ""
-    return await emit_event(
-        event="domain.software-development.deployment.started",
-        source=f"orchestrator/{caller_session_id or 'unknown'}",
-        level=EventLevel.WORKFLOW,
-        domain="software-development",
-        description=f"Deployment started for {slug} ({branch}@{sha[:8]})",
-        entity=slug,
-        payload={
-            "slug": slug,
-            "branch": branch,
-            "sha": sha,
-            "worker_session_id": worker_session_id,
-            "caller_session_id": caller_session_id,
-            "ready_at": ts,
-        },
-    )
-
-
 async def emit_deployment_completed(
     slug: str,
     branch: str,
