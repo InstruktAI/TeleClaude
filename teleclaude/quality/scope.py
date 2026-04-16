@@ -7,12 +7,43 @@ language detection, and path validation used by both lint and test runners.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path
 
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_invocation_cwd() -> Path:
+    """Return the user's actual invocation directory.
+
+    The ``bin/telec`` wrapper uses ``uv run --directory "$INSTALL_DIR"`` so
+    that uv can resolve the virtualenv from TeleClaude's installation root.
+    That flag also sets the Python process's cwd to the installation root,
+    which means ``Path.cwd()`` no longer reflects the directory the user was
+    in when they ran ``telec``. Worktree detection silently fails because
+    the cwd now points at the main repo, not the worktree.
+
+    The wrapper mitigates by exporting ``TELEC_INVOCATION_CWD=$PWD`` before
+    exec'ing uv. Handlers read that first. ``$PWD`` is the secondary
+    fallback — shell-exported PWD survives across ``uv run`` because uv
+    inherits the environment. ``Path.cwd()`` is the last resort for direct
+    module invocations that never went through the wrapper.
+
+    Resolution order:
+    1. ``TELEC_INVOCATION_CWD`` (wrapper-exported, authoritative).
+    2. ``PWD`` (shell environment, survives ``uv run --directory``).
+    3. ``Path.cwd()`` (process cwd; potentially hijacked by uv).
+    """
+    explicit = os.environ.get("TELEC_INVOCATION_CWD")
+    if explicit:
+        return Path(explicit)
+    pwd = os.environ.get("PWD")
+    if pwd:
+        return Path(pwd)
+    return Path.cwd()
 
 
 def is_worktree(project_root: Path) -> bool:
