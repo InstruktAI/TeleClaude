@@ -84,48 +84,7 @@ ln -s "../../.venv" ".venv"
 
 print_success "Shared .venv linked"
 
-# Step 2: Generate config.yml
-print_info "Generating config.yml..."
-
-if [ ! -f "$TARGET_ROOT/config.yml" ]; then
-    print_error "Main config.yml not found: $TARGET_ROOT/config.yml"
-    exit 1
-fi
-
-# Copy main config with worktree-local database path
-# Use the shared project environment to ensure PyYAML is available
-"$WORKTREE_DIR/.venv/bin/python" << PYTHON_SCRIPT
-import sys
-import yaml
-from pathlib import Path
-
-repo_root = Path("$TARGET_ROOT")
-worktree_dir = Path("$WORKTREE_DIR")
-main_config_path = repo_root / "config.yml"
-worktree_config_path = worktree_dir / "config.yml"
-
-# Read main config
-with open(main_config_path, 'r') as f:
-    config = yaml.safe_load(f)
-
-# Set database path to worktree-local database
-# Worktrees need their own SQLite database for test isolation and development
-# This is NOT a violation of the "single database" rule - that rule applies to
-# the running daemon, not isolated development/test environments
-if 'database' in config:
-    config['database']['path'] = str(worktree_dir / "teleclaude.db")
-
-# Write worktree config
-with open(worktree_config_path, 'w') as f:
-    yaml.dump(config, f, default_flow_style=False, sort_keys=False)
-
-print(f"Generated config at: {worktree_config_path}")
-print(f"Database: {worktree_dir / 'teleclaude.db'}")
-PYTHON_SCRIPT
-
-print_success "config.yml generated"
-
-# Step 3: Create .env symlink
+# Step 2: Create .env symlink
 print_info "Creating .env symlink..."
 
 if [ ! -f "$TARGET_ROOT/.env" ]; then

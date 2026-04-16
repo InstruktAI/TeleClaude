@@ -27,6 +27,7 @@ from teleclaude.types.todos import (
     GroundingState,
     ReviewFinding,
     ReviewVerdictState,
+    TestSpecReviewState,
     TodoState,
 )
 
@@ -94,13 +95,26 @@ class StateWriter:
         return self._model.audit
 
     def review(self, review_type: str) -> ReviewVerdictState:
-        """Return a typed review-verdict sub-state by phase name.
+        """Return a `ReviewVerdictState` sub-state by phase name.
 
-        Raises :class:`StateMutationError` for unknown phases so callers never
-        mutate an ad hoc dict field by mistake.
+        Used by callers that mutate findings (`record_finding`, `resolve_finding`).
+        Raises :class:`StateMutationError` for unknown phases or for
+        verdict-only sub-states like `test_spec_review` that lack `findings`.
         """
         review = getattr(self._model, review_type, None)
         if not isinstance(review, ReviewVerdictState):
+            raise StateMutationError(f"unknown review phase: {review_type!r}")
+        return review
+
+    def verdict_target(self, review_type: str) -> ReviewVerdictState | TestSpecReviewState:
+        """Return the verdict-bearing sub-state for stamping verdicts.
+
+        Accepts both `ReviewVerdictState` and `TestSpecReviewState` — both
+        carry the `verdict`/`reviewed_at` fields that `stamp_verdict` mutates,
+        but only `ReviewVerdictState` exposes `findings`.
+        """
+        review = getattr(self._model, review_type, None)
+        if not isinstance(review, ReviewVerdictState | TestSpecReviewState):
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 
@@ -281,7 +295,7 @@ class ReviewManager:
 
     def stamp_verdict(self, review_type: str, verdict: str) -> None:
         """Stamp verdict on both the visible review state and the audit entry."""
-        review = self._writer.review(review_type)
+        review = self._writer.verdict_target(review_type)
         review.verdict = verdict
         now = datetime.now(UTC).isoformat()
         review.reviewed_at = now
