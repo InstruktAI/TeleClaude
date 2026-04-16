@@ -114,7 +114,7 @@ class TestGitDiffHelpers:
     def test_categorize_files_marks_test_only_diffs_and_docs_only_files(self) -> None:
         categories = _git._categorize_files(["tests/unit/hooks/test_inbound.py"])
 
-        assert _git._is_docs_only(["todos/chartest-hooks/requirements.md"]) is True
+        assert _git._is_docs_only(["docs/project/design/api.md"]) is True
         assert "tests only" in [category.name for category in categories]
 
     @pytest.mark.unit

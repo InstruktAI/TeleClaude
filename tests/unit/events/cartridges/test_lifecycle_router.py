@@ -81,7 +81,7 @@ def _full_plan_content() -> str:
 
 ## Task 1.2 (FR2)
 
-- [ ] Write `todos/my-slug/dor-report.md`
+- [ ] Update `dor-report.md`
 
 **Verification:** run `pytest tests/unit/events/cartridges/test_prepare.py -k process`
 
