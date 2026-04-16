@@ -2,8 +2,10 @@
 
 Exposes the next-machine state machine functions (prepare, work) and roadmap
 mutation operations as REST endpoints with dual-factor caller identity
-enforcement. Verdict, DOR, grounding, and finalize stamps all flow through
-``/stamp/{slug}`` — there is no legacy ``mark-phase`` routing.
+enforcement. Verdict, DOR, grounding, and finalize stamps flow through
+``/stamp/{slug}``. Operator phase overrides flow through
+``/mark-phase/{slug}`` and write the authoritative ``prepare_phase`` or
+``work_phase`` field directly.
 """
 
 from __future__ import annotations
@@ -41,6 +43,7 @@ if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
     from teleclaude.core.todos_db import TodosDb
     from teleclaude.core.todos_db._show import ShowPayload
+    from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
 
@@ -583,6 +586,59 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     except StateMutationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
+
+
+@router.post("/mark-phase/{slug}", response_model=None)
+async def mark_phase(
+    slug: str,
+    phase: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+) -> dict[str, StateValue]:
+    """Write the authoritative ``prepare_phase`` or ``work_phase`` field.
+
+    The operator-override escape hatch. Dispatches on enum membership: values
+    in :class:`PreparePhase` write ``prepare_phase``; values in :class:`WorkPhase`
+    write ``work_phase``. Unknown values yield a 400 with both enums' valid
+    values listed so callers can self-correct without a separate round-trip.
+
+    Returns the full updated state payload so the caller can read the new
+    authoritative field in the same round trip and drive subsequent decisions
+    from the persisted state, not a metadata echo.
+    """
+    from teleclaude.core.next_machine._types import (  # pylint: disable=import-outside-toplevel
+        PreparePhase,
+        WorkPhase,
+    )
+    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+        read_phase_state,
+        write_phase_state,
+    )
+
+    effective_cwd = cwd or _default_cwd()
+    prepare_values = {p.value for p in PreparePhase}
+    work_values = {p.value for p in WorkPhase}
+
+    if phase in prepare_values:
+        field = "prepare_phase"
+    elif phase in work_values:
+        field = "work_phase"
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"unknown phase value '{phase}': "
+                f"prepare_phase accepts {sorted(prepare_values)}; "
+                f"work_phase accepts {sorted(work_values)}"
+            ),
+        )
+
+    def _apply() -> dict[str, StateValue]:
+        state = dict(read_phase_state(effective_cwd, slug))
+        state[field] = phase
+        write_phase_state(effective_cwd, slug, state)
+        return state
+
+    return await asyncio.to_thread(_apply)
 
 
 @router.get("/{slug}/show", response_model=None)

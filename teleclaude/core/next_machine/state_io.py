@@ -19,6 +19,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
     FinalizeState,
+    PreparePhase,
     StateValue,
     default_state,
 )
@@ -406,11 +407,14 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     Fast-track path used by ``telec todo mark-ready``, ``telec todo from-main``, and
     prepped ``telec todo dump`` to short-circuit the full prepare lifecycle. Validates
-    that requirements and implementation-plan artifacts exist, generates the
-    quality-checklist artifact when missing, then stamps DOR pass, the current git
-    HEAD as the grounding baseline, and the prepare review verdicts (requirements
-    is stamped ``skipped`` for prepped todos — there is no requirements artifact to
-    review).
+    that requirements and implementation-plan artifacts exist and that a git HEAD is
+    reachable BEFORE any state is persisted. Only after validation succeeds does the
+    function generate the quality-checklist artifact when missing, stamp DOR pass,
+    the current git HEAD as the grounding baseline, the prepare review verdicts
+    (requirements is stamped ``skipped`` for prepped todos — there is no
+    requirements artifact to review), and the authoritative ``prepare_phase =
+    "prepared"`` commitment. Validation failures raise and no partial state is
+    written, so callers see the error and the todo stays in its prior phase.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -441,6 +445,12 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     if kind != "bug" and not _has_artifact_content(cwd, slug, "implementation-plan"):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
+    if rc != 0 or not current_sha_raw.strip():
+        msg = f"git rev-parse HEAD failed (rc={rc}) in {project_root} — cannot establish grounding baseline"
+        raise ValueError(msg)
+    current_sha = current_sha_raw.strip()
+
     if not _has_artifact_content(cwd, slug, "quality-checklist"):
         import hashlib as _hl  # pylint: disable=import-outside-toplevel
 
@@ -466,12 +476,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
             conn.commit()
         finally:
             conn.close()
-
-    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
-    if rc != 0 or not current_sha_raw.strip():
-        msg = f"git rev-parse HEAD failed (rc={rc}) in {project_root} — cannot establish grounding baseline"
-        raise ValueError(msg)
-    current_sha = current_sha_raw.strip()
 
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
@@ -511,6 +515,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     GroundingManager(writer).refresh(current_sha=current_sha)
     if input_digest:
         writer.grounding.input_digest = input_digest
+    writer.state.prepare_phase = PreparePhase.PREPARED.value
 
     return writer.commit_sync(db, slug)
 

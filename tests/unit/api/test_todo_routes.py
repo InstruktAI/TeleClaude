@@ -14,6 +14,7 @@ from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity
+from teleclaude.types.state_value import StateValue
 
 
 class _TodoIntegrateReceipt(TypedDict):
@@ -166,3 +167,79 @@ class TestTodoRoutes:
 
         assert exc_info.value.status_code == 404
         mock_db.write_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_writes_prepare_phase_and_returns_updated_state(self) -> None:
+        """PreparePhase values write state['prepare_phase'] and the route returns the new state."""
+        from teleclaude.core.next_machine._types import PreparePhase
+
+        captured: dict[str, StateValue] = {}
+
+        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
+            captured["state"] = dict(state)
+
+        with (
+            patch("teleclaude.core.next_machine.state_io.write_phase_state", _fake_write),
+            patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"kind": "bug"}),
+        ):
+            response = await todo_routes.mark_phase(
+                slug="chartest-api-routes",
+                phase=PreparePhase.PREPARED.value,
+                cwd="/repo",
+            )
+
+        # Persisted state carries the authoritative field.
+        persisted = captured.get("state", {})
+        assert isinstance(persisted, dict)
+        assert persisted.get("prepare_phase") == PreparePhase.PREPARED.value
+        # Route returns the full updated state payload, not a metadata echo.
+        assert isinstance(response, dict)
+        assert response.get("prepare_phase") == PreparePhase.PREPARED.value
+        assert response.get("kind") == "bug"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_writes_work_phase_when_value_matches_work_enum(self) -> None:
+        """WorkPhase values write state['work_phase']."""
+        from teleclaude.core.next_machine._types import WorkPhase
+
+        captured: dict[str, StateValue] = {}
+
+        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
+            captured["state"] = dict(state)
+
+        with (
+            patch("teleclaude.core.next_machine.state_io.write_phase_state", _fake_write),
+            patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={}),
+        ):
+            response = await todo_routes.mark_phase(
+                slug="chartest-api-routes",
+                phase=WorkPhase.BUILD_STARTED.value,
+                cwd="/repo",
+            )
+
+        persisted = captured.get("state", {})
+        assert isinstance(persisted, dict)
+        assert persisted.get("work_phase") == WorkPhase.BUILD_STARTED.value
+        assert isinstance(response, dict)
+        assert response.get("work_phase") == WorkPhase.BUILD_STARTED.value
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_rejects_unknown_phase_value_with_400(self) -> None:
+        """Unknown phase values yield HTTP 400 and list both enums' valid values."""
+        from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+
+        with pytest.raises(HTTPException) as exc_info:
+            await todo_routes.mark_phase(
+                slug="chartest-api-routes",
+                phase="not_a_real_phase",
+                cwd="/repo",
+            )
+
+        assert exc_info.value.status_code == 400
+        detail = exc_info.value.detail
+        assert isinstance(detail, str)
+        assert PreparePhase.PREPARED.value in detail
+        assert WorkPhase.BUILD_STARTED.value in detail

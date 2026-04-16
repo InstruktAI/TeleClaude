@@ -453,6 +453,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "mark-phase": CommandDef(
+                desc="Operator override: write the authoritative prepare_phase or work_phase field",
+                args="<slug> --phase <value>",
+                flags=[_H, Flag("--phase", desc="Phase value matching a PreparePhase or WorkPhase enum member")],
+                notes=["Dispatches by enum; invalid values list both. Recovery/testing only."],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "set-deps": CommandDef(
                 desc="Set dependencies for a work item in the roadmap",
                 args="<slug> [--after <slugs>]",

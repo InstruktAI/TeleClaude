@@ -13,6 +13,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 
 __all__ = [
@@ -20,12 +22,14 @@ __all__ = [
     "_handle_todo_artifacts",
     "_handle_todo_dump",
     "_handle_todo_from_main",
+    "_handle_todo_mark_phase",
     "_handle_todo_mark_ready",
     "_handle_todo_remove",
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
     "_handle_todo_validate",
+    "handle_mark_phase",
 ]
 
 
@@ -59,6 +63,74 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
 
     if failed:
         raise SystemExit(1)
+
+
+def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
+    """Operator override: write the authoritative sub-phase field.
+
+    Dispatches by enum membership. A value that matches :class:`PreparePhase`
+    writes ``state["prepare_phase"]``; a value that matches :class:`WorkPhase`
+    writes ``state["work_phase"]``. An unknown value is rejected with a
+    non-zero exit code and a listing of valid values for both enums, so the
+    operator sees the full surface at once.
+    """
+    prepare_values = {p.value for p in PreparePhase}
+    work_values = {p.value for p in WorkPhase}
+
+    if phase in prepare_values:
+        field = "prepare_phase"
+    elif phase in work_values:
+        field = "work_phase"
+    else:
+        print(f"Unknown phase value: {phase!r}", file=sys.stderr)
+        print("Valid prepare_phase values:", file=sys.stderr)
+        for value in sorted(prepare_values):
+            print(f"  {value}", file=sys.stderr)
+        print("Valid work_phase values:", file=sys.stderr)
+        for value in sorted(work_values):
+            print(f"  {value}", file=sys.stderr)
+        return 1
+
+    state = dict(read_phase_state(cwd, slug))
+    state[field] = phase
+    write_phase_state(cwd, slug, state)
+    print(f"Marked {slug} {field}={phase}")
+    return 0
+
+
+def _handle_todo_mark_phase(args: list[str]) -> None:
+    """Handle telec todo mark-phase <slug> --phase <value>.
+
+    Thin argv adapter over :func:`handle_mark_phase`.
+    """
+    slug: str | None = None
+    phase: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--phase" and i + 1 < len(args):
+            phase = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "mark-phase"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "mark-phase"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug or not phase:
+        print(_usage("todo", "mark-phase"))
+        raise SystemExit(1)
+
+    exit_code = handle_mark_phase(slug=slug, phase=phase, cwd=str(Path.cwd()))
+    if exit_code != 0:
+        raise SystemExit(exit_code)
 
 
 def _handle_todo(args: list[str]) -> None:
@@ -96,6 +168,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_split(args[1:])
     elif subcommand == "mark-ready":
         _handle_todo_mark_ready(args[1:])
+    elif subcommand == "mark-phase":
+        _handle_todo_mark_phase(args[1:])
     elif subcommand == "from-main":
         _handle_todo_from_main(args[1:])
     elif subcommand == "artifacts":

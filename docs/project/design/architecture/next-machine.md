@@ -63,7 +63,7 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- Phase derived from stamped primitives (verdicts, DOR, grounding, git commits)
+- Phase derived from authoritative sub-phase fields first, with stamped primitives as fallback consistency signals
 - Dependency resolution via set_dependencies tool
 
 ## Invariants

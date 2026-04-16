@@ -5,6 +5,7 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -29,11 +30,23 @@ from teleclaude.core.next_machine.runtime.scripts import (
     format_review_blocked_script,
     format_review_needs_work_script,
 )
+from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state_sync
 from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+
+
+async def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
+    """Async entry point for authoritative phase persistence from prepare steps.
+
+    Wraps :func:`teleclaude.core.next_machine.state_io.write_phase_state` so
+    async handlers can record phase transitions without blocking the event
+    loop. The sync helper remains the single persistence implementation.
+    """
+    await asyncio.to_thread(_write_phase_state_sync, cwd, slug, state)
+
 
 logger = get_logger(__name__)
 
@@ -140,8 +153,11 @@ async def _prepare_step_input_assessment(
             {"slug": slug, "phase": "input_assessment", "digest": input_digest},
         )
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
+        # Authoritative: record the REQUIREMENTS_REVIEW transition so the next
+        # loop iteration routes from the recorded field, not primitives.
+        writer.state.prepare_phase = PreparePhase.REQUIREMENTS_REVIEW.value
         await _commit_writer(writer, todos_db, slug, state)
-        return True, ""  # loop — derive routes to REQUIREMENTS_REVIEW
+        return True, ""  # loop — routes to REQUIREMENTS_REVIEW via authoritative field
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(

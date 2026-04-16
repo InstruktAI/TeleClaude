@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.types.state_value import StateValue
+
 _MODULE = "teleclaude.cli.telec.handlers.todo"
 
 
@@ -88,3 +90,68 @@ class TestHandleTodoStamp:
         assert body["stamp_type"] == "verdict"
         assert body["value"] == "approve"
         assert body["phase"] == "requirements_review"
+
+
+class TestHandleMarkPhase:
+    """telec todo mark-phase <slug> --phase <value>."""
+
+    def test_prepare_phase_value_writes_prepare_phase_field(self) -> None:
+        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
+        from teleclaude.core.next_machine._types import PreparePhase
+
+        captured: dict[str, StateValue] = {}
+
+        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
+            captured["state"] = dict(state)
+
+        with (
+            patch(f"{_MODULE}.write_phase_state", _fake_write),
+            patch(f"{_MODULE}.read_phase_state", return_value={"kind": "todo"}),
+        ):
+            exit_code = handle_mark_phase(slug="my-slug", phase=PreparePhase.PREPARED.value, cwd="/tmp/cwd")
+
+        assert exit_code == 0
+        persisted = captured.get("state", {})
+        assert isinstance(persisted, dict)
+        assert persisted.get("prepare_phase") == PreparePhase.PREPARED.value
+        # Existing state keys must be preserved, not overwritten.
+        assert persisted.get("kind") == "todo"
+
+    def test_work_phase_value_writes_work_phase_field(self) -> None:
+        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
+        from teleclaude.core.next_machine._types import WorkPhase
+
+        captured: dict[str, StateValue] = {}
+
+        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
+            captured["state"] = dict(state)
+
+        with (
+            patch(f"{_MODULE}.write_phase_state", _fake_write),
+            patch(f"{_MODULE}.read_phase_state", return_value={}),
+        ):
+            exit_code = handle_mark_phase(slug="my-slug", phase=WorkPhase.BUILD_STARTED.value, cwd="/tmp/cwd")
+
+        assert exit_code == 0
+        persisted = captured.get("state", {})
+        assert isinstance(persisted, dict)
+        assert persisted.get("work_phase") == WorkPhase.BUILD_STARTED.value
+
+    def test_unknown_phase_value_rejected_with_listing(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Unknown values exit non-zero, do not write, and list both enums' values."""
+        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
+        from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+
+        write_calls: list[tuple[str, str, dict[str, StateValue]]] = []
+
+        def _recording_write(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
+            write_calls.append((cwd, slug, dict(state)))
+
+        with patch(f"{_MODULE}.write_phase_state", _recording_write):
+            exit_code = handle_mark_phase(slug="my-slug", phase="not_a_real_phase", cwd="/tmp/cwd")
+
+        assert exit_code != 0
+        assert write_calls == []
+        combined = capsys.readouterr().err
+        assert PreparePhase.PREPARED.value in combined
+        assert WorkPhase.BUILD_STARTED.value in combined

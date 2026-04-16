@@ -171,15 +171,21 @@ class AuditState(BaseModel):
 class TodoState(BaseModel):
     """Canonical state for a TeleClaude work item (v1 schema).
 
-    v1 is a strict, derivation-ready schema: phase is never cached here.
-    Callers derive it from primitives (verdict stamps, git commits, artifact
-    presence, DOR score, grounding validity) on every read.
+    ``phase`` is the coarse item-level phase (``ItemPhase`` values) and is
+    authoritative for the item's overall lifecycle. ``prepare_phase`` and
+    ``work_phase`` are authoritative sub-phase fields (values from the
+    ``PreparePhase`` and ``WorkPhase`` enums respectively); an empty string
+    signals "not yet set", in which case callers fall back to deriving the
+    sub-phase from primitives (verdict stamps, artifact presence, grounding
+    validity, DOR score, worktree state).
     """
 
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1] = 1
     phase: str = "pending"
+    prepare_phase: str = ""
+    work_phase: str = ""
     kind: str = "todo"  # "todo" | "bug"
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)

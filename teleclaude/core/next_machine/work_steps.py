@@ -48,6 +48,7 @@ from teleclaude.core.next_machine.prepare_steps import (
     _derive_project_root,
 )
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
+from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state_sync
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
 
@@ -55,6 +56,16 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
+
+
+async def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
+    """Async entry point for authoritative phase persistence from work steps.
+
+    Wraps :func:`teleclaude.core.next_machine.state_io.write_phase_state` so
+    async handlers can record phase transitions without blocking the event
+    loop.
+    """
+    await asyncio.to_thread(_write_phase_state_sync, cwd, slug, state)
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +147,12 @@ async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-ma
     prepare machine; if it is missing we treat that as a contract violation.
     """
     _ = todos_db, worktree_cwd  # dispatch is stateless from todos_db view
+
+    # Authoritative: record BUILD_STARTED entry so routing reads the recorded
+    # phase on the next iteration instead of re-deriving from worktree primitives.
+    if state.get("work_phase") != WorkPhase.BUILD_STARTED.value:
+        state["work_phase"] = WorkPhase.BUILD_STARTED.value
+        await write_phase_state(cwd, slug, state)
 
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else "todo"

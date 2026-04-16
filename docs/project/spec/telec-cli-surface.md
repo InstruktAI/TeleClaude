@@ -122,6 +122,12 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
           --after: 'Comma-separated dependency slugs.'
+      mark-phase:
+        description: 'Operator override for authoritative prepare/work sub-phase fields.'
+        args:
+          - slug: 'string'
+        flags:
+          --phase: 'Phase value matching a PreparePhase or WorkPhase enum member.'
       validate:
         args:
           - slug: 'string (optional)'

@@ -80,8 +80,9 @@ class PreparePhase(str, Enum):
 class WorkPhase(str, Enum):
     """Derived work lifecycle phases.
 
-    Phase is never cached in state; it is derived from primitives (stamped
-    verdicts, git commits, gate runs) on every next_work loop iteration.
+    ``work_phase`` is the authoritative stored sub-phase when present.
+    Derivation falls back to primitives (stamped verdicts, git commits, gate
+    runs) when the stored field is unset.
     """
 
     BUILD_STARTED = "build_started"
