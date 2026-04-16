@@ -218,6 +218,18 @@ project's test framework mechanism. The suite stays green with specs present. Wh
 satisfies a spec, the expected-failure marker is removed. The marker mechanism is framework-specific —
 the agent discovers it from the codebase.
 
+### Escape-Hatch Docstring Ban
+
+Specs whose docstrings defer behavioral coverage to non-automated verification are defective.
+Phrases asserting that equivalence, correctness, or requirement satisfaction is "covered in a
+checklist," "verified at integration level," "confirmed during build," or any variant that
+routes a behavioral contract to a non-automated artifact, are rejected in spec review.
+
+If the behavior cannot be unit-tested, the spec delivery must include a named integration spec
+with an automated runner documented alongside the unit specs. A `quality-checklist.md` entry is
+a human-facing summary, never a substitute for an automated assertion. The spec is the automated
+contract; offloading the contract to prose is the same as not having a contract.
+
 ### Reproduction Test Delivery
 
 Every bug fix starts with a test that reproduces the bug (RED). The reproduction test becomes a

@@ -9,6 +9,18 @@ description: 'Quality rules for preparation artifacts (requirements and plans). 
 
 ## Rules
 
+### Quoting upstream intent
+
+Every downstream artifact must carry the upstream requirement text verbatim.
+Plans quote the requirement section(s) that each task delivers. Test specs
+include the requirement criteria they pin, quoted from `requirements.md`.
+Reviews quote the criteria under analysis before analyzing them.
+
+An artifact that paraphrases or summarizes upstream intent without preserving
+the verbatim source is defective: the source text is the contract, paraphrase
+is a derivative that drifts. When the full upstream text sits adjacent to the
+downstream artifact, mismatches are visible without judgment calls.
+
 ### Domain-context loading
 
 Before creating or reviewing a preparation artifact, identify which domain
@@ -63,23 +75,27 @@ files under `docs/project/design/`" prescribes.
 ### DoD-driven review-awareness
 
 Requirements and plans must anticipate what the code reviewer will check.
-Use the Definition of Done gates as the systematic checklist:
+This is an evidence-producing rule, not a mental check.
 
-- Walk each DoD section (functionality, code quality, testing, linting,
-  security, documentation, commit hygiene, observability).
-- For each requirement or plan task, identify which DoD gates it triggers.
-- Verify those implications are reflected — either as explicit success
-  criteria (in requirements) or as task verification steps (in plans).
+For each requirement, produce a **DoD-implications block** naming the DoD
+gates triggered and the concrete evidence artifact for each. "Requirement
+implies tests" is not compliance; "Test X at file Y, line Z pins behavior W"
+is compliance. An agent satisfies this rule by producing the block; an agent
+who "considered" DoD mentally has not satisfied it.
 
-Common gaps:
+Evidence must be specific:
 
-- Requirement implies CLI changes → help text and config surface updates.
-- Requirement implies new behavior → test expectations.
-- Requirement implies browser-based frontend or web UI behavior → Playwright smoke verification in build and review.
-- Requirement implies new config → config wizard, sample, and spec updates.
-- Requirement implies security boundaries → validation and auth expectations.
-- Requirement implies documentation changes → doc update expectations.
-- Requirement implies user-visible behavior → user-facing verification coverage.
+- CLI changes → name the help-text location and the config surface section.
+- New behavior → name the test file and the specific assertion.
+- Browser-based frontend or web UI behavior → name the Playwright smoke path.
+- New config → name the wizard entry, the sample line, and the spec section.
+- Security boundaries → name the validation point and the auth check.
+- Documentation changes → name the doc file and the section updated.
+- User-visible behavior → name the observable outcome and where it is verified.
+
+A requirement without a concrete evidence statement per triggered gate is
+incomplete. A plan task without a named deliverable per triggered gate is
+incomplete.
 
 ### Test specification quality
 
@@ -104,9 +120,17 @@ contract the builder must satisfy. Quality rules:
 
 Plans must provide enough detail for a builder to execute without guessing:
 
+- **Every task begins with a verbatim quote of the requirement criteria it
+  delivers**, sourced from `requirements.md`, including the full success-criteria
+  bullet list. The task body then describes the work and must reference each
+  quoted criterion in its delivery description — showing which change satisfies
+  which criterion. A task that quotes criteria it does not deliver, or delivers
+  work not traceable to any quoted criterion, is defective.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
 - Every task has a verification step that references specific expected-failure
   tests it makes GREEN: a test to satisfy, behavior to observe, or check to run.
+  "Tests" as an abstract category is not compliance — name the specific test
+  file and assertions.
 - Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan
   requirements (coverage gaps).
 - Referenced file paths are listed in `todo state (todos.db).grounding.referenced_paths`

@@ -231,9 +231,14 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
             "REVIEW_ROUND_LIMIT",
             (
                 f"Review rounds exceeded for {slug}: current={round_num}, "
-                f"max={DEFAULT_MAX_REVIEW_ROUNDS}. Manual resolution required."
+                f"max={DEFAULT_MAX_REVIEW_ROUNDS}. "
+                f"Per lifecycle/work/review severity schema and general/procedure/orchestration "
+                f"Review Round Limit Handling: approve is permitted only when the sole remaining "
+                f"findings are Suggestion-severity. Any unresolved Requirement-Violation, Critical, "
+                f"or Important finding keeps the review at changes_requested regardless of round "
+                f"count. Read review-findings and verify before any closure action."
             ),
-            next_call=f"telec todo work {slug}",
+            next_call=f"telec todo artifacts read {slug} review-findings",
         )
 
     # Reconcile live-review state: detects ground shifts, reuses active reviewers.
@@ -257,7 +262,13 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
         message = (
             f"Re-review round {round_num + 1}/{DEFAULT_MAX_REVIEW_ROUNDS} for {slug}. "
             f"Incremental scope: review only commits since baseline {baseline_text} "
-            f"up to HEAD {head_sha or '<unknown>'}. Stamp verdict with "
+            f"up to HEAD {head_sha or '<unknown>'}. "
+            f"Read `telec todo artifacts read {slug} review-findings` first — your re-review "
+            f"must verify the unresolved Requirement-Violation, Critical, and Important "
+            f"findings from the prior round are now delivered by the new commits. "
+            f"Per the severity schema in lifecycle/work/review, Requirement-Violation "
+            f"findings cannot be deferred — the verdict is APPROVE only when all three "
+            f"counts are zero. Stamp verdict with "
             f"`telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`."
         )
         escaped = message.replace('"', '\\"')
@@ -352,7 +363,12 @@ async def _work_step_review_changes_requested(  # pylint: disable=too-many-argum
         f"Review requested changes for {slug}. "
         f"Findings artifact: `review-findings`. Target: source code in the worktree. "
         f"Required read: software-development/procedure/lifecycle/fix-review-findings. "
-        f"Address the findings and report FIX COMPLETE. "
+        f"Address every Requirement-Violation, Critical, and Important finding — "
+        f"anything less keeps the verdict at REQUEST CHANGES per the severity schema "
+        f"in lifecycle/work/review. Requirement-Violation findings in particular "
+        f"indicate a stated requirement's success criteria are not satisfied in the "
+        f"delivery; fix the narrowing or the weak verification, do not argue severity. "
+        f"Report FIX COMPLETE when every non-Suggestion finding is resolved. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )
     escaped = message.replace('"', '\\"')

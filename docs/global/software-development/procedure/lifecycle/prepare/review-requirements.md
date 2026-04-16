@@ -48,10 +48,20 @@ something and the requirements ignored it.
 
 #### Testability
 
-Each requirement has a verification path: a test, observable behavior, or
-measurable outcome. Reject "works correctly," "is fast," "handles edge cases"
-without specifics. Each requirement must answer: "how does the builder prove
-this is done?"
+Each requirement must have verification criteria that are concrete enough
+for a reader to produce, per criterion, the following translation:
+
+> "A test asserting X would fail if this criterion were unmet."
+
+The reviewer performs this translation for every success criterion as a
+required step and records the translations in the requirements-review
+findings. A criterion that cannot be translated into a named failing test
+in this form is not testable — mark `needs_work` with a rewrite request.
+Reject vague criteria ("works correctly," "is fast," "handles edge cases")
+by writing the specific failing-test form they would need.
+
+The translation is a reviewer output, not a mental check. A review without
+the per-criterion translations is incomplete.
 
 #### Grounding
 

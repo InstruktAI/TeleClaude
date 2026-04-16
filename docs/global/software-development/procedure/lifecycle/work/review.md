@@ -32,11 +32,14 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 If no slug provided, select the first item with phase `active` in `todo state (todos.db)` that lacks `review-findings.md`.
 
-Read:
+Read **in full, not only the diff**:
 
-- `telec todo artifacts read {slug} requirements` (or `bug.md` for bug fixes)
-- `telec todo artifacts read {slug} implementation-plan`
-- `README.md`, `AGENTS.md`, and `docs/*` for project patterns
+- `telec todo artifacts read {slug} requirements` (or `bug.md` for bug fixes) — the contract the delivery must satisfy.
+- `telec todo artifacts read {slug} implementation-plan` — how the builder intended to satisfy the contract.
+- `telec todo artifacts read {slug} plan-review-findings` and `spec-review-findings` — the per-criterion delivery analyses and spec-to-criterion mappings produced upstream. Use these as the ground truth for what the reviewer must verify against the code.
+- `README.md`, `AGENTS.md`, and `docs/*` for project patterns.
+
+The reviewer must be able to state, from the requirements text, what every requirement promises before running any lane. A review that reads only the diff passes scope-narrowed deliveries because the diff looks self-consistent. Reading requirements in full is the safeguard against that failure.
 
 Use merge-base to focus the diff:
 
@@ -96,11 +99,22 @@ work, not as manually dispatched build sessions waiting for another handoff step
 
 The delivery must match the requirements — nothing more, nothing less.
 
-- Every requirement in `requirements.md` has a corresponding implementation.
-- No unrequested features, extra CLI flags, additional API endpoints, or premature configurability.
-- No gold-plating: the builder implemented what was asked, not what they thought would be nice.
+For each success criterion in every requirement, produce a `Scope verification` entry in `review-findings.md`:
 
-Scope violations are **Important** findings. Significant unrequested features are **Critical**.
+1. Quote the criterion verbatim from `requirements.md`.
+2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
+3. Name the test whose passing demonstrates the criterion is delivered.
+4. State, in one sentence, how the code change and the passing test together satisfy the criterion.
+
+Findings:
+
+- Criterion not delivered by any code change in the diff → **Requirement-Violation** (see Severity schema below).
+- Criterion partially delivered — some criteria sub-points addressed, others silently dropped → **Requirement-Violation**. A delivery that narrows a criterion's scope is as broken as one that omits it.
+- Criterion delivered but the named test would pass even on a broken implementation → **Requirement-Violation**. Weak verification is not verification.
+- Unrequested feature (no criterion drives it) → **Critical**.
+- Gold-plating (scope creep beyond requirements) → Important.
+
+A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, or satisfaction analysis.
 
 #### Paradigm-fit assessment
 
@@ -268,17 +282,43 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 
 Write the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
 
-Verdict rules — **verdict is arithmetic, not judgement:**
+#### Severity schema
 
-- Count unresolved Critical findings. Count unresolved Important findings.
-- If either count > 0: verdict is `REQUEST CHANGES`.
-- If both are 0: verdict is `APPROVE`.
+Three severity tiers, highest to lowest:
+
+- **Requirement-Violation**: the delivery does not satisfy a stated requirement's
+  success criteria, whether through absence, partial delivery, or weak verification.
+  A criterion that is silently narrowed, a test that would pass on a broken
+  implementation, or a requirement whose delivery cannot be named — all are
+  Requirement-Violation. **This severity cannot be deferred under any round count
+  or closure procedure.** It is the highest severity and sits above Critical.
+- **Critical**: bugs, fallback violations, security issues, significant unrequested
+  features, weakening or deleting prepare-delivered spec assertions. Code is wrong
+  or adds scope that was not requested.
+- **Important**: scope gold-plating, missing tests for non-requirement behavior,
+  paradigm violations, style and maintainability concerns.
+- **Suggestion**: optional improvements. Do not affect verdict.
+
+#### Verdict rules
+
+Verdict is arithmetic, not judgement:
+
+- Count unresolved Requirement-Violation findings. Count unresolved Critical findings.
+  Count unresolved Important findings.
+- If Requirement-Violation count > 0: verdict is `REQUEST CHANGES`. No exception.
+  No closure procedure, no round-limit escape, no orchestrator override can change
+  this. A requirement-gap is not an Important finding that can be rebranded.
+- If Critical or Important count > 0: verdict is `REQUEST CHANGES`.
+- If all three counts are 0: verdict is `APPROVE`.
 - Suggestion findings may remain unresolved under `APPROVE`.
-- The reviewer must not invent categories ("non-blocking", "accepted", "deferred
-  to follow-up") to reduce the count and achieve APPROVE. The only way to reduce
-  the count is to resolve the finding: auto-remediate it, or investigate and
-  determine it is invalid with evidence. Overall delivery quality does not
-  override individual finding severity.
+
+The reviewer must not invent categories ("non-blocking", "accepted", "deferred
+to follow-up") to reduce a count and achieve APPROVE. The reviewer must not
+classify requirement-gaps as Important or Critical to make them deferrable —
+requirement-gaps are Requirement-Violation by definition. The only way to
+reduce a count is to resolve the finding: auto-remediate it, or investigate
+and determine it is invalid with evidence. Overall delivery quality does not
+override individual finding severity.
 
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.

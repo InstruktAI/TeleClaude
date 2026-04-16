@@ -40,14 +40,32 @@ it without guessing and a reviewer finds no surprises.
   policy: identify which specs the plan touches and load them before
   validation begins.
 
-### 2. Requirement coverage
+### 2. Substantive delivery analysis
 
-Every requirement in `requirements.md` must have at least one corresponding
-task in the plan. Every task must trace back to a requirement. Findings:
+Structural coverage ("a task exists for this requirement") is not sufficient.
+Produce a `Delivery analysis` section in `plan-review-findings.md` with one
+entry per requirement success criterion.
 
-- Orphan requirement (no plan task) -> Critical.
+For each success criterion in `requirements.md`:
+
+1. Quote the criterion verbatim.
+2. Quote the task body text (or multiple tasks' bodies) that delivers it.
+3. State, in one sentence, how the quoted task text delivers the quoted
+   criterion — naming the specific file edits, config changes, test additions,
+   or other concrete deliverables the task prescribes.
+
+Findings:
+
+- Criterion not addressed by any task body -> **Requirement-Violation** (the
+  highest severity; see `work/review` for the severity schema). A task bearing
+  the requirement's name whose body narrows the criterion is a
+  Requirement-Violation regardless of whether the task exists.
+- Task body quotes criteria it does not deliver -> Critical.
 - Orphan task (no requirement) -> Important (gold-plating risk).
 - Task contradicts requirement -> Critical.
+
+The reviewer cannot approve the plan while any criterion lacks a Delivery
+analysis entry that names concrete deliverables.
 
 ### 3. Scope & size
 
@@ -86,20 +104,26 @@ session.
 ### 6. Review lane anticipation
 
 Apply the DoD-driven review-awareness rule from the preparation artifact
-quality policy. Check whether the plan would survive each code review lane
-without findings:
+quality policy. Produce a `Lane anticipation` section in
+`plan-review-findings.md` with one entry per requirement, per triggered lane.
 
-- **Tests**: does every plan task reference specific expected-failure tests it makes GREEN?
-  Do referenced test names match actual test specs in the worktree?
-  If the delivery changes browser-based frontend or web UI behavior, does the plan include Playwright smoke verification and evidence capture for build and review?
-- **Security**: does the plan address input validation, auth checks, and
-  secret handling where applicable?
-- **Documentation**: does the plan include help text, config surface, and
-  README updates where the requirements imply user-facing changes?
-- **Config surface**: if new config keys are introduced, does the plan include
-  wizard, sample, and spec updates?
+Each entry names the specific artifact the build-review lane will validate
+and the plan task that produces it:
 
-Missing lane coverage is an Important finding.
+- **Tests**: name the test file and the specific assertions each task delivers.
+  "Tests" as a category is not compliance.
+- **Security**: name the validation point, the auth check, and the task that
+  adds them.
+- **Documentation**: name the doc file, the section updated, and the task
+  that updates it.
+- **Config surface**: name the config key, the wizard entry, the sample line,
+  and the spec section — each with the task that delivers it.
+- **Browser-based frontend or web UI**: name the Playwright smoke path and
+  the task that records evidence for build and review.
+
+A lane triggered by any requirement but not addressed by a named deliverable
+per that requirement is an Important finding. Auto-remediate by inserting the
+missing task when the gap is localized; otherwise mark `needs_work`.
 
 ### 7. Policy compliance
 

@@ -96,16 +96,18 @@ Status semantics:
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 
-When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator must close the loop pragmatically instead of punting by default.
+When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator does not approve. The arithmetic-verdict rule from `lifecycle/work/review` applies at all round counts — round limit is not an escape hatch.
 
-1. Inspect current evidence before deciding:
+1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
    - `todos.db` state
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
-   - If unresolved **Critical** findings remain, keep `review=changes_requested`, record an explicit blocker summary, and escalate with a concrete decision request. Sessions stay alive as signal for the human.
-   - If only non-critical findings remain and the implementation is stable, mark `review=approved`, capture residual work as follow-up/deferred items, and continue lifecycle progression. The state machine will emit cleanup commands on the next successful terminal.
+   - If any unresolved **Requirement-Violation**, **Critical**, or **Important** findings remain, keep `review=changes_requested`. Record the blocker summary in `review-closure.md`. Sessions stay alive as signal for the human. The orchestrator does not stamp approve.
+   - If only **Suggestion**-severity findings remain, mark `review=approved`. Suggestions by definition do not block delivery.
 3. Record rationale in todo artifacts so the closure is auditable.
+
+The orchestrator must not rebrand Requirement-Violation or Important findings as "non-blocking" or "follow-up" to reach approve. Per the review procedure severity schema, such findings block regardless of round count. Deferral under round-limit is permitted only when the remaining findings are Suggestion.
 
 - Point workers to `telec todo artifacts read {slug} requirements` or `implementation-plan.md`.
 - Reference project docs or standards.
