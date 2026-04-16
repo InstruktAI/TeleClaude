@@ -68,6 +68,7 @@ class InputHandlersMixin:
     - _discord_actor_avatar_url(author) -> str | None
     - _resolve_forum_context(message) -> tuple[str, str | None]
     - _get_channel(channel_id) -> object | None (async)
+    - ensure_channel(session) -> Session (async; from ChannelOperationsMixin)
     """
 
     _team_channel_map: dict[int, str]
@@ -85,6 +86,7 @@ class InputHandlersMixin:
     _resolve_forum_context: Callable[[object], tuple[str, str | None]]
     _discord_actor_name: Callable[[object, str], str]
     _discord_actor_avatar_url: Callable[[object], str | None]
+    ensure_channel: Callable[[Session], Awaitable[Session]]
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
@@ -412,6 +414,11 @@ class InputHandlersMixin:
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
+
+        if session_id:
+            session = await db.get_session(session_id)
+            if session is not None:
+                await self.ensure_channel(session)
 
         followup = getattr(interaction, "followup", None)
         followup_send = getattr(followup, "send", None)

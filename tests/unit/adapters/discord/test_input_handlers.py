@@ -129,6 +129,52 @@ def test_resolve_team_session_target_uses_discord_identity_and_scaffolded_worksp
 
 
 @pytest.mark.asyncio
+async def test_handle_launcher_click_provisions_discord_channel_after_session_creation() -> None:
+    class LauncherHandlers(InputHandlersMixin):
+        def __init__(self) -> None:
+            self._parse_optional_int = lambda value: (
+                int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
+            )
+            self.ensure_channel = AsyncMock(side_effect=lambda s: s)
+
+        async def _resolve_interaction_forum_id(self, _interaction: object) -> int | None:
+            return 42
+
+        def _resolve_project_from_forum(self, _forum_id: int) -> str | None:
+            return "/tmp/project"
+
+        def _async_callable(self, fn, *, label):  # type: ignore[no-untyped-def]
+            del label
+            return fn
+
+    adapter = LauncherHandlers()
+    session = Session(
+        session_id="sess-launcher",
+        computer_name="machine",
+        tmux_session_name="tmux-launcher",
+        title="launcher",
+    )
+    interaction = SimpleNamespace(
+        response=SimpleNamespace(defer=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock()),
+        user=SimpleNamespace(id="999"),
+    )
+
+    command_service = SimpleNamespace(create_session=AsyncMock(return_value={"session_id": "sess-launcher"}))
+
+    with (
+        patch("teleclaude.adapters.discord.input_handlers.get_command_service", return_value=command_service),
+        patch("teleclaude.adapters.discord.input_handlers.db") as mock_db,
+    ):
+        mock_db.get_session = AsyncMock(return_value=session)
+        await adapter._handle_launcher_click(interaction, "claude")
+
+    adapter.ensure_channel.assert_awaited_once_with(session)
+    mock_db.get_session.assert_awaited_once_with("sess-launcher")
+    interaction.followup.send.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_resolve_destination_channel_clears_stale_discord_metadata_with_explicit_none_keys() -> None:
     adapter = DummyRoutingHandlers()
     session = Session(

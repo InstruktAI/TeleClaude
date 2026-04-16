@@ -521,10 +521,11 @@ async def _project_user_reflection(
         return session
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
-    # Transcript projection is canonical for prompt persistence, but Discord
-    # reflection is only valid for human-origin sessions. System-role sessions
-    # (for example integrator/finalizer) can legitimately have no human identity.
-    if source != InputOrigin.DISCORD.value and not session.system_role:
+    # Mirror the output-lane admin copy rule: skip only when the origin itself
+    # is Discord (origin delivery already hits Discord). Pipeline sessions
+    # (worker/orchestrator/integrator) remain visible so the admin sees both
+    # sides of the conversation in Discord.
+    if source != InputOrigin.DISCORD.value:
         await adapter_client.broadcast_user_input(session, user_text, source)
 
     if transcript_iso:

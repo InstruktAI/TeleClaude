@@ -417,7 +417,7 @@ class TestProjectSessionFromTranscript:
         assert result.last_message_sent_at == accepted_ts
 
     @pytest.mark.unit
-    async def test_system_role_session_persists_prompt_without_human_reflection(self):
+    async def test_system_role_session_reflects_prompt_to_discord_admin(self):
         session = Session(
             session_id="sess-integrator-1",
             computer_name="local",
@@ -450,7 +450,7 @@ class TestProjectSessionFromTranscript:
             mock_db.get_session = AsyncMock(return_value=session)
             await project_session_from_transcript(session, adapter_client)
 
-        adapter_client.broadcast_user_input.assert_not_awaited()
+        adapter_client.broadcast_user_input.assert_awaited_once_with(session, "/next-integrate", "terminal")
         mock_db.update_session.assert_awaited_once_with(
             "sess-integrator-1",
             last_message_sent="/next-integrate",
