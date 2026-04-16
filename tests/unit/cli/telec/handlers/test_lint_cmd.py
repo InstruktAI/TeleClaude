@@ -385,3 +385,60 @@ class TestPathValidation:
                     assert not t_str.startswith("/") or t_str.startswith(str(tmp_path)), (
                         f"Absolute path '{t_str}' outside project root passed to pipeline"
                     )
+
+
+# ---------------------------------------------------------------------------
+# R6 — Single-step execution via `telec lint --step <name>`
+# ---------------------------------------------------------------------------
+
+
+class TestRunStep:
+    """LintRunner.run_step runs a single pipeline step on specific files.
+
+    Required by R6: pre-commit hooks route each check through
+    `telec lint --step <name>` with the staged filenames pre-commit passes.
+    """
+
+    def test_run_step_dispatches_to_named_step_with_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """run_step finds the named step in the pipeline and calls its run() with the files."""
+        from teleclaude.quality.lint import LintRunner, PythonLintPipeline  # pyright: ignore[reportMissingImports]
+
+        captured: dict[str, list[str]] = {}
+
+        class _Recording:
+            name = "ruff_check"
+
+            def run(self, targets: list[str]) -> None:
+                captured["targets"] = list(targets)
+
+        def _pipeline(project_root: Path) -> PythonLintPipeline:
+            pipe = PythonLintPipeline(project_root=tmp_path)
+            pipe.steps = [_Recording()]  # pyright: ignore[reportAttributeAccessIssue]
+            return pipe
+
+        monkeypatch.setattr("teleclaude.quality.lint.PythonLintPipeline", _pipeline)
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run_step("ruff_check", ["a.py", "b.py"])
+
+        assert captured.get("targets") == ["a.py", "b.py"]
+
+    def test_run_step_rejects_unknown_step_name(self, tmp_path: Path) -> None:
+        """Unknown step name exits non-zero — no silent no-op."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        runner = LintRunner(project_root=tmp_path)
+        with pytest.raises(SystemExit) as exc_info:
+            runner.run_step("bogus_step", [])
+        assert exc_info.value.code != 0
+
+    def test_run_step_rejects_traversal_files(self, tmp_path: Path) -> None:
+        """All files rejected by path validation → exit 1, not silent pass."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        runner = LintRunner(project_root=tmp_path)
+        with pytest.raises(SystemExit) as exc_info:
+            runner.run_step("guardrails", ["../etc/passwd"])
+        assert exc_info.value.code == 1

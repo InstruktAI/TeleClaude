@@ -70,31 +70,49 @@ class TestMakefileTargetMigration:
 
 
 class TestPrecommitHookMigration:
-    """Pre-commit hooks continue to function via the new CLI commands."""
+    """Pre-commit hooks route through 'telec lint' — the R6 migration contract.
 
-    def test_precommit_guardrails_hook_exists(self) -> None:
-        """The guardrails pre-commit hook must exist and run guardrail enforcement."""
+    R6 success criterion: 'Pre-commit hooks pass with the new commands backing
+    them.' The lint-pipeline hooks (format, guardrails, ruff-check, typecheck,
+    markdown-validate) must invoke `telec lint --step <name>`, not direct tool
+    commands. Hooks that are not part of the lint pipeline (docs-validate,
+    check-cli-help, check-raw-sql) are out of scope for R6.
+    """
+
+    def test_precommit_format_hook_routes_through_telec_lint(self) -> None:
+        """format hook entry invokes `telec lint --step ruff_format`."""
         content = _read(_PRECOMMIT_CONFIG)
-        guardrails_start = content.find("- id: guardrails")
-        assert guardrails_start != -1, "No guardrails hook in .pre-commit-config.yaml"
+        block = _hook_block(content, "format")
+        assert "telec lint --step ruff_format" in block, "format hook does not route through telec lint:\n" + block
 
-        guardrails_end = content.find("\n  - id:", guardrails_start + 1)
-        guardrails_block = (
-            content[guardrails_start:] if guardrails_end == -1 else content[guardrails_start:guardrails_end]
-        )
-        assert "guardrails" in guardrails_block, (
-            "guardrails hook missing from .pre-commit-config.yaml:\n" + guardrails_block
+    def test_precommit_guardrails_hook_routes_through_telec_lint(self) -> None:
+        """guardrails hook entry invokes `telec lint --step guardrails`."""
+        content = _read(_PRECOMMIT_CONFIG)
+        block = _hook_block(content, "guardrails")
+        assert "telec lint --step guardrails" in block, "guardrails hook does not route through telec lint:\n" + block
+
+    def test_precommit_ruff_check_hook_routes_through_telec_lint(self) -> None:
+        """ruff-check hook entry invokes `telec lint --step ruff_check`."""
+        content = _read(_PRECOMMIT_CONFIG)
+        block = _hook_block(content, "ruff-check")
+        assert "telec lint --step ruff_check" in block, "ruff-check hook does not route through telec lint:\n" + block
+
+    def test_precommit_typecheck_hook_routes_through_telec_lint(self) -> None:
+        """typecheck hook entry invokes `telec lint --step pyright`."""
+        content = _read(_PRECOMMIT_CONFIG)
+        block = _hook_block(content, "typecheck")
+        assert "telec lint --step pyright" in block, "typecheck hook does not route through telec lint:\n" + block
+
+    def test_precommit_markdown_validate_hook_routes_through_telec_lint(self) -> None:
+        """markdown-validate hook entry invokes `telec lint --step markdown`."""
+        content = _read(_PRECOMMIT_CONFIG)
+        block = _hook_block(content, "markdown-validate")
+        assert "telec lint --step markdown" in block, (
+            "markdown-validate hook does not route through telec lint:\n" + block
         )
 
     def test_lint_sh_delegates_to_telec_lint(self) -> None:
-        """tools/lint.sh invokes 'telec lint' (thin wrapper, not the full pipeline).
-
-        BUILDER NOTE (R6 dependency): test_shell_scoping.py:TestLintShWiring currently passes and
-        asserts that lint.sh invokes repo-wide tools directly. This conflicts with the migration
-        contract above. During R6 implementation, delete or replace
-        TestLintShWiring.test_lint_sh_runs_repo_wide_tools (and the class if empty) once lint.sh
-        delegates to 'telec lint'.
-        """
+        """tools/lint.sh invokes 'telec lint' (thin wrapper, not the full pipeline)."""
         content = _read(_LINT_SH)
         assert "telec lint" in content, "tools/lint.sh does not delegate to 'telec lint' — migration incomplete"
 
@@ -102,6 +120,18 @@ class TestPrecommitHookMigration:
         """tools/test.sh invokes 'telec test' (thin wrapper, not the full pytest call)."""
         content = _read(_TEST_SH)
         assert "telec test" in content, "tools/test.sh does not delegate to 'telec test' — migration incomplete"
+
+
+def _hook_block(config: str, hook_id: str) -> str:
+    """Extract the YAML block for a given hook id from pre-commit config.
+
+    Returns the section from '- id: <hook_id>' to the next '- id:' or EOF.
+    """
+    start = config.find(f"- id: {hook_id}")
+    if start == -1:
+        return ""
+    end = config.find("\n  - id:", start + 1)
+    return config[start:] if end == -1 else config[start:end]
 
 
 # ---------------------------------------------------------------------------

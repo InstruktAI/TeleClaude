@@ -272,6 +272,35 @@ class LintRunner:
 
         run_pipeline(targets)
 
+    def run_step(self, step_name: str, files: list[str]) -> None:
+        """Run a single named pipeline step against the given files.
+
+        Pre-commit hooks invoke ``telec lint --step <name> [files]`` to route
+        per-hook file lists through the shared pipeline. Files are validated
+        against the project root (no traversal, no absolute paths outside).
+
+        Raises SystemExit(2) when ``step_name`` does not match any pipeline
+        step, with the valid step names in the error message.
+        """
+        _pipeline_ctx[0] = self._project_root
+
+        pipeline = PythonLintPipeline(project_root=self._project_root)
+        step_by_name = {s.name: s for s in pipeline.steps}
+        step = step_by_name.get(step_name)
+        if step is None:
+            valid = ", ".join(step_by_name.keys())
+            logger.error("Unknown lint step: %r. Valid steps: %s", step_name, valid)
+            sys.exit(2)
+
+        targets = validate_scoped_paths(files, self._project_root)
+        if not targets and files:
+            # All paths rejected by validation — fail-fast per R1's
+            # never-silently-fall-back contract.
+            logger.error("All provided files rejected by path validation")
+            sys.exit(1)
+
+        step.run(targets)
+
     def describe_pipeline(self) -> list[str]:
         """Return the pipeline step names (for diagnostics/help text)."""
         return PythonLintPipeline(self._project_root).describe()

@@ -983,6 +983,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
     ),
     "lint": CommandDef(
         desc="Run language-aware lint pipeline",
+        flags=[_H, Flag("--step", desc="Run a single pipeline step (e.g. guardrails, ruff_check)")],
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
     "test": CommandDef(
