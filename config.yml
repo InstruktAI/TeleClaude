@@ -10,90 +10,90 @@ computer:
   host: 192.168.1.247
   timezone: Europe/Amsterdam
   trusted_dirs:
-  - name: TeleClaude
-    desc: AI-powered multi-agent orchestration platform
-    path: ${HOME}/Workspace/InstruktAI/TeleClaude
-    discord_forum: 1475519670646870248
-  - name: Morriz' HOME
-    desc: Morriz' home where most config lives
-    path: ${HOME}
-    discord_forum: 1475454885335142441
-  - name: Morriz' development
-    desc: Morriz' dev projects manager and full stack developer
-    path: ${HOME}/Workspace/morriz
-    discord_forum: 1475454886383456297
-  - name: Morriz' dotfiles
-    desc: Morriz' dotfiles and configuration files
-    path: ${HOME}/Sync/dotfiles
-    discord_forum: 1475454887658655816
-  - name: InstruktAI development
-    desc: InstruktAI's dev projects manager and full stack developer
-    path: ${HOME}/Workspace/InstruktAI
-    discord_forum: 1475454892209471582
-  - name: itsUP
-    desc: Docker-based deployment platform
-    path: ${HOME}/Workspace/morriz/itsUP
-    discord_forum: 1475454893648117882
-  - name: VJArt
-    desc: VJ Art engine project
-    path: ${HOME}/Workspace/InstruktAI/VJArt
-    discord_forum: 1475454894977585162
-  - name: Agents
-    desc: Global AI agents documentation and directives
-    path: ${HOME}/.agents
-    discord_forum: 1475454895959048234
-  - name: Claude Config
-    desc: Claude global config
-    path: ${HOME}/.claude
-    discord_forum: 1475454896949166082
-  - name: CODEX Config
-    desc: CODEX global config
-    path: ${HOME}/.codex
-    discord_forum: 1475454899251843103
-  - name: Gemini Config
-    desc: Gemini global config
-    path: ${HOME}/.gemini
-    discord_forum: 1475454900719714419
-  - name: InstruktAI logger
-    desc: Better logging for AI
-    path: ${HOME}/Workspace/InstruktAI/python-logger
-    discord_forum: 1475454902447902862
-  - name: IndieComics
-    desc: AI-powered comics projects
-    path: ${HOME}/Workspace/InstruktAI/indie-comics
-    discord_forum: 1475454903894933604
-  - name: Snuffz
-    desc: AI-powered hacking platform
-    path: ${HOME}/Workspace/morriz/snuffz
-    discord_forum: 1475454905505415279
-  - name: crypto-ai
-    desc: AI-powered crypto trading platform
-    path: ${HOME}/Workspace/InstruktAI/crypto-ai
-    discord_forum: 1475454907216691344
-  - name: StoryTrail
-    desc: AI solutions for StoryTrail storytelling city tours
-    path: ${HOME}/Workspace/StadsAvonturen/StoryTrail
-    discord_forum: 1475454908760064121
-  - name: AmsterdamCanvas
-    desc: AI solutions for Amsterdam Canvas art supplies
-    path: ${HOME}/Workspace/StadsAvonturen/AmsterdamCanvas
-    discord_forum: 1475454909905240084
-  - name: Het Gordjn Atelier
-    path: /Users/Morriz/Workspace/customers/HetGordjnAtelier
-    discord_forum: 1489318615340552212
-  - name: BookKeeping
-    desc: Moz AI bookkeeping
-    path: ${HOME}/Library/CloudStorage/GoogleDrive-mauricefaber.nl@gmail.com/My Drive/Bookkeeping
-    discord_forum: 1475454911138234549
-  - name: OtoMo
-    desc: Moz personal AI
-    path: ${HOME}/OtoMo
-    discord_forum: 1475454912237142100
+    - name: TeleClaude
+      desc: AI-powered multi-agent orchestration platform
+      path: ${HOME}/Workspace/InstruktAI/TeleClaude
+      discord_forum: 1475519670646870248
+    - name: Morriz' HOME
+      desc: Morriz' home where most config lives
+      path: ${HOME}
+      discord_forum: 1475454885335142441
+    - name: Morriz' development
+      desc: Morriz' dev projects manager and full stack developer
+      path: ${HOME}/Workspace/morriz
+      discord_forum: 1475454886383456297
+    - name: Morriz' dotfiles
+      desc: Morriz' dotfiles and configuration files
+      path: ${HOME}/Sync/dotfiles
+      discord_forum: 1475454887658655816
+    - name: InstruktAI development
+      desc: InstruktAI's dev projects manager and full stack developer
+      path: ${HOME}/Workspace/InstruktAI
+      discord_forum: 1475454892209471582
+    - name: itsUP
+      desc: Docker-based deployment platform
+      path: ${HOME}/Workspace/morriz/itsUP
+      discord_forum: 1475454893648117882
+    - name: VJArt
+      desc: VJ Art engine project
+      path: ${HOME}/Workspace/InstruktAI/VJArt
+      discord_forum: 1475454894977585162
+    - name: Agents
+      desc: Global AI agents documentation and directives
+      path: ${HOME}/.agents
+      discord_forum: 1475454895959048234
+    - name: Claude Config
+      desc: Claude global config
+      path: ${HOME}/.claude
+      discord_forum: 1475454896949166082
+    - name: CODEX Config
+      desc: CODEX global config
+      path: ${HOME}/.codex
+      discord_forum: 1475454899251843103
+    - name: Gemini Config
+      desc: Gemini global config
+      path: ${HOME}/.gemini
+      discord_forum: 1475454900719714419
+    - name: InstruktAI logger
+      desc: Better logging for AI
+      path: ${HOME}/Workspace/InstruktAI/python-logger
+      discord_forum: 1475454902447902862
+    - name: IndieComics
+      desc: AI-powered comics projects
+      path: ${HOME}/Workspace/InstruktAI/indie-comics
+      discord_forum: 1475454903894933604
+    - name: Snuffz
+      desc: AI-powered hacking platform
+      path: ${HOME}/Workspace/morriz/snuffz
+      discord_forum: 1475454905505415279
+    - name: crypto-ai
+      desc: AI-powered crypto trading platform
+      path: ${HOME}/Workspace/InstruktAI/crypto-ai
+      discord_forum: 1475454907216691344
+    - name: StoryTrail
+      desc: AI solutions for StoryTrail storytelling city tours
+      path: ${HOME}/Workspace/StadsAvonturen/StoryTrail
+      discord_forum: 1475454908760064121
+    - name: AmsterdamCanvas
+      desc: AI solutions for Amsterdam Canvas art supplies
+      path: ${HOME}/Workspace/StadsAvonturen/AmsterdamCanvas
+      discord_forum: 1475454909905240084
+    - name: Het Gordjn Atelier
+      path: /Users/Morriz/Workspace/customers/HetGordjnAtelier
+      discord_forum: 1489318615340552212
+    - name: BookKeeping
+      desc: Moz AI bookkeeping
+      path: ${HOME}/Library/CloudStorage/GoogleDrive-mauricefaber.nl@gmail.com/My Drive/Bookkeeping
+      discord_forum: 1475454911138234549
+    - name: OtoMo
+      desc: Moz personal AI
+      path: ${HOME}/OtoMo
+      discord_forum: 1475454912237142100
 telegram:
   trusted_bots:
-  - MoreaseBot
-  - MozPiBot
-  - MozRasPi4Bot
+    - MoreaseBot
+    - MozPiBot
+    - MozRasPi4Bot
 discord:
   enabled: true
   token: ${DISCORD_BOT_TOKEN}
@@ -111,8 +111,8 @@ discord:
     projects_mozbook: 1477420655384465579
 business:
   domains:
-  - software-development
-  - creative
+    - software-development
+    - creative
 agents:
   default: claude
   claude:
@@ -124,8 +124,8 @@ agents:
 stt:
   enabled: true
   service_priority:
-  - parakeet
-  - openai
+    - parakeet
+    - openai
   services:
     parakeet:
       enabled: true
@@ -135,13 +135,13 @@ stt:
 tts:
   enabled: false
   service_priority:
-  - voxcpm
-  - kokoro
-  - qwen3
-  - openai
-  - elevenlabs
-  - macos
-  - pyttsx3
+    - voxcpm
+    - kokoro
+    - qwen3
+    - openai
+    - elevenlabs
+    - macos
+    - pyttsx3
   events:
     session_start:
       enabled: true
@@ -157,159 +157,159 @@ tts:
         cfg_scale: 3.0
         ddpm_steps: 15
       voices:
-      - name: narrator
-        params:
-          temperature: 0.1
-          speed: 0.9
-      - name: reporter
-        params:
-          temperature: 0.1
-          speed: 1.1
-      - name: excited
-        params:
-          temperature: 0.1
-          speed: 1.2
-      - name: narrator-2
-        params:
-          temperature: 0.2
-          speed: 0.9
-      - name: reporter-2
-        params:
-          temperature: 0.2
-          speed: 1.1
-      - name: excited-2
-        params:
-          temperature: 0.2
-          speed: 1.2
-      - name: narrator-3
-        params:
-          temperature: 0.3
-          speed: 0.9
-      - name: reporter-3
-        params:
-          temperature: 0.3
-          speed: 1.1
-      - name: excited-3
-        params:
-          temperature: 0.3
-          speed: 1.2
+        - name: narrator
+          params:
+            temperature: 0.1
+            speed: 0.9
+        - name: reporter
+          params:
+            temperature: 0.1
+            speed: 1.1
+        - name: excited
+          params:
+            temperature: 0.1
+            speed: 1.2
+        - name: narrator-2
+          params:
+            temperature: 0.2
+            speed: 0.9
+        - name: reporter-2
+          params:
+            temperature: 0.2
+            speed: 1.1
+        - name: excited-2
+          params:
+            temperature: 0.2
+            speed: 1.2
+        - name: narrator-3
+          params:
+            temperature: 0.3
+            speed: 0.9
+        - name: reporter-3
+          params:
+            temperature: 0.3
+            speed: 1.1
+        - name: excited-3
+          params:
+            temperature: 0.3
+            speed: 1.2
     kokoro:
       enabled: true
       model: mlx-community/Kokoro-82M-bf16
       voices:
-      - name: adam
-        voice_id: am_adam
-      - name: echo
-        voice_id: am_echo
-      - name: eric
-        voice_id: am_eric
-      - name: fenrir
-        voice_id: am_fenrir
-      - name: liam
-        voice_id: am_liam
-      - name: michael
-        voice_id: am_michael
-      - name: onyx
-        voice_id: am_onyx
-      - name: puck
-        voice_id: am_puck
-      - name: alloy
-        voice_id: af_alloy
-      - name: aoede
-        voice_id: af_aoede
-      - name: bella
-        voice_id: af_bella
-      - name: heart
-        voice_id: af_heart
-      - name: jessica
-        voice_id: af_jessica
-      - name: kore
-        voice_id: af_kore
-      - name: nova
-        voice_id: af_nova
-      - name: river
-        voice_id: af_river
-      - name: sarah
-        voice_id: af_sarah
-      - name: sky
-        voice_id: af_sky
-      - name: alice
-        voice_id: bf_alice
-      - name: emma
-        voice_id: bf_emma
-      - name: isabella
-        voice_id: bf_isabella
-      - name: lily
-        voice_id: bf_lily
-      - name: daniel
-        voice_id: bm_daniel
-      - name: fable
-        voice_id: bm_fable
-      - name: george
-        voice_id: bm_george
-      - name: lewis
-        voice_id: bm_lewis
+        - name: adam
+          voice_id: am_adam
+        - name: echo
+          voice_id: am_echo
+        - name: eric
+          voice_id: am_eric
+        - name: fenrir
+          voice_id: am_fenrir
+        - name: liam
+          voice_id: am_liam
+        - name: michael
+          voice_id: am_michael
+        - name: onyx
+          voice_id: am_onyx
+        - name: puck
+          voice_id: am_puck
+        - name: alloy
+          voice_id: af_alloy
+        - name: aoede
+          voice_id: af_aoede
+        - name: bella
+          voice_id: af_bella
+        - name: heart
+          voice_id: af_heart
+        - name: jessica
+          voice_id: af_jessica
+        - name: kore
+          voice_id: af_kore
+        - name: nova
+          voice_id: af_nova
+        - name: river
+          voice_id: af_river
+        - name: sarah
+          voice_id: af_sarah
+        - name: sky
+          voice_id: af_sky
+        - name: alice
+          voice_id: bf_alice
+        - name: emma
+          voice_id: bf_emma
+        - name: isabella
+          voice_id: bf_isabella
+        - name: lily
+          voice_id: bf_lily
+        - name: daniel
+          voice_id: bm_daniel
+        - name: fable
+          voice_id: bm_fable
+        - name: george
+          voice_id: bm_george
+        - name: lewis
+          voice_id: bm_lewis
     qwen3:
       enabled: true
       model: mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
       voices:
-      - name: serena
-      - name: uncle_fu
-      - name: aiden
-      - name: sohee
-      - name: eric
-      - name: dylan
+        - name: serena
+        - name: uncle_fu
+        - name: aiden
+        - name: sohee
+        - name: eric
+        - name: dylan
     elevenlabs:
       enabled: true
       voices:
-      - name: Rachel
-        voice_id: 21m00Tcm4TlvDq8ikWAM
-      - name: George
-        voice_id: JBFqnCBsd6RMkjVDRZzb
-      - name: Matilda
-        voice_id: XrExE9yKIg1WjnnlVkGX
-      - name: Adam
-        voice_id: pNInz6obpgDQGcFmaJgB
-      - name: Charlotte
-        voice_id: XB0fDUnXU5powFXDhCwa
-      - name: Brian
-        voice_id: nPczCjzI2devNBz1zQrb
-      - name: Dorothy
-        voice_id: ThT5KcBeYPX3keUQqHPh
-      - name: Charlie
-        voice_id: IKne3meq5aSn9XLyUdCD
-      - name: James
-        voice_id: ZQe5CZNOzWyzPSCn5a3c
-      - name: Lily
-        voice_id: pFZP5JQG7iQjIQuC4Bku
-      - name: Antoni
-        voice_id: ErXwobaYiN019PkySvjV
-      - name: Grace
-        voice_id: oWAxZDx7w5VEj9dCyTzz
+        - name: Rachel
+          voice_id: 21m00Tcm4TlvDq8ikWAM
+        - name: George
+          voice_id: JBFqnCBsd6RMkjVDRZzb
+        - name: Matilda
+          voice_id: XrExE9yKIg1WjnnlVkGX
+        - name: Adam
+          voice_id: pNInz6obpgDQGcFmaJgB
+        - name: Charlotte
+          voice_id: XB0fDUnXU5powFXDhCwa
+        - name: Brian
+          voice_id: nPczCjzI2devNBz1zQrb
+        - name: Dorothy
+          voice_id: ThT5KcBeYPX3keUQqHPh
+        - name: Charlie
+          voice_id: IKne3meq5aSn9XLyUdCD
+        - name: James
+          voice_id: ZQe5CZNOzWyzPSCn5a3c
+        - name: Lily
+          voice_id: pFZP5JQG7iQjIQuC4Bku
+        - name: Antoni
+          voice_id: ErXwobaYiN019PkySvjV
+        - name: Grace
+          voice_id: oWAxZDx7w5VEj9dCyTzz
     openai:
       enabled: true
       voices:
-      - name: alloy
-      - name: echo
-      - name: fable
-      - name: nova
-      - name: onyx
-      - name: shimmer
+        - name: alloy
+        - name: echo
+        - name: fable
+        - name: nova
+        - name: onyx
+        - name: shimmer
     macos:
       enabled: true
       voices:
-      - name: Samantha (Enhanced)
-      - name: Daniel (Enhanced)
-      - name: Ava (Premium)
-      - name: Nathan (Enhanced)
-      - name: Serena (Premium)
-      - name: Tom (Enhanced)
-      - name: Moira (Enhanced)
-      - name: Karen (Premium)
-      - name: Oliver (Enhanced)
-      - name: Jamie (Premium)
-      - name: Rishi (Enhanced)
-      - name: Zoe (Premium)
+        - name: Samantha (Enhanced)
+        - name: Daniel (Enhanced)
+        - name: Ava (Premium)
+        - name: Nathan (Enhanced)
+        - name: Serena (Premium)
+        - name: Tom (Enhanced)
+        - name: Moira (Enhanced)
+        - name: Karen (Premium)
+        - name: Oliver (Enhanced)
+        - name: Jamie (Premium)
+        - name: Rishi (Enhanced)
+        - name: Zoe (Premium)
     pyttsx3:
       enabled: true
       voices: []
@@ -333,10 +333,5 @@ redis:
   message_stream_maxlen: 10000
   output_stream_maxlen: 10000
   output_stream_ttl: 3600
-ui:
-  animations_enabled: true
-  animations_periodic_interval: 60
-  animations_subset: []
 chiptunes:
-  enabled: true
-  paused: true
+  volume: 0.8
