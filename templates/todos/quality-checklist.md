@@ -23,14 +23,47 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
+Procedure: `software-development/procedure/lifecycle/work/review`
+
+### Scope & completeness
+
+- [ ] All implementation-plan tasks checked (`[x]`); unchecked = REQUEST CHANGES
 - [ ] Deferrals justified and not hiding required scope
-- [ ] Findings written in `review-findings.md`
-- [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
-- [ ] Test coverage and regression risk assessed
-- [ ] User-facing verification evidence reviewed
-- [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
+- [ ] Requirements traced to implemented behavior — no gold-plating, no gaps
+
+### Review lanes executed
+
+Every lane whose trigger fires must produce a section in `review-findings.md` — even "No findings."
+
+| Lane           | Trigger                     | Done |
+| -------------- | --------------------------- | :--: |
+| **scope**      | Always                      | [ ]  |
+| **code**       | Always                      | [ ]  |
+| **paradigm**   | Always                      | [ ]  |
+| **principles** | Always                      | [ ]  |
+| **security**   | Always                      | [ ]  |
+| **tests**      | Always                      | [ ]  |
+| **errors**     | Always                      | [ ]  |
+| **types**      | Types added/modified        | [ ]  |
+| **comments**   | Code changed                | [ ]  |
+| **logging**    | Always                      | [ ]  |
+| **docs**       | CLI, config, or API changed | [ ]  |
+| **simplify**   | After other lanes pass      | [ ]  |
+
+### Quality gates
+
+- [ ] Zero-finding justification included if 0 Important+ findings (paradigm evidence, requirement validation, copy-paste check, security evidence)
+- [ ] User-facing verification evidence reviewed (or gap recorded as finding)
+- [ ] Browser-based frontend or web UI changes verified with Playwright during review (or gap recorded as finding)
+- [ ] Test specs: no assertions weakened or deleted vs. spec delivery commit
+- [ ] Auto-remediation stays within boundaries (no scope changes, no new arch decisions, no missing-test patches)
+
+### Verdict
+
+- [ ] Findings written in `review-findings.md` with structured severity sections
+- [ ] Verdict is arithmetic: unresolved Critical or Important > 0 → REQUEST CHANGES; both 0 → APPROVE
+- [ ] Verdict stamped via `telec todo stamp {slug} --verdict approve|changes_requested --phase build_review`
+- [ ] Summary and verdict reported to caller
 
 ## Finalize Gates (Finalizer)
 
