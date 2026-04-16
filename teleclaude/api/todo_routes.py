@@ -38,6 +38,9 @@ from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
+from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -558,9 +561,28 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
 
     if stamp_type == "finalize_ready":
         try:
-            await asyncio.to_thread(stamp_finalize_ready, effective_cwd, slug)
+            state = await asyncio.to_thread(stamp_finalize_ready, effective_cwd, slug)
         except RuntimeError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        finalize_raw = state.get("finalize")
+        finalize: dict[str, StateValue] = finalize_raw if isinstance(finalize_raw, dict) else {}
+        sha = str(finalize.get("sha", ""))
+        worker_session_id = str(finalize.get("worker_session_id", ""))
+        await emit_event(
+            event="domain.software-development.planning.todo_finalize_ready",
+            source=f"finalizer/{worker_session_id or 'unknown'}",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            visibility=EventVisibility.LOCAL,
+            entity=slug,
+            description=f"Finalize ready for {slug} (sha {sha[:8]})",
+            payload={
+                "slug": slug,
+                "branch": slug,
+                "sha": sha,
+                "worker_session_id": worker_session_id,
+            },
+        )
         return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
 
     todos_db = await _get_todos_db_from_cwd(effective_cwd)

@@ -8,7 +8,6 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -30,8 +29,6 @@ from teleclaude.core.next_machine.file_io import (
     read_text_sync,
     write_text_sync,
 )
-from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_main_repo_root
 from teleclaude.types.todos import TodoState
 
@@ -296,46 +293,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylin
         handed_off_at=now,
         handoff_session_id=worker_session_id,
     )
-    result = writer.commit_sync(db, slug)
-
-    _emit_finalize_ready_event(slug, branch_head, worker_session_id)
-
-    return result
-
-
-def _emit_finalize_ready_event(slug: str, sha: str, worker_session_id: str) -> None:
-    """Fire-and-forget todo_finalize_ready event (threadsafe).
-
-    Called from a sync context (asyncio.to_thread). Schedules the async
-    emit on the running event loop via run_coroutine_threadsafe.
-    """
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        logger.debug("no running loop, skipping finalize_ready emit for %s", slug)
-        return
-
-    async def _emit() -> None:
-        try:
-            await emit_event(
-                event="domain.software-development.planning.todo_finalize_ready",
-                source=f"finalizer/{worker_session_id or 'unknown'}",
-                level=EventLevel.WORKFLOW,
-                domain="software-development",
-                visibility=EventVisibility.LOCAL,
-                entity=slug,
-                description=f"Finalize ready for {slug} (sha {sha[:8]})",
-                payload={
-                    "slug": slug,
-                    "branch": slug,
-                    "sha": sha,
-                    "worker_session_id": worker_session_id,
-                },
-            )
-        except RuntimeError:
-            logger.debug("producer not configured, skipping finalize_ready emit for %s", slug)
-
-    asyncio.run_coroutine_threadsafe(_emit(), loop)
+    return writer.commit_sync(db, slug)
 
 
 _QUALITY_CHECKLIST_TEMPLATE = """\
