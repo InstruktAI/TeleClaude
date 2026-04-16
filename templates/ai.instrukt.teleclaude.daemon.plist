@@ -16,6 +16,8 @@
     <dict>
         <key>PATH</key>
         <string>.venv/bin:{{PATH}}</string>
+        <key>UV_NO_SYNC</key>
+        <string>1</string>
     </dict>
     <key>SoftResourceLimits</key>
     <dict>

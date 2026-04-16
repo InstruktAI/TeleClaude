@@ -17,4 +17,8 @@ while [ -L "$SOURCE" ]; do
 done
 
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
+# Block `uv run`'s implicit venv sync. Ambient sync while TeleClaude's daemon
+# holds modules loaded causes stale-module ImportError crashes. Explicit
+# `uv sync` (install.sh, dependency_upgrade job) still works.
+export UV_NO_SYNC=1
 exec uv run --directory "$INSTALL_DIR" --quiet python -m teleclaude.cli.telec "$@"

@@ -133,6 +133,11 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
         # alone does not advertise truecolor.
         effective_env_vars["COLORTERM"] = "truecolor"
 
+        # Prevent `uv run` from auto-syncing the project venv inside worker
+        # sessions. Ambient sync while the daemon holds modules loaded causes
+        # stale-module ImportError crashes. Explicit `uv sync` still works.
+        effective_env_vars["UV_NO_SYNC"] = "1"
+
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:

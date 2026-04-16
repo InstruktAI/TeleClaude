@@ -14,6 +14,8 @@
     <dict>
       <key>PATH</key>
       <string>{{PATH}}</string>
+      <key>UV_NO_SYNC</key>
+      <string>1</string>
     </dict>
     <key>WatchPaths</key>
     <array>

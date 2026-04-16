@@ -91,6 +91,8 @@ def _install_launchd_watch(project_root: Path) -> None:
     <dict>
       <key>PATH</key>
       <string>{launchd_path}</string>
+      <key>UV_NO_SYNC</key>
+      <string>1</string>
     </dict>
     <key>KeepAlive</key>
     <true/>
