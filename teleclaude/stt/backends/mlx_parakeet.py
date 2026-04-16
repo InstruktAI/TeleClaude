@@ -150,29 +150,29 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
         if not self._cli_bin:
             raise RuntimeError("Parakeet CLI unavailable")
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as output_file:
-            output_path = output_file.name
+        # mlx_audio CLI appends ".{format}" to --output-path, so we pass a base
+        # path without an extension and read from "{base}.json".
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_base = str(Path(tmpdir) / "transcript")
+            cmd = [
+                self._cli_bin,
+                "--model",
+                self._model_ref,
+                "--audio",
+                audio_file_path,
+                "--output-path",
+                output_base,
+                "--format",
+                "json",
+            ]
+            if language:
+                cmd.extend(["--language", language])
 
-        cmd = [
-            self._cli_bin,
-            "--model",
-            self._model_ref,
-            "--audio",
-            audio_file_path,
-            "--output-path",
-            output_path,
-            "--format",
-            "json",
-        ]
-        if language:
-            cmd.extend(["--language", language])
-
-        try:
             result = subprocess.run(cmd, check=False, capture_output=True, text=True)
             if result.returncode:
                 raise RuntimeError(f"Parakeet CLI failed: {(result.stderr or result.stdout).strip()}")
 
-            output_json = Path(output_path)
+            output_json = Path(f"{output_base}.json")
             payload = output_json.read_text(encoding="utf-8").strip() if output_json.exists() else ""
             if not payload:
                 payload = result.stdout.strip()
@@ -185,5 +185,3 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
                 raise RuntimeError("Parakeet CLI output did not contain transcription text")
             logger.debug("Parakeet STT: transcribed %d chars (CLI fallback)", len(text))
             return text
-        finally:
-            Path(output_path).unlink(missing_ok=True)

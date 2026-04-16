@@ -35,6 +35,33 @@ async def test_transcribe_uses_cli_fallback_when_cli_bin_is_available(
     assert result == "sample.wav:en"
 
 
+async def test_transcribe_cli_reads_from_format_suffixed_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """Regression: mlx_audio CLI appends .{format} to --output-path; reader must follow."""
+    cli_bin = tmp_path / "mlx_audio.stt.generate"
+    # Fake CLI: parses --output-path, writes JSON to "{output_path}.json" (matches upstream behavior).
+    cli_bin.write_text(
+        "#!/bin/sh\n"
+        "while [ $# -gt 0 ]; do\n"
+        '  case "$1" in\n'
+        '    --output-path) OUT="$2"; shift 2 ;;\n'
+        "    *) shift ;;\n"
+        "  esac\n"
+        "done\n"
+        'printf \'{"text": "hello world"}\' > "${OUT}.json"\n',
+        encoding="utf-8",
+    )
+    cli_bin.chmod(0o755)
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"audio")
+    monkeypatch.setenv(mlx_parakeet.CLI_BIN_ENV_VAR, str(cli_bin))
+    monkeypatch.setattr(mlx_parakeet, "resolve_model_ref", lambda value: "mlx-community/parakeet")
+    backend = mlx_parakeet.MLXParakeetBackend()
+
+    result = await backend.transcribe(str(audio_path), language="en")
+
+    assert result == "hello world"
+
+
 async def test_transcribe_raises_runtime_error_when_backend_cannot_initialize(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
