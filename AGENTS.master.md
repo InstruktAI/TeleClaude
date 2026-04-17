@@ -17,9 +17,11 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 - **Agent restart:** tmux `bind R` triggers agent restart via the daemon API.
 - See `~/Sync/dotfiles/terminal/AGENTS.md` for full architecture.
 
-## Database
+## Databases
 
-The database is at `~/.teleclaude/teleclaude.db` (resolved from `config.database.path`). Mirrors are in `~/.teleclaude/mirrors.db` (separate database). Never guess the path — use `config.database.path` for the main DB.
+- **Daemon DB:** `~/.teleclaude/teleclaude.db` (resolved from `config.database.path`) — sessions, operations, tokens, availability.
+- **Mirrors DB:** `~/.teleclaude/mirrors.db` — transcript mirrors, used by `telec history search`. Separate database.
+- **Todos DB:** `{project_root}/.teleclaude/todos.db` — per-project todo state, artifacts, and roadmap. One per project.
 
 ## Worktree-scoped quality checks
 

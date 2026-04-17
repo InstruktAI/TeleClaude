@@ -188,6 +188,7 @@ Yes. The People registry maps identities across platforms — one person, many a
 
 **What platforms does it run on?**
 macOS and Linux. The daemon runs via launchd on macOS, systemd on Linux. Any machine that can run Python 3.11+ and tmux can join the network.
+Sorry Windows users!
 
 ---
 

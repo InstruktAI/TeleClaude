@@ -281,6 +281,31 @@ async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_
     }
 
 
+async def test_update_session_coerces_last_projected_at_iso_to_datetime(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-002",
+        last_input_origin="telegram",
+        title="Projected",
+        session_id="sess-002",
+        emit_session_started=False,
+    )
+    projected_at = datetime(2026, 4, 17, 12, 0, 30, 609000, tzinfo=UTC)
+
+    await db.update_session(
+        "sess-002",
+        last_message_sent="hello again",
+        last_message_sent_at=projected_at,
+        last_projected_at=projected_at.isoformat(),
+    )
+
+    session = await db.get_session("sess-002")
+
+    assert session is not None
+    assert session.last_message_sent_at == projected_at
+    assert session.last_projected_at == projected_at
+
+
 async def test_digest_only_and_redundant_session_updates_skip_event_emission(db: Db) -> None:
     await db.create_session(
         computer_name="builder-mac",

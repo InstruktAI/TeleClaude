@@ -370,6 +370,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                         "last_activity",
                         "closed_at",
                         "last_message_sent_at",
+                        "last_projected_at",
                         "last_conversation_injected_at",
                         "last_output_at",
                         "last_tool_done_at",
