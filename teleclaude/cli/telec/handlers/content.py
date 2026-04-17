@@ -10,6 +10,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.content_scaffold import _resolve_author, create_content_inbox_entry
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
 
 __all__ = [
@@ -40,7 +41,7 @@ def _handle_content_dump(args: list[str]) -> None:
         return
 
     text, slug, tags, author = _parse_content_dump_args(args)
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
 
     if slug:
         # Validate and normalise provided slug

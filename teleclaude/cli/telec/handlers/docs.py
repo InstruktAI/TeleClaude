@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
 from teleclaude.config.loader import load_app_config
 from teleclaude.context_selector import build_context_output
 from teleclaude.core.identity import get_identity_resolver
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
     "_handle_docs",
@@ -46,7 +45,7 @@ def _handle_docs(args: list[str]) -> None:
 
 def _handle_docs_index(args: list[str]) -> None:
     """Handle telec docs index."""
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
     baseline_only = False
     third_party = False
     areas: list[str] = []
@@ -101,7 +100,7 @@ def _handle_docs_index(args: list[str]) -> None:
 
 def _handle_docs_get(args: list[str]) -> None:
     """Handle telec docs get."""
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
     snippet_ids: list[str] = []
 
     i = 0

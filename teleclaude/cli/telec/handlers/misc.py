@@ -16,6 +16,7 @@ from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.paths import REPO_ROOT
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
     "_attach_tmux_session",
@@ -71,7 +72,7 @@ def _git_short_commit_hash() -> str:
     from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 
     try:
-        repo = Repo(Path.cwd(), search_parent_directories=True)
+        repo = Repo(resolve_invocation_cwd(), search_parent_directories=True)
         short_hash = repo.head.commit.hexsha[:7]
         return short_hash if short_hash else "unknown"
     except (InvalidGitRepositoryError, NoSuchPathError, ValueError, OSError):
@@ -97,7 +98,7 @@ def _handle_version() -> None:
 
 def _handle_sync(args: list[str]) -> None:
     """Handle telec sync command."""
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
     warn_only = False
     validate_only = False
 
@@ -190,7 +191,7 @@ async def _revive_session_via_api(session_id: str, *, agent: str | None = None) 
     api = TelecAPIClient()
     await api.connect()
     try:
-        project = os.getcwd() if agent else None
+        project = str(resolve_invocation_cwd()) if agent else None
         return await api.revive_session(session_id, agent=agent, project=project)
     finally:
         await api.close()

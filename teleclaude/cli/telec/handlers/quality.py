@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.scope import get_project_languages, resolve_invocation_cwd, resolve_project_root
+from teleclaude.quality.scope import get_project_languages, resolve_project_root
 from teleclaude.quality.test_runner import TestRunner
 
 

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.cli.telec.help import _usage
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_invocation_cwd, resolve_main_repo_root
 from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
@@ -184,7 +184,7 @@ def _validate_slugs(*slugs: str | None) -> None:
 
 def _resolve_roadmap_project_root() -> Path:
     """Resolve the canonical project root for roadmap commands."""
-    return resolve_main_repo_root(Path.cwd())
+    return resolve_main_repo_root(resolve_invocation_cwd())
 
 
 def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments

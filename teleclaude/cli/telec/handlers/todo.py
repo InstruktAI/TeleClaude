@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import shlex
 import sys
-from pathlib import Path
 from typing import Literal
 
 from instrukt_ai_logging import get_logger
@@ -17,6 +16,7 @@ from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
     "_handle_todo",
@@ -52,7 +52,7 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
         print("Missing required argument: <slug>")
         raise SystemExit(1)
 
-    cwd = str(Path.cwd())
+    cwd = str(resolve_invocation_cwd())
     failed = 0
     for slug in slugs:
         try:
@@ -142,7 +142,7 @@ def _handle_todo_mark_phase(args: list[str]) -> None:
         print(_usage("todo", "mark-phase"))
         raise SystemExit(1)
 
-    exit_code = handle_mark_phase(slug=slug, phase=phase, cwd=str(Path.cwd()))
+    exit_code = handle_mark_phase(slug=slug, phase=phase, cwd=str(resolve_invocation_cwd()))
     if exit_code != 0:
         raise SystemExit(exit_code)
 
@@ -204,7 +204,7 @@ def _handle_todo_validate(args: list[str]) -> None:
     from teleclaude.resource_validation import validate_all_todos, validate_todo
 
     slug: str | None = None
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
 
     i = 0
     while i < len(args):
@@ -314,7 +314,7 @@ def _handle_todo_dump(args: list[str]) -> None:
         content=content,
         after=after,
         kind=dump_kind,
-        cwd=str(Path.cwd()),
+        cwd=str(resolve_invocation_cwd()),
     )
     result = tool_api_request(
         "POST",
@@ -341,7 +341,7 @@ def _handle_todo_dump(args: list[str]) -> None:
             level=EventLevel.WORKFLOW,
             domain="software-development",
             description=f"Todo dumped: {slug}",
-            payload={"slug": slug, "kind": event_kind, "project_root": str(Path.cwd())},
+            payload={"slug": slug, "kind": event_kind, "project_root": str(resolve_invocation_cwd())},
         )
         tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
     except Exception:
@@ -391,7 +391,7 @@ def _handle_todo_split(args: list[str]) -> None:
     result = tool_api_request(
         "POST",
         "/todos/split",
-        json_body={"slug": slug, "children": children, "cwd": str(Path.cwd())},
+        json_body={"slug": slug, "children": children, "cwd": str(resolve_invocation_cwd())},
         timeout=10.0,
     )
 
@@ -439,7 +439,7 @@ def _handle_todo_remove(args: list[str]) -> None:
     result = tool_api_request(
         "POST",
         "/todos/remove",
-        json_body={"slug": slug, "cwd": str(Path.cwd())},
+        json_body={"slug": slug, "cwd": str(resolve_invocation_cwd())},
         timeout=10.0,
     )
 
@@ -487,7 +487,7 @@ def _handle_todo_from_main(args: list[str]) -> None:
         print(_usage("todo", "from-main"))
         raise SystemExit(1)
 
-    project_root = str(Path.cwd())
+    project_root = str(resolve_invocation_cwd())
     try:
         output = create_from_main_skeleton(project_root, slug, description=description, all_files=all_files)
     except (ValueError, RuntimeError) as exc:
@@ -611,7 +611,7 @@ def _handle_artifacts_write(args: list[str]) -> None:
     result = tool_api_request(
         "POST",
         f"/todos/artifacts/{slug}/{name}",
-        json_body={"content": content, "cwd": str(Path.cwd())},
+        json_body={"content": content, "cwd": str(resolve_invocation_cwd())},
     )
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Wrote {name} for {slug}")
@@ -697,7 +697,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
     body: dict[str, str] = {
         "stamp_type": stamp_type,
         "value": value or "",
-        "cwd": str(Path.cwd()),
+        "cwd": str(resolve_invocation_cwd()),
     }
     if phase:
         body["phase"] = phase

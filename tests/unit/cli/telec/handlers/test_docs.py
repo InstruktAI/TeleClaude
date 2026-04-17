@@ -43,6 +43,7 @@ def test_handle_docs_index_builds_context_with_filters(
     received: list[ContextCall] = []
     mock_config = AppConfig(global_=GlobalConfig())
 
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         docs,
@@ -82,6 +83,7 @@ def test_handle_docs_get_splits_snippet_ids(
 ) -> None:
     received: list[ContextCall] = []
 
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
         docs,

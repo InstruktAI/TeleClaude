@@ -5,7 +5,6 @@ import subprocess
 import sys
 import time as _t
 from collections.abc import Callable
-from pathlib import Path
 
 from instrukt_ai_logging import InstruktAILogger, get_logger
 
@@ -139,6 +138,7 @@ from teleclaude.cli.tool_commands import (
 )
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.project_setup import init_project
 
 _BOOT = _t.monotonic()
@@ -363,7 +363,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.AGENTS: lambda: handle_agents(args),
         TelecCommand.CHANNELS: lambda: handle_channels(args),
         TelecCommand.OPERATIONS: lambda: handle_operations(args),
-        TelecCommand.INIT: lambda: init_project(Path.cwd()),
+        TelecCommand.INIT: lambda: init_project(resolve_invocation_cwd()),
         TelecCommand.VERSION: _handle_version,
         TelecCommand.SYNC: lambda: _handle_sync(args),
         TelecCommand.WATCH: lambda: _handle_watch(args),

@@ -12,6 +12,7 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
 
 _log = get_logger(__name__)
@@ -88,7 +89,7 @@ def _handle_bugs_create(args: list[str]) -> None:
 
     slug: str | None = None
     project_name: str | None = None
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
 
     i = 0
     while i < len(args):
@@ -144,7 +145,7 @@ def _handle_bugs_report(args: list[str]) -> None:
     slug: str | None = None
     body: str | None = None
     project_name: str | None = None
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
 
     i = 0
     while i < len(args):
@@ -210,7 +211,7 @@ def _handle_bugs_list(args: list[str]) -> None:
     """Handle telec bugs list — queries todos.db for bug-kind todos."""
     from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
-    project_root = Path.cwd()
+    project_root = resolve_invocation_cwd()
 
     i = 0
     while i < len(args):

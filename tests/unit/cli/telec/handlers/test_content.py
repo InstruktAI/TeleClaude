@@ -24,6 +24,7 @@ def test_handle_content_dump_creates_entry_and_emits_event(monkeypatch: pytest.M
     logger = MagicMock()
     emitted_timeouts: list[float] = []
 
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(content, "_resolve_author", lambda: "author@example.com")
     monkeypatch.setattr(content, "normalize_slug", lambda _slug: "normalized")
@@ -55,6 +56,7 @@ def test_handle_content_dump_survives_event_emit_failure(monkeypatch: pytest.Mon
     entry_dir = tmp_path / "content" / "entry-1"
     logger = MagicMock()
 
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(content, "_resolve_author", lambda: "author@example.com")
     monkeypatch.setattr(content, "create_content_inbox_entry", lambda *args, **kwargs: entry_dir)

@@ -150,6 +150,7 @@ class TestHandleTodoFromMain:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
         monkeypatch.chdir(tmp_path)
 
         with (
@@ -173,6 +174,7 @@ class TestHandleTodoFromMain:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
         monkeypatch.chdir(tmp_path)
 
         with (

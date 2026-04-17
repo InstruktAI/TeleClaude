@@ -140,9 +140,7 @@ class TestNonWorktreeFullSuite:
         runner = TestRunner(project_root=tmp_path)
         targets = runner.resolve_targets()
 
-        assert any("tests/unit" in str(t) for t in targets), (
-            f"Worktree targets do not include 'tests/unit': {targets}"
-        )
+        assert any("tests/unit" in str(t) for t in targets), f"Worktree targets do not include 'tests/unit': {targets}"
 
     def test_shared_branch_with_session_uses_companion_mapping(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -289,7 +287,7 @@ class TestVitestScoping:
             "teleclaude.quality.test_runner.resolve_session_scope",
             lambda _p: ["teleclaude/foo.py", "tests/unit/test_foo.py"],
         )
-        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args: 0)
+        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args, cwd=None: 0)
         monkeypatch.setattr(
             "teleclaude.quality.test_runner.get_project_languages",
             lambda _p: ["python", "typescript"],
@@ -325,7 +323,7 @@ class TestVitestScoping:
             "teleclaude.quality.test_runner.resolve_session_scope",
             lambda _p: ["teleclaude/foo.py", "frontend/app/bar.tsx"],
         )
-        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args: 0)
+        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args, cwd=None: 0)
         monkeypatch.setattr(
             "teleclaude.quality.test_runner.get_project_languages",
             lambda _p: ["python", "typescript"],
