@@ -60,12 +60,15 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
     return sorted(targets)
 
 
-def run_pytest(args: list[str]) -> int:
+def run_pytest(args: list[str], cwd: Path | None = None) -> int:
     """Run pytest with the given arguments. Returns exit code.
 
     Justified subprocess: pytest is an external tool invocation.
+    The cwd ensures pytest discovers tests and imports production code
+    from the correct project root (critical in worktrees with a
+    symlinked .venv).
     """
-    result = subprocess.run(["pytest", *args], check=False)
+    result = subprocess.run(["pytest", *args], cwd=str(cwd) if cwd else None, check=False)
     return result.returncode
 
 
@@ -156,7 +159,7 @@ class TestRunner:
         if targets is None:
             targets = self.resolve_targets()
         args = self.build_pytest_args(targets)
-        exit_code = run_pytest(args)
+        exit_code = run_pytest(args, cwd=self._project_root)
         if exit_code != 0:
             sys.exit(exit_code)
 
