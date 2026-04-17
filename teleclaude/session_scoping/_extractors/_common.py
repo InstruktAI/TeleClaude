@@ -49,7 +49,7 @@ def _normalize_workspace_path(path: str, workspace_root: str | None) -> str:
             candidate = candidate.relative_to(Path(workspace_root))
         except ValueError:
             return ""
-    return candidate.as_posix().lstrip("./")
+    return candidate.as_posix().removeprefix("./")
 
 
 def _extract_apply_patch_paths(patch_text: str, workspace_root: str | None) -> set[str]:

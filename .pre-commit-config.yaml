@@ -6,32 +6,32 @@ repos:
 - repo: local
   hooks:
   - id: format
-    name: Format (telec lint --step ruff_format)
-    entry: telec lint --step ruff_format
+    name: Format (telec code lint --step ruff_format)
+    entry: telec code lint --step ruff_format
     language: system
     types: [python]
     pass_filenames: true
     require_serial: true
   - id: guardrails
-    name: Guardrail enforcement (telec lint --step guardrails)
-    entry: telec lint --step guardrails
+    name: Guardrail enforcement (telec code lint --step guardrails)
+    entry: telec code lint --step guardrails
     language: system
     pass_filenames: true
   - id: ruff-check
-    name: Ruff check (telec lint --step ruff_check)
-    entry: telec lint --step ruff_check
+    name: Ruff check (telec code lint --step ruff_check)
+    entry: telec code lint --step ruff_check
     language: system
     types: [python]
     pass_filenames: true
   - id: typecheck
-    name: Type checking (telec lint --step pyright)
-    entry: telec lint --step pyright
+    name: Type checking (telec code lint --step pyright)
+    entry: telec code lint --step pyright
     language: system
     types: [python]
     pass_filenames: true
   - id: markdown-validate
-    name: Markdown validation (telec lint --step markdown)
-    entry: telec lint --step markdown
+    name: Markdown validation (telec code lint --step markdown)
+    entry: telec code lint --step markdown
     language: system
     files: \.(md|yaml)$
     pass_filenames: false
