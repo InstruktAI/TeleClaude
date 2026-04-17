@@ -222,7 +222,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="daemon code",
         include_patterns=["teleclaude/**/*.py"],
-        exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/**", "teleclaude/utils/**"],
+        exclude_patterns=["teleclaude/hooks/**", "teleclaude/cli/**", "teleclaude/utils/**", "teleclaude/quality/**"],
         instruction="Run `make restart` then `make status`",
         evidence_substrings=["make restart"],
         main_only=True,

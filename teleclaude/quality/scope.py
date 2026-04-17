@@ -67,6 +67,24 @@ def resolve_session_scope(project_root: Path) -> list[str]:
     # Filter to files that exist on disk — session transcripts may reference
     # example paths from docstrings that aren't real files.
     existing = [f for f in sorted(touched) if (project_root / f).exists()]
+
+    # Intersect with git-dirty files — only include files that are actually
+    # modified or untracked. Touched files that were already committed or
+    # reverted are not actionable.
+    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
+
+    try:
+        repo = Repo(str(project_root))
+        status = repo.git.status("--porcelain")
+        dirty = set()
+        for line in status.splitlines():
+            if len(line) > 3:
+                dirty.add(line[3:].strip())
+        if dirty:
+            existing = [f for f in existing if f in dirty]
+    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+        pass  # If git fails, return all existing files as fallback
+
     return existing
 
 
