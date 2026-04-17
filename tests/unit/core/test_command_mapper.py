@@ -13,6 +13,7 @@ from teleclaude.types.commands import (
     CreateSessionCommand,
     KeysCommand,
     ProcessMessageCommand,
+    ResumeAgentCommand,
     StartAgentCommand,
 )
 
@@ -54,6 +55,20 @@ class TestCommandMapperTelegram:
         cmd = CommandMapper.map_telegram_input("agent", ["claude"], metadata, "sess-1")
         assert isinstance(cmd, StartAgentCommand)
         assert cmd.agent_name == "claude"
+
+    @pytest.mark.unit
+    def test_agent_event_carries_origin(self):
+        metadata = MessageMetadata(origin="discord")
+        cmd = CommandMapper.map_telegram_input("agent", ["claude"], metadata, "sess-1")
+        assert isinstance(cmd, StartAgentCommand)
+        assert cmd.origin == "discord"
+
+    @pytest.mark.unit
+    def test_agent_resume_event_carries_origin(self):
+        metadata = MessageMetadata(origin="telegram")
+        cmd = CommandMapper.map_telegram_input("agent_resume", [], metadata, "sess-1")
+        assert isinstance(cmd, ResumeAgentCommand)
+        assert cmd.origin == "telegram"
 
     @pytest.mark.unit
     def test_exit_event_returns_close_session_command(self):

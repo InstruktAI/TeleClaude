@@ -445,3 +445,64 @@ class TestProcessMessage:
             source_message_id="msg-1",
             source_channel_id="chan-1",
         )
+
+
+class TestDeliverInboundReflectionBoundary:
+    """Inbound delivery does not emit immediate reflection — projection handles it."""
+
+    @pytest.mark.unit
+    async def test_deliver_inbound_does_not_call_broadcast_user_input(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inbound reflection is projection-driven, not acceptance-driven.
+
+        deliver_inbound sets operational metadata (last_message_sent_at, last_input_origin)
+        but does NOT call broadcast_user_input — that is projection's responsibility.
+        """
+        session = make_session()
+        row = make_row(session_id=session.session_id, content="hello", origin="telegram")
+        client = AsyncMock()
+
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
+        )
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        client.broadcast_user_input.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_deliver_inbound_does_not_write_last_projected_at(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Acceptance code must not advance the projection watermark."""
+        session = make_session()
+        row = make_row(session_id=session.session_id, content="hello", origin="telegram")
+        client = AsyncMock()
+
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
+        )
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        for call in db.update_session.await_args_list:
+            assert "last_projected_at" not in call.kwargs, (
+                "deliver_inbound must not write last_projected_at — projection owns the watermark"
+            )

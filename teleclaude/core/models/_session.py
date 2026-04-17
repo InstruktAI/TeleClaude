@@ -116,6 +116,7 @@ class SessionField(Enum):
     SUBDIR = "subdir"
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
+    LAST_PROJECTED_AT = "last_projected_at"
     LAST_CONVERSATION_INJECTED_AT = "last_conversation_injected_at"
     LAST_OUTPUT_RAW = "last_output_raw"
     LAST_OUTPUT_AT = "last_output_at"
@@ -190,6 +191,8 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             data["last_activity"] = self.last_activity.isoformat()
         if self.last_message_sent_at:
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
+        if self.last_projected_at:
+            data["last_projected_at"] = self.last_projected_at.isoformat()
         if self.last_conversation_injected_at:
             data["last_conversation_injected_at"] = self.last_conversation_injected_at.isoformat()
         if self.last_output_at:
@@ -237,6 +240,13 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             parse_iso_datetime(last_message_sent_at_raw)
             if isinstance(last_message_sent_at_raw, str)
             else last_message_sent_at_raw
+        )
+
+        last_projected_at_raw = data.get("last_projected_at")
+        last_projected_at = (
+            parse_iso_datetime(last_projected_at_raw)
+            if isinstance(last_projected_at_raw, str)
+            else last_projected_at_raw
         )
 
         last_conversation_injected_at_raw = data.get("last_conversation_injected_at")
@@ -325,6 +335,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             last_message_sent_at=ensure_utc(last_message_sent_at)
             if isinstance(last_message_sent_at, datetime)
             else None,
+            last_projected_at=ensure_utc(last_projected_at) if isinstance(last_projected_at, datetime) else None,
             last_conversation_injected_at=ensure_utc(last_conversation_injected_at)
             if isinstance(last_conversation_injected_at, datetime)
             else None,

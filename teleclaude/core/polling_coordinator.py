@@ -510,14 +510,15 @@ async def _project_user_reflection(
         return session
 
     transcript_dt = transcript_ts.astimezone(UTC) if isinstance(transcript_ts, datetime) else None
-    current_dt = (
-        session.last_message_sent_at.astimezone(UTC) if isinstance(session.last_message_sent_at, datetime) else None
+    # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
+    watermark_dt = (
+        session.last_projected_at.astimezone(UTC) if isinstance(session.last_projected_at, datetime) else None
     )
     transcript_iso = transcript_dt.isoformat() if transcript_dt is not None else None
-    current_iso = current_dt.isoformat() if current_dt is not None else None
-    if current_dt is not None and transcript_dt is not None and transcript_dt <= current_dt:
+    watermark_iso = watermark_dt.isoformat() if watermark_dt is not None else None
+    if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
         return session
-    if transcript_iso == current_iso:
+    if transcript_iso == watermark_iso:
         return session
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
@@ -533,6 +534,7 @@ async def _project_user_reflection(
             session.session_id,
             last_message_sent=user_text[:200],
             last_message_sent_at=transcript_iso,
+            last_projected_at=transcript_iso,
         )
     else:
         await db.update_session(

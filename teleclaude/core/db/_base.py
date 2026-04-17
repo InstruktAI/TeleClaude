@@ -78,6 +78,9 @@ class DbBase:
             tui_capture_started=bool(row.tui_capture_started) if row.tui_capture_started is not None else False,
             last_message_sent=row.last_message_sent,
             last_message_sent_at=DbBase._coerce_datetime(row.last_message_sent_at),
+            last_projected_at=DbBase._coerce_datetime(
+                row.last_projected_at if hasattr(row, "last_projected_at") else None
+            ),
             last_conversation_injected_at=DbBase._coerce_datetime(row.last_conversation_injected_at),
             last_output_raw=row.last_output_raw,
             last_output_at=DbBase._coerce_datetime(row.last_output_at),

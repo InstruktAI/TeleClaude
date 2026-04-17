@@ -755,22 +755,10 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         handler: Callable[[], Awaitable[object]],
     ) -> object:
         """Run command with UI pre/post handling and broadcast to other adapters."""
-        if metadata.origin and metadata.origin in self.client.adapters:
-            await db.update_session(session.session_id, last_input_origin=metadata.origin)
-
         if message_id:
             await self.client.pre_handle_command(session, metadata.origin)
 
         result = await handler()
-
-        if command_name == "send_message":
-            text_obj = payload.get("text")
-            if text_obj is not None:
-                await db.update_session(
-                    session.session_id,
-                    last_message_sent=str(text_obj)[:200],
-                    last_message_sent_at=datetime.now(UTC).isoformat(),
-                )
 
         if message_id:
             await self.client.post_handle_command(session, message_id, metadata.origin)

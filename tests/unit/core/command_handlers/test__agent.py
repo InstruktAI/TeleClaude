@@ -116,6 +116,25 @@ class TestStartAgent:
             True,
         )
 
+    @pytest.mark.unit
+    async def test_start_agent_records_last_input_origin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Acceptance boundary: start_agent writes last_input_origin from cmd.origin."""
+        session = make_session()
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session), update_session=AsyncMock())
+        client = SimpleNamespace(send_message=AsyncMock())
+        execute_terminal_command = AsyncMock(return_value=True)
+
+        patch_handler_db(monkeypatch, db)
+        monkeypatch.setattr(_agent, "assert_agent_enabled", lambda agent_name: agent_name)
+        monkeypatch.setattr(_agent, "get_agent_command", MagicMock(return_value="claude-cli"))
+
+        cmd = StartAgentCommand(session_id=session.session_id, agent_name="claude", origin="telegram")
+
+        await _agent.start_agent.__wrapped__(session, cmd, client, execute_terminal_command)
+
+        final_update = db.update_session.await_args_list[-1]
+        assert final_update.kwargs["last_input_origin"] == "telegram"
+
 
 class TestResumeAgent:
     @pytest.mark.unit
@@ -148,6 +167,25 @@ class TestResumeAgent:
             profile="default",
         )
         execute_terminal_command.assert_awaited_once_with(session.session_id, "codex resume", None, True)
+
+    @pytest.mark.unit
+    async def test_resume_agent_records_last_input_origin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Acceptance boundary: resume_agent writes last_input_origin from cmd.origin."""
+        session = make_session(active_agent="claude", thinking_mode="slow")
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session), update_session=AsyncMock())
+        client = SimpleNamespace(send_message=AsyncMock())
+        execute_terminal_command = AsyncMock(return_value=True)
+
+        patch_handler_db(monkeypatch, db)
+        monkeypatch.setattr(_agent, "assert_agent_enabled", lambda agent_name: agent_name)
+        monkeypatch.setattr(_agent, "get_agent_command", MagicMock(return_value="claude --resume"))
+
+        cmd = ResumeAgentCommand(session_id=session.session_id, origin="discord")
+
+        await _agent.resume_agent.__wrapped__(session, cmd, client, execute_terminal_command)
+
+        final_update = db.update_session.await_args_list[-1]
+        assert final_update.kwargs["last_input_origin"] == "discord"
 
 
 class TestAgentRestart:

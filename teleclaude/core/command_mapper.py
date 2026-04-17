@@ -89,6 +89,7 @@ class CommandMapper:
                 session_id=session_id or "",
                 agent_name=agent_name,
                 args=agent_args,
+                origin=metadata.origin or InputOrigin.TELEGRAM.value,
             )
 
         if event == "agent_resume":
@@ -96,6 +97,7 @@ class CommandMapper:
             return ResumeAgentCommand(
                 session_id=session_id or "",
                 agent_name=agent_name,
+                origin=metadata.origin or InputOrigin.TELEGRAM.value,
             )
 
         if event == "agent_restart":
@@ -156,6 +158,7 @@ class CommandMapper:
                 session_id=session_id or "",
                 agent_name=agent_name,
                 args=args[1:] if len(args) > 1 else [],
+                origin=origin,
             )
 
         if cmd_name in set(get_known_agents()):
@@ -163,6 +166,7 @@ class CommandMapper:
                 session_id=session_id or "",
                 agent_name=cmd_name,
                 args=args,
+                origin=origin,
             )
 
         if cmd_name == "agent_resume":
@@ -172,6 +176,7 @@ class CommandMapper:
                 session_id=session_id or "",
                 agent_name=agent_name,
                 native_session_id=native_session_id,
+                origin=origin,
             )
 
         known_agents = set(get_known_agents())
@@ -181,6 +186,7 @@ class CommandMapper:
                 session_id=session_id or "",
                 agent_name=cmd_name.replace("_resume", ""),
                 native_session_id=args[0] if args else None,
+                origin=origin,
             )
 
         if cmd_name == "new_session":
@@ -322,6 +328,7 @@ class CommandMapper:
                 session_id=session_id,
                 agent_name=agent_name,
                 args=args[1:] if len(args) > 1 else [],
+                origin=metadata.origin,
             )
 
         if command_name == "agent_restart":

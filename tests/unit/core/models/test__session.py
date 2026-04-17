@@ -187,6 +187,31 @@ class TestSession:
         session = Session.from_dict(data)
         assert session.last_agent_stop_at == stop_at
 
+    @pytest.mark.unit
+    def test_last_projected_at_defaults_to_none(self):
+        session = self._make_session()
+        assert session.last_projected_at is None
+
+    @pytest.mark.unit
+    def test_to_dict_serializes_last_projected_at(self):
+        ts = datetime(2026, 4, 17, 10, 0, 0, tzinfo=UTC)
+        session = self._make_session(last_projected_at=ts)
+        d = session.to_dict()
+        assert d["last_projected_at"] == ts.isoformat()
+
+    @pytest.mark.unit
+    def test_from_dict_restores_last_projected_at(self):
+        ts = datetime(2026, 4, 17, 10, 0, 0, tzinfo=UTC)
+        data = {
+            "session_id": "s1",
+            "computer_name": "local",
+            "tmux_session_name": "tc-s1",
+            "title": "T",
+            "last_projected_at": ts.isoformat(),
+        }
+        session = Session.from_dict(data)
+        assert session.last_projected_at == ts
+
 
 class TestRecording:
     @pytest.mark.unit

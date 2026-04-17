@@ -97,9 +97,21 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 
 ### Entry point (`last_input_origin`)
 
-`last_input_origin` records the most recent interaction source for session continuity. It supports direct replies to the origin endpoint.
+`last_input_origin` records the most recent interaction source for session continuity. It supports direct replies to the origin endpoint. It is routing metadata set only at acceptance boundaries — where normalized input becomes accepted core state. UI adapters must not write this field.
 
 Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
+
+### Projection ownership
+
+Transcript/file truth is the sole source of conversational truth. One projector owns user-input and agent-output projection into canonical state.
+
+| Field                  | Owner                | Purpose                                           |
+| ---------------------- | -------------------- | ------------------------------------------------- |
+| `last_projected_at`    | Transcript projector | Projection-owned watermark for replay/dedupe      |
+| `last_message_sent`    | Transcript projector | Operational text snapshot of last projected input |
+| `last_message_sent_at` | Transcript projector | Operational timestamp of last projected input     |
+
+The projector uses `last_projected_at` for dedupe decisions — it never reads `last_message_sent_at` for this purpose. Non-projector code (acceptance handlers, coordinators, UI adapters) must not advance `last_projected_at`. The projector writes `last_message_sent`/`last_message_sent_at` alongside `last_projected_at` for downstream operational consumers. Acceptance handlers may set these fields eagerly before the projector runs so that downstream consumers have immediate values; the projector's write is authoritative.
 
 ### Actor attribution expectations
 

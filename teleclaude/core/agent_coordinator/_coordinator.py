@@ -398,8 +398,8 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
 
         # Terminal input bypasses the command pipeline — set origin here.
-        # UI adapter edge handlers set last_input_origin at dispatch time,
-        # before the hook fires. Re-read to see the current value.
+        # Acceptance handlers set last_input_origin for adapter-originated
+        # commands. Re-read to see the current value.
         fresh_origin = await db.get_session(session_id)
         current_origin = (fresh_origin.last_input_origin if fresh_origin else session.last_input_origin) or ""
         is_terminal_input = current_origin == InputOrigin.TERMINAL.value or not current_origin

@@ -525,3 +525,56 @@ class TestMaybeClearOnTurnBoundary:
 
         assert result == "msg-1"
         assert calls == ["boundary", "threaded"]
+
+
+# ---------------------------------------------------------------------------
+# Projection boundary: UI adapters must not write canonical conversation state
+# ---------------------------------------------------------------------------
+
+
+class TestDispatchCommandBoundary:
+    """UI adapters must not write last_input_origin or canonical conversation state."""
+
+    @pytest.mark.unit
+    async def test_dispatch_command_does_not_write_last_input_origin(self, adapter: _ConcreteAdapter) -> None:
+        """last_input_origin ownership belongs to acceptance handlers, not UI dispatch."""
+        session = _make_session()
+        metadata = MessageMetadata(origin="telegram")
+        adapter.client.adapters = {"telegram": MagicMock()}
+        adapter.client.pre_handle_command = AsyncMock()
+        adapter.client.post_handle_command = AsyncMock()
+        handler = AsyncMock(return_value=None)
+
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+            mock_db.update_session = AsyncMock()
+            await adapter._dispatch_command(session, "msg-1", metadata, "test_cmd", {}, handler)
+
+        # The UI adapter must not write last_input_origin
+        for call in mock_db.update_session.call_args_list:
+            assert "last_input_origin" not in call.kwargs, (
+                "UI adapter must not write last_input_origin — acceptance handlers own this field"
+            )
+
+    @pytest.mark.unit
+    async def test_dispatch_command_does_not_write_canonical_conversation_state(
+        self, adapter: _ConcreteAdapter
+    ) -> None:
+        """UI adapter must not write last_message_sent or last_message_sent_at."""
+        session = _make_session()
+        metadata = MessageMetadata(origin="telegram")
+        adapter.client.adapters = {"telegram": MagicMock()}
+        adapter.client.pre_handle_command = AsyncMock()
+        adapter.client.post_handle_command = AsyncMock()
+        handler = AsyncMock(return_value=None)
+
+        with patch("teleclaude.adapters.ui_adapter.db") as mock_db:
+            mock_db.update_session = AsyncMock()
+            await adapter._dispatch_command(session, "msg-1", metadata, "send_message", {"text": "hello"}, handler)
+
+        for call in mock_db.update_session.call_args_list:
+            assert "last_message_sent" not in call.kwargs, (
+                "UI adapter must not write last_message_sent — projection owns canonical state"
+            )
+            assert "last_message_sent_at" not in call.kwargs, (
+                "UI adapter must not write last_message_sent_at — projection owns canonical state"
+            )

@@ -92,6 +92,7 @@ class SessionRecentOutputFields:
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
     last_output_digest: str | None = None
+    last_projected_at: datetime | None = None
 
 
 @dataclass(kw_only=True)
@@ -115,6 +116,7 @@ class SessionRecentOutputColumns(SQLModel):
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
     last_output_digest: str | None = None
+    last_projected_at: datetime | None = None
 
 
 class SessionRecentToolColumns(SQLModel):

@@ -133,13 +133,24 @@ async def start_agent(  # pylint: disable=too-many-locals  # Existing handler ke
     initial_prompt = " ".join(start_args.user_args) if start_args.user_args else None
     truncated_prompt = initial_prompt[:200] if initial_prompt is not None else None
 
-    await db.update_session(
-        session.session_id,
-        active_agent=agent_name,
-        thinking_mode=start_args.thinking_mode.value,
-        last_message_sent=truncated_prompt,
-        last_message_sent_at=datetime.now(UTC).isoformat(),
-    )
+    now_iso = datetime.now(UTC).isoformat()
+    if cmd.origin:
+        await db.update_session(
+            session.session_id,
+            active_agent=agent_name,
+            thinking_mode=start_args.thinking_mode.value,
+            last_message_sent=truncated_prompt,
+            last_message_sent_at=now_iso,
+            last_input_origin=cmd.origin,
+        )
+    else:
+        await db.update_session(
+            session.session_id,
+            active_agent=agent_name,
+            thinking_mode=start_args.thinking_mode.value,
+            last_message_sent=truncated_prompt,
+            last_message_sent_at=now_iso,
+        )
 
     await execute_terminal_command(session.session_id, command_str, None, True)
 
@@ -205,7 +216,10 @@ async def resume_agent(
     else:
         logger.info("Continuing latest %s session (no native session ID in database)", agent_name)
 
-    await db.update_session(session.session_id, active_agent=agent_name)
+    if cmd.origin:
+        await db.update_session(session.session_id, active_agent=agent_name, last_input_origin=cmd.origin)
+    else:
+        await db.update_session(session.session_id, active_agent=agent_name)
 
     await execute_terminal_command(session.session_id, command_str, None, True)
 

@@ -335,11 +335,56 @@ class TestProjectSessionFromTranscript:
             "sess-user-1",
             last_message_sent="ship it",
             last_message_sent_at=transcript_ts.isoformat(),
+            last_projected_at=transcript_ts.isoformat(),
         )
 
     @pytest.mark.unit
-    async def test_same_timestamp_does_not_re_reflect(self):
-        """Once a message is reflected, the same transcript timestamp must not re-trigger."""
+    async def test_non_projector_timestamp_does_not_suppress_transcript_truth(self):
+        """Regression: non-projector writes to last_message_sent_at must not suppress projection.
+
+        When deliver_inbound sets last_message_sent_at to a time newer than the transcript,
+        the projector must still project the transcript truth because last_projected_at
+        (the projection-owned watermark) has not advanced.
+        """
+        non_projector_ts = datetime(2026, 4, 7, 12, 0, 10, tzinfo=UTC)
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        session = Session(
+            session_id="sess-regression-1",
+            computer_name="local",
+            tmux_session_name="tmux-regression-1",
+            title="Untitled",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+            last_message_sent_at=non_projector_ts,
+            last_projected_at=None,
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("tmux direct input", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_awaited_once_with(session, "tmux direct input", "terminal")
+
+    @pytest.mark.unit
+    async def test_same_projected_timestamp_does_not_re_reflect(self):
+        """Once projected, the same transcript timestamp must not re-trigger."""
         long_text = "x" * 300
         transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
         session = Session(
@@ -350,8 +395,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="terminal",
-            last_message_sent=long_text[:200],
-            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
         )
         adapter_client = AsyncMock()
 
@@ -377,8 +421,8 @@ class TestProjectSessionFromTranscript:
         adapter_client.broadcast_user_input.assert_not_awaited()
 
     @pytest.mark.unit
-    async def test_older_transcript_timestamp_does_not_rewind_accepted_prompt_timestamp(self):
-        accepted_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+    async def test_older_transcript_does_not_rewind_projection_watermark(self):
+        projected_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
         transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
         session = Session(
             session_id="sess-direct-1",
@@ -388,8 +432,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="terminal",
-            last_message_sent='[TeleClaude Linked output from "Peer" (sess-peer) on peer-host]',
-            last_message_sent_at=accepted_ts,
+            last_projected_at=projected_ts,
         )
         adapter_client = AsyncMock()
 
@@ -414,7 +457,7 @@ class TestProjectSessionFromTranscript:
 
         adapter_client.broadcast_user_input.assert_not_awaited()
         mock_db.update_session.assert_not_awaited()
-        assert result.last_message_sent_at == accepted_ts
+        assert result.last_projected_at == projected_ts
 
     @pytest.mark.unit
     async def test_system_role_session_reflects_prompt_to_discord_admin(self):
@@ -455,7 +498,54 @@ class TestProjectSessionFromTranscript:
             "sess-integrator-1",
             last_message_sent="/next-integrate",
             last_message_sent_at=transcript_ts.isoformat(),
+            last_projected_at=transcript_ts.isoformat(),
         )
+
+    @pytest.mark.unit
+    async def test_projection_dedupe_ignores_last_message_sent_at(self):
+        """Canonical projection dedupe uses last_projected_at, not last_message_sent_at.
+
+        last_message_sent_at may be set by any acceptance handler. The projector
+        must not use it for dedupe decisions — only last_projected_at matters.
+        """
+        # last_message_sent_at is in the future (set by non-projector code),
+        # but last_projected_at is None — projection must proceed.
+        future_ts = datetime(2026, 4, 7, 12, 0, 30, tzinfo=UTC)
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        session = Session(
+            session_id="sess-legacy-1",
+            computer_name="local",
+            tmux_session_name="tmux-legacy-1",
+            title="Untitled",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="terminal",
+            last_message_sent="old text",
+            last_message_sent_at=future_ts,
+            last_projected_at=None,
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("new input", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator.extract_recent_transcript_turns",
+                return_value=[],
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_awaited_once()
 
     @pytest.mark.unit
     async def test_projects_transcript_output(self):

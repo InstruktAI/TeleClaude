@@ -91,6 +91,7 @@ class StartAgentCommand(InternalCommand):
     agent_name: str
     thinking_mode: str = "slow"
     args: list[str] = field(default_factory=list)
+    origin: str | None = None
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -99,6 +100,7 @@ class StartAgentCommand(InternalCommand):
         agent_name: str,
         thinking_mode: str = "slow",
         args: list[str] | None = None,
+        origin: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.START_AGENT, request_id=request_id)
@@ -106,6 +108,7 @@ class StartAgentCommand(InternalCommand):
         self.agent_name = agent_name
         self.thinking_mode = thinking_mode
         self.args = args or []
+        self.origin = origin
 
     def to_payload(self) -> dict[str, object]:
         args = [self.agent_name] + list(self.args)
@@ -119,6 +122,7 @@ class ResumeAgentCommand(InternalCommand):
     session_id: str
     agent_name: str | None = None
     native_session_id: str | None = None
+    origin: str | None = None
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -126,12 +130,14 @@ class ResumeAgentCommand(InternalCommand):
         session_id: str,
         agent_name: str | None = None,
         native_session_id: str | None = None,
+        origin: str | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.RESUME_AGENT, request_id=request_id)
         self.session_id = session_id
         self.agent_name = agent_name
         self.native_session_id = native_session_id
+        self.origin = origin
 
     def to_payload(self) -> dict[str, object]:
         args: list[str] = []
