@@ -335,9 +335,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(
-        desc="Initialize docs sync, todo watcher services, and optional project enrichment",
+        desc="Initialize project plumbing, sync artifacts, and optionally enrich docs",
         notes=[
-            "Sets up git hooks, syncs artifacts, installs docs sync and todo watcher services.",
+            "Sets up git hooks, syncs artifacts, and registers the project root.",
             "Optionally runs AI-driven project analysis to generate doc snippets.",
             "First init offers enrichment; re-init offers refresh of existing analysis.",
             "Prompts for release-channel enrollment (alpha/beta/stable).",
@@ -356,12 +356,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
             Flag("--warn-only", desc="Warn but don't fail"),
             Flag("--validate-only", desc="Validate without building"),
         ],
-        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-    ),
-    "watch": CommandDef(
-        desc="Watch project for changes and auto-sync",
-        flags=[_H],
-        hidden=True,
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
     "docs": CommandDef(
@@ -982,25 +976,39 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "lint": CommandDef(
                 desc="Run language-aware lint pipeline",
-                flags=[_H, Flag("--step", desc="Run a single pipeline step")],
+                flags=[
+                    _H,
+                    Flag("--step", desc="Run a single pipeline step"),
+                    Flag("--all", desc="Run against all configured sources, skip session scoping"),
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "test": CommandDef(
                 desc="Run language-aware test suite",
-                flags=[_H, Flag("--expensive", desc="Include expensive/slow tests")],
+                flags=[
+                    _H,
+                    Flag("--expensive", desc="Include expensive/slow tests"),
+                    Flag("--all", desc="Run all tests, skip session scoping"),
+                ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "format": CommandDef(
-                desc="Run language-aware code formatter", flags=[_H], auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL)
+                desc="Run language-aware code formatter",
+                flags=[_H, Flag("--all", desc="Format all configured sources, skip session scoping")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+            "changed": CommandDef(
+                desc="List session-scoped changed files",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "commit": CommandDef(
                 desc="Stage session-scoped files, lint, format, and commit",
-                args="[-- <git-commit-args>]",
+                args="[<git-commit-args>]",
                 flags=[
                     _H,
-                    Flag("--no-scope", desc="Skip session-scope resolution"),
-                    Flag("--no-lint", desc="Skip lint step"),
-                    Flag("--no-format", desc="Skip format step"),
+                    Flag("-m", desc="Commit message"),
+                    Flag("--approved", desc="Human-approved Path B commit", hidden=True),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

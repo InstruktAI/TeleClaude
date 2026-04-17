@@ -54,7 +54,7 @@ Staged changes are ready for commit.
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
    - Footer: TeleClaude Co-Authored-By trailer
-3. Run: telec code commit -- -m '<your message>'
+3. Run: telec code commit -m '<your message>'
 4. Then call: telec todo integrate
 
 NEXT: Compose and execute telec code commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
@@ -84,7 +84,7 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 2. Merge both contributions (do not use `--theirs` or `--ours`)
 3. Verify: all API surface and behavior from both sides preserved
 4. Stage resolved files: git add <files>
-5. Run: telec code commit --no-scope -- -m '<your message>'
+5. Run: telec code commit -m '<your message>'
 6. Call: telec todo integrate
 
 If unresolvable, call telec todo integrate without committing.

@@ -560,7 +560,7 @@ After pushing to origin/main, `_step_push_succeeded` syncs local main via `git p
 5. If stash pop succeeds, the agent calls `telec todo integrate` — the machine resumes at CLEANUP.
 6. If stash pop produces conflicts, the agent resolves them (files deleted by delivery with local edits are obsolete), then calls `telec todo integrate`.
 
-**System role permissions:** The git wrapper (`~/.teleclaude/bin/git`) blocks `git stash` in agent sessions by default (version-control-safety policy). Integrator sessions have `TELECLAUDE_SYSTEM_ROLE=integrator` set by the daemon from `session_metadata.system_role`, which grants stash and file-scoped checkout permissions. No per-command env var prefix is needed.
+**System role permissions:** Integrator sessions have `TELECLAUDE_SYSTEM_ROLE=integrator` set by the daemon from `session_metadata.system_role`. Stash operations are permitted for integrators during push rejection recovery.
 
 ```mermaid
 sequenceDiagram

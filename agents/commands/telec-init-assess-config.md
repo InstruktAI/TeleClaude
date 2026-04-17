@@ -18,6 +18,10 @@ command is invoked by `telec init` alongside the doc snippet analysis.
 - `teleclaude.yml` contains `languages` and optionally `frontend_root`.
 - Templates live under `templates/quality/{language}/` in the TeleClaude repo.
 
+## Outputs
+
+Report per language with sections: Present (matching rules), Missing or Weaker (gaps), Recommendations (actionable items). Do not silently modify configuration files — present findings before applying. Focus on safety-impacting settings (strict mode, type checking, lint rules).
+
 ## Steps
 
 1. Read `teleclaude.yml` to get `languages` and `frontend_root`.
@@ -33,23 +37,8 @@ command is invoked by `telec init` alongside the doc snippet analysis.
 5. Report findings with specific recommendations.
 6. If the user approves via session interaction: apply the recommended changes.
 
-## Output Format
+## Discipline
 
-```
-## Config Assessment: {language}
-
-### Present
-- [list of rules/sections that match template]
-
-### Missing or Weaker
-- [list of rules/sections absent or weaker than template]
-
-### Recommendations
-- [actionable items]
-```
-
-## Constraints
-
-- Do not silently modify configuration files.
-- Present findings before applying any changes.
-- Focus on safety-impacting settings (strict mode, type checking, lint rules).
+You are an assessor, not an applier. Your failure mode is modifying config files
+without presenting findings first. Always report, then wait for approval before
+changing anything.

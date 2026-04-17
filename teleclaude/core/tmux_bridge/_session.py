@@ -4,13 +4,14 @@ import asyncio
 import hashlib
 import os
 import re
+import shlex
 import shutil
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.paths import TMP_SESSIONS_DIR
+from teleclaude.paths import BIN_DIR, TMP_SESSIONS_DIR
 from teleclaude.session_identity import write_session_identity_to
 
 from ._pane import session_exists
@@ -114,6 +115,19 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
+        # Ensure TeleClaude bin is first in PATH so the agent-session git wrapper
+        # enforce version-control guardrails in every tmux-created session.
+        # Always set PATH explicitly for the session; tmux server env can differ
+        # from daemon env, so conditional omission is unsafe.
+        teleclaude_bin = str(BIN_DIR)
+        current_path = os.environ.get("PATH", "/usr/bin:/bin")
+        path_parts = [part for part in current_path.split(os.pathsep) if part]
+        # Always prepend teleclaude_bin to first position, removing duplicates.
+        # Even when already present, it may not be first — macOS path_helper
+        # and shell startup can reorder PATH after tmux -e injection.
+        deduped = [p for p in path_parts if p != teleclaude_bin]
+        effective_env_vars["PATH"] = os.pathsep.join([teleclaude_bin] + deduped)
+
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color
         # alone does not advertise truecolor.
@@ -216,11 +230,66 @@ async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing e
         except (OSError, ValueError, SubprocessTimeoutError) as e:
             logger.warning("Session setup chain exception for %s: %s", name, e)
 
+        await _apply_shell_guardrails(name, teleclaude_bin)
+
         return True
 
     except (OSError, ValueError, SubprocessTimeoutError) as e:
         print(f"Error creating tmux session: {e}")
         return False
+
+
+async def _apply_shell_guardrails(session_name: str, teleclaude_bin: str) -> None:
+    """Send post-init shell guardrails via tmux send-keys.
+
+    macOS zsh login shell startup (/etc/zprofile → path_helper, ~/.zshenv, ~/.zprofile)
+    rewrites PATH after tmux's -e injection, pushing ~/.teleclaude/bin down. oh-my-zsh's
+    github plugin also sets `alias git=hub`, bypassing PATH entirely. Override
+    `git` inside TeleClaude-managed tmux sessions with a shell function pointing
+    at the wrapper so aliases and PATH drift cannot bypass interception.
+
+    These keystrokes queue in the PTY input buffer and execute after shell init completes
+    but before any agent CLI command arrives (sequential async ordering in bootstrap_session).
+    """
+    try:
+        wrapper_path = f"{teleclaude_bin}/git"
+        quoted_bin = shlex.quote(teleclaude_bin)
+        quoted_wrapper = shlex.quote(wrapper_path)
+        guardrail_cmd = (
+            f"TELECLAUDE_GIT_WRAPPER={quoted_wrapper}; "
+            f'export PATH={quoted_bin}:"$PATH"; '
+            "unalias git 2>/dev/null; "
+            'eval \'git() { "${TELECLAUDE_GIT_WRAPPER}" "$@"; }\'; '
+            "hash -r 2>/dev/null; "
+            "clear"
+        )
+        cmd_text = [
+            config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            session_name,
+            "-l",
+            "--",
+            guardrail_cmd,
+            ";",
+            "send-keys",
+            "-t",
+            session_name,
+            "C-m",
+        ]
+        result = await asyncio.create_subprocess_exec(
+            *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux guardrail chain")
+        if result.returncode != 0:
+            logger.warning(
+                "Shell guardrail send failed for %s: %s",
+                session_name,
+                stderr.decode().strip() if stderr else "",
+            )
+            return
+    except (OSError, ValueError, SubprocessTimeoutError) as e:
+        logger.warning("Shell guardrails failed for %s: %s", session_name, e)
 
 
 async def ensure_tmux_session(

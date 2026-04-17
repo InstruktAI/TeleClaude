@@ -132,6 +132,12 @@ def main() -> None:
     # non-path sources (e.g. git commit message content tokenized as shell
     # arguments) are discarded here before being passed to type checkers.
     result = [f for f in result if (project_root / f).exists()]
+    # Intersect with git-dirty files — only include files that are actually
+    # modified or untracked. Transcript-touched files that were already
+    # committed or reverted are not actionable for lint, test, or commit.
+    dirty = _fallback_worktree_status_files(project_root)
+    if dirty:
+        result = [f for f in result if f in dirty]
 
     if result:
         sys.stdout.write("\n".join(result) + "\n")

@@ -30,7 +30,6 @@ class TelecCommand(str, Enum):
     INIT = "init"
     VERSION = "version"
     SYNC = "sync"
-    WATCH = "watch"
     DOCS = "docs"
     TODO = "todo"
     ROADMAP = "roadmap"

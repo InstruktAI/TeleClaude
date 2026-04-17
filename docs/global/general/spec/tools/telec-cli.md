@@ -43,6 +43,14 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec history -h -->
 
+### `telec code`
+
+<!-- @exec: telec code -h -->
+
+### `telec code commit`
+
+<!-- @exec: telec code commit -h -->
+
 ### `telec todo artifacts`
 
 <!-- @exec: telec todo artifacts -h -->

@@ -3,13 +3,14 @@ id: 'software-development/design/session-file-scoping'
 type: 'design'
 domain: 'software-development'
 scope: 'global'
-description: 'How telec lint and telec test resolve file targets based on execution context — worktree isolation, session scoping on shared branches, and explicit file override.'
+description: 'How telec code lint and telec code test resolve file targets based on execution context — worktree isolation, session scoping on shared branches, and explicit file override.'
 ---
+
 # Session File Scoping — Design
 
 ## Purpose
 
-`telec lint` and `telec test` run from any project directory. They determine which
+`telec code lint` and `telec code test` run from any project directory. They determine which
 files to operate on without stashing, without touching other agents' files, and
 without manual configuration.
 
@@ -20,26 +21,26 @@ Three execution contexts drive file resolution:
    current session's touched files via transcript.
 3. **Explicit files** — caller passes file arguments directly. Skip all scoping.
 
-`make lint` and `make test` defer to `telec lint` and `telec test` bare — they
+`make lint` and `make test` defer to `telec code lint` and `telec code test` bare — they
 rely on the scoping logic described here.
 
-Pre-commit hooks are a separate path: they use `telec lint --step <name>` with
+Pre-commit hooks are a separate path: they use `telec code lint --step <name>` with
 `pass_filenames: true`. Pre-commit passes staged files directly. The scoping
 logic in `LintRunner.run()` and `TestRunner.resolve_targets()` does not apply.
 
 ## Inputs/Outputs
 
-| Input                | Source                                             |
-| -------------------- | -------------------------------------------------- |
-| Execution context    | `is_worktree()` detection via git plumbing         |
-| Session identity     | `$TMPDIR/teleclaude_identity.json`                 |
-| Session transcript   | Daemon transcript for the current session          |
-| Project languages    | `teleclaude.yml` `language`/`languages` config     |
-| Explicit file list   | CLI arguments (`telec lint <files...>`)             |
+| Input              | Source                                         |
+| ------------------ | ---------------------------------------------- |
+| Execution context  | `is_worktree()` detection via git plumbing     |
+| Session identity   | `$TMPDIR/teleclaude_identity.json`             |
+| Session transcript | Daemon transcript for the current session      |
+| Project languages  | `teleclaude.yml` `language`/`languages` config |
+| Explicit file list | CLI arguments (`telec code lint <files...>`)   |
 
-| Output               | Description                                        |
-| -------------------- | -------------------------------------------------- |
-| File targets         | Files or directories passed to lint pipeline or test runner |
+| Output       | Description                                                 |
+| ------------ | ----------------------------------------------------------- |
+| File targets | Files or directories passed to lint pipeline or test runner |
 
 ## Invariants
 
@@ -52,7 +53,7 @@ logic in `LintRunner.run()` and `TestRunner.resolve_targets()` does not apply.
    from linting, formatting, or testing other agents' in-progress work.
 4. **Explicit files override everything.** When the caller passes files as
    arguments, scoping is skipped entirely.
-5. **Pre-commit is a separate path.** `telec lint --step <name> [files...]`
+5. **Pre-commit is a separate path.** `telec code lint --step <name> [files...]`
    receives files from pre-commit's `pass_filenames`. The full-pipeline scoping
    logic does not apply.
 6. **Scope failure with a session identity is an error.** If session scope
@@ -67,7 +68,7 @@ logic in `LintRunner.run()` and `TestRunner.resolve_targets()` does not apply.
 ### Worktree flow
 
 ```
-telec lint (no args, worktree detected)
+telec code lint (no args, worktree detected)
   → resolve source dirs from language toolchain config
   → run pipeline against all source dirs
 ```
@@ -75,7 +76,7 @@ telec lint (no args, worktree detected)
 ### Shared branch flow (session available)
 
 ```
-telec lint (no args, not a worktree, session identity present)
+telec code lint (no args, not a worktree, session identity present)
   → resolve session-touched files from transcript
   → validate paths (no traversal, no absolute paths outside project)
   → run pipeline against scoped files
@@ -84,7 +85,7 @@ telec lint (no args, not a worktree, session identity present)
 ### Shared branch flow (no session)
 
 ```
-telec lint (no args, not a worktree, no session identity)
+telec code lint (no args, not a worktree, no session identity)
   → resolve source dirs from language toolchain config
   → run pipeline against all source dirs
 ```
@@ -92,7 +93,7 @@ telec lint (no args, not a worktree, no session identity)
 ### Explicit files flow
 
 ```
-telec lint <files...>
+telec code lint <files...>
   → skip scoping entirely
   → validate paths
   → run pipeline against provided files
@@ -101,7 +102,7 @@ telec lint <files...>
 ### Pre-commit flow (unchanged)
 
 ```
-telec lint --step ruff_check <staged files from pre-commit>
+telec code lint --step ruff_check <staged files from pre-commit>
   → run single step against provided files
   → no scoping logic involved
 ```
@@ -114,7 +115,7 @@ Session identity exists but transcript cannot provide touched files (e.g., agent
 operated via git commands only, transcript not yet flushed).
 
 **Response:** Exit non-zero. Error message includes actionable guidance:
-`Session scope unavailable. Pass files explicitly: telec lint <files...>`
+`Session scope unavailable. Pass files explicitly: telec code lint <files...>`
 
 The agent reads this and retries with explicit file arguments. No silent fallback.
 

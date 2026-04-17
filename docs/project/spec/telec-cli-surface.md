@@ -92,7 +92,7 @@ subcommands:
     flags:
       --attach: 'Attach to tmux session after revive.'
   init:
-    description: 'Initialize docs sync, todo watcher services, and optional project enrichment.'
+    description: 'Initialize project plumbing, sync artifacts, and optionally enrich docs.'
   version:
     description: 'Print version, channel, and commit hash.'
   sync:
@@ -100,10 +100,6 @@ subcommands:
     flags:
       --warn-only: "Warn but don't fail."
       --validate-only: 'Validate without building.'
-      --project-root: 'Project root (default: cwd).'
-  watch:
-    description: 'Watch project for changes and auto-sync.'
-    flags:
       --project-root: 'Project root (default: cwd).'
   docs:
     description: 'Query documentation snippets.'
@@ -297,6 +293,23 @@ subcommands:
     subcommands:
       status:
         description: 'Show signal pipeline counts and last ingest time.'
+  code:
+    description: 'Code quality and commit tools.'
+    subcommands:
+      lint:
+        description: 'Run language-aware lint pipeline.'
+        flags:
+          --step: 'Run a single pipeline step (e.g. guardrails, ruff_check).'
+      test:
+        description: 'Run language-aware test suite.'
+        flags:
+          --expensive: 'Include expensive/slow tests.'
+      format:
+        description: 'Run language-aware code formatter.'
+      commit:
+        description: 'Stage session-scoped files, lint, format, and commit.'
+        flags:
+          -m: 'Commit message. Other args pass through to git commit.'
   operations:
     description: 'Inspect durable long-running operations.'
     subcommands:

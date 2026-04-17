@@ -11,7 +11,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 - Never use `git checkout`, `git restore`, `git reset`, `git clean`, or delete files unless explicitly instructed by the user.
 - Never use `git stash`, `git stash pop`, `git stash apply`, or `git stash drop` in agent workflows.
-- **`git revert` requires inspection.** Before reverting any commit, run `git show --stat <commit>` and verify that _every_ file in the commit belongs to the scope you intend to undo. Commits in a multi-agent environment routinely contain changes from multiple workers — a blind revert destroys other agents' work. The git wrapper enforces this: bare `git revert` is blocked; pass `--confirmed` to acknowledge you have inspected the commit. Use `git revert` only as an escape hatch, not as a routine undo mechanism.
+- **`git revert` requires inspection.** Before reverting any commit, run `git show --stat <commit>` and verify that _every_ file in the commit belongs to the scope you intend to undo. Commits in a multi-agent environment routinely contain changes from multiple workers — a blind revert destroys other agents' work. Use `git revert` only as an escape hatch, not as a routine undo mechanism.
 - Dirty `main` is allowed. Agents may continue work in files required by the active task.
 - Repo root cleanliness is not required for integration. The integrator operates in an isolated worktree (`trees/_integration/`), independent of repo root state.
 - Unrelated local changes may be reported for awareness, but they are non-blocking and must not change task execution.
@@ -34,13 +34,9 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 
 ## Enforcement
 
-- **Git wrapper** (`~/.teleclaude/bin/git`): A PATH-based binary wrapper prepended to all agent tmux sessions via `tmux_bridge.py`. Blocks `stash`, `checkout`, `restore`, `clean`, and `reset --hard/--merge/--keep` at the shell level, below AI reasoning. Agents cannot bypass this. `git revert` requires `--confirmed` flag; bare `git revert` is blocked with a warning explaining the inspection requirement.
-- **System role permissions:** The wrapper reads `TELECLAUDE_SYSTEM_ROLE` (set by the daemon from `session_metadata.system_role`) to determine permission scope. Four roles:
-  - `worker` (default): Standard restrictions.
-  - `orchestrator`: Auth-only; equivalent to worker permissions.
-  - `system`: Equivalent to worker (daemon-spawned job runners). No main access.
-  - `integrator`: Full protected access — stash, commit on main, push on main, file-scoped checkout.
-    Agents must never set this variable on their own initiative.
+- **Git wrapper** (`~/.teleclaude/bin/git`): Blocks destructive git operations (`stash`, `checkout`, `restore`, `clean`, `reset --hard`) at the shell level. Redirects `git commit` to `telec code commit`. Push on main is integrator-only. The wrapper is installed via `telec init` and enforced via PATH prepend in tmux sessions.
+- **`telec code commit`**: The canonical commit interface for agents. Handles session scoping, staging, formatting, linting, Path A/B/C classification on main, orchestrator restriction, and main-branch lock serialization.
+- **Pre-commit hooks**: `.pre-commit-config.yaml` checks (commitizen, ruff, pyright, docs validation) run on staged files during `git commit`. These are quality checks, not staging mechanisms.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.
 - Agent instruction artifacts must not include stash workflows.

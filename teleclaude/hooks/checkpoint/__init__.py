@@ -230,7 +230,7 @@ def _commit_instruction(on_main: bool) -> str:
         return (
             "You are on `main` — do NOT commit yet. State a recommendation to the human "
             "(what changed, why, file types, scope) and wait for explicit approval. "
-            "If approved, commit with `telec code commit -- -m '…'`."
+            "If approved, commit with `telec code commit -m '…'`."
         )
     return "Commit your changes with `telec code commit`"
 

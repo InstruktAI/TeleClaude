@@ -167,7 +167,7 @@ Every machine runs a TeleClaude daemon. They discover each other via Redis heart
 **Is this system secure?**
 Security is layered and honest about where it stands:
 
-- _Agent containment:_ A git wrapper blocks destructive commands at the shell level — `stash`, `checkout`, `restore`, `clean`, `reset --hard` are intercepted before the AI can reason its way around them. Agents cannot bypass this. The checkpoint system catches errors and prompts self-correction at turn boundaries.
+- _Agent containment:_ `telec code commit` is the canonical commit interface — it handles session-scoped staging, formatting, and linting before invoking git. The checkpoint system catches errors and prompts self-correction at turn boundaries.
 - _Customer session jailing:_ Help desk sessions are role-gated. Customers get an explicitly restricted tool tier — no session management, no deployment, no orchestration, no system access. Identity resolution maps every user to a role via the People registry before a session starts.
 - _Adapter isolation:_ Each adapter runs in its own async task. One adapter crash never affects another. Core logic never imports adapter-specific code — all communication is via protocols.
 - _Where we're headed:_ The current model uses tool exclusion lists (block what's dangerous). We're moving toward explicit tool whitelisting for customer-facing sessions — only approved tools are available, everything else is denied by default. This includes restricting access to system binaries like tmux for customer sessions. The architecture supports it; the final consolidation is in progress.

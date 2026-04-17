@@ -3,96 +3,108 @@ id: project/design/code-commit
 type: design
 domain: software-development
 scope: project
-description: Design of telec code commit — the explicit staging, formatting, linting, and commit command that replaces the git wrapper.
+description: Design of telec code commit — the canonical agent commit command with session scoping, quality gates, and multi-agent protection.
 ---
 
 # Code Commit — Design
 
 ## Purpose
 
-`telec code commit` is the canonical commit interface for agent and human sessions.
-It replaces the former git wrapper (`~/.teleclaude/bin/git`) with an explicit command
-that resolves session-scoped files, stages them, runs formatting and linting, then
-invokes `git commit`.
+`telec code commit` is the canonical commit interface for agent sessions. It
+resolves session-scoped files, stages them, runs formatting and linting, then
+invokes `git commit`. The git wrapper redirects raw `git commit` to this command.
 
-The driving constraint: git ignores index changes made inside pre-commit hooks when
-the commit starts with an empty index. The hook-based staging approach silently dropped
-files. Moving staging before `git commit` solves this at the root.
+The driving constraint: git ignores index changes made inside pre-commit hooks
+when the commit starts with an empty index. Moving staging before `git commit`
+solves this at the root.
 
 ## Inputs/Outputs
 
-**Inputs:**
+**Flag:** `-m <message>` — commit message (first-class, no `--` separator needed).
 
-- `--no-scope` — skip session-scope resolution (commit whatever is already staged)
-- `--no-lint` — skip lint step
-- `--no-format` — skip format step
-- `-- <git-commit-args>` — everything after `--` passes through to `git commit`
+All other arguments pass through to `git commit`.
 
-**Outputs:**
-
-- Staged, formatted, linted commit — or failure with clear diagnostics
-- Exit code from `git commit` propagated to caller
+**Outputs:** committed changeset, or failure with actionable diagnostics.
 
 ## Invariants
 
-1. **Staging before commit.** Session-scoped files are staged via `git add` before
-   `git commit` is invoked. The pre-commit hook never stages files.
-2. **Format then lint.** Formatting runs first, modified files are restaged, then lint
-   runs against the formatted versions. This prevents format-lint oscillation.
-3. **Session scoping.** `tools/session_scope.py --mode lint` determines which files
-   belong to the current session. In worktrees, the fallback is `git status --porcelain`.
-   Outside agent sessions, scoping is skipped gracefully — whatever is already staged
-   is committed.
-4. **Partial staging blocked.** Files that are both staged and unstaged are rejected
-   to prevent pre-commit stash corruption.
-5. **Pre-commit hook is lint-only.** The `.git/hooks/pre-commit` hook runs
-   `.pre-commit-config.yaml` checks (commitizen, ruff, pyright, docs validation)
-   against already-staged files. It does not stage, format-restage, or scope.
+1. **Lock serialization.** `main_branch_lock()` (flock) serializes the entire
+   stage-format-lint-commit cycle. No two agents can commit concurrently.
+   The lock auto-releases on process exit or crash.
+
+2. **Foreign staged file detection.** Before staging, check if files are already
+   staged that are outside the session scope. If found, exit with code 2
+   (retryable) — another agent may be mid-commit with a failed pre-commit hook.
+   The agent's heartbeat retries after conditions clear.
+
+3. **Session scoping.** `tools/session_scope.py --mode lint` determines which
+   files belong to the current session. In worktrees, the fallback is
+   `git status --porcelain`. Outside agent sessions, scoping returns empty
+   and whatever is already staged proceeds.
+
+4. **Path A/B/C on main.** Non-integrator commits on main are classified:
+   - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous
+   - **Path B/C:** functional files → human gate, exit with guidance
+
+5. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
+
+6. **Format then lint.** Formatting runs first, modified files are restaged,
+   then lint runs against the formatted versions.
+
+7. **Wrapper redirect.** The git wrapper blocks `git commit` and directs agents
+   to `telec code commit`. The wrapper retains all other safety blocks
+   (stash, checkout, restore, clean, reset, push on main).
+
+8. **Real git bypass.** The final `git commit` call uses the real git binary
+   (bypassing the wrapper) since the wrapper would redirect back.
 
 ## Primary flows
 
-### Agent commit (tmux or headless)
+### Agent commit (worktree)
 
 ```
-telec code commit -- -m "feat(scope): subject"
-  → session_scope.py resolves touched files
+telec code commit -m "feat(scope): subject"
+  → lock acquired
+  → no foreign staged files
+  → session_scope resolves touched files
   → git add -- <files>
   → FormatRunner.run(files=staged)
   → restage formatter-modified files
   → LintRunner.run(files=staged)
-  → git commit -m "feat(scope): subject"
-    → pre-commit hook runs .pre-commit-config.yaml checks
-    → commit created
+  → real git commit -m "feat(scope): subject"
+  → lock released
+```
+
+### Agent commit on main (Path A — non-functional)
+
+```
+telec code commit -m "chore(docs): update snippets [skip ci]"
+  → lock acquired
+  → session scope + stage
+  → Path A: no functional files + [skip ci] → proceed
+  → format + lint + commit
 ```
 
 ### Integration commit
 
-```
-telec code commit --no-scope -- -m "feat(slug): deliver slug"
-  → skip session scope (integrator staged manually)
-  → FormatRunner + LintRunner on staged files
-  → git commit
-```
-
-### Human commit
-
-Humans can use `telec code commit` or raw `git commit` (with manual staging).
-The pre-commit hook still runs quality checks either way.
+The integrator uses `telec code commit` with files already staged from the
+squash merge. Session scoping finds no additional files. The integrator role
+bypasses Path A/B/C classification.
 
 ## Failure modes
 
-**Empty scope.** Session has no touched files and nothing is manually staged.
-`telec code commit` prints "Nothing staged for commit." and exits 1.
+**Lock contention.** Another agent holds the lock. `flock(LOCK_EX)` blocks
+until released. No timeout — the agent waits.
 
-**Partial staging.** Files appear in both staged and unstaged state. Blocked with
-diagnostic listing the affected files. Resolution: `git add -p` to complete staging
-or `--no-scope` to skip session resolution.
+**Foreign staged files.** Exit code 2. Agent retries on heartbeat. By then the
+other agent's commit may have completed (clearing the index) or the human
+may have cleaned up.
 
-**Lint failure.** `LintRunner.run()` raises `SystemExit` on any check failure.
-The commit is aborted. Files remain staged for the agent to fix and retry.
+**Lint failure.** `LintRunner.run()` raises `SystemExit`. Files remain staged
+for the agent to fix and retry.
 
-**Format modification.** Formatter changes files after staging. The command detects
-this and restages before linting. No manual intervention needed.
+**Path B/C gate.** Functional files on main without human approval. Exit with
+guidance. The human intervenes or routes through the review pipeline.
 
 ## See Also
 

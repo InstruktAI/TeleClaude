@@ -112,7 +112,7 @@ class _ResourceValidationStep:
     def run(self, targets: list[str]) -> None:
         """Execute resource validation (repo-wide, not file-scoped)."""
         _ = targets  # resource validation is repo-wide
-        cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--validate-only"]
+        cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--warn-only", "--validate-only"]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -290,13 +290,15 @@ class LintRunner:
     def __init__(self, project_root: Path) -> None:
         self._project_root = project_root
 
-    def run(self, files: list[str] | None = None) -> None:
+    def run(self, files: list[str] | None = None, *, run_all: bool = False) -> None:
         """Run all configured lint pipelines with context-aware file scoping.
 
         Args:
             files: Explicit file targets. When provided, all scoping is
                    bypassed — these files are validated and passed directly
                    to the pipeline.
+            run_all: When True, skip scoping and run against all source
+                     directories (equivalent to Makefile invocation).
         """
         _pipeline_ctx[0] = self._project_root
         languages = get_project_languages(self._project_root)
@@ -310,6 +312,9 @@ class LintRunner:
                 logger.info("No files provided — nothing to lint")
                 return
             logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
+        elif run_all:
+            logger.info("--all flag — running against source directories")
+            targets = self._resolve_source_dirs(languages)
         elif is_worktree(self._project_root):
             logger.info("Worktree detected — running against source directories")
             targets = self._resolve_source_dirs(languages)
