@@ -38,6 +38,7 @@ from teleclaude.cli.telec.handlers.bugs import (
     _handle_bugs_list,
     _handle_bugs_report,
 )
+from teleclaude.cli.telec.handlers.code import handle_code
 from teleclaude.cli.telec.handlers.config import _handle_config
 from teleclaude.cli.telec.handlers.content import _handle_content, _handle_content_dump
 from teleclaude.cli.telec.handlers.docs import _handle_docs, _handle_docs_get, _handle_docs_index
@@ -78,7 +79,6 @@ from teleclaude.cli.telec.handlers.misc import (
     _revive_session_via_api,
     _send_revive_enter_via_api,
 )
-from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
 from teleclaude.cli.telec.handlers.roadmap import (
     _handle_roadmap,
     _handle_roadmap_add,
@@ -378,9 +378,7 @@ def _resolve_cli_handler(cmd_enum: TelecCommand | None, args: list[str]) -> Call
         TelecCommand.HISTORY: lambda: _handle_history(args),
         TelecCommand.MEMORIES: lambda: _handle_memories(args),
         TelecCommand.SIGNALS: lambda: _handle_signals(args),
-        TelecCommand.LINT: lambda: handle_lint(args),
-        TelecCommand.TEST: lambda: handle_test(args),
-        TelecCommand.FORMAT: lambda: handle_format(args),
+        TelecCommand.CODE: lambda: handle_code(args),
     }
     return handlers.get(cmd_enum)
 

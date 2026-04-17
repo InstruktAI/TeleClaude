@@ -977,21 +977,34 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
         },
     ),
-    "lint": CommandDef(
-        desc="Run language-aware lint pipeline",
-        flags=[_H, Flag("--step", desc="Run a single pipeline step (e.g. guardrails, ruff_check)")],
-        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
-    ),
-    "test": CommandDef(
-        desc="Run language-aware test suite",
-        flags=[
-            _H,
-            Flag("--expensive", desc="Include expensive/slow tests"),
-        ],
-        auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
-    ),
-    "format": CommandDef(
-        desc="Run language-aware code formatter", flags=[_H], auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL)
+    "code": CommandDef(
+        desc="Code quality and commit tools",
+        subcommands={
+            "lint": CommandDef(
+                desc="Run language-aware lint pipeline",
+                flags=[_H, Flag("--step", desc="Run a single pipeline step")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+            "test": CommandDef(
+                desc="Run language-aware test suite",
+                flags=[_H, Flag("--expensive", desc="Include expensive/slow tests")],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+            "format": CommandDef(
+                desc="Run language-aware code formatter", flags=[_H], auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL)
+            ),
+            "commit": CommandDef(
+                desc="Stage session-scoped files, lint, format, and commit",
+                args="[-- <git-commit-args>]",
+                flags=[
+                    _H,
+                    Flag("--no-scope", desc="Skip session-scope resolution"),
+                    Flag("--no-lint", desc="Skip lint step"),
+                    Flag("--no-format", desc="Skip format step"),
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
+        },
     ),
 }
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}

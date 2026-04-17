@@ -7,34 +7,9 @@ import yaml
 
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
-SESSION_SCOPED_STAGING_MARKER = "teleclaude-session-scoped-staging"
 STASH_PREVENTION_MARKER = "teleclaude-stash-prevention"
 RESTAGE_MARKER = "teleclaude-format-restage"
 _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
-
-# Auto-stage session-touched files when a session identity is available.
-# session_scope.py exit codes: 0 = files emitted, 2 = no session identity.
-# git status (used internally) already honors .gitignore.
-SESSION_SCOPED_STAGING_BLOCK = f"""
-# {SESSION_SCOPED_STAGING_MARKER}: auto-stage session-touched files and pass
-# --files to pre-commit (which disables its internal stash).
-# Works for both tmux and headless agent sessions.
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-_scope_script="$REPO_ROOT/tools/session_scope.py"
-_scope_python="$REPO_ROOT/.venv/bin/python3"
-_scoped_files=""
-if [ -x "$_scope_python" ] && [ -f "$_scope_script" ]; then
-  _scope_output="$("$_scope_python" "$_scope_script" --mode lint --project-root "$REPO_ROOT" 2>/dev/null)"
-  if [ $? -eq 0 ] && [ -n "$_scope_output" ]; then
-    while IFS= read -r _f; do
-      if [ -n "$_f" ] && [ -f "$REPO_ROOT/$_f" ]; then
-        git add -- "$_f"
-        _scoped_files="$_scoped_files $_f"
-      fi
-    done <<< "$_scope_output"
-  fi
-fi
-"""
 
 # Guard that blocks commits when ANY unstaged changes to tracked files exist.
 # WHY: pre-commit's staged_files_only.py saves unstaged changes as a patch, runs
@@ -61,66 +36,17 @@ if [ -n "$_staged" ] && [ -n "$_unstaged" ]; then
 fi
 """
 
-# Captures staged files before hooks, runs pre-commit as a regular call (not exec), then
-# restages formatter-modified files and retries pre-commit once so the commit completes in
-# one go. Pre-commit returns non-zero when a hook modifies files, so restaging must happen
-# on the failure path — not only on success.
+# Run pre-commit normally. Staging and format-restaging are handled by
+# ``telec code commit`` before git commit is invoked.
 RESTAGE_BLOCK = f"""\
-# {RESTAGE_MARKER}: capture staged files before hooks run
-_pre_staged="$(git diff --cached --name-only --diff-filter=ACM)"
-
-_teleclaude_run_precommit() {{
-    # When session scoping staged files, use 'run --files' instead of
-    # 'hook-impl' so pre-commit skips its internal stash (stash = not args.files).
-    if [ -n "$_scoped_files" ]; then
-        local _pc_args=(run --files $_scoped_files)
-        if [ -x "$INSTALL_PYTHON" ]; then
-            "$INSTALL_PYTHON" -mpre_commit "${{_pc_args[@]}}"
-            return $?
-        elif command -v pre-commit > /dev/null; then
-            pre-commit "${{_pc_args[@]}}"
-            return $?
-        fi
-    else
-        if [ -x "$INSTALL_PYTHON" ]; then
-            "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
-            return $?
-        elif command -v pre-commit > /dev/null; then
-            pre-commit "${{ARGS[@]}}"
-            return $?
-        fi
-    fi
-    echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
-    return 127
-}}
-
-_teleclaude_run_precommit
-_rc=$?
-
-# Collect previously-staged files that formatters modified (now unstaged).
-_modified=""
-if [ -n "$_pre_staged" ]; then
-    for _f in $_pre_staged; do
-        if [ -f "$_f" ] && ! git diff --quiet -- "$_f"; then
-            _modified="$_modified $_f"
-        fi
-    done
+# {RESTAGE_MARKER}: run pre-commit
+if [ -x "$INSTALL_PYTHON" ]; then
+    exec "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
+elif command -v pre-commit > /dev/null; then
+    exec pre-commit "${{ARGS[@]}}"
 fi
-
-# Restage formatter edits, then retry pre-commit once if it had failed because of them.
-if [ -n "$_modified" ]; then
-    if ! git add -- $_modified; then
-        echo "ERROR: failed to restage formatted files — aborting commit." >&2
-        exit 1
-    fi
-    if [ $_rc -ne 0 ]; then
-        echo "Restaged formatter-modified files; re-running pre-commit..."
-        _teleclaude_run_precommit
-        _rc=$?
-    fi
-fi
-
-exit $_rc
+echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
+exit 127
 """
 
 # Check command that detects hardcoded HOME paths in staged .md files
@@ -290,7 +216,7 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
     content = precommit_hook_file.read_text(encoding="utf-8")
 
     marker_comments = (
-        f"# {SESSION_SCOPED_STAGING_MARKER}",
+        "# teleclaude-session-scoped-staging",  # legacy marker for upgrade cleanup
         f"# {STASH_PREVENTION_MARKER}",
         f"# {_OLD_OVERLAP_MARKER}",
         f"# {RESTAGE_MARKER}",
@@ -308,7 +234,7 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
         idx = content.find(exec_anchor)
         prefix = (content[:idx] if idx != -1 else content).rstrip("\n")
 
-    content = prefix + "\n" + SESSION_SCOPED_STAGING_BLOCK + "\n" + STASH_PREVENTION_BLOCK + "\n" + RESTAGE_BLOCK
+    content = prefix + "\n" + STASH_PREVENTION_BLOCK + "\n" + RESTAGE_BLOCK
 
     precommit_hook_file.write_text(content, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)

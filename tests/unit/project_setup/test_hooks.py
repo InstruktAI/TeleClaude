@@ -2,18 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
 import yaml
 
 import teleclaude.project_setup.hooks as hooks
-
-
-def _has_exec_command(content: str) -> bool:
-    """Check whether content contains `exec` as a shell command (not in comments)."""
-    return bool(re.search(r"^\s+exec\s", content, re.MULTILINE))
 
 
 def _make_precommit_entrypoint(extra: str = "", install_python: str = "/tmp/python") -> str:
@@ -44,7 +38,6 @@ def test_install_precommit_hook_updates_framework_config_and_entrypoint_guard(tm
     assert local_repo["hooks"][0]["id"] == hooks.DOCS_CHECK_MARKER
     assert hooks.STASH_PREVENTION_MARKER in content
     assert hooks.RESTAGE_MARKER in content
-    assert not _has_exec_command(content)
 
 
 def test_add_raw_git_hook_is_idempotent_and_makes_file_executable(tmp_path: Path) -> None:
@@ -75,7 +68,6 @@ def test_ensure_precommit_entrypoint_guard_replaces_old_overlap_guard(tmp_path: 
     assert hooks._OLD_OVERLAP_MARKER not in content
     assert hooks.STASH_PREVENTION_MARKER in content
     assert hooks.RESTAGE_MARKER in content
-    assert not _has_exec_command(content)
 
 
 def test_ensure_precommit_entrypoint_guard_is_idempotent(tmp_path: Path) -> None:
@@ -88,7 +80,6 @@ def test_ensure_precommit_entrypoint_guard_is_idempotent(tmp_path: Path) -> None
     content = hook_file.read_text(encoding="utf-8")
     assert content.count(hooks.STASH_PREVENTION_MARKER) == 1
     assert content.count(hooks.RESTAGE_MARKER) == 1
-    assert content.count(hooks.SESSION_SCOPED_STAGING_MARKER) == 1
 
 
 def test_ensure_precommit_entrypoint_guard_replaces_existing_restage_block(tmp_path: Path) -> None:
@@ -110,7 +101,27 @@ def test_ensure_precommit_entrypoint_guard_replaces_existing_restage_block(tmp_p
     content = hook_file.read_text(encoding="utf-8")
     assert "outdated-restage-logic" not in content
     assert content.count(hooks.RESTAGE_MARKER) == 1
-    assert "_pre_staged=" in content
+
+
+def test_ensure_precommit_entrypoint_guard_cleans_up_legacy_staging_marker(tmp_path: Path) -> None:
+    """Legacy session-scoped-staging marker is removed on re-run."""
+    hook_file = tmp_path / "pre-commit"
+    legacy = (
+        "#!/usr/bin/env bash\n"
+        "INSTALL_PYTHON=/tmp/python\n"
+        "ARGS=()\n"
+        "# teleclaude-session-scoped-staging: legacy block\n"
+        "echo legacy-staging\n"
+    )
+    hook_file.write_text(legacy, encoding="utf-8")
+
+    hooks._ensure_precommit_entrypoint_guard(hook_file)
+
+    content = hook_file.read_text(encoding="utf-8")
+    assert "legacy-staging" not in content
+    assert "teleclaude-session-scoped-staging" not in content
+    assert hooks.STASH_PREVENTION_MARKER in content
+    assert hooks.RESTAGE_MARKER in content
 
 
 class TestEntrypointGuardBlockOrdering:
@@ -124,7 +135,6 @@ class TestEntrypointGuardBlockOrdering:
         hooks._ensure_precommit_entrypoint_guard(hook_file)
 
         content = hook_file.read_text(encoding="utf-8")
-        scoping_pos = content.index(hooks.SESSION_SCOPED_STAGING_MARKER)
         stash_pos = content.index(hooks.STASH_PREVENTION_MARKER)
         restage_pos = content.index(hooks.RESTAGE_MARKER)
-        assert scoping_pos < stash_pos < restage_pos
+        assert stash_pos < restage_pos

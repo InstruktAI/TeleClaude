@@ -225,21 +225,14 @@ def build_checkpoint_message(
 
 
 def _commit_instruction(on_main: bool) -> str:
-    """Branch-aware commit instruction for the checkpoint message.
-
-    On main, commits require explicit human approval via the git wrapper gate.
-    Off main (worktree branches), workers commit their own changes directly.
-    """
+    """Branch-aware commit instruction for the checkpoint message."""
     if on_main:
         return (
             "You are on `main` — do NOT commit yet. State a recommendation to the human "
             "(what changed, why, file types, scope) and wait for explicit approval. "
-            "Your session-touched files are auto-staged by the pre-commit hook — do not "
-            "run `git add` manually. If approved, commit with "
-            "`TELECLAUDE_COMMIT_APPROVED=1 git commit -m '…'` "
-            "(inline — one approval, one commit)."
+            "If approved, commit with `telec code commit -- -m '…'`."
         )
-    return "Commit only YOUR changed files"
+    return "Commit your changes with `telec code commit`"
 
 
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:

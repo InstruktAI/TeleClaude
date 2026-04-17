@@ -203,19 +203,19 @@ class TestRunHeuristics:
 
 class TestCommitInstruction:
     @pytest.mark.unit
-    def test_on_main_references_approval_env_var(self) -> None:
+    def test_on_main_references_telec_code_commit(self) -> None:
         instruction = _commit_instruction(on_main=True)
-        assert "TELECLAUDE_COMMIT_APPROVED=1" in instruction
+        assert "telec code commit" in instruction
 
     @pytest.mark.unit
-    def test_off_main_does_not_mention_approval_env_var(self) -> None:
+    def test_off_main_references_telec_code_commit(self) -> None:
         instruction = _commit_instruction(on_main=False)
-        assert "TELECLAUDE_COMMIT_APPROVED" not in instruction
+        assert "telec code commit" in instruction
 
 
 class TestComposeBranchAware:
     @pytest.mark.unit
-    def test_compose_on_main_emits_approval_env_var_in_numbered_actions(self) -> None:
+    def test_compose_on_main_emits_telec_code_commit(self) -> None:
         result = CheckpointResult(
             categories=["python"],
             required_actions=["Run tests"],
@@ -226,10 +226,10 @@ class TestComposeBranchAware:
 
         message = _compose_checkpoint_message(["src/app.py"], result)
 
-        assert "TELECLAUDE_COMMIT_APPROVED=1" in message
+        assert "telec code commit" in message
 
     @pytest.mark.unit
-    def test_compose_off_main_omits_approval_env_var(self) -> None:
+    def test_compose_off_main_emits_telec_code_commit(self) -> None:
         result = CheckpointResult(
             categories=["python"],
             required_actions=["Run tests"],
@@ -240,20 +240,20 @@ class TestComposeBranchAware:
 
         message = _compose_checkpoint_message(["src/app.py"], result)
 
-        assert "TELECLAUDE_COMMIT_APPROVED" not in message
+        assert "telec code commit" in message
 
     @pytest.mark.unit
-    def test_compose_on_main_all_clear_variant_emits_approval_env_var(self) -> None:
+    def test_compose_on_main_all_clear_variant_emits_telec_code_commit(self) -> None:
         result = CheckpointResult(is_all_clear=True, on_main=True)
 
         message = _compose_checkpoint_message(["src/app.py"], result)
 
-        assert "TELECLAUDE_COMMIT_APPROVED=1" in message
+        assert "telec code commit" in message
 
     @pytest.mark.unit
-    def test_compose_on_main_docs_only_variant_emits_approval_env_var(self) -> None:
+    def test_compose_on_main_docs_only_variant_emits_telec_code_commit(self) -> None:
         result = CheckpointResult(on_main=True)
 
         message = _compose_checkpoint_message([], result)
 
-        assert "TELECLAUDE_COMMIT_APPROVED=1" in message
+        assert "telec code commit" in message

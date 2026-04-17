@@ -40,6 +40,7 @@ _STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"
 MODULE_SIZE_EXCEPTIONS = frozenset(
     {
         "teleclaude/daemon.py",
+        "teleclaude/cli/telec/surface.py",  # declarative CLI schema registry, not logic
     }
 )
 

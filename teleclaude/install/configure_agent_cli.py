@@ -22,7 +22,6 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.project_root import resolve_main_repo_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
-WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
 
 
 def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: loose-dict - JSON from disk
@@ -640,37 +639,6 @@ def _ensure_codex_mcp_servers(content: str, mcp_servers_spec: dict[str, dict[str
     return content
 
 
-def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
-    """Install an agent-session wrapper as a symlink into ~/.teleclaude/bin.
-
-    Creates a symlink from ~/.teleclaude/bin/{name} -> {repo_root}/teleclaude/install/wrappers/{name}.
-    Migrates from old rendered-copy installs by replacing regular files with symlinks.
-    """
-    _ = repo_root  # kept for call-site compatibility; source path uses WRAPPER_TEMPLATE_DIR
-    source_path = WRAPPER_TEMPLATE_DIR / wrapper_name
-    if not source_path.exists():
-        print(f"Warning: wrapper source missing: {source_path}")
-        return
-
-    from teleclaude.paths import BIN_DIR  # pylint: disable=import-outside-toplevel
-
-    bin_dir = BIN_DIR
-    bin_dir.mkdir(parents=True, exist_ok=True)
-    target_path = bin_dir / wrapper_name
-
-    # Already a correct symlink — nothing to do
-    if target_path.is_symlink() and target_path.resolve() == source_path.resolve():
-        print(f"{wrapper_name} wrapper already linked at {target_path}")
-        return
-
-    # Remove stale file or incorrect symlink before creating new symlink
-    if target_path.exists() or target_path.is_symlink():
-        target_path.unlink()
-
-    target_path.symlink_to(source_path)
-    print(f"{wrapper_name} wrapper linked at {target_path} -> {source_path}")
-
-
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
@@ -701,7 +669,6 @@ def main() -> None:
     repo_root = resolve_main_repo_root(Path(__file__).resolve().parents[2])
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
-    install_agent_wrapper(repo_root, "git")
     install_env_symlink(repo_root)
     configure_claude(repo_root)
     configure_gemini(repo_root)

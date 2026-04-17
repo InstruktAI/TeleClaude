@@ -54,10 +54,10 @@ Staged changes are ready for commit.
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
    - Footer: TeleClaude Co-Authored-By trailer
-3. Run: git commit -m '<your message>'
+3. Run: telec code commit -- -m '<your message>'
 4. Then call: telec todo integrate
 
-NEXT: Compose and execute git commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
+NEXT: Compose and execute telec code commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
 
 
 def _format_conflict_decision(
@@ -83,13 +83,15 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 1. Read each conflicted file — understand the **intent** on both sides
 2. Merge both contributions (do not use `--theirs` or `--ours`)
 3. Verify: all API surface and behavior from both sides preserved
-4. Stage: git add <files>
-5. Commit with delivery-quality message noting conflict resolution
+4. Stage resolved files: git add <files>
+5. Run: telec code commit --no-scope -- -m '<your message>'
 6. Call: telec todo integrate
 
 If unresolvable, call telec todo integrate without committing.
 
-NEXT: Resolve conflicts, stage, commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
+NEXT: Resolve conflicts, stage, commit with telec code commit, then call telec todo integrate""" + _format_anomalies(
+        warnings or []
+    )
 
 
 def _format_push_rejected(rejection_reason: str, slug: str, *, warnings: list[str] | None = None) -> str:

@@ -103,16 +103,16 @@ def test_format_error_returns_string_with_code():
     assert "INVALID_STATE" in result
 
 
-def test_commit_decision_emits_plain_git_commands():
-    """Agent runs from the worktree — commands must not contain -C trees/_integration."""
+def test_commit_decision_emits_telec_code_commit():
+    """Commit decision instructs agent to use telec code commit."""
     result = _format_commit_decision("s", "b", "", "", "", "")
-    assert "git commit -m" in result
+    assert "telec code commit" in result
     assert "-C trees/_integration" not in result
 
 
-def test_conflict_decision_emits_plain_git_commands():
+def test_conflict_decision_emits_telec_code_commit():
     result = _format_conflict_decision("s", "b", ["f.py"])
-    assert "git add" in result
+    assert "telec code commit" in result
     assert "-C trees/_integration" not in result
 
 
