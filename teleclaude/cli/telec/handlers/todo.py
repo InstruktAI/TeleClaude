@@ -92,6 +92,19 @@ def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
         return 1
 
     state = dict(read_phase_state(cwd, slug))
+    if field == "work_phase":
+        from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+        from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+            validate_work_phase_preconditions,
+        )
+
+        worktree_cwd = str(Path(cwd) / "trees" / slug)
+        wt = worktree_cwd if Path(worktree_cwd).exists() else None
+        error = validate_work_phase_preconditions(state, phase, wt)
+        if error:
+            print(error, file=sys.stderr)
+            return 1
     state[field] = phase
     write_phase_state(cwd, slug, state)
     print(f"Marked {slug} {field}={phase}")

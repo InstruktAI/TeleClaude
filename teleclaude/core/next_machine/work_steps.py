@@ -31,6 +31,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
+from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
 from teleclaude.core.next_machine.git_ops import (
     compose_agent_guidance,
     get_head_commit,
@@ -43,6 +44,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
+from teleclaude.core.next_machine.phase_derivation import _has_build_commits_beyond_main
 from teleclaude.core.next_machine.prepare_steps import (
     _commit_writer,
     _derive_project_root,
@@ -146,7 +148,7 @@ async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-ma
     Bugs skip DOR. Prepped todos are expected to have their DOR stamped by the
     prepare machine; if it is missing we treat that as a contract violation.
     """
-    _ = todos_db, worktree_cwd  # dispatch is stateless from todos_db view
+    _ = todos_db
 
     # Authoritative: record BUILD_STARTED entry so routing reads the recorded
     # phase on the next iteration instead of re-deriving from worktree primitives.
@@ -175,11 +177,20 @@ async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-ma
     command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
-        return False, (
-            f"BUILDER ACTIVE: {slug}\n\n"
-            f"Builder session {builder_id} is still running. "
-            f"Wait for its next idle event, then call telec todo work {slug}."
-        )
+        has_commits = await asyncio.to_thread(_has_build_commits_beyond_main, worktree_cwd)
+        if not has_commits:
+            return False, (
+                f"BUILDER ACTIVE: {slug}\n\n"
+                f"Builder session {builder_id} has no commits beyond main yet. "
+                f"Wait for its next idle event, then call telec todo work {slug}."
+            )
+        gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
+        if not gates_passed:
+            return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
+        # Build complete — clear authoritative phase so primitives derive BUILD_COMPLETE
+        state["work_phase"] = ""
+        await write_phase_state(cwd, slug, state)
+        return True, ""
 
     try:
         guidance = await compose_agent_guidance(db)
@@ -333,6 +344,7 @@ async def _work_step_review_changes_requested(  # pylint: disable=too-many-argum
         review.verdict = ""
         review.dispatch_head = ""
         review.round = review.round + 1
+        writer.state.work_phase = ""  # clear authoritative — let primitives derive BUILD_COMPLETE
         _append_event(
             state,
             actor="work_state_machine",

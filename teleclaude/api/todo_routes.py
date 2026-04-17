@@ -633,6 +633,7 @@ async def mark_phase(
     )
     from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
         read_phase_state,
+        validate_work_phase_preconditions,
         write_phase_state,
     )
 
@@ -656,6 +657,14 @@ async def mark_phase(
 
     def _apply() -> dict[str, StateValue]:
         state = dict(read_phase_state(effective_cwd, slug))
+        if field == "work_phase":
+            from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+            worktree_cwd = str(Path(effective_cwd) / "trees" / slug)
+            wt = worktree_cwd if Path(worktree_cwd).exists() else None
+            error = validate_work_phase_preconditions(state, phase, wt)
+            if error:
+                raise HTTPException(status_code=400, detail=error)
         state[field] = phase
         write_phase_state(effective_cwd, slug, state)
         return state

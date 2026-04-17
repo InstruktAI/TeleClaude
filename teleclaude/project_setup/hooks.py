@@ -16,10 +16,9 @@ _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
 # session_scope.py exit codes: 0 = files emitted, 2 = no session identity.
 # git status (used internally) already honors .gitignore.
 SESSION_SCOPED_STAGING_BLOCK = f"""
-# {SESSION_SCOPED_STAGING_MARKER}: auto-stage session-touched files when
-# a session identity is available (agent sessions — tmux or headless).
-# When scoping succeeds, _scoped_files is set so pre-commit runs with
-# --files (which disables its internal stash).
+# {SESSION_SCOPED_STAGING_MARKER}: auto-stage session-touched files and pass
+# --files to pre-commit (which disables its internal stash).
+# Works for both tmux and headless agent sessions.
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 _scope_script="$REPO_ROOT/tools/session_scope.py"
 _scope_python="$REPO_ROOT/.venv/bin/python3"

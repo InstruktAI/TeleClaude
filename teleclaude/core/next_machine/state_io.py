@@ -157,6 +157,44 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
     db.write_state_sync(slug, state)
 
 
+def validate_work_phase_preconditions(
+    state: dict[str, StateValue],
+    phase: str,
+    worktree_cwd: str | None,
+) -> str | None:
+    """Return error string if preconditions for the target work phase are not met, else None.
+
+    Minimal validation: prevents clearly invalid states without blocking
+    intentional operator skips. Called by mark-phase before writing.
+    """
+    from teleclaude.core.next_machine.phase_derivation import (  # pylint: disable=import-outside-toplevel
+        _has_build_commits_beyond_main,
+    )
+
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+    verdict = build_review.get("verdict", "")
+
+    finalize_raw = state.get("finalize")
+    finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
+    finalize_status = finalize.get("status", "")
+
+    if phase == "build_complete":
+        if worktree_cwd is not None and not _has_build_commits_beyond_main(worktree_cwd):
+            return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
+    elif phase in ("review_changes_requested", "review_approved"):
+        if not verdict:
+            return f"Cannot set {phase}: build_review.verdict is not set"
+    elif phase == "finalize_ready":
+        if verdict != "approve":
+            return f"Cannot set finalize_ready: build_review.verdict must be 'approve', got '{verdict}'"
+    elif phase == "handed_off":
+        if finalize_status != "ready":
+            return f"Cannot set handed_off: finalize.status must be 'ready', got '{finalize_status}'"
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Stamp operations
 # ---------------------------------------------------------------------------
