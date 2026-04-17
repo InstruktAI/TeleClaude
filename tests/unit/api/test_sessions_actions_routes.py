@@ -278,6 +278,136 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_revive_session_rejects_unknown_codex_native_session_id(self) -> None:
+        """Revive rejects Codex native session IDs that do not resolve to a transcript."""
+        http_request = SimpleNamespace(headers={}, query_params={})
+        identity = _identity("caller-1")
+        service = SimpleNamespace(
+            create_session=AsyncMock(),
+            restart_agent=AsyncMock(return_value=(True, None)),
+        )
+        current_session = SimpleNamespace(
+            active_agent="codex",
+            native_session_id="teleclaude-uuid-not-codex",
+        )
+        refreshed_session = SimpleNamespace(tmux_session_name="tmux-revive")
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
+            patch.object(sessions_actions_routes, "db") as db,
+            patch.object(sessions_actions_routes.CommandMapper, "map_api_input") as map_api_input,
+            patch.object(sessions_actions_routes, "get_command_service", return_value=service) as get_command_service,
+            patch.object(
+                sessions_actions_routes,
+                "discover_codex_transcript_path",
+                return_value=None,
+            ) as discover_codex_transcript_path,
+            patch.object(sessions_actions_routes, "get_known_agents", return_value=["claude", "codex", "gemini"]),
+        ):
+            db.get_session_by_field = AsyncMock(return_value=None)
+            db.get_session = AsyncMock(side_effect=[current_session, refreshed_session])
+
+            with pytest.raises(HTTPException) as exc_info:
+                await sessions_actions_routes.revive_session(
+                    http_request,
+                    "teleclaude-uuid-not-codex",
+                    agent="codex",
+                    identity=identity,
+                )
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Native session ID is not valid for agent 'codex'"
+        db.get_session_by_field.assert_awaited_once_with(
+            "native_session_id",
+            "teleclaude-uuid-not-codex",
+            include_initializing=True,
+        )
+        discover_codex_transcript_path.assert_called_once_with("teleclaude-uuid-not-codex")
+        check_session_access.assert_not_awaited()
+        map_api_input.assert_not_called()
+        get_command_service.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_revive_session_rejects_unknown_claude_native_session_id(self) -> None:
+        """Revive rejects Claude native session IDs that do not match discovered transcripts."""
+        http_request = SimpleNamespace(headers={}, query_params={})
+        identity = _identity("caller-1")
+        transcript = SimpleNamespace(path=Path("/tmp/claude-session.jsonl"))
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
+            patch.object(sessions_actions_routes, "db") as db,
+            patch.object(sessions_actions_routes.CommandMapper, "map_api_input") as map_api_input,
+            patch.object(sessions_actions_routes, "get_command_service") as get_command_service,
+            patch.object(
+                sessions_actions_routes, "discover_transcripts", return_value=[transcript]
+            ) as discover_transcripts,
+            patch.object(
+                sessions_actions_routes, "extract_session_id", return_value="other-native-id"
+            ) as extract_session_id,
+        ):
+            db.get_session_by_field = AsyncMock(return_value=None)
+
+            with pytest.raises(HTTPException) as exc_info:
+                await sessions_actions_routes.revive_session(
+                    http_request,
+                    "missing-claude-native-id",
+                    agent="claude",
+                    identity=identity,
+                )
+
+        assert exc_info.value.status_code == 404
+        db.get_session_by_field.assert_awaited_once_with(
+            "native_session_id",
+            "missing-claude-native-id",
+            include_initializing=True,
+        )
+        discover_transcripts.assert_called_once()
+        extract_session_id.assert_called_once_with(
+            transcript.path, sessions_actions_routes.agents_module.AgentName.CLAUDE
+        )
+        check_session_access.assert_not_awaited()
+        map_api_input.assert_not_called()
+        get_command_service.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_revive_session_rejects_unknown_agent_name(self) -> None:
+        """Revive treats unknown agent names as invalid native-session lookups."""
+        http_request = SimpleNamespace(headers={}, query_params={})
+        identity = _identity("caller-1")
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.check_session_access", new=AsyncMock()
+            ) as check_session_access,
+            patch.object(sessions_actions_routes, "db") as db,
+            patch.object(sessions_actions_routes.CommandMapper, "map_api_input") as map_api_input,
+            patch.object(sessions_actions_routes, "get_command_service") as get_command_service,
+        ):
+            db.get_session_by_field = AsyncMock(return_value=None)
+
+            with pytest.raises(HTTPException) as exc_info:
+                await sessions_actions_routes.revive_session(
+                    http_request,
+                    "native-id",
+                    agent="bogus",
+                    identity=identity,
+                )
+
+        assert exc_info.value.status_code == 404
+        db.get_session_by_field.assert_awaited_once_with("native_session_id", "native-id", include_initializing=True)
+        check_session_access.assert_not_awaited()
+        map_api_input.assert_not_called()
+        get_command_service.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_get_session_messages_projects_structured_transcripts_with_query_flags(self) -> None:
         """Structured transcript reads honor the visibility flags from query parameters."""
         http_request = SimpleNamespace(headers={})

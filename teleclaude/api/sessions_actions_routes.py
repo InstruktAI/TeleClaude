@@ -50,6 +50,7 @@ from teleclaude.core.agents import (
     get_default_agent,
     get_known_agents,
 )
+from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED
@@ -64,6 +65,7 @@ from teleclaude.output_projection import conversation_projector as conversation_
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
 from teleclaude.types.commands import CreateSessionCommand, GetSessionDataCommand
+from teleclaude.utils.transcript_discovery import discover_transcripts, extract_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -91,6 +93,25 @@ def configure(client: AdapterClient | None = None) -> None:
 def _build_metadata(*, origin: str = InputOrigin.TERMINAL.value, **kwargs: object) -> MessageMetadata:
     """Build API boundary metadata with explicit origin."""
     return MessageMetadata(origin=origin, **kwargs)
+
+
+def _native_session_exists_for_agent(native_session_id: str, agent: str) -> bool:
+    """Return whether a native session ID resolves for the requested agent."""
+    if not native_session_id:
+        return False
+
+    try:
+        agent_name = agents_module.AgentName.from_str(agent)
+    except ValueError:
+        return False
+
+    if agent_name is agents_module.AgentName.CODEX:
+        return discover_codex_transcript_path(native_session_id) is not None
+
+    for transcript in discover_transcripts([agent_name]):
+        if extract_session_id(transcript.path, agent_name) == native_session_id:
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -124,7 +145,12 @@ async def _resolve_revive_session_id(
     agent: str | None,
     identity: CallerIdentity,
 ) -> str:
-    """Resolve a TeleClaude session id for revive requests."""
+    """Resolve a TeleClaude session id for revive requests.
+
+    When an agent is specified and no existing DB mapping exists, validates that the
+    native session ID resolves on the agent's filesystem before creating a new session.
+    Raises HTTPException(404) if the native ID cannot be found.
+    """
     if not agent:
         return session_id
 
@@ -136,6 +162,9 @@ async def _resolve_revive_session_id(
                 detail=f"Native session belongs to agent '{resolved.active_agent}', not '{agent}'",
             )
         return resolved.session_id
+
+    if not _native_session_exists_for_agent(session_id, agent):
+        raise HTTPException(status_code=404, detail=f"Native session ID is not valid for agent '{agent}'")
 
     new_session_id = str(uuid.uuid4())
     project_path: str | None = None
