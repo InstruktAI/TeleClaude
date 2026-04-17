@@ -25,7 +25,7 @@ from teleclaude.api_models import (
     SendResultRequest,
     VoiceInputRequest,
 )
-from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, JobRole
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, JobRole
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import GetSessionDataCommand
@@ -43,6 +43,20 @@ def _identity(
         human_role=human_role,
         tmux_session_name=None,
         principal=principal,
+    )
+
+
+def _system_identity(
+    session_id: str,
+    *,
+    system_role: str,
+    human_role: str | None = "admin",
+) -> CallerIdentity:
+    return CallerIdentity(
+        session_id=session_id,
+        system_role=system_role,
+        human_role=human_role,
+        tmux_session_name=None,
     )
 
 
@@ -700,6 +714,51 @@ class TestSessionsActionsRoutes:
 
         assert response.status == "success"
         assert response.session_id == "sess-integrator"
+        service.create_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_orchestrator_cannot_dispatch_integrate(self) -> None:
+        """Orchestrator system_role is blocked from dispatching /next-integrate."""
+        request = RunSessionRequest(command="/next-integrate", args="some-slug", project="/repo/demo")
+        identity = _system_identity("sess-orch", system_role=ROLE_ORCHESTRATOR)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert exc_info.value.status_code == 403
+        assert "cannot dispatch" in str(exc_info.value.detail)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_worker_cannot_dispatch_build(self) -> None:
+        """Worker system_role cannot dispatch any command."""
+        request = RunSessionRequest(command="/next-build", args="some-slug", project="/repo/demo")
+        identity = _system_identity("sess-worker", system_role=ROLE_WORKER)
+
+        with pytest.raises(HTTPException) as exc_info:
+            await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert exc_info.value.status_code == 403
+        assert "cannot dispatch" in str(exc_info.value.detail)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_orchestrator_can_dispatch_worker_command(self) -> None:
+        """Orchestrator system_role can dispatch worker commands like /next-build."""
+        request = RunSessionRequest(command="/next-build", args="some-slug", project="/repo/demo")
+        identity = _system_identity("sess-orch", system_role=ROLE_ORCHESTRATOR)
+
+        service = MagicMock()
+        service.create_session = AsyncMock(
+            return_value={"session_id": "sess-builder", "tmux_session_name": "tmux-build"},
+        )
+
+        with patch.object(sessions_actions_routes, "get_command_service", return_value=service):
+            response = await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert response.status == "success"
+        assert response.session_id == "sess-builder"
         service.create_session.assert_awaited_once()
 
     @pytest.mark.unit

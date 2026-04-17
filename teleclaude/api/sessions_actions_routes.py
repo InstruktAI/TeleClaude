@@ -52,7 +52,7 @@ from teleclaude.core.agents import (
 )
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.command_service import COMMAND_ROLE_MAP
+from teleclaude.core.command_service import COMMAND_ROLE_MAP, DISPATCH_ALLOWED
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
@@ -322,6 +322,19 @@ def _prepare_run_session(
     except ValueError:
         slash_cmd = None
     role_info = COMMAND_ROLE_MAP.get(slash_cmd) if slash_cmd else None
+
+    if role_info and identity.system_role:
+        target_role = role_info[0]
+        allowed = DISPATCH_ALLOWED.get(identity.system_role, frozenset())
+        if target_role not in allowed:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    f"role '{identity.system_role}' cannot dispatch /{normalized_cmd} "
+                    f"(requires dispatch privilege for '{target_role}')"
+                ),
+            )
+
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,

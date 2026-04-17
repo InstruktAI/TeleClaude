@@ -15,6 +15,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import (
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
     ROLE_WORKER,
     JobRole,
     SlashCommand,
@@ -76,6 +77,16 @@ COMMAND_ROLE_MAP: dict[SlashCommand, tuple[str, JobRole]] = {
     SlashCommand.NEXT_PREPARE: (ROLE_ORCHESTRATOR, JobRole.PREPARE_ORCHESTRATOR),
     SlashCommand.NEXT_WORK: (ROLE_ORCHESTRATOR, JobRole.WORK_ORCHESTRATOR),
     SlashCommand.NEXT_INTEGRATE: (ROLE_INTEGRATOR, JobRole.INTEGRATOR),
+}
+
+# Which target roles each caller system_role may dispatch via sessions/run.
+# Callers without a system_role (terminal, TUI, web, daemon lifecycle_router)
+# are on the human_role axis — endpoint-level clearance governs their access.
+DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
+    ROLE_ORCHESTRATOR: frozenset({ROLE_WORKER}),
+    ROLE_INTEGRATOR: frozenset(),
+    ROLE_SYSTEM: frozenset({ROLE_WORKER}),
+    ROLE_WORKER: frozenset(),
 }
 
 

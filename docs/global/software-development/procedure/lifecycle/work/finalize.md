@@ -50,7 +50,12 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
 6. Stamp finalize readiness: `telec todo stamp {slug} --finalize-ready`.
 7. Stop. Do **not** merge into canonical `main`, push `main`, or modify delivery bookkeeping.
 
-### Stage B — Orchestrator: finalize handoff
+### Stage B — Work orchestrator: record handoff (not integration)
+
+The work orchestrator's authority ends here. It records the handoff — it does not
+perform integration. Integration is a separate singleton role (`/next-integrate`)
+with its own lease, worktree (`trees/_integration/`), and dispatch path. The work
+orchestrator must never dispatch `/next-integrate` or call `telec todo integrate`.
 
 1. Re-run the work state machine for the same slug:
 
@@ -64,6 +69,9 @@ Advance `origin/main` only through canonical-root orchestrator apply after a wor
    ```bash
    telec todo work
    ```
+
+4. If the state machine does not advance past finalize, report the blocker and stop.
+   Do not escalate scope into integration.
 
 Worker report format:
 
