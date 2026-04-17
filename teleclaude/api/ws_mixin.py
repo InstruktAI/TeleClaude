@@ -577,7 +577,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         current: BaseException | None = exc
         while current is not None and id(current) not in seen:
             seen.add(id(current))
-            if isinstance(current, (WebSocketDisconnect, OSError, ConnectionError)):
+            if isinstance(current, WebSocketDisconnect | OSError | ConnectionError):
                 return True
             name = current.__class__.__name__
             if name in {"ClientDisconnected", "ConnectionClosed", "ConnectionClosedError", "ConnectionClosedOK"}:

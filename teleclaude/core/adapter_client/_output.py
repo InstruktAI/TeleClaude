@@ -515,6 +515,6 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         results = await self._broadcast_to_ui_adapters(session, "delete_channel", make_task)
 
         for _, result in results:
-            if not isinstance(result, (Exception, type(None))) and result:
+            if not isinstance(result, Exception | type(None)) and result:
                 return True
         return False

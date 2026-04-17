@@ -73,7 +73,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
 
         for i in range(current_idx - 1, -1, -1):
             widget = self._nav_items[i]  # type: ignore[attr-defined]
-            if isinstance(widget, (ProjectHeader, ComputerHeader, GroupSeparator)):
+            if isinstance(widget, ProjectHeader | ComputerHeader | GroupSeparator):
                 break
             if isinstance(widget, TodoRow) and not widget._tree_lines:
                 prev_slug = widget.slug
@@ -81,7 +81,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
 
         for i in range(current_idx + 1, len(self._nav_items)):  # type: ignore[attr-defined]
             widget = self._nav_items[i]  # type: ignore[attr-defined]
-            if isinstance(widget, (ProjectHeader, ComputerHeader, GroupSeparator)):
+            if isinstance(widget, ProjectHeader | ComputerHeader | GroupSeparator):
                 break
             if isinstance(widget, TodoRow) and not widget._tree_lines:
                 next_slug = widget.slug
@@ -231,7 +231,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             return "new_project"
         if isinstance(item, ProjectHeader):
             return "new_todo"
-        if isinstance(item, (TodoRow, TodoFileRow)):
+        if isinstance(item, TodoRow | TodoFileRow):
             return "activate"
         return None
 

@@ -113,11 +113,11 @@ def _normalize_namespaced_state(data: dict[str, object]) -> dict[str, dict[str, 
 def _jsonify(value: object) -> object:
     if isinstance(value, dict):
         return {str(k): _jsonify(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
+    if isinstance(value, list | tuple):
         return [_jsonify(item) for item in value]
     if isinstance(value, set):
         return [_jsonify(item) for item in sorted(value, key=str)]
-    if isinstance(value, (str, int, float, bool)) or value is None:
+    if isinstance(value, str | int | float | bool) or value is None:
         return value
     return str(value)
 

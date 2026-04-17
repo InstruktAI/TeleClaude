@@ -37,7 +37,7 @@ def get_sky_entities() -> list[CompositeSprite | AnimatedSprite]:
     return [
         obj
         for name in __all__
-        if isinstance(obj := getattr(module, name, None), (CompositeSprite, AnimatedSprite)) and obj.z_weights
+        if isinstance(obj := getattr(module, name, None), CompositeSprite | AnimatedSprite) and obj.z_weights
     ]
 
 

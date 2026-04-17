@@ -42,7 +42,7 @@ def cookies_to_netscape(cookies: list[JsonDict]) -> str:
         path = path_val if isinstance(path_val, str) else "/"
         secure = "TRUE" if c.get("secure", False) else "FALSE"
         expires_val = c.get("expires", time.time() + 86400 * 365)
-        expiry = int(expires_val) if isinstance(expires_val, (int, float)) else int(time.time() + 86400 * 365)
+        expiry = int(expires_val) if isinstance(expires_val, int | float) else int(time.time() + 86400 * 365)
         name_val = c.get("name", "")
         name = name_val if isinstance(name_val, str) else ""
         value_val = c.get("value", "")

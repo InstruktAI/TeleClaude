@@ -263,7 +263,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
         entry_point_result: object = None
         first_result: object = None
         for adapter_type, result in results:
-            if isinstance(result, (Exception, type(None))):
+            if isinstance(result, Exception | type(None)):
                 continue
             if first_result is None:
                 first_result = result

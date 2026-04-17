@@ -42,7 +42,7 @@ class TestConstants:
 
     @pytest.mark.unit
     def test_session_start_messages_is_non_empty_list(self):
-        assert isinstance(SESSION_START_MESSAGES, (list, tuple))
+        assert isinstance(SESSION_START_MESSAGES, list | tuple)
         assert len(SESSION_START_MESSAGES) > 0
 
     @pytest.mark.unit

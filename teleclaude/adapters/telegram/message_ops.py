@@ -196,12 +196,7 @@ class MessageOperationsMixin:
         # Type guard for reply_markup
         if reply_markup is not None and not isinstance(
             reply_markup,
-            (
-                InlineKeyboardMarkup,
-                ReplyKeyboardMarkup,
-                ReplyKeyboardRemove,
-                ForceReply,
-            ),
+            InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply,
         ):
             reply_markup = None
         try:
@@ -433,12 +428,7 @@ class MessageOperationsMixin:
         # Type guard for reply_markup
         if reply_markup is not None and not isinstance(
             reply_markup,
-            (
-                InlineKeyboardMarkup,
-                ReplyKeyboardMarkup,
-                ReplyKeyboardRemove,
-                ForceReply,
-            ),
+            InlineKeyboardMarkup | ReplyKeyboardMarkup | ReplyKeyboardRemove | ForceReply,
         ):
             reply_markup = None
 

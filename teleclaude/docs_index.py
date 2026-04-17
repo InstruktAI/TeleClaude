@@ -79,7 +79,7 @@ def _normalize_frontmatter_single_quotes(content: str) -> str:
         return content
     if not isinstance(payload, dict):
         return content
-    if any(isinstance(v, (dict, list, tuple, set)) for v in payload.values()):
+    if any(isinstance(v, dict | list | tuple | set) for v in payload.values()):
         return content
 
     rendered_lines: list[str] = ["---"]

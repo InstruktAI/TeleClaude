@@ -56,7 +56,7 @@ class TestNoRawRowTypesInSignatures:
         # Check that public function return annotations don't include sqlite3.Row
         tree = ast.parse(source)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 if node.name.startswith("_"):
                     continue  # Skip private helpers
                 if node.returns:
@@ -107,7 +107,7 @@ class TestNoUntypedDictsAtBoundaries:
         tree = ast.parse(source)
 
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
                 if node.name.startswith("_"):
                     continue
                 if node.returns:

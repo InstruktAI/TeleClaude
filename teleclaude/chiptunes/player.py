@@ -47,7 +47,7 @@ def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open
         return None
     try:
         raw: object = sd.default.device  # pyright: ignore[reportUnknownMemberType]
-        if isinstance(raw, (tuple, list)):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if isinstance(raw, tuple | list):  # pyright: ignore[reportUnnecessaryIsInstance]
             val = raw[1]
             return int(val) if val is not None else None
         return int(str(raw)) if raw is not None else None

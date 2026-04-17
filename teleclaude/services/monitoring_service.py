@@ -220,5 +220,5 @@ class MonitoringService:  # pylint: disable=too-many-instance-attributes
                 _log_unnamed_task_diagnostics(unnamed_coros)
 
         lag = snapshot.get("loop_lag_ms")
-        if isinstance(lag, (int, float)) and lag > _LOOP_LAG_WARN_MS:
+        if isinstance(lag, int | float) and lag > _LOOP_LAG_WARN_MS:
             logger.warning("Resource pressure: loop_lag_ms=%.1f exceeds threshold %.0f", lag, _LOOP_LAG_WARN_MS)
