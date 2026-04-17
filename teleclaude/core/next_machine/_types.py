@@ -30,9 +30,7 @@ class FinalizeState(TypedDict, total=False):
     branch: str
     sha: str
     ready_at: str
-    worker_session_id: str
     handed_off_at: str
-    handoff_session_id: str
 
 
 class PhaseName(str, Enum):

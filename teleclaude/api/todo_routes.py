@@ -525,6 +525,7 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_work),
 ) -> _StampResponse:
     """Stamp a verdict, DOR, grounding, specs-built, or finalize-ready value.
 
@@ -571,10 +572,10 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
         finalize_raw = state.get("finalize")
         finalize: dict[str, StateValue] = finalize_raw if isinstance(finalize_raw, dict) else {}
         sha = str(finalize.get("sha", ""))
-        worker_session_id = str(finalize.get("worker_session_id", ""))
+        caller_session_id = identity.session_id or ""
         await emit_event(
             event="domain.software-development.planning.todo_finalize_ready",
-            source=f"finalizer/{worker_session_id or 'unknown'}",
+            source=f"finalizer/{caller_session_id or 'unknown'}",
             level=EventLevel.WORKFLOW,
             domain="software-development",
             visibility=EventVisibility.LOCAL,
@@ -584,7 +585,7 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
                 "slug": slug,
                 "branch": slug,
                 "sha": sha,
-                "worker_session_id": worker_session_id,
+                "worker_session_id": caller_session_id,
             },
         )
         return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)

@@ -82,20 +82,28 @@ def test_to_core_session_reads_role_columns():
 
 @pytest.mark.asyncio
 async def test_spawn_rejects_missing_caller_identity():
-    """Missing caller_session_id raises ValueError — no orphan sessions."""
-    from teleclaude.core.integration_bridge import spawn_integrator_session
+    """Missing caller_session_id raises ValueError when no integrator is running."""
+    mock_db = MagicMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
 
-    with pytest.raises(ValueError, match="missing caller session identity"):
-        await spawn_integrator_session("my-slug", "my-branch", "abc123", "")
+    with patch("teleclaude.core.db.db", mock_db):
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        with pytest.raises(ValueError, match="missing caller session identity"):
+            await spawn_integrator_session("my-slug", "my-branch", "abc123", "")
 
 
 @pytest.mark.asyncio
 async def test_spawn_rejects_unknown_caller_identity():
     """Sentinel caller IDs must not be persisted as real session lineage."""
-    from teleclaude.core.integration_bridge import spawn_integrator_session
+    mock_db = MagicMock()
+    mock_db.list_sessions = AsyncMock(return_value=[])
 
-    with pytest.raises(ValueError, match="missing caller session identity"):
-        await spawn_integrator_session("my-slug", "my-branch", "abc123", "unknown")
+    with patch("teleclaude.core.db.db", mock_db):
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        with pytest.raises(ValueError, match="missing caller session identity"):
+            await spawn_integrator_session("my-slug", "my-branch", "abc123", "unknown")
 
 
 @pytest.mark.asyncio
@@ -116,6 +124,29 @@ async def test_spawn_notifies_running_integrator():
         from teleclaude.core.integration_bridge import spawn_integrator_session
 
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "caller-sess")
+
+    assert result is None
+    mock_svc.process_message.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_spawn_notifies_running_integrator_without_caller_identity():
+    """Notification path works even with empty caller identity."""
+    running = MagicMock()
+    running.session_id = "dead-beef-1234"
+    running.job = JobRole.INTEGRATOR
+    mock_db = MagicMock()
+    mock_db.list_sessions = AsyncMock(return_value=[running])
+    mock_svc = MagicMock()
+    mock_svc.process_message = AsyncMock()
+
+    with (
+        patch("teleclaude.core.db.db", mock_db),
+        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+    ):
+        from teleclaude.core.integration_bridge import spawn_integrator_session
+
+        result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "")
 
     assert result is None
     mock_svc.process_message.assert_awaited_once()

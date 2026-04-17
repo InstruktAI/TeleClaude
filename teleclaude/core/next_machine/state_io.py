@@ -111,7 +111,7 @@ def _normalize_finalize_state(raw: object) -> FinalizeState:
     if isinstance(status, str) and status in {"pending", "ready", "handed_off"}:
         finalize["status"] = status
 
-    for key in ("branch", "sha", "ready_at", "worker_session_id", "handed_off_at", "handoff_session_id"):
+    for key in ("branch", "sha", "ready_at", "handed_off_at"):
         value = raw.get(key)
         if isinstance(value, str) and value.strip():
             finalize[key] = value.strip()
@@ -264,14 +264,15 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     return writer.commit_sync(db, slug)
 
 
-def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylint: disable=too-many-locals
-    """Stamp finalize state and emit the integration trigger event.
+def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
+    """Stamp finalize state for integration handoff.
 
     The worktree must exist, have no uncommitted changes, and the worktree HEAD,
     local branch ref, and remote branch ref must all resolve to the same commit.
-    On success, writes a :class:`FinalizeModel` with ``status="handed_off"``
-    and emits ``planning.todo_finalize_ready`` so the integration trigger
-    cartridge can spawn the integrator immediately.
+    On success, writes a :class:`FinalizeModel` with ``status="handed_off"``.
+
+    The caller session identity is not stored here — it flows directly from
+    the API route's ``CallerIdentity`` into the event payload.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -291,7 +292,6 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylin
         has_uncommitted_changes,
     )
     from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-    from teleclaude.session_identity import get_session_id  # pylint: disable=import-outside-toplevel
     from teleclaude.types.todos import FinalizeModel  # pylint: disable=import-outside-toplevel
 
     project_root = _project_root_from_cwd(cwd)
@@ -320,16 +320,13 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:  # pylin
     db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
-    worker_session_id = (get_session_id() or "").strip()
     now = datetime.now(UTC).isoformat()
     writer.state.finalize = FinalizeModel(
         status="handed_off",
         branch=slug,
         sha=branch_head,
         ready_at=now,
-        worker_session_id=worker_session_id,
         handed_off_at=now,
-        handoff_session_id=worker_session_id,
     )
     return writer.commit_sync(db, slug)
 

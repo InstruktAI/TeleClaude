@@ -220,9 +220,6 @@ async def spawn_integrator_session(  # pylint: disable=too-many-locals
     from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
     from teleclaude.types.commands import ProcessMessageCommand  # pylint: disable=import-outside-toplevel
 
-    if not caller_session_id or caller_session_id == "unknown":
-        raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
-
     # If an integrator session is already active, wake it with a message instead of
     # spawning a duplicate. This handles both the mid-work case and zombie sessions
     # that failed to call `telec sessions end self`.
@@ -252,6 +249,10 @@ async def spawn_integrator_session(  # pylint: disable=too-many-locals
         )
         await get_command_service().process_message(msg_cmd)
         return None
+
+    # Caller identity is only required when spawning a new integrator session
+    if not caller_session_id or caller_session_id == "unknown":
+        raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
 
     from teleclaude.constants import ROLE_INTEGRATOR  # pylint: disable=import-outside-toplevel
     from teleclaude.core.agents import get_default_agent  # pylint: disable=import-outside-toplevel
