@@ -18,14 +18,20 @@ _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
 SESSION_SCOPED_STAGING_BLOCK = f"""
 # {SESSION_SCOPED_STAGING_MARKER}: auto-stage session-touched files when
 # a session identity is available (agent sessions — tmux or headless).
+# When scoping succeeds, _scoped_files is set so pre-commit runs with
+# --files (which disables its internal stash).
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 _scope_script="$REPO_ROOT/tools/session_scope.py"
 _scope_python="$REPO_ROOT/.venv/bin/python3"
+_scoped_files=""
 if [ -x "$_scope_python" ] && [ -f "$_scope_script" ]; then
   _scope_output="$("$_scope_python" "$_scope_script" --mode lint --project-root "$REPO_ROOT" 2>/dev/null)"
   if [ $? -eq 0 ] && [ -n "$_scope_output" ]; then
     while IFS= read -r _f; do
-      [ -n "$_f" ] && [ -f "$REPO_ROOT/$_f" ] && git add -- "$_f"
+      if [ -n "$_f" ] && [ -f "$REPO_ROOT/$_f" ]; then
+        git add -- "$_f"
+        _scoped_files="$_scoped_files $_f"
+      fi
     done <<< "$_scope_output"
   fi
 fi
@@ -65,12 +71,25 @@ RESTAGE_BLOCK = f"""\
 _pre_staged="$(git diff --cached --name-only --diff-filter=ACM)"
 
 _teleclaude_run_precommit() {{
-    if [ -x "$INSTALL_PYTHON" ]; then
-        "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
-        return $?
-    elif command -v pre-commit > /dev/null; then
-        pre-commit "${{ARGS[@]}}"
-        return $?
+    # When session scoping staged files, use 'run --files' instead of
+    # 'hook-impl' so pre-commit skips its internal stash (stash = not args.files).
+    if [ -n "$_scoped_files" ]; then
+        local _pc_args=(run --files $_scoped_files)
+        if [ -x "$INSTALL_PYTHON" ]; then
+            "$INSTALL_PYTHON" -mpre_commit "${{_pc_args[@]}}"
+            return $?
+        elif command -v pre-commit > /dev/null; then
+            pre-commit "${{_pc_args[@]}}"
+            return $?
+        fi
+    else
+        if [ -x "$INSTALL_PYTHON" ]; then
+            "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
+            return $?
+        elif command -v pre-commit > /dev/null; then
+            pre-commit "${{ARGS[@]}}"
+            return $?
+        fi
     fi
     echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
     return 127
