@@ -1,7 +1,10 @@
 """Lint runner and pipeline — the ``telec lint`` implementation.
 
-Orchestrates worktree detection, scope resolution, path validation,
-and deterministic pipeline execution for language-aware linting.
+Orchestrates context-aware file scoping and deterministic pipeline
+execution for language-aware linting. See design doc
+``software-development/design/session-file-scoping`` for the scoping
+contract: worktrees run repo-wide, shared branches session-scope,
+explicit files bypass scoping.
 """
 
 from __future__ import annotations
@@ -237,40 +240,81 @@ def run_pipeline(targets: list[str]) -> None:
 
 
 class LintRunner:
-    """Orchestrates worktree-aware lint execution.
+    """Orchestrates context-aware lint execution.
 
-    Determines the appropriate target scope (session files in a worktree,
-    source directories otherwise) and dispatches to the lint pipeline.
+    File target resolution follows the session-file-scoping design:
+    explicit files bypass scoping, worktrees run repo-wide, shared
+    branches session-scope to avoid touching other agents' files.
     """
 
     def __init__(self, project_root: Path) -> None:
         self._project_root = project_root
 
-    def run(self) -> None:
-        """Run the lint pipeline with automatic worktree scoping."""
+    def run(self, files: list[str] | None = None) -> None:
+        """Run the lint pipeline with context-aware file scoping.
+
+        Args:
+            files: Explicit file targets. When provided, all scoping is
+                   bypassed — these files are validated and passed directly
+                   to the pipeline.
+        """
         _pipeline_ctx[0] = self._project_root
 
-        if is_worktree(self._project_root):
-            logger.info("Worktree detected — scoping to session-touched files")
-            try:
-                scoped_files = resolve_session_scope(self._project_root)
-            except (RuntimeError, OSError) as exc:
-                logger.error("Scope resolution failed in worktree context: %s", exc)
+        if files is not None:
+            targets = validate_scoped_paths(files, self._project_root)
+            if not targets and files:
+                logger.error("All provided files rejected by path validation")
                 sys.exit(1)
-            targets = validate_scoped_paths(scoped_files, self._project_root)
             if not targets:
-                logger.info("No files in scope after validation — skipping")
-                sys.exit(0)
+                logger.info("No files provided — nothing to lint")
+                return
+            logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
+        elif is_worktree(self._project_root):
+            logger.info("Worktree detected — running against source directories")
+            targets = self._resolve_source_dirs()
         else:
-            logger.info("Non-worktree context — using source directories")
-            lang = get_project_language(self._project_root)
-            if lang:
-                toolchain = get_toolchain(lang, self._project_root)
-                targets = list(toolchain.source_dirs)
-            else:
-                targets = [str(self._project_root)]
+            targets = self._resolve_shared_branch_targets()
 
         run_pipeline(targets)
+
+    def _resolve_source_dirs(self) -> list[str]:
+        """Resolve source directories from language toolchain config."""
+        lang = get_project_language(self._project_root)
+        if lang:
+            toolchain = get_toolchain(lang, self._project_root)
+            return list(toolchain.source_dirs)
+        return [str(self._project_root)]
+
+    def _resolve_shared_branch_targets(self) -> list[str]:
+        """Resolve targets on a shared branch: session-scoped or source dirs.
+
+        With a session identity, scope to transcript-touched files.
+        Without a session identity (human/CI), fall back to source dirs.
+        With a session identity but scope failure, exit with guidance.
+        """
+        from teleclaude.session_identity import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
+            get_session_id,
+        )
+
+        session_id = get_session_id()
+        if not session_id:
+            logger.info("No session identity — running against source directories")
+            return self._resolve_source_dirs()
+
+        logger.info("Shared branch with session — scoping to session-touched files")
+        try:
+            scoped_files = resolve_session_scope(self._project_root)
+        except (RuntimeError, OSError) as exc:
+            logger.error(
+                "Session scope unavailable. Pass files explicitly: telec lint <files...>\nReason: %s",
+                exc,
+            )
+            sys.exit(1)
+        targets = validate_scoped_paths(scoped_files, self._project_root)
+        if not targets:
+            logger.info("No files in scope after validation — skipping")
+            sys.exit(0)
+        return targets
 
     def run_step(self, step_name: str, files: list[str]) -> None:
         """Run a single named pipeline step against the given files.

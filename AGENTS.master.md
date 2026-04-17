@@ -23,25 +23,6 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 - **Mirrors DB:** `~/.teleclaude/mirrors.db` — transcript mirrors, used by `telec history search`. Separate database.
 - **Todos DB:** `{project_root}/.teleclaude/todos.db` — per-project todo state, artifacts, and roadmap. One per project.
 
-## Worktree-scoped quality checks
-
-When running inside a worktree (`trees/{slug}/`), `make lint` and `make test` automatically scope to session-touched files. This is not optional — agents in worktrees always get scoped runs.
-
-**How it works:**
-
-- Worktree detection: `git rev-parse --git-common-dir` differs from `--git-dir`
-- File resolution: `tools/session_scope.py` reads the agent's session identity from `$TMPDIR/teleclaude_identity.json`, pulls the transcript, and extracts which files the session actually touched
-- Lint mode: scopes guardrails, ruff, pyright, mypy, pylint to touched Python files
-- Test mode: maps touched source files to companion test files (`teleclaude/x/y.py` → `tests/unit/x/test_y.py`)
-
-**Contract:**
-
-- Worktree → scoped, always. Scope failure is an error (`exit 1`), never a fallback to repo-wide.
-- Repo root → repo-wide, always. Humans and CI get full coverage.
-- Pre-commit hooks are separately scoped to staged files (unchanged).
-
-**What this means for workers:** `make lint` and `make test` will only check files you touched and their test companions. You will not see errors from code other agents changed. If you see a scope resolution error, that's a real problem — do not work around it.
-
 ## TUI work
 
 - After any TUI code change, send SIGUSR2 to the running TUI to reload. (SIGUSR1 is reserved for appearance/theme refresh.)

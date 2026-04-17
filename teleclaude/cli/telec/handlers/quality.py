@@ -10,9 +10,9 @@ from teleclaude.quality.test_runner import TestRunner
 def handle_lint(args: list[str]) -> None:
     """Handle the ``telec lint`` command.
 
-    No args → full pipeline with automatic worktree scoping.
-    ``--step <name> [files...]`` → run a single pipeline step against the
-    given files (used by pre-commit hooks, which pass staged filenames).
+    No args → full pipeline with context-aware scoping.
+    ``<files...>`` → full pipeline against explicit files (bypass scoping).
+    ``--step <name> [files...]`` → single pipeline step against given files.
     """
     project_root = resolve_project_root(resolve_invocation_cwd())
     runner = LintRunner(project_root=project_root)
@@ -22,7 +22,7 @@ def handle_lint(args: list[str]) -> None:
         runner.run_step(step_name, files)
         return
 
-    runner.run()
+    runner.run(files=files or None)
 
 
 def _parse_step_args(args: list[str]) -> tuple[str | None, list[str]]:
@@ -53,9 +53,15 @@ def _parse_step_args(args: list[str]) -> tuple[str | None, list[str]]:
 
 
 def handle_test(args: list[str]) -> None:
-    """Handle the ``telec test`` command."""
+    """Handle the ``telec test`` command.
+
+    No args → context-aware scoping to resolve test targets.
+    ``<files...>`` → run against explicit files (bypass scoping).
+    ``--expensive`` �� include expensive-marked tests.
+    """
     include_expensive = "--expensive" in args
+    files = [a for a in args if a != "--expensive"]
     project_root = resolve_project_root(resolve_invocation_cwd())
     runner = TestRunner(project_root=project_root, include_expensive=include_expensive)
-    targets = runner.resolve_targets()
+    targets = runner.resolve_targets(files=files or None)
     runner.run(targets=targets)

@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,not-an-iterable
+# pylint: disable=import-outside-toplevel,not-an-iterable,too-few-public-methods
 """Tests for R1: telec lint command.
 
 Behavioral contracts for the telec lint command: language-aware lint pipeline
@@ -67,22 +67,25 @@ class TestLanguageDetection:
 
 
 # ---------------------------------------------------------------------------
-# R1.3 — Worktree scope failure exits non-zero (no silent fallback)
+# R1.3 — Shared branch scope failure exits non-zero (no silent fallback)
 # ---------------------------------------------------------------------------
 
 
-class TestWorktreeScopeFailure:
-    """In a worktree context, scope failure must exit non-zero — never silently fallback."""
+class TestSharedBranchScopeFailure:
+    """On a shared branch with session identity, scope failure must exit non-zero."""
 
-    def test_scope_failure_in_worktree_exits_nonzero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """When scope resolution fails in a worktree context, the command exits non-zero."""
+    def test_scope_failure_on_shared_branch_exits_nonzero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When scope resolution fails on a shared branch with a session, the command exits non-zero."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
         def _fail_scope(_path: Path) -> list[str]:
-            raise RuntimeError("session identity not found")
+            raise RuntimeError("transcript unavailable")
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
         monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
 
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
@@ -92,16 +95,17 @@ class TestWorktreeScopeFailure:
     def test_scope_failure_does_not_silently_fall_back_to_repo_wide(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Scope failure in worktree must never silently run against all source dirs."""
+        """Scope failure on shared branch must never silently run against all source dirs."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
         pipeline_calls: list[object] = []
 
         def _fail_scope(_path: Path) -> list[str]:
-            raise RuntimeError("session identity not found")
+            raise RuntimeError("transcript unavailable")
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
         monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             pipeline_calls.append,
@@ -112,27 +116,26 @@ class TestWorktreeScopeFailure:
             runner.run()
         except SystemExit:
             pass
-        # The pipeline must NOT have been called (no fallback to repo-wide)
-        assert not pipeline_calls, "Pipeline ran after scope failure — silent fallback is forbidden"
+        assert not pipeline_calls, "Pipeline ran after scope failure ��� silent fallback is forbidden"
 
 
 # ---------------------------------------------------------------------------
-# R1.4 — Non-worktree context runs against configured source dirs
+# R1.4 — Worktree context runs against source directories
 # ---------------------------------------------------------------------------
 
 
-class TestNonWorktreeContext:  # pylint: disable=too-few-public-methods
-    """In non-worktree context, the command runs against the project's source dirs."""
+class TestWorktreeContext:  # pylint: disable=too-few-public-methods
+    """In a worktree, the command runs against source directories (worktree is isolated)."""
 
-    def test_non_worktree_receives_source_dirs_not_file_list(
+    def test_worktree_receives_source_dirs_not_scoped_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Outside a worktree, the pipeline receives directory targets, not a file list."""
+        """In a worktree, the pipeline receives directory targets, not session-scoped files."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
@@ -143,36 +146,33 @@ class TestNonWorktreeContext:  # pylint: disable=too-few-public-methods
 
         assert len(received_targets) == 1
         targets_arg = received_targets[0]
-        # Pipeline must receive non-empty targets (empty list = no linting)
-        assert targets_arg, "Pipeline received empty targets in non-worktree mode"
-        # Targets must not be individual .py files (those are worktree-scoped targets)
+        assert targets_arg, "Pipeline received empty targets in worktree mode"
         if hasattr(targets_arg, "__iter__") and not isinstance(targets_arg, str):
             items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
-            assert len(items) > 0, "Pipeline received empty iterable in non-worktree mode"
+            assert len(items) > 0, "Pipeline received empty iterable in worktree mode"
             for t in items:
-                assert not str(t).endswith(".py"), (
-                    f"Non-worktree target {t!r} is a .py file — expected directory targets"
-                )
+                assert not str(t).endswith(".py"), f"Worktree target {t!r} is a .py file — expected directory targets"
 
 
 # ---------------------------------------------------------------------------
-# R1.6 — Worktree context with successful scope passes file list to pipeline
+# R1.5 — Shared branch with session scopes to session-touched files
 # ---------------------------------------------------------------------------
 
 
-class TestWorktreeScopeSuccess:
-    """In a worktree context with successful scope resolution, the pipeline receives the scoped file list."""
+class TestSharedBranchScopeSuccess:
+    """On a shared branch with a session, the pipeline receives session-scoped files."""
 
-    def test_worktree_success_passes_scoped_files_not_source_dirs(
+    def test_shared_branch_with_session_passes_scoped_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When scope resolves successfully in a worktree, pipeline receives file list, not source dirs."""
+        """Session scope resolves successfully on shared branch — pipeline gets scoped file list."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
         scoped_files = ["teleclaude/foo/bar.py", "teleclaude/baz/qux.py"]
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: scoped_files,
@@ -187,47 +187,65 @@ class TestWorktreeScopeSuccess:
 
         assert len(received_targets) == 1, "Pipeline was not called exactly once"
         targets_arg = received_targets[0]
-        # Must have received the scoped file list (individual .py paths), not source dirs
         if hasattr(targets_arg, "__iter__") and not isinstance(targets_arg, str):
             items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
             assert all(str(t).endswith(".py") for t in items), (
-                f"Worktree pipeline received non-file targets — expected scoped .py files: {items}"
+                f"Shared branch pipeline received non-file targets — expected scoped .py files: {items}"
             )
             assert set(str(t) for t in items) == set(scoped_files), (
                 f"Pipeline received wrong file set: {items} vs {scoped_files}"
             )
 
-    def test_worktree_success_does_not_use_source_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """In a worktree with successful scope, source directories are not passed to the pipeline."""
+    def test_no_session_identity_falls_back_to_source_dirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Without session identity on shared branch, pipeline runs against source dirs."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
-        scoped_files = ["teleclaude/quality/lint.py"]
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
-        monkeypatch.setattr(
-            "teleclaude.quality.lint.resolve_session_scope",
-            lambda _path: scoped_files,
-        )
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: None)
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
         )
-        # Source dirs that should NOT appear
-        (tmp_path / "teleclaude").mkdir()
-        (tmp_path / "scripts").mkdir()
 
         runner = LintRunner(project_root=tmp_path)
         runner.run()
 
-        targets_arg = received_targets[0] if received_targets else None
-        assert targets_arg is not None
+        assert len(received_targets) == 1
+        targets_arg = received_targets[0]
+        assert targets_arg, "Pipeline received empty targets without session identity"
+
+
+# ---------------------------------------------------------------------------
+# R1.6 — Explicit files bypass scoping
+# ---------------------------------------------------------------------------
+
+
+class TestExplicitFilesOverride:
+    """When explicit files are passed, all scoping is bypassed."""
+
+    def test_explicit_files_bypass_scoping(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Explicit file arguments go directly to the pipeline without scoping."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        received_targets: list[object] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.run_pipeline",
+            received_targets.append,
+        )
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run(files=["teleclaude/foo.py", "teleclaude/bar.py"])
+
+        assert len(received_targets) == 1
+        targets_arg = received_targets[0]
         if hasattr(targets_arg, "__iter__") and not isinstance(targets_arg, str):
-            for t in targets_arg:  # pyright: ignore[reportUnknownVariableType]
-                t_str = str(t)
-                assert t_str not in ("teleclaude", "scripts"), (
-                    f"Source directory '{t_str}' passed to pipeline in worktree mode"
-                )
+            items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
+            assert set(str(t) for t in items) == {"teleclaude/foo.py", "teleclaude/bar.py"}
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +305,7 @@ class TestFailingStepDiagnostic:
         """A failing guardrails step causes the overall lint to exit non-zero."""
         from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
 
         def _step_fail(_self: object, _targets: object) -> None:
             raise SystemExit(1)
@@ -324,7 +342,8 @@ class TestPathValidation:
 
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: malicious_files,
@@ -358,7 +377,8 @@ class TestPathValidation:
 
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: malicious_files,
@@ -408,12 +428,15 @@ class TestRunStep:
         captured: dict[str, list[str]] = {}
 
         class _Recording:
+            """Stub pipeline step that records targets."""
+
             name = "ruff_check"
 
             def run(self, targets: list[str]) -> None:
+                """Record targets for assertion."""
                 captured["targets"] = list(targets)
 
-        def _pipeline(project_root: Path) -> PythonLintPipeline:
+        def _pipeline(project_root: Path | None = None) -> PythonLintPipeline:  # pylint: disable=unused-argument
             pipe = PythonLintPipeline(project_root=tmp_path)
             pipe.steps = [_Recording()]  # pyright: ignore[reportAttributeAccessIssue]
             return pipe

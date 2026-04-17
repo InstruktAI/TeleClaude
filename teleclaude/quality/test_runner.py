@@ -1,7 +1,9 @@
 """Test runner — the ``telec test`` implementation.
 
-Worktree-aware test execution with companion file mapping, expensive test
-exclusion, and pytest argument construction.
+Context-aware test execution with companion file mapping, expensive test
+exclusion, and pytest argument construction. See design doc
+``software-development/design/session-file-scoping`` for the scoping
+contract.
 """
 
 from __future__ import annotations
@@ -65,34 +67,70 @@ def run_pytest(args: list[str]) -> int:
 
 
 class TestRunner:
-    """Orchestrates worktree-aware test execution.
+    """Orchestrates context-aware test execution.
 
-    Determines test targets (companion-mapped in worktree, configured dirs
-    otherwise) and runs pytest with appropriate marker exclusions.
+    File target resolution follows the session-file-scoping design:
+    explicit files bypass scoping, worktrees run configured test dirs,
+    shared branches session-scope to companion-mapped test files.
     """
 
     def __init__(self, project_root: Path, include_expensive: bool = False) -> None:
         self._project_root = project_root
         self._include_expensive = include_expensive
 
-    def resolve_targets(self) -> list[str]:
-        """Resolve the test targets based on worktree context."""
-        if is_worktree(self._project_root):
-            logger.info("Worktree detected — mapping session-touched files to test companions")
-            try:
-                scoped = resolve_session_scope(self._project_root)
-            except (RuntimeError, OSError) as exc:
-                logger.error("Scope resolution failed in worktree context: %s", exc)
-                sys.exit(1)
-            validated = validate_scoped_paths(list(scoped), self._project_root)
-            targets = resolve_test_targets(self._project_root, set(validated))
-            if not targets:
-                logger.info("No test companions found for session-touched files — skipping")
-                sys.exit(0)
-            return targets
+    def resolve_targets(self, files: list[str] | None = None) -> list[str]:
+        """Resolve the test targets based on execution context.
 
-        logger.info("Non-worktree context — using configured test directories")
-        return self._read_configured_test_paths()
+        Args:
+            files: Explicit file targets. When provided, all scoping is
+                   bypassed — files are validated and returned directly.
+        """
+        if files is not None:
+            validated = validate_scoped_paths(files, self._project_root)
+            if not validated and files:
+                logger.error("All provided files rejected by path validation")
+                sys.exit(1)
+            if validated:
+                logger.info("Explicit files provided — bypassing scoping (%d files)", len(validated))
+            return validated
+
+        if is_worktree(self._project_root):
+            logger.info("Worktree detected — using configured test directories")
+            return self._read_configured_test_paths()
+
+        return self._resolve_shared_branch_targets()
+
+    def _resolve_shared_branch_targets(self) -> list[str]:
+        """Resolve targets on a shared branch: session-scoped or configured dirs.
+
+        With a session identity, scope to companion tests of transcript-touched files.
+        Without a session identity (human/CI), fall back to configured test dirs.
+        With a session identity but scope failure, exit with guidance.
+        """
+        from teleclaude.session_identity import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
+            get_session_id,
+        )
+
+        session_id = get_session_id()
+        if not session_id:
+            logger.info("No session identity — using configured test directories")
+            return self._read_configured_test_paths()
+
+        logger.info("Shared branch with session — scoping to companion tests")
+        try:
+            scoped = resolve_session_scope(self._project_root)
+        except (RuntimeError, OSError) as exc:
+            logger.error(
+                "Session scope unavailable. Pass files explicitly: telec test <files...>\nReason: %s",
+                exc,
+            )
+            sys.exit(1)
+        validated = validate_scoped_paths(list(scoped), self._project_root)
+        targets = resolve_test_targets(self._project_root, set(validated))
+        if not targets:
+            logger.info("No test companions found for session-touched files — skipping")
+            sys.exit(0)
+        return targets
 
     def build_pytest_args(self, targets: list[str]) -> list[str]:
         """Construct pytest CLI arguments from targets and configuration."""
