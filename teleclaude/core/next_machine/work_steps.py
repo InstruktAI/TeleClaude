@@ -262,6 +262,12 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
     if resolution.instruction is not None:
         return False, resolution.instruction
 
+    # Re-read after state mutation by resolve_pending_review_state
+    build_review_raw = state.get("build_review")
+    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
+    round_raw = build_review.get("round", 0)
+    round_num = round_raw if isinstance(round_raw, int) else 0
+
     # No live reviewer claimed the review — dispatch a fresh one.
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""

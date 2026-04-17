@@ -258,11 +258,18 @@ class TodosDbArtifactsMixin:
         return await self.artifact_versions(slug, name, limit=limit)
 
     async def delete_artifacts(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
-        """Delete all artifacts and version history for a slug."""
+        """Delete all artifacts and version history for a slug.
+
+        No-op when the slug has no roadmap entry (already removed or never created).
+        """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
-            row_id = await self._resolve_artifact_id(slug, db_session)
+            try:
+                row_id = await self._resolve_artifact_id(slug, db_session)
+            except ValueError:
+                return  # no roadmap entry → nothing to delete
+
             artifacts = await db_session.exec(select(TodoArtifact).where(TodoArtifact.id == row_id))
             for artifact in artifacts.all():
                 await db_session.delete(artifact)

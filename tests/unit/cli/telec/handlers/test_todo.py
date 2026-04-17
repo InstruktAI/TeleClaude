@@ -54,6 +54,16 @@ class TestHandleTodoDump:
         assert mock_api.call_count == 1
         assert mock_api.call_args_list[0][0][1] == "/todos/dump"
 
+    def test_draft_sends_kind_draft(self) -> None:
+        with (
+            patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api,
+        ):
+            _handle_todo_dump(["my-slug", "content", "--draft"])
+
+        dump_call = mock_api.call_args_list[0]
+        body = dump_call[1].get("json_body") or dump_call[0][2]
+        assert body["kind"] == "draft"
+
     def test_prepped_sends_kind_prepped(self) -> None:
         with (
             patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api,

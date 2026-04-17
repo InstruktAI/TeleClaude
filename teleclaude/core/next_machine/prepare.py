@@ -57,6 +57,8 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
         state = await todos_db.read_state(slug)
         if state is None:
             continue
+        if state.get("kind") == "draft":
+            continue
         item_phase = state.get("phase")
         if item_phase == "done":
             continue
@@ -139,6 +141,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
     if not resolved_slug:
         resolved_slug = await _find_next_prepare_slug_db(todos_db)
 
+    # Draft todos bypass the lifecycle entirely — reject even explicit prepare calls.
+    if resolved_slug:
+        _draft_state = await todos_db.read_state(resolved_slug)
+        if isinstance(_draft_state, dict) and _draft_state.get("kind") == "draft":
+            resolved_slug = None
+
     if not resolved_slug:
         guidance = await compose_agent_guidance(db)
         return format_tool_call(
@@ -195,6 +203,15 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
             db=db, todos_db=todos_db, slug=resolved_slug, cwd=cwd, phase=phase, state=state
         )
         if not keep_going:
+            # Clear authoritative prepare_phase so primitives drive the next invocation.
+            pp = state.get("prepare_phase", "")
+            if pp:
+                state["prepare_phase"] = ""
+                from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+                    write_phase_state as _write_phase_state,
+                )
+
+                await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 
     return (

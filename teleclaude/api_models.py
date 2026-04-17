@@ -310,6 +310,8 @@ class TodoDumpRequest(BaseModel):
         and the todo enters the normal prepare phase.
       - "bug": bug-fix lane — content is written as the "bug" artifact and the todo
         enters the work phase directly.
+      - "draft": parked idea — content is written as the "input" artifact but the
+        todo does not enter any lifecycle phase. No event is emitted.
       - "prepped": pre-prepared lane — content is written as the "implementation-plan"
         artifact and the todo is stamped prepared (ready for build), skipping the
         prepare phase entirely.
@@ -320,7 +322,7 @@ class TodoDumpRequest(BaseModel):
     slug: str = Field(..., min_length=1)
     content: str
     after: list[str] | None = None
-    kind: Literal["bug", "prepped"] | None = None
+    kind: Literal["bug", "draft", "prepped"] | None = None
     cwd: str | None = None
 
 

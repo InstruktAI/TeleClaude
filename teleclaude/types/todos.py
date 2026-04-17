@@ -186,7 +186,7 @@ class TodoState(BaseModel):
     phase: str = "pending"
     prepare_phase: str = ""
     work_phase: str = ""
-    kind: str = "todo"  # "todo" | "bug"
+    kind: str = "todo"  # "todo" | "bug" | "draft" | "prepped"
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)

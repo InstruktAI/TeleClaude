@@ -250,6 +250,36 @@ async def _build_blocked_by(  # pylint: disable=too-many-arguments,too-many-posi
     return blockers if blockers else None
 
 
+# ── Draft fast-path ────────────────────────────────────────────────────────
+
+
+async def _assemble_draft_payload(todos_db: TodosDb, slug: str) -> ShowPayload:
+    """Build a minimal show payload for draft todos — no phase derivation."""
+    payload = ShowPayload(slug=slug, stage="draft")
+
+    roadmap_entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
+    for entry in roadmap_entries:
+        if entry["slug"] == slug:
+            desc = entry.get("description")
+            if desc:
+                payload["description"] = desc
+            break
+
+    payload["current"] = CurrentBlock(phase="draft", state="in_progress")
+
+    artifact_names = await todos_db.list_artifacts(slug)
+    if artifact_names:
+        artifacts: dict[str, str] = {}
+        for name in artifact_names:
+            content = await todos_db.read_artifact(slug, name)
+            if content:
+                artifacts[name] = content
+        if artifacts:
+            payload["artifacts"] = artifacts
+
+    return payload
+
+
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
@@ -266,6 +296,10 @@ async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-bra
         if state is None:
             return None
         is_delivered = True
+
+    # Draft todos bypass phase derivation entirely — they haven't entered any lifecycle.
+    if state.get("kind") == "draft":
+        return await _assemble_draft_payload(todos_db, slug)
 
     project_root = _project_root_from_db(todos_db)
     worktree_cwd = _worktree_cwd_for(project_root, slug)

@@ -93,3 +93,8 @@ async def test_delete_artifacts_removes_version_history(todos_db: TodosDb) -> No
     await todos_db.delete_artifacts(_SLUG)
     versions = await todos_db.artifact_versions(_SLUG, "requirements")
     assert versions == []
+
+
+async def test_delete_artifacts_is_noop_when_roadmap_entry_missing(todos_db: TodosDb) -> None:
+    """Deleting artifacts for a slug with no roadmap entry should not raise."""
+    await todos_db.delete_artifacts("nonexistent-slug")  # must not raise ValueError

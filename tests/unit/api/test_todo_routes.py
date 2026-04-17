@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,6 +17,17 @@ from typing_extensions import TypedDict
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.types.state_value import StateValue
+
+
+async def async_begin() -> AsyncIterator[None]:
+    """Async generator that mimics session.begin() context manager."""
+    yield
+
+
+@asynccontextmanager
+async def _async_ctx(obj: object) -> AsyncIterator[object]:
+    """Wrap an object as an async context manager."""
+    yield obj
 
 
 class _TodoIntegrateReceipt(TypedDict):
@@ -224,6 +237,82 @@ class TestTodoRoutes:
         assert persisted.get("work_phase") == WorkPhase.BUILD_STARTED.value
         assert isinstance(response, dict)
         assert response.get("work_phase") == WorkPhase.BUILD_STARTED.value
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_remove_skips_cleanup_for_draft_todos(self) -> None:
+        """Draft todos should not trigger worktree/branch cleanup on removal."""
+        mock_session = AsyncMock()
+        mock_session.begin = asynccontextmanager(async_begin)
+
+        mock_db = AsyncMock()
+        mock_db.read_state = AsyncMock(return_value={"kind": "draft"})
+        mock_db.delete_state = AsyncMock()
+        mock_db.delete_artifacts = AsyncMock()
+        mock_db.remove_from_roadmap = AsyncMock()
+        mock_db.clean_dep_references = AsyncMock()
+        mock_db._on_mutation = MagicMock()
+        mock_db._session = lambda: _async_ctx(mock_session)
+
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.asyncio") as mock_asyncio,
+        ):
+            response = await todo_routes.todo_remove(slug="draft-slug", cwd="/repo")
+
+        assert response.slug == "draft-slug"
+        # cleanup_delivered_slug must NOT be called for draft todos
+        mock_asyncio.to_thread.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_remove_runs_cleanup_for_non_draft_todos(self) -> None:
+        """Non-draft todos should still trigger worktree/branch cleanup on removal."""
+        mock_session = AsyncMock()
+        mock_session.begin = asynccontextmanager(async_begin)
+
+        mock_db = AsyncMock()
+        mock_db.read_state = AsyncMock(return_value={"kind": "todo"})
+        mock_db.delete_state = AsyncMock()
+        mock_db.delete_artifacts = AsyncMock()
+        mock_db.remove_from_roadmap = AsyncMock()
+        mock_db.clean_dep_references = AsyncMock()
+        mock_db._on_mutation = MagicMock()
+        mock_db._session = lambda: _async_ctx(mock_session)
+
+        mock_cleanup = MagicMock()
+
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
+            patch("teleclaude.core.next_machine.delivery.cleanup_delivered_slug", mock_cleanup),
+        ):
+            await todo_routes.todo_remove(slug="real-slug", cwd="/repo")
+
+        # cleanup_delivered_slug must be called for non-draft todos
+        mock_to_thread.assert_called_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_persists_draft_kind_in_state(self, tmp_path: Path) -> None:
+        """POST /todos/dump with kind='draft' must persist kind='draft' in the DB state record."""
+        from teleclaude.core.todos_db import TodosDb
+
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                from teleclaude.api_models import TodoDumpRequest
+
+                request = TodoDumpRequest(slug="my-draft", content="idea", kind="draft", cwd="/repo")
+                response = await todo_routes.todo_dump(request)
+
+            assert response.status == "ok"
+            state = await database.read_state("my-draft")
+            assert state is not None
+            assert state["kind"] == "draft"
+        finally:
+            await database.close()
 
     @pytest.mark.unit
     @pytest.mark.asyncio

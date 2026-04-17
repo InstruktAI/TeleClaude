@@ -320,6 +320,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
       - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
       - "bug": writes a "bug" artifact; stamps DOR/grounding/verdicts via
         apply_prepared_state so derive_prepare_phase resolves to PREPARED immediately.
+      - "draft": writes an "input" artifact with kind="draft"; bypasses lifecycle.
       - "prepped": writes the content as an "implementation-plan" artifact; stamps
         all prepare primitives so the todo is immediately ready for build.
     """
@@ -335,10 +336,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
 
         state = default_state()
-        if request.kind == "bug":
-            state["kind"] = "bug"
-        elif request.kind == "prepped":
-            state["kind"] = "prepped"
+        if request.kind in ("bug", "draft", "prepped"):
+            state["kind"] = request.kind
 
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
@@ -433,6 +432,10 @@ async def todo_remove(
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
+    # Read state before deletion to determine if cleanup is needed
+    state = await todos_db.read_state(slug)
+    is_draft = isinstance(state, dict) and state.get("kind") == "draft"
+
     async with todos_db._session() as session:  # pylint: disable=protected-access
         async with session.begin():
             await todos_db.delete_state(slug, session=session)
@@ -442,8 +445,9 @@ async def todo_remove(
 
     todos_db._on_mutation()  # pylint: disable=protected-access
 
-    # Clean up worktree and branch (filesystem/git cleanup stays — these are code branches)
-    await asyncio.to_thread(cleanup_delivered_slug, effective_cwd, slug)
+    # Draft todos never have worktrees or branches — skip filesystem/git cleanup
+    if not is_draft:
+        await asyncio.to_thread(cleanup_delivered_slug, effective_cwd, slug)
 
     return _SlugStatusResponse(status="ok", slug=slug)
 

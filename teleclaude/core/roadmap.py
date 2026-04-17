@@ -170,6 +170,9 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
 
             # --- Derive display values from v1 state primitives ---
 
+            # Draft todos skip lifecycle derivation — they're parked ideas.
+            is_draft = state.get("kind") == "draft"
+
             dor_raw = state.get("dor")
             dor_score = dor_raw.get("score", 0) if isinstance(dor_raw, dict) else 0
 
@@ -184,24 +187,25 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             # Build status: derived from finalize, build_review verdict, phase
             build_status: str | None = None
             review_status: str | None = None
-            if finalize_status in ("ready", "handed_off"):
-                build_status = "complete"
-                review_status = "approved"
-            elif verdict == "approve":
-                build_status = "complete"
-                review_status = "approved"
-            elif verdict == "changes_requested":
-                build_status = "complete"
-                review_status = "changes_requested"
-            elif verdict:
-                build_status = "complete"
-                review_status = "pending"
-            elif state.get("phase") == "in_progress":
-                build_status = "started"
+            if not is_draft:
+                if finalize_status in ("ready", "handed_off"):
+                    build_status = "complete"
+                    review_status = "approved"
+                elif verdict == "approve":
+                    build_status = "complete"
+                    review_status = "approved"
+                elif verdict == "changes_requested":
+                    build_status = "complete"
+                    review_status = "changes_requested"
+                elif verdict:
+                    build_status = "complete"
+                    review_status = "pending"
+                elif state.get("phase") == "in_progress":
+                    build_status = "started"
 
             # Prepare phase: only shown when not yet in work phase
             prepare_phase: str | None = None
-            if not build_status:
+            if not is_draft and not build_status:
                 prepare_phase = _derive_prepare_phase(
                     state, has_req=has_req_row is not None, has_plan=has_plan_row is not None
                 )
@@ -209,13 +213,15 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             integration_phase = _non_empty_str(state.get("integration_phase"))
 
             todo_status = row[5]  # active/icebox/delivered
-            if todo_status == "delivered" and not integration_phase:
+            if is_draft:
+                todo_status = "pending"
+            elif todo_status == "delivered" and not integration_phase:
                 integration_phase = "candidate_delivered"
-            if todo_status == "active" and build_status:
+            if not is_draft and todo_status == "active" and build_status:
                 todo_status = "in_progress"
-            elif todo_status == "active" and prepare_phase == "prepared":
+            elif not is_draft and todo_status == "active" and prepare_phase == "prepared":
                 todo_status = "ready"
-            elif todo_status == "active" and prepare_phase:
+            elif not is_draft and todo_status == "active" and prepare_phase:
                 todo_status = "in_progress"
 
             todos.append(

@@ -26,6 +26,7 @@ from teleclaude.core.next_machine._types import (
     _WORK_LOOP_LIMIT,
     NEXT_WORK_PHASE_LOG,
     ItemPhase,
+    WorkPhase,
 )
 from teleclaude.core.next_machine.git_ops import (
     _merge_origin_main_into_worktree,
@@ -180,6 +181,17 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
             phase.value,
         )
         if not keep_going:
+            # Clear authoritative work_phase so primitives drive the next
+            # invocation — except BUILD_STARTED which anchors across invocations
+            # to prevent premature BUILD_COMPLETE during active build.
+            wp = state.get("work_phase", "")
+            if wp and wp != WorkPhase.BUILD_STARTED.value:
+                state["work_phase"] = ""
+                from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
+                    write_phase_state as _write_phase_state,
+                )
+
+                await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 
     return (

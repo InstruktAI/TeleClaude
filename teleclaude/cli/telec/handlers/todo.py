@@ -7,6 +7,7 @@ from __future__ import annotations
 import shlex
 import sys
 from pathlib import Path
+from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
@@ -300,11 +301,19 @@ def _handle_todo_dump(args: list[str]) -> None:
     # Create via daemon API — writes state + artifact + roadmap entry to todos.db.
     # When --prepped, kind="prepped" routes the server-side dump to write the content
     # as the implementation-plan artifact and stamp the todo as ready for build.
+    # Determine the kind for the API request: draft and prepped are explicit
+    # lanes; default (None) enters the normal prepare lifecycle.
+    dump_kind: Literal["bug", "draft", "prepped"] | None = None
+    if draft:
+        dump_kind = "draft"
+    elif prepped:
+        dump_kind = "prepped"
+
     request = TodoDumpRequest(
         slug=slug,
         content=content,
         after=after,
-        kind="prepped" if prepped else None,
+        kind=dump_kind,
         cwd=str(Path.cwd()),
     )
     result = tool_api_request(
