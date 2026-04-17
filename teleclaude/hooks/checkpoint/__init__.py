@@ -234,7 +234,9 @@ def _commit_instruction(on_main: bool) -> str:
         return (
             "You are on `main` — do NOT commit yet. State a recommendation to the human "
             "(what changed, why, file types, scope) and wait for explicit approval. "
-            "If approved, commit with `TELECLAUDE_COMMIT_APPROVED=1 git commit -m '…'` "
+            "Your session-touched files are auto-staged by the pre-commit hook — do not "
+            "run `git add` manually. If approved, commit with "
+            "`TELECLAUDE_COMMIT_APPROVED=1 git commit -m '…'` "
             "(inline — one approval, one commit)."
         )
     return "Commit only YOUR changed files"

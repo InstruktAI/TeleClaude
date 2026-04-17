@@ -514,11 +514,7 @@ async def _project_user_reflection(
     watermark_dt = (
         session.last_projected_at.astimezone(UTC) if isinstance(session.last_projected_at, datetime) else None
     )
-    transcript_iso = transcript_dt.isoformat() if transcript_dt is not None else None
-    watermark_iso = watermark_dt.isoformat() if watermark_dt is not None else None
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
-        return session
-    if transcript_iso == watermark_iso:
         return session
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
@@ -529,12 +525,12 @@ async def _project_user_reflection(
     if source != InputOrigin.DISCORD.value:
         await adapter_client.broadcast_user_input(session, user_text, source)
 
-    if transcript_iso:
+    if transcript_dt is not None:
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            last_message_sent_at=transcript_iso,
-            last_projected_at=transcript_iso,
+            last_message_sent_at=transcript_dt,
+            last_projected_at=transcript_dt,
         )
     else:
         await db.update_session(

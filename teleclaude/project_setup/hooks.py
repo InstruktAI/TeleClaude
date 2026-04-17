@@ -7,9 +7,29 @@ import yaml
 
 # Marker strings used for idempotent hook block insertion.
 DOCS_CHECK_MARKER = "teleclaude-docs-check"
+SESSION_SCOPED_STAGING_MARKER = "teleclaude-session-scoped-staging"
 STASH_PREVENTION_MARKER = "teleclaude-stash-prevention"
 RESTAGE_MARKER = "teleclaude-format-restage"
 _OLD_OVERLAP_MARKER = "teleclaude-overlap-guard"
+
+# Auto-stage session-touched files when a session identity is available.
+# session_scope.py exit codes: 0 = files emitted, 2 = no session identity.
+# git status (used internally) already honors .gitignore.
+SESSION_SCOPED_STAGING_BLOCK = f"""
+# {SESSION_SCOPED_STAGING_MARKER}: auto-stage session-touched files when
+# a session identity is available (agent sessions — tmux or headless).
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+_scope_script="$REPO_ROOT/tools/session_scope.py"
+_scope_python="$REPO_ROOT/.venv/bin/python3"
+if [ -x "$_scope_python" ] && [ -f "$_scope_script" ]; then
+  _scope_output="$("$_scope_python" "$_scope_script" --mode lint --project-root "$REPO_ROOT" 2>/dev/null)"
+  if [ $? -eq 0 ] && [ -n "$_scope_output" ]; then
+    while IFS= read -r _f; do
+      [ -n "$_f" ] && [ -f "$REPO_ROOT/$_f" ] && git add -- "$_f"
+    done <<< "$_scope_output"
+  fi
+fi
+"""
 
 # Guard that blocks commits when ANY unstaged changes to tracked files exist.
 # WHY: pre-commit's staged_files_only.py saves unstaged changes as a patch, runs
@@ -252,6 +272,7 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
     content = precommit_hook_file.read_text(encoding="utf-8")
 
     marker_comments = (
+        f"# {SESSION_SCOPED_STAGING_MARKER}",
         f"# {STASH_PREVENTION_MARKER}",
         f"# {_OLD_OVERLAP_MARKER}",
         f"# {RESTAGE_MARKER}",
@@ -269,7 +290,7 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
         idx = content.find(exec_anchor)
         prefix = (content[:idx] if idx != -1 else content).rstrip("\n")
 
-    content = prefix + "\n" + STASH_PREVENTION_BLOCK + "\n" + RESTAGE_BLOCK
+    content = prefix + "\n" + SESSION_SCOPED_STAGING_BLOCK + "\n" + STASH_PREVENTION_BLOCK + "\n" + RESTAGE_BLOCK
 
     precommit_hook_file.write_text(content, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)

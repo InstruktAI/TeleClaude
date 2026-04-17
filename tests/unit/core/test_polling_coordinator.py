@@ -334,8 +334,8 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-user-1",
             last_message_sent="ship it",
-            last_message_sent_at=transcript_ts.isoformat(),
-            last_projected_at=transcript_ts.isoformat(),
+            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
         )
 
     @pytest.mark.unit
@@ -497,8 +497,8 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-integrator-1",
             last_message_sent="/next-integrate",
-            last_message_sent_at=transcript_ts.isoformat(),
-            last_projected_at=transcript_ts.isoformat(),
+            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
         )
 
     @pytest.mark.unit
