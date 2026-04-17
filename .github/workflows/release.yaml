@@ -228,7 +228,20 @@ jobs:
           ./.venv/bin/python -c "from teleclaude.events.schema_export import export_events_markdown; print(export_events_markdown())" > manifests/events.md
           ./.venv/bin/python -c "from teleclaude.config.schema_export import export_config_markdown; print(export_config_markdown())" > manifests/config.md
 
-      - name: Commit version bump and manifests
+      - name: Generate Changelog
+        run: |
+          set -euo pipefail
+          LAST_TAG="${{ steps.version.outputs.last_tag }}"
+          NEXT_TAG="${{ steps.version.outputs.next_tag }}"
+          ./.venv/bin/python scripts/release_changelog.py from-reports \
+            --tag "$NEXT_TAG" --since "$LAST_TAG" \
+            --claude-report claude-report.json \
+            --codex-report codex-report.json \
+            --gemini-report gemini-report.json \
+            --output release-notes.md \
+            --prepend CHANGELOG.md
+
+      - name: Commit version bump, manifests, and changelog
         run: |
           set -euo pipefail
           NEXT_VER="${{ steps.version.outputs.next_tag }}"
@@ -236,7 +249,7 @@ jobs:
           sed -i '' "s/^version = \".*\"/version = \"${CLEAN_VER}\"/" pyproject.toml
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add pyproject.toml manifests/cli-surface.md manifests/events.md manifests/config.md
+          git add pyproject.toml manifests/cli-surface.md manifests/events.md manifests/config.md CHANGELOG.md
           git commit -m "chore: bump version to ${CLEAN_VER} [skip ci]"
 
       - name: Create Tag and Release
@@ -245,10 +258,6 @@ jobs:
         run: |
           set -euo pipefail
           NEXT_TAG="${{ steps.version.outputs.next_tag }}"
-          CLASSIFICATION="${{ needs.release-arbitration.outputs.target_version }}"
-          jq -r --arg ver "$NEXT_TAG" --arg cls "$CLASSIFICATION" \
-            '"## AI Consensus Release\n\n**Version:** " + $ver + "\n**Classification:** " + $cls + "\n**Rationale:** " + .authoritative_rationale + "\n\n### Lane Summary\n" + (.lane_summary | to_entries | map("\(.key): \(.value)") | join(", ")) + "\n\n---\n*Release authorized by AI consensus arbiter.*"' \
-            arbiter-decision.json > release-notes.md
           git tag "$NEXT_TAG"
           git push origin HEAD:main "$NEXT_TAG"
           gh release create "$NEXT_TAG" --title "$NEXT_TAG" --notes-file release-notes.md
