@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Protocol
 
 from teleclaude.quality.scope import (
-    get_project_language,
+    get_project_languages,
     is_worktree,
     resolve_project_root,
     resolve_session_scope,
@@ -29,7 +29,8 @@ __all__ = [
     "GuardrailsStep",
     "LintRunner",
     "PythonLintPipeline",
-    "get_project_language",
+    "TypeScriptLintPipeline",
+    "get_project_languages",
     "is_worktree",
     "resolve_project_root",
     "resolve_session_scope",
@@ -42,18 +43,17 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pipeline steps — each wraps one lint tool with a name for diagnostics.
-# Modeled as dataclasses so pylint doesn't complain about method count.
 # ---------------------------------------------------------------------------
 
 
-class PipelineStep(Protocol):  # pylint: disable=too-few-public-methods
+class PipelineStep(Protocol):
     """Structural type for pipeline steps — name + run."""
 
     name: str
 
     def run(self, targets: list[str]) -> None:
         """Execute the step against targets."""
-        ...  # pylint: disable=unnecessary-ellipsis
+        ...
 
 
 def _python_files(targets: list[str]) -> list[str]:
@@ -64,7 +64,7 @@ def _python_files(targets: list[str]) -> list[str]:
 def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
     """Run an external tool and raise SystemExit on failure.
 
-    Justified subprocess: external binaries (ruff, pyright, mypy, pylint)
+    Justified subprocess: external binaries (ruff, pyright, mypy, jscpd)
     have no Python API. Internal scripts (guardrails, markdown) are designed
     as standalone invocations, not importable libraries.
     """
@@ -173,16 +173,15 @@ class _MypyStep:
 
 
 @dataclass
-class _PylintStep:
-    """Pylint static analysis step."""
+class _JscpdStep:
+    """Copy-paste detection via jscpd (replaces pylint duplicate-code)."""
 
-    name: str = "pylint"
+    name: str = "jscpd"
     _project_root: Path = field(default_factory=Path)
 
     def run(self, targets: list[str]) -> None:
-        """Execute pylint static analysis against Python targets."""
-        py = _python_files(targets) or targets
-        cmd = ["pylint", *py]
+        """Execute jscpd copy-paste detection against targets."""
+        cmd = ["npx", "--yes", "jscpd", "--min-lines", "25", "--min-tokens", "150", "--mode", "strict", *targets]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -191,7 +190,7 @@ class _PylintStep:
 # ---------------------------------------------------------------------------
 
 
-class PythonLintPipeline:  # pylint: disable=too-few-public-methods
+class PythonLintPipeline:
     """Python lint pipeline with deterministic step ordering.
 
     Steps are accessible via the ``steps`` attribute and each exposes a
@@ -208,7 +207,48 @@ class PythonLintPipeline:  # pylint: disable=too-few-public-methods
             _RuffFormatStep(_project_root=root),
             _PyrightStep(_project_root=root),
             _MypyStep(_project_root=root),
-            _PylintStep(_project_root=root),
+            _JscpdStep(_project_root=root),
+        ]
+
+    def describe(self) -> list[str]:
+        """Return ordered step names for diagnostics."""
+        return [s.name for s in self.steps]
+
+
+@dataclass
+class _EslintStep:
+    """ESLint check step for TypeScript."""
+
+    name: str = "eslint"
+    _frontend_root: Path = field(default_factory=Path)
+
+    def run(self, targets: list[str]) -> None:
+        """Execute eslint against TypeScript targets."""
+        cmd = ["npx", "--yes", "eslint", *targets]
+        _run_tool(cmd, self._frontend_root, self.name)
+
+
+@dataclass
+class _TscStep:
+    """TypeScript type-checking via tsc --noEmit."""
+
+    name: str = "tsc"
+    _frontend_root: Path = field(default_factory=Path)
+
+    def run(self, targets: list[str]) -> None:
+        """Execute tsc type-checking (project-wide, not file-scoped)."""
+        _ = targets  # tsc --noEmit checks the whole project
+        cmd = ["npx", "--yes", "tsc", "--noEmit"]
+        _run_tool(cmd, self._frontend_root, self.name)
+
+
+class TypeScriptLintPipeline:
+    """TypeScript lint pipeline with eslint and tsc steps."""
+
+    def __init__(self, project_root: Path, frontend_root: Path) -> None:
+        self.steps: list[PipelineStep] = [
+            _EslintStep(_frontend_root=frontend_root),
+            _TscStep(_frontend_root=frontend_root),
         ]
 
     def describe(self) -> list[str]:
@@ -251,7 +291,7 @@ class LintRunner:
         self._project_root = project_root
 
     def run(self, files: list[str] | None = None) -> None:
-        """Run the lint pipeline with context-aware file scoping.
+        """Run all configured lint pipelines with context-aware file scoping.
 
         Args:
             files: Explicit file targets. When provided, all scoping is
@@ -259,6 +299,7 @@ class LintRunner:
                    to the pipeline.
         """
         _pipeline_ctx[0] = self._project_root
+        languages = get_project_languages(self._project_root)
 
         if files is not None:
             targets = validate_scoped_paths(files, self._project_root)
@@ -271,21 +312,31 @@ class LintRunner:
             logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
         elif is_worktree(self._project_root):
             logger.info("Worktree detected — running against source directories")
-            targets = self._resolve_source_dirs()
+            targets = self._resolve_source_dirs(languages)
         else:
-            targets = self._resolve_shared_branch_targets()
+            targets = self._resolve_shared_branch_targets(languages)
 
         run_pipeline(targets)
 
-    def _resolve_source_dirs(self) -> list[str]:
+        if "typescript" in languages:
+            self._run_typescript_pipeline()
+
+    def _resolve_source_dirs(self, languages: list[str]) -> list[str]:
         """Resolve source directories from language toolchain config."""
-        lang = get_project_language(self._project_root)
-        if lang:
-            toolchain = get_toolchain(lang, self._project_root)
-            return list(toolchain.source_dirs)
+        if languages:
+            all_dirs: list[str] = []
+            for lang in languages:
+                if lang == "typescript":
+                    continue  # TS has its own pipeline dispatch
+                try:
+                    toolchain = get_toolchain(lang, self._project_root)
+                    all_dirs.extend(toolchain.source_dirs)
+                except KeyError:
+                    logger.warning("No toolchain registered for language %r — skipping", lang)
+            return all_dirs or [str(self._project_root)]
         return [str(self._project_root)]
 
-    def _resolve_shared_branch_targets(self) -> list[str]:
+    def _resolve_shared_branch_targets(self, languages: list[str]) -> list[str]:
         """Resolve targets on a shared branch: session-scoped or source dirs.
 
         With a session identity, scope to transcript-touched files.
@@ -299,7 +350,7 @@ class LintRunner:
         session_id = get_session_id()
         if not session_id:
             logger.info("No session identity — running against source directories")
-            return self._resolve_source_dirs()
+            return self._resolve_source_dirs(languages)
 
         logger.info("Shared branch with session — scoping to session-touched files")
         try:
@@ -323,13 +374,12 @@ class LintRunner:
         per-hook file lists through the shared pipeline. Files are validated
         against the project root (no traversal, no absolute paths outside).
 
-        Raises SystemExit(2) when ``step_name`` does not match any pipeline
-        step, with the valid step names in the error message.
+        Step names span both Python and TypeScript pipelines. Raises
+        SystemExit(2) when ``step_name`` does not match any step.
         """
         _pipeline_ctx[0] = self._project_root
 
-        pipeline = PythonLintPipeline(project_root=self._project_root)
-        step_by_name = {s.name: s for s in pipeline.steps}
+        step_by_name = self._collect_all_steps()
         step = step_by_name.get(step_name)
         if step is None:
             valid = ", ".join(step_by_name.keys())
@@ -344,6 +394,42 @@ class LintRunner:
             sys.exit(1)
 
         step.run(targets)
+
+    def _run_typescript_pipeline(self) -> None:
+        """Run the TypeScript lint pipeline from frontend_root."""
+        frontend_root = self._resolve_frontend_root()
+        if not frontend_root.exists():
+            logger.info("Frontend root %s does not exist — skipping TypeScript lint", frontend_root)
+            return
+        pipeline = TypeScriptLintPipeline(self._project_root, frontend_root)
+        for step in pipeline.steps:
+            step.run(["."])
+
+    def _collect_all_steps(self) -> dict[str, PipelineStep]:
+        """Collect steps from all configured language pipelines."""
+        steps: dict[str, PipelineStep] = {}
+        for s in PythonLintPipeline(self._project_root).steps:
+            steps[s.name] = s
+        languages = get_project_languages(self._project_root)
+        if "typescript" in languages:
+            frontend_root = self._resolve_frontend_root()
+            for s in TypeScriptLintPipeline(self._project_root, frontend_root).steps:
+                steps[s.name] = s
+        return steps
+
+    def _resolve_frontend_root(self) -> Path:
+        """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
+        config_path = self._project_root / "teleclaude.yml"
+        if config_path.exists():
+            import yaml
+
+            with open(config_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if isinstance(data, dict):
+                fr = data.get("frontend_root")
+                if fr:
+                    return self._project_root / str(fr)
+        return self._project_root / "frontend"
 
     def describe_pipeline(self) -> list[str]:
         """Return the pipeline step names (for diagnostics/help text)."""

@@ -1,7 +1,7 @@
 """Test runner — the ``telec test`` implementation.
 
 Context-aware test execution with companion file mapping, expensive test
-exclusion, and pytest argument construction. See design doc
+exclusion, and multi-language test dispatch (pytest + vitest). See design doc
 ``software-development/design/session-file-scoping`` for the scoping
 contract.
 """
@@ -14,7 +14,10 @@ import sys
 import tomllib
 from pathlib import Path
 
+import yaml
+
 from teleclaude.quality.scope import (
+    get_project_languages,
     is_worktree,
     resolve_session_scope,
     validate_scoped_paths,
@@ -77,6 +80,8 @@ class TestRunner:
     def __init__(self, project_root: Path, include_expensive: bool = False) -> None:
         self._project_root = project_root
         self._include_expensive = include_expensive
+        self._is_full_suite = True
+        self._scoped_files: set[str] = set()
 
     def resolve_targets(self, files: list[str] | None = None) -> list[str]:
         """Resolve the test targets based on execution context.
@@ -92,10 +97,13 @@ class TestRunner:
                 sys.exit(1)
             if validated:
                 logger.info("Explicit files provided — bypassing scoping (%d files)", len(validated))
+                self._is_full_suite = False
+                self._scoped_files = set(validated)
             return validated
 
         if is_worktree(self._project_root):
             logger.info("Worktree detected — using configured test directories")
+            self._is_full_suite = True
             return self._read_configured_test_paths()
 
         return self._resolve_shared_branch_targets()
@@ -114,9 +122,11 @@ class TestRunner:
         session_id = get_session_id()
         if not session_id:
             logger.info("No session identity — using configured test directories")
+            self._is_full_suite = True
             return self._read_configured_test_paths()
 
         logger.info("Shared branch with session — scoping to companion tests")
+        self._is_full_suite = False
         try:
             scoped = resolve_session_scope(self._project_root)
         except (RuntimeError, OSError) as exc:
@@ -126,7 +136,8 @@ class TestRunner:
             )
             sys.exit(1)
         validated = validate_scoped_paths(list(scoped), self._project_root)
-        targets = resolve_test_targets(self._project_root, set(validated))
+        self._scoped_files = set(validated)
+        targets = resolve_test_targets(self._project_root, self._scoped_files)
         if not targets:
             logger.info("No test companions found for session-touched files — skipping")
             sys.exit(0)
@@ -141,13 +152,54 @@ class TestRunner:
         return args
 
     def run(self, targets: list[str] | None = None) -> None:
-        """Run pytest against the given or resolved targets."""
+        """Run pytest against the given or resolved targets, then vitest if TS is configured."""
         if targets is None:
             targets = self.resolve_targets()
         args = self.build_pytest_args(targets)
         exit_code = run_pytest(args)
         if exit_code != 0:
             sys.exit(exit_code)
+
+        # Run TypeScript tests when configured AND relevant
+        languages = get_project_languages(self._project_root)
+        if "typescript" in languages and self._should_run_vitest():
+            self._run_vitest()
+
+    def _should_run_vitest(self) -> bool:
+        """Determine whether vitest should run based on scope context.
+
+        Full suite (non-worktree): always run vitest.
+        Targeted (worktree): only if scoped files include TypeScript sources.
+        """
+        if self._is_full_suite:
+            return True
+        ts_exts = (".ts", ".tsx", ".js", ".jsx")
+        return any(f.endswith(ts_exts) for f in self._scoped_files)
+
+    def _run_vitest(self) -> None:
+        """Run vitest for TypeScript tests from frontend_root."""
+        frontend_root = self._resolve_frontend_root()
+        if not frontend_root.exists():
+            logger.info("Frontend root %s does not exist — skipping vitest", frontend_root)
+            return
+        logger.info("Running vitest from %s", frontend_root)
+        # Justified subprocess: vitest is an external Node.js tool with no Python API
+        result = subprocess.run(["npx", "--yes", "vitest", "run"], cwd=str(frontend_root), check=False)
+        if result.returncode != 0:
+            logger.error("vitest failed (exit %d)", result.returncode)
+            sys.exit(result.returncode)
+
+    def _resolve_frontend_root(self) -> Path:
+        """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
+        config_path = self._project_root / "teleclaude.yml"
+        if config_path.exists():
+            with open(config_path, encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+            if isinstance(data, dict):
+                fr = data.get("frontend_root")
+                if fr:
+                    return self._project_root / str(fr)
+        return self._project_root / "frontend"
 
     def _read_configured_test_paths(self) -> list[str]:
         """Read testpaths from [tool.pytest.ini_options] in pyproject.toml."""

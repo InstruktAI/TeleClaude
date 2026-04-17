@@ -117,17 +117,31 @@ def resolve_project_root(cwd: Path) -> Path:
         current = parent
 
 
-def get_project_language(project_root: Path) -> str | None:
-    """Read the language field from teleclaude.yml. Returns None if absent."""
+def get_project_languages(project_root: Path) -> list[str]:
+    """Read languages from teleclaude.yml. Falls back to singular language field."""
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
-        return None
+        return []
     with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
-        return None
+        return []
+    languages = data.get("languages", [])
+    if languages:
+        return [str(lang) for lang in languages]
     lang = data.get("language")
-    return str(lang) if lang is not None else None
+    if lang is not None:
+        return [str(lang)]
+    return []
+
+
+def get_project_language(project_root: Path) -> str | None:
+    """Read the language field from teleclaude.yml. Returns None if absent.
+
+    Deprecated: use get_project_languages() for multi-language support.
+    """
+    languages = get_project_languages(project_root)
+    return languages[0] if languages else None
 
 
 def validate_scoped_paths(paths: list[str], project_root: Path) -> list[str]:

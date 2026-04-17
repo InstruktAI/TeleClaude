@@ -40,6 +40,48 @@ class TestValidateScopedPaths:
         assert result == ["ok.py"]
 
 
+class TestGetProjectLanguages:
+    """get_project_languages reads the languages list from teleclaude.yml."""
+
+    def test_returns_languages_list_from_config(self, tmp_path: Path) -> None:
+        """Reads the languages list when present."""
+        (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n  - typescript\n", encoding="utf-8")
+
+        from teleclaude.quality.scope import get_project_languages
+
+        assert get_project_languages(tmp_path) == ["python", "typescript"]
+
+    def test_falls_back_to_singular_language_field(self, tmp_path: Path) -> None:
+        """Backward compat: wraps singular language in a list."""
+        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+
+        from teleclaude.quality.scope import get_project_languages
+
+        assert get_project_languages(tmp_path) == ["python"]
+
+    def test_prefers_languages_over_language(self, tmp_path: Path) -> None:
+        """When both fields exist, languages takes precedence."""
+        (tmp_path / "teleclaude.yml").write_text("language: python\nlanguages:\n  - typescript\n", encoding="utf-8")
+
+        from teleclaude.quality.scope import get_project_languages
+
+        assert get_project_languages(tmp_path) == ["typescript"]
+
+    def test_returns_empty_list_when_no_language_fields(self, tmp_path: Path) -> None:
+        """Returns empty list when neither field exists."""
+        (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
+
+        from teleclaude.quality.scope import get_project_languages
+
+        assert get_project_languages(tmp_path) == []
+
+    def test_returns_empty_list_when_no_config_file(self, tmp_path: Path) -> None:
+        """Returns empty list when teleclaude.yml doesn't exist."""
+        from teleclaude.quality.scope import get_project_languages
+
+        assert get_project_languages(tmp_path) == []
+
+
 class TestResolveInvocationCwd:
     """resolve_invocation_cwd returns the user's actual invocation directory.
 

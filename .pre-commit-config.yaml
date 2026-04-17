@@ -9,6 +9,7 @@ repos:
     name: Format (telec lint --step ruff_format)
     entry: telec lint --step ruff_format
     language: system
+    types: [python]
     pass_filenames: true
     require_serial: true
   - id: guardrails

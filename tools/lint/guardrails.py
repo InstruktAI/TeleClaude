@@ -293,20 +293,11 @@ def _check_lint_pipeline_integrity(repo_root: Path) -> None:  # pylint: disable=
                 if f"id: {hook_id}" not in precommit:
                     _fail(f".pre-commit-config.yaml: required hook '{hook_id}' is missing")
 
-    # tools/lint.sh: must invoke guardrails/ruff/pyright directly OR delegate to telec lint
-    lint_sh_path = repo_root / "tools" / "lint.sh"
-    if lint_sh_path.exists():
-        lint_sh = lint_sh_path.read_text(encoding="utf-8")
-        if "telec lint" not in lint_sh:
-            for step in ("guardrails.py", "ruff check", "$PYRIGHT", "$MYPY", "$PYLINT"):
-                if step not in lint_sh:
-                    _fail(f"tools/lint.sh: required lint step '{step}' is missing")
-
-    # Makefile: must contain lint and test targets
+    # Makefile: must contain lint, test, and format targets
     makefile_path = repo_root / "Makefile"
     if makefile_path.exists():
         makefile = makefile_path.read_text(encoding="utf-8")
-        for target in ("lint:", "test:"):
+        for target in ("lint:", "test:", "format:"):
             if target not in makefile:
                 _fail(f"Makefile: required target '{target}' is missing")
 

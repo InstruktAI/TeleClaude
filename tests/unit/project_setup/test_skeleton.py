@@ -71,6 +71,33 @@ class TestSkeletonDeployment:
 
 
 # ---------------------------------------------------------------------------
+# R4.1b — Skeleton deployment reads languages list
+# ---------------------------------------------------------------------------
+
+
+class TestSkeletonMultiLanguage:
+    """Skeleton deployment reads the languages list field."""
+
+    def test_deploy_reads_languages_list(self, tmp_path: Path) -> None:
+        """teleclaude.yml with languages: [python] triggers Python skeleton deployment."""
+        (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n", encoding="utf-8")
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
+
+        deploy_skeleton(project_root=tmp_path)
+        assert (tmp_path / "pyproject.toml").exists(), "Python skeleton not deployed from languages list"
+
+    def test_deploy_skips_unrecognized_language(self, tmp_path: Path) -> None:
+        """Unrecognized languages in the list are skipped, not errored."""
+        (tmp_path / "teleclaude.yml").write_text("languages:\n  - cobol\n", encoding="utf-8")
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
+
+        deploy_skeleton(project_root=tmp_path)
+        assert not (tmp_path / "pyproject.toml").exists(), "No skeleton expected for unrecognized language"
+
+
+# ---------------------------------------------------------------------------
 # R4.2 — Existing files are never overwritten
 # ---------------------------------------------------------------------------
 
@@ -156,7 +183,82 @@ class TestNoDeploymentWithoutLanguage:
 # ---------------------------------------------------------------------------
 
 
-class TestProjectNameSubstitution:  # pylint: disable=too-few-public-methods
+# ---------------------------------------------------------------------------
+# 3A — Diff-and-prompt for existing files
+# ---------------------------------------------------------------------------
+
+
+class TestDiffAndPrompt:
+    """When a file exists and differs from template, skeleton shows diff and prompts."""
+
+    def test_identical_file_is_skipped_silently(self, tmp_path: Path) -> None:
+        """Existing file identical to template content is skipped without output."""
+        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton
+
+        # Deploy once to get the template content
+        deploy_skeleton(project_root=tmp_path)
+        content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+
+        # Deploy again — should skip silently (no exception, no change)
+        deploy_skeleton(project_root=tmp_path)
+        assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == content
+
+    def test_different_file_not_overwritten_non_interactive(self, tmp_path: Path) -> None:
+        """In non-interactive mode, differing files are skipped (not overwritten)."""
+        (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
+        original = "[project]\nname = 'custom'\n"
+        (tmp_path / "pyproject.toml").write_text(original, encoding="utf-8")
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton
+
+        deploy_skeleton(project_root=tmp_path)
+        assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == original
+
+
+# ---------------------------------------------------------------------------
+# 3B — TypeScript skeleton templates
+# ---------------------------------------------------------------------------
+
+
+class TestTypeScriptSkeleton:
+    """TypeScript skeleton templates deploy to frontend_root."""
+
+    def test_typescript_skeleton_deployed_to_frontend_root(self, tmp_path: Path) -> None:
+        """TypeScript skeleton files deploy under the frontend_root directory."""
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - typescript\nfrontend_root: frontend\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "frontend").mkdir()
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton
+
+        deploy_skeleton(project_root=tmp_path)
+        # At minimum, tsconfig.json should be deployed
+        assert (tmp_path / "frontend" / "tsconfig.json").exists(), "tsconfig.json not deployed to frontend/"
+
+    def test_typescript_skeleton_default_frontend_dir(self, tmp_path: Path) -> None:
+        """When frontend_root is not set, defaults to frontend/."""
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - typescript\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "frontend").mkdir()
+
+        from teleclaude.project_setup.skeleton import deploy_skeleton
+
+        deploy_skeleton(project_root=tmp_path)
+        assert (tmp_path / "frontend" / "tsconfig.json").exists()
+
+
+# ---------------------------------------------------------------------------
+# R4.4 — Project name substitution
+# ---------------------------------------------------------------------------
+
+
+class TestProjectNameSubstitution:
     """Project name in deployed configuration defaults to the directory name."""
 
     def test_pyproject_contains_directory_name_as_project_name(self, tmp_path: Path) -> None:

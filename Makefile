@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint lint-cycles lint-topimports check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types
+.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -20,8 +20,6 @@ help:
 	@echo "Code Quality:"
 	@echo "  make format       Format code with ruff"
 	@echo "  make lint                 Run repo-wide linting checks"
-	@echo "  make lint-cycles          Run pylint cyclic-import check only"
-	@echo "  make lint-topimports      Run pylint import-outside-toplevel check only"
 	@echo "  make check-test-mapping   Check 1:1 source-to-test mapping (expected to fail during overhaul)"
 	@echo ""
 	@echo "Testing:"
@@ -69,23 +67,13 @@ link:
 
 format:
 	@echo "Formatting code..."
-	@./tools/format.sh
+	@telec format
 	@echo "✓ Code formatted"
 
 lint:
 	@echo "Running lint checks..."
 	@telec lint
 	@echo "✓ Lint checks passed"
-
-lint-cycles:
-	@echo "Running cyclic import check..."
-	@. .venv/bin/activate && pylint --disable=all --enable=cyclic-import teleclaude tests
-	@echo "✓ Cyclic import check passed"
-
-lint-topimports:
-	@echo "Running top-level import check..."
-	@. .venv/bin/activate && pylint --disable=all --enable=import-outside-toplevel teleclaude tests
-	@echo "✓ Top-level import check passed"
 
 check-test-mapping:
 	@python tools/lint/test_mapping.py

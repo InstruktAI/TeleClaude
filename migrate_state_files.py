@@ -3,7 +3,6 @@
 
 import json
 from pathlib import Path
-from typing import cast
 
 import yaml
 
@@ -33,7 +32,7 @@ def migrate_state_files(todos_root: Path) -> dict[str, int]:
             data: object = json.loads(state_json.read_text(encoding="utf-8"))
 
             # Write YAML
-            yaml_content = cast(str, yaml.dump(data, default_flow_style=False, sort_keys=False))
+            yaml_content: str = yaml.dump(data, default_flow_style=False, sort_keys=False)
             state_yaml.write_text(yaml_content, encoding="utf-8")
 
             # Remove JSON file

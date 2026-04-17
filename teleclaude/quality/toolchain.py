@@ -13,7 +13,7 @@ from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
-class LintToolchain(Protocol):  # pylint: disable=too-few-public-methods
+class LintToolchain(Protocol):
     """Protocol for language-specific lint/test toolchain capabilities."""
 
     language: str
@@ -22,19 +22,19 @@ class LintToolchain(Protocol):  # pylint: disable=too-few-public-methods
 
     def map_to_test_companion(self, source: str) -> str:
         """Map a source file path to its test companion path."""
-        ...  # pylint: disable=unnecessary-ellipsis
+        ...
 
     @property
     def source_dirs(self) -> list[str]:
         """Configured source directories for this language toolchain."""
-        ...  # pylint: disable=unnecessary-ellipsis
+        ...
 
 
 class PythonToolchain:
-    """Python language toolchain — ruff, pyright, mypy, pylint."""
+    """Python language toolchain — ruff, pyright, mypy, jscpd."""
 
     language: str = "python"
-    tools: list[str] = ["ruff", "pyright", "mypy", "pylint"]
+    tools: list[str] = ["ruff", "pyright", "mypy", "jscpd"]
     config_source: str = "pyproject.toml"
 
     def __init__(self, project_root: Path) -> None:
@@ -63,17 +63,56 @@ class PythonToolchain:
         return ["teleclaude"]
 
 
-TOOLCHAIN_REGISTRY: dict[str, Callable[[Path], LintToolchain]] = {
+class TypeScriptToolchain:
+    """TypeScript language toolchain — eslint, tsc."""
+
+    language: str = "typescript"
+    tools: list[str] = ["eslint", "tsc"]
+    config_source: str = "package.json"
+
+    def __init__(self, project_root: Path, frontend_root: str = "frontend") -> None:
+        self._project_root = project_root
+        self._frontend_root = project_root / frontend_root
+
+    def map_to_test_companion(self, source: str) -> str:
+        """Map app/foo/bar.tsx to app/foo/__tests__/bar.test.tsx."""
+        parts = source.rsplit("/", 1)
+        if len(parts) == 1:
+            name, ext = _split_ts_ext(parts[0])
+            return f"__tests__/{name}.test{ext}"
+        dirname, filename = parts
+        name, ext = _split_ts_ext(filename)
+        return f"{dirname}/__tests__/{name}.test{ext}"
+
+    @property
+    def source_dirs(self) -> list[str]:
+        """Return the frontend root as the source directory."""
+        return [str(self._frontend_root)]
+
+
+def _split_ts_ext(filename: str) -> tuple[str, str]:
+    """Split a TypeScript filename into (name, extension)."""
+    for ext in (".tsx", ".ts", ".jsx", ".js"):
+        if filename.endswith(ext):
+            return filename[: -len(ext)], ext
+    return filename, ""
+
+
+TOOLCHAIN_REGISTRY: dict[str, Callable[..., LintToolchain]] = {
     "python": PythonToolchain,
+    "typescript": TypeScriptToolchain,
 }
 
 
-def get_toolchain(language: str, project_root: Path) -> LintToolchain:
+def get_toolchain(language: str, project_root: Path, **kwargs: str) -> LintToolchain:
     """Look up and instantiate the toolchain for the given language.
+
+    Extra keyword arguments (e.g. ``frontend_root``) are forwarded to the
+    factory when the toolchain accepts them.
 
     Raises KeyError for unregistered languages.
     """
     factory = TOOLCHAIN_REGISTRY.get(language)
     if factory is None:
         raise KeyError(f"No toolchain registered for language: {language!r}")
-    return factory(project_root)
+    return factory(project_root, **kwargs)

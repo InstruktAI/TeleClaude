@@ -125,11 +125,11 @@ class TestExpensiveTestExclusion:
 class TestNonWorktreeFullSuite:
     """Outside a worktree, the full test suite runs against configured targets."""
 
-    def test_non_worktree_targets_configured_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """In non-worktree context, targets are the project's configured test directories."""
+    def test_worktree_targets_configured_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """In worktree context, targets are the project's configured test directories."""
         from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
+        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
 
         (tmp_path / "pyproject.toml").write_text(
             "[tool.pytest.ini_options]\ntestpaths = ['tests/unit', 'tests/integration']\n",
@@ -141,21 +141,21 @@ class TestNonWorktreeFullSuite:
         targets = runner.resolve_targets()
 
         assert any("tests/unit" in str(t) for t in targets), (
-            f"Non-worktree targets do not include 'tests/unit': {targets}"
-        )
-        assert any("tests/integration" in str(t) or "tests/unit" in str(t) for t in targets), (
-            f"Non-worktree targets do not include configured test directories: {targets}"
+            f"Worktree targets do not include 'tests/unit': {targets}"
         )
 
-    def test_worktree_context_uses_companion_mapping(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """In worktree context, targets come from companion mapping, not full suite."""
+    def test_shared_branch_with_session_uses_companion_mapping(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On shared branch with session, targets come from companion mapping."""
         from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
 
         companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
         companion.parent.mkdir(parents=True)
         companion.touch()
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
+        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.test_runner.resolve_session_scope",
             lambda _p: {"teleclaude/foo/bar.py"},
@@ -265,3 +265,84 @@ class TestPathValidation:
             assert not t_str.startswith("/") or t_str.startswith(str(tmp_path)), (
                 f"Absolute path '{t_str}' outside project root in test targets"
             )
+
+
+# ---------------------------------------------------------------------------
+# Vitest scoping — only run vitest when TypeScript files are in scope
+# ---------------------------------------------------------------------------
+
+
+class TestVitestScoping:
+    """vitest only runs when TypeScript files are in scope or running full suite."""
+
+    def test_vitest_skipped_for_python_only_session_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On shared branch with session scope of only Python files, vitest is not invoked."""
+        from teleclaude.quality.test_runner import TestRunner
+
+        vitest_calls: list[object] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_session_scope",
+            lambda _p: ["teleclaude/foo.py", "tests/unit/test_foo.py"],
+        )
+        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args: 0)
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.get_project_languages",
+            lambda _p: ["python", "typescript"],
+        )
+
+        # Create the test companion so resolve_targets finds it
+        test_file = tmp_path / "tests" / "unit" / "test_foo.py"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("", encoding="utf-8")
+
+        def _spy_vitest(self_runner: TestRunner) -> None:
+            vitest_calls.append(True)
+
+        monkeypatch.setattr(TestRunner, "_run_vitest", _spy_vitest)
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert len(vitest_calls) == 0, "vitest should NOT run when scope has only Python files"
+
+    def test_vitest_runs_when_typescript_files_in_session_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """On shared branch with session scope including TypeScript files, vitest is invoked."""
+        from teleclaude.quality.test_runner import TestRunner
+
+        vitest_calls: list[object] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
+        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_session_scope",
+            lambda _p: ["teleclaude/foo.py", "frontend/app/bar.tsx"],
+        )
+        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args: 0)
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.get_project_languages",
+            lambda _p: ["python", "typescript"],
+        )
+
+        # Create the test companion so resolve_targets finds something
+        test_file = tmp_path / "tests" / "unit" / "test_foo.py"
+        test_file.parent.mkdir(parents=True)
+        test_file.write_text("", encoding="utf-8")
+
+        def _spy_vitest(self_runner: TestRunner) -> None:
+            vitest_calls.append(True)
+
+        monkeypatch.setattr(TestRunner, "_run_vitest", _spy_vitest)
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert len(vitest_calls) == 1, "vitest SHOULD run when scope includes TypeScript files"

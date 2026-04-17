@@ -109,3 +109,37 @@ class TestSchemaValidators:
     def test_project_slug_empty_string_is_normalized_to_none(self) -> None:
         config = ProjectConfig.model_validate({"project_slug": "   "})
         assert config.project_slug is None
+
+
+class TestMultiLanguageConfig:
+    """ProjectConfig supports multi-language configuration via languages list."""
+
+    @pytest.mark.unit
+    def test_accepts_languages_list(self) -> None:
+        """ProjectConfig accepts a languages list with multiple entries."""
+        config = ProjectConfig.model_validate({"languages": ["python", "typescript"]})
+        assert config.languages == ["python", "typescript"]
+
+    @pytest.mark.unit
+    def test_languages_defaults_to_empty_list(self) -> None:
+        """languages defaults to empty list when absent."""
+        config = ProjectConfig.model_validate({})
+        assert config.languages == []
+
+    @pytest.mark.unit
+    def test_accepts_frontend_root(self) -> None:
+        """ProjectConfig accepts a frontend_root string."""
+        config = ProjectConfig.model_validate({"frontend_root": "frontend"})
+        assert config.frontend_root == "frontend"
+
+    @pytest.mark.unit
+    def test_frontend_root_defaults_to_none(self) -> None:
+        """frontend_root defaults to None when absent."""
+        config = ProjectConfig.model_validate({})
+        assert config.frontend_root is None
+
+    @pytest.mark.unit
+    def test_legacy_language_field_still_accepted(self) -> None:
+        """Backward compat: singular language field is still accepted."""
+        config = ProjectConfig.model_validate({"language": "python"})
+        assert config.language == "python"

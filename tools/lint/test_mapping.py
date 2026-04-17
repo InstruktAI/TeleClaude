@@ -14,7 +14,7 @@ def _load_exclusions(repo_root: Path) -> set[str]:
         sys.exit(2)
     with open(pyproject_path, "rb") as f:
         data_obj = tomllib.load(f)
-    if not isinstance(data_obj, dict):
+    if not isinstance(data_obj, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
         return set()
     data = cast(dict[str, object], data_obj)  # guard: loose-dict - TOML parsed data — pyproject config
     tool_obj = data.get("tool")

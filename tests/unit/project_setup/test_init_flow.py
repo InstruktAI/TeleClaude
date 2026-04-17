@@ -171,6 +171,82 @@ def test_ensure_project_slug_raises_when_slug_cannot_be_derived(
         init_flow._ensure_project_slug(project_root)
 
 
+class TestDetectAndSetLanguages:
+    """_detect_and_set_languages scans project root for language indicators."""
+
+    def test_detects_python_from_pyproject_toml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """pyproject.toml presence triggers Python detection."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\nname = 'test'\n", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        init_flow._detect_and_set_languages(tmp_path)
+
+        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert "python" in config.get("languages", [])
+
+    def test_detects_typescript_from_package_json_with_dep(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """package.json with typescript in devDeps triggers TypeScript detection."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+        (frontend / "package.json").write_text('{"devDependencies": {"typescript": "^5.0"}}', encoding="utf-8")
+        (frontend / "tsconfig.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        init_flow._detect_and_set_languages(tmp_path)
+
+        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert "typescript" in config.get("languages", [])
+        assert config.get("frontend_root") == "frontend"
+
+    def test_no_indicators_leaves_config_unchanged(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No language indicators leaves languages unset."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        init_flow._detect_and_set_languages(tmp_path)
+
+        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert config.get("languages") is None or config.get("languages") == []
+
+    def test_skips_when_config_already_matches(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No config write when detected matches existing."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\nlanguages:\n  - python\n", encoding="utf-8")
+        (tmp_path / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        original_mtime = (tmp_path / "teleclaude.yml").stat().st_mtime
+        init_flow._detect_and_set_languages(tmp_path)
+        # File should not have been rewritten
+        new_mtime = (tmp_path / "teleclaude.yml").stat().st_mtime
+        assert original_mtime == new_mtime
+
+    def test_detects_python_from_setup_py(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """setup.py presence triggers Python detection."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
+        (tmp_path / "setup.py").write_text("from setuptools import setup\n", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        init_flow._detect_and_set_languages(tmp_path)
+
+        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert "python" in config.get("languages", [])
+
+    def test_detects_typescript_from_tsconfig_json(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """tsconfig.json in project root triggers TypeScript detection."""
+        (tmp_path / "teleclaude.yml").write_text("project_name: test\n", encoding="utf-8")
+        (tmp_path / "tsconfig.json").write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: False))
+
+        init_flow._detect_and_set_languages(tmp_path)
+
+        config = yaml.safe_load((tmp_path / "teleclaude.yml").read_text(encoding="utf-8"))
+        assert "typescript" in config.get("languages", [])
+
+
 def test_offer_enrichment_launches_refresh_for_reinitialized_projects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -191,7 +267,25 @@ def test_offer_enrichment_launches_refresh_for_reinitialized_projects(
     monkeypatch.setattr(init_flow, "_has_generated_snippets", has_generated_snippets)
     monkeypatch.setattr(init_flow, "_prompt_yes_no", prompt_yes_no)
     monkeypatch.setattr(init_flow, "_launch_enrichment", launch_enrichment)
+    monkeypatch.setattr(init_flow, "_launch_config_assessment", lambda _p: None)
 
     init_flow._offer_enrichment(tmp_path)
 
     assert launches == [tmp_path]
+
+
+def test_offer_enrichment_launches_both_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """When user approves enrichment, both doc snippets and config assessment sessions launch."""
+    enrichment_launches: list[Path] = []
+    assessment_launches: list[Path] = []
+
+    monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: True))
+    monkeypatch.setattr(init_flow, "_has_generated_snippets", lambda _p: False)
+    monkeypatch.setattr(init_flow, "_prompt_yes_no", lambda _prompt: True)
+    monkeypatch.setattr(init_flow, "_launch_enrichment", enrichment_launches.append)
+    monkeypatch.setattr(init_flow, "_launch_config_assessment", assessment_launches.append)
+
+    init_flow._offer_enrichment(tmp_path)
+
+    assert enrichment_launches == [tmp_path], "Enrichment session not launched"
+    assert assessment_launches == [tmp_path], "Config assessment session not launched"

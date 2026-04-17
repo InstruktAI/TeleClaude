@@ -1,9 +1,10 @@
-"""CLI handlers for ``telec lint`` and ``telec test``."""
+"""CLI handlers for ``telec lint``, ``telec test``, and ``telec format``."""
 
 from __future__ import annotations
 
+from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.scope import resolve_invocation_cwd, resolve_project_root
+from teleclaude.quality.scope import get_project_languages, resolve_invocation_cwd, resolve_project_root
 from teleclaude.quality.test_runner import TestRunner
 
 
@@ -65,3 +66,16 @@ def handle_test(args: list[str]) -> None:
     runner = TestRunner(project_root=project_root, include_expensive=include_expensive)
     targets = runner.resolve_targets(files=files or None)
     runner.run(targets=targets)
+
+
+def handle_format(args: list[str]) -> None:
+    """Handle the ``telec format`` command.
+
+    No args → format default directories based on configured languages.
+    Positional args → format those specific files (pre-commit mode).
+    """
+    project_root = resolve_project_root(resolve_invocation_cwd())
+    languages = get_project_languages(project_root)
+    runner = FormatRunner(project_root=project_root, languages=languages)
+    files = [a for a in args if not a.startswith("-")]
+    runner.run(files=files if files else None)

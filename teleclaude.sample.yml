@@ -1,7 +1,11 @@
 # teleclaude.yml
 # project_slug: your-project-slug
 # project_name: Your Project
-# language: python  # optional; enables language-aware quality tooling and init skeletons
+# language: python  # deprecated; use languages list below
+# languages:        # multi-language quality tooling and init skeletons
+#   - python
+#   - typescript
+# frontend_root: frontend  # directory containing TypeScript/frontend project (relative to project root)
 # business:
 #   domains:
 #     software-development: docs  # default

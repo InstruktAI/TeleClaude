@@ -44,6 +44,7 @@ class TelecCommand(str, Enum):
     SIGNALS = "signals"
     LINT = "lint"
     TEST = "test"
+    FORMAT = "format"
 
 
 # =============================================================================

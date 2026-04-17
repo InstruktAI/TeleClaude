@@ -23,16 +23,6 @@ pythonVersion = "3.12"
 python_version = "3.12"
 strict = true
 
-[tool.pylint.'MESSAGES CONTROL']
-enable = ["import-outside-toplevel"]
-fail-on = ["import-outside-toplevel"]
-
-[tool.pylint.'SIMILARITIES']
-min-similarity-lines = 10
-
-[tool.pylint.'FORMAT']
-max-line-length = 120
-
 [tool.pytest.ini_options]
 testpaths = ["tests/unit", "tests/integration"]
 

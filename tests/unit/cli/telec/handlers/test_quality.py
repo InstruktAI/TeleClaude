@@ -21,6 +21,12 @@ class TestHandlerImports:
 
         assert callable(handle_test)
 
+    def test_handle_format_is_importable(self) -> None:
+        """handle_format can be imported from the quality handler module."""
+        from teleclaude.cli.telec.handlers.quality import handle_format
+
+        assert callable(handle_format)
+
 
 class TestParseStepArgs:
     """_parse_step_args extracts --step and positional filenames.

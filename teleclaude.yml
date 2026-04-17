@@ -1,4 +1,7 @@
 project_name: TeleClaude
+languages:
+  - python
+frontend_root: frontend
 
 business:
   domains:

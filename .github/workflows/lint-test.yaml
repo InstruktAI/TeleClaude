@@ -24,10 +24,10 @@ jobs:
         timeout-minutes: 5
 
       - name: Run lint
-        run: ./tools/lint.sh
+        run: telec lint
         timeout-minutes: 5
 
       - name: Run tests
-        run: ./tools/test.sh
+        run: telec test
         timeout-minutes: 10
         continue-on-error: false

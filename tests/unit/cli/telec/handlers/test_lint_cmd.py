@@ -45,25 +45,25 @@ class TestProjectRootResolution:
 
 
 class TestLanguageDetection:
-    """Language is read from the project's teleclaude.yml."""
+    """Languages are read from the project's teleclaude.yml."""
 
     def test_reads_python_language_from_config(self, tmp_path: Path) -> None:
-        """teleclaude.yml with language:python returns 'python' as the project language."""
+        """teleclaude.yml with language:python returns ['python'] as the project languages."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        from teleclaude.quality.lint import get_project_language  # pyright: ignore[reportMissingImports]
+        from teleclaude.quality.lint import get_project_languages  # pyright: ignore[reportMissingImports]
 
-        lang = get_project_language(tmp_path)
-        assert lang == "python"
+        langs = get_project_languages(tmp_path)
+        assert langs == ["python"]
 
-    def test_no_language_field_returns_none(self, tmp_path: Path) -> None:
-        """teleclaude.yml without a language field returns None."""
+    def test_no_language_field_returns_empty_list(self, tmp_path: Path) -> None:
+        """teleclaude.yml without a language field returns empty list."""
         (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
 
-        from teleclaude.quality.lint import get_project_language  # pyright: ignore[reportMissingImports]
+        from teleclaude.quality.lint import get_project_languages  # pyright: ignore[reportMissingImports]
 
-        lang = get_project_language(tmp_path)
-        assert lang is None
+        langs = get_project_languages(tmp_path)
+        assert langs == []
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +152,61 @@ class TestWorktreeContext:  # pylint: disable=too-few-public-methods
             assert len(items) > 0, "Pipeline received empty iterable in worktree mode"
             for t in items:
                 assert not str(t).endswith(".py"), f"Worktree target {t!r} is a .py file — expected directory targets"
+
+
+# ---------------------------------------------------------------------------
+# R1.4b — Multi-language collects dirs from all toolchains
+# ---------------------------------------------------------------------------
+
+
+class TestMultiLanguageSourceDirs:
+    """Multi-language config collects source dirs from all registered toolchains."""
+
+    def test_multi_language_collects_dirs_from_all_registered_toolchains(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When languages list has multiple entries, source dirs from all registered toolchains are collected."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        received_targets: list[object] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python"],
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.run_pipeline",
+            received_targets.append,
+        )
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run()
+
+        assert len(received_targets) == 1
+        targets_arg = received_targets[0]
+        assert targets_arg, "Pipeline received empty targets"
+
+    def test_unregistered_language_skipped_gracefully(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Languages without a registered toolchain are skipped, not errored."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        received_targets: list[object] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python", "cobol"],
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.run_pipeline",
+            received_targets.append,
+        )
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run()
+
+        assert len(received_targets) == 1, "Pipeline should still run for registered languages"
 
 
 # ---------------------------------------------------------------------------
@@ -257,7 +312,7 @@ class TestPythonPipelineOrder:  # pylint: disable=too-few-public-methods
     """The Python lint pipeline runs in a deterministic, required order."""
 
     def test_pipeline_steps_run_in_required_order(self, tmp_path: Path) -> None:
-        """Pipeline order: guardrails, markdown, resource_validation, ruff, pyright, mypy, pylint."""
+        """Pipeline order: guardrails, markdown, resource_validation, ruff, pyright, mypy, jscpd."""
         from teleclaude.quality.lint import PythonLintPipeline  # pyright: ignore[reportMissingImports]
 
         pipeline = PythonLintPipeline(project_root=tmp_path)
@@ -271,7 +326,7 @@ class TestPythonPipelineOrder:  # pylint: disable=too-few-public-methods
             "ruff_format",
             "pyright",
             "mypy",
-            "pylint",
+            "jscpd",
         ]
         for required in required_order:
             matching = [name for name in step_names if required in name.lower()]
@@ -289,8 +344,123 @@ class TestPythonPipelineOrder:  # pylint: disable=too-few-public-methods
         )
         assert positions["ruff_check"] < positions["ruff_format"], "ruff_check must run before ruff_format"
         assert positions["ruff_format"] < positions["pyright"], "ruff_format must run before pyright"
-        assert positions["pyright"] < positions["pylint"], "pyright must run before pylint"
-        assert positions["mypy"] < positions["pylint"], "mypy must run before pylint"
+        assert positions["pyright"] < positions["jscpd"], "pyright must run before jscpd"
+        assert positions["mypy"] < positions["jscpd"], "mypy must run before jscpd"
+
+
+# ---------------------------------------------------------------------------
+# TypeScript lint pipeline
+# ---------------------------------------------------------------------------
+
+
+class TestTypeScriptLintPipeline:
+    """TypeScript lint pipeline has eslint and tsc steps."""
+
+    def test_typescript_pipeline_has_eslint_and_tsc(self, tmp_path: Path) -> None:
+        """TypeScript pipeline contains eslint and tsc steps."""
+        from teleclaude.quality.lint import TypeScriptLintPipeline  # pyright: ignore[reportMissingImports]
+
+        pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
+        step_names = [step.name for step in pipeline.steps]
+        assert "eslint" in step_names, f"eslint not found in TS pipeline: {step_names}"
+        assert "tsc" in step_names, f"tsc not found in TS pipeline: {step_names}"
+
+    def test_typescript_pipeline_eslint_before_tsc(self, tmp_path: Path) -> None:
+        """eslint runs before tsc in the TypeScript pipeline."""
+        from teleclaude.quality.lint import TypeScriptLintPipeline  # pyright: ignore[reportMissingImports]
+
+        pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
+        step_names = [step.name for step in pipeline.steps]
+        assert step_names.index("eslint") < step_names.index("tsc"), "eslint must run before tsc"
+
+
+# ---------------------------------------------------------------------------
+# Multi-language lint dispatch runs both pipelines
+# ---------------------------------------------------------------------------
+
+
+class TestMultiLanguageLintDispatch:
+    """LintRunner.run() dispatches both Python and TypeScript lint pipelines."""
+
+    def test_run_dispatches_typescript_pipeline_when_configured(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LintRunner.run() runs TypeScript pipeline when typescript is in languages."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        python_calls: list[object] = []
+        ts_step_calls: list[tuple[str, list[str]]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python", "typescript"],
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
+
+        # Intercept _run_tool to capture TypeScript step invocations
+        original_run_tool = None
+
+        def _capture_run_tool(cmd: list[str], cwd: Path, step_name: str) -> None:
+            if step_name in ("eslint", "tsc"):
+                ts_step_calls.append((step_name, list(cmd)))
+
+        monkeypatch.setattr("teleclaude.quality.lint._run_tool", _capture_run_tool)
+
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - python\n  - typescript\nfrontend_root: frontend\n",
+            encoding="utf-8",
+        )
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run()
+
+        assert len(python_calls) >= 1, "Python pipeline was not called"
+        ts_step_names = [name for name, _ in ts_step_calls]
+        assert "eslint" in ts_step_names, f"eslint was not dispatched — TS pipeline not running: {ts_step_calls}"
+        assert "tsc" in ts_step_names, f"tsc was not dispatched — TS pipeline not running: {ts_step_calls}"
+
+    def test_typescript_steps_run_from_frontend_root_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """TypeScript lint steps (eslint, tsc) execute from the frontend_root directory as cwd."""
+        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
+
+        cwd_captures: list[tuple[str, str]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python", "typescript"],
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", lambda _targets: None)
+
+        def _capture_cwd(cmd: list[str], cwd: Path, step_name: str) -> None:
+            cwd_captures.append((step_name, str(cwd)))
+
+        monkeypatch.setattr("teleclaude.quality.lint._run_tool", _capture_cwd)
+
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - python\n  - typescript\nfrontend_root: myfrontend\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "myfrontend").mkdir()
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run()
+
+        eslint_cwds = [cwd for name, cwd in cwd_captures if name == "eslint"]
+        assert len(eslint_cwds) >= 1, "eslint was not invoked"
+        expected_cwd = str(tmp_path / "myfrontend")
+        assert eslint_cwds[0] == expected_cwd, f"eslint ran from {eslint_cwds[0]!r}, expected {expected_cwd!r}"
+
+    def test_eslint_not_in_python_pipeline(self, tmp_path: Path) -> None:
+        """eslint is not a step in the Python lint pipeline."""
+        from teleclaude.quality.lint import PythonLintPipeline  # pyright: ignore[reportMissingImports]
+
+        pipeline = PythonLintPipeline(project_root=tmp_path)
+        py_step_names = [s.name for s in pipeline.steps]
+        assert "eslint" not in py_step_names
 
 
 # ---------------------------------------------------------------------------

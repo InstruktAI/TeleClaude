@@ -23,11 +23,7 @@ __all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand", "
 
 
 def export_surface_markdown() -> str:
-    """Return a markdown document describing the full CLI surface.
-
-    Walks CLI_SURFACE recursively and renders command hierarchy, flags,
-    args, and descriptions. Pure function — no I/O, no daemon.
-    """
+    """Return a markdown document describing the full CLI surface."""
     lines: list[str] = ["# TeleClaude CLI Surface\n"]
 
     for cmd_name, cmd_def in CLI_SURFACE.items():
@@ -994,6 +990,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
         ],
         auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
     ),
+    "format": CommandDef(
+        desc="Run language-aware code formatter", flags=[_H], auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL)
+    ),
 }
-# Help-only expansion for action groups; config people/env are now real leaf subcommands.
 HELP_SUBCOMMAND_EXPANSIONS: dict[str, dict[str, list[tuple[str, str]]]] = {}
