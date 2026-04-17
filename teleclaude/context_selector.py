@@ -675,7 +675,7 @@ def _build_phase1_output(  # pylint: disable=too-many-arguments
         parts.append("# Third-party documentation (not part of taxonomy)")
         for entry in sorted(third_party_entries, key=lambda s: (_scope_rank(s.scope), s.snippet_id)):
             parts.append(f"{entry.snippet_id}: {entry.description or ''}".strip())
-    parts.extend(["", "# ⚠️  IMPORTANT: Call telec docs again with the snippet IDs of interest!"])
+    parts.extend(["", "# ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!"])
     return "\n".join(parts)
 
 

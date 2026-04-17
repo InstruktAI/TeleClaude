@@ -30,7 +30,9 @@ class AgentName(str, Enum):
         for member in cls:
             if member.value == normalized:
                 return member
-        raise ValueError(f"Unknown agent '{value}'")
+        err = f"Unknown agent '{value}'"
+        logger.error(err)
+        raise ValueError(err)
 
     @classmethod
     def choices(cls) -> tuple[str, ...]:
