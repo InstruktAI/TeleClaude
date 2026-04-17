@@ -30,6 +30,7 @@ from teleclaude.core.integration.checkpoint import (
 from teleclaude.core.integration.formatters import (
     _format_autostash_orphaned,
     _format_error,
+    _format_post_delivery_check,
     _format_queue_empty,
     _format_repo_root_diverged,
 )
@@ -38,6 +39,7 @@ from teleclaude.core.integration.step_functions import (
     _NEXT_INTEGRATE_PHASE_LOG,
     _do_merge,
     _get_candidate_key,
+    _integration_worktree_path,
     _run_git,
     _step_awaiting_commit,
     _step_cleanup,
@@ -234,7 +236,8 @@ def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
         )
 
     if phase == IntegrationPhase.CANDIDATE_DELIVERED:
-        # Reset and loop for next candidate
+        delivered_slug = checkpoint.candidate_slug or ""
+        # Reset and prepare for next candidate
         checkpoint.phase = IntegrationPhase.IDLE.value
         checkpoint.candidate_slug = None
         checkpoint.candidate_branch = None
@@ -243,6 +246,12 @@ def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
         checkpoint.pre_merge_head = None
         checkpoint.error_context = None
         _write_checkpoint(checkpoint_path, checkpoint)
+
+        # Pause for post-delivery check when the project supports it
+        post_pull_script = Path(cwd) / "tools" / "post_pull_check.py"
+        if post_pull_script.exists():
+            worktree = str(_integration_worktree_path(cwd))
+            return False, _format_post_delivery_check(delivered_slug, cwd, worktree)
         return True, ""  # loop
 
     if phase == IntegrationPhase.COMPLETED:
