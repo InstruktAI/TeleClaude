@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Coroutine
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -15,7 +16,7 @@ import pytest
 import teleclaude.daemon_hook_outbox as daemon_hook_outbox
 from teleclaude.core import hook_outbox_queue
 from teleclaude.core.command_handlers import _session as session_handler
-from teleclaude.core.events import AgentEventContext
+from teleclaude.core.events import AgentEventContext, AgentHookEvents
 from teleclaude.core.models import Session
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -274,3 +275,44 @@ class TestCliCallersAlternativePath:
         monkeypatch.setattr(config_module, "read_current_session_email", lambda: "admin@example.com")
 
         config_module._check_customer_guard()
+
+
+class TestClosedSessionNativeMetadataPersistence:
+    """Closed sessions must still accept native metadata needed for revive."""
+
+    @pytest.mark.unit
+    async def test_dispatch_hook_event_persists_native_metadata_for_closed_session(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        daemon = _TestDaemon()
+        closed_session = Session(
+            session_id="sess-closed",
+            computer_name="local",
+            tmux_session_name="tc_sess-closed",
+            title="Closed Session",
+            lifecycle_status="closed",
+            active_agent="codex",
+            closed_at=datetime.now(UTC),
+        )
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=closed_session),
+            update_session=AsyncMock(return_value=closed_session),
+        )
+        monkeypatch.setattr(daemon_hook_outbox, "db", db)
+
+        await daemon._dispatch_hook_event(
+            "sess-closed",
+            AgentHookEvents.NATIVE_METADATA_UPDATE,
+            {
+                "agent": "codex",
+                "native_session_id": "native-closed-1",
+                "native_log_file": "/tmp/native-closed-1.jsonl",
+            },
+        )
+
+        db.update_session.assert_awaited_once_with(
+            "sess-closed",
+            native_session_id="native-closed-1",
+            native_log_file="/tmp/native-closed-1.jsonl",
+        )
