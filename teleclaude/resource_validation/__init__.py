@@ -261,8 +261,14 @@ def _artifact_section_order(kind: str) -> list[str]:
 def _collect_artifact_headings(lines: list[str], path: str, *, h1_idx: int) -> list[str]:
     headings: list[str] = []
     in_required_reads = False
+    in_code_fence = False
     for idx, raw in enumerate(lines):
         stripped = raw.strip()
+        if stripped.startswith("```"):
+            in_code_fence = not in_code_fence
+            continue
+        if in_code_fence:
+            continue
         if stripped.lower() == "## required reads":
             in_required_reads = True
             continue

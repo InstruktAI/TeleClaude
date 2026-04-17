@@ -112,7 +112,7 @@ class _ResourceValidationStep:
     def run(self, targets: list[str]) -> None:
         """Execute resource validation (repo-wide, not file-scoped)."""
         _ = targets  # resource validation is repo-wide
-        cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--warn-only", "--validate-only"]
+        cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sync", "--validate-only"]
         _run_tool(cmd, self._project_root, self.name)
 
 
