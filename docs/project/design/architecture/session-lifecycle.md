@@ -28,7 +28,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
 - **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted` and `active`, but `active_output` is observer-only and must not trigger direct platform API calls.
-- **Title ownership**: Session title updates are projection-owned. A title may change only after fresh assistant output is projected from transcript truth; lifecycle events must not recompute titles directly.
+- **Title ownership**: Session title updates are projection-owned, but finalized only at completed-turn boundaries. Transcript truth remains the input, and `agent_stop` is only the finalize signal. A title may change at most once per user turn, using the last user input plus the assistant output that followed it; live streaming output must not retitle the session.
 
 ### 3. Termination
 

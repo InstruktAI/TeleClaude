@@ -34,14 +34,15 @@ from teleclaude.core.output_poller import (
 from teleclaude.core.summarizer import generate_session_title
 from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils.transcript import (
+    collect_transcript_messages,
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
     extract_last_user_message_with_timestamp,
-    extract_recent_transcript_turns,
     get_assistant_messages_since,
     render_agent_output,
     render_clean_agent_output,
 )
+from teleclaude.utils.transcript import extract_recent_transcript_turns as _extract_recent_transcript_turns
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -49,6 +50,9 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
+
+# Retained as a module attribute for older test patch targets.
+extract_recent_transcript_turns = _extract_recent_transcript_turns
 
 
 @dataclass
@@ -549,7 +553,7 @@ async def _project_user_reflection(
 
 
 async def refresh_session_title_from_transcript(session: "Session") -> "Session":
-    """Recompute semantic title from transcript truth when the recent turn set changes."""
+    """Recompute semantic title from the last completed user->assistant turn."""
     # pylint: disable=too-many-return-statements
     current_title = (session.title or "").strip()
     if current_title.startswith("/"):
@@ -565,17 +569,39 @@ async def refresh_session_title_from_transcript(session: "Session") -> "Session"
     except ValueError:
         return session
 
-    recent_turns = await asyncio.to_thread(
-        extract_recent_transcript_turns, transcript_path, agent_name, max_turns_per_role=3
-    )
-    if not recent_turns:
+    latest_user = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
+    if latest_user is None:
         return session
-    turn_signature = tuple((role, text) for role, text in recent_turns)
+    latest_user_text, latest_user_ts = latest_user
+    if not latest_user_text.strip():
+        return session
+
+    messages = await asyncio.to_thread(collect_transcript_messages, transcript_path, agent_name)
+    if not messages:
+        return session
+
+    last_user_idx: int | None = None
+    for idx in range(len(messages) - 1, -1, -1):
+        role, _text = messages[idx]
+        if role == "user":
+            last_user_idx = idx
+            break
+    if last_user_idx is None:
+        return session
+
+    user_role, user_text = messages[last_user_idx]
+    assistant_parts = [text for role, text in messages[last_user_idx + 1 :] if role == "assistant" and text.strip()]
+    if user_role != "user" or not user_text.strip() or not assistant_parts:
+        return session
+
+    finalized_turn = [("user", user_text), ("assistant", "\n\n".join(assistant_parts))]
+    user_marker = latest_user_ts.isoformat() if isinstance(latest_user_ts, datetime) else latest_user_text
+    turn_signature = (("user", user_marker),)
     if _title_projection_signatures.get(session.session_id) == turn_signature:
         return session
 
     try:
-        new_title = await generate_session_title(recent_turns)
+        new_title = await generate_session_title(finalized_turn)
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Title summarization failed: %s", exc)
         return session
@@ -588,6 +614,17 @@ async def refresh_session_title_from_transcript(session: "Session") -> "Session"
     logger.info("Updated session title from transcript: %s", new_title)
     refreshed = await db.get_session(session.session_id)
     return refreshed or session
+
+
+async def finalize_session_title_on_agent_stop(
+    session_id: str,
+    session: "Session | None" = None,
+) -> "Session | None":
+    """Finalize title once per completed turn, using transcript truth at agent_stop."""
+    resolved_session = session or await db.get_session(session_id)
+    if not resolved_session:
+        return None
+    return await refresh_session_title_from_transcript(resolved_session)
 
 
 async def project_session_from_transcript(
@@ -617,7 +654,6 @@ async def project_session_from_transcript(
         )
         await db.update_session(session.session_id, last_projected_output_digest=projection_signature)
         session.last_projected_output_digest = projection_signature
-        session = await refresh_session_title_from_transcript(session)
         _record_output_tick(session.session_id, len(message))
     return session
 

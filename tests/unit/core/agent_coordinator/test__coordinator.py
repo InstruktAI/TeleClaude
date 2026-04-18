@@ -514,6 +514,10 @@ class TestHandleAgentStop:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.finalize_session_title_on_agent_stop",
+                AsyncMock(),
+            ) as mock_finalize_title,
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
@@ -526,6 +530,8 @@ class TestHandleAgentStop:
 
         coord._record_agent_stop_input.assert_called_once()
         coord._record_agent_stop_output.assert_called_once()
+        mock_finalize_title.assert_awaited_once()
+        assert mock_finalize_title.await_args.args[0] == "sess-001"
 
     @pytest.mark.unit
     async def test_emits_completed_status(self):

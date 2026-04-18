@@ -21,7 +21,8 @@ type: 'design'
 6. **Diff**: Normalized pane snapshots are compared against prior normalized capture.
 7. **Emit**: `OutputEvent` is yielded to `PollingCoordinator`.
 8. **Project**: Transcript projection decides whether assistant-visible output actually changed.
-9. **Broadcast**: `AdapterClient` routes output updates to active observers.
+9. **Finalize title**: Completed-turn signals (`agent_stop`) finalize semantic title generation from the bounded transcript window for that turn.
+10. **Broadcast**: `AdapterClient` routes output updates to active observers.
 
 ```mermaid
 sequenceDiagram
@@ -70,6 +71,8 @@ sequenceDiagram
 - **Poller Lifecycle Matches Session**: Poller starts when session becomes active, stops when session closes.
 - **Normalized change detection**: Generic `OutputChanged` detection compares normalized pane text, not raw ANSI/styling noise.
 - **Projection-owned dedupe**: Poller activity wakes transcript projection, but only a changed projected assistant render may trigger outbound output delivery.
+- **Completed-turn title finalization**: Title generation is not part of the live output loop. It runs only when a completed-turn signal finalizes the current transcript window.
+- **One title per user turn**: Duplicate `agent_stop` signals inside the same user turn must not generate a second title update.
 - **Deterministic cadence**: Output cadence is config-driven (`polling.output_cadence_s`, default `1.0`).
 - **No Blocking**: Polling runs in async task; never blocks main event loop or command execution.
 - **Graceful Stop**: Poller cleanup completes before session marked fully closed.
@@ -102,6 +105,7 @@ sequenceDiagram
 4. **Emit**: Send `OutputChanged` when normalized pane text changed
 5. **Project**: Rebuild transcript-derived assistant output and compare against the last projected render signature
 6. **Deliver**: Only if the projected render changed, call adapter output delivery
+7. **Finalize title later**: Do not generate titles here; title finalization waits for the completed-turn signal and uses the last user input plus the assistant output that followed it
 
 ### 3. Turn Completion Detection (AI Mode)
 

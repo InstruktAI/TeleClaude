@@ -465,6 +465,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
+        await polling_coordinator.finalize_session_title_on_agent_stop(session_id, session)
 
         await self._finalize_agent_stop(
             session_id,
