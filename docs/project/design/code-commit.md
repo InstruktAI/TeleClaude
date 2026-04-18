@@ -1,9 +1,9 @@
 ---
-id: project/design/code-commit
-type: design
-domain: software-development
-scope: project
-description: Design of telec code commit — the canonical agent commit command with session scoping, quality gates, and multi-agent protection.
+id: 'project/design/code-commit'
+type: 'design'
+domain: 'software-development'
+scope: 'project'
+description: 'Design of telec code commit — the canonical agent commit command with session scoping, quality gates, and multi-agent protection.'
 ---
 
 # Code Commit — Design

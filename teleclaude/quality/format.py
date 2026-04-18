@@ -39,20 +39,22 @@ class FormatRunner:
         self._project_root = project_root
         self._languages = languages
 
-    def run(self, files: list[str] | None = None) -> None:
+    def run(self, files: list[str] | None = None, *, run_all: bool = False) -> None:
         """Run formatters against the given files or default directories.
 
         Args:
             files: Explicit file list (pre-commit mode). None for full format.
                    Empty list is a no-op.
+            run_all: When True, skip scoping and format all default
+                     directories (equivalent to Makefile invocation).
         """
         if files is not None and len(files) == 0:
             return
 
-        if files is not None:
-            self._format_files(files)
-        else:
+        if run_all or files is None:
             self._format_defaults()
+        else:
+            self._format_files(files)
 
     def _format_files(self, files: list[str]) -> None:
         """Format an explicit list of files, dispatching by extension."""

@@ -67,12 +67,12 @@ link:
 
 format:
 	@echo "Formatting code..."
-	@telec format
+	@telec code format --all
 	@echo "✓ Code formatted"
 
 lint:
 	@echo "Running lint checks..."
-	@telec lint
+	@telec code lint --all
 	@echo "✓ Lint checks passed"
 
 check-test-mapping:
@@ -95,7 +95,7 @@ test-agents:
 
 test:
 	@echo "Running repo-wide tests..."
-	@telec test
+	@telec code test --all
 	@echo "✓ All tests passed"
 
 coverage:

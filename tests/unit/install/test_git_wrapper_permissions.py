@@ -112,10 +112,11 @@ class TestHumanSession:
         code, _ = _run(["status"], human_role="admin")
         assert code == 0
 
-    def test_human_commit_allowed(self) -> None:
-        # Human in tmux gets worker role, which can commit on non-main branch.
-        code, _ = _run(["commit", "-m", "human commit"], human_role="admin", branch="feature")
-        assert code == 0
+    def test_human_commit_redirected(self) -> None:
+        # All git commit calls are redirected to telec code commit.
+        code, stderr = _run(["commit", "-m", "human commit"], human_role="admin", branch="feature")
+        assert code != 0
+        assert "telec code commit" in stderr
 
 
 # ── DESTRUCTIVE ───────────────────────────────────────────────────────────────
@@ -195,82 +196,28 @@ class TestCheckoutPermissions:
         assert "protected" not in stderr.lower()
 
 
-# ── PROTECTED: commit on main ─────────────────────────────────────────────────
+# ── COMMIT REDIRECT ───────────────────────────────────────────────────────────
 
 
-class TestProtectedCommitOnMain:
-    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
-    def test_non_integrator_blocked(self, role: str) -> None:
-        code, _ = _run(["commit", "-m", "test"], role=role, branch="main")
+class TestCommitRedirect:
+    """All git commit calls are redirected to telec code commit."""
+
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_all_roles_redirected_on_branch(self, role: str) -> None:
+        code, stderr = _run(["commit", "-m", "test"], role=role, branch="feature")
         assert code != 0
+        assert "telec code commit" in stderr
 
-    def test_integrator_allowed(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], role="integrator", branch="main")
-        assert code == 0
-
-
-# ── PROTECTED: commit on main — TELECLAUDE_COMMIT_APPROVED gate ──────────────
-
-
-class TestCommitApprovedGate:
-    def test_block_error_advertises_approval_env_var(self) -> None:
-        code, stderr = _run(["commit", "-m", "test"], role="worker", branch="main")
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_all_roles_redirected_on_main(self, role: str) -> None:
+        code, stderr = _run(["commit", "-m", "test"], role=role, branch="main")
         assert code != 0
-        assert "TELECLAUDE_COMMIT_APPROVED" in stderr
+        assert "telec code commit" in stderr
 
-    def test_block_error_does_not_teach_system_role_escape(self) -> None:
-        _, stderr = _run(["commit", "-m", "test"], role="worker", branch="main")
-        assert "TELECLAUDE_SYSTEM_ROLE=integrator" not in stderr
-
-    def test_approved_env_var_allows_worker_commit_on_main(self) -> None:
-        code, _ = _run(
-            ["commit", "-m", "test"],
-            role="worker",
-            branch="main",
-            commit_approved=True,
-        )
-        assert code == 0
-
-    def test_approved_env_var_allows_system_commit_on_main(self) -> None:
-        code, _ = _run(
-            ["commit", "-m", "test"],
-            role="system",
-            branch="main",
-            commit_approved=True,
-        )
-        assert code == 0
-
-    def test_approved_env_var_allows_orchestrator_commit(self) -> None:
-        # Orchestrators can commit when the human explicitly approved.
-        code, _ = _run(
-            ["commit", "-m", "test"],
-            role="orchestrator",
-            branch="main",
-            commit_approved=True,
-        )
-        assert code == 0
-
-    def test_approval_not_required_off_main(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], role="worker", branch="feature")
-        assert code == 0
-
-    def test_integrator_bypasses_without_approval(self) -> None:
-        # Integrator role authority is independent of the approval gate.
-        code, _ = _run(["commit", "-m", "test"], role="integrator", branch="main")
-        assert code == 0
-
-    def test_human_session_blocked_on_main_without_approval(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], human_role="admin", branch="main")
+    def test_human_session_redirected(self) -> None:
+        code, stderr = _run(["commit", "-m", "test"], human_role="admin", branch="main")
         assert code != 0
-
-    def test_human_session_allowed_on_main_with_approval(self) -> None:
-        code, _ = _run(
-            ["commit", "-m", "test"],
-            human_role="admin",
-            branch="main",
-            commit_approved=True,
-        )
-        assert code == 0
+        assert "telec code commit" in stderr
 
 
 # ── PROTECTED: push from main ─────────────────────────────────────────────────
@@ -289,22 +236,5 @@ class TestProtectedPushFromMain:
 
 
 # ── ORCHESTRATOR RESTRICTION ──────────────────────────────────────────────────
-
-
-class TestOrchestratorRestriction:
-    def test_orchestrator_blocked_on_branch(self) -> None:
-        code, stderr = _run(["commit", "-m", "test"], role="orchestrator", branch="feature")
-        assert code != 0
-        assert "orchestrator" in stderr.lower()
-
-    def test_orchestrator_blocked_on_main(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], role="orchestrator", branch="main")
-        assert code != 0
-
-    def test_worker_allowed_on_branch(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], role="worker", branch="feature")
-        assert code == 0
-
-    def test_system_allowed_on_branch(self) -> None:
-        code, _ = _run(["commit", "-m", "test"], role="system", branch="feature")
-        assert code == 0
+# Commit-level orchestrator restriction moved to telec code commit.
+# Wrapper redirects all commits; orchestrator-specific tests in TestCommitRedirect.

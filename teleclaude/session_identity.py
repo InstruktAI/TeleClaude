@@ -64,6 +64,11 @@ def get_system_role() -> str | None:
     return _read_field("system_role")
 
 
+def get_human_role() -> str | None:
+    """Human role (admin, member, contributor, newcomer, customer) for this session."""
+    return _read_field("human_role")
+
+
 def _atomic_write_identity(path: Path, data: dict[str, str | None]) -> None:
     """Atomic write of identity JSON to the given path."""
     tmp_path = path.with_suffix(".tmp")

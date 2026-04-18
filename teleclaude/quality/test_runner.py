@@ -86,12 +86,14 @@ class TestRunner:
         self._is_full_suite = True
         self._scoped_files: set[str] = set()
 
-    def resolve_targets(self, files: list[str] | None = None) -> list[str]:
+    def resolve_targets(self, files: list[str] | None = None, *, run_all: bool = False) -> list[str]:
         """Resolve the test targets based on execution context.
 
         Args:
             files: Explicit file targets. When provided, all scoping is
                    bypassed — files are validated and returned directly.
+            run_all: When True, skip scoping and run all configured test
+                     directories (equivalent to Makefile invocation).
         """
         if files is not None:
             validated = validate_scoped_paths(files, self._project_root)
@@ -103,6 +105,11 @@ class TestRunner:
                 self._is_full_suite = False
                 self._scoped_files = set(validated)
             return validated
+
+        if run_all:
+            logger.info("--all flag — using configured test directories")
+            self._is_full_suite = True
+            return self._read_configured_test_paths()
 
         if is_worktree(self._project_root):
             logger.info("Worktree detected — using configured test directories")
