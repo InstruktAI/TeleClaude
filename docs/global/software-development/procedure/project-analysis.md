@@ -16,7 +16,7 @@ reflect concrete findings from the analyzed repository, not generic templates.
 ## Preconditions
 
 - The project has source files (not an empty repository).
-- `telec init` plumbing (hooks, sync, watchers) has already completed.
+- `telec init` plumbing (hooks, sync, project registration) has already completed.
 - The scaffolding schema (`software-development/spec/init-scaffolding`) is loaded
   as a required read so the analysis session knows the output contract.
 - The session runs inside the project root with full filesystem read access.

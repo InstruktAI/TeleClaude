@@ -1,4 +1,4 @@
-"""Miscellaneous handlers: version, sync, watch, revive, computers, projects, tmux helpers."""
+"""Miscellaneous handlers: version, sync, revive, computers, projects, tmux helpers."""
 # pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
-from teleclaude.paths import REPO_ROOT
 from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
@@ -28,7 +27,6 @@ __all__ = [
     "_handle_revive",
     "_handle_sync",
     "_handle_version",
-    "_handle_watch",
     "_maybe_kill_tui_session",
     "_revive_session",
     "_revive_session_via_api",
@@ -57,10 +55,6 @@ def _run_sync(project_root: Path, *, validate_only: bool, warn_only: bool) -> bo
         warn_only=warn_only,
     )
     return result
-
-
-def _run_watch(project_root: Path) -> None:
-    importlib.import_module("teleclaude.cli.watch").run_watch(project_root)
 
 
 def _handle_tool_command(name: str, args: list[str]) -> None:
@@ -116,11 +110,6 @@ def _handle_sync(args: list[str]) -> None:
     ok = _run_sync(project_root, validate_only=validate_only, warn_only=warn_only)
     if not ok:
         raise SystemExit(1)
-
-
-def _handle_watch(_args: list[str]) -> None:
-    """Handle telec watch command."""
-    _run_watch(REPO_ROOT)
 
 
 def _handle_revive(args: list[str]) -> None:

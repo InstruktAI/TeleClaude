@@ -457,6 +457,36 @@ EOF
     fi
 }
 
+install_systemd_docs_watch_service() {
+    local service_name="teleclaude-docs-watch"
+    local service_file="/etc/systemd/system/${service_name}.service"
+    local template_file="$INSTALL_DIR/templates/teleclaude-docs-watch.service"
+    local command="uv run --quiet --project $INSTALL_DIR -m teleclaude.cli.watch"
+    local service_path="$INSTALL_DIR/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+    print_info "Creating global docs watcher systemd service..."
+
+    if [ ! -f "$template_file" ]; then
+        print_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    local service_content
+    service_content=$(sed \
+        -e "s|{{COMMAND}}|$command|g" \
+        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
+        -e "s|{{USER}}|$USER|g" \
+        -e "s|{{PATH}}|$service_path|g" \
+        "$template_file")
+
+    printf '%s\n' "$service_content" | sudo tee "$service_file" > /dev/null
+    print_success "Created docs watcher systemd service file"
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable "$service_name"
+    sudo systemctl restart "$service_name"
+}
+
 # Install launchd service (macOS)
 install_launchd_service() {
     local service_name="ai.instrukt.teleclaude.daemon"
@@ -521,6 +551,49 @@ install_launchd_service() {
     fi
 }
 
+install_launchd_docs_watch_service() {
+    local service_name="ai.instrukt.teleclaude.docs-watch"
+    local plist_file="$HOME/Library/LaunchAgents/${service_name}.plist"
+    local template_file="$INSTALL_DIR/templates/ai.instrukt.teleclaude.docs-watch.plist"
+
+    mkdir -p "$HOME/Library/LaunchAgents"
+
+    print_info "Creating global docs watcher launchd service from template..."
+
+    if [ ! -f "$template_file" ]; then
+        print_error "Template file not found: $template_file"
+        exit 1
+    fi
+
+    local launchd_path="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+    if [ -d "/opt/homebrew/bin" ]; then
+        launchd_path="/opt/homebrew/bin:$launchd_path"
+    fi
+    if [ -d "/usr/local/bin" ]; then
+        launchd_path="/usr/local/bin:$launchd_path"
+    fi
+
+    launchd_path=$(echo "$launchd_path" | tr ':' '\n' | awk '!seen[$0]++' | tr '\n' ':' | sed 's/:$//')
+
+    local command="uv run --quiet --project $INSTALL_DIR -m teleclaude.cli.watch"
+
+    sed -e "s|{{LABEL}}|$service_name|g" \
+        -e "s|{{COMMAND}}|$command|g" \
+        -e "s|{{WORKING_DIR}}|$INSTALL_DIR|g" \
+        -e "s|{{PATH}}|$launchd_path|g" \
+        "$template_file" > "$plist_file"
+
+    print_success "Created docs watcher plist file"
+
+    print_info "Loading docs watcher service..."
+    local domain="gui/$(id -u)"
+    launchctl bootout "$domain" "$plist_file" 2>/dev/null || launchctl unload "$plist_file" 2>/dev/null || true
+    if ! launchctl bootstrap "$domain" "$plist_file" 2>/dev/null; then
+        launchctl load "$plist_file"
+    fi
+}
+
 # Install service
 install_service() {
     print_header "Installing System Service"
@@ -528,9 +601,11 @@ install_service() {
     case "$OS" in
         linux)
             install_systemd_service
+            install_systemd_docs_watch_service
             ;;
         macos)
             install_launchd_service
+            install_launchd_docs_watch_service
             ;;
     esac
 }

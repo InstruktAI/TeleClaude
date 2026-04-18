@@ -120,7 +120,7 @@ An idempotent routine scaffolds the help desk workspace when it does not exist. 
 2. If the directory already exists — skip (idempotent).
 3. Create the directory structure from `templates/help-desk/` in the TeleClaude repo.
 4. Run `git init` inside the new directory.
-5. Run `telec init` inside the new directory — installs agent hooks, git filters, pre-commit hook, syncs artifacts, installs docs watch and todo watcher services, creates `docs/index.yaml`.
+5. Run `telec init` inside the new directory — installs agent hooks, git filters, pre-commit hook, syncs artifacts, registers the project root, and creates `docs/index.yaml`.
 6. Create an initial git commit with the skeleton.
 
 **Template contents** (`templates/help-desk/` in TeleClaude repo):
@@ -903,7 +903,7 @@ sequenceDiagram
     else Does not exist
         Init->>FS: Copy templates/help-desk/ to help_desk_dir
         Init->>Git: git init
-        Init->>Init: telec init (hooks, filters, sync, watchers)
+        Init->>Init: telec init (hooks, filters, sync, registration)
         Init->>Git: Initial commit
     end
 ```

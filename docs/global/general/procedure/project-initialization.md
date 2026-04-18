@@ -3,7 +3,7 @@ id: 'general/procedure/project-initialization'
 type: 'procedure'
 domain: 'general'
 scope: 'global'
-description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, file watchers, release channel, and optional AI enrichment.'
+description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel, and optional AI enrichment.'
 ---
 
 # Project Initialization — Procedure
@@ -11,7 +11,7 @@ description: 'Complete telec init pipeline — agent CLI configuration, git plum
 ## Goal
 
 Bootstrap a project for TeleClaude by installing agent infrastructure, configuring git
-plumbing, syncing artifacts, seeding event domains, installing file watchers, and
+plumbing, syncing artifacts, seeding event domains, registering the project root, and
 optionally generating AI-driven project documentation.
 
 ## Preconditions
@@ -112,17 +112,14 @@ that all projects share.
 
 Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
-### 10. Install file watchers
+### 10. Register the project root
 
-Installs a platform-specific file watcher that triggers `telec sync` (or `telec watch`)
-when docs, agents, or config files change:
+`telec init` does **not** install watchers. It registers the project root in
+`~/.teleclaude/projects.yaml`. The single global watcher is installed by
+TeleClaude's machine-level `make init` flow and reads this manifest to decide
+which projects to watch and sync surgically.
 
-- **macOS**: launchd plist under `~/Library/LaunchAgents/` with `KeepAlive` and
-  `RunAtLoad`. Cleans up stale plists for the same project.
-- **Linux**: systemd user path unit that monitors project directories and triggers a
-  oneshot sync service.
-
-Source: `teleclaude/project_setup/sync.py:install_docs_watch()`
+Source: `teleclaude/project_manifest.py:register_root()`
 
 ### 11. Release channel enrollment (interactive)
 
@@ -156,7 +153,6 @@ Source: `teleclaude/project_setup/init_flow.py:_offer_enrichment()`
 - `project_slug` persisted in `teleclaude.yml` and project root registered in `~/.teleclaude/projects.yaml`.
 - Artifacts synced and indexes built.
 - Event domains seeded in global config (if not already populated).
-- File watcher installed for the project.
 - Release channel persisted (interactive only).
 - Enrichment session dispatched (interactive only, if accepted).
 

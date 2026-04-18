@@ -81,7 +81,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec init`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
 | `telec version` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                              |
 | `telec sync`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync.                                  |
-| `telec watch`   | R    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Hidden auto-sync watcher. Same as sync restrictions.                                                                         |
 
 ### Documentation
 
@@ -197,7 +196,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec sessions widget`       | Newcomers, customers                        |
 | `telec init`                  | Contributors, newcomers, customers          |
 | `telec sync`                  | Contributors, newcomers, customers          |
-| `telec watch`                 | Contributors, newcomers, customers          |
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo validate`         | Customers                                   |

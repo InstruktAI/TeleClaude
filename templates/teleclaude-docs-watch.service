@@ -1,8 +1,12 @@
 [Unit]
-Description=TeleClaude docs sync ({{PROJECT_ROOT}})
+Description=TeleClaude global docs watcher
 
 [Service]
-Type=oneshot
-WorkingDirectory={{PROJECT_ROOT}}
+Type=simple
+User={{USER}}
+WorkingDirectory={{WORKING_DIR}}
+Environment=PATH={{PATH}}
 Environment=UV_NO_SYNC=1
 ExecStart=/bin/bash -lc '{{COMMAND}}'
+Restart=always
+RestartSec=5

@@ -20,7 +20,7 @@ from teleclaude.project_setup.gitattributes import update_gitattributes
 from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
 from teleclaude.project_setup.skeleton import deploy_skeleton
-from teleclaude.project_setup.sync import install_docs_watch, sync_project_artifacts
+from teleclaude.project_setup.sync import sync_project_artifacts
 from teleclaude.slug import normalize_slug, validate_slug
 
 logger = get_logger(__name__)
@@ -373,8 +373,8 @@ def init_project(project_root: Path) -> None:
     """Initialize a project for TeleClaude.
 
     Configures agent CLIs, git filters, pre-commit hooks, syncs artifacts, and
-    installs watchers. Optionally runs AI-driven project analysis to generate
-    doc snippets that make the codebase legible to AI.
+    registers the project root. Optionally runs AI-driven project analysis to
+    generate doc snippets that make the codebase legible to AI.
     """
     configure_agent_cli()
     ensure_git_repo(project_root)
@@ -394,7 +394,6 @@ def init_project(project_root: Path) -> None:
     from teleclaude.project_setup.domain_seeds import seed_event_domains  # pylint: disable=import-outside-toplevel
 
     seed_event_domains(project_root)
-    install_docs_watch(project_root)
 
     if is_macos():
         install_launchers(project_root)

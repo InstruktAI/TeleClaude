@@ -4,6 +4,8 @@
   <dict>
     <key>Label</key>
     <string>{{LABEL}}</string>
+    <key>WorkingDirectory</key>
+    <string>{{WORKING_DIR}}</string>
     <key>ProgramArguments</key>
     <array>
       <string>/bin/zsh</string>
@@ -17,10 +19,8 @@
       <key>UV_NO_SYNC</key>
       <string>1</string>
     </dict>
-    <key>WatchPaths</key>
-    <array>
-{{WATCH_PATHS}}
-    </array>
+    <key>KeepAlive</key>
+    <true/>
     <key>RunAtLoad</key>
     <true/>
   </dict>

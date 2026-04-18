@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.cli.watch import SmartWatcher
+from teleclaude.cli.watch import MultiProjectWatcher, SmartWatcher
 
 
 def _noop_sync(self: SmartWatcher) -> None:
@@ -197,3 +197,53 @@ def test_trigger_sync_runs_after_cooldown_expires(tmp_path: Path, monkeypatch: p
     monkeypatch.setattr(SmartWatcher, "_sync", _make_record_sync(calls))
     watcher._trigger_sync()
     assert calls == ["sync"]
+
+
+class _FakeObserver:
+    def __init__(self) -> None:
+        self.scheduled: list[tuple[object, str, bool]] = []
+        self.unscheduled: list[object] = []
+
+    def schedule(self, handler: object, path: str, recursive: bool) -> object:
+        token = object()
+        self.scheduled.append((handler, path, recursive))
+        return token
+
+    def unschedule(self, watch: object) -> None:
+        self.unscheduled.append(watch)
+
+
+def test_multi_project_watcher_refreshes_manifest_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    roots = [tmp_path / "a", tmp_path / "b"]
+    for root in roots:
+        root.mkdir()
+
+    observer = _FakeObserver()
+    monkeypatch.setattr("teleclaude.cli.watch.load_roots", lambda _path: roots)
+    monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
+
+    watcher = MultiProjectWatcher(observer=observer, manifest_path=tmp_path / "projects.yaml")
+    watcher.refresh_roots()
+
+    assert sorted(path for _handler, path, recursive in observer.scheduled if recursive) == sorted(
+        str(root.resolve()) for root in roots
+    )
+
+
+def test_multi_project_watcher_unschedules_removed_roots(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    root_a = tmp_path / "a"
+    root_b = tmp_path / "b"
+    root_a.mkdir()
+    root_b.mkdir()
+
+    observer = _FakeObserver()
+    current_roots: list[Path] = [root_a, root_b]
+    monkeypatch.setattr("teleclaude.cli.watch.load_roots", lambda _path: list(current_roots))
+    monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
+
+    watcher = MultiProjectWatcher(observer=observer, manifest_path=tmp_path / "projects.yaml")
+    watcher.refresh_roots()
+    current_roots[:] = [root_b]
+    watcher.refresh_roots()
+
+    assert len(observer.unscheduled) == 1

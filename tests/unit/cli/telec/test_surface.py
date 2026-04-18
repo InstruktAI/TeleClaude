@@ -26,4 +26,4 @@ def test_todo_surface_does_not_expose_demo_subcommand() -> None:
 
 
 def test_hidden_commands_are_marked_hidden_in_surface() -> None:
-    assert surface.CLI_SURFACE["watch"].hidden is True
+    assert "watch" not in surface.CLI_SURFACE
