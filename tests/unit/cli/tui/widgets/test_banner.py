@@ -5,6 +5,15 @@ from __future__ import annotations
 import pytest
 from rich.text import Text
 
+from teleclaude.cli.tui.sky_compositing import (
+    apply_sky_ambient as _apply_sky_ambient,
+)
+from teleclaude.cli.tui.sky_compositing import (
+    apply_sky_entity as _apply_sky_entity,
+)
+from teleclaude.cli.tui.sky_compositing import (
+    consume_sky_entity_value as _consume_sky_entity_value,
+)
 from teleclaude.cli.tui.widgets.banner import (
     BANNER_HEIGHT,
     BANNER_LINES,
@@ -12,9 +21,6 @@ from teleclaude.cli.tui.widgets.banner import (
     LOGO_LINES,
     LOGO_WIDTH,
     Banner,
-    _apply_sky_ambient,
-    _apply_sky_entity,
-    _consume_sky_entity_value,
     _dim_color,
     _is_pipe,
     _to_color,

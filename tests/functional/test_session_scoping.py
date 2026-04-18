@@ -12,7 +12,9 @@ from teleclaude.session_scoping import resolve_scoped_paths
 
 
 def _run_git(args: list[str], cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True, text=True)
+    from teleclaude.git import _find_real_git  # pylint: disable=import-outside-toplevel
+
+    subprocess.run([_find_real_git(), *args], cwd=cwd, check=True, capture_output=True, text=True)
 
 
 def test_git_worktree_turn_delta_uses_real_git_state_and_persisted_ledger(

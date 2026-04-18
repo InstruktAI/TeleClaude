@@ -11,6 +11,7 @@ from rich.text import Text
 
 from teleclaude.cli.tui.animation_engine import AnimationEngine
 from teleclaude.cli.tui.animations.base import Z0
+from teleclaude.cli.tui.sky_compositing import consume_sky_entity_value as _consume_sky_entity_value
 from teleclaude.cli.tui.theme import is_dark_mode
 from teleclaude.cli.tui.widgets.banner import BANNER_LINES, Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
@@ -146,66 +147,3 @@ def build_header_frames(*, banner: Banner, tab_bar: BoxTabBar) -> tuple[Text, Gr
     banner_render = banner.build_render_frame(scene=scene)
     tab_render = tab_bar.build_render_frame(scene=scene)
     return banner_render, tab_render
-
-
-def _consume_sky_entity_value(  # pylint: disable=too-many-return-statements
-    state: dict[str, str | bool | None], val: str, z: int, dark_mode: bool
-) -> bool:
-    vlen = len(val)
-    if vlen == 15 and val[0] == "#" and val[7] == "#":
-        return _apply_sky_entity(state, val[14], val[0:7], val[7:14], partial=False)
-    if vlen == 8 and val[0] == "#":
-        return _apply_sky_entity(state, val[7], val[:7], val[:7], partial=False)
-    if vlen == 9 and val[0] == "\x01" and val[1] == "#":
-        return _apply_sky_entity(state, val[8], val[1:8], val[1:8], partial=val[8] != "\u2588")
-    if vlen == 1:
-        entity_color = _entity_color(val, z, dark_mode)
-        return _apply_sky_entity(state, val, entity_color, entity_color, partial=False)
-    if vlen == 2 and val[0] == "\x01":
-        ch = val[1]
-        entity_color = _entity_color(ch, z, dark_mode)
-        return _apply_sky_entity(state, ch, entity_color, entity_color, partial=ch != "\u2588")
-    if vlen == 7 and val[0] == "#":
-        return _apply_sky_ambient(state, val)
-    return False
-
-
-def _apply_sky_entity(
-    state: dict[str, str | bool | None],
-    ch: str,
-    fg_color: str,
-    bg_color: str,
-    *,
-    partial: bool,
-) -> bool:
-    if state["need_behind"]:
-        state["fg_color"] = fg_color
-        return True
-    if state["fg_char"] != " ":
-        state["bg_entity_color"] = bg_color
-        return True
-    state["fg_char"] = ch
-    if partial:
-        state["bg_entity_color"] = bg_color
-        state["need_behind"] = True
-        return False
-    state["fg_color"] = fg_color
-    if bg_color != fg_color:
-        state["bg_entity_color"] = bg_color
-        return True
-    return False
-
-
-def _apply_sky_ambient(state: dict[str, str | bool | None], color: str) -> bool:
-    if state["need_behind"]:
-        state["fg_color"] = color
-        return True
-    if state["fg_color"] is None:
-        state["fg_color"] = color
-        return False
-    state["bg_entity_color"] = color
-    return True
-
-
-def _entity_color(_ch: str, _z: int, _dark_mode: bool) -> str:
-    return "#FFFFFF"

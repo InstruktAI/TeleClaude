@@ -181,7 +181,20 @@ class _JscpdStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute jscpd copy-paste detection against targets."""
-        cmd = ["npx", "--yes", "jscpd", "--min-lines", "25", "--min-tokens", "150", "--mode", "strict", *targets]
+        cmd = [
+            "npx",
+            "--yes",
+            "jscpd",
+            "--min-lines",
+            "25",
+            "--min-tokens",
+            "150",
+            "--mode",
+            "strict",
+            "--exitCode",
+            "1",
+            *targets,
+        ]
         _run_tool(cmd, self._project_root, self.name)
 
 
