@@ -662,15 +662,6 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
         )
-        refreshed = Session(
-            session_id=session.session_id,
-            computer_name=session.computer_name,
-            tmux_session_name=session.tmux_session_name,
-            title="New title",
-            active_agent=session.active_agent,
-            native_log_file=session.native_log_file,
-        )
-
         with (
             patch(
                 "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
@@ -690,14 +681,18 @@ class TestProjectSessionFromTranscript:
                 "teleclaude.core.polling_coordinator.generate_session_title",
                 AsyncMock(return_value="New title"),
             ) as mock_generate,
+            patch("teleclaude.core.polling_coordinator.event_bus") as mock_bus,
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=refreshed)
             result = await pc.refresh_session_title_from_transcript(session)
 
         mock_generate.assert_awaited_once_with([("user", "latest request"), ("assistant", "first part\n\nsecond part")])
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="New title")
+        mock_bus.emit.assert_called_once()
+        emitted = mock_bus.emit.call_args.args[1]
+        assert emitted.session_id == session.session_id
+        assert emitted.title == "New title"
         assert result.title == "New title"
 
     @pytest.mark.unit
@@ -727,15 +722,16 @@ class TestProjectSessionFromTranscript:
                 "teleclaude.core.polling_coordinator.generate_session_title",
                 AsyncMock(return_value="Stable title"),
             ) as mock_generate,
+            patch("teleclaude.core.polling_coordinator.event_bus") as mock_bus,
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=session)
             await pc.refresh_session_title_from_transcript(session)
             await pc.refresh_session_title_from_transcript(session)
 
         mock_generate.assert_awaited_once()
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Stable title")
+        mock_bus.emit.assert_called_once()
 
     @pytest.mark.unit
     async def test_project_session_does_not_update_title_during_live_output_projection(self):

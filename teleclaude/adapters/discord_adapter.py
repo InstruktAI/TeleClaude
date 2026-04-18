@@ -222,6 +222,8 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         """Discord typing indicators persist long enough for a coarse pulse cadence."""
         if action_kind == "typing":
             return DISCORD_TYPING_INTERVAL_S
+        if action_kind == "title":
+            return 600.0
         return super().get_action_throttle_interval_s(action_kind)
 
     async def send_typing_indicator(self, session: Session) -> None:

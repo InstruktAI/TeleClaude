@@ -15,6 +15,7 @@ EventType = Literal[
     "session_closed",
     "session_close_requested",
     "session_updated",
+    "session_title_changed",
     "session_status",
     "agent_availability",
     "agent_ready",
@@ -350,6 +351,7 @@ class TeleClaudeEvents:  # pylint: disable=too-few-public-methods
     SESSION_STARTED: Literal["session_started"] = "session_started"
     SESSION_CLOSED: Literal["session_closed"] = "session_closed"  # Fact: session is now closed. Observer-only.
     SESSION_UPDATED: Literal["session_updated"] = "session_updated"  # Session fields updated in DB
+    SESSION_TITLE_CHANGED: Literal["session_title_changed"] = "session_title_changed"  # Title finalized
     SESSION_STATUS: Literal["session_status"] = "session_status"  # Canonical lifecycle status transition
     AGENT_AVAILABILITY: Literal["agent_availability"] = "agent_availability"  # Agent availability changed
     AGENT_READY: Literal["agent_ready"] = "agent_ready"  # Fact: agent TUI is stable at input prompt.
@@ -476,6 +478,14 @@ class SessionUpdatedContext:
 
     session_id: str
     updated_fields: Mapping[str, object]
+
+
+@dataclass(frozen=True)
+class SessionTitleChangedContext:
+    """Context for finalized raw semantic title changes."""
+
+    session_id: str
+    title: str
 
 
 @dataclass(frozen=True)
@@ -641,6 +651,7 @@ EventContext = (
     | AgentEventContext
     | ErrorEventContext
     | SessionUpdatedContext
+    | SessionTitleChangedContext
     | SessionStatusContext
     | AgentAvailabilityContext
     | AgentActivityEvent

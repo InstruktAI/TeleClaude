@@ -26,7 +26,7 @@ from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import SessionStatusContext, SessionTitleChangedContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript import extract_last_turn_boundary_timestamp
@@ -445,9 +445,14 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
         self._action_throttler = AdapterActionThrottler()
+        self._pending_title_sync: dict[str, str] = {}
+        self._title_sync_tasks: dict[str, asyncio.Task[None]] = {}
+        self._title_last_attempt_at: dict[str, float] = {}
+        self._title_last_synced: dict[str, str] = {}
 
         # Register event listeners
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_TITLE_CHANGED, self._handle_session_title_changed)
 
     # === Adapter Metadata Helpers ===
 
@@ -713,6 +718,54 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             session: Session object
         """
         # No-op default implementation
+
+    async def _handle_session_title_changed(self, _event: str, context: SessionTitleChangedContext) -> None:
+        """Handle finalized semantic title changes."""
+        await self.request_title_sync(context.session_id, context.title)
+
+    async def request_title_sync(self, session_id: str, title: str) -> None:
+        """Queue a latest-only title update for this session."""
+        self._pending_title_sync[session_id] = title
+        task = self._title_sync_tasks.get(session_id)
+        if task is None or task.done():
+            self._title_sync_tasks[session_id] = asyncio.create_task(
+                self._drain_title_sync(session_id),
+                name=f"{self.ADAPTER_KEY}-title-sync-{session_id}",
+            )
+
+    async def _drain_title_sync(self, session_id: str) -> None:
+        current_task = asyncio.current_task()
+        try:
+            while True:
+                title = self._pending_title_sync.pop(session_id, None)
+                if title is None:
+                    return
+                if self._title_last_synced.get(session_id) == title:
+                    continue
+
+                interval = self.get_action_throttle_interval_s("title")
+                if interval > 0:
+                    previous = self._title_last_attempt_at.get(session_id)
+                    if previous is not None:
+                        remaining = interval - (time.monotonic() - previous)
+                        if remaining > 0:
+                            await asyncio.sleep(remaining)
+                            newer = self._pending_title_sync.pop(session_id, None)
+                            if newer is not None:
+                                title = newer
+                                if self._title_last_synced.get(session_id) == title:
+                                    continue
+
+                session = await db.get_session(session_id)
+                if not session:
+                    return
+
+                self._title_last_attempt_at[session_id] = time.monotonic()
+                if await self.update_channel_title(session, title):
+                    self._title_last_synced[session_id] = title
+        finally:
+            if self._title_sync_tasks.get(session_id) is current_task:
+                self._title_sync_tasks.pop(session_id, None)
 
     def get_action_throttle_interval_s(self, action_kind: str) -> float:
         """Return the minimum interval between adapter control actions."""

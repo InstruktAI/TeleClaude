@@ -21,8 +21,8 @@ type: 'design'
 6. **Diff**: Normalized pane snapshots are compared against prior normalized capture.
 7. **Emit**: `OutputEvent` is yielded to `PollingCoordinator`.
 8. **Project**: Transcript projection decides whether assistant-visible output actually changed.
-9. **Finalize title**: Completed-turn signals (`agent_stop`) finalize semantic title generation from the bounded transcript window for that turn.
-10. **Broadcast**: `AdapterClient` routes output updates to active observers.
+9. **Finalize title**: Completed-turn signals (`agent_stop`) finalize semantic title generation from the bounded transcript window for that turn and emit `SESSION_TITLE_CHANGED`.
+10. **Broadcast**: `AdapterClient` routes output updates to active observers. Title delivery is not routed through `AdapterClient`; `UiAdapter` consumes `SESSION_TITLE_CHANGED` directly.
 
 ```mermaid
 sequenceDiagram
@@ -73,6 +73,7 @@ sequenceDiagram
 - **Projection-owned dedupe**: Poller activity wakes transcript projection, but only a changed projected assistant render may trigger outbound output delivery.
 - **Completed-turn title finalization**: Title generation is not part of the live output loop. It runs only when a completed-turn signal finalizes the current transcript window.
 - **One title per user turn**: Duplicate `agent_stop` signals inside the same user turn must not generate a second title update.
+- **Adapter-owned title QoS**: Raw semantic title changes are delivered through `SESSION_TITLE_CHANGED`; each UI adapter owns latest-only coalescing and platform-specific title pacing.
 - **Deterministic cadence**: Output cadence is config-driven (`polling.output_cadence_s`, default `1.0`).
 - **No Blocking**: Polling runs in async task; never blocks main event loop or command execution.
 - **Graceful Stop**: Poller cleanup completes before session marked fully closed.

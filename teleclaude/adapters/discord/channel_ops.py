@@ -242,7 +242,7 @@ class ChannelOperationsMixin:
 
         raise AdapterError("Discord session has no mapped destination channel")
 
-    async def update_channel_title(self, session: Session, _title: str) -> bool:
+    async def update_channel_title(self, session: Session, title: str) -> bool:
         """Rename an existing Discord thread to match the current session title."""
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
@@ -254,12 +254,9 @@ class ChannelOperationsMixin:
         if raw_edit_fn is None:
             return False
         edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
-        # Recompute Discord-specific title (same logic as thread creation)
-        target_forum_id = self._resolve_target_forum(session)
-        discord_title = self._build_thread_title(session, target_forum_id)
         recoverable_errors = recoverable_operation_errors(self._discord)
         try:
-            await edit_fn(name=discord_title)
+            await edit_fn(name=title)
             return True
         except recoverable_errors as exc:
             logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)

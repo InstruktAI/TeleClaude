@@ -130,7 +130,7 @@ async def test_create_channel_persists_forum_thread_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_channel_title_renames_thread_from_session_state() -> None:
+async def test_update_channel_title_renames_thread_from_raw_title() -> None:
     adapter = DummyChannelOperations()
     thread = SimpleNamespace(edit=AsyncMock())
     adapter._get_channel = AsyncMock(return_value=thread)
@@ -144,7 +144,7 @@ async def test_update_channel_title_renames_thread_from_session_state() -> None:
         origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=400).to_dict()},
     )
 
-    result = await adapter.update_channel_title(session, "ignored")
+    result = await adapter.update_channel_title(session, "Renamed title")
 
     assert result is True
-    thread.edit.assert_awaited_once_with(name="New title")
+    thread.edit.assert_awaited_once_with(name="Renamed title")

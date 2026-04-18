@@ -14,7 +14,7 @@ import pytest
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.core.events import SessionStatusContext
+from teleclaude.core.events import SessionStatusContext, SessionTitleChangedContext
 from teleclaude.core.models import (
     ChannelMetadata,
     CleanupTrigger,
@@ -361,6 +361,43 @@ class TestHandleSessionStatus:
 
         send_typing_indicator.assert_not_awaited()
         send_session_badge.assert_awaited_once_with(session)
+
+
+class TestHandleSessionTitleChanged:
+    @pytest.mark.unit
+    async def test_title_event_queues_latest_title(self, adapter: _ConcreteAdapter) -> None:
+        with patch.object(adapter, "request_title_sync", AsyncMock()) as request_title_sync:
+            await adapter._handle_session_title_changed(
+                "session_title_changed",
+                SessionTitleChangedContext(session_id="sess-abc", title="Renamed"),
+            )
+
+        request_title_sync.assert_awaited_once_with("sess-abc", "Renamed")
+
+    @pytest.mark.unit
+    async def test_title_lane_coalesces_to_latest_pending_title(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(session_id="sess-title-lane")
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def update_title(_session: Session, _title: str) -> bool:
+            started.set()
+            await release.wait()
+            return True
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch.object(adapter, "update_channel_title", AsyncMock(side_effect=update_title)) as update_channel_title,
+        ):
+            await adapter.request_title_sync(session.session_id, "First")
+            await started.wait()
+            await adapter.request_title_sync(session.session_id, "Final")
+            release.set()
+            task = adapter._title_sync_tasks[session.session_id]
+            await task
+
+        assert update_channel_title.await_args_list[0].args == (session, "First")
+        assert update_channel_title.await_args_list[1].args == (session, "Final")
 
 
 # ---------------------------------------------------------------------------

@@ -18,12 +18,15 @@ from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
     AgentHookEventType,
     AgentOutputPayload,
     AgentSessionStartPayload,
+    SessionTitleChangedContext,
+    TeleClaudeEvents,
 )
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import (
@@ -611,9 +614,13 @@ async def refresh_session_title_from_transcript(session: "Session") -> "Session"
         return session
 
     await db.update_session(session.session_id, title=new_title)
+    session.title = new_title
+    event_bus.emit(
+        TeleClaudeEvents.SESSION_TITLE_CHANGED,
+        SessionTitleChangedContext(session_id=session.session_id, title=new_title),
+    )
     logger.info("Updated session title from transcript: %s", new_title)
-    refreshed = await db.get_session(session.session_id)
-    return refreshed or session
+    return session
 
 
 async def finalize_session_title_on_agent_stop(
