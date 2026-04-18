@@ -543,6 +543,10 @@ async def _project_user_reflection(
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
+            # last_input_origin is a one-shot hint for the next authoritative
+            # transcript-projected user message. Once consumed, fall back to terminal
+            # so later direct TUI input is not poisoned by a stale adapter origin.
+            last_input_origin=InputOrigin.TERMINAL.value,
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
         )
@@ -550,6 +554,7 @@ async def _project_user_reflection(
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
+            last_input_origin=InputOrigin.TERMINAL.value,
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session

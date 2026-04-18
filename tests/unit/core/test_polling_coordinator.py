@@ -334,6 +334,7 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-user-1",
             last_message_sent="ship it",
+            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
@@ -497,9 +498,90 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-integrator-1",
             last_message_sent="/next-integrate",
+            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
+
+    @pytest.mark.unit
+    async def test_consumes_adapter_origin_hint_once_then_resets_to_terminal(self):
+        session = Session(
+            session_id="sess-origin-hint-1",
+            computer_name="local",
+            tmux_session_name="tmux-origin-hint-1",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="web",
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        refreshed = Session.from_dict(session.to_dict() | {"last_input_origin": "terminal"})
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("typed in browser", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=refreshed)
+            result = await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_awaited_once_with(session, "typed in browser", "web")
+        mock_db.update_session.assert_awaited_once_with(
+            "sess-origin-hint-1",
+            last_message_sent="typed in browser",
+            last_input_origin="terminal",
+            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
+        )
+        assert result.last_input_origin == "terminal"
+
+    @pytest.mark.unit
+    async def test_discord_origin_is_suppressed_once_then_resets_to_terminal(self):
+        session = Session(
+            session_id="sess-origin-hint-2",
+            computer_name="local",
+            tmux_session_name="tmux-origin-hint-2",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="discord",
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        refreshed = Session.from_dict(session.to_dict() | {"last_input_origin": "terminal"})
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("typed in discord", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=refreshed)
+            result = await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+        mock_db.update_session.assert_awaited_once_with(
+            "sess-origin-hint-2",
+            last_message_sent="typed in discord",
+            last_input_origin="terminal",
+            last_message_sent_at=transcript_ts,
+            last_projected_at=transcript_ts,
+        )
+        assert result.last_input_origin == "terminal"
 
     @pytest.mark.unit
     async def test_projection_dedupe_ignores_last_message_sent_at(self):
