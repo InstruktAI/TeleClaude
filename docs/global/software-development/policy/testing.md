@@ -20,6 +20,7 @@ type: 'policy'
 4. **Test behavioral contracts, not human-facing text**
 5. **Literal string assertions on any human-facing output are forbidden unless the exact text is execution-significant**
 6. **Write failing tests before production code — no exceptions** (for new/modified code; see Characterization Testing for existing untested code)
+7. **Tests-only scope is binding** — when the request or checkpoint scopes the work to tests only, production files are out of scope unless the human explicitly expands scope. If failing tests reflect a changed production contract, update the tests to the current public contract or stop and ask to broaden scope. Do not rewrite production code under a tests-only request.
 
 ### Test-Driven Development
 

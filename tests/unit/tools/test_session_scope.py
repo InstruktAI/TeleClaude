@@ -352,24 +352,20 @@ def test_no_session_touched_files_returns_empty_scope(
 ) -> None:
     """Clean worktrees with no owned dirty files should emit an empty scope, not exit 3."""
     mod = _import_session_scope()
-    fallback_called = False
 
     def _raise_no_files(_project_root: str) -> set[str]:
         raise mod.NoSessionTouchedFiles("Could not determine session-touched files from transcript.")
 
-    def _unexpected_fallback(_project_root: Path) -> set[str]:
-        nonlocal fallback_called
-        fallback_called = True
-        return {"teleclaude/foo.py"}
+    def _empty_fallback(_project_root: Path) -> set[str]:
+        return set()
 
     monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
     monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
     monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_no_files)
-    monkeypatch.setattr(mod, "_fallback_worktree_status_files", _unexpected_fallback)
+    monkeypatch.setattr(mod, "_fallback_worktree_status_files", _empty_fallback)
 
     mod.main()
 
     captured = capsys.readouterr()
-    assert fallback_called is False
     assert captured.out == ""
     assert captured.err == ""

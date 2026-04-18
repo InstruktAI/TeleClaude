@@ -93,7 +93,7 @@ class TestResolveInvocationCwd:
 
     def test_prefers_telec_env_var_over_pwd_and_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TELEC_INVOCATION_CWD wins over PWD and Path.cwd()."""
-        from teleclaude.quality.scope import resolve_invocation_cwd
+        from teleclaude.project_root import resolve_invocation_cwd
 
         invocation = tmp_path / "worktree"
         invocation.mkdir()
@@ -112,7 +112,7 @@ class TestResolveInvocationCwd:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """PWD wins over Path.cwd() when TELEC_INVOCATION_CWD is unset."""
-        from teleclaude.quality.scope import resolve_invocation_cwd
+        from teleclaude.project_root import resolve_invocation_cwd
 
         invocation = tmp_path / "worktree"
         invocation.mkdir()
@@ -129,7 +129,7 @@ class TestResolveInvocationCwd:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Path.cwd() is the last resort when no env var is set."""
-        from teleclaude.quality.scope import resolve_invocation_cwd
+        from teleclaude.project_root import resolve_invocation_cwd
 
         monkeypatch.delenv("TELEC_INVOCATION_CWD", raising=False)
         monkeypatch.delenv("PWD", raising=False)
@@ -150,7 +150,8 @@ class TestResolveInvocationCwd:
         silently. Using the invocation cwd instead of Path.cwd() prevents
         this.
         """
-        from teleclaude.quality.scope import resolve_invocation_cwd, resolve_project_root
+        from teleclaude.project_root import resolve_invocation_cwd
+        from teleclaude.quality.scope import resolve_project_root
 
         main_repo = tmp_path / "main"
         main_repo.mkdir()
