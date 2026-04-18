@@ -1,8 +1,8 @@
 # guard: no-companion
 # pylint: disable=import-outside-toplevel
-"""Tests for R2: telec test command.
+"""Tests for R2: telec code test command.
 
-Behavioral contracts for the telec test command: language-aware test execution
+Behavioral contracts for the telec code test command: language-aware test execution
 with automatic worktree scoping and companion file mapping.
 """
 

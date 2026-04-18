@@ -19,7 +19,7 @@ done
 INSTALL_DIR="$(cd "$(dirname "$SOURCE")/.." && pwd)"
 # Preserve the user's invocation directory. `uv run --directory` below sets the
 # Python process cwd to INSTALL_DIR, which breaks worktree-scope detection in
-# telec lint/test (`Path.cwd()` would point at the main repo, not the worktree
+# telec code lint/test (`Path.cwd()` would point at the main repo, not the worktree
 # the user invoked from). Handlers read this env var to resolve the real cwd.
 export TELEC_INVOCATION_CWD="$PWD"
 # Block `uv run`'s implicit venv sync. Ambient sync while TeleClaude's daemon

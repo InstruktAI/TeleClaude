@@ -1,4 +1,4 @@
-"""CLI handlers for ``telec lint``, ``telec test``, and ``telec format``."""
+"""CLI handlers for ``telec code lint``, ``telec code test``, and ``telec code format``."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from teleclaude.quality.test_runner import TestRunner
 
 
 def handle_lint(args: list[str]) -> None:
-    """Handle the ``telec lint`` command.
+    """Handle the ``telec code lint`` command.
 
     No args → full pipeline with context-aware scoping.
     ``--all`` → run against all source directories (bypass scoping).
@@ -58,7 +58,7 @@ def _parse_step_args(args: list[str]) -> tuple[str | None, list[str]]:
 
 
 def handle_test(args: list[str]) -> None:
-    """Handle the ``telec test`` command.
+    """Handle the ``telec code test`` command.
 
     No args → context-aware scoping to resolve test targets.
     ``<files...>`` → run against explicit files (bypass scoping).
@@ -74,7 +74,7 @@ def handle_test(args: list[str]) -> None:
 
 
 def handle_format(args: list[str]) -> None:
-    """Handle the ``telec format`` command.
+    """Handle the ``telec code format`` command.
 
     No args → format default directories based on configured languages.
     Positional args → format those specific files (pre-commit mode).

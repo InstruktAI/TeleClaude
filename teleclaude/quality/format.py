@@ -1,4 +1,4 @@
-"""Format runner — the ``telec format`` implementation.
+"""Format runner — the ``telec code format`` implementation.
 
 Dispatches per-language formatters: ruff for Python, prettier for
 Markdown and TypeScript. Accepts an explicit file list (pre-commit mode)

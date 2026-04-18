@@ -3,13 +3,13 @@ repos:
   hooks:
   - id: lint
     name: Lint
-    entry: telec lint
+    entry: telec code lint
     language: system
     pass_filenames: false
     always_run: true
   - id: test
     name: Test
-    entry: telec test
+    entry: telec code test
     language: system
     pass_filenames: false
     always_run: true

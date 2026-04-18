@@ -1,10 +1,10 @@
 .PHONY: lint test format
 
 lint:
-	@telec lint
+	@telec code lint --all
 
 test:
-	@telec test
+	@telec code test --all
 
 format:
-	@telec format
+	@telec code format --all

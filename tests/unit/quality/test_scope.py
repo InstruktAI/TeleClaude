@@ -161,7 +161,7 @@ class TestResolveInvocationCwd:
         worktree.mkdir(parents=True)
         (worktree / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        # Simulate the wrapper: user ran `telec lint` from the worktree, but
+        # Simulate the wrapper: user ran `telec code lint` from the worktree, but
         # uv run --directory changed Python's cwd to main_repo.
         monkeypatch.chdir(main_repo)
         monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))

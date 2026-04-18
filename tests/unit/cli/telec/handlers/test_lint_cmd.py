@@ -1,8 +1,8 @@
 # guard: no-companion
 # pylint: disable=import-outside-toplevel,not-an-iterable,too-few-public-methods
-"""Tests for R1: telec lint command.
+"""Tests for R1: telec code lint command.
 
-Behavioral contracts for the telec lint command: language-aware lint pipeline
+Behavioral contracts for the telec code lint command: language-aware lint pipeline
 with automatic worktree scoping.
 """
 
@@ -578,7 +578,7 @@ class TestPathValidation:
 
 
 # ---------------------------------------------------------------------------
-# R6 — Single-step execution via `telec lint --step <name>`
+# R6 — Single-step execution via `telec code lint --step <name>`
 # ---------------------------------------------------------------------------
 
 
@@ -586,7 +586,7 @@ class TestRunStep:
     """LintRunner.run_step runs a single pipeline step on specific files.
 
     Required by R6: pre-commit hooks route each check through
-    `telec lint --step <name>` with the staged filenames pre-commit passes.
+    `telec code lint --step <name>` with the staged filenames pre-commit passes.
     """
 
     def test_run_step_dispatches_to_named_step_with_files(

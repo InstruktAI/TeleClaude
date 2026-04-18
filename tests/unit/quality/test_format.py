@@ -1,6 +1,6 @@
 """Tests for teleclaude.quality.format — FormatRunner.
 
-Behavioral contracts for the telec format command: language-aware
+Behavioral contracts for the telec code format command: language-aware
 code formatting with per-language dispatch.
 """
 

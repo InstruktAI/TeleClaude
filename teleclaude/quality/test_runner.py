@@ -1,4 +1,4 @@
-"""Test runner — the ``telec test`` implementation.
+"""Test runner — the ``telec code test`` implementation.
 
 Context-aware test execution with companion file mapping, expensive test
 exclusion, and multi-language test dispatch (pytest + vitest). See design doc
@@ -141,7 +141,7 @@ class TestRunner:
             scoped = resolve_session_scope(self._project_root)
         except (RuntimeError, OSError) as exc:
             logger.error(
-                "Session scope unavailable. Pass files explicitly: telec test <files...>\nReason: %s",
+                "Session scope unavailable. Pass files explicitly: telec code test <files...>\nReason: %s",
                 exc,
             )
             sys.exit(1)

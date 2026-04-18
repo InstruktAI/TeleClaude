@@ -1,4 +1,4 @@
-"""Lint runner and pipeline — the ``telec lint`` implementation.
+"""Lint runner and pipeline — the ``telec code lint`` implementation.
 
 Orchestrates context-aware file scoping and deterministic pipeline
 execution for language-aware linting. See design doc
@@ -362,7 +362,7 @@ class LintRunner:
             scoped_files = resolve_session_scope(self._project_root)
         except (RuntimeError, OSError) as exc:
             logger.error(
-                "Session scope unavailable. Pass files explicitly: telec lint <files...>\nReason: %s",
+                "Session scope unavailable. Pass files explicitly: telec code lint <files...>\nReason: %s",
                 exc,
             )
             sys.exit(1)
@@ -375,7 +375,7 @@ class LintRunner:
     def run_step(self, step_name: str, files: list[str]) -> None:
         """Run a single named pipeline step against the given files.
 
-        Pre-commit hooks invoke ``telec lint --step <name> [files]`` to route
+        Pre-commit hooks invoke ``telec code lint --step <name> [files]`` to route
         per-hook file lists through the shared pipeline. Files are validated
         against the project root (no traversal, no absolute paths outside).
 
