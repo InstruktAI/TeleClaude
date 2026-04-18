@@ -57,14 +57,7 @@ This file defines Codex-specific operating rules for this repository.
 - Use delta updates: what changed, what failed, what is next.
 - Avoid repetition and recap dumps unless requested.
 
-## Artifact Editing Rule (Non-Negotiable)
-
-- Never edit generated artifacts directly: `AGENTS.md`, `CLAUDE.md`, `CODEX.md`.
-- Edit source artifact files under `agents/` (or other declared source paths) only.
-- If a generated artifact is edited by mistake, revert it immediately and re-apply the change to source.
-- New policy/instruction text belongs in source addenda, not generated files.
-
-## Git Commit Addendum
+## `telec code commit` Addendum
 
 Use this trailer in commits made by Codex:
 
