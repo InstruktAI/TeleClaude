@@ -208,6 +208,50 @@ class TestExitBehavior:
             assert exc.code == 0, f"Expected exit 0 on all-passing tests, got {exc.code}"
 
 
+class TestExplicitFileTargets:
+    """Explicit-file mode remains language-aware instead of passing arbitrary files to pytest."""
+
+    def test_explicit_python_source_maps_to_companion(self, tmp_path: Path) -> None:
+        """A direct Python source file resolves to its existing pytest companion."""
+        from teleclaude.quality.test_runner import TestRunner
+
+        companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
+        companion.parent.mkdir(parents=True)
+        companion.touch()
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets(files=["teleclaude/foo/bar.py"])
+
+        assert targets == ["tests/unit/foo/test_bar.py"]
+
+    def test_explicit_typescript_file_runs_vitest_without_pytest(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A direct TS file triggers vitest only and does not hand source files to pytest."""
+        from teleclaude.quality.test_runner import TestRunner
+
+        pytest_calls: list[list[str]] = []
+        vitest_calls: list[bool] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.get_project_languages",
+            lambda _path: ["python", "typescript"],
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.run_pytest",
+            lambda args, cwd=None: pytest_calls.append(list(args)) or 0,
+        )
+        monkeypatch.setattr(TestRunner, "_run_vitest", lambda self_runner: vitest_calls.append(True))
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets(files=["frontend/app/foo.tsx"])
+        runner.run(targets=targets)
+
+        assert targets == []
+        assert pytest_calls == []
+        assert vitest_calls == [True]
+
+
 # ---------------------------------------------------------------------------
 # R2 DoD §5 — Path validation: no traversal or injection via session scope
 # ---------------------------------------------------------------------------

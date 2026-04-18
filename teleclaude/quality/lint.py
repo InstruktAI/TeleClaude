@@ -19,8 +19,10 @@ from typing import Protocol
 from teleclaude.quality.scope import (
     get_project_languages,
     is_worktree,
+    python_files,
     resolve_project_root,
     resolve_session_scope,
+    typescript_files,
     validate_scoped_paths,
 )
 from teleclaude.quality.toolchain import get_toolchain
@@ -54,11 +56,6 @@ class PipelineStep(Protocol):
     def run(self, targets: list[str]) -> None:
         """Execute the step against targets."""
         ...
-
-
-def _python_files(targets: list[str]) -> list[str]:
-    """Filter targets to Python source files only (.py, .pyi)."""
-    return [t for t in targets if t.endswith((".py", ".pyi"))]
 
 
 def _run_tool(cmd: list[str], project_root: Path, step_name: str) -> None:
@@ -125,7 +122,9 @@ class _RuffCheckStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute ruff check against Python targets."""
-        py = _python_files(targets) or targets
+        py = python_files(targets)
+        if not py:
+            return
         cmd = ["ruff", "check", "--fix", *py]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -139,7 +138,9 @@ class _RuffFormatStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute ruff format against Python targets."""
-        py = _python_files(targets) or targets
+        py = python_files(targets)
+        if not py:
+            return
         cmd = ["ruff", "format", *py]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -153,7 +154,9 @@ class _PyrightStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute pyright type-checking against Python targets."""
-        py = _python_files(targets) or targets
+        py = python_files(targets)
+        if not py:
+            return
         cmd = ["pyright", *py]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -167,7 +170,9 @@ class _MypyStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute mypy type-checking against Python targets."""
-        py = _python_files(targets) or targets
+        py = python_files(targets)
+        if not py:
+            return
         cmd = ["mypy", *py]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -181,6 +186,9 @@ class _JscpdStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute jscpd copy-paste detection against targets."""
+        py = python_files(targets)
+        if not py:
+            return
         cmd = [
             "npx",
             "--yes",
@@ -193,7 +201,7 @@ class _JscpdStep:
             "strict",
             "--exitCode",
             "1",
-            *targets,
+            *py,
         ]
         _run_tool(cmd, self._project_root, self.name)
 
@@ -237,6 +245,8 @@ class _EslintStep:
 
     def run(self, targets: list[str]) -> None:
         """Execute eslint against TypeScript targets."""
+        if not targets:
+            return
         cmd = ["npx", "--yes", "eslint", *targets]
         _run_tool(cmd, self._frontend_root, self.name)
 
@@ -337,7 +347,7 @@ class LintRunner:
         run_pipeline(targets)
 
         if "typescript" in languages:
-            self._run_typescript_pipeline()
+            self._run_typescript_pipeline(files=targets if files is not None else None)
 
     def _resolve_source_dirs(self, languages: list[str]) -> list[str]:
         """Resolve source directories from language toolchain config."""
@@ -413,15 +423,19 @@ class LintRunner:
 
         step.run(targets)
 
-    def _run_typescript_pipeline(self) -> None:
+    def _run_typescript_pipeline(self, files: list[str] | None = None) -> None:
         """Run the TypeScript lint pipeline from frontend_root."""
         frontend_root = self._resolve_frontend_root()
         if not frontend_root.exists():
             logger.info("Frontend root %s does not exist — skipping TypeScript lint", frontend_root)
             return
+        targets = ["."] if files is None else self._resolve_typescript_targets(files, frontend_root)
+        if not targets:
+            logger.info("No TypeScript targets in scope — skipping TypeScript lint")
+            return
         pipeline = TypeScriptLintPipeline(self._project_root, frontend_root)
         for step in pipeline.steps:
-            step.run(["."])
+            step.run(targets)
 
     def _collect_all_steps(self) -> dict[str, PipelineStep]:
         """Collect steps from all configured language pipelines."""
@@ -448,6 +462,29 @@ class LintRunner:
                 if fr:
                     return self._project_root / str(fr)
         return self._project_root / "frontend"
+
+    def _resolve_typescript_targets(self, files: list[str], frontend_root: Path) -> list[str]:
+        """Return frontend-relative TS/JS targets for explicit-file linting."""
+        root_relative = typescript_files(files)
+        if not root_relative:
+            return []
+
+        resolved_targets: list[str] = []
+        for path in root_relative:
+            file_path = Path(path)
+            if file_path.is_absolute():
+                try:
+                    relative = file_path.relative_to(frontend_root)
+                except ValueError:
+                    continue
+            else:
+                relative_to_project = (self._project_root / file_path).resolve()
+                try:
+                    relative = relative_to_project.relative_to(frontend_root.resolve())
+                except ValueError:
+                    continue
+            resolved_targets.append(str(relative))
+        return resolved_targets
 
     def describe_pipeline(self) -> list[str]:
         """Return the pipeline step names (for diagnostics/help text)."""

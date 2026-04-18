@@ -14,6 +14,23 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
+_PYTHON_EXTENSIONS = (".py", ".pyi")
+_TYPESCRIPT_EXTENSIONS = (".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs")
+_PRETTIER_EXTENSIONS = (
+    ".md",
+    ".mdx",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".jsonc",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+)
+
 
 def is_worktree(project_root: Path) -> bool:
     """Check if the project is in a git worktree (not the main repo).
@@ -129,6 +146,21 @@ def get_project_language(project_root: Path) -> str | None:
     """
     languages = get_project_languages(project_root)
     return languages[0] if languages else None
+
+
+def python_files(paths: list[str]) -> list[str]:
+    """Return only Python targets from *paths*."""
+    return [path for path in paths if path.endswith(_PYTHON_EXTENSIONS)]
+
+
+def typescript_files(paths: list[str]) -> list[str]:
+    """Return only JavaScript/TypeScript targets from *paths*."""
+    return [path for path in paths if path.endswith(_TYPESCRIPT_EXTENSIONS)]
+
+
+def prettier_files(paths: list[str]) -> list[str]:
+    """Return only files owned by prettier from *paths*."""
+    return [path for path in paths if path.endswith(_PRETTIER_EXTENSIONS)]
 
 
 def validate_scoped_paths(paths: list[str], project_root: Path) -> list[str]:

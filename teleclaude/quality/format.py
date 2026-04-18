@@ -12,6 +12,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from teleclaude.quality.scope import prettier_files, python_files, typescript_files
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,14 +60,15 @@ class FormatRunner:
 
     def _format_files(self, files: list[str]) -> None:
         """Format an explicit list of files, dispatching by extension."""
-        py_files = [f for f in files if f.endswith((".py", ".pyi"))]
-        md_files = [f for f in files if f.endswith(".md")]
-        ts_files = [f for f in files if f.endswith((".ts", ".tsx", ".js", ".jsx"))]
+        py_files = python_files(files)
+        prettier_targets = prettier_files(files)
+        ts_files = typescript_files(files)
+        doc_targets = [path for path in prettier_targets if path not in ts_files]
 
         if py_files:
             self._format_python(py_files)
-        if md_files:
-            self._format_markdown(md_files)
+        if doc_targets:
+            self._format_markdown(doc_targets)
         if ts_files and "typescript" in self._languages:
             self._format_typescript(ts_files)
 

@@ -302,6 +302,76 @@ class TestExplicitFilesOverride:
             items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
             assert set(str(t) for t in items) == {"teleclaude/foo.py", "teleclaude/bar.py"}
 
+    def test_explicit_yaml_files_skip_python_steps(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Explicit YAML files run repo-global checks only, not Python-specific steps."""
+        from teleclaude.quality.lint import LintRunner
+
+        step_calls: list[tuple[str, list[str]]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python", "typescript"],
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: step_calls.append((step_name, list(cmd))),
+        )
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run(files=[".github/workflows/lint-test.yaml"])
+
+        step_names = [name for name, _cmd in step_calls]
+        assert "markdown" in step_names
+        assert "resource_validation" in step_names
+        assert "ruff_check" not in step_names
+        assert "ruff_format" not in step_names
+        assert "pyright" not in step_names
+        assert "mypy" not in step_names
+        assert "jscpd" not in step_names
+        assert "eslint" not in step_names
+        assert "tsc" not in step_names
+
+    def test_explicit_typescript_files_run_typescript_steps_only(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Explicit TS files dispatch to frontend lint steps without Python fallback."""
+        from teleclaude.quality.lint import LintRunner
+
+        step_calls: list[tuple[str, str, list[str]]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.get_project_languages",
+            lambda _path: ["python", "typescript"],
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: step_calls.append((step_name, str(cwd), list(cmd))),
+        )
+
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - python\n  - typescript\nfrontend_root: frontend\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "frontend").mkdir()
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run(files=["frontend/app/foo.tsx"])
+
+        step_names = [name for name, _cwd, _cmd in step_calls]
+        assert "eslint" in step_names
+        assert "tsc" in step_names
+        assert "ruff_check" not in step_names
+        assert "ruff_format" not in step_names
+        assert "pyright" not in step_names
+        assert "mypy" not in step_names
+        assert "jscpd" not in step_names
+
+        eslint_call = next((entry for entry in step_calls if entry[0] == "eslint"), None)
+        assert eslint_call is not None
+        _, cwd, cmd = eslint_call
+        assert cwd == str(tmp_path / "frontend")
+        assert "app/foo.tsx" in cmd
+
 
 # ---------------------------------------------------------------------------
 # R1.7 — Python pipeline deterministic order

@@ -20,6 +20,7 @@ from teleclaude.quality.scope import (
     get_project_languages,
     is_worktree,
     resolve_session_scope,
+    typescript_files,
     validate_scoped_paths,
 )
 
@@ -104,7 +105,8 @@ class TestRunner:
                 logger.info("Explicit files provided — bypassing scoping (%d files)", len(validated))
                 self._is_full_suite = False
                 self._scoped_files = set(validated)
-            return validated
+                return resolve_test_targets(self._project_root, self._scoped_files)
+            return []
 
         if run_all:
             logger.info("--all flag — using configured test directories")
@@ -165,14 +167,20 @@ class TestRunner:
         """Run pytest against the given or resolved targets, then vitest if TS is configured."""
         if targets is None:
             targets = self.resolve_targets()
-        args = self.build_pytest_args(targets)
-        exit_code = run_pytest(args, cwd=self._project_root)
-        if exit_code != 0:
-            sys.exit(exit_code)
 
         # Run TypeScript tests when configured AND relevant
         languages = get_project_languages(self._project_root)
-        if "typescript" in languages and self._should_run_vitest():
+        should_run_vitest = "typescript" in languages and self._should_run_vitest()
+
+        if targets:
+            args = self.build_pytest_args(targets)
+            exit_code = run_pytest(args, cwd=self._project_root)
+            if exit_code != 0:
+                sys.exit(exit_code)
+        elif not should_run_vitest:
+            logger.info("No Python test targets in scope — skipping pytest")
+
+        if should_run_vitest:
             self._run_vitest()
 
     def _should_run_vitest(self) -> bool:
@@ -183,8 +191,7 @@ class TestRunner:
         """
         if self._is_full_suite:
             return True
-        ts_exts = (".ts", ".tsx", ".js", ".jsx")
-        return any(f.endswith(ts_exts) for f in self._scoped_files)
+        return bool(typescript_files(list(self._scoped_files)))
 
     def _run_vitest(self) -> None:
         """Run vitest for TypeScript tests from frontend_root."""

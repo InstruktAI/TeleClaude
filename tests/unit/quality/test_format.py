@@ -47,6 +47,22 @@ class TestFormatRunnerDispatch:
         prettier_cmds = [c for c in commands_run if "prettier" in c]
         assert len(prettier_cmds) >= 1, f"Expected prettier for markdown, got: {commands_run}"
 
+    def test_yaml_files_dispatched_to_prettier(self, tmp_path: Path) -> None:
+        """YAML files are formatted with prettier, not Python formatters."""
+        from teleclaude.quality.format import FormatRunner
+
+        commands_run: list[list[str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: commands_run.append(list(cmd))
+            runner = FormatRunner(project_root=tmp_path, languages=["python", "typescript"])
+            runner.run(files=[".github/workflows/lint-test.yaml"])
+
+        prettier_cmds = [c for c in commands_run if "prettier" in c]
+        ruff_cmds = [c for c in commands_run if "ruff" in c]
+        assert len(prettier_cmds) >= 1, f"Expected prettier for YAML, got: {commands_run}"
+        assert len(ruff_cmds) == 0, f"YAML should not be sent to ruff: {commands_run}"
+
     def test_no_files_formats_default_dirs(self, tmp_path: Path) -> None:
         """When no files specified, FormatRunner formats default directories."""
         from teleclaude.quality.format import FormatRunner
