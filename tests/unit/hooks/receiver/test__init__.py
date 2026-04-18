@@ -3,11 +3,87 @@
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from teleclaude.hooks.receiver import _maybe_checkpoint_output
+from sqlmodel import Session as SqlSession
+from sqlmodel import SQLModel, select
+
+from teleclaude.core import db_models
+from teleclaude.core.db.connection_factory import create_sync_db_engine
+from teleclaude.hooks.receiver import _maybe_checkpoint_output, enqueue_hook_event
+
+
+def _make_outbox_db(tmp_path: Path) -> str:
+    db_path = tmp_path / "outbox.sqlite"
+    engine = create_sync_db_engine(db_path)
+    SQLModel.metadata.create_all(engine, tables=[db_models.HookOutbox.__table__])
+    return str(db_path)
+
+
+def test_enqueue_hook_event_debounces_recent_unclaimed_row_latest_wins(tmp_path: Path) -> None:
+    outbox_db = _make_outbox_db(tmp_path)
+
+    enqueue_hook_event(
+        "session-1",
+        "agent_stop",
+        {"message": "first"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=10.0,
+    )
+    enqueue_hook_event(
+        "session-1",
+        "agent_stop",
+        {"message": "latest"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=10.0,
+    )
+
+    with SqlSession(create_sync_db_engine(outbox_db)) as session:
+        rows = session.exec(select(db_models.HookOutbox)).all()
+
+    assert len(rows) == 1
+    assert json.loads(rows[0].payload) == {"message": "latest"}
+    assert rows[0].attempt_count == 0
+    assert rows[0].locked_at is None
+
+
+def test_enqueue_hook_event_does_not_replace_locked_recent_row(tmp_path: Path) -> None:
+    outbox_db = _make_outbox_db(tmp_path)
+
+    enqueue_hook_event(
+        "session-1",
+        "agent_stop",
+        {"message": "first"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=10.0,
+    )
+
+    engine = create_sync_db_engine(outbox_db)
+    with SqlSession(engine) as session:
+        row = session.exec(select(db_models.HookOutbox)).first()
+        assert row is not None
+        row.locked_at = datetime.now(UTC).isoformat()
+        session.add(row)
+        session.commit()
+
+    enqueue_hook_event(
+        "session-1",
+        "agent_stop",
+        {"message": "latest"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=10.0,
+    )
+
+    with SqlSession(engine) as session:
+        rows = session.exec(select(db_models.HookOutbox).order_by(db_models.HookOutbox.id)).all()
+
+    assert len(rows) == 2
+    assert json.loads(rows[0].payload) == {"message": "first"}
+    assert json.loads(rows[1].payload) == {"message": "latest"}
 
 
 def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:

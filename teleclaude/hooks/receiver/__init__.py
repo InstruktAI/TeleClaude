@@ -10,11 +10,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from instrukt_ai_logging import configure_logging, get_logger
 from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import Session as SqlSession
+from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.config import config
@@ -88,6 +89,7 @@ HOOK_RECEIVER_EXPORTS = [
 # This prevents noisy intermediate hook traffic from reaching command handlers.
 # Only events with actual handlers in the daemon - infrastructure events are dropped.
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
+_CODEX_NOTIFY_DEBOUNCE_WINDOW_S = 10.0
 
 
 @dataclass(frozen=True)
@@ -398,12 +400,36 @@ def enqueue_hook_event(
     payload: str | Mapping[str, object],  # guard: loose-dict - Hook payload is dynamic JSON.
     *,
     outbox_db: str,
+    latest_wins_within_s: float | None = None,
 ) -> None:
     """Persist hook event to local outbox for durable delivery."""
     now = datetime.now(UTC).isoformat()
     payload_json = _serialize_outbox_payload(payload)
 
     with get_outbox_session(outbox_db) as session:
+        if latest_wins_within_s and latest_wins_within_s > 0:
+            cutoff = datetime.now(UTC).timestamp() - latest_wins_within_s
+            cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+            hook_outbox_table = cast(Any, db_models.HookOutbox).__table__
+            stmt = (
+                select(db_models.HookOutbox)
+                .where(db_models.HookOutbox.session_id == session_id)
+                .where(db_models.HookOutbox.event_type == event_type)
+                .where(hook_outbox_table.c.created_at >= cutoff_iso)
+                .where(hook_outbox_table.c.locked_at.is_(None))
+                .order_by(hook_outbox_table.c.created_at.desc(), hook_outbox_table.c.id.desc())
+                .limit(1)
+            )
+            existing = session.exec(stmt).first()
+            if existing is not None:
+                existing.payload = payload_json
+                existing.created_at = now
+                existing.next_attempt_at = now
+                existing.attempt_count = 0
+                existing.last_error = None
+                session.add(existing)
+                session.commit()
+                return
         row = db_models.HookOutbox(
             session_id=session_id,
             event_type=event_type,
@@ -841,7 +867,18 @@ def main() -> None:
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(UTC).isoformat()
 
-    enqueue_hook_event(teleclaude_session_id, event_type, data, outbox_db=outbox_context.outbox_db)
+    debounce_window_s = (
+        _CODEX_NOTIFY_DEBOUNCE_WINDOW_S
+        if args.agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP
+        else None
+    )
+    enqueue_hook_event(
+        teleclaude_session_id,
+        event_type,
+        data,
+        outbox_db=outbox_context.outbox_db,
+        latest_wins_within_s=debounce_window_s,
+    )
 
 
 _RECEIVER_EXPORT_BINDINGS = (_read_stdin, _render_person_header)
