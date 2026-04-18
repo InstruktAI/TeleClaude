@@ -103,6 +103,20 @@ def test_ensure_precommit_entrypoint_guard_replaces_existing_restage_block(tmp_p
     assert content.count(hooks.RESTAGE_MARKER) == 1
 
 
+def test_ensure_precommit_entrypoint_guard_restores_restage_retry_logic(tmp_path: Path) -> None:
+    hook_file = tmp_path / "pre-commit"
+    hook_file.write_text(_make_precommit_entrypoint(), encoding="utf-8")
+
+    hooks._ensure_precommit_entrypoint_guard(hook_file)
+
+    content = hook_file.read_text(encoding="utf-8")
+    assert "_pre_staged" in content
+    assert "_teleclaude_run_precommit" in content
+    assert "git add -- $_modified" in content
+    assert "Restaged formatter-modified files; re-running pre-commit..." in content
+    assert 'exec "$INSTALL_PYTHON" -mpre_commit "${ARGS[@]}"' not in content
+
+
 def test_ensure_precommit_entrypoint_guard_cleans_up_legacy_staging_marker(tmp_path: Path) -> None:
     """Legacy session-scoped-staging marker is removed on re-run."""
     hook_file = tmp_path / "pre-commit"

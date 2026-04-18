@@ -13,10 +13,14 @@ description: 'Design of telec code commit — the canonical agent commit command
 `telec code commit` is the canonical commit interface for agent sessions. It
 resolves session-scoped files, stages them, runs formatting and linting, then
 invokes `git commit`. The git wrapper redirects raw `git commit` to this command.
+The generated pre-commit hook remains the owner of formatter restaging and the
+single retry when hooks modify staged files.
 
 The driving constraint: git ignores index changes made inside pre-commit hooks
-when the commit starts with an empty index. Moving staging before `git commit`
-solves this at the root.
+when the commit starts with an empty index. `telec code commit` solves that by
+staging session-scoped files before `git commit`, while the pre-commit hook
+handles post-format restaging so plain `git commit` and wrapper-driven commits
+share the same mutation recovery path.
 
 ## Inputs/Outputs
 
@@ -48,8 +52,9 @@ All other arguments pass through to `git commit`.
 
 5. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
 
-6. **Format then lint.** Formatting runs first, modified files are restaged,
-   then lint runs against the formatted versions.
+6. **Format then lint.** Formatting runs first. The pre-commit hook restages
+   formatter-modified files and retries once if needed, so raw `git commit`
+   and `telec code commit` behave the same.
 
 7. **Wrapper redirect.** The git wrapper blocks `git commit` and directs agents
    to `telec code commit`. The wrapper retains all other safety blocks
@@ -69,7 +74,6 @@ telec code commit -m "feat(scope): subject"
   → session_scope resolves touched files
   → git add -- <files>
   → FormatRunner.run(files=staged)
-  → restage formatter-modified files
   → LintRunner.run(files=staged)
   → real git commit -m "feat(scope): subject"
   → lock released

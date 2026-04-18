@@ -36,17 +36,53 @@ if [ -n "$_staged" ] && [ -n "$_unstaged" ]; then
 fi
 """
 
-# Run pre-commit normally. Staging and format-restaging are handled by
-# ``telec code commit`` before git commit is invoked.
+# Captures staged files before hooks, runs pre-commit as a regular call (not exec), then
+# restages formatter-modified files and retries pre-commit once so the commit completes in
+# one go. Pre-commit returns non-zero when a hook modifies files, so restaging must happen
+# on the failure path — not only on success.
 RESTAGE_BLOCK = f"""\
-# {RESTAGE_MARKER}: run pre-commit
-if [ -x "$INSTALL_PYTHON" ]; then
-    exec "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
-elif command -v pre-commit > /dev/null; then
-    exec pre-commit "${{ARGS[@]}}"
+# {RESTAGE_MARKER}: capture staged files before hooks run
+_pre_staged="$(git diff --cached --name-only --diff-filter=ACM)"
+
+_teleclaude_run_precommit() {{
+    if [ -x "$INSTALL_PYTHON" ]; then
+        "$INSTALL_PYTHON" -mpre_commit "${{ARGS[@]}}"
+        return $?
+    elif command -v pre-commit > /dev/null; then
+        pre-commit "${{ARGS[@]}}"
+        return $?
+    fi
+    echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
+    return 127
+}}
+
+_teleclaude_run_precommit
+_rc=$?
+
+# Collect previously-staged files that formatters modified (now unstaged).
+_modified=""
+if [ -n "$_pre_staged" ]; then
+    for _f in $_pre_staged; do
+        if [ -f "$_f" ] && ! git diff --quiet -- "$_f"; then
+            _modified="$_modified $_f"
+        fi
+    done
 fi
-echo '`pre-commit` not found.  Did you forget to activate your virtualenv?' 1>&2
-exit 127
+
+# Restage formatter edits, then retry pre-commit once if it had failed because of them.
+if [ -n "$_modified" ]; then
+    if ! git add -- $_modified; then
+        echo "ERROR: failed to restage formatted files — aborting commit." >&2
+        exit 1
+    fi
+    if [ $_rc -ne 0 ]; then
+        echo "Restaged formatter-modified files; re-running pre-commit..."
+        _teleclaude_run_precommit
+        _rc=$?
+    fi
+fi
+
+exit $_rc
 """
 
 # Check command that detects hardcoded HOME paths in staged .md files

@@ -178,17 +178,12 @@ def _commit_under_lock(
     if current_branch == "main" and system_role != "integrator" and not approved:
         _classify_main_commit(commit_args, staged)
 
-    # Format staged files, restage modified
+    # Format staged files; the pre-commit hook owns formatter restaging/retry.
     languages = get_project_languages(project_root)
     runner = FormatRunner(project_root=project_root, languages=languages)
     runner.run(files=staged)
-    for f in staged:
-        result = subprocess.run(["git", "diff", "--quiet", "--", f], capture_output=True)
-        if result.returncode != 0:
-            subprocess.run(["git", "add", "--", f], check=True)
 
     # Lint staged files
-    staged = _get_staged_files()
     lint_runner = LintRunner(project_root=project_root)
     lint_runner.run(files=staged)
 
