@@ -24,7 +24,7 @@ Start a new agent session
 
 **Flags:**
 
-- `--computer`: Target computer (optional; defaults to local)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--project`: Project directory path (optional; defaults to cwd)
 - `--agent`: Agent: claude, gemini, codex
 - `--mode`: Thinking mode: fast, med, slow
@@ -86,7 +86,7 @@ Run a slash command on a new agent session
 - `--args`: Command arguments
 - `--agent`: Agent: claude, gemini, codex
 - `--mode`: Thinking mode: fast, med, slow
-- `--computer`: Target computer (optional; defaults to local)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 - `--subfolder`: Subdirectory within the project
 - `--detach`: Fire-and-forget: inherit context but skip listener registration
 - `--additional-context`: Additional context for the worker, appended to startup message
@@ -124,7 +124,7 @@ End (terminate) a session
 **Flags:**
 
 - `--session` (`-s`): Session ID
-- `--computer`: Target computer (optional; defaults to local)
+- `--computer` (`-c`): Target computer (optional; defaults to local)
 
 ### `telec sessions unsubscribe`
 
@@ -202,7 +202,7 @@ List projects on local and remote computers
 
 **Flags:**
 
-- `--computer`: Filter to a specific computer
+- `--computer` (`-c`): Filter to a specific computer
 
 ## `telec agents`
 
@@ -261,11 +261,11 @@ Fetch durable operation status by operation_id
 
 ## `telec init`
 
-Initialize docs sync, todo watcher services, and optional project enrichment
+Initialize project plumbing, sync artifacts, and optionally enrich docs
 
 **Notes:**
 
-- Sets up git hooks, syncs artifacts, installs docs sync and todo watcher services.
+- Sets up git hooks, syncs artifacts, and registers the project root.
 - Optionally runs AI-driven project analysis to generate doc snippets.
 - First init offers enrichment; re-init offers refresh of existing analysis.
 - Prompts for release-channel enrollment (alpha/beta/stable).
@@ -332,7 +332,7 @@ Remove a todo and its roadmap entry
 
 ### `telec todo validate`
 
-Validate todo state schema
+Validate todo files and state.yaml schema
 
 **Usage:** `telec todo validate [slug]`
 
@@ -363,19 +363,6 @@ Run the Phase C (integrate) state machine
 
 **Usage:** `telec todo integrate [<slug>]`
 
-### `telec todo mark-phase`
-
-Mark a work or prepare phase in todo state
-
-**Usage:** `telec todo mark-phase <slug> [--target <name>] [--phase <phase>] [--status <status>] [--force]`
-
-**Flags:**
-
-- `--target`: Target state name (e.g. build_complete, review_approved, prepared)
-- `--phase`: Legacy: build, review, prepare, requirements_review, plan_review
-- `--status`: Legacy: pending/started/complete/approved/changes_requested; Prepare verdict: approve/needs_work/needs_decision
-- `--force`: Bypass worktree and uncommitted-changes guards
-
 ### `telec todo mark-ready`
 
 Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare lifecycle
@@ -389,6 +376,20 @@ Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare li
 - Use for straightforward work items that don't need the full prepare ceremony.
 - Accepts multiple slugs to fast-track a batch in one call.
 
+### `telec todo mark-phase`
+
+Operator override: write the authoritative prepare_phase or work_phase field
+
+**Usage:** `telec todo mark-phase <slug> --phase <value>`
+
+**Flags:**
+
+- `--phase`: Phase value matching a PreparePhase or WorkPhase enum member
+
+**Notes:**
+
+- Dispatches by enum; invalid values list both. Recovery/testing only.
+
 ### `telec todo set-deps`
 
 Set dependencies for a work item in the roadmap
@@ -398,22 +399,6 @@ Set dependencies for a work item in the roadmap
 **Flags:**
 
 - `--after`: Dependency slug (repeatable)
-
-### `telec todo verify-artifacts`
-
-Mechanically verify artifacts for a phase (build or review)
-
-**Usage:** `telec todo verify-artifacts <slug> [--phase <phase>]`
-
-**Flags:**
-
-- `--phase`: Phase: build or review
-
-**Notes:**
-
-- Exits 0 on pass, 1 on failure.
-- Checks artifact presence and consistency — does not run tests.
-- Integrated into next_work() before dispatching review.
 
 ### `telec todo dump`
 
@@ -464,7 +449,7 @@ Create a reviewed todo from uncommitted changes on main
 - Transfers uncommitted changes from main into a worktree for review.
 - File scoping is automatic: only files touched by the current session are transferred.
 - Creates todo scaffold, sets state to build:complete, ready for review.
-- After running, follow the printed instructions to commit and dispatch.
+- After running, the worktree handoff is auto-committed and the lifecycle router dispatches detached /next-work.
 
 ### `telec todo artifacts`
 
@@ -496,17 +481,19 @@ Show full state payload for a todo
 
 ### `telec todo stamp`
 
-Stamp a verdict, build status, or DOR result into todo state
+Stamp a verdict, DOR result, or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v>] [--build <b>] [--dor-score <n>] [--dor-status <s>] [--grounding-invalidated]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--dor-score <n>] [--dor-status <s>] [--grounding-invalidated] [--specs-built] [--finalize-ready]`
 
 **Flags:**
 
-- `--verdict`: approve | needs_work | needs_decision
-- `--build`: complete
+- `--verdict`: approve | changes_requested | needs_work | needs_decision
+- `--phase`: Review phase the verdict belongs to (requirements_review, test_spec_review, plan_review, build_review)
 - `--dor-score`: DOR score (integer)
 - `--dor-status`: pass | fail
 - `--grounding-invalidated`: Mark grounding as invalid
+- `--specs-built`: Mark test specifications as delivered
+- `--finalize-ready`: Mark worktree as ready for finalize handoff
 
 ## `telec roadmap`
 
@@ -580,7 +567,7 @@ Promote entry from icebox to roadmap
 
 ### `telec roadmap migrate-icebox`
 
-One-time migration: move icebox folders into todos/\_icebox/
+One-time migration: move icebox folders into todos/_icebox/
 
 ### `telec roadmap deliver`
 
@@ -710,6 +697,10 @@ Patch config values
 
 **Usage:** `telec config patch [--yaml '...']`
 
+**Flags:**
+
+- `--yaml` (`-y`): Inline YAML patch
+
 ### `telec config validate`
 
 Full validation
@@ -790,7 +781,7 @@ Search agent session transcripts
 **Flags:**
 
 - `--agent` (`-a`): Agent name(s) or 'all' (default: all)
-- `--computer`: Query one or more remote computers via daemon API
+- `--computer` (`-c`): Query one or more remote computers via daemon API
 - `--limit` (`-l`): Max results to show (default: 20)
 
 ### `telec history show`
@@ -802,7 +793,7 @@ Show full transcript for a session
 **Flags:**
 
 - `--agent` (`-a`): Agent name or 'all' (default: all)
-- `--computer`: Fetch from a remote computer
+- `--computer` (`-c`): Fetch from a remote computer
 - `--thinking`: Include thinking blocks
 - `--raw`: Show raw transcript instead of mirror text
 - `--tail`: Limit output to last N chars (0=unlimited)
@@ -864,3 +855,48 @@ Show observations around an anchor ID
 - `--before`: Observations before anchor (default: 3)
 - `--after`: Observations after anchor (default: 3)
 - `--project`: Filter by project name
+
+## `telec code`
+
+Code quality and commit tools
+
+### `telec code lint`
+
+Run language-aware lint pipeline
+
+**Flags:**
+
+- `--step`: Run a single pipeline step
+- `--all`: Run against all configured sources, skip session scoping
+
+### `telec code test`
+
+Run language-aware test suite
+
+**Flags:**
+
+- `--expensive`: Include expensive/slow tests
+- `--all`: Run all tests, skip session scoping
+
+### `telec code format`
+
+Run language-aware code formatter
+
+**Flags:**
+
+- `--all`: Format all configured sources, skip session scoping
+
+### `telec code changed`
+
+List session-scoped changed files
+
+### `telec code commit`
+
+Stage session-scoped files, lint, format, and commit
+
+**Usage:** `telec code commit [<git-commit-args>]`
+
+**Flags:**
+
+- `-m`: Commit message
+

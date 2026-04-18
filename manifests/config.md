@@ -4,13 +4,13 @@
 
 Model: `GlobalConfig`
 
-| Field           | Type          | Description   |
-| --------------- | ------------- | ------------- | ------------- |
-| `checkout_root` | string        | null          | Checkout Root |
-| `event_domains` | DomainsConfig | null          |               |
-| `interests`     | array         | Interests     |
-| `people`        | array         | People        |
-| `subscriptions` | array         | Subscriptions |
+| Field | Type | Description |
+|-------|------|-------------|
+| `checkout_root` | string | null | Checkout Root |
+| `event_domains` | DomainsConfig | null |  |
+| `interests` | array | Interests |
+| `people` | array | People |
+| `subscriptions` | array | Subscriptions |
 
 ### Global Config — Nested Types
 
@@ -18,264 +18,268 @@ Model: `GlobalConfig`
 
 #### AutonomyMatrix
 
-| Field            | Type          | Description   |
-| ---------------- | ------------- | ------------- |
-| `by_cartridge`   | object        | By Cartridge  |
-| `by_domain`      | object        | By Domain     |
-| `by_event_type`  | object        | By Event Type |
-| `global_default` | AutonomyLevel |               |
+| Field | Type | Description |
+|-------|------|-------------|
+| `by_cartridge` | object | By Cartridge |
+| `by_domain` | object | By Domain |
+| `by_event_type` | object | By Event Type |
+| `global_default` | AutonomyLevel |  |
 
 #### DomainConfig
 
-| Field      | Type                 | Description |
-| ---------- | -------------------- | ----------- |
-| `autonomy` | AutonomyMatrix       |             |
-| `enabled`  | boolean              | Enabled     |
-| `guardian` | DomainGuardianConfig |             |
-| `name`     | string               | Name        |
+| Field | Type | Description |
+|-------|------|-------------|
+| `autonomy` | AutonomyMatrix |  |
+| `enabled` | boolean | Enabled |
+| `guardian` | DomainGuardianConfig |  |
+| `name` | string | Name |
 
 #### DomainGuardianConfig
 
-| Field               | Type    | Description |
-| ------------------- | ------- | ----------- | ----------------- |
-| `agent`             | string  | Agent       |
-| `enabled`           | boolean | Enabled     |
-| `evaluation_prompt` | string  | null        | Evaluation Prompt |
-| `mode`              | string  | Mode        |
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent` | string | Agent |
+| `enabled` | boolean | Enabled |
+| `evaluation_prompt` | string | null | Evaluation Prompt |
+| `mode` | string | Mode |
 
 #### DomainsConfig
 
-| Field     | Type    | Description |
-| --------- | ------- | ----------- |
-| `domains` | object  | Domains     |
-| `enabled` | boolean | Enabled     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `domains` | object | Domains |
+| `enabled` | boolean | Enabled |
 
 #### JobSubscription
 
-| Field          | Type                     | Description |
-| -------------- | ------------------------ | ----------- | --- |
-| `enabled`      | boolean                  | Enabled     |
-| `job`          | string                   | Job         |
-| `notification` | SubscriptionNotification |             |
-| `type`         | string                   | Type        |
-| `when`         | JobWhenConfig            | null        |     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enabled |
+| `job` | string | Job |
+| `notification` | SubscriptionNotification |  |
+| `type` | string | Type |
+| `when` | JobWhenConfig | null |  |
 
 #### JobWhenConfig
 
-| Field      | Type   | Description |
-| ---------- | ------ | ----------- | ----- | --- |
-| `at`       | string | array       | null  | At  |
-| `every`    | string | null        | Every |
-| `weekdays` | array  | Weekdays    |
+| Field | Type | Description |
+|-------|------|-------------|
+| `at` | string | array | null | At |
+| `every` | string | null | Every |
+| `weekdays` | array | Weekdays |
 
 #### PersonEntry
 
-| Field         | Type   | Description |
-| ------------- | ------ | ----------- | ----------- |
-| `email`       | string | Email       |
-| `expertise`   | object | null        | Expertise   |
-| `name`        | string | Name        |
-| `proficiency` | string | null        | Proficiency |
-| `role`        | string | Role        |
-| `username`    | string | null        | Username    |
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | string | Email |
+| `expertise` | object | null | Expertise |
+| `name` | string | Name |
+| `proficiency` | string | null | Proficiency |
+| `role` | string | Role |
+| `username` | string | null | Username |
 
 #### SubscriptionNotification
 
-| Field               | Type   | Description       |
-| ------------------- | ------ | ----------------- | ----- |
-| `email`             | string | null              | Email |
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | string | null | Email |
 | `preferred_channel` | string | Preferred Channel |
 
 #### YoutubeSubscription
 
-| Field          | Type                     | Description |
-| -------------- | ------------------------ | ----------- |
-| `enabled`      | boolean                  | Enabled     |
-| `notification` | SubscriptionNotification |             |
-| `source`       | string                   | Source      |
-| `tags`         | array                    | Tags        |
-| `type`         | string                   | Type        |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enabled |
+| `notification` | SubscriptionNotification |  |
+| `source` | string | Source |
+| `tags` | array | Tags |
+| `type` | string | Type |
 
 ## Project Config
 
 Model: `ProjectConfig`
 
-| Field                   | Type             | Description           |
-| ----------------------- | ---------------- | --------------------- | ------------ |
-| `business`              | BusinessConfig   |                       |
-| `channel_subscriptions` | array            | Channel Subscriptions |
-| `deployment`            | DeploymentConfig |                       |
-| `description`           | string           | null                  | Description  |
-| `git`                   | GitConfig        |                       |
-| `hooks`                 | HooksConfig      |                       |
-| `integrator`            | IntegratorConfig |                       |
-| `jobs`                  | object           | Jobs                  |
-| `project_name`          | string           | null                  | Project Name |
+| Field | Type | Description |
+|-------|------|-------------|
+| `business` | BusinessConfig |  |
+| `channel_subscriptions` | array | Channel Subscriptions |
+| `deployment` | DeploymentConfig |  |
+| `description` | string | null | Description |
+| `frontend_root` | string | null | Frontend Root |
+| `git` | GitConfig |  |
+| `hooks` | HooksConfig |  |
+| `integrator` | IntegratorConfig |  |
+| `jobs` | object | Jobs |
+| `language` | string | null | Language |
+| `languages` | array | Languages |
+| `project_name` | string | null | Project Name |
+| `project_slug` | string | null | Project Slug |
 
 ### Project Config — Nested Types
 
 #### BusinessConfig
 
-| Field     | Type   | Description |
-| --------- | ------ | ----------- |
-| `domains` | object | Domains     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `domains` | object | Domains |
 
 #### ChannelSubscription
 
-| Field     | Type   | Description |
-| --------- | ------ | ----------- | ------ |
-| `channel` | string | Channel     |
-| `filter`  | object | null        | Filter |
-| `target`  | object | Target      |
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel` | string | Channel |
+| `filter` | object | null | Filter |
+| `target` | object | Target |
 
 #### DeploymentConfig
 
-| Field          | Type   | Description  |
-| -------------- | ------ | ------------ |
-| `channel`      | string | Channel      |
+| Field | Type | Description |
+|-------|------|-------------|
+| `channel` | string | Channel |
 | `pinned_minor` | string | Pinned Minor |
 
 #### GitConfig
 
 #### HooksConfig
 
-| Field           | Type   | Description   |
-| --------------- | ------ | ------------- |
-| `inbound`       | object | Inbound       |
-| `subscriptions` | array  | Subscriptions |
+| Field | Type | Description |
+|-------|------|-------------|
+| `inbound` | object | Inbound |
+| `subscriptions` | array | Subscriptions |
 
 #### InboundSourceConfig
 
-| Field          | Type   | Description |
-| -------------- | ------ | ----------- | ------------ |
-| `normalizer`   | string | null        | Normalizer   |
-| `path`         | string | null        | Path         |
-| `secret`       | string | null        | Secret       |
-| `verify_token` | string | null        | Verify Token |
+| Field | Type | Description |
+|-------|------|-------------|
+| `normalizer` | string | null | Normalizer |
+| `path` | string | null | Path |
+| `secret` | string | null | Secret |
+| `verify_token` | string | null | Verify Token |
 
 #### IntegratorConfig
 
-| Field     | Type                    | Description |
-| --------- | ----------------------- | ----------- |
-| `cutover` | IntegratorCutoverConfig |             |
+| Field | Type | Description |
+|-------|------|-------------|
+| `cutover` | IntegratorCutoverConfig |  |
 
 #### IntegratorCutoverConfig
 
-| Field                           | Type    | Description                   |
-| ------------------------------- | ------- | ----------------------------- |
-| `enabled`                       | boolean | Enabled                       |
-| `parity_evidence_accepted`      | boolean | Parity Evidence Accepted      |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enabled |
+| `parity_evidence_accepted` | boolean | Parity Evidence Accepted |
 | `rollback_on_incomplete_parity` | boolean | Rollback On Incomplete Parity |
 
 #### JobScheduleConfig
 
-| Field               | Type          | Description       |
-| ------------------- | ------------- | ----------------- | ------------- |
-| `agent`             | string        | null              | Agent         |
-| `category`          | string        | Category          |
-| `job`               | string        | null              | Job           |
-| `message`           | string        | null              | Message       |
-| `preferred_day`     | integer       | Preferred Day     |
-| `preferred_hour`    | integer       | Preferred Hour    |
-| `preferred_weekday` | integer       | Preferred Weekday |
-| `schedule`          | string        | null              | Schedule      |
-| `script`            | string        | null              | Script        |
-| `thinking_mode`     | string        | null              | Thinking Mode |
-| `timeout`           | integer       | null              | Timeout       |
-| `type`              | string        | null              | Type          |
-| `when`              | JobWhenConfig | null              |               |
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent` | string | null | Agent |
+| `category` | string | Category |
+| `job` | string | null | Job |
+| `message` | string | null | Message |
+| `preferred_day` | integer | Preferred Day |
+| `preferred_hour` | integer | Preferred Hour |
+| `preferred_weekday` | integer | Preferred Weekday |
+| `schedule` | string | null | Schedule |
+| `script` | string | null | Script |
+| `thinking_mode` | string | null | Thinking Mode |
+| `timeout` | integer | null | Timeout |
+| `type` | string | null | Type |
+| `when` | JobWhenConfig | null |  |
 
 #### JobWhenConfig
 
-| Field      | Type   | Description |
-| ---------- | ------ | ----------- | ----- | --- |
-| `at`       | string | array       | null  | At  |
-| `every`    | string | null        | Every |
-| `weekdays` | array  | Weekdays    |
+| Field | Type | Description |
+|-------|------|-------------|
+| `at` | string | array | null | At |
+| `every` | string | null | Every |
+| `weekdays` | array | Weekdays |
 
 #### SubscriptionConfig
 
-| Field      | Type   | Description |
-| ---------- | ------ | ----------- |
-| `contract` | object | Contract    |
-| `id`       | string | Id          |
-| `target`   | object | Target      |
+| Field | Type | Description |
+|-------|------|-------------|
+| `contract` | object | Contract |
+| `id` | string | Id |
+| `target` | object | Target |
 
 ## Person Config
 
 Model: `PersonConfig`
 
-| Field           | Type        | Description   |
-| --------------- | ----------- | ------------- | ------------ |
-| `creds`         | CredsConfig |               |
-| `interests`     | array       | Interests     |
-| `invite_token`  | string      | null          | Invite Token |
-| `subscriptions` | array       | Subscriptions |
+| Field | Type | Description |
+|-------|------|-------------|
+| `creds` | CredsConfig |  |
+| `interests` | array | Interests |
+| `invite_token` | string | null | Invite Token |
+| `subscriptions` | array | Subscriptions |
 
 ### Person Config — Nested Types
 
 #### CredsConfig
 
-| Field      | Type          | Description |
-| ---------- | ------------- | ----------- | --- |
-| `discord`  | DiscordCreds  | null        |     |
-| `telegram` | TelegramCreds | null        |     |
-| `whatsapp` | WhatsAppCreds | null        |     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `discord` | DiscordCreds | null |  |
+| `telegram` | TelegramCreds | null |  |
+| `whatsapp` | WhatsAppCreds | null |  |
 
 #### DiscordCreds
 
-| Field     | Type   | Description |
-| --------- | ------ | ----------- |
-| `user_id` | string | User Id     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `user_id` | string | User Id |
 
 #### JobSubscription
 
-| Field          | Type                     | Description |
-| -------------- | ------------------------ | ----------- | --- |
-| `enabled`      | boolean                  | Enabled     |
-| `job`          | string                   | Job         |
-| `notification` | SubscriptionNotification |             |
-| `type`         | string                   | Type        |
-| `when`         | JobWhenConfig            | null        |     |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enabled |
+| `job` | string | Job |
+| `notification` | SubscriptionNotification |  |
+| `type` | string | Type |
+| `when` | JobWhenConfig | null |  |
 
 #### JobWhenConfig
 
-| Field      | Type   | Description |
-| ---------- | ------ | ----------- | ----- | --- |
-| `at`       | string | array       | null  | At  |
-| `every`    | string | null        | Every |
-| `weekdays` | array  | Weekdays    |
+| Field | Type | Description |
+|-------|------|-------------|
+| `at` | string | array | null | At |
+| `every` | string | null | Every |
+| `weekdays` | array | Weekdays |
 
 #### SubscriptionNotification
 
-| Field               | Type   | Description       |
-| ------------------- | ------ | ----------------- | ----- |
-| `email`             | string | null              | Email |
+| Field | Type | Description |
+|-------|------|-------------|
+| `email` | string | null | Email |
 | `preferred_channel` | string | Preferred Channel |
 
 #### TelegramCreds
 
-| Field       | Type    | Description |
-| ----------- | ------- | ----------- | ------- |
-| `chat_id`   | string  | null        | Chat Id |
-| `user_id`   | integer | User Id     |
-| `user_name` | string  | User Name   |
+| Field | Type | Description |
+|-------|------|-------------|
+| `chat_id` | string | null | Chat Id |
+| `user_id` | integer | User Id |
+| `user_name` | string | User Name |
 
 #### WhatsAppCreds
 
-| Field          | Type   | Description  |
-| -------------- | ------ | ------------ |
+| Field | Type | Description |
+|-------|------|-------------|
 | `phone_number` | string | Phone Number |
 
 #### YoutubeSubscription
 
-| Field          | Type                     | Description |
-| -------------- | ------------------------ | ----------- |
-| `enabled`      | boolean                  | Enabled     |
-| `notification` | SubscriptionNotification |             |
-| `source`       | string                   | Source      |
-| `tags`         | array                    | Tags        |
-| `type`         | string                   | Type        |
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | boolean | Enabled |
+| `notification` | SubscriptionNotification |  |
+| `source` | string | Source |
+| `tags` | array | Tags |
+| `type` | string | Type |
 
 ## Raw JSON Schema
 
@@ -284,7 +288,12 @@ Model: `PersonConfig`
   "$defs": {
     "AutonomyLevel": {
       "description": "Execution autonomy levels for domain cartridges.",
-      "enum": ["manual", "notify", "auto_notify", "autonomous"],
+      "enum": [
+        "manual",
+        "notify",
+        "auto_notify",
+        "autonomous"
+      ],
       "title": "AutonomyLevel",
       "type": "string"
     },
@@ -341,7 +350,9 @@ Model: `PersonConfig`
           "$ref": "#/$defs/AutonomyMatrix"
         }
       },
-      "required": ["name"],
+      "required": [
+        "name"
+      ],
       "title": "DomainConfig",
       "type": "object"
     },
@@ -438,7 +449,9 @@ Model: `PersonConfig`
           "default": null
         }
       },
-      "required": ["job"],
+      "required": [
+        "job"
+      ],
       "title": "JobSubscription",
       "type": "object"
     },
@@ -479,7 +492,15 @@ Model: `PersonConfig`
         "weekdays": {
           "default": [],
           "items": {
-            "enum": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+            "enum": [
+              "mon",
+              "tue",
+              "wed",
+              "thu",
+              "fri",
+              "sat",
+              "sun"
+            ],
             "type": "string"
           },
           "title": "Weekdays",
@@ -515,7 +536,12 @@ Model: `PersonConfig`
         },
         "role": {
           "default": "member",
-          "enum": ["admin", "member", "contributor", "newcomer"],
+          "enum": [
+            "admin",
+            "member",
+            "contributor",
+            "newcomer"
+          ],
           "title": "Role",
           "type": "string"
         },
@@ -525,12 +551,22 @@ Model: `PersonConfig`
               "additionalProperties": {
                 "anyOf": [
                   {
-                    "enum": ["novice", "intermediate", "advanced", "expert"],
+                    "enum": [
+                      "novice",
+                      "intermediate",
+                      "advanced",
+                      "expert"
+                    ],
                     "type": "string"
                   },
                   {
                     "additionalProperties": {
-                      "enum": ["novice", "intermediate", "advanced", "expert"],
+                      "enum": [
+                        "novice",
+                        "intermediate",
+                        "advanced",
+                        "expert"
+                      ],
                       "type": "string"
                     },
                     "type": "object"
@@ -549,7 +585,12 @@ Model: `PersonConfig`
         "proficiency": {
           "anyOf": [
             {
-              "enum": ["novice", "intermediate", "advanced", "expert"],
+              "enum": [
+                "novice",
+                "intermediate",
+                "advanced",
+                "expert"
+              ],
               "type": "string"
             },
             {
@@ -560,7 +601,10 @@ Model: `PersonConfig`
           "title": "Proficiency"
         }
       },
-      "required": ["name", "email"],
+      "required": [
+        "name",
+        "email"
+      ],
       "title": "PersonEntry",
       "type": "object"
     },
@@ -570,7 +614,12 @@ Model: `PersonConfig`
       "properties": {
         "preferred_channel": {
           "default": "telegram",
-          "enum": ["telegram", "discord", "whatsapp", "email"],
+          "enum": [
+            "telegram",
+            "discord",
+            "whatsapp",
+            "email"
+          ],
           "title": "Preferred Channel",
           "type": "string"
         },
@@ -625,7 +674,9 @@ Model: `PersonConfig`
           "type": "array"
         }
       },
-      "required": ["source"],
+      "required": [
+        "source"
+      ],
       "title": "YoutubeSubscription",
       "type": "object"
     }
@@ -699,3 +750,4 @@ Model: `PersonConfig`
   "type": "object"
 }
 ```
+

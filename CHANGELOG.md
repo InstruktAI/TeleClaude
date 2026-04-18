@@ -4,6 +4,76 @@ All notable changes to TeleClaude are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.0] - 2026-04-18
+
+## Release Notes
+
+### New Features
+
+- **`telec code` command group**: New top-level namespace for code quality and commit tooling. Includes `lint`, `test`, `format`, `changed`, and `commit` subcommands with session-scoping support and `--all` flag to bypass scoping.
+- **Project config fields**: Added `frontend_root`, `language`, `languages`, and `project_slug` to ProjectConfig for richer project metadata.
+- **`-c` short alias for `--computer`**: Available on `sessions start`, `sessions run`, `sessions end`, `projects list`, `history search`, and `history show`.
+- **Changelog generation**: Added changelog generation and backfill for all releases.
+- **Session scoping**: Centralized per-session file ownership tracking across agents.
+- **Project catalog**: Introduced project catalog service with per-project job orchestration.
+
+### Breaking Changes
+
+- **`telec todo verify-artifacts` removed**: Artifact verification is now integrated into the lifecycle pipeline.
+- **`telec todo mark-phase` reworked**: Now takes a single `--phase` flag matching PreparePhase or WorkPhase enum members. Previous `--target`, `--status`, and `--force` flags removed.
+- **`telec todo stamp --build` removed**: Build status stamping replaced by lifecycle-driven state transitions. New `--phase` flag required with `--verdict`. Added `--specs-built` and `--finalize-ready` markers.
+
+### Improvements
+
+- Pre-commit hooks routed through `telec code lint --step` for consistent quality gating.
+- `telec todo from-main` now auto-commits worktree handoff and dispatches lifecycle router.
+- Conversation delivery state machine for reliable output routing.
+- Authoritative phase fields for prepare and work lifecycles.
+- Legacy filesystem-based todo storage eradicated in favor of DB-only.
+
+### Fixes
+
+- Fixed session scoping to preserve dotfile paths and intersect with git-dirty files.
+- Fixed adapter origin hint consumption to prevent duplicate processing.
+- Restored pre-commit format restaging for tmux and headless parity.
+- Fixed projection watermark persistence and next-machine updates.
+- Fixed caller identity resolution from API auth instead of filesystem.
+- Fixed CLI handler resolution to use invocation cwd, not process cwd.
+
+### Added
+
+- **CLI:** `telec code` — New command group with subcommands: lint (--step, --all), test (--expensive, --all), format (--all), changed, commit (-m)
+- **CLI:** `telec code lint` — Run language-aware lint pipeline with --step and --all flags
+- **CLI:** `telec code test` — Run language-aware test suite with --expensive and --all flags
+- **CLI:** `telec code format` — Run language-aware code formatter with --all flag
+- **CLI:** `telec code changed` — List session-scoped changed files
+- **CLI:** `telec code commit` — Stage session-scoped files, lint, format, and commit with -m flag
+- **CONFIG:** `frontend_root` — New optional string field on ProjectConfig
+- **CONFIG:** `language` — New optional string field on ProjectConfig
+- **CONFIG:** `languages` — New array field on ProjectConfig
+- **CONFIG:** `project_slug` — New optional string field on ProjectConfig
+
+### Changed
+
+- **CLI:** `telec todo mark-phase` — Reworked to operator override with single --phase flag; removed --target, --status, --force flags
+- **CLI:** `telec todo stamp` — Added --phase, --specs-built, --finalize-ready flags; added changes_requested verdict; removed --build flag; description updated
+- **CLI:** `telec todo from-main` — Notes updated: worktree handoff is now auto-committed with lifecycle router dispatch
+- **CLI:** `telec init` — Description and notes updated to reflect new project plumbing language
+- **CLI:** `--computer flag` — Added -c short alias across sessions start, sessions run, sessions end, projects list, history search, history show
+- **CLI:** `telec config patch` — Added --yaml (-y) flag documentation
+- **CLI:** `telec sessions start` — Added `-c` as a short alias for `--computer`.
+- **CLI:** `telec sessions run` — Added `-c` as a short alias for `--computer`.
+- **CLI:** `telec sessions end` — Added `-c` as a short alias for `--computer`.
+- **CLI:** `telec projects list` — Added `-c` as a short alias for `--computer`.
+- **CLI:** `telec history search` — Added `-c` as a short alias for `--computer`.
+- **CLI:** `telec history show` — Added `-c` as a short alias for `--computer`.
+
+### Removed
+
+- **CLI:** `telec todo verify-artifacts` — Command removed entirely
+
+**Full diff:** [v0.5.0...v0.6.0](https://github.com/InstruktAI/TeleClaude/compare/v0.5.0...v0.6.0)
+
 ## [0.5.0] - 2026-04-10
 
 ### Added
