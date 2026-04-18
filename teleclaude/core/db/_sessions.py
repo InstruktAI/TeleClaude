@@ -417,7 +417,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         # Digest updates are internal dedupe state for output routing and can occur
         # very frequently. Emitting SESSION_UPDATED for digest-only writes creates
         # unnecessary event fan-out and cache churn.
-        if set(updates) == {"last_output_digest"}:
+        if set(updates) in ({"last_output_digest"}, {"last_projected_output_digest"}):
             logger.trace("Skipping SESSION_UPDATED emit for digest-only update: %s", session_id)
             return
 
@@ -490,27 +490,6 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         await self.update_session(session_id, last_activity=datetime.now(UTC))
 
     # State management functions (DB-backed via ux_state)
-
-    async def get_output_message_id(self, session_id: str) -> str | None:
-        """Get output message ID for session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Message ID of output message, or None if not set
-        """
-        session = await self.get_session(session_id)
-        return session.output_message_id if session else None
-
-    async def set_output_message_id(self, session_id: str, message_id: str | None) -> None:
-        """Set output message ID for session.
-
-        Args:
-            session_id: Session identifier
-            message_id: Message ID of the output message (or None to clear)
-        """
-        await self.update_session(session_id, output_message_id=message_id)
 
     async def get_pending_deletions(
         self, session_id: str, deletion_type: Literal["user_input", "feedback"] = "user_input"

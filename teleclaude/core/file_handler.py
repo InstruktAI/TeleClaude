@@ -24,6 +24,21 @@ from teleclaude.core.session_utils import resolve_working_dir
 logger = get_logger(__name__)
 
 
+def _get_live_output_message_id(session: object) -> str | None:
+    """Read the current origin adapter's tracked output message ID."""
+    origin = getattr(session, "last_input_origin", None)
+    if not isinstance(origin, str) or not origin.strip():
+        return None
+    get_origin_section = getattr(session, "get_origin_section", None)
+    if not callable(get_origin_section):
+        return None
+    section = get_origin_section(origin.strip())
+    if not isinstance(section, dict):
+        return None
+    raw = section.get("output_message_id")
+    return str(raw) if raw else None
+
+
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename to prevent path traversal and special characters.
 
@@ -97,8 +112,7 @@ async def handle_file(  # pylint: disable=too-many-locals
         )
         return
 
-    # Get output_message_id from top-level DB column (not adapter_metadata blob)
-    current_message_id = session.output_message_id
+    current_message_id = _get_live_output_message_id(session)
     if current_message_id is None:
         logger.warning("No output message yet for session %s, polling may have just started", session_id)
         await send_message(

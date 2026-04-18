@@ -125,7 +125,12 @@ class TestCaptureAndSessionListing:
         ):
             result = await _pane.collect_pane_snapshot("tmux-alpha", capture_lines=25)
 
-        assert result == _pane.PaneSnapshot(session_exists=True, pane_dead=False, output="pane-output\n")
+        assert result == _pane.PaneSnapshot(
+            session_exists=True,
+            pane_dead=False,
+            output_raw="pane-output\n",
+            output_normalized="pane-output\n",
+        )
         assert mock_exec.await_count == 1
 
     @pytest.mark.unit
@@ -143,7 +148,31 @@ class TestCaptureAndSessionListing:
         ):
             result = await _pane.collect_pane_snapshot("tmux-alpha")
 
-        assert result == _pane.PaneSnapshot(session_exists=False, pane_dead=False, output="")
+        assert result == _pane.PaneSnapshot(
+            session_exists=False,
+            pane_dead=False,
+            output_raw="",
+            output_normalized="",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_collect_pane_snapshot_normalizes_ansi_and_trailing_space_for_change_detection(self) -> None:
+        stdout = b"\x1b[31mpane-output   \x1b[0m\n__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__\n0\n"
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._pane.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ),
+            patch(
+                "teleclaude.core.tmux_bridge._pane.communicate_with_timeout",
+                new=AsyncMock(return_value=(stdout, b"")),
+            ),
+        ):
+            result = await _pane.collect_pane_snapshot("tmux-alpha")
+
+        assert result.output_raw == "\x1b[31mpane-output   \x1b[0m\n"
+        assert result.output_normalized == "pane-output\n"
 
     @pytest.mark.unit
     @pytest.mark.asyncio

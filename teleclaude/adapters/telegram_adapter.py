@@ -312,7 +312,11 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         reset_section["output_message_id"] = None
         reset_section["footer_message_id"] = None
         await db.update_origin_metadata(recovery_session.session_id, "telegram", reset_section)
-        await db.update_session(recovery_session.session_id, last_output_digest=None)
+        await db.update_session(
+            recovery_session.session_id,
+            last_output_digest=None,
+            last_projected_output_digest=None,
+        )
 
         try:
             retry_session = await self.ensure_channel(recovery_session)

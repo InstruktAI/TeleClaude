@@ -59,23 +59,23 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         *,
         session_id: str,
         tmux_session_name: str,  # pylint: disable=unused-argument
-        previous_output: str,
-        last_sent_output: str | None,
+        previous_output_raw: str,
+        last_sent_output_raw: str | None,
         started_at: float,
         last_output_changed_at: float,
     ) -> AsyncIterator[OutputEvent]:
         logger.info("Process exited for %s, stopping poll", session_id)
-        if previous_output and previous_output != last_sent_output and previous_output.strip():
+        if previous_output_raw and previous_output_raw != last_sent_output_raw and previous_output_raw.strip():
             yield OutputChanged(
                 session_id=session_id,
-                output=previous_output,
+                output=previous_output_raw,
                 started_at=started_at,
                 last_changed_at=last_output_changed_at,
             )
         yield ProcessExited(
             session_id=session_id,
             exit_code=None,
-            final_output=previous_output,
+            final_output=previous_output_raw,
             started_at=started_at,
         )
 
@@ -180,7 +180,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
     ) -> AsyncIterator[OutputEvent]:
         if not pane_dead:
             return
-        should_emit_final = pending_output or output_changed or output_sent_at_least_once
+        should_emit_final = pending_output or output_changed
         if should_emit_final and current_cleaned.strip():
             yield OutputChanged(
                 session_id=session_id,
@@ -219,8 +219,8 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         started_at: float,
         poll_iteration: int,
         poll_interval: float,
-        previous_output: str,
-        last_sent_output: str | None,
+        previous_output_raw: str,
+        last_sent_output_raw: str | None,
         last_output_changed_at: float,
     ) -> tuple[bool, bool, list[OutputEvent]]:
         session_exists_now = snapshot.session_exists
@@ -242,8 +242,8 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             async for event in self._handle_missing_session(
                 session_id=session_id,
                 tmux_session_name=tmux_session_name,
-                previous_output=previous_output,
-                last_sent_output=last_sent_output,
+                previous_output_raw=previous_output_raw,
+                last_sent_output_raw=last_sent_output_raw,
                 started_at=started_at,
                 last_output_changed_at=last_output_changed_at,
             )
@@ -275,8 +275,9 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         poll_iteration = 0
         session_existed_last_poll = True  # Watchdog: track if session existed in previous poll
         output_sent_at_least_once = False  # Ensure user sees output before exit
-        last_sent_output: str | None = None
-        previous_output = ""  # Track previous clean output for change detection
+        last_sent_output_raw: str | None = None
+        previous_output_raw = ""
+        previous_output_normalized = ""
         pending_output = False  # Output changed since last yield
         pending_idle_flush = False  # One-time flush after output goes idle
         suppressed_idle_ticks = 0
@@ -329,8 +330,8 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                     started_at=started_at,
                     poll_iteration=poll_iteration,
                     poll_interval=poll_interval,
-                    previous_output=previous_output,
-                    last_sent_output=last_sent_output,
+                    previous_output_raw=previous_output_raw,
+                    last_sent_output_raw=last_sent_output_raw,
                     last_output_changed_at=last_output_changed_at,
                 )
                 if should_stop:
@@ -340,15 +341,17 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
 
                 session_existed_last_poll = session_exists_now
 
-                captured_output = snapshot.output
-                output_changed = captured_output != previous_output
-                current_cleaned = captured_output
+                captured_output_raw = snapshot.output_raw
+                captured_output_normalized = snapshot.output_normalized
+                output_changed = captured_output_normalized != previous_output_normalized
+                current_cleaned = captured_output_raw
 
-                self._log_output_tail_change(session_id, captured_output, previous_output)
+                self._log_output_tail_change(session_id, captured_output_raw, previous_output_raw)
 
                 if output_changed:
                     maybe_log_idle_summary(force=True)
-                    previous_output = current_cleaned
+                    previous_output_raw = current_cleaned
+                    previous_output_normalized = captured_output_normalized
                     idle_ticks = 0
                     last_output_changed_at = time.time()
                     pending_output = True
@@ -374,7 +377,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                 )
                 if output_event is not None:
                     yield output_event
-                    last_sent_output = current_cleaned
+                    last_sent_output_raw = current_cleaned
 
                 # Exit condition 2: tmux pane fully exited (shell ended)
                 pane_dead = False

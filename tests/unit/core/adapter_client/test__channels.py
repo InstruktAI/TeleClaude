@@ -193,21 +193,6 @@ class TestEnsureUiChannels:
             await client.ensure_ui_channels(session)
 
 
-class TestGetOutputMessageId:
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_delegates_to_db_output_message_lookup(self):
-        client = AdapterClient()
-
-        with patch(
-            "teleclaude.core.adapter_client._channels.db.get_output_message_id", AsyncMock(return_value="msg-1")
-        ) as getter:
-            result = await client.get_output_message_id("sess-1")
-
-        assert result == "msg-1"
-        getter.assert_awaited_once_with("sess-1")
-
-
 class TestSendGeneralMessage:
     @pytest.mark.unit
     @pytest.mark.asyncio

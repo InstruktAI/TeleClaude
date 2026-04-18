@@ -27,9 +27,11 @@ class DummyChannelOperations(ChannelOperationsMixin):
         )
         # Forum-thread stub attributes (overridden per test)
         self._client: object = None
+        self._discord = SimpleNamespace()
         self._get_channel: AsyncMock = AsyncMock()
         self._is_forum_channel = staticmethod(lambda ch: False)
         self._create_forum_thread: AsyncMock = AsyncMock()
+        self._require_async_callable = staticmethod(lambda fn, *, label: fn)
 
 
 def _make_session(*, human_role: str | None) -> Session:
@@ -125,3 +127,24 @@ async def test_create_channel_persists_forum_thread_metadata() -> None:
     persisted = call_args.args[2]
     assert persisted.get("thread_id") == 999
     assert persisted.get("channel_id") == 400
+
+
+@pytest.mark.asyncio
+async def test_update_channel_title_renames_thread_from_session_state() -> None:
+    adapter = DummyChannelOperations()
+    thread = SimpleNamespace(edit=AsyncMock())
+    adapter._get_channel = AsyncMock(return_value=thread)
+
+    session = Session(
+        session_id="sess-discord-2",
+        computer_name="machine",
+        tmux_session_name="tmux",
+        title="New title",
+        project_path="proj",
+        origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=400).to_dict()},
+    )
+
+    result = await adapter.update_channel_title(session, "ignored")
+
+    assert result is True
+    thread.edit.assert_awaited_once_with(name="New title")

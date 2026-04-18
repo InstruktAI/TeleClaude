@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
+from teleclaude.utils import strip_ansi_codes
 
 from ._subprocess import (
     SUBPROCESS_TIMEOUT_QUICK,
@@ -43,7 +44,14 @@ class PaneSnapshot:
 
     session_exists: bool
     pane_dead: bool
-    output: str
+    output_raw: str
+    output_normalized: str
+
+
+def _normalize_pane_output(text: str) -> str:
+    """Normalize pane text for generic tmux change detection."""
+    stripped = strip_ansi_codes(text).replace("\r\n", "\n").replace("\r", "\n")
+    return "\n".join(line.rstrip() for line in stripped.split("\n"))
 
 
 async def get_pane_tty(session_name: str) -> str | None:
@@ -198,7 +206,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
         if result.returncode != 0:
             stderr_text = stderr.decode().strip()
             if "can't find" in stderr_text.lower() or "no such" in stderr_text.lower():
-                return PaneSnapshot(session_exists=False, pane_dead=False, output="")
+                return PaneSnapshot(session_exists=False, pane_dead=False, output_raw="", output_normalized="")
             logger.warning(
                 "Failed to collect pane snapshot for session %s: returncode=%d, stderr=%s",
                 session_name,
@@ -208,7 +216,12 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
             raise ValueError(f"tmux snapshot failed for {session_name}: {stderr_text}")
 
         output_text, pane_dead = _parse_snapshot_stdout(stdout)
-        return PaneSnapshot(session_exists=True, pane_dead=pane_dead, output=output_text)
+        return PaneSnapshot(
+            session_exists=True,
+            pane_dead=pane_dead,
+            output_raw=output_text,
+            output_normalized=_normalize_pane_output(output_text),
+        )
 
     except SubprocessTimeoutError as e:
         logger.error("Timeout collecting pane snapshot for session %s: %s", session_name, e)

@@ -5,6 +5,7 @@ Handles polling lifecycle orchestration and central transcript-driven delivery.
 """
 
 import asyncio
+import hashlib
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -77,6 +78,12 @@ class OutputMetricsState:
 
 _output_metrics_state: dict[str, OutputMetricsState] = {}
 _title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
+
+
+def _assistant_projection_signature(message: str, last_ts: datetime) -> str:
+    """Build a stable signature for the current projected assistant render."""
+    payload = f"{last_ts.isoformat()}\n{message}".encode()
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _percentile(values: list[float], pct: float) -> float | None:
@@ -596,6 +603,9 @@ async def project_session_from_transcript(
     transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
+        projection_signature = _assistant_projection_signature(message, last_ts)
+        if session.last_projected_output_digest == projection_signature:
+            return session
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
         await adapter_client.send_output_update(
             session,
@@ -605,6 +615,9 @@ async def project_session_from_transcript(
             multi_message=is_multi,
             delivery_ts=last_ts,
         )
+        await db.update_session(session.session_id, last_projected_output_digest=projection_signature)
+        session.last_projected_output_digest = projection_signature
+        session = await refresh_session_title_from_transcript(session)
         _record_output_tick(session.session_id, len(message))
     return session
 

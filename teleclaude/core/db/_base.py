@@ -90,6 +90,9 @@ class DbBase:
             last_agent_stop_at=DbBase._coerce_datetime(row.last_agent_stop_at),
             last_output_summary=row.last_output_summary,
             last_output_digest=row.last_output_digest,
+            last_projected_output_digest=(
+                row.last_projected_output_digest if hasattr(row, "last_projected_output_digest") else None
+            ),
             working_slug=row.working_slug,
             human_email=row.human_email,
             human_role=row.human_role,

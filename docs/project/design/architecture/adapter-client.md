@@ -60,6 +60,7 @@ flowchart TB
 - **Lifecycle vs Recipients**: Cleanup/lifetime settings never decide recipients.
 - **UI Metadata Requirement**: Before sending to a non-origin adapter, ensure UI channel metadata exists.
 - **Pre/Post Hooks**: User input cleanup (pre-hook) and message tracking (post-hook) run atomically.
+- **Fresh title sync**: Channel-title delivery must resolve current session truth at execution time so stale queued work cannot replay an older title.
 
 ## Primary flows
 
@@ -162,6 +163,7 @@ sequenceDiagram
 ## Failure modes
 
 - **Adapter Crash During Delivery**: Adapter raises exception. AC logs error and continues other recipients in the same scope.
+- **Stale title update task**: Old queued title sync work must fetch fresh session state before renaming. Otherwise an older task can revert a newer thread title.
 - **Channel Metadata Missing**: Attempting to send to non-origin adapter without channel fails. AC creates channel (fire-and-forget) and queues message for retry.
 - **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.

@@ -456,9 +456,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         await self._record_agent_stop_input(session_id, payload, session)
         link_output, summary = await self._record_agent_stop_output(session_id, payload)
-        session = await db.get_session(session_id)
-        if session is not None:
-            session = await polling_coordinator.refresh_session_title_from_transcript(session)
 
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
         self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)

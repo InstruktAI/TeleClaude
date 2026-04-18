@@ -24,10 +24,11 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
 
 - **Self-Identification**: The agent's own TeleClaude session ID is available at `$TMPDIR/teleclaude_session_id`. This is the prerequisite for self-referential operations: `telec sessions end` (self-termination), agent-restart API calls, and `telec sessions tail` on own output.
 - **Input**: Commands are sent to the `tmux` pane via `tmux_io`. Normal message delivery requires a routable tmux session, except for intentional `headless` sessions, which may be adopted into tmux on user input.
-- **Output**: The `OutputPoller` reads from `tmux` and emits `OutputEvent`s.
+- **Output**: The `OutputPoller` reads from `tmux`, uses normalized pane text for generic change detection, and wakes transcript projection.
 - **Summarization**: Periodic AI-summarization updates the Telegram topic.
 - **Clutter Control**: User inputs and feedback are cleaned up based on session state.
 - **Lifecycle Status**: Turn-level status transitions (`accepted` → `active` → `active_output` → `completed`) are emitted by the agent coordinator and propagated to observers via the event bus. UI adapters may derive throttled typing pulses from `accepted` and `active`, but `active_output` is observer-only and must not trigger direct platform API calls.
+- **Title ownership**: Session title updates are projection-owned. A title may change only after fresh assistant output is projected from transcript truth; lifecycle events must not recompute titles directly.
 
 ### 3. Termination
 

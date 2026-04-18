@@ -326,6 +326,25 @@ async def test_digest_only_and_redundant_session_updates_skip_event_emission(db:
     assert mock_emit.call_count == 0
 
 
+async def test_projected_output_digest_only_update_skips_event_emission(db: Db) -> None:
+    await db.create_session(
+        computer_name="builder-mac",
+        tmux_session_name="tmux-002",
+        last_input_origin="telegram",
+        title="Stable",
+        session_id="sess-002",
+        emit_session_started=False,
+    )
+    with patch("teleclaude.core.db._sessions.event_bus.emit") as mock_emit:
+        await db.update_session("sess-002", last_projected_output_digest="projection-digest-1")
+
+    session = await db.get_session("sess-002")
+
+    assert session is not None
+    assert session.last_projected_output_digest == "projection-digest-1"
+    mock_emit.assert_not_called()
+
+
 async def test_close_session_is_idempotent_and_delete_session_emits_close_for_existing_row(db: Db) -> None:
     await db.create_session(
         computer_name="builder-mac",
@@ -370,13 +389,10 @@ async def test_pending_deletions_output_message_and_notification_helpers_round_t
     )
     await db.add_pending_deletion("sess-001", "msg-1")
     await db.add_pending_deletion("sess-001", "msg-2", deletion_type="feedback")
-    await db.set_output_message_id("sess-001", "out-1")
     await db.set_notification_flag("sess-001", True)
 
     user_pending = await db.get_pending_deletions("sess-001")
     feedback_pending = await db.get_pending_deletions("sess-001", deletion_type="feedback")
-    output_message_id = await db.get_output_message_id("sess-001")
-    field_value = await db.get_session_field("sess-001", "output_message_id")
     invalid_field = await db.get_session_field("sess-001", "not_a_field")
     notification_before_clear = await db.get_notification_flag("sess-001")
 
@@ -387,8 +403,6 @@ async def test_pending_deletions_output_message_and_notification_helpers_round_t
 
     assert user_pending == ["msg-1"]
     assert feedback_pending == ["msg-2"]
-    assert output_message_id == "out-1"
-    assert field_value == "out-1"
     assert invalid_field is None
     assert notification_before_clear is True
     assert notification_after_clear is False

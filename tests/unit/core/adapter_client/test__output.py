@@ -510,6 +510,25 @@ class TestChannelUpdates:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_update_channel_title_uses_fresh_session_for_all_adapters(self):
+        client = AdapterClient()
+        stale = _make_session(last_input_origin="telegram")
+        fresh = _make_session(last_input_origin="telegram")
+        fresh.title = "Fresh title"
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh)):
+            result = await client.update_channel_title(stale, "New title")
+
+        assert result is True
+        telegram.update_channel_title.assert_awaited_once_with(fresh, "New title")
+        discord.update_channel_title.assert_awaited_once_with(fresh, "New title")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_delete_channel_returns_true_when_any_adapter_succeeds(self):
         client = AdapterClient()
         session = _make_session()

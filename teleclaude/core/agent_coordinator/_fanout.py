@@ -25,20 +25,18 @@ from teleclaude.core.session_listeners import (
     notify_stop,
 )
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
-from teleclaude.core.summarizer import generate_session_title, summarize_agent_output
+from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
     extract_last_agent_message,
     extract_last_user_message_with_timestamp,
-    extract_recent_transcript_turns,
     get_assistant_messages_since,
 )
 
 from ._helpers import (
     _MAX_FORWARDED_LINK_OUTPUT_CHARS,
     _is_checkpoint_prompt,
-    _to_utc,
 )
 
 if TYPE_CHECKING:
@@ -55,56 +53,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
     if TYPE_CHECKING:
         client: "AdapterClient"
         tts_manager: TTSManager
-
-    async def _update_session_title_async(  # pylint: disable=too-many-return-statements  # Guarded early exits
-        self, session_id: str, expected_prompt_at: datetime, prompt_text: str = ""
-    ) -> None:
-        """Best-effort asynchronous title update for the latest accepted prompt."""
-        current = await db.get_session(session_id)
-        if not current or _to_utc(current.last_message_sent_at) != _to_utc(expected_prompt_at):
-            return
-
-        current_title = (current.title or "").strip()
-
-        # Slash-command titles are frozen — never overwrite them.
-        if current_title.startswith("/"):
-            return
-
-        # Untitled session receiving a slash command: set title to the command and freeze.
-        if "Untitled" in current_title and prompt_text.lstrip().startswith("/"):
-            slash_title = prompt_text.strip()[:70]
-            await db.update_session(session_id, title=slash_title)
-            logger.info("Set slash-command title for session %s: %s", session_id, slash_title)
-            return
-
-        transcript_path = current.native_log_file
-        if not current.active_agent or not transcript_path:
-            return
-
-        try:
-            agent_name = AgentName.from_str(current.active_agent)
-        except ValueError:
-            return
-
-        recent_turns = extract_recent_transcript_turns(transcript_path, agent_name, max_turns_per_role=3)
-        if not recent_turns:
-            return
-
-        try:
-            new_title = await generate_session_title(recent_turns)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Title generation boundary
-            logger.warning("Title summarization failed: %s", exc)
-            return
-
-        if not new_title:
-            return
-
-        latest = await db.get_session(session_id)
-        if not latest or _to_utc(latest.last_message_sent_at) != _to_utc(expected_prompt_at):
-            return
-
-        await db.update_session(session_id, title=new_title)
-        logger.info("Updated session title from user input: %s", new_title)
 
     async def _speak_session_start(self, session_id: str) -> None:
         if not SESSION_START_MESSAGES:

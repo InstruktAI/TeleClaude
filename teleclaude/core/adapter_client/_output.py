@@ -493,7 +493,9 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         Returns:
             True if update succeeded
         """
-        result = await self._route_to_ui(session, "update_channel_title", title)
+        fresh_session = await db.get_session(session.session_id)
+        session_to_use = fresh_session or session
+        result = await self._route_to_ui(session_to_use, "update_channel_title", title)
         return bool(result)
 
     async def delete_channel(self, session: "Session") -> bool:

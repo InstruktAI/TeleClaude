@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     last_output_at TEXT,
     last_output_summary TEXT,
     last_output_digest TEXT,
+    last_projected_output_digest TEXT,
     last_tool_done_at TEXT,
     last_tool_use_at TEXT,
     last_checkpoint_at TEXT,

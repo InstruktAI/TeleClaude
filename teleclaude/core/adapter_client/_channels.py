@@ -340,17 +340,6 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         refreshed = await db.get_session(session_id)
         return refreshed or session
 
-    async def get_output_message_id(self, session_id: str) -> str | None:
-        """Get output message ID for session.
-
-        Args:
-            session_id: Session identifier
-
-        Returns:
-            Message ID of output message, or None if not set
-        """
-        return await db.get_output_message_id(session_id)
-
     async def send_general_message(
         self,
         adapter_type: str,

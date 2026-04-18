@@ -117,6 +117,7 @@ class SessionField(Enum):
     LAST_MESSAGE_SENT = "last_message_sent"
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
     LAST_PROJECTED_AT = "last_projected_at"
+    LAST_PROJECTED_OUTPUT_DIGEST = "last_projected_output_digest"
     LAST_CONVERSATION_INJECTED_AT = "last_conversation_injected_at"
     LAST_OUTPUT_RAW = "last_output_raw"
     LAST_OUTPUT_AT = "last_output_at"
@@ -347,6 +348,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             last_agent_stop_at=ensure_utc(last_agent_stop_at) if isinstance(last_agent_stop_at, datetime) else None,
             last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
+            last_projected_output_digest=_get_optional_str("last_projected_output_digest"),
             working_slug=_get_optional_str("working_slug"),
             human_email=_get_optional_str("human_email"),
             human_role=_get_optional_str("human_role"),
