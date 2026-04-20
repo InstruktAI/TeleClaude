@@ -4,6 +4,23 @@ All notable changes to TeleClaude are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.6.1] - 2026-04-18
+
+# Release Notes
+
+## Patch — Internal quality pipeline fix
+
+### Bug Fixes
+
+- **quality**: Fixed language-aware file dispatch in the lint, format, and test pipelines. Explicit file lists are now correctly routed by language rather than relying on broad glob patterns.
+
+### Internal
+
+- Added unit tests for lint command handler, test command handler, and format module covering the new dispatch behavior.
+- Extracted shared scoping logic into `quality/scope.py`.
+
+**Full diff:** [v0.6.0...v0.6.1](https://github.com/InstruktAI/TeleClaude/compare/v0.6.0...v0.6.1)
+
 ## [0.6.0] - 2026-04-18
 
 ## Release Notes
