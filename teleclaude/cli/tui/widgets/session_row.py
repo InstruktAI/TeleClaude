@@ -96,7 +96,7 @@ class SessionRow(TelecMixin, Widget):
     @property
     def _detail_text_limit(self) -> int:
         """Dynamic text limit for detail lines based on available width."""
-        return max(20, self._content_width - self._connector_col - _DETAIL_PREFIX_OVERHEAD)
+        return min(73, max(20, self._content_width - self._connector_col - _DETAIL_PREFIX_OVERHEAD))
 
     @property
     def _child_indent(self) -> str:
@@ -279,7 +279,8 @@ class SessionRow(TelecMixin, Widget):
             line4 = Text(no_wrap=True)
             line4.append(connector_pad)
             line4.append("\u2502", style=connector_style)
-            line4.append(f"{detail_pad}[{activity_time_str}] out: {self.activity_text}", style=highlight_style)
+            thinking_text = self.activity_text.replace("\n", " ")[:text_limit]
+            line4.append(f"{detail_pad}[{activity_time_str}] out: {thinking_text}", style=highlight_style)
             lines.append(line4)
         elif self.activity_event == "agent_stop" and self.activity_text:
             output_text = self.activity_text.replace("\n", " ")[:text_limit]
