@@ -8,9 +8,9 @@ and escalation thread creation.
 from __future__ import annotations
 
 import tempfile
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -82,17 +82,35 @@ class InputHandlersMixin:
 
     _client: object
     _escalation_channel_id: int | None
-    _parse_optional_int: Callable[[object], int | None]
-    _require_async_callable: Callable[..., AsyncDiscordCallable]
-    _is_forum_channel: Callable[[object], bool]
-    _extract_forum_thread_result: Callable[[object], tuple[object | None, object | None]]
-    _fit_message_text: Callable[..., str]
-    _resolve_project_from_forum: Callable[[int], str | None]
-    _resolve_interaction_forum_id: Callable[[object], Awaitable[int | None]]
-    _resolve_forum_context: Callable[[object], tuple[str, str | None]]
-    _discord_actor_name: Callable[[object, str], str]
-    _discord_actor_avatar_url: Callable[[object], str | None]
-    ensure_channel: Callable[[Session], Awaitable[Session]]
+
+    if TYPE_CHECKING:
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
+        @staticmethod
+        def _require_async_callable(fn: object, *, label: str) -> AsyncDiscordCallable: ...
+
+        @staticmethod
+        def _is_forum_channel(channel: object) -> bool: ...
+
+        @staticmethod
+        def _extract_forum_thread_result(create_result: object) -> tuple[object | None, object | None]: ...
+
+        def _fit_message_text(self, *args: object, **kwargs: object) -> str: ...
+
+        def _resolve_project_from_forum(self, forum_id: int) -> str | None: ...
+
+        async def _resolve_interaction_forum_id(self, interaction: object) -> int | None: ...
+
+        def _resolve_forum_context(self, message: object) -> tuple[str, str | None]: ...
+
+        @staticmethod
+        def _discord_actor_name(author: object, user_id: str) -> str: ...
+
+        @staticmethod
+        def _discord_actor_avatar_url(author: object) -> str | None: ...
+
+        async def ensure_channel(self, session: Session) -> Session: ...
 
     async def resolve_or_create_session(self, message: object, *, first_message: str | None = None) -> Session | None:
         """Public wrapper for Discord session resolution or creation."""
@@ -495,10 +513,6 @@ class InputHandlersMixin:
         user_id: str,
         context: _SessionCreationContext,
     ) -> Session | None:
-        author = getattr(message, "author", None)
-        display_name = str(
-            getattr(author, "display_name", None) or getattr(author, "name", None) or f"discord-{user_id}"
-        )
         origin_metadata: dict[str, str] = {
             "user_id": user_id,
             "discord_user_id": user_id,
@@ -511,7 +525,7 @@ class InputHandlersMixin:
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,
-            title=f"Discord: {display_name}",
+            initial_input=context.first_message,
             origin=InputOrigin.DISCORD.value,
             origin_metadata=origin_metadata,
             launch_intent=launch_intent,

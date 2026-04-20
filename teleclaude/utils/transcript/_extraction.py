@@ -185,7 +185,7 @@ def _extract_last_message_by_role(
         # Reverse to get chronological order
         collected.reverse()
         return "\n\n".join(collected)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return None
 
 
@@ -236,7 +236,7 @@ def extract_last_user_message_with_timestamp(
             entry_ts = entry.get("timestamp")
             parsed_ts = _parse_timestamp(entry_ts) if isinstance(entry_ts, str) else None
             return text, parsed_ts
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return None
 
     return None
@@ -260,7 +260,7 @@ def extract_last_turn_boundary_timestamp(
     """
     try:
         entries = _get_entries_for_agent(transcript_path, agent_name)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return None
     if not entries:
         return None
@@ -355,7 +355,7 @@ def extract_recent_transcript_turns(
     return list(reversed(selected_reversed))
 
 
-def parse_session_transcript(  # pylint: disable=too-many-arguments
+def parse_session_transcript(
     transcript_path: str,
     title: str,
     *,

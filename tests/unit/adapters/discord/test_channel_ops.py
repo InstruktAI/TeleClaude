@@ -1,5 +1,4 @@
 """Tests for teleclaude.adapters.discord.channel_ops."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods,too-many-instance-attributes
 
 from __future__ import annotations
 

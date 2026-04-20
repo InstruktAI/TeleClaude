@@ -13,9 +13,16 @@ from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import ROLE_INTEGRATOR, JobRole
+from teleclaude.core.agents import get_default_agent
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.db import db
+from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.origins import InputOrigin
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
+from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -77,7 +84,7 @@ async def emit_deployment_completed(
     )
 
 
-async def emit_deployment_failed(  # pylint: disable=too-many-arguments
+async def emit_deployment_failed(
     slug: str,
     branch: str,
     sha: str,
@@ -198,7 +205,7 @@ class _SpawnResult(TypedDict, total=False):
 # ---------------------------------------------------------------------------
 
 
-async def spawn_integrator_session(  # pylint: disable=too-many-locals
+async def spawn_integrator_session(
     slug: str,
     branch: str,
     sha: str,
@@ -214,18 +221,12 @@ async def spawn_integrator_session(  # pylint: disable=too-many-locals
     Returns session info dict on spawn, or None if integrator was notified.
     Raises on spawn failure — the caller (cartridge) is responsible for handling.
     """
-    from teleclaude.constants import JobRole  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.command_registry import get_command_service  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.origins import InputOrigin  # pylint: disable=import-outside-toplevel
-    from teleclaude.types.commands import ProcessMessageCommand  # pylint: disable=import-outside-toplevel
-
     # If an integrator session is already active, wake it with a message instead of
     # spawning a duplicate. This handles both the mid-work case and zombie sessions
     # that failed to call `telec sessions end self`.
     try:
         sessions = await db.list_sessions()
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.exception("Could not check for running integrator sessions for %s; refusing duplicate spawn", slug)
         raise
 
@@ -254,17 +255,12 @@ async def spawn_integrator_session(  # pylint: disable=too-many-locals
     if not caller_session_id or caller_session_id == "unknown":
         raise ValueError(f"Cannot spawn integrator for {slug}: missing caller session identity")
 
-    from teleclaude.constants import ROLE_INTEGRATOR  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.agents import get_default_agent  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind  # pylint: disable=import-outside-toplevel
-    from teleclaude.types.commands import CreateSessionCommand  # pylint: disable=import-outside-toplevel
-
     project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
 
     cmd = CreateSessionCommand(
         project_path=project_path,
         origin=InputOrigin.TERMINAL.value,
-        title="/next-integrate",
+        initial_input="/next-integrate",
         launch_intent=SessionLaunchIntent(
             kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
             agent=get_default_agent(),

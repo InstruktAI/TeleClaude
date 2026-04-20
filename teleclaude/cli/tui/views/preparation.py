@@ -14,10 +14,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO
-from teleclaude.cli.tui.messages import (
-    CreateSessionRequest,
-    StateChanged,
-)
+from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
 from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
@@ -33,7 +30,7 @@ from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.todo_artifacts import artifact_display_filename
 
 
-class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # pylint: disable=too-many-instance-attributes
+class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
     """Preparation tab view showing todo items grouped by project.
 
     Navigation: arrows, left/right expand/collapse, Enter = toggle expand,
@@ -153,7 +150,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
         if isinstance(icebox_projects, list):
             self._icebox_projects = {str(item) for item in icebox_projects}
 
-    def _rebuild(self) -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _rebuild(self) -> None:  # noqa: C901
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
         _rb0 = _t.monotonic()
         self._logger.trace("[PERF] PrepView._rebuild START t=%.3f", _rb0)
@@ -363,7 +360,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
         sorted_files = sorted(todo_row.todo.files)
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
-        file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]  # pylint: disable=protected-access
+        file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
         project_path = todo_row.todo.project_path or self._resolve_project_root()
         for i, artifact_name in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
@@ -512,7 +509,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
                 return item
         return None
 
-    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:  # pylint: disable=too-many-return-statements
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
         """Resolve computer, project path, and optional slug from cursor."""
         item = self._current_item()
         if item is None:
@@ -607,7 +604,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):  # p
 
 
 # Legacy stub for tests
-class PrepTodoDisplayInfo:  # pylint: disable=too-few-public-methods
+class PrepTodoDisplayInfo:
     """Minimal legacy todo display container kept for tests."""
 
     def __init__(self, todo: object, project_path: object, computer: object) -> None:
@@ -616,19 +613,19 @@ class PrepTodoDisplayInfo:  # pylint: disable=too-few-public-methods
         self.computer = computer
 
 
-class PrepTodoNode:  # pylint: disable=too-few-public-methods
+class PrepTodoNode:
     """Legacy empty todo node stub retained for compatibility."""
 
 
-class PrepComputerDisplayInfo:  # pylint: disable=too-few-public-methods
+class PrepComputerDisplayInfo:
     """Legacy empty computer display stub retained for compatibility."""
 
 
-class PrepComputerNode:  # pylint: disable=too-few-public-methods
+class PrepComputerNode:
     """Legacy empty computer node stub retained for compatibility."""
 
 
-class PrepFileDisplayInfo:  # pylint: disable=too-few-public-methods
+class PrepFileDisplayInfo:
     """Minimal legacy file display container kept for tests."""
 
     def __init__(self, **kwargs: object) -> None:
@@ -636,11 +633,11 @@ class PrepFileDisplayInfo:  # pylint: disable=too-few-public-methods
             setattr(self, k, v)
 
 
-class PrepFileNode:  # pylint: disable=too-few-public-methods
+class PrepFileNode:
     """Legacy empty file node stub retained for compatibility."""
 
 
-class PrepProjectDisplayInfo:  # pylint: disable=too-few-public-methods
+class PrepProjectDisplayInfo:
     """Minimal legacy project display container kept for tests."""
 
     def __init__(self, **kwargs: object) -> None:
@@ -648,5 +645,5 @@ class PrepProjectDisplayInfo:  # pylint: disable=too-few-public-methods
             setattr(self, k, v)
 
 
-class PrepProjectNode:  # pylint: disable=too-few-public-methods
+class PrepProjectNode:
     """Legacy empty project node stub retained for compatibility."""

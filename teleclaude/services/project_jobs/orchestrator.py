@@ -19,7 +19,7 @@ logger = get_logger(__name__)
 ProjectJobRunner = Callable[[ProjectNode], Awaitable[bool]]
 
 
-class ProjectJobOrchestrator:  # pylint: disable=too-few-public-methods
+class ProjectJobOrchestrator:
     """Iterate catalog projects subscribed to ``job_slug`` and run them.
 
     The orchestrator is intentionally generic — it knows nothing about what a
@@ -50,7 +50,7 @@ class ProjectJobOrchestrator:  # pylint: disable=too-few-public-methods
         for node in self._catalog.iter_projects_with_job(self._job_slug):
             try:
                 dispatched = await self._run_for_project(node)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error(
                     "project-job runner failed",
                     job_slug=self._job_slug,

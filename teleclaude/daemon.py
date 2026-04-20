@@ -1,6 +1,4 @@
 """TeleClaude main daemon."""
-# pylint: disable=import-outside-toplevel  # startup boundary
-# pylint: disable=too-many-lines,wrong-import-position
 
 import asyncio
 import atexit
@@ -238,12 +236,10 @@ class DaemonLockError(Exception):
     """Raised when another daemon instance is already running."""
 
 
-class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
-    _DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _DaemonSessionMixin
-):
+class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _DaemonSessionMixin):
     """Main TeleClaude daemon that coordinates all components."""
 
-    def __init__(self, env_path: str):  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
+    def __init__(self, env_path: str):
         """Initialize daemon.
 
         Args:
@@ -309,7 +305,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         self.chiptunes_manager.on_state_change = self._on_chiptunes_state_change
         self.chiptunes_manager.on_command_done = self._on_chiptunes_command_done
         self.tts_manager.set_chiptunes_manager(self.chiptunes_manager)
-        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+        from teleclaude.api import chiptunes_routes  # startup boundary
 
         chiptunes_routes.configure(manager=self.chiptunes_manager)
         logger.info("ChiptunesManager initialized (music_dir=%s)", chiptunes_music_dir)
@@ -420,9 +416,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         Called from the chiptunes worker thread — bridges to the async event loop
         using call_soon_threadsafe so the broadcast runs on the event loop thread.
         """
-        from teleclaude.api_models import (
-            ChiptunesTrackEventDTO,  # pylint: disable=import-outside-toplevel  # startup boundary
-        )
+        from teleclaude.api_models import ChiptunesTrackEventDTO  # startup boundary
 
         api_server = getattr(self.lifecycle, "api_server", None)
         loop = getattr(self, "_loop", None)
@@ -438,13 +432,13 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
         payload = ChiptunesTrackEventDTO(track=track_label, sid_path=sid_path).model_dump()
         if loop is not None and loop.is_running():
-            logger.info("ChipTunes: scheduling WS broadcast (ws_clients=%d)", len(api_server._ws_clients))  # pylint: disable=protected-access
-            loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)  # pylint: disable=protected-access
+            logger.info("ChipTunes: scheduling WS broadcast (ws_clients=%d)", len(api_server._ws_clients))
+            loop.call_soon_threadsafe(api_server._broadcast_payload, "chiptunes_track", payload)
             loop.call_soon_threadsafe(self._broadcast_chiptunes_state)
         else:
             logger.warning("ChipTunes: no running event loop, skipping track broadcast")
 
-    def _on_chiptunes_state_change(  # pylint: disable=unused-argument
+    def _on_chiptunes_state_change(
         self,
         state: ChiptunesState,
     ) -> None:
@@ -459,16 +453,14 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
     def _on_chiptunes_command_done(self, command_id: str) -> None:
         """Clear pending command in routes when worker completes it."""
-        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
+        from teleclaude.api import chiptunes_routes  # startup boundary
 
         chiptunes_routes.clear_pending(command_id)
 
     def _broadcast_chiptunes_state(self) -> None:
         """Broadcast the current chiptunes playback state."""
-        from teleclaude.api import chiptunes_routes  # pylint: disable=import-outside-toplevel  # startup boundary
-        from teleclaude.api_models import (
-            ChiptunesStateEventDTO,  # pylint: disable=import-outside-toplevel  # startup boundary
-        )
+        from teleclaude.api import chiptunes_routes  # startup boundary
+        from teleclaude.api_models import ChiptunesStateEventDTO  # startup boundary
 
         api_server = getattr(self.lifecycle, "api_server", None)
         manager = getattr(self, "chiptunes_manager", None)
@@ -482,17 +474,17 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         chiptunes_routes.increment_state_version()
         payload = ChiptunesStateEventDTO(
             playback=playback,  # type: ignore[arg-type]
-            state_version=chiptunes_routes._state_version,  # pylint: disable=protected-access
+            state_version=chiptunes_routes._state_version,
             loaded=manager.enabled,
             playing=playback == "playing",
             paused=playback == "paused",
             position_seconds=float(state.get("position_seconds", 0.0)),
             track=track_label,
             sid_path=track_path,
-            pending_command_id=chiptunes_routes._pending_command_id,  # pylint: disable=protected-access
-            pending_action=chiptunes_routes._pending_action,  # type: ignore[arg-type]  # pylint: disable=protected-access
+            pending_command_id=chiptunes_routes._pending_command_id,
+            pending_action=chiptunes_routes._pending_action,  # type: ignore[arg-type]
         ).model_dump()
-        api_server._broadcast_payload("chiptunes_state", payload)  # pylint: disable=protected-access
+        api_server._broadcast_payload("chiptunes_state", payload)
 
     def _register_todos_mutation_hook(self) -> None:
         """Wire TodosDb mutation callbacks to daemon cache refresh.
@@ -507,13 +499,14 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         computer = config.computer.name
 
         def _hook(instance: TodosDb, project_root: str) -> None:
-            def _on_mutation() -> None:
+            def _on_mutation(event_hint: str = "todo_updated") -> None:
                 if loop is not None and loop.is_running():
+                    hint = event_hint  # capture for lambda closure
                     loop.call_soon_threadsafe(
-                        lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, "todo_updated"))
+                        lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, hint))
                     )
 
-            instance._on_mutation = _on_mutation  # pylint: disable=protected-access
+            instance._on_mutation = _on_mutation
 
         set_todos_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)
@@ -535,7 +528,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             # Open file for append+read (creates if doesn't exist, preserves inode)
             # This is critical: "a+" mode preserves the file's inode even if the file
             # was deleted, ensuring fcntl locks remain effective across processes
-            self.pid_file_handle = open(self.pid_file, "a+", encoding="utf-8")  # pylint: disable=consider-using-with  # Kept open for PID file lock lifetime
+            self.pid_file_handle = open(self.pid_file, "a+", encoding="utf-8")
 
             # Try to acquire exclusive lock (non-blocking)
             try:
@@ -607,13 +600,9 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         Returns:
             True if successful, False otherwise
         """
-        from teleclaude.core import tmux_io  # pylint: disable=import-outside-toplevel  # startup boundary
-        from teleclaude.core.models import (
-            MessageMetadata,  # pylint: disable=import-outside-toplevel  # startup boundary
-        )
-        from teleclaude.core.session_utils import (
-            resolve_working_dir,  # pylint: disable=import-outside-toplevel  # startup boundary
-        )
+        from teleclaude.core import tmux_io  # startup boundary
+        from teleclaude.core.models import MessageMetadata  # startup boundary
+        from teleclaude.core.session_utils import resolve_working_dir  # startup boundary
 
         # Get session
         session = await db.get_session(session_id)
@@ -649,7 +638,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
         logger.info("Executed command in session %s: %s (polling=%s)", session_id, command, start_polling)
         return True
 
-    async def start(self) -> None:  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
+    async def start(self) -> None:
         """Start the daemon."""
         # Safety net: enforce single-instance lock even for direct start() callers.
         # main() already acquires this lock, so _acquire_lock() is idempotent.
@@ -667,14 +656,14 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
                 logger.warning("Daemon startup was slow: %.3fs", startup_elapsed)
 
             # Start periodic cleanup task (runs every hour)
-            self.cleanup_task = asyncio.create_task(  # pylint: disable=attribute-defined-outside-init
+            self.cleanup_task = asyncio.create_task(
                 self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
             )
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
             logger.info("Periodic cleanup task started (72h session lifecycle)")
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
-            self.poller_watch_task = asyncio.create_task(  # pylint: disable=attribute-defined-outside-init
+            self.poller_watch_task = asyncio.create_task(
                 self.maintenance_service.poller_watch_loop(), name="poller-watch"
             )
             self.poller_watch_task.add_done_callback(self._log_background_task_exception("poller_watch"))
@@ -695,18 +684,14 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             # Initialize webhook service subsystem
             try:
                 await self._init_webhook_service()
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.error("Webhook service initialization failed, continuing without webhooks", exc_info=True)
 
             # Wire Redis transport into channels API routes
             redis_adapter = self.client.adapters.get("redis")
             if redis_adapter:
-                from teleclaude.channels.api_routes import (  # pylint: disable=import-outside-toplevel  # startup boundary
-                    set_redis_transport,
-                )
-                from teleclaude.transport.redis_transport import (  # pylint: disable=import-outside-toplevel  # startup boundary
-                    RedisTransport as _RT,
-                )
+                from teleclaude.channels.api_routes import set_redis_transport  # startup boundary
+                from teleclaude.transport.redis_transport import RedisTransport as _RT  # startup boundary
 
                 if isinstance(redis_adapter, _RT):
                     set_redis_transport(redis_adapter)
@@ -716,7 +701,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
             self.resource_monitor_task.add_done_callback(self._log_background_task_exception("resource_monitor"))
             logger.info("Resource monitor started (interval=%.0fs)", RESOURCE_SNAPSHOT_INTERVAL_S)
 
-            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")  # pylint: disable=attribute-defined-outside-init
+            self._wal_checkpoint_task = asyncio.create_task(self._wal_checkpoint_loop(), name="wal-checkpoint")
             self._wal_checkpoint_task.add_done_callback(self._log_background_task_exception("wal_checkpoint"))
             logger.info("WAL checkpoint task started (interval=300s)")
 
@@ -808,12 +793,13 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
     async def _stop_sandbox_manager(self) -> None:
         """Stop the sandbox manager before other shutdown work."""
-        if not hasattr(self, "_sandbox_manager"):
+        sandbox_manager = getattr(self, "_sandbox_manager", None)
+        if sandbox_manager is None:
             return
         try:
-            await self._sandbox_manager.stop()  # pylint: disable=no-member  # pyright: ignore[reportAttributeAccessIssue]
+            await sandbox_manager.stop()
             logger.info("Sandbox container stopped")
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Sandbox container stop error during shutdown: %s", exc)
 
     async def _cancel_task_attr(self, attr_name: str, log_message: str) -> None:
@@ -917,7 +903,7 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
 
 def _install_event_wait_tracer() -> None:
     """TEMPORARY DIAGNOSTIC: trace who creates Event.wait tasks."""
-    import traceback as _tb  # pylint: disable=import-outside-toplevel  # startup boundary
+    import traceback as _tb  # startup boundary
 
     _original_wait = asyncio.Event.wait
     _event_wait_callers: dict[str, int] = {}
@@ -983,14 +969,14 @@ async def main() -> None:
 
     try:
         # Acquire lock to prevent multiple instances (non-retryable)
-        daemon._acquire_lock()  # pylint: disable=protected-access
+        daemon._acquire_lock()
 
         # Start daemon with retry logic for transient network errors
         for attempt in range(STARTUP_MAX_RETRIES):
             try:
                 await daemon.start()
                 break  # Success - exit retry loop
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 # Non-retryable errors fail immediately
                 if not _is_retryable_startup_error(e):
                     logger.error("Daemon startup failed (non-retryable): %s", e, exc_info=True)
@@ -1025,16 +1011,16 @@ async def main() -> None:
         sys.exit(1)
     except KeyboardInterrupt:
         logger.info("Received interrupt signal...")
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.error("Unexpected error: %s", e, exc_info=True)
         sys.exit(1)
     finally:
         try:
             await daemon.stop()
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Error during daemon stop: %s", e)
         finally:
-            daemon._release_lock()  # pylint: disable=protected-access
+            daemon._release_lock()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,5 @@
 """Tests for agent readiness detection."""
 
-# pylint: disable=missing-function-docstring,redefined-outer-name
-
 from itertools import chain, repeat
 from unittest.mock import AsyncMock, patch
 

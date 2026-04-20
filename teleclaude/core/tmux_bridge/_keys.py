@@ -98,9 +98,7 @@ async def send_keys_existing_tmux(
         return False
 
 
-async def send_keys_to_tty(  # pylint: disable=redefined-outer-name
-    tty_path: str, text: str, *, send_enter: bool = True
-) -> bool:
+async def send_keys_to_tty(tty_path: str, text: str, *, send_enter: bool = True) -> bool:
     """Send keys directly to a controlling TTY (non-tmux sessions)."""
     try:
         payload = text + ("\n" if send_enter else "")
@@ -150,7 +148,7 @@ async def send_keys_to_tty(  # pylint: disable=redefined-outer-name
         return False
 
 
-async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
+async def _send_keys_tmux(
     *,
     session_name: str,
     text: str,
@@ -212,9 +210,7 @@ async def _send_keys_tmux(  # pylint: disable=redefined-outer-name
     return True
 
 
-async def send_signal(  # pylint: disable=too-many-return-statements  # Signal routing is intentionally branchy.
-    session_name: str, signal: Signals = SIGINT
-) -> bool:
+async def send_signal(session_name: str, signal: Signals = SIGINT) -> bool:
     """Send signal to a tmux session.
 
     Args:

@@ -8,8 +8,6 @@ Provides subcommands for AI agents and scripts to manage config:
 
 All subcommands support --json for machine-readable output.
 """
-# pylint: disable=import-outside-toplevel,broad-exception-caught,raise-missing-from
-# pylint: disable=too-many-instance-attributes,too-many-locals,too-many-branches,too-many-statements
 
 from __future__ import annotations
 

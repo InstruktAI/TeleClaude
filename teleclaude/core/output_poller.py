@@ -48,17 +48,17 @@ class ProcessExited(OutputEvent):
     started_at: float
 
 
-class OutputPoller:  # pylint: disable=too-few-public-methods
+class OutputPoller:
     """Pure poller - yields output events, no message sending.
 
     All dependencies (config, tmux_bridge) are imported at module level.
     """
 
-    async def _handle_missing_session(  # pylint: disable=too-many-arguments
+    async def _handle_missing_session(
         self,
         *,
         session_id: str,
-        tmux_session_name: str,  # pylint: disable=unused-argument
+        tmux_session_name: str,
         previous_output_raw: str,
         last_sent_output_raw: str | None,
         started_at: float,
@@ -79,7 +79,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             started_at=started_at,
         )
 
-    async def _log_watchdog_transition(  # pylint: disable=too-many-arguments
+    async def _log_watchdog_transition(
         self,
         *,
         session_id: str,
@@ -113,7 +113,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             poll_interval,
         )
 
-    def _maybe_yield_output(  # pylint: disable=too-many-arguments
+    def _maybe_yield_output(
         self,
         *,
         session_id: str,
@@ -166,7 +166,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
             pending_idle_flush = False
         return None, output_sent_at_least_once, pending_output, pending_idle_flush, last_yield_time, False
 
-    async def _maybe_yield_dead_pane(  # pylint: disable=too-many-arguments
+    async def _maybe_yield_dead_pane(
         self,
         *,
         session_id: str,
@@ -209,11 +209,11 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
                 [line[:50] for line in curr_last_lines],
             )
 
-    async def _check_session_presence(  # pylint: disable=too-many-arguments
+    async def _check_session_presence(
         self,
         *,
         session_id: str,
-        tmux_session_name: str,  # pylint: disable=unused-argument
+        tmux_session_name: str,
         snapshot: tmux_bridge.PaneSnapshot,
         session_existed_last_poll: bool,
         started_at: float,
@@ -250,7 +250,7 @@ class OutputPoller:  # pylint: disable=too-few-public-methods
         ]
         return False, True, events
 
-    async def poll(  # pylint: disable=too-many-locals,too-many-statements  # Poll loop naturally has many state variables
+    async def poll(
         self,
         session_id: str,
         tmux_session_name: str,

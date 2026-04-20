@@ -1,7 +1,10 @@
 """MLX Parakeet STT backend — local on-device transcription for Apple Silicon."""
 
+import asyncio
+import json
 import os
 import shutil
+import subprocess
 import tempfile
 from importlib import import_module
 from pathlib import Path
@@ -11,9 +14,9 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.mlx_utils import is_local_path, resolve_model_ref
 
-load_stt_model = None  # pylint: disable=invalid-name
-mlx_audio_import_error: Exception | None = None  # pylint: disable=invalid-name
-_mlx_audio_import_attempted = False  # pylint: disable=invalid-name
+load_stt_model = None
+mlx_audio_import_error: Exception | None = None
+_mlx_audio_import_attempted = False
 
 logger = get_logger(__name__)
 
@@ -22,7 +25,7 @@ MODEL_ENV_VAR = "TELECLAUDE_PARAKEET_MODEL"
 CLI_BIN_ENV_VAR = "TELECLAUDE_PARAKEET_CLI_BIN"
 
 
-class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
+class MLXParakeetBackend:
     """Local STT using mlx-audio with Parakeet model."""
 
     def __init__(self) -> None:
@@ -74,7 +77,7 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
         return resolve_model_ref(configured_ref or DEFAULT_MODEL)
 
     def _ensure_model(self) -> bool:
-        global load_stt_model, mlx_audio_import_error, _mlx_audio_import_attempted  # pylint: disable=global-statement
+        global load_stt_model, mlx_audio_import_error, _mlx_audio_import_attempted
 
         # CLI-only mode: never import mlx_audio when CLI backend exists.
         if self._cli_bin:
@@ -89,7 +92,7 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
                 load_candidate = getattr(stt_module, "load", None)
                 if callable(load_candidate):
                     load_stt_model = load_candidate
-            except Exception as import_error:  # pylint: disable=broad-exception-caught
+            except Exception as import_error:
                 mlx_audio_import_error = import_error
 
         if load_stt_model is None:
@@ -105,7 +108,7 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
             self._model = load_stt_model(self._model_ref)
             logger.info("Parakeet STT model loaded: %s", self._model_ref)
             return True
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Failed to load Parakeet STT model (%s): %s", self._model_ref, e)
             return False
 
@@ -130,8 +133,6 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
         if not self._ensure_model():
             raise RuntimeError("Parakeet STT unavailable")
 
-        import asyncio  # pylint: disable=import-outside-toplevel
-
         if self._model is None and self._cli_bin:
             return await asyncio.to_thread(self._transcribe_cli, audio_file_path, language)
 
@@ -144,9 +145,6 @@ class MLXParakeetBackend:  # pylint: disable=too-few-public-methods
         return text  # type: ignore[no-any-return]
 
     def _transcribe_cli(self, audio_file_path: str, language: str | None = None) -> str:
-        import json  # pylint: disable=import-outside-toplevel
-        import subprocess  # pylint: disable=import-outside-toplevel
-
         if not self._cli_bin:
             raise RuntimeError("Parakeet CLI unavailable")
 

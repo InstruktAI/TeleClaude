@@ -3,7 +3,6 @@
 The ledger is the permanent session archive. Native session ID is the
 primary key. Consumers read structured blocks, never raw transcripts.
 """
-# pylint: disable=missing-function-docstring,too-many-arguments
 
 from __future__ import annotations
 

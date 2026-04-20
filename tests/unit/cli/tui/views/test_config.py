@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
+from teleclaude.cli.tui.views.config import ConfigView
+
 
 @pytest.mark.unit
 def test_config_view_is_importable() -> None:
-    from teleclaude.cli.tui.views.config import ConfigView
-
     assert ConfigView is not None

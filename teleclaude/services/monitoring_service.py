@@ -70,10 +70,10 @@ def _log_unnamed_task_diagnostics(unnamed_coros: list[str]) -> None:
         logger.warning("Event.wait stack (x%d): %s", count, stack)
 
 
-class MonitoringService:  # pylint: disable=too-many-instance-attributes
+class MonitoringService:
     """Emit resource snapshots and launchd state."""
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         lifecycle: DaemonLifecycle,
@@ -161,7 +161,7 @@ class MonitoringService:  # pylint: disable=too-many-instance-attributes
         api_ws_clients: int | None = None
         api_server = self._lifecycle.api_server
         if isinstance(api_server, APIServer):
-            api_ws_clients = len(api_server._ws_clients)  # pylint: disable=protected-access
+            api_ws_clients = len(api_server._ws_clients)
 
         tracked = self._task_registry.task_count()
         self._task_hwm = max(self._task_hwm, tracked)

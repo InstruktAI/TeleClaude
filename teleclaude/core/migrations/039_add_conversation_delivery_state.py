@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add conversation_delivery_state table."""
 
 from __future__ import annotations

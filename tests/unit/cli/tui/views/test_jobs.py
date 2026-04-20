@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import pytest
 
+from teleclaude.cli.tui.views.jobs import JobsView
+
 
 @pytest.mark.unit
 def test_jobs_view_is_importable() -> None:
-    from teleclaude.cli.tui.views.jobs import JobsView
-
     assert JobsView is not None

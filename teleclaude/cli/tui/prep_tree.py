@@ -60,7 +60,7 @@ def _topo_sort_siblings(slugs: list[str], after_map: dict[str, list[str]]) -> li
     return result
 
 
-def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:  # pylint: disable=too-many-locals
+def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
     """Build a dependency tree from TodoItems using `group` for hierarchy and `after` for ordering.
 
     Args:

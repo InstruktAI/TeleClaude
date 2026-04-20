@@ -9,6 +9,7 @@ is_command_allowed() from teleclaude.cli.telec as the single source of truth.
 from collections.abc import Iterator
 from typing import TypedDict
 
+from teleclaude.cli.telec import CLI_SURFACE, is_command_allowed
 from teleclaude.cli.telec.surface import CommandDef
 
 
@@ -20,7 +21,6 @@ class ToolSpec(TypedDict, total=False):
 
 def _collect_gated_paths() -> list[str]:
     """Enumerate all CLI command paths that have CommandAuth (clearance-gated)."""
-    from teleclaude.cli.telec import CLI_SURFACE  # pylint: disable=import-outside-toplevel
 
     def _walk(surface: dict[str, CommandDef], prefix: str = "") -> Iterator[str]:
         for name, cmd in surface.items():
@@ -33,15 +33,13 @@ def _collect_gated_paths() -> list[str]:
     return list(_walk(CLI_SURFACE))
 
 
-def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:  # pylint: disable=unused-argument
+def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[str]:
     """Return set of tool names excluded for this human role.
 
     Derived from CLI_SURFACE CommandAuth entries — human-role filtering only.
     The role parameter is accepted for API compatibility but unused here;
     system-role enforcement is handled by _is_tool_denied() in daemon auth.
     """
-    from teleclaude.cli.telec import is_command_allowed  # pylint: disable=import-outside-toplevel
-
     excluded = set()
     for path in _collect_gated_paths():
         tool = f"telec {path}"
@@ -53,8 +51,6 @@ def get_excluded_tools(role: str | None, human_role: str | None = None) -> set[s
 
 def filter_tool_names(role: str | None, tool_names: list[str], human_role: str | None = None) -> list[str]:
     """Return filtered tool names for a role."""
-    from teleclaude.cli.telec import is_command_allowed  # pylint: disable=import-outside-toplevel
-
     result = []
     for name in tool_names:
         path = name[len("telec ") :] if name.startswith("telec ") else name
@@ -65,8 +61,6 @@ def filter_tool_names(role: str | None, tool_names: list[str], human_role: str |
 
 def filter_tool_specs(role: str | None, tools: list[ToolSpec], human_role: str | None = None) -> list[ToolSpec]:
     """Return filtered tool specs for a role."""
-    from teleclaude.cli.telec import is_command_allowed  # pylint: disable=import-outside-toplevel
-
     result = []
     for t in tools:
         name = t.get("name", "")

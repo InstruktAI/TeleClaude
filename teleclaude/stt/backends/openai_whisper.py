@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 logger = get_logger(__name__)
 
 
-class OpenAIWhisperBackend:  # pylint: disable=too-few-public-methods
+class OpenAIWhisperBackend:
     """Cloud STT using OpenAI Whisper API."""
 
     def __init__(self) -> None:

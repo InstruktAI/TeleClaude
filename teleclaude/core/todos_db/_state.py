@@ -18,7 +18,7 @@ from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateMode
 class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
-    _on_mutation: Callable[[], None]
+    _on_mutation: Callable[[str], None]
 
     async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None:
         """Resolve an active or icebox roadmap slug to its stable row id."""
@@ -79,7 +79,7 @@ class TodosDbStateMixin:
             db_session.add(state_model)
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()
@@ -125,7 +125,7 @@ class TodosDbStateMixin:
                 await db_session.delete(state_model)
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()
@@ -198,4 +198,4 @@ class TodosDbStateMixin:
                 state_model.updated_at = now
             session.add(state_model)
             session.commit()
-        self._on_mutation()
+        self._on_mutation("todo_updated")

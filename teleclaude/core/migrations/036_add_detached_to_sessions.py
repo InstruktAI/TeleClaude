@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add detached column to sessions table."""
 
 from __future__ import annotations

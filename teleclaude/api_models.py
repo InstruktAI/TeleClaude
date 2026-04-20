@@ -20,7 +20,6 @@ class CreateSessionRequest(BaseModel):
     launch_kind: Literal["empty", "agent", "agent_then_message", "agent_resume"] = "agent"
     agent: Literal["claude", "gemini", "codex"] | None = None
     thinking_mode: Literal["fast", "med", "slow", "default"] | None = None
-    title: str | None = None
     message: str | None = None
     direct: bool = False
     skip_listener_registration: bool = False
@@ -584,7 +583,7 @@ class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
     summary: str | None = None
 
 
-type AgentActivityEventDTO = (  # pylint: disable=invalid-name
+type AgentActivityEventDTO = (
     UserPromptSubmitActivityEventDTO | ToolUseActivityEventDTO | ToolDoneActivityEventDTO | AgentStopActivityEventDTO
 )
 

@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.command_handlers._message."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 

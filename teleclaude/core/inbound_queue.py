@@ -27,7 +27,7 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
 
-_manager: InboundQueueManager | None = None  # pylint: disable=invalid-name
+_manager: InboundQueueManager | None = None
 
 
 def init_inbound_queue_manager(
@@ -37,7 +37,7 @@ def init_inbound_queue_manager(
     force: bool = False,
 ) -> InboundQueueManager:
     """Initialize the global InboundQueueManager singleton."""
-    global _manager  # pylint: disable=global-statement
+    global _manager
     if _manager is not None and not force:
         raise RuntimeError("InboundQueueManager already initialized")
     _manager = InboundQueueManager(deliver_fn=deliver_fn, typing_callback=typing_callback)
@@ -53,7 +53,7 @@ def get_inbound_queue_manager() -> InboundQueueManager:
 
 def reset_inbound_queue_manager() -> None:
     """Reset the singleton (tests only)."""
-    global _manager  # pylint: disable=global-statement
+    global _manager
     _manager = None
 
 
@@ -75,7 +75,7 @@ class InboundQueueManager:
         self._typing_callback = typing_callback
         self._workers: dict[str, asyncio.Task[None]] = {}
 
-    async def enqueue(  # pylint: disable=too-many-arguments
+    async def enqueue(
         self,
         session_id: str,
         origin: str,
@@ -112,7 +112,7 @@ class InboundQueueManager:
         if self._typing_callback is not None:
             try:
                 await self._typing_callback(session_id, origin)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.debug("Typing callback failed for session %s", session_id, exc_info=True)
 
         self._ensure_worker(session_id)
@@ -184,7 +184,7 @@ class InboundQueueManager:
                     session_id,
                     error_str,
                 )
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 error_str = str(exc)
                 backoff = _backoff_for_attempt(row["attempt_count"])
                 logger.warning(
@@ -210,7 +210,7 @@ class InboundQueueManager:
             worker.cancel()
             try:
                 await worker
-            except (asyncio.CancelledError, Exception):  # pylint: disable=broad-exception-caught
+            except (asyncio.CancelledError, Exception):
                 pass
 
         count = await db.expire_inbound_for_session(session_id, datetime.now(UTC).isoformat())

@@ -1,7 +1,5 @@
 """Characterization tests for session management routes."""
 
-# pylint: disable=protected-access
-
 from __future__ import annotations
 
 from types import SimpleNamespace

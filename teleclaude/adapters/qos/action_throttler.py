@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class AdapterActionThrottler:  # pylint: disable=too-few-public-methods
+class AdapterActionThrottler:
     """Track the last attempt time for adapter control actions.
 
     The throttler is intentionally state-light: callers provide a stable action

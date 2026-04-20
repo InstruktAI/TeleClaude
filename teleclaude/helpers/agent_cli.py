@@ -28,14 +28,16 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from instrukt_ai_logging import get_logger  # pylint: disable=wrong-import-position
+import tempfile
 
-from teleclaude.config import config as app_config  # pylint: disable=wrong-import-position
-from teleclaude.constants import AGENT_PROTOCOL  # pylint: disable=wrong-import-position
-from teleclaude.core.agents import get_enabled_agents, is_agent_enabled  # pylint: disable=wrong-import-position
-from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # pylint: disable=wrong-import-position
-from teleclaude.paths import MAIN_DB_PATH  # pylint: disable=wrong-import-position
-from teleclaude.runtime.binaries import resolve_agent_binary  # pylint: disable=wrong-import-position
+from instrukt_ai_logging import get_logger
+
+from teleclaude.config import config as app_config
+from teleclaude.constants import AGENT_PROTOCOL
+from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
+from teleclaude.helpers.agent_types import AgentName, ThinkingMode
+from teleclaude.paths import MAIN_DB_PATH
+from teleclaude.runtime.binaries import resolve_agent_binary
 
 logger = get_logger(__name__)
 _APP_CONFIG_COMPAT = app_config
@@ -167,7 +169,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
             return path.exists() and path.is_file() and os.access(path, os.X_OK)
         return shutil.which(binary) is not None
 
-    def db_available(agent: AgentName) -> bool:  # pylint: disable=too-many-return-statements  # Early-return routing is intentionally branchy.
+    def db_available(agent: AgentName) -> bool:
         """Read agent availability from teleclaude.db.
 
         Missing DB/table/row is treated as available to preserve standalone behavior.
@@ -260,7 +262,7 @@ def _cli_env() -> dict[str, str]:
     }
 
 
-def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-statements
+def _run_agent(
     agent: AgentName,
     thinking_mode: ThinkingMode,
     prompt: str,
@@ -301,8 +303,6 @@ def _run_agent(  # pylint: disable=too-many-arguments,too-many-branches,too-many
 
     if schema_arg:
         if schema_file.lower() == "true":
-            import tempfile  # pylint: disable=import-outside-toplevel
-
             with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
                 json.dump(schema, f)
                 schema_path = f.name
@@ -391,7 +391,7 @@ _JOB_SPEC: dict[str, dict[str, str | dict[str, str]]] = {
 }
 
 
-def run_job(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
+def run_job(
     *,
     agent: str | None,
     thinking_mode: str,
@@ -453,7 +453,7 @@ def run_job(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters
     return result.returncode
 
 
-def run_once(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals
+def run_once(
     *,
     agent: str | None,
     thinking_mode: str,
@@ -578,7 +578,7 @@ def main() -> int:
         )
         print(json.dumps(payload))
         return 0
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         payload = {
             "status": "error",
             "agent": args.agent if args.agent else None,

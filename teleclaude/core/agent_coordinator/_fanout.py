@@ -20,10 +20,7 @@ from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
-from teleclaude.utils.transcript import (
-    extract_last_agent_message,
-    get_assistant_messages_since,
-)
+from teleclaude.utils.transcript import extract_last_agent_message, get_assistant_messages_since
 
 from ._helpers import _MAX_FORWARDED_LINK_OUTPUT_CHARS
 
@@ -34,7 +31,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin namespace
+class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
     """Extraction, fanout, TTS, snapshot, and notification methods for AgentCoordinator."""
 
     if TYPE_CHECKING:
@@ -47,7 +44,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
         message = random.choice(SESSION_START_MESSAGES)
         try:
             await self.tts_manager.speak(message, session_id=session_id)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # TTS boundary
+        except Exception as exc:
             logger.warning("TTS session_start failed: %s", exc)
 
     async def _extract_agent_output(self, session_id: str, payload: "AgentStopPayload") -> str | None:
@@ -83,7 +80,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
 
         return last_message
 
-    # pylint: disable=too-many-locals,too-many-branches
     async def _extract_agent_output_since(
         self,
         session_id: str,
@@ -160,7 +156,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
         try:
             _title, summary = await summarize_agent_output(raw_output)
             return summary
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Summarizer boundary
+        except Exception as exc:
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id})
             return None
 
@@ -231,10 +227,10 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                 metadata=MessageMetadata(),
             )
             logger.info("Forwarded stop to %s", initiator_computer)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Cross-computer delivery boundary
+        except Exception as exc:
             logger.warning("Failed to forward stop to %s: %s", initiator_computer, exc)
 
-    async def _fanout_linked_stop_output(  # pylint: disable=too-many-locals  # Fanout builds per-peer routing state
+    async def _fanout_linked_stop_output(
         self,
         sender_session_id: str,
         distilled_output: str,
@@ -291,7 +287,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                             ),
                         )
                     delivered += 1
-                except Exception as exc:  # pylint: disable=broad-exception-caught  # Best-effort peer delivery
+                except Exception as exc:
                     logger.warning(
                         "Linked stop output delivery failed: sender=%s peer=%s target=%s error=%s",
                         sender_session_id,

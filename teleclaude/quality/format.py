@@ -12,6 +12,8 @@ import re
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from teleclaude.quality.scope import prettier_files, python_files, typescript_files
 
 logger = logging.getLogger(__name__)
@@ -130,8 +132,6 @@ class FormatRunner:
 
     def _resolve_frontend_root(self) -> Path:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
-        import yaml
-
         config_path = self._project_root / "teleclaude.yml"
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:

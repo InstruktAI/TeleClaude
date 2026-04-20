@@ -14,6 +14,9 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
+from teleclaude.api import auth as auth_mod
+from teleclaude.core.models._session import Session
+
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio]
 
 
@@ -199,8 +202,6 @@ async def test_token_auth_with_null_human_role(api: AsyncClient) -> None:
 
 async def test_no_identity_no_token_rejected_in_multiuser(api: AsyncClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """In multi-user mode, a caller with no headers at all gets 401."""
-    from teleclaude.api import auth as auth_mod
-
     monkeypatch.setattr(auth_mod, "_requires_terminal_login", lambda: True)
 
     resp = await api.get("/sessions")
@@ -216,8 +217,6 @@ async def test_session_model_default_is_none() -> None:
     """The Session dataclass must default human_role to None.
     This is the foundational invariant — no silent admin escalation.
     """
-    from teleclaude.core.models._session import Session
-
     session = Session(
         session_id="test",
         computer_name="test",
@@ -234,8 +233,6 @@ async def test_session_model_default_is_none() -> None:
 
 async def test_from_dict_preserves_null_human_role() -> None:
     """Session.from_dict must not coerce missing human_role to admin."""
-    from teleclaude.core.models._session import Session
-
     session = Session.from_dict(
         {
             "session_id": "test",

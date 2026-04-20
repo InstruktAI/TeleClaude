@@ -33,7 +33,7 @@ SOCKET_PATH = "/tmp/teleclaude-chiptunes.sock"
 PID_PATH = "/tmp/teleclaude-chiptunes.pid"
 
 
-class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
+class ChiptunesManager:
     """Thin relay between daemon and chiptunes subprocess worker.
 
     Relays commands to the worker via Unix socket and mirrors state events
@@ -123,7 +123,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             except OSError:
                 pass
         with open(CHIPTUNES_WORKER_LOG_PATH, "a", encoding="utf-8") as log_file:
-            subprocess.Popen(  # pylint: disable=consider-using-with
+            subprocess.Popen(
                 [
                     sys.executable,
                     "-m",
@@ -239,7 +239,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             if self.on_track_start is not None:
                 try:
                     self.on_track_start(track_label, sid_path)
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception:
                     logger.warning("on_track_start callback error", exc_info=True)
             self._fire_state_change()
         elif event == "state_update":
@@ -252,7 +252,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
             if self.on_command_done is not None:
                 try:
                     self.on_command_done(command_id)
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception:
                     logger.warning("on_command_done callback error", exc_info=True)
             self._fire_state_change()
 
@@ -260,7 +260,7 @@ class ChiptunesManager:  # pylint: disable=too-many-instance-attributes
         if self.on_state_change is not None:
             try:
                 self.on_state_change(self._last_state)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.warning("on_state_change callback error", exc_info=True)
 
     # ------------------------------------------------------------------ #

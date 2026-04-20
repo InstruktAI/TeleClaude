@@ -9,7 +9,7 @@ from textual.css.query import NoMatches, WrongType
 from textual.widgets import Footer
 
 
-class FooterBindingView(Protocol):  # pylint: disable=too-few-public-methods
+class FooterBindingView(Protocol):
     """Minimal view protocol for footer binding helpers."""
 
     app: Any

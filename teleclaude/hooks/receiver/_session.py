@@ -67,13 +67,13 @@ __all__ = [
 ]
 
 
-_sync_engine: Engine | None = None  # pylint: disable=invalid-name
+_sync_engine: Engine | None = None
 _outbox_engines: dict[str, Engine] = {}
 
 
 def _create_sync_engine() -> Engine:
     """Return a shared main-database engine for receiver read paths."""
-    global _sync_engine  # pylint: disable=global-statement
+    global _sync_engine
     if _sync_engine is not None:
         return _sync_engine
 

@@ -1,9 +1,8 @@
 """Handlers for telec bugs commands."""
-# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-statements
-# pylint: disable=raise-missing-from,no-else-raise,broad-exception-caught
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -11,6 +10,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.config import config
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
@@ -48,8 +49,6 @@ def _emit_bug_dumped_event(slug: str, project_root: Path) -> None:
 
 def _resolve_project_by_name(name: str) -> Path:
     """Resolve a project name to its path using trusted_dirs config."""
-    from teleclaude.config import config  # pylint: disable=import-outside-toplevel
-
     trusted = config.computer.get_all_trusted_dirs()
     for td in trusted:
         if td.name.lower() == name.lower():
@@ -209,8 +208,6 @@ def _handle_bugs_report(args: list[str]) -> None:
 
 def _handle_bugs_list(args: list[str]) -> None:
     """Handle telec bugs list — queries todos.db for bug-kind todos."""
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
     project_root = resolve_invocation_cwd()
 
     i = 0
@@ -226,7 +223,7 @@ def _handle_bugs_list(args: list[str]) -> None:
             raise SystemExit(1)
 
     db = _get_todos_db_sync(str(project_root))
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     try:
         rows = conn.execute(
             "SELECT r.slug, s.state FROM roadmap r "  # guard: raw-sql
@@ -241,8 +238,6 @@ def _handle_bugs_list(args: list[str]) -> None:
     if not rows:
         print("No bugs found")
         return
-
-    import json  # pylint: disable=import-outside-toplevel
 
     bugs: list[tuple[str, str]] = []
     for slug, state_json in rows:

@@ -27,7 +27,7 @@ class AdapterType(str, Enum):
 
 
 @dataclass
-class PeerInfo:  # pylint: disable=too-many-instance-attributes
+class PeerInfo:
     """Information about a discovered peer computer."""
 
     name: str
@@ -57,7 +57,7 @@ def _str_or_none(value: object) -> str | None:
 
 
 @dataclass
-class TelegramAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
+class TelegramAdapterMetadata:
     """Telegram-specific adapter metadata."""
 
     topic_id: int | None = None
@@ -90,7 +90,7 @@ class TelegramAdapterMetadata:  # pylint: disable=too-many-instance-attributes  
 
 
 @dataclass
-class DiscordAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
+class DiscordAdapterMetadata:
     """Discord-specific adapter metadata."""
 
     user_id: str | None = None
@@ -126,7 +126,7 @@ class DiscordAdapterMetadata:  # pylint: disable=too-many-instance-attributes  #
 
 
 @dataclass
-class WhatsAppAdapterMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter payload shape
+class WhatsAppAdapterMetadata:
     """WhatsApp-specific adapter metadata."""
 
     phone_number: str | None = None
@@ -158,7 +158,7 @@ class WhatsAppAdapterMetadata:  # pylint: disable=too-many-instance-attributes  
 
 
 @dataclass
-class RedisTransportMetadata:  # pylint: disable=too-many-instance-attributes
+class RedisTransportMetadata:
     """Redis-specific adapter metadata."""
 
     channel_id: str | None = None

@@ -9,6 +9,7 @@ cleanly before implementation. Remove ``pytestmark = pytest.mark.xfail``
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import subprocess
 import sys
@@ -68,8 +69,6 @@ def _run_no_session(*args: str) -> subprocess.CompletedProcess[str]:
 
 def _run_with_fake_session(*args: str) -> subprocess.CompletedProcess[str]:
     """Run the script with a fake session identity file in TMPDIR."""
-    import json  # pylint: disable=import-outside-toplevel
-
     env = _base_env()
     with tempfile.TemporaryDirectory() as tmpdir:
         # Create a fake session identity file
@@ -174,8 +173,8 @@ def test_missing_companion_is_silently_skipped() -> None:
 # ---------------------------------------------------------------------------
 
 _mod = _import_session_scope()
-_filter_by_mode = _mod._filter_by_mode  # pylint: disable=protected-access
-_fallback_worktree_status_files = _mod._fallback_worktree_status_files  # pylint: disable=protected-access
+_filter_by_mode = _mod._filter_by_mode
+_fallback_worktree_status_files = _mod._fallback_worktree_status_files
 
 
 def test_filter_lint_mode_includes_python_source_files(tmp_path: Path) -> None:

@@ -1,4 +1,3 @@
-# pylint: disable=too-many-locals,import-outside-toplevel
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
@@ -9,9 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from teleclaude.core.command_handlers import _session
 from teleclaude.core.db import Db
 from teleclaude.core.events import TeleClaudeEvents
-from teleclaude.core.models import SessionField
+from teleclaude.core.models import SessionField, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.models._adapter import TerminalOriginMetadata
+from teleclaude.types.commands import CreateSessionCommand
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,11 +37,6 @@ async def _create_headless_via_command(
     native_log_file: str | None,
     subdir: str | None,
 ) -> str:
-    from teleclaude.core.command_handlers import _session
-    from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
-    from teleclaude.core.models._adapter import TerminalOriginMetadata
-    from teleclaude.types.commands import CreateSessionCommand
-
     project_path = tmp_path / "project"
     project_path.mkdir(exist_ok=True)
     help_desk = tmp_path / "help-desk"

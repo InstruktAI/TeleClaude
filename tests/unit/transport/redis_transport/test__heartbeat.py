@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -41,8 +42,6 @@ class TestSendHeartbeat:
 
     @pytest.mark.unit
     async def test_payload_includes_computer_name(self, transport: RedisTransport) -> None:
-        import json
-
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         transport._cache = None
@@ -55,8 +54,6 @@ class TestSendHeartbeat:
 
     @pytest.mark.unit
     async def test_payload_includes_last_seen(self, transport: RedisTransport) -> None:
-        import json
-
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         transport._cache = None
@@ -69,8 +66,6 @@ class TestSendHeartbeat:
 
     @pytest.mark.unit
     async def test_includes_interested_in_when_cache_has_data_types(self, transport: RedisTransport) -> None:
-        import json
-
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         mock_cache = MagicMock()
@@ -86,8 +81,6 @@ class TestSendHeartbeat:
 
     @pytest.mark.unit
     async def test_includes_projects_digest_when_available(self, transport: RedisTransport) -> None:
-        import json
-
         mock_redis = AsyncMock()
         transport._get_redis = AsyncMock(return_value=mock_redis)
         mock_cache = MagicMock()

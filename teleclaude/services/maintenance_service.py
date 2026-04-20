@@ -61,14 +61,14 @@ class MaintenanceService:
                 await db.cleanup_inbound(cutoff_iso)
                 try:
                     await get_operations_service().expire_stale_operations()
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception:
                     logger.debug("Operations service not available for stale sweep", exc_info=True)
                 await self._check_idle_compaction()
                 await self._cleanup_adapter_resources()
 
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Error in periodic cleanup: %s", exc, exc_info=True)
 
     async def poller_watch_loop(self) -> None:
@@ -78,7 +78,7 @@ class MaintenanceService:
                 await self._poller_watch_iteration()
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Error in poller watch loop: %s", exc, exc_info=True)
             await asyncio.sleep(self._poller_watch_interval_s)
 
@@ -89,7 +89,7 @@ class MaintenanceService:
 
         try:
             active_tmux_sessions = set(await tmux_bridge.list_tmux_sessions())
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Failed to list tmux sessions during poller watch: %s", exc)
             return
 
@@ -204,7 +204,7 @@ class MaintenanceService:
                     cleaned = await adapter.cleanup_stale_resources()
                     if cleaned > 0:
                         logger.info("Adapter %s cleaned %d stale resources", adapter_type, cleaned)
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception as exc:
                     logger.warning("Adapter %s cleanup failed: %s", adapter_type, exc)
 
     async def _restore_tmux_session(self, session: Session) -> None:

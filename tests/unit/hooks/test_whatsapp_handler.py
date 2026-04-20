@@ -1,4 +1,3 @@
-# pylint: disable=consider-using-from-import
 """Characterization tests for teleclaude.hooks.whatsapp_handler."""
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ def _make_event(event_type: str, **properties: str) -> HookEvent:
     )
 
 
-class TestDownloadWhatsappMedia:  # pylint: disable=too-few-public-methods
+class TestDownloadWhatsappMedia:
     """Media download tests for WhatsApp handler."""
 
     @pytest.mark.unit
@@ -99,7 +98,7 @@ class TestDownloadWhatsappMedia:  # pylint: disable=too-few-public-methods
         assert client.calls[1][1] == "https://cdn.example.test/media"
 
 
-class TestResolveOrCreateSession:  # pylint: disable=too-few-public-methods
+class TestResolveOrCreateSession:
     """Session resolution and creation tests for WhatsApp handler."""
 
     @pytest.mark.unit
@@ -126,7 +125,7 @@ class TestResolveOrCreateSession:  # pylint: disable=too-few-public-methods
         monkeypatch.setattr(whatsapp_handler, "get_default_agent", lambda: "claude")
         monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: mock_service)
 
-        session = await whatsapp_handler._resolve_or_create_session("15551234567")  # pylint: disable=protected-access
+        session = await whatsapp_handler._resolve_or_create_session("15551234567")
 
         assert session is resolved_session
         mock_service.create_session.assert_awaited_once()
@@ -266,7 +265,7 @@ class TestHandleWhatsappEvent:
         monkeypatch.setattr(whatsapp_handler, "UiAdapter", _FakeWhatsappAdapter)
         monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: command_service)
 
-        await whatsapp_handler._dispatch_whatsapp_command(  # pylint: disable=protected-access
+        await whatsapp_handler._dispatch_whatsapp_command(
             session=SimpleNamespace(session_id="session-4"),
             message_id="wamid-typed",
             command_name="process_message",

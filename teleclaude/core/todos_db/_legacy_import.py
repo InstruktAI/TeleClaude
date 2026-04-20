@@ -119,9 +119,7 @@ def _database_is_empty(conn: sqlite3.Connection) -> bool:
     return True
 
 
-def _import_legacy_markdown_todos(  # pylint: disable=too-many-locals
-    conn: sqlite3.Connection, todos_dir: Path
-) -> LegacyImportSummary | None:
+def _import_legacy_markdown_todos(conn: sqlite3.Connection, todos_dir: Path) -> LegacyImportSummary | None:
     folder_artifacts = _collect_folder_artifacts(todos_dir)
     seen_slugs: set[str] = set()
     entries: list[_LegacyEntry] = []
@@ -369,8 +367,8 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
             state.requirements_review.verdict = "approve" if "requirements" in artifacts else "skipped"
             state.test_spec_review.verdict = "skipped"
             state.plan_review.verdict = "approve" if "implementation-plan" in artifacts else "skipped"
-        if not state.artifacts.test_specs.produced_at:  # pylint: disable=no-member
-            state.artifacts.test_specs.produced_at = now  # pylint: disable=no-member
+        if not state.artifacts.test_specs.produced_at:
+            state.artifacts.test_specs.produced_at = now
 
     return state.model_dump(mode="json")
 

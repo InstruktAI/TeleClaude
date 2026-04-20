@@ -130,7 +130,7 @@ class DbWebhooksMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def mark_webhook_failed(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Retry bookkeeping is persisted as discrete columns.
+    async def mark_webhook_failed(
         self,
         row_id: int,
         error: str,

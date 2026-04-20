@@ -1,6 +1,6 @@
 # guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportPrivateUsage=false
-# pylint: disable=import-outside-toplevel,protected-access
+
 """Test spec for R3/R4: Activatable Procedures distribution.
 
 R3: The distribution pipeline renders a dedicated "Activatable Procedures"

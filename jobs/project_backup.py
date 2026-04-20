@@ -196,7 +196,7 @@ def main() -> int:
     """Entry point — run the backup and emit a JSON JobResult to stdout."""
     try:
         result = run()
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         traceback.print_exc(file=sys.stderr)
         result = JobResult(success=False, message=str(exc))
 

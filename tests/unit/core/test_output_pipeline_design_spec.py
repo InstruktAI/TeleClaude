@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=missing-function-docstring,too-few-public-methods
+
 """Structural specs for the central transcript-driven output pipeline.
 
 These tests document the intended ownership model:
@@ -30,7 +30,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 class TestTmuxHotPathBounded:
     def test_output_poller_hot_path_capture_window_is_small(self) -> None:
-        assert output_poller._HOT_PATH_CAPTURE_LINES == 20  # pylint: disable=protected-access
+        assert output_poller._HOT_PATH_CAPTURE_LINES == 20
 
     def test_output_poller_passes_hot_path_capture_window_to_tmux_bridge(self) -> None:
         source = inspect.getsource(OutputPoller.poll)

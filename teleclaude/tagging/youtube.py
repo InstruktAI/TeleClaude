@@ -23,9 +23,7 @@ from teleclaude.helpers.youtube_helper import (
     _safe_get_list,
     _safe_get_str,
 )
-from teleclaude.tagging.youtube_shared import (
-    KNOWLEDGE_TAGGING_RULES as NORMAL_TAGGING_RULES,
-)
+from teleclaude.tagging.youtube_shared import KNOWLEDGE_TAGGING_RULES as NORMAL_TAGGING_RULES
 from teleclaude.tagging.youtube_shared import (
     WEB_RESEARCH_RULES,
     build_batch_response_schema,
@@ -79,7 +77,7 @@ class SyncResult:
 
 
 @dataclass
-class TaggingConfig:  # pylint: disable=too-many-instance-attributes
+class TaggingConfig:
     """Configuration for tagging operations."""
 
     mode: str = "normal+web"  # normal, web, normal+web
@@ -229,7 +227,7 @@ def call_agent(
         )
         result = payload.get("result", {})
         return result if isinstance(result, dict) else None
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.error("agent call failed", agent=agent, error=str(e))
         return None
 
@@ -237,7 +235,7 @@ def call_agent(
 # --- Batch Processing ---
 
 
-def process_batch(  # pylint: disable=too-many-arguments,too-many-locals
+def process_batch(
     rows: list[ChannelRow],
     config: TaggingConfig,
     tags: list[str],
@@ -245,7 +243,7 @@ def process_batch(  # pylint: disable=too-many-arguments,too-many-locals
     agent_iter: Iterator[str],
     *,
     use_web: bool = False,
-    merge_mode: bool = False,  # pylint: disable=unused-argument
+    merge_mode: bool = False,
 ) -> dict[str, str]:
     """Process a batch of rows and return {channel_id: tags_str}."""
     schema = build_schema(tags)
@@ -313,7 +311,7 @@ def process_batch(  # pylint: disable=too-many-arguments,too-many-locals
 # --- Main Sync Function ---
 
 
-def sync_youtube_subscriptions(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
+def sync_youtube_subscriptions(
     subscriber: Subscriber,
     *,
     mode: str = "normal+web",

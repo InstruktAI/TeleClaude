@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """Probe tmux readiness assumptions for TeleClaude agent startup."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,too-many-instance-attributes,too-many-arguments,too-many-locals,too-many-branches
 
 from __future__ import annotations
 
@@ -354,7 +353,7 @@ def main() -> int:
         return asyncio.run(_run(args))
     except KeyboardInterrupt:
         return 130
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         print(f"error: {exc}", file=sys.stderr, flush=True)
         return 1
 

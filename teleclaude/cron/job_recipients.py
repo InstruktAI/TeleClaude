@@ -7,17 +7,13 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
-from teleclaude.config.schema import (
-    CredsConfig,
-    JobSubscription,
-    SubscriptionNotification,
-)
+from teleclaude.config.schema import CredsConfig, JobSubscription, SubscriptionNotification
 from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
 
 
-def discover_job_recipients(  # pylint: disable=too-many-branches,too-many-locals  # Multi-case routing is intentionally flat. Flat data assembly is intentionally verbose.
+def discover_job_recipients(
     job_name: str,
     job_category: str,
     *,
@@ -66,7 +62,7 @@ def discover_job_recipients(  # pylint: disable=too-many-branches,too-many-local
 
         try:
             person_cfg = load_person_config(person_cfg_path)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("skipping bad person config", path=str(person_cfg_path), error=str(exc))
             continue
 

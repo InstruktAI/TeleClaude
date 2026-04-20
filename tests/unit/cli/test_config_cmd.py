@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -148,8 +149,6 @@ def test_handle_get_prints_full_config_when_no_paths(
 def test_handle_get_json_format_outputs_valid_json(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import json
-
     config_file = tmp_path / "config.yml"
     config_file.write_text("key: value\n")
     monkeypatch.setenv("TELECLAUDE_CONFIG_PATH", str(config_file))

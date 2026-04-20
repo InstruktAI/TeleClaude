@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from teleclaude.events.envelope import EventEnvelope
     from teleclaude.events.pipeline import PipelineContext
+from teleclaude.events.envelope import EventEnvelope as Envelope
+from teleclaude.events.envelope import EventLevel
 
 
 async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
@@ -17,9 +19,6 @@ async def process(event: EventEnvelope, context: PipelineContext) -> EventEnvelo
     """
     if event.event != "signal.synthesis.ready":
         return None
-
-    from teleclaude.events.envelope import EventEnvelope as Envelope
-    from teleclaude.events.envelope import EventLevel
 
     return Envelope(
         event="domain.marketing.feed.synthesis_ready",

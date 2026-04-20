@@ -10,7 +10,7 @@ from teleclaude.core.next_machine.state_io import validate_work_phase_preconditi
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
-_PHASE_DERIVATION = "teleclaude.core.next_machine.phase_derivation"
+_STATE_IO = "teleclaude.core.next_machine.state_io"
 
 
 def test_build_started_always_valid() -> None:
@@ -20,7 +20,7 @@ def test_build_started_always_valid() -> None:
 
 def test_build_complete_rejected_without_commits() -> None:
     """build_complete requires commits beyond main."""
-    with patch(f"{_PHASE_DERIVATION}._has_build_commits_beyond_main", return_value=False):
+    with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=False):
         result = validate_work_phase_preconditions({}, "build_complete", "/some/worktree")
 
     assert result is not None
@@ -29,7 +29,7 @@ def test_build_complete_rejected_without_commits() -> None:
 
 def test_build_complete_accepted_with_commits() -> None:
     """build_complete passes when commits exist."""
-    with patch(f"{_PHASE_DERIVATION}._has_build_commits_beyond_main", return_value=True):
+    with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=True):
         result = validate_work_phase_preconditions({}, "build_complete", "/some/worktree")
 
     assert result is None

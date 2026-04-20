@@ -1,7 +1,5 @@
 """Mixin: DbInboundMixin."""
 
-# pylint: disable=no-member  # SQLModel columns expose SQLAlchemy comparators dynamically.
-
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -23,7 +21,7 @@ logger = get_logger(__name__)
 class DbInboundMixin:
     """Inbound queue persistence helpers."""
 
-    async def enqueue_inbound(  # pylint: disable=too-many-arguments  # Queue rows preserve adapter payload fields explicitly.
+    async def enqueue_inbound(
         self,
         session_id: str,
         origin: str,

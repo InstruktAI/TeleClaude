@@ -429,7 +429,7 @@ def _extract_tool_calls_for_scope(
 
         return TurnTimeline(tool_calls=state.records, has_data=True, turn_start_at=turn_start_at)
 
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug("Tool-call extraction failed (fail-open)", exc_info=True)
         return TurnTimeline(tool_calls=[], has_data=False)
 
@@ -471,7 +471,7 @@ def _merge_timelines(
     )
 
 
-def extract_effective_tool_calls(  # pylint: disable=too-many-return-statements
+def extract_effective_tool_calls(
     transcript_path: str | None,
     agent_name: AgentName,
     *,
@@ -524,7 +524,7 @@ def extract_effective_tool_calls(  # pylint: disable=too-many-return-statements
     return _merge_timelines(timeline_sources, turn_start_at=parent_timeline.turn_start_at)
 
 
-def extract_tool_calls_current_turn(  # pylint: disable=too-many-arguments
+def extract_tool_calls_current_turn(
     transcript_path: str,
     agent_name: AgentName,
     *,
@@ -676,7 +676,7 @@ def _append_string_content_message(
     )
 
 
-def _append_block_content_messages(  # pylint: disable=too-many-arguments
+def _append_block_content_messages(
     messages: list[StructuredMessage],
     role: str,
     content: list[object],

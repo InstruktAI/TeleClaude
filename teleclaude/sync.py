@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from teleclaude.docs_index import build_all_indexes
+from teleclaude.git import GitCommandError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.resource_validation import (
     clear_errors,
@@ -125,8 +126,6 @@ def _repair_broken_docs_links(project_root: Path) -> None:
 
         if not needs_repair:
             continue
-
-        from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
 
         try:
             repo = Repo(str(project_root))

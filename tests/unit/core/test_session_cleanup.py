@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.core.session_cleanup import _end_escalation_if_active, _terminate_session_inner
+
 
 def _make_session(session_id: str = "sess-lifecycle") -> MagicMock:
     session = MagicMock()
@@ -26,8 +28,6 @@ class TestTerminateSessionRevokesTokens:
     @pytest.mark.asyncio
     async def test_terminate_session_calls_revoke_and_invalidate(self):
         """terminate_session calls revoke_session_tokens and invalidate_token_cache."""
-        from teleclaude.core.session_cleanup import _terminate_session_inner
-
         session = _make_session(session_id="sess-lifecycle")
 
         with (
@@ -56,8 +56,6 @@ class TestEndEscalationIfActive:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_active_escalation_is_cleared_and_event_emitted(self):
-        from teleclaude.core.session_cleanup import _end_escalation_if_active
-
         session = _make_session(session_id="sess-esc")
         session.relay_status = "active"
 
@@ -81,8 +79,6 @@ class TestEndEscalationIfActive:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_non_escalated_session_is_skipped(self):
-        from teleclaude.core.session_cleanup import _end_escalation_if_active
-
         session = _make_session(session_id="sess-no-esc")
         session.relay_status = None
 

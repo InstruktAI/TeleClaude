@@ -1,5 +1,4 @@
 """Functional TelecApp coverage for preparation artifact preview/edit flow."""
-# pylint: disable=missing-function-docstring,protected-access
 
 from __future__ import annotations
 

@@ -25,7 +25,6 @@ _EXPECTED_COMPONENTS = frozenset(
         "ruff-check",
         "pyright",
         "mypy",
-        "pylint",
         "parallel-typecheck",
         "markdown",
         "docs-validate",

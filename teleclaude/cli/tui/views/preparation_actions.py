@@ -10,10 +10,7 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.cli.tui.views._footer_actions import (
-    refresh_footer_bindings,
-    sync_default_footer_action,
-)
+from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
@@ -25,10 +22,11 @@ from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 
 if TYPE_CHECKING:
-    from teleclaude.api_models import ProjectWithTodosDTO  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from teleclaude.api_models import ProjectWithTodosDTO
+from teleclaude.cli.tui.messages import StateChanged
 
 
-class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,protected-access
+class PreparationViewActionsMixin:
     """Keyboard actions, check_action, watch_cursor_index, on_focus for PreparationView."""
 
     if TYPE_CHECKING:
@@ -346,7 +344,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
 
         try:
             result = tool_api_request("POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
             return
 
@@ -429,11 +427,13 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
                     json_body={"slug": slug, "cwd": project_path},
                     timeout=10.0,
                 )
-                if isinstance(result, dict) and result.get("status") == "ok":
-                    self.app.notify(f"Removed {slug}")  # type: ignore[attr-defined]
+                if isinstance(result, dict) and result.get("operation_id"):
+                    self.app.notify(f"Removing {slug}...")  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
                     self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+                else:
+                    self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+            except Exception as exc:
                 self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
@@ -528,7 +528,7 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
                     self.app._refresh_data()  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
                     self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
@@ -567,8 +567,6 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
             else:
                 self._icebox_projects.add(project_path)  # type: ignore[attr-defined]
 
-        from teleclaude.cli.tui.messages import StateChanged  # pylint: disable=import-outside-toplevel
-
         self.post_message(StateChanged())  # type: ignore[attr-defined]
         self._rebuild()  # type: ignore[attr-defined]
 
@@ -595,5 +593,5 @@ class PreparationViewActionsMixin:  # pylint: disable=too-many-public-methods,pr
                 self.app._refresh_data()  # type: ignore[attr-defined]
             elif isinstance(result, dict) and result.get("detail"):
                 self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]

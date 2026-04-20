@@ -12,7 +12,7 @@ from teleclaude.api_models import TodoDTO
 from teleclaude.core.models import ProjectInfo
 
 
-class CacheStub:  # pylint: disable=too-few-public-methods,missing-class-docstring
+class CacheStub:
     def __init__(self, local_projects: list[ProjectInfo], remote_projects: list[ProjectInfo]) -> None:
         self._local_projects = local_projects
         self._remote_projects = remote_projects
@@ -27,7 +27,7 @@ class CacheStub:  # pylint: disable=too-few-public-methods,missing-class-docstri
         return self._remote_projects
 
 
-class TestProjectsRoutes:  # pylint: disable=missing-class-docstring
+class TestProjectsRoutes:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_list_projects_prefers_cached_local_projects_and_appends_remote_cache(self) -> None:

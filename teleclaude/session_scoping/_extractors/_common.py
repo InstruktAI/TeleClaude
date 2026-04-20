@@ -11,7 +11,7 @@ from teleclaude.utils.transcript import TurnTimeline
 from .._types import ScopeMode
 
 
-class ExtractorFunction(Protocol):  # pylint: disable=too-few-public-methods
+class ExtractorFunction(Protocol):
     """Typed contract for agent-native path extractors."""
 
     def __call__(

@@ -45,7 +45,7 @@ async def _execute_control_key(
     return await tmux_action(session, *tmux_args)
 
 
-async def _ensure_tmux_for_headless(  # pylint: disable=too-many-locals  # Adoption wires together existing session state.
+async def _ensure_tmux_for_headless(
     session: Session,
     client: "AdapterClient",
     start_polling: StartPollingFunc | None,
@@ -133,7 +133,7 @@ async def _ensure_tmux_for_headless(  # pylint: disable=too-many-locals  # Adopt
     return refreshed or session
 
 
-async def keys(  # pylint: disable=too-many-return-statements,too-many-branches,no-value-for-parameter
+async def keys(
     cmd: KeysCommand,
     client: "AdapterClient",
     start_polling: StartPollingFunc,

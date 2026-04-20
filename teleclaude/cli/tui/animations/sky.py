@@ -9,11 +9,7 @@ from typing import TypedDict
 
 from teleclaude.cli.tui.animations import sprites as sprites_module
 from teleclaude.cli.tui.animations.base import Z0, Z10, Z20, Animation, RenderBuffer, render_sprite
-from teleclaude.cli.tui.animations.sprites import (
-    MOON_SPRITE,
-    SUN_SPRITE,
-    get_sky_entities,
-)
+from teleclaude.cli.tui.animations.sprites import MOON_SPRITE, SUN_SPRITE, get_sky_entities
 from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
 from teleclaude.cli.tui.theme import blend_colors, is_dark_mode
 
@@ -33,7 +29,7 @@ class SkyEntity(TypedDict):
     optional_motion: bool
 
 
-class GlobalSky(Animation):  # pylint: disable=too-many-instance-attributes
+class GlobalSky(Animation):
     """TC20: Global background canvas with Day/Night physical states.
     Paints the entire header area (Z-0) including margins.
     Dynamic weather system with parallax clouds at weighted Z-levels.

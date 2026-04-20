@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.helpers.git_repo_helper."""
-# pylint: disable=protected-access,unused-argument
 
 from __future__ import annotations
 

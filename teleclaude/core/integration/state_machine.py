@@ -9,8 +9,6 @@ The state machine is the authority on sequencing.
 The agent is the authority on intelligence. Neither does the other's job.
 """
 
-# pylint: disable=cyclic-import  # Integration machine still traverses next-machine orchestration modules.
-
 from __future__ import annotations
 
 import asyncio
@@ -67,7 +65,7 @@ __all__ = ["IntegrationPhase", "next_integrate"]
 # ---------------------------------------------------------------------------
 
 
-def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
+def _dispatch_sync(
     *,
     session_id: str,
     slug: str | None,
@@ -157,7 +155,7 @@ def _dispatch_sync(  # pylint: disable=too-many-arguments,too-many-locals
     return _format_error("LOOP_LIMIT", f"State machine exceeded {_LOOP_LIMIT} internal transitions")
 
 
-def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
+def _step(
     *,
     phase: IntegrationPhase,
     checkpoint: IntegrationCheckpoint,
@@ -272,7 +270,7 @@ def _step(  # pylint: disable=too-many-arguments,too-many-return-statements
 
 
 async def next_integrate(
-    db: Db,  # pylint: disable=unknown-option-value,unused-argument — reserved for future DB-backed state
+    db: Db,
     slug: str | None,
     cwd: str,
 ) -> str:

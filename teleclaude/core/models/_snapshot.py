@@ -11,13 +11,13 @@ from teleclaude.session_fields import SessionSnapshotIdentityFields, SessionSnap
 from teleclaude.types import SystemStats
 
 # re-export for spec test access (tests import MessageMetadata from _snapshot)
-from ._session import MessageMetadata as MessageMetadata  # pylint: disable=useless-import-alias,unused-import
+from ._session import MessageMetadata as MessageMetadata
 from ._session import Session
 from ._types import JsonDict
 
 
 @dataclass
-class StartSessionArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
+class StartSessionArgs:
     """Typed arguments for starting a session."""
 
     computer: str
@@ -31,7 +31,7 @@ class StartSessionArgs:  # pylint: disable=too-many-instance-attributes  # Comma
 
 
 @dataclass
-class RunAgentCommandArgs:  # pylint: disable=too-many-instance-attributes  # Command payload shape
+class RunAgentCommandArgs:
     """Typed arguments for run-agent command execution."""
 
     computer: str
@@ -45,7 +45,7 @@ class RunAgentCommandArgs:  # pylint: disable=too-many-instance-attributes  # Co
 
 
 @dataclass
-class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Redis payload shape
+class RedisInboundMessage:
     """Typed Redis message parsed from raw stream entry."""
 
     msg_type: str
@@ -64,7 +64,7 @@ class RedisInboundMessage:  # pylint: disable=too-many-instance-attributes  # Re
 
 
 @dataclass
-class SessionSnapshot(  # pylint: disable=too-many-instance-attributes  # Session list payload shape
+class SessionSnapshot(
     SessionSnapshotTimestampFields,
     SessionSnapshotIdentityFields,
 ):
@@ -237,7 +237,7 @@ class MessagePayload:
 
 
 @dataclass
-class ComputerInfo:  # pylint: disable=too-many-instance-attributes  # Computer summary payload
+class ComputerInfo:
     """Information about a computer (local or remote)."""
 
     name: str

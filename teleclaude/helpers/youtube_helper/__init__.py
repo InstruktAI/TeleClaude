@@ -13,9 +13,9 @@ from collections.abc import Coroutine
 from datetime import datetime, timedelta
 from typing import Any, cast
 
-import dateparser  # pylint: disable=import-error
+import dateparser
 from aiohttp import ClientSession
-from youtube_transcript_api import YouTubeTranscriptApi  # pylint: disable=import-error
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Re-export models for backward-compatible imports
 from teleclaude.helpers.youtube_helper._models import (
@@ -124,7 +124,7 @@ __all__ = [
 ]
 
 
-async def youtube_history(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
+async def youtube_history(
     query: str | None = None,
     channel: str | None = None,
     max_results: int = 20,
@@ -257,8 +257,8 @@ async def youtube_history(  # pylint: disable=too-many-arguments,too-many-branch
     return videos
 
 
-async def youtube_subscriptions(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
-    query: str | None = None,  # pylint: disable=unused-argument
+async def youtube_subscriptions(
+    query: str | None = None,
     channel: str | None = None,
     max_results: int = 20,
     cookies_file: str | None = None,
@@ -449,7 +449,7 @@ def _process_video_results(results: list[list[Video]], query: str | None, char_c
     return res
 
 
-async def youtube_search(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
+async def youtube_search(
     channels: str | None,
     end_date: str = "",
     query: str | None = None,

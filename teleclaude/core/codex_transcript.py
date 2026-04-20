@@ -55,7 +55,7 @@ class CodexRecentTranscriptCandidate:
     native_session_id: str
 
 
-class _CodexTranscriptIndex:  # pylint: disable=too-many-instance-attributes
+class _CodexTranscriptIndex:
     """Process-local transcript index for fast family/path resolution."""
 
     def __init__(self, sessions_dir: Path) -> None:
@@ -514,8 +514,8 @@ def should_persist_codex_native_metadata(
 
 def resolve_hook_transcript_metadata(
     *,
-    session_id: str,  # pylint: disable=unused-argument
-    event_type: str,  # pylint: disable=unused-argument
+    session_id: str,
+    event_type: str,
     data: dict[str, object],  # guard: loose-dict - Hook payload is dynamic JSON
     normalized_agent_name: str,
 ) -> HookTranscriptMetadata:

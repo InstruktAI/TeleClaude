@@ -1,6 +1,5 @@
 # guard: no-companion
 """Characterization tests for SessionRow rendering and summary hierarchy."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 

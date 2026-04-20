@@ -23,10 +23,10 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session storage exposes the legacy DB API surface.
+class DbSessionsMixin:
     """Session persistence helpers and lifecycle state transitions."""
 
-    async def create_session(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals  # Database insert requires all session fields.
+    async def create_session(
         self,
         computer_name: str,
         tmux_session_name: str,
@@ -208,7 +208,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                 return None
             return self._to_core_session(row)
 
-    async def list_sessions(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals  # Public filtering API is intentionally explicit.
+    async def list_sessions(
         self,
         computer_name: str | None = None,
         last_input_origin: str | None = None,
@@ -331,7 +331,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
                 )
             return sessions
 
-    async def update_session(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Centralized update path preserves existing event semantics.
+    async def update_session(
         self,
         session_id: str,
         **fields: object,
@@ -592,7 +592,7 @@ class DbSessionsMixin:  # pylint: disable=too-many-public-methods  # Session sto
         Returns:
             Number of sessions
         """
-        stmt = select(func.count()).select_from(db_models.Session)  # pylint: disable=not-callable
+        stmt = select(func.count()).select_from(db_models.Session)
         if computer_name:
             stmt = stmt.where(db_models.Session.computer_name == computer_name)
 

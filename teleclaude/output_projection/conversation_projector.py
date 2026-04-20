@@ -29,8 +29,6 @@ Intentionally dropped data:
     - Non-list, non-string content on non-user-tool-result messages
 """
 
-# pylint: disable=cyclic-import  # Transcript projection/rendering still has a transitional package cycle.
-
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator, Mapping
@@ -42,13 +40,10 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
 from teleclaude.output_projection.visibility import is_internal_user_text
-from teleclaude.utils.transcript import (
-    _get_entries_for_agent,
-    _is_compaction_entry,
-    _is_user_tool_result_only_message,
-    _parse_timestamp,
-    normalize_transcript_entry_message,
-)
+from teleclaude.utils.transcript._iterators import _get_entries_for_agent
+from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
+from teleclaude.utils.transcript._tool_calls import _is_compaction_entry, _is_user_tool_result_only_message
+from teleclaude.utils.transcript._utils import _parse_timestamp
 
 logger = get_logger(__name__)
 
@@ -106,7 +101,7 @@ def _project_user_text(
     )
 
 
-def _project_content_block(  # pylint: disable=too-many-arguments
+def _project_content_block(
     block: Mapping[str, object],
     *,
     role: str,

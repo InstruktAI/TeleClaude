@@ -19,7 +19,7 @@ def emit_operation_progress(phase: str, decision: str, reason: str) -> None:
     if callback is not None:
         try:
             callback(phase, decision, reason)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
 
 

@@ -3,7 +3,6 @@
 Handles /start invite binding, private text routing, simple command
 dispatching, and the dynamic command-handler factory.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -33,7 +32,7 @@ if TYPE_CHECKING:
     from teleclaude.core.command_service import CommandService
     from teleclaude.core.models import MessageMetadata
 
-    class _PrivateHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _PrivateHandlersHost(Protocol):
         SIMPLE_COMMAND_EVENTS: list[str]
         _metadata: Callable[..., MessageMetadata]
         _get_session_from_topic: Callable[[Update], Coroutine[object, object, Session | None]]
@@ -154,7 +153,6 @@ class PrivateHandlersMixin:
         # Create session in personal workspace
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
-            title=f"Telegram: {person_name}",
             origin=InputOrigin.TELEGRAM.value,
             origin_metadata={
                 "user_id": int(user_id),
@@ -319,7 +317,7 @@ class PrivateHandlersMixin:
         workspace_path = invite_module.scaffold_personal_workspace(person_name)
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
-            title=f"Telegram: {person_name}",
+            initial_input=text,
             origin=InputOrigin.TELEGRAM.value,
             origin_metadata={
                 "user_id": int(user_id),

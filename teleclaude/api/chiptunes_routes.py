@@ -1,5 +1,4 @@
 """Chiptunes playback control endpoints."""
-# pylint: disable=invalid-name,global-statement  # module-level mutable state owned by routes
 
 from __future__ import annotations
 

@@ -3,7 +3,6 @@
 These protocols define the service interface for the runtime schema pillar.
 Runtime sessions are ephemeral (72h lifecycle). The ledger holds permanent history.
 """
-# pylint: disable=missing-function-docstring,too-many-arguments
 
 from __future__ import annotations
 

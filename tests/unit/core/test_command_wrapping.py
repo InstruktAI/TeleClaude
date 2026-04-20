@@ -14,9 +14,18 @@ Required wrapping per input audit:
 
 from __future__ import annotations
 
+import ast
+import inspect
+import textwrap
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from starlette.requests import Request as StarletteRequest
+
+from teleclaude.api import sessions_routes
+from teleclaude.api.auth import CallerIdentity
+from teleclaude.core.command_handlers._session import close_session
+from teleclaude.types.commands import CloseSessionCommand
 
 
 class TestSessionCloseRoutesViaCommandSystem:
@@ -26,12 +35,6 @@ class TestSessionCloseRoutesViaCommandSystem:
     @pytest.mark.asyncio
     async def test_delete_session_dispatches_close_session_command(self) -> None:
         """The DELETE /sessions/{id} endpoint constructs and dispatches a CloseSessionCommand."""
-        from starlette.requests import Request as StarletteRequest
-
-        from teleclaude.api import sessions_routes
-        from teleclaude.api.auth import CallerIdentity
-        from teleclaude.types.commands import CloseSessionCommand
-
         identity = CallerIdentity(session_id="caller-1", system_role=None, human_role=None, tmux_session_name=None)
 
         dispatched_commands: list[object] = []
@@ -75,12 +78,6 @@ class TestSessionCloseRemoteRouting:
         This verifies the handler's AST contains a comparison with computer_name
         or computer and a forwarding path — not just that strings exist in source.
         """
-        import ast
-        import inspect
-        import textwrap
-
-        from teleclaude.core.command_handlers._session import close_session
-
         source = inspect.getsource(close_session)
         source = textwrap.dedent(source)
         tree = ast.parse(source)

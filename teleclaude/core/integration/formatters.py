@@ -18,7 +18,6 @@ def _format_anomalies(warnings: list[str]) -> str:
     return f"\n\n## Action Required\n\nThe following issues need resolution before ending this session:\n{items}"
 
 
-# pylint: disable=too-many-arguments,too-many-positional-arguments
 def _format_commit_decision(
     slug: str,
     branch: str,

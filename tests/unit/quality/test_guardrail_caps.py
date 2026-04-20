@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel
 """Tests for R5: configurable guardrail caps.
 
 Behavioral contracts for per-project guardrail threshold configuration:
@@ -10,6 +9,8 @@ fallback when configuration is missing.
 from __future__ import annotations
 
 from pathlib import Path
+
+from teleclaude.quality.guardrail_caps import load_guardrail_caps
 
 # Current TeleClaude hardcoded baseline values — defaults must match these exactly.
 _BASELINE_MAX_IGNORE_FILES = 8  # PYRIGHT_MAX_IGNORE_FILES
@@ -30,8 +31,6 @@ class TestDefaultCaps:
 
     def test_default_max_ignore_files(self, tmp_path: Path) -> None:
         """Default pyright ignore file limit matches TeleClaude baseline (8)."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_ignore_files == _BASELINE_MAX_IGNORE_FILES, (
             f"Default max_ignore_files={caps.max_ignore_files}, expected {_BASELINE_MAX_IGNORE_FILES}"
@@ -39,36 +38,26 @@ class TestDefaultCaps:
 
     def test_default_max_global_ignores(self, tmp_path: Path) -> None:
         """Default ruff global ignore limit matches TeleClaude baseline (8)."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_global_ignores == _BASELINE_MAX_GLOBAL_IGNORES
 
     def test_default_max_per_file_ignores(self, tmp_path: Path) -> None:
         """Default ruff per-file ignore limit matches TeleClaude baseline (50)."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_per_file_ignores == _BASELINE_MAX_PER_FILE_IGNORES
 
     def test_default_max_override_sections(self, tmp_path: Path) -> None:
         """Default mypy override section limit matches TeleClaude baseline (13)."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_override_sections == _BASELINE_MAX_OVERRIDE_SECTIONS
 
     def test_default_max_module_lines(self, tmp_path: Path) -> None:
         """Default module size limit matches TeleClaude baseline (1000 lines)."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_module_lines == _BASELINE_MAX_MODULE_LINES
 
     def test_default_required_rule_groups(self, tmp_path: Path) -> None:
         """Default required ruff rule groups match TeleClaude baseline."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.required_rule_groups == _BASELINE_REQUIRED_RULE_GROUPS
 
@@ -88,8 +77,6 @@ class TestCustomCapsOverride:
             encoding="utf-8",
         )
 
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_ignore_files == 3, f"Custom max_ignore_files not applied: got {caps.max_ignore_files}"
 
@@ -100,8 +87,6 @@ class TestCustomCapsOverride:
             encoding="utf-8",
         )
 
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_module_lines == 500
 
@@ -111,8 +96,6 @@ class TestCustomCapsOverride:
             "[tool.guardrails]\nmax_ignore_files = 2\n",
             encoding="utf-8",
         )
-
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
 
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_ignore_files == 2, "Custom value was not applied"
@@ -125,8 +108,6 @@ class TestCustomCapsOverride:
             encoding="utf-8",
         )
 
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_global_ignores == 2, "Tightened cap (2) was not respected"
 
@@ -137,8 +118,6 @@ class TestCustomCapsOverride:
             encoding="utf-8",
         )
 
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_module_lines == 2000, "Loosened cap (2000) was not respected"
 
@@ -148,8 +127,6 @@ class TestCustomCapsOverride:
             '[tool.guardrails]\nrequired_rule_groups = ["E", "F"]\n',
             encoding="utf-8",
         )
-
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
 
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.required_rule_groups == frozenset({"E", "F"}), (
@@ -167,8 +144,6 @@ class TestMissingConfigFallback:
 
     def test_missing_pyproject_falls_back_to_defaults(self, tmp_path: Path) -> None:
         """load_guardrail_caps with no pyproject.toml returns all-default caps."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         # No pyproject.toml in tmp_path
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_ignore_files == _BASELINE_MAX_IGNORE_FILES
@@ -181,8 +156,6 @@ class TestMissingConfigFallback:
             encoding="utf-8",
         )
 
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         assert caps.max_ignore_files == _BASELINE_MAX_IGNORE_FILES
         assert caps.max_global_ignores == _BASELINE_MAX_GLOBAL_IGNORES
@@ -190,8 +163,6 @@ class TestMissingConfigFallback:
 
     def test_caps_object_is_usable_without_pyproject(self, tmp_path: Path) -> None:
         """Caps loaded without any config do not raise errors when accessed."""
-        from teleclaude.quality.guardrail_caps import load_guardrail_caps  # pyright: ignore[reportMissingImports]
-
         caps = load_guardrail_caps(project_root=tmp_path)
         # All attributes must be accessible without raising
         _ = caps.max_ignore_files

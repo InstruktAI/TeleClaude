@@ -55,7 +55,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-# pylint: disable=wrong-import-position  # sys.path must be set before these imports resolve
+
 from jobs.base import Job, JobResult, run_job_cli
 from teleclaude.channels import publisher as channels_publisher
 from teleclaude.config import config
@@ -69,10 +69,8 @@ from teleclaude.memory.types import ObservationInput, ObservationType
 from teleclaude.mirrors.store import get_mirror
 from teleclaude.utils.transcript import StructuredMessage, extract_structured_messages
 
-# pylint: enable=wrong-import-position
-
 logger = get_logger(__name__)
-_redis_client: Redis | None = None  # pylint: disable=invalid-name  # mutable singleton, not a constant
+_redis_client: Redis | None = None
 
 
 class _MemoryCandidate(TypedDict):
@@ -178,7 +176,7 @@ class SessionMemoryExtractionJob(Job):
             try:
                 await self._process_session(session)
                 processed += 1
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 errors.append(f"{session.session_id}: {exc}")
                 logger.warning("Session extraction failed for %s: %s", session.session_id, exc)
 
@@ -539,7 +537,7 @@ def _get_session_project(session: Session) -> str | None:
 
 async def get_redis() -> Redis:
     """Return the configured Redis client for channels publication."""
-    global _redis_client  # pylint: disable=global-statement
+    global _redis_client
     if not config.redis.enabled:
         raise RuntimeError("Redis transport is disabled")
 

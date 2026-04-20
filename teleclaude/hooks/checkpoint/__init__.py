@@ -5,8 +5,6 @@ Uses session_scoping.resolve_scoped_paths for turn-local file attribution and Tu
 All heuristics are deterministic pattern matching, zero LLM calls.
 """
 
-# pylint: disable=too-many-branches,too-many-locals,broad-exception-caught
-
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
@@ -54,11 +52,7 @@ from teleclaude.hooks.checkpoint._git import (
     _split_shell_segments,
     _transcript_observability,
 )
-from teleclaude.hooks.checkpoint._models import (
-    CheckpointContext,
-    CheckpointResult,
-    TranscriptObservability,
-)
+from teleclaude.hooks.checkpoint._models import CheckpointContext, CheckpointResult, TranscriptObservability
 from teleclaude.session_scoping import ScopedPathsResult, resolve_scoped_paths
 from teleclaude.utils.transcript import TurnTimeline, extract_effective_tool_calls
 
@@ -306,7 +300,7 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
 # ---------------------------------------------------------------------------
 
 
-def get_checkpoint_content(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def get_checkpoint_content(
     session_id: str,
     transcript_path: str | None,
     agent_name: AgentName,

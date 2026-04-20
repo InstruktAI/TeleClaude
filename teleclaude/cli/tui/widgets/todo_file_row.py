@@ -32,7 +32,6 @@ class TodoFileRow(TelecMixin, Widget):
     }
     """
 
-    # pylint: disable=too-many-arguments
     def __init__(
         self,
         *,

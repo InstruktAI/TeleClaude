@@ -1,4 +1,3 @@
-# pylint: disable=protected-access
 """Characterization tests for teleclaude.core.models._adapter."""
 
 from __future__ import annotations

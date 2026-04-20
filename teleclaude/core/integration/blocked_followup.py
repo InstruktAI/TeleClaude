@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,6 +13,8 @@ from typing import Literal, TypedDict, cast
 
 from teleclaude.core.integration.events import IntegrationBlockedPayload
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.core.next_machine._types import default_state
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 
 FollowUpStatus = Literal["open", "resolved"]
 
@@ -21,7 +24,6 @@ class BlockedFollowUpError(RuntimeError):
 
 
 @dataclass(frozen=True)
-# pylint: disable=too-many-instance-attributes
 class BlockedFollowUpLink:
     """Durable mapping between one blocked candidate and one follow-up todo."""
 
@@ -178,17 +180,12 @@ class BlockedFollowUpStore:
         return attempt
 
     def _ensure_follow_up_todo(self, link: BlockedFollowUpLink) -> None:
-        import uuid  # pylint: disable=import-outside-toplevel
-
-        from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
         project_root = str(self._todos_root.parent)
         db = _get_todos_db_sync(project_root)
         slug = link.follow_up_slug
 
         if not db.resolve_id_sync(slug):
-            conn = db._sync_conn()  # pylint: disable=protected-access
+            conn = db._sync_conn()
             try:
                 now = datetime.now(tz=UTC).isoformat()
                 max_pos = conn.execute(

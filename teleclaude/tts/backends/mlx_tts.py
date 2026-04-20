@@ -9,12 +9,12 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.mlx_utils import resolve_model_ref
+from teleclaude.mlx_utils import is_local_path, resolve_model_ref
 
-generate_audio = None  # pylint: disable=invalid-name
-load_model = None  # pylint: disable=invalid-name
-mlx_audio_import_error: Exception | None = None  # pylint: disable=invalid-name
-_mlx_audio_import_attempted = False  # pylint: disable=invalid-name
+generate_audio = None
+load_model = None
+mlx_audio_import_error: Exception | None = None
+_mlx_audio_import_attempted = False
 
 logger = get_logger(__name__)
 
@@ -37,7 +37,7 @@ def _looks_like_python_script(path: str) -> bool:
     return first_line.startswith("#!") and ("python" in first_line)
 
 
-class MLXTTSBackend:  # pylint: disable=too-few-public-methods
+class MLXTTSBackend:
     """Local TTS using mlx_audio. One instance per model in config."""
 
     def __init__(
@@ -55,8 +55,6 @@ class MLXTTSBackend:  # pylint: disable=too-few-public-methods
 
     def _validate_config(self) -> None:
         """Validate model ref at startup."""
-        from teleclaude.mlx_utils import is_local_path  # pylint: disable=import-outside-toplevel
-
         if is_local_path(self._model_ref):
             path = Path(self._model_ref)
             if not path.exists():
@@ -95,7 +93,7 @@ class MLXTTSBackend:  # pylint: disable=too-few-public-methods
 
     def _ensure_model(self) -> bool:
         """Lazy-load the model on first use."""
-        global generate_audio, load_model, mlx_audio_import_error, _mlx_audio_import_attempted  # pylint: disable=global-statement
+        global generate_audio, load_model, mlx_audio_import_error, _mlx_audio_import_attempted
 
         # CLI-only mode: keep MLX generation out of the daemon process when a
         # runnable CLI exists. This was the stable path before the March 7
@@ -115,7 +113,7 @@ class MLXTTSBackend:  # pylint: disable=too-few-public-methods
                 if callable(generate_candidate) and callable(load_candidate):
                     generate_audio = generate_candidate
                     load_model = load_candidate
-            except Exception as import_error:  # pylint: disable=broad-exception-caught
+            except Exception as import_error:
                 mlx_audio_import_error = import_error
 
         if load_model is None:
@@ -132,7 +130,7 @@ class MLXTTSBackend:  # pylint: disable=too-few-public-methods
             self._model = load_model(self._model_ref)
             logger.info("MLX TTS [%s] model loaded: %s", self._service_name, self._model_ref)
             return True
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Failed to load MLX TTS model [%s] (%s): %s", self._service_name, self._model_ref, e)
             return False
 
@@ -157,7 +155,7 @@ class MLXTTSBackend:  # pylint: disable=too-few-public-methods
                 return self._speak_cli(text, voice)
 
             return self._speak_local(text, voice, model_type)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("MLX TTS [%s] failed: %s", self._service_name, e)
             return False
 

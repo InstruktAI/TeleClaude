@@ -1,7 +1,5 @@
 """Protocol definitions for adapter capabilities."""
 
-# pylint: disable=unnecessary-ellipsis
-
 from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 

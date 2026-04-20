@@ -14,6 +14,7 @@ import os
 import socket
 import tempfile
 import time
+import traceback as _tb
 from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -23,7 +24,24 @@ from fastapi import Depends, FastAPI, HTTPException, Query, WebSocket
 from fastapi.responses import JSONResponse
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api import (
+    agents_routes,
+    chiptunes_routes,
+    computers_routes,
+    jobs_routes,
+    notifications_routes,
+    people_routes,
+    projects_routes,
+    sessions_actions_routes,
+    sessions_routes,
+    settings_routes,
+)
 from teleclaude.api.auth import CallerIdentity, verify_caller
+from teleclaude.api.data_routes import router as data_router
+from teleclaude.api.event_routes import router as event_router
+from teleclaude.api.operations_routes import router as operations_router
+from teleclaude.api.streaming import router as streaming_router
+from teleclaude.api.todo_routes import router as todo_router
 from teleclaude.api.ws_constants import API_WS_PING_INTERVAL_S, API_WS_PING_TIMEOUT_S
 from teleclaude.api.ws_mixin import _WebSocketMixin
 from teleclaude.api_models import (
@@ -36,6 +54,7 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
+from teleclaude.channels.api_routes import router as channels_router
 from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.core import command_handlers
@@ -54,6 +73,9 @@ from teleclaude.core.events import (
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
+from teleclaude.hooks.api_routes import router as hooks_router
+from teleclaude.memory.api_routes import router as memory_router
+from teleclaude.mirrors.api_routes import router as mirrors_router
 
 if TYPE_CHECKING:
     from teleclaude.api.ws_constants import _WsClientState
@@ -97,19 +119,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self._setup_routes()
 
         # --- Route modules ---
-        from teleclaude.api import (
-            agents_routes,
-            chiptunes_routes,
-            computers_routes,
-            jobs_routes,
-            notifications_routes,
-            people_routes,
-            projects_routes,
-            sessions_actions_routes,
-            sessions_routes,
-            settings_routes,
-        )
-
         sessions_routes.configure(client=client, cache=cache)
         sessions_actions_routes.configure(client=client)
         computers_routes.configure(cache=cache)
@@ -127,39 +136,21 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(jobs_routes.router)
         self.app.include_router(notifications_routes.router)
 
-        from teleclaude.memory.api_routes import router as memory_router
-
         self.app.include_router(memory_router)
-
-        from teleclaude.mirrors.api_routes import router as mirrors_router
 
         self.app.include_router(mirrors_router)
 
-        from teleclaude.hooks.api_routes import router as hooks_router
-
         self.app.include_router(hooks_router)
-
-        from teleclaude.channels.api_routes import router as channels_router
 
         self.app.include_router(channels_router)
 
-        from teleclaude.api.streaming import router as streaming_router
-
         self.app.include_router(streaming_router)
-
-        from teleclaude.api.data_routes import router as data_router
 
         self.app.include_router(data_router)
 
-        from teleclaude.api.operations_routes import router as operations_router
-
         self.app.include_router(operations_router)
 
-        from teleclaude.api.todo_routes import router as todo_router
-
         self.app.include_router(todo_router)
-
-        from teleclaude.api.event_routes import router as event_router
 
         self.app.include_router(event_router)
         self.socket_path = socket_path or API_SOCKET_PATH
@@ -208,8 +199,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
     def _event_db(self, value: EventDB | None) -> None:
         """Set event DB and propagate to notifications route module."""
         self.__event_db_inner = value
-        from teleclaude.api import notifications_routes
-
         notifications_routes.configure(event_db=value)
 
     def _metadata(self, **kwargs: object) -> MessageMetadata:
@@ -231,8 +220,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             value.subscribe(self._on_cache_change)
             logger.info("API server subscribed to cache notifications")
         # Propagate to cache-dependent route modules
-        from teleclaude.api import computers_routes, projects_routes, sessions_routes
-
         sessions_routes.configure(cache=value)
         computers_routes.configure(cache=value)
         projects_routes.configure(cache=value)
@@ -412,8 +399,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         @self.app.exception_handler(Exception)
         async def _unhandled_exception(request, exc):  # type: ignore[no-untyped-def]
             """Last-resort handler: log full traceback, return generic 500 to client."""
-            import traceback as _tb  # pylint: disable=import-outside-toplevel
-
             tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
             logger.error(
                 "Unhandled API exception: %s %s\n%s",

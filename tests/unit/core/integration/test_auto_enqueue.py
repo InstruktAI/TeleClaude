@@ -5,19 +5,16 @@ The integration state machine scans todo state from todos.db to find
 finalize-ready candidates. Tests mock _get_todos_db_sync to inject a
 test-scoped TodosDb instance.
 """
-# pylint: disable=unused-argument,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core.integration.step_functions import (
-    _scan_finalize_ready_candidates,
-    _verify_slug_ready,
-)
+from teleclaude.core.integration.step_functions import _scan_finalize_ready_candidates, _verify_slug_ready
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.core.todos_db import TodosDb
 
@@ -35,9 +32,7 @@ def todos_db(tmp_path: Path) -> TodosDb:
 
 def _ensure_roadmap(todos_db: TodosDb, slug: str) -> None:
     """Insert a roadmap entry via raw SQL (write_state requires it)."""
-    import uuid  # pylint: disable=import-outside-toplevel
-
-    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    conn = todos_db._sync_conn()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql

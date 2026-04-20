@@ -3,8 +3,6 @@
 DB-backed roadmap assembly for CLI, API, and TUI.
 """
 
-# pylint: disable=duplicate-code  # Prepare-phase label map intentionally matches todo-show projection.
-
 import json
 import time
 from datetime import UTC, datetime, timedelta
@@ -13,6 +11,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
@@ -22,9 +21,7 @@ RECENTLY_DELIVERED_HOURS = 72
 DOR_READY_THRESHOLD = 7
 
 
-def _derive_prepare_phase(  # pylint: disable=too-many-return-statements,too-many-locals
-    state: dict[str, StateValue], *, has_req: bool, has_plan: bool
-) -> str | None:
+def _derive_prepare_phase(state: dict[str, StateValue], *, has_req: bool, has_plan: bool) -> str | None:
     """Lightweight sync prepare-phase derivation from v1 state primitives.
 
     Mirrors phase_derivation.derive_prepare_phase but sync and uses the
@@ -76,7 +73,7 @@ def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
 
-def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def assemble_roadmap_from_db(
     project_path: str,
     include_icebox: bool = False,
     icebox_only: bool = False,
@@ -87,8 +84,6 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
 
     Reads state, roadmap entries, and deps from the SQLite database.
     """
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
     started_at = time.perf_counter()
     db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))
     init_started_at = time.perf_counter()
@@ -96,7 +91,7 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
     init_dt = time.perf_counter() - init_started_at
 
     conn_open_started_at = time.perf_counter()
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     conn_open_dt = time.perf_counter() - conn_open_started_at
     try:
         # Build roadmap entries
@@ -187,7 +182,9 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
             # Build status: derived from finalize, build_review verdict, phase
             build_status: str | None = None
             review_status: str | None = None
-            if not is_draft:
+            state_phase = state.get("phase", "")
+            is_delivered = state_phase == "delivered"
+            if not is_draft and not is_delivered:
                 if finalize_status in ("ready", "handed_off"):
                     build_status = "complete"
                     review_status = "approved"
@@ -200,12 +197,12 @@ def assemble_roadmap_from_db(  # pylint: disable=too-many-locals,too-many-branch
                 elif verdict:
                     build_status = "complete"
                     review_status = "pending"
-                elif state.get("phase") == "in_progress":
+                elif state_phase == "in_progress":
                     build_status = "started"
 
             # Prepare phase: only shown when not yet in work phase
             prepare_phase: str | None = None
-            if not is_draft and not build_status:
+            if not is_draft and not is_delivered and not build_status:
                 prepare_phase = _derive_prepare_phase(
                     state, has_req=has_req_row is not None, has_plan=has_plan_row is not None
                 )

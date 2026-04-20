@@ -46,7 +46,7 @@ class HookDispatcher:
                     try:
                         # handler is Callable, pyright can't see HandlerRegistry yet.
                         await handler(event)  # type: ignore[operator]
-                    except Exception as exc:  # pylint: disable=broad-exception-caught
+                    except Exception as exc:
                         logger.error(
                             "Internal handler failed",
                             handler=target.handler,
@@ -64,7 +64,7 @@ class HookDispatcher:
                         target_url=target.url,
                         target_secret=target.secret,
                     )
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception as exc:
                     logger.error(
                         "Failed to enqueue webhook",
                         contract_id=contract.id,

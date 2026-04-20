@@ -5,12 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
-from teleclaude.cli.config_handlers import (
-    EnvVarStatus,
-    get_global_config,
-    save_global_config,
-    set_env_var,
-)
+from teleclaude.cli.config_handlers import EnvVarStatus, get_global_config, save_global_config, set_env_var
 from teleclaude.cli.tui.views._config_constants import (
     _ADAPTER_TABS,
     _GUIDED_STEPS,
@@ -21,10 +16,10 @@ from teleclaude.cli.tui.views._config_constants import (
 
 if TYPE_CHECKING:
     from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection
-    from teleclaude.config.schema import PersonEntry  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from teleclaude.config.schema import PersonEntry
 
 
-class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
+class ConfigContentEditingMixin:
     """Cursor movement, inline editing, and guided-mode logic for ConfigContent."""
 
     if TYPE_CHECKING:
@@ -116,7 +111,7 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
             save_global_config(config)
             self._status_message = f"Role set to {next_role}"  # type: ignore[attr-defined]
             self._status_is_error = False  # type: ignore[attr-defined]
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._status_message = f"Failed to save role: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
         self.refresh_data()  # type: ignore[attr-defined]
@@ -154,7 +149,7 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
             save_global_config(config)
             self._status_message = f"Saved {person_name}.{field}"  # type: ignore[attr-defined]
             self._status_is_error = False  # type: ignore[attr-defined]
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._status_message = f"Failed to save: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
 
@@ -200,7 +195,7 @@ class ConfigContentEditingMixin:  # pylint: disable=too-many-instance-attributes
 
         try:
             target_path = set_env_var(var_name, self._edit_buffer)  # type: ignore[attr-defined]
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._status_message = f"Failed to save {var_name}: {exc}"  # type: ignore[attr-defined]
             self._status_is_error = True  # type: ignore[attr-defined]
             self.refresh(layout=True)  # type: ignore[attr-defined]

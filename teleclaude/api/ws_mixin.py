@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
-class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods
+class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
     """WebSocket support methods extracted from APIServer."""
 
     if TYPE_CHECKING:
@@ -69,7 +69,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             """Expose the event database for websocket helpers."""
             raise NotImplementedError
 
-    # pylint: disable=too-many-branches,too-many-statements,too-many-nested-blocks
     async def _handle_websocket(
         self,
         websocket: WebSocket,
@@ -157,15 +156,13 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
 
         except WebSocketDisconnect:
             logger.info("WebSocket client disconnected")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             if self._is_expected_ws_disconnect(e):
                 logger.info("WebSocket connection closed: %s", e)
             else:
                 logger.error("WebSocket error: %s", e, exc_info=True)
         finally:
             await self._drop_ws_client(websocket, reason="connection-end")
-
-    # pylint: enable=too-many-branches,too-many-statements,too-many-nested-blocks
 
     def _update_cache_interest(self) -> list[tuple[str, str]]:
         """Update cache interest based on active WebSocket subscriptions."""
@@ -236,7 +233,6 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         elif data_type == "sessions":
             adapter.request_refresh(computer, "sessions", reason="interest")
 
-    # pylint: disable-next=too-many-locals,too-many-branches
     async def _send_initial_state(
         self,
         websocket: WebSocket,
@@ -322,7 +318,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             elif data_type == "todos":
                 # Todos are project-specific, can't send initial state without project context
                 logger.debug("Skipping initial state for todos (project-specific)")
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Failed to send initial state for %s on %s: %s", data_type, computer, e, exc_info=True)
 
     def _on_cache_change(self, event: str, data: object) -> None:
@@ -481,7 +477,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             await asyncio.wait_for(websocket.close(), timeout=1.0)
         except TimeoutError:
             pass
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
 
     def _ensure_ws_client_state(self, websocket: WebSocket) -> _WsClientState:
@@ -540,7 +536,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
             )
             await self._drop_ws_client(websocket, reason=f"send-timeout:{event}")
             return False
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             if self._is_expected_ws_disconnect(exc):
                 logger.info(
                     "WebSocket connection lost during send: %s",
@@ -602,7 +598,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                 await sender_task
             except asyncio.CancelledError:
                 pass
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.debug("WebSocket sender task ended with error during cleanup", exc_info=True)
 
         await self._close_ws(websocket)
@@ -619,7 +615,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
         _level: int,
         was_created: bool,
         _is_meaningful: bool,
-    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    ) -> None:
         """Push a notification event to subscribed WebSocket clients."""
         if self._event_db is None:
             return

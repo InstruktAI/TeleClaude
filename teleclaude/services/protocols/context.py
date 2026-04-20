@@ -3,7 +3,6 @@
 Snippets are read-only reflections of git-tracked files, synced by the
 file watcher. Memories are durable observations scraped from sessions.
 """
-# pylint: disable=missing-function-docstring,too-many-arguments
 
 from __future__ import annotations
 

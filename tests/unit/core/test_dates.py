@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timezone, tzinfo
+from datetime import UTC, datetime, timedelta, timezone, tzinfo
 
 import pytest
 
@@ -58,8 +58,6 @@ class TestEnsureUtc:
 
     @pytest.mark.unit
     def test_other_tz_converted_to_utc(self):
-        from datetime import timedelta
-
         eastern = timezone(timedelta(hours=-5))
         dt = datetime(2024, 1, 1, 7, 0, 0, tzinfo=eastern)
         result = ensure_utc(dt)

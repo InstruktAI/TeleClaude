@@ -85,7 +85,7 @@ def run_job_cli(job: Job) -> int:
     """Execute a job as a standalone script and emit a JSON JobResult."""
     try:
         result = job.run()
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         traceback.print_exc(file=sys.stderr)
         result = JobResult(success=False, message=str(exc), errors=[str(exc)])
 

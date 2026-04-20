@@ -23,6 +23,7 @@ Events (JSON lines, worker→daemon):
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import queue
@@ -58,7 +59,7 @@ def _is_unplayable(path: Path) -> bool:
         return False
 
 
-class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-public-methods
+class _WorkerProcess:
     """Chiptunes playback worker with socket-based command interface.
 
     Runs as an independent process. Manages track history, player lifecycle,
@@ -180,7 +181,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
     # Command dispatch                                                     #
     # ------------------------------------------------------------------ #
 
-    def _process_command(self, line: str) -> None:  # pylint: disable=too-many-branches
+    def _process_command(self, line: str) -> None:
         try:
             raw = json.loads(line)
         except json.JSONDecodeError:
@@ -417,7 +418,7 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
                 continue
             try:
                 self._run_command(command_id, action)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 pass
             finally:
                 self._command_queue.task_done()
@@ -579,8 +580,6 @@ class _WorkerProcess:  # pylint: disable=too-many-instance-attributes,too-few-pu
 
 
 def _run() -> None:
-    import argparse  # pylint: disable=import-outside-toplevel
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--music-dir", required=True)
     parser.add_argument("--volume", type=float, default=1.0)

@@ -3,10 +3,10 @@
 All commands call the daemon REST API via tool_api_call() and print JSON to stdout.
 Errors go to stderr with exit code 1 (handled by tool_api_call).
 """
-# pylint: disable=import-outside-toplevel,raise-missing-from
 
 from __future__ import annotations
 
+import json
 import sys
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
@@ -287,8 +287,6 @@ def handle_channels_publish(args: list[str]) -> None:
     if "--help" in args or "-h" in args:
         print(handle_channels_publish.__doc__ or "")
         return
-
-    import json
 
     channel: str | None = None
     payload_str: str | None = None

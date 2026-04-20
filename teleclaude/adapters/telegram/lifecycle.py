@@ -4,7 +4,6 @@ Handles bot initialization, startup, housekeeping, and shutdown.
 
 Exports TelegramApp type alias for re-use in telegram_adapter.py.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -14,8 +13,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 import httpx
 from instrukt_ai_logging import get_logger
-from telegram import BotCommand, BotCommandScopeChat, Update
-from telegram.error import BadRequest, TelegramError
+from telegram import Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -31,11 +29,9 @@ from telegram.request import HTTPXRequest
 try:
     from telegram.ext import AIORateLimiter as _AIORateLimiter
 except ImportError:
-    AIORateLimiter: Any = None  # pylint: disable=invalid-name  # optional dependency may be absent at runtime
+    AIORateLimiter: Any = None
 else:
-    AIORateLimiter = _AIORateLimiter  # pylint: disable=invalid-name
-
-from teleclaude.core.events import UiCommands
+    AIORateLimiter = _AIORateLimiter
 
 from ..base_adapter import AdapterError
 
@@ -44,7 +40,7 @@ if TYPE_CHECKING:
 
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 
-    class _LifecycleHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _LifecycleHost(Protocol):
         bot_token: str
         supergroup_id: int
         computer_name: str
@@ -121,7 +117,7 @@ class LifecycleMixin:
             raise AdapterError("Telegram adapter not started - call start() first")
         return self.app.bot
 
-    async def start(self) -> None:  # pylint: disable=too-many-locals
+    async def start(self) -> None:
         """Initialize and start Telegram bot."""
         host = cast("_LifecycleHost", self)
         # Create application with concurrent updates enabled
@@ -267,79 +263,6 @@ class LifecycleMixin:
         )
         logger.info("Configured supergroup ID: %s", host.supergroup_id)
         logger.info("Whitelisted user IDs: %s", host.user_whitelist)
-        # Non-critical startup housekeeping can involve Telegram rate limits and
-        # should not block daemon/API readiness.
-        host._startup_housekeeping_task = asyncio.create_task(
-            self._run_startup_housekeeping(bot_id=bot_info.id), name="telegram-startup-housekeeping"
-        )
-        logger.debug("Scheduled Telegram startup housekeeping task")
-
-    async def _run_startup_housekeeping(self, bot_id: int) -> None:
-        """Run best-effort startup housekeeping without blocking adapter readiness."""
-        host = cast("_LifecycleHost", self)
-        try:
-            # Register bot commands with Telegram (only for master computer)
-            if host.is_master:
-                commands = [BotCommand(name, description) for name, description in UiCommands.items()]
-                try:
-                    # Clear global commands first (removes old @BotName cached commands)
-                    await self.bot.set_my_commands([])
-                    # Set commands for the specific supergroup (not global)
-                    scope = BotCommandScopeChat(chat_id=host.supergroup_id)
-                    await self.bot.set_my_commands(commands, scope=scope)
-                    logger.info(
-                        "Registered %d bot commands with Telegram for supergroup (master computer)",
-                        len(commands),
-                    )
-                except BadRequest as e:
-                    # Don't crash the daemon if the bot isn't in the group yet / chat_id is wrong.
-                    logger.error(
-                        "Failed to register bot commands for supergroup %s: %s",
-                        host.supergroup_id,
-                        e,
-                    )
-            else:
-                # Non-master: Clear all commands (both global and supergroup)
-                # This removes old cached commands that cause @BotName autocomplete
-                try:
-                    await self.bot.set_my_commands([])  # Clear global commands
-                    scope = BotCommandScopeChat(chat_id=host.supergroup_id)
-                    await self.bot.set_my_commands([], scope=scope)  # Clear supergroup commands
-                    logger.info("Cleared all bot commands (non-master computer)")
-                except BadRequest as e:
-                    logger.error(
-                        "Failed to clear bot commands for supergroup %s: %s",
-                        host.supergroup_id,
-                        e,
-                    )
-
-            # Try to get chat info to verify bot is in the group
-            try:
-                chat = await self.bot.get_chat(host.supergroup_id)
-                logger.info("Supergroup found: %s", chat.title)
-
-                # Check if bot is admin
-                bot_member = await self.bot.get_chat_member(host.supergroup_id, bot_id)
-                logger.info("Bot status in group: %s", bot_member.status)
-            except (BadRequest, TelegramError, httpx.HTTPError) as e:
-                logger.error("Cannot access supergroup %s: %s", host.supergroup_id, e)
-                logger.error("Make sure the bot is added to the group as a member!")
-
-            # Send or update the menu message in the general topic
-            try:
-                await host._send_or_update_menu_message()
-            except (BadRequest, TelegramError, httpx.HTTPError, RuntimeError) as e:
-                logger.error("Failed to send/update menu message: %s", e)
-        except asyncio.CancelledError:
-            logger.debug("Telegram startup housekeeping cancelled")
-            raise
-        except (BadRequest, TelegramError, httpx.HTTPError, RuntimeError, ValueError, TypeError):
-            logger.error("Telegram startup housekeeping failed", exc_info=True)
-        finally:
-            # Clear task pointer only if this coroutine still owns it.
-            current = asyncio.current_task()
-            if host._startup_housekeeping_task is current:
-                host._startup_housekeeping_task = None
 
     async def stop(self) -> None:
         """Stop Telegram bot."""

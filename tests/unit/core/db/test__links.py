@@ -128,7 +128,7 @@ async def test_sever_conversation_link_rolls_back_when_member_delete_fails(db: D
     await db.upsert_conversation_link_member(link_id=link.link_id, session_id="sess-a")
     await db.upsert_conversation_link_member(link_id=link.link_id, session_id="sess-b")
 
-    original_session = db._session  # pylint: disable=protected-access
+    original_session = db._session
     exec_count = 0
 
     @asynccontextmanager
@@ -147,7 +147,7 @@ async def test_sever_conversation_link_rolls_back_when_member_delete_fails(db: D
             session.exec = _wrapped_exec
             yield session
 
-    db._session = _failing_session  # pylint: disable=protected-access
+    db._session = _failing_session
     with pytest.raises(RuntimeError, match="delete failed"):
         await db.sever_conversation_link(link.link_id)
 

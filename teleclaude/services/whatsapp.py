@@ -33,7 +33,7 @@ async def _close_client(client: httpx.AsyncClient) -> None:
     logger.debug("whatsapp http client close done", task_name=task_name)
 
 
-async def send_whatsapp_message(  # pylint: disable=too-many-arguments,too-many-locals
+async def send_whatsapp_message(
     phone_number: str,
     content: str,
     *,

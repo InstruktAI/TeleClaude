@@ -54,7 +54,7 @@ def relative_luminance(hex_color: str) -> float:
     return 0.2126 * _srgb_to_linear(r8) + 0.7152 * _srgb_to_linear(g8) + 0.0722 * _srgb_to_linear(b8)
 
 
-def hex_to_nearest_xterm256(hex_color: str) -> int:  # pylint: disable=too-many-locals
+def hex_to_nearest_xterm256(hex_color: str) -> int:
     """Convert a hex color to the nearest xterm256 color code.
 
     Used exclusively by the tmux output path (pane_manager) which requires

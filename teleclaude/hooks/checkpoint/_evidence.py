@@ -1,7 +1,5 @@
 """Evidence checking, error state detection, edit hygiene, and slug alignment."""
 
-# pylint: disable=too-many-nested-blocks,too-many-branches,too-many-return-statements
-
 import re
 import shlex
 
@@ -14,6 +12,7 @@ from teleclaude.constants import (
     CHECKPOINT_TEST_ERROR_MESSAGE,
     FileCategory,
 )
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
     _extract_apply_patch_paths,
@@ -399,8 +398,6 @@ def _check_slug_alignment(
     observations: list[str] = []
     if not context.working_slug:
         return observations
-
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
     db = _get_todos_db_sync(context.project_path)
     plan_text = db.read_artifact_sync(context.working_slug, "implementation-plan")

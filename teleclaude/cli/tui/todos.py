@@ -8,7 +8,7 @@ from teleclaude.cli.tui.types import TodoStatus
 
 
 @dataclass
-class TodoItem:  # pylint: disable=too-many-instance-attributes
+class TodoItem:
     """Todo item consumed by the PreparationView."""
 
     slug: str

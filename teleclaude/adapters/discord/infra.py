@@ -3,7 +3,6 @@
 Handles auto-provisioning of Discord channels, categories, forums, launcher
 messages, project forum mapping, team channels, and config persistence.
 """
-# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-statements,broad-exception-caught
 
 from __future__ import annotations
 
@@ -18,11 +17,14 @@ from teleclaude.config import config
 
 if TYPE_CHECKING:
     from types import ModuleType
+from teleclaude.adapters.discord.session_launcher import SessionLauncherView
+from teleclaude.config.loader import load_global_config
+from teleclaude.core.db import db
 
 logger = get_logger(__name__)
 
 
-class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disable=too-many-instance-attributes
+class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
     """Mixin providing Discord channel infrastructure provisioning for DiscordAdapter.
 
     Required host attributes:
@@ -61,17 +63,23 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
         _operator_chat_channel_id: int | None
         _announcements_channel_id: int | None
         _general_channel_id: int | None
-        _parse_optional_int: Callable[[object], int | None]  # pylint: disable=used-before-assignment
-        _require_async_callable: Callable[..., Callable[..., Awaitable[object]]]  # pylint: disable=used-before-assignment
-        _get_channel: Callable[[int], Awaitable[object | None]]  # pylint: disable=used-before-assignment
-        _is_forum_channel: Callable[[object], bool]  # pylint: disable=used-before-assignment
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
+        @staticmethod
+        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
+
+        @staticmethod
+        def _is_forum_channel(channel: object) -> bool: ...
 
         def _get_enabled_agents(self) -> list[str]: ...
 
         @property
         def _multi_agent(self) -> bool: ...
 
-        async def _handle_launcher_click(  # pylint: disable=unused-argument
+        async def _handle_launcher_click(
             self,
             interaction: object,
             agent_name: str,
@@ -191,8 +199,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
 
         # --- Category: Team (from people config) ---
         try:
-            from teleclaude.config.loader import load_global_config
-
             global_cfg = load_global_config()
             if global_cfg.people:
                 team_cat = await self._ensure_category(guild, "Team", existing_cats, cat_changes)
@@ -210,7 +216,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
             self._persist_discord_channel_ids(changes)
             logger.info("Discord infrastructure provisioned: %s", list(changes.keys()))
 
-    async def _ensure_category(  # pylint: disable=too-many-arguments
+    async def _ensure_category(
         self,
         guild: object,
         name: str,
@@ -346,8 +352,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
         return thread, starter_message
 
     def _build_session_launcher_view(self) -> object:
-        from teleclaude.adapters.discord.session_launcher import SessionLauncherView
-
         return SessionLauncherView(enabled_agents=self._get_enabled_agents(), on_launch=self._handle_launcher_click)
 
     async def _post_or_update_launcher(self, forum_id: int) -> None:
@@ -369,8 +373,6 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):  # pylint: disa
         message_key = f"{setting_prefix}:message_id"
         launcher_title = "Start a session"
         launcher_text = "Start a session"
-
-        from teleclaude.core.db import db
 
         existing_thread_id = await db.get_system_setting(thread_key)
         existing_message_id = await db.get_system_setting(message_key)

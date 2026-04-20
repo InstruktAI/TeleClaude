@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.quality.format import FormatRunner
+
 # ---------------------------------------------------------------------------
 # FormatRunner dispatches per-language formatters
 # ---------------------------------------------------------------------------
@@ -21,8 +23,6 @@ class TestFormatRunnerDispatch:
 
     def test_python_files_dispatched_to_ruff(self, tmp_path: Path) -> None:
         """Python files are formatted with ruff check --fix and ruff format."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -35,8 +35,6 @@ class TestFormatRunnerDispatch:
 
     def test_markdown_files_dispatched_to_prettier(self, tmp_path: Path) -> None:
         """Markdown files are formatted with prettier."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -49,8 +47,6 @@ class TestFormatRunnerDispatch:
 
     def test_yaml_files_dispatched_to_prettier(self, tmp_path: Path) -> None:
         """YAML files are formatted with prettier, not Python formatters."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -65,8 +61,6 @@ class TestFormatRunnerDispatch:
 
     def test_no_files_formats_default_dirs(self, tmp_path: Path) -> None:
         """When no files specified, FormatRunner formats default directories."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -78,8 +72,6 @@ class TestFormatRunnerDispatch:
 
     def test_default_mode_does_not_pass_nonexistent_files(self, tmp_path: Path) -> None:
         """Default-mode markdown formatting only includes files that exist on disk."""
-        from teleclaude.quality.format import FormatRunner
-
         calls: list[tuple[list[str], str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -99,8 +91,6 @@ class TestFormatRunnerDispatch:
 
     def test_empty_file_list_is_noop(self, tmp_path: Path) -> None:
         """An explicit empty file list means nothing to format."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -121,8 +111,6 @@ class TestFormatRunnerMixedFiles:
 
     def test_mixed_python_and_markdown_dispatched_separately(self, tmp_path: Path) -> None:
         """Mixed .py and .md files go to their respective formatters."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -151,8 +139,6 @@ class TestFormatRunnerTypeScript:
 
     def test_typescript_files_dispatched_to_prettier(self, tmp_path: Path) -> None:
         """TypeScript files are formatted with prettier when typescript is in languages."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -165,8 +151,6 @@ class TestFormatRunnerTypeScript:
 
     def test_typescript_default_mode_runs_prettier_from_frontend_root(self, tmp_path: Path) -> None:
         """In default mode with TS configured, prettier runs from the frontend_root directory."""
-        from teleclaude.quality.format import FormatRunner
-
         calls: list[tuple[list[str], str, str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -186,8 +170,6 @@ class TestFormatRunnerTypeScript:
 
     def test_typescript_files_ignored_when_not_configured(self, tmp_path: Path) -> None:
         """TypeScript files are skipped when typescript is not in languages."""
-        from teleclaude.quality.format import FormatRunner
-
         commands_run: list[list[str]] = []
 
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
@@ -210,8 +192,6 @@ class TestFormatRunnerFailure:
 
     def test_ruff_failure_exits_nonzero(self, tmp_path: Path) -> None:
         """When ruff fails, FormatRunner exits non-zero."""
-        from teleclaude.quality.format import FormatRunner
-
         with patch("teleclaude.quality.format._run_format_tool") as mock_run:
             mock_run.side_effect = SystemExit(1)
             runner = FormatRunner(project_root=tmp_path, languages=["python"])

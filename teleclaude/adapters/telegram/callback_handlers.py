@@ -3,7 +3,6 @@
 Handles button clicks from inline keyboards including session creation,
 project selection, and AI tool launching.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -34,7 +33,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import MessageMetadata
 
-    class _CallbackHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _CallbackHandlersHost(Protocol):
         client: AdapterClient
         trusted_dirs: list[TrustedDir]
         user_whitelist: set[int]
@@ -122,7 +121,7 @@ class CallbackHandlersMixin:
     # Callback Query Handler Implementation
     # =========================================================================
 
-    async def _handle_callback_query(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
+    async def _handle_callback_query(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle button clicks from inline keyboards."""
         query = update.callback_query
         if not query:

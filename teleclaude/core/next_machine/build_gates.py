@@ -147,7 +147,7 @@ def _pytest_worker(worktree_cwd: str, pytest_args: list[str], result_queue: Any)
                 "stderr": stderr_buffer.getvalue(),
             }
         )
-    except BaseException as exc:  # pylint: disable=broad-exception-caught
+    except BaseException as exc:
         result_queue.put(
             {
                 "returncode": 1,
@@ -191,7 +191,7 @@ def _run_pytest_in_child_process(
     )
 
 
-def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:  # pylint: disable=unused-argument
+def run_build_gates(worktree_cwd: str, slug: str) -> tuple[bool, str]:
     """Run build gates in the worktree.
 
     Returns (all_passed, output_details).

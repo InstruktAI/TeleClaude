@@ -32,11 +32,7 @@ from teleclaude.cli.tui.theme import (
     _TELECLAUDE_LIGHT_AGENT_THEME,
     _TELECLAUDE_LIGHT_THEME,
 )
-from teleclaude.todo_artifacts import (
-    artifact_display_filename,
-    read_artifact_content,
-    write_artifact_content,
-)
+from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content, write_artifact_content
 
 
 @dataclass
@@ -123,7 +119,7 @@ class EditorApp(App[None]):
     }
     """
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         file_path: Path,
         *,
@@ -211,7 +207,7 @@ class EditorApp(App[None]):
                 last_saved_content=self._last_saved_content,
                 save_callback=self._save_callback,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._set_status(f"Save failed: {exc}")
             return False
         if changed:

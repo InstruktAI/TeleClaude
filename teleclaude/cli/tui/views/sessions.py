@@ -13,12 +13,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
-from teleclaude.cli.tui.messages import (
-    PreviewChanged,
-    ReviveSessionRequest,
-    StateChanged,
-    StickyChanged,
-)
+from teleclaude.cli.tui.messages import PreviewChanged, ReviveSessionRequest, StateChanged, StickyChanged
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     SessionDisplayInfo,
@@ -28,10 +23,7 @@ from teleclaude.cli.tui.tree import (
     is_session_node,
 )
 from teleclaude.cli.tui.views.interaction import TreeInteractionState
-from teleclaude.cli.tui.views.sessions_actions import (
-    DOUBLE_PRESS_THRESHOLD,
-    SessionsViewActionsMixin,
-)
+from teleclaude.cli.tui.views.sessions_actions import DOUBLE_PRESS_THRESHOLD, SessionsViewActionsMixin
 from teleclaude.cli.tui.views.sessions_highlights import (
     HIDDEN_SESSION_STATUSES,
     PREVIEW_HIGHLIGHT_DURATION,
@@ -43,7 +35,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 if TYPE_CHECKING:
-    from textual.timer import Timer  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from textual.timer import Timer
 
     from teleclaude.api_models import AgentAvailabilityDTO
     from teleclaude.cli.tui.tree import TreeNode
@@ -56,7 +48,7 @@ class _PendingSelect(NamedTuple):
     request_focus: bool
 
 
-class SessionsView(  # pylint: disable=too-many-instance-attributes
+class SessionsView(
     SessionsViewActionsMixin,
     SessionsViewHighlightsMixin,
     Widget,
@@ -291,7 +283,7 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
 
         # Not in tree yet — keep pending
 
-    def _rebuild_tree(self) -> None:  # pylint: disable=too-many-locals,too-many-branches
+    def _rebuild_tree(self) -> None:
         """Rebuild the tree display from current data."""
         _rt0 = time.monotonic()
         self._logger.trace("[PERF] SessionsView._rebuild_tree START t=%.3f", _rt0)
@@ -372,7 +364,7 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
         # Apply pending auto-select after tree rebuild
         self._apply_pending_selection()
 
-    def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:  # pylint: disable=too-many-branches
+    def _mount_node(self, container: VerticalScroll, node: TreeNode) -> None:
         """Recursively mount tree nodes as widgets."""
         if is_computer_node(node):
             widget = ComputerHeader(data=node.data)
@@ -504,7 +496,7 @@ class SessionsView(  # pylint: disable=too-many-instance-attributes
         if row is None:
             return 2
         row.skip_bottom_connector = True
-        return row._connector_col  # pylint: disable=protected-access
+        return row._connector_col
 
     def _is_headless(self, row: SessionRow) -> bool:
         """Check if a session row is headless (no tmux pane)."""

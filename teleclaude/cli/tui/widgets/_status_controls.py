@@ -22,7 +22,7 @@ class PersistedControlState(TypedDict):
     pane_theming_mode: str
 
 
-class _SettingsWidget(Protocol):  # pylint: disable=too-few-public-methods
+class _SettingsWidget(Protocol):
     animation_mode: str
     pane_theming_mode: str
 

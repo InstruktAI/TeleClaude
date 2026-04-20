@@ -62,7 +62,7 @@ class EventProcessor:
                 await self._process_entries(entries)
             except asyncio.CancelledError:
                 break
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.exception("EventProcessor read loop error; sleeping 1s")
                 await asyncio.sleep(1.0)
 
@@ -72,7 +72,7 @@ class EventProcessor:
         """Create the Redis consumer group if it does not already exist."""
         try:
             await self._redis.xgroup_create(self._stream, self._group, id="$", mkstream=True)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             if "BUSYGROUP" not in str(exc):
                 raise
 
@@ -88,7 +88,7 @@ class EventProcessor:
             if entries:
                 logger.info("EventProcessor recovering pending entries", count=len(entries))
                 await self._process_entries(entries)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception("EventProcessor pending recovery failed")
 
     async def _process_entries(self, entries: Any) -> None:
@@ -100,7 +100,7 @@ class EventProcessor:
                     await self._pipeline.execute(envelope)
                     try:
                         await self._redis.xack(self._stream, self._group, entry_id)
-                    except Exception:  # pylint: disable=broad-exception-caught
+                    except Exception:
                         logger.exception("EventProcessor failed to ACK entry", entry_id=entry_id)
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception:
                     logger.exception("EventProcessor failed to process entry", entry_id=entry_id)

@@ -8,7 +8,7 @@ from teleclaude.cli.tui.animations.sprites.birds import (
     BIRD_LARGE_FRONT,
     BIRD_SMALL,
 )
-from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, SpriteGroup
+from teleclaude.cli.tui.animations.sprites.composite import AnimatedSprite, CompositeSprite, SpriteGroup
 
 
 class TestBirdSmall:
@@ -50,8 +50,6 @@ class TestBirdLarge:
         assert BIRD_LARGE.theme == "light"
 
     def test_frames_are_composite_sprites(self) -> None:
-        from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite
-
         for frame in BIRD_LARGE.frames:
             assert isinstance(frame, CompositeSprite)
 

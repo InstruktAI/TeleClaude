@@ -96,7 +96,7 @@ class PaneWriter:
             logger.exception("PaneWriter error")
 
 
-class PaneManagerBridge(TelecMixin, Widget):  # pylint: disable=too-many-instance-attributes
+class PaneManagerBridge(TelecMixin, Widget):
     """Invisible widget that bridges Textual messages to TmuxPaneManager.
 
     Listens for PreviewChanged, StickyChanged, and FocusPaneRequest messages

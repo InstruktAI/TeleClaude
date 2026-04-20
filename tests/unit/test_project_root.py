@@ -1,5 +1,4 @@
 """Tests for canonical project-root resolution."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

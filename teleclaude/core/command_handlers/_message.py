@@ -294,7 +294,7 @@ async def deliver_inbound(
     async def _break_turn() -> None:
         try:
             await client.break_threaded_turn(session)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Thread-break failures must not block delivery.
+        except Exception as exc:
             logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:

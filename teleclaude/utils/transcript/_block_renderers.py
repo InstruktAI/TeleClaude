@@ -77,7 +77,7 @@ def _should_skip_entry(
     return False
 
 
-def _process_entry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _process_entry(
     entry: dict[str, object],  # guard: loose-dict - External entry
     lines: list[str],
     last_section: str | None,
@@ -136,7 +136,7 @@ def _process_string_content(content: str, time_prefix: str, lines: list[str], la
     return "user"
 
 
-def _process_list_content(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _process_list_content(
     content: list[object],
     role: str,
     time_prefix: str,

@@ -27,7 +27,7 @@ _instances: dict[str, TodosDb] = {}
 # instance. The hook receives (instance, project_root) and is responsible for
 # setting instance._on_mutation to a callable that invalidates the daemon cache.
 # Defaults to None (no-op in CLI and test contexts).
-_new_instance_hook: Callable[[TodosDb, str], None] | None = None  # pylint: disable=invalid-name
+_new_instance_hook: Callable[[TodosDb, str], None] | None = None
 
 
 def set_todos_mutation_hook(hook: Callable[[TodosDb, str], None] | None) -> None:
@@ -39,7 +39,7 @@ def set_todos_mutation_hook(hook: Callable[[TodosDb, str], None] | None) -> None
     Args:
         hook: Callable receiving (instance, project_root), or None to clear.
     """
-    global _new_instance_hook  # pylint: disable=global-statement
+    global _new_instance_hook
     _new_instance_hook = hook
 
 

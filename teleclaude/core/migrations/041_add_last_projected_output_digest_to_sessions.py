@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add last_projected_output_digest column to sessions table.
 
 Projection-owned assistant-output dedupe state. This remains separate from the

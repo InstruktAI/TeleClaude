@@ -1,6 +1,4 @@
 """Characterization tests for teleclaude.core.agent_coordinator._coordinator."""
-# pylint: disable=protected-access,too-many-lines
-# pylint: disable=line-too-long,use-implicit-booleaness-not-comparison,unused-argument
 
 from __future__ import annotations
 

@@ -1,7 +1,5 @@
 """Unified three-row footer (context hints, global hints, controls)."""
 
-# pylint: disable=missing-function-docstring
-
 from __future__ import annotations
 
 from rich.style import Style
@@ -351,7 +349,7 @@ class TelecFooter(Widget):
         fav_button.disabled = (not controls_loaded) or pending
         dislike_button.disabled = (not controls_loaded) or pending
 
-    def on_click(self, event: Click) -> None:  # pylint: disable=too-many-return-statements
+    def on_click(self, event: Click) -> None:
         widget = event.widget
         if widget is None or widget is self:
             return

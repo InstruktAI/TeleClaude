@@ -18,25 +18,12 @@ from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    AgentEventContext,
-    AgentHookEvents,
-    AgentHookEventType,
-    AgentOutputPayload,
-    SessionTitleChangedContext,
-    TeleClaudeEvents,
-)
+from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentHookEventType, AgentOutputPayload
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.output_poller import (
-    OutputChanged,
-    OutputPoller,
-    ProcessExited,
-)
-from teleclaude.core.summarizer import generate_session_title
+from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
+from teleclaude.core.session_title import clear_title_projection_state
 from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils.transcript import (
-    collect_transcript_messages,
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
     extract_last_user_message_with_timestamp,
@@ -83,7 +70,6 @@ class OutputMetricsState:
 
 
 _output_metrics_state: dict[str, OutputMetricsState] = {}
-_title_projection_signatures: dict[str, tuple[tuple[str, str], ...]] = {}
 
 
 def _assistant_projection_signature(message: str, last_ts: datetime) -> str:
@@ -201,10 +187,10 @@ def _clear_output_metrics(session_id: str) -> None:
     state = _output_metrics_state.pop(session_id, None)
     if state:
         _log_output_metrics_summary(session_id, state, reason="final")
-    _title_projection_signatures.pop(session_id, None)
+    clear_title_projection_state(session_id)
 
 
-async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
+async def _emit_synthetic_codex_event(
     session_id: str,
     event_type: AgentHookEventType,
     emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
@@ -239,7 +225,7 @@ async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     )
 
 
-async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+async def _maybe_emit_codex_turn_events(
     session_id: str,
     active_agent: str | None,
     current_output: str,
@@ -256,9 +242,9 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
         state = CodexTurnState()
         _codex_turn_state[session_id] = state
 
-    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)  # pylint: disable=protected-access
-    responding = codex_prompt_submit._is_live_agent_responding(current_output)  # pylint: disable=protected-access
-    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)  # pylint: disable=protected-access
+    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)
+    responding = codex_prompt_submit._is_live_agent_responding(current_output)
+    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)
     raw_tool_action = tool_match[0] if tool_match else None
     raw_tool_signature = tool_match[1] if tool_match else ""
     raw_tool_preview = tool_match[2] if tool_match else ""
@@ -374,7 +360,7 @@ def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) 
         task.result()
     except asyncio.CancelledError:
         return
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.error("Background poller task crashed for session %s", session_id, exc_info=True)
 
 
@@ -419,7 +405,7 @@ async def _project_user_reflection(
     adapter_client: "AdapterClient",
 ) -> "Session":
     """Project the latest authoritative user message from transcript into canonical state."""
-    # pylint: disable=too-many-locals,too-many-return-statements
+
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
@@ -473,85 +459,6 @@ async def _project_user_reflection(
         )
     refreshed = await db.get_session(session.session_id)
     return refreshed or session
-
-
-async def refresh_session_title_from_transcript(session: "Session") -> "Session":
-    """Recompute semantic title from the last completed user->assistant turn."""
-    # pylint: disable=too-many-return-statements
-    current_title = (session.title or "").strip()
-    if current_title.startswith("/"):
-        return session
-
-    transcript_path = session.native_log_file
-    active_agent = session.active_agent
-    if not transcript_path or not active_agent:
-        return session
-
-    try:
-        agent_name = AgentName.from_str(active_agent)
-    except ValueError:
-        return session
-
-    latest_user = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
-    if latest_user is None:
-        return session
-    latest_user_text, latest_user_ts = latest_user
-    if not latest_user_text.strip():
-        return session
-
-    messages = await asyncio.to_thread(collect_transcript_messages, transcript_path, agent_name)
-    if not messages:
-        return session
-
-    last_user_idx: int | None = None
-    for idx in range(len(messages) - 1, -1, -1):
-        role, _text = messages[idx]
-        if role == "user":
-            last_user_idx = idx
-            break
-    if last_user_idx is None:
-        return session
-
-    user_role, user_text = messages[last_user_idx]
-    assistant_parts = [text for role, text in messages[last_user_idx + 1 :] if role == "assistant" and text.strip()]
-    if user_role != "user" or not user_text.strip() or not assistant_parts:
-        return session
-
-    finalized_turn = [("user", user_text), ("assistant", "\n\n".join(assistant_parts))]
-    user_marker = latest_user_ts.isoformat() if isinstance(latest_user_ts, datetime) else latest_user_text
-    turn_signature = (("user", user_marker),)
-    if _title_projection_signatures.get(session.session_id) == turn_signature:
-        return session
-
-    try:
-        new_title = await generate_session_title(finalized_turn)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
-        logger.warning("Title summarization failed: %s", exc)
-        return session
-
-    _title_projection_signatures[session.session_id] = turn_signature
-    if not new_title or new_title == current_title:
-        return session
-
-    await db.update_session(session.session_id, title=new_title)
-    session.title = new_title
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_TITLE_CHANGED,
-        SessionTitleChangedContext(session_id=session.session_id, title=new_title),
-    )
-    logger.info("Updated session title from transcript: %s", new_title)
-    return session
-
-
-async def finalize_session_title_on_agent_stop(
-    session_id: str,
-    session: "Session | None" = None,
-) -> "Session | None":
-    """Finalize title once per completed turn, using transcript truth at agent_stop."""
-    resolved_session = session or await db.get_session(session_id)
-    if not resolved_session:
-        return None
-    return await refresh_session_title_from_transcript(resolved_session)
 
 
 async def project_session_from_transcript(
@@ -635,7 +542,7 @@ async def schedule_polling(
     return True
 
 
-async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-positional-arguments,too-many-statements
+async def poll_and_send_output(
     session_id: str,
     tmux_session_name: str,
     output_poller: OutputPoller,
@@ -708,7 +615,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             refreshed = await db.get_session(event.session_id)
                             if refreshed is not None:
                                 session = refreshed
-                    except Exception as e:  # pylint: disable=broad-exception-caught
+                    except Exception as e:
                         logger.error("[CODEX] Error in Codex event processing: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
@@ -770,7 +677,7 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                 session_id,
                 f"Polling error: {exc}",
             )
-        except Exception as feedback_exc:  # pylint: disable=broad-exception-caught
+        except Exception as feedback_exc:
             logger.error(
                 "Failed to send error feedback for session %s: %s",
                 session_id,

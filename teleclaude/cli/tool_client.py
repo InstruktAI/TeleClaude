@@ -7,8 +7,6 @@ Sends identity headers with each call:
   X-Telec-Email:       from per-TTY telec login state
   X-Tmux-Session:      from tmux server (unforgeable by agent)
 """
-# pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
-# pylint: disable=raise-missing-from,broad-exception-caught
 
 from __future__ import annotations
 

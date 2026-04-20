@@ -30,4 +30,3 @@ Create a **Python development workflow checklist** or append to existing policy 
 
 - Review `software-development/policy/python/core` scope
 - Decide: enhance existing policy or create a separate "python-development-workflow" spec
-- Add pre-commit linting for docstring quality (pylint `missing-module-docstring`, similar)

@@ -8,8 +8,6 @@ Covers:
 4. Bug todo slugs reach DB delivery (no is_bug bypass)
 """
 
-# pylint: disable=unused-argument
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -18,15 +16,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teleclaude.core.integration.checkpoint import (
-    IntegrationCheckpoint,
-    IntegrationPhase,
-    _write_checkpoint,
-)
-from teleclaude.core.integration.step_functions import (
-    _step_delivery_bookkeeping,
-    _step_push_succeeded,
-)
+from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _write_checkpoint
+from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.core.integration.step_functions import _do_cleanup, _step_delivery_bookkeeping, _step_push_succeeded
 
 
 def _mock_todos_db_for_delivery() -> MagicMock:
@@ -347,9 +339,6 @@ def test_anomaly_none_on_full_success(tmp_path: Path) -> None:
 
 def test_anomaly_cleanup_delivered_slug_exception(tmp_path: Path) -> None:
     """When cleanup_delivered_slug throws, warning is captured and flow continues."""
-    from teleclaude.core.integration.readiness_projection import CandidateKey  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.integration.step_functions import _do_cleanup  # pylint: disable=import-outside-toplevel
-
     cp, cp_path = _make_checkpoint(tmp_path, phase=IntegrationPhase.CLEANUP.value)
     key = CandidateKey(slug="my-feature", branch="my-feature", sha="a" * 40)
 

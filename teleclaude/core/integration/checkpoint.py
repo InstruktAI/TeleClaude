@@ -45,7 +45,6 @@ class IntegrationPhase(str, Enum):
 
 
 @dataclass
-# pylint: disable=too-many-instance-attributes
 class IntegrationCheckpoint:
     """Durable checkpoint for crash recovery and idempotent re-entry."""
 

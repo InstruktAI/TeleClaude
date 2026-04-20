@@ -12,6 +12,12 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.quality.toolchain import (
+    TOOLCHAIN_REGISTRY,
+    TypeScriptToolchain,
+    get_toolchain,
+)
+
 # ---------------------------------------------------------------------------
 # R3.1 — Dispatch selects the correct toolchain by language
 # ---------------------------------------------------------------------------
@@ -22,8 +28,6 @@ class TestToolchainDispatch:
 
     def test_python_language_returns_python_toolchain(self, tmp_path: Path) -> None:
         """get_toolchain('python', ...) returns the Python toolchain implementation."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         toolchain = get_toolchain("python", project_root=tmp_path)
         assert toolchain is not None
         # The toolchain name must identify it as Python
@@ -31,8 +35,6 @@ class TestToolchainDispatch:
 
     def test_unknown_language_raises_error(self, tmp_path: Path) -> None:
         """get_toolchain with an unknown language raises KeyError or ValueError."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         with pytest.raises((KeyError, ValueError)):
             get_toolchain("cobol", project_root=tmp_path)
 
@@ -47,16 +49,12 @@ class TestToolchainProtocolConformance:
 
     def test_python_toolchain_has_tools_attribute(self, tmp_path: Path) -> None:
         """Python toolchain exposes a list of available lint/check tools."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         toolchain = get_toolchain("python", project_root=tmp_path)
         assert hasattr(toolchain, "tools"), "Toolchain must expose available tools"
         assert len(toolchain.tools) > 0, "Python toolchain must list at least one tool"
 
     def test_python_toolchain_has_config_source(self, tmp_path: Path) -> None:
         """Python toolchain declares its configuration source (pyproject.toml)."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         toolchain = get_toolchain("python", project_root=tmp_path)
         assert hasattr(toolchain, "config_source"), "Toolchain must declare its config source"
         config_source = str(toolchain.config_source)
@@ -64,8 +62,6 @@ class TestToolchainProtocolConformance:
 
     def test_python_toolchain_has_test_companion_mapping(self, tmp_path: Path) -> None:
         """Python toolchain encapsulates the test companion mapping convention."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         toolchain = get_toolchain("python", project_root=tmp_path)
         assert hasattr(toolchain, "map_to_test_companion"), "Toolchain must expose map_to_test_companion method"
         companion = toolchain.map_to_test_companion("teleclaude/foo/bar.py")
@@ -75,8 +71,6 @@ class TestToolchainProtocolConformance:
 
     def test_python_toolchain_has_source_dirs(self, tmp_path: Path) -> None:
         """Python toolchain exposes its configured source directories."""
-        from teleclaude.quality.toolchain import get_toolchain  # pyright: ignore[reportMissingImports]
-
         (tmp_path / "pyproject.toml").write_text(
             "[tool.ruff]\nsrc = ['teleclaude', 'tools', 'tests']\n",
             encoding="utf-8",
@@ -110,38 +104,28 @@ class TestTypeScriptToolchain:
 
     def test_typescript_toolchain_registered(self, tmp_path: Path) -> None:
         """get_toolchain('typescript', ...) returns the TypeScript toolchain."""
-        from teleclaude.quality.toolchain import get_toolchain
-
         toolchain = get_toolchain("typescript", project_root=tmp_path)
         assert toolchain.language == "typescript"
 
     def test_typescript_toolchain_has_eslint_and_tsc(self, tmp_path: Path) -> None:
         """TypeScript toolchain lists eslint and tsc as tools."""
-        from teleclaude.quality.toolchain import get_toolchain
-
         toolchain = get_toolchain("typescript", project_root=tmp_path)
         assert "eslint" in toolchain.tools
         assert "tsc" in toolchain.tools
 
     def test_typescript_toolchain_has_config_source(self, tmp_path: Path) -> None:
         """TypeScript toolchain declares package.json as its config source."""
-        from teleclaude.quality.toolchain import get_toolchain
-
         toolchain = get_toolchain("typescript", project_root=tmp_path)
         assert "package.json" in toolchain.config_source
 
     def test_typescript_companion_mapping(self, tmp_path: Path) -> None:
         """TypeScript toolchain maps source to __tests__ companion."""
-        from teleclaude.quality.toolchain import get_toolchain
-
         toolchain = get_toolchain("typescript", project_root=tmp_path)
         companion = toolchain.map_to_test_companion("app/foo/bar.tsx")
         assert "test" in companion.lower() or "__tests__" in companion
 
     def test_typescript_source_dirs_contains_frontend_root_path(self, tmp_path: Path) -> None:
         """TypeScript toolchain source_dirs contains the resolved frontend_root path."""
-        from teleclaude.quality.toolchain import TypeScriptToolchain
-
         toolchain = TypeScriptToolchain(project_root=tmp_path, frontend_root="web")
         dirs = toolchain.source_dirs
         assert len(dirs) == 1
@@ -149,8 +133,6 @@ class TestTypeScriptToolchain:
 
     def test_get_toolchain_passes_frontend_root_to_typescript(self, tmp_path: Path) -> None:
         """get_toolchain('typescript', ..., frontend_root='custom') propagates to source_dirs."""
-        from teleclaude.quality.toolchain import get_toolchain
-
         toolchain = get_toolchain("typescript", project_root=tmp_path, frontend_root="custom")
         dirs = toolchain.source_dirs
         assert str(tmp_path / "custom") == dirs[0], (
@@ -168,11 +150,6 @@ class TestExtensibility:
 
     def test_custom_toolchain_registered_and_dispatched(self, tmp_path: Path) -> None:
         """A custom toolchain registered in TOOLCHAIN_REGISTRY is reachable via get_toolchain."""
-        from teleclaude.quality.toolchain import (  # pyright: ignore[reportMissingImports]
-            TOOLCHAIN_REGISTRY,
-            get_toolchain,
-        )
-
         class _FakeToolchain:  # pylint: disable=too-few-public-methods
             """Minimal protocol-conforming toolchain for registry dispatch test."""
 

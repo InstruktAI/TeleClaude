@@ -1,6 +1,4 @@
 """TelecAppMediaMixin — animation, TTS, and ChipTunes management."""
-# pylint: disable=import-outside-toplevel,broad-exception-caught,protected-access
-# pylint: disable=too-many-arguments,too-many-positional-arguments
 
 from __future__ import annotations
 
@@ -10,9 +8,16 @@ import time
 from instrukt_ai_logging import get_logger
 from textual import work
 
-from teleclaude.api_models import ChiptunesStatusDTO
+from teleclaude.api_models import ChiptunesStatusDTO, SettingsPatchDTO, TTSSettingsPatchDTO
 from teleclaude.chiptunes.dislikes import is_disliked, remove_dislike, save_dislike
-from teleclaude.chiptunes.favorites import is_favorited
+from teleclaude.chiptunes.favorites import is_favorited, remove_favorite, save_favorite
+from teleclaude.cli.tui.animation_colors import palette_registry
+from teleclaude.cli.tui.animation_engine import AnimationPriority
+from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
+from teleclaude.cli.tui.animations.general import GlobalSky
+from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
+from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
+from teleclaude.cli.tui.header_frames import build_header_frames
 from teleclaude.cli.tui.widgets.banner import Banner
 from teleclaude.cli.tui.widgets.box_tab_bar import BoxTabBar
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
@@ -35,22 +40,16 @@ class TelecAppMediaMixin:
 
     def _force_spawn_sky(self, sprite: object | None = None) -> None:
         """Force-spawn a sky entity (or random if sprite is None)."""
-        from teleclaude.cli.tui.animations.general import GlobalSky
-
         slot = self._animation_engine._targets.get("header")  # type: ignore[attr-defined]
         if slot and isinstance(slot.animation, GlobalSky):
             slot.animation.force_spawn(sprite)
 
     def action_spawn_ufo(self) -> None:
         """u: force a UFO to spawn in the sky animation."""
-        from teleclaude.cli.tui.animations.sprites.ufo import UFO_SPRITE
-
         self._force_spawn_sky(UFO_SPRITE)
 
     def action_spawn_car(self) -> None:
         """c: force a car to spawn in the sky animation."""
-        from teleclaude.cli.tui.animations.sprites.cars import CAR_SPRITE
-
         self._force_spawn_sky(CAR_SPRITE)
 
     def action_toggle_tts(self) -> None:
@@ -71,8 +70,6 @@ class TelecAppMediaMixin:
     @work(exclusive=True, group="settings")
     async def _toggle_tts(self) -> None:
         """Toggle TTS on/off via API."""
-        from teleclaude.api_models import SettingsPatchDTO, TTSSettingsPatchDTO
-
         new_val = not self.query_one("#telec-footer", TelecFooter).tts_enabled  # type: ignore[attr-defined]
         try:
             await self.api.patch_settings(  # type: ignore[attr-defined]
@@ -240,8 +237,6 @@ class TelecAppMediaMixin:
     @work(exclusive=False, group="settings")
     async def _chiptunes_favorite(self) -> None:
         """Toggle the current track in favorites."""
-        from teleclaude.chiptunes.favorites import remove_favorite, save_favorite
-
         footer = self.query_one("#telec-footer", TelecFooter)  # type: ignore[attr-defined]
         if not footer.chiptunes_loaded:
             return
@@ -329,8 +324,6 @@ class TelecAppMediaMixin:
 
     def _start_animation_mode(self, mode: str) -> None:
         """Configure ambient sky and banner cadence for the given mode."""
-        from teleclaude.cli.tui.animation_triggers import ActivityTrigger, PeriodicTrigger
-
         self._stop_banner_animation()
 
         self._animation_engine.is_enabled = True  # type: ignore[attr-defined]
@@ -356,10 +349,6 @@ class TelecAppMediaMixin:
         *,
         show_extra_motion: bool,
     ) -> None:
-        from teleclaude.cli.tui.animation_colors import palette_registry
-        from teleclaude.cli.tui.animation_engine import AnimationPriority
-        from teleclaude.cli.tui.animations.general import GlobalSky
-
         header_slot = self._animation_engine._targets.get("header")  # type: ignore[attr-defined]
         existing = header_slot.animation if header_slot is not None else None
         if isinstance(existing, GlobalSky):
@@ -383,8 +372,6 @@ class TelecAppMediaMixin:
 
     def _stop_banner_animation(self) -> None:
         """Stop banner/logo effects while leaving the ambient sky scene intact."""
-        from teleclaude.cli.tui.animation_triggers import PeriodicTrigger
-
         if isinstance(self._periodic_trigger, PeriodicTrigger):  # type: ignore[attr-defined]
             self._periodic_trigger.stop()  # type: ignore[attr-defined]
         self._periodic_trigger = None  # type: ignore[attr-defined]
@@ -434,8 +421,6 @@ class TelecAppMediaMixin:
         build_ms = 0.0
         if changed:
             try:
-                from teleclaude.cli.tui.header_frames import build_header_frames
-
                 build_started = time.perf_counter()
                 banner = self.query_one(Banner)  # type: ignore[attr-defined]
                 tab_bar = self.query_one(BoxTabBar)  # type: ignore[attr-defined]

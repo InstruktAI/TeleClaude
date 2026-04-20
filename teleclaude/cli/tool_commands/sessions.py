@@ -3,13 +3,14 @@
 All commands call the daemon REST API via tool_api_call() and print JSON to stdout.
 Errors go to stderr with exit code 1 (handled by tool_api_call).
 """
-# pylint: disable=import-outside-toplevel,too-many-branches,too-many-statements,raise-missing-from
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
+from teleclaude.cli.telec.handlers.misc import _handle_revive
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.session_identity import get_session_id
 
@@ -52,8 +53,6 @@ def handle_sessions(args: list[str]) -> None:
     elif sub == "revive":
         # Keep revive behavior centralized in telec CLI entrypoint since it
         # includes post-revive kick and optional tmux attach semantics.
-        from teleclaude.cli.telec.handlers.misc import _handle_revive
-
         _handle_revive(rest)
     elif sub == "end":
         handle_sessions_end(rest)
@@ -140,7 +139,6 @@ def handle_sessions_start(args: list[str]) -> None:
                                 [--agent claude|gemini|codex]
                                 [--mode fast|med|slow]
                                 [--message <text>]
-                                [--title <text>]
                                 [--direct]
                                 [--detach]
 
@@ -175,9 +173,6 @@ def handle_sessions_start(args: list[str]) -> None:
         elif args[i] == "--message" and i + 1 < len(args):
             body["message"] = args[i + 1]
             body["launch_kind"] = "agent_then_message"
-            i += 2
-        elif args[i] == "--title" and i + 1 < len(args):
-            body["title"] = args[i + 1]
             i += 2
         elif args[i] == "--direct":
             body["direct"] = True
@@ -651,8 +646,6 @@ def handle_sessions_widget(args: list[str]) -> None:
     if "--help" in args or "-h" in args:
         print(handle_sessions_widget.__doc__ or "")
         return
-
-    import json
 
     data_str: str | None = None
 

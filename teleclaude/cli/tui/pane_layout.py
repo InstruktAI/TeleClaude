@@ -1,7 +1,6 @@
 """PaneLayoutMixin — layout calculation, rendering, and background refresh."""
 
 # The mixin intentionally manipulates private layout state on the host class.
-# pylint: disable=protected-access
 
 from __future__ import annotations
 

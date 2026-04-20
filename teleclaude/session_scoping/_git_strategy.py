@@ -83,7 +83,7 @@ def resolve_git_worktree_paths(
                 ),
             )
             ledger_updated = True
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.warning(
                 "Ledger write failed, returning paths without persistence",
                 session_id=session_id,

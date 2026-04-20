@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,import-error,no-name-in-module,protected-access,no-member,too-few-public-methods
+
 """Test spec (xfail) for R5: todos.db SQLAlchemy migration.
 
 todos.db transitions from raw aiosqlite to the shared connection factory's
@@ -14,6 +14,9 @@ import json
 from pathlib import Path
 
 import pytest
+from sqlalchemy import text
+
+from teleclaude.core.todos_db import TodosDb
 
 pytestmark = pytest.mark.unit
 
@@ -28,8 +31,6 @@ class TestTodosDbUsesSharedFactory:
 
     async def test_initialize_creates_sqlalchemy_engine(self, tmp_path: Path) -> None:
         """After initialize(), todos.db has a SQLAlchemy engine, not a raw aiosqlite conn."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -44,14 +45,10 @@ class TestTodosDbUsesSharedFactory:
 
     async def test_initialize_applies_factory_pragmas(self, tmp_path: Path) -> None:
         """PRAGMAs are applied by the shared factory, not by inline code."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
             # Verify PRAGMAs via the engine
-            from sqlalchemy import text
-
             async with db._session() as session:
                 result = await session.exec(text("PRAGMA foreign_keys"))
                 assert result.scalar() == 1
@@ -71,8 +68,6 @@ class TestTodosDbAsyncAccess:
 
     async def test_add_roadmap_entry_async(self, tmp_path: Path) -> None:
         """Roadmap entries can be created via the async engine."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -85,8 +80,6 @@ class TestTodosDbAsyncAccess:
 
     async def test_state_roundtrip_async(self, tmp_path: Path) -> None:
         """State get/set works through the SQLAlchemy async engine."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -102,8 +95,6 @@ class TestTodosDbAsyncAccess:
 
     async def test_artifact_crud_async(self, tmp_path: Path) -> None:
         """Artifact read/write works through the SQLAlchemy async engine."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -126,8 +117,6 @@ class TestTodosDbSyncAccess:
 
     def test_sync_conn_returns_usable_connection(self, tmp_path: Path) -> None:
         """_sync_conn() returns a connection that can query the database."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         db.initialize_sync()
         conn = db._sync_conn()
@@ -141,8 +130,6 @@ class TestTodosDbSyncAccess:
 
     def test_sync_access_uses_shared_factory_engine(self, tmp_path: Path) -> None:
         """Sync connections come from the shared factory, not from raw sqlite3.connect."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         db.initialize_sync()
         conn = db._sync_conn()
@@ -164,8 +151,6 @@ class TestMutationHookPreserved:
 
     async def test_mutation_callback_fires_on_write(self, tmp_path: Path) -> None:
         """The on_mutation callback fires when roadmap entries are modified."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         mutations: list[str] = []
@@ -182,8 +167,6 @@ class TestRoadmapOperationsPreserved:
 
     async def test_dependency_graph_operations(self, tmp_path: Path) -> None:
         """Roadmap dependency graph (set_deps, get deps) works via SQLAlchemy."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -197,8 +180,6 @@ class TestRoadmapOperationsPreserved:
 
     async def test_move_entry_reorders_correctly(self, tmp_path: Path) -> None:
         """Moving a roadmap entry updates position ordering."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -218,8 +199,6 @@ class TestArtifactVersioningPreserved:
 
     async def test_artifact_write_creates_version_entry(self, tmp_path: Path) -> None:
         """Writing an artifact twice creates at least two version history entries."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -244,8 +223,6 @@ class TestSingletonCaching:
         If TodosDb caches instances by path, the second construction must return
         the same object (or at least not re-initialize the schema).
         """
-        from teleclaude.core.todos_db import TodosDb
-
         db_path = str(tmp_path / "todos.db")
         db1 = TodosDb(db_path)
         db2 = TodosDb(db_path)
@@ -265,8 +242,6 @@ class TestArtifactWriteRejectsUnknownSlug:
 
     async def test_async_write_artifact_unknown_slug_raises(self, tmp_path: Path) -> None:
         """write_artifact() raises ValueError when slug has no active roadmap entry."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
@@ -281,8 +256,6 @@ class TestArtifactWriteRejectsUnknownSlug:
 
     def test_sync_write_artifact_unknown_slug_raises(self, tmp_path: Path) -> None:
         """write_artifact_sync() raises ValueError when slug has no active roadmap entry."""
-        from teleclaude.core.todos_db import TodosDb
-
         db = TodosDb(str(tmp_path / "todos.db"))
         db.initialize_sync()
         with pytest.raises(ValueError, match="no active roadmap entry"):

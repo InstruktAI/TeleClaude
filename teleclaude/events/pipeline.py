@@ -34,7 +34,7 @@ def _default_correlation_config() -> Any:
 
 
 @dataclass
-class PipelineContext:  # pylint: disable=too-many-instance-attributes  # Attributes are explicit for runtime state.
+class PipelineContext:
     """Shared services and configuration available to every cartridge invocation."""
 
     catalog: EventCatalog
@@ -105,7 +105,7 @@ class Pipeline:
         except asyncio.CancelledError:
             logger.debug("Domain pipeline fan-out cancelled during shutdown")
             raise
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Domain pipeline fan-out error: %s", e, exc_info=True)
 
     async def shutdown(self, *, timeout: float = 5.0) -> None:

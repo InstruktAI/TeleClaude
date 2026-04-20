@@ -6,6 +6,7 @@ from teleclaude.core.integration.events import (
     BranchPushedPayload,
     FinalizeReadyPayload,
     ReviewApprovedPayload,
+    build_integration_event,
 )
 from teleclaude.core.integration.service import (
     IngestionResult,
@@ -157,8 +158,6 @@ def test_all_candidates_includes_ingested_candidate():
 
 
 def test_replay_rebuilds_projection_from_events():
-    from teleclaude.core.integration.events import build_integration_event
-
     svc = _make_service(reachable=True, integrated=False)
     e1 = build_integration_event("review_approved", _REVIEW_APPROVED)
     e2 = build_integration_event("branch_pushed", _BRANCH_PUSHED)

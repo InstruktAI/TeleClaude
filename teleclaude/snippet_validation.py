@@ -46,7 +46,7 @@ def _allowed_scopes(domains: Iterable[str]) -> set[str]:
     return {"general", "project", *domains}
 
 
-def validate_snippet_id_format(  # pylint: disable=too-many-return-statements
+def validate_snippet_id_format(
     value: str,
     *,
     domains: Iterable[str],
@@ -75,7 +75,7 @@ def validate_snippet_id_format(  # pylint: disable=too-many-return-statements
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest), None
 
 
-def expected_snippet_id_for_path(  # pylint: disable=too-many-return-statements
+def expected_snippet_id_for_path(
     path: Path,
     *,
     project_root: Path,
@@ -105,7 +105,7 @@ def expected_snippet_id_for_path(  # pylint: disable=too-many-return-statements
     return None, "invalid_docs_root"
 
 
-def _expected_from_global(  # pylint: disable=too-many-return-statements
+def _expected_from_global(
     parts: tuple[str, ...],
     path: Path,
     domains: Iterable[str],
@@ -141,7 +141,7 @@ def _expected_from_global(  # pylint: disable=too-many-return-statements
     return SnippetIdParts(scope=scope, taxonomy=taxonomy, rest=rest).value(), None
 
 
-def _expected_from_project(  # pylint: disable=too-many-return-statements
+def _expected_from_project(
     parts: tuple[str, ...],
     path: Path,
 ) -> tuple[str | None, str | None]:
@@ -170,7 +170,7 @@ def _tail(parts: tuple[str, ...], start_idx: int, path: Path) -> str:
     return "/".join([p for p in tail_parts if p])
 
 
-def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements
+def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | None:
     """Validate an inline @ref and return an error code or None if valid."""
     if not ref:
         return "missing_ref"
@@ -184,7 +184,7 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
     return "invalid_prefix"
 
 
-def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements,unused-argument
+def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
     if rel == "baseline.md":
@@ -215,7 +215,7 @@ def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:  # py
     return None
 
 
-def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:  # pylint: disable=too-many-return-statements
+def _validate_global_ref(rel: str, domains: Iterable[str]) -> str | None:
     if rel.startswith("docs/"):
         return "nested_docs_root"
     if rel == "baseline.md":

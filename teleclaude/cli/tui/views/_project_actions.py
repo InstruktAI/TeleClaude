@@ -9,7 +9,7 @@ from typing import Protocol, TypedDict, cast
 import yaml
 
 
-class NewProjectResultLike(Protocol):  # pylint: disable=too-few-public-methods
+class NewProjectResultLike(Protocol):
     """Duck-typed project modal result used by the view helpers."""
 
     name: str
@@ -17,7 +17,7 @@ class NewProjectResultLike(Protocol):  # pylint: disable=too-few-public-methods
     description: str | None
 
 
-class ProjectNotifier(Protocol):  # pylint: disable=too-few-public-methods
+class ProjectNotifier(Protocol):
     """Minimal notification protocol needed by project action helpers."""
 
     def notify(self, message: str, *, severity: str = "information") -> None:
@@ -155,7 +155,7 @@ def save_new_project(app: ProjectNotifier, result: NewProjectResultLike) -> bool
 
         trusted_dirs_raw.append(_build_trusted_dir_entry(result, path=str(project_path)))
         _write_raw_config(config_path, raw_config)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         _rollback_created_directory(project_path, created_project_dir)
         app.notify(f"Failed to save project: {str(exc)[:80]}", severity="error")
         return False

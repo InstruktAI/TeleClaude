@@ -1,4 +1,3 @@
-# pylint: disable=use-implicit-booleaness-not-comparison,useless-return
 from __future__ import annotations
 
 from collections.abc import Mapping

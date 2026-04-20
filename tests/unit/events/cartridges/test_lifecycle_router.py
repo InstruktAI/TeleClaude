@@ -326,7 +326,7 @@ def test_is_slug_delivered_returns_true_when_in_delivered(tmp_path: Path) -> Non
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.return_value = ("delivered",)
     mock_db = MagicMock()
-    mock_db._sync_conn.return_value = mock_conn  # pylint: disable=protected-access
+    mock_db._sync_conn.return_value = mock_conn
 
     with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
         result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
@@ -339,7 +339,7 @@ def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.return_value = ("icebox",)
     mock_db = MagicMock()
-    mock_db._sync_conn.return_value = mock_conn  # pylint: disable=protected-access
+    mock_db._sync_conn.return_value = mock_conn
 
     with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
         result = _is_slug_delivered_or_frozen("frozen-slug", tmp_path)

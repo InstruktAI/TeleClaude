@@ -9,10 +9,25 @@ tombstone tracking, and schema initialization are preserved.
 
 from __future__ import annotations
 
+import ast
 import sqlite3
 from pathlib import Path
 
 import pytest
+
+from teleclaude.mirrors import store
+from teleclaude.mirrors.store import (
+    MirrorRecord,
+    MirrorSearchResult,
+    MirrorTombstoneRecord,
+    delete_mirror_tombstone,
+    get_mirror,
+    get_mirror_tombstone,
+    list_mirrors,
+    search_mirrors,
+    upsert_mirror,
+    upsert_mirror_tombstone,
+)
 
 pytestmark = [pytest.mark.unit]
 
@@ -27,10 +42,6 @@ class TestMirrorsUsesSharedFactory:
 
     def test_connect_rw_uses_factory_engine(self) -> None:
         """_connect_rw uses the shared factory instead of raw sqlite3.connect."""
-        import ast
-
-        from teleclaude.mirrors import store
-
         source_path = Path(store.__file__)
         source = source_path.read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -48,10 +59,6 @@ class TestMirrorsUsesSharedFactory:
 
     def test_connect_ro_uses_factory_engine(self) -> None:
         """_connect_ro uses the shared factory for read-only connections."""
-        import ast
-
-        from teleclaude.mirrors import store
-
         source_path = Path(store.__file__)
         source = source_path.read_text(encoding="utf-8")
         tree = ast.parse(source)
@@ -76,12 +83,6 @@ class TestFts5SearchPreserved:
 
     def test_search_mirrors_returns_fts_results(self, tmp_path: Path) -> None:
         """FTS5 MATCH queries work through the SQLAlchemy engine."""
-        from teleclaude.mirrors.store import (
-            MirrorRecord,
-            search_mirrors,
-            upsert_mirror,
-        )
-
         db_path = tmp_path / "mirrors.db"
 
         # Insert a record
@@ -109,12 +110,6 @@ class TestFts5SearchPreserved:
 
     def test_fts_trigger_sync_on_update(self, tmp_path: Path) -> None:
         """FTS content-sync triggers fire correctly after upsert via SQLAlchemy."""
-        from teleclaude.mirrors.store import (
-            MirrorRecord,
-            search_mirrors,
-            upsert_mirror,
-        )
-
         db_path = tmp_path / "mirrors.db"
 
         record = MirrorRecord(
@@ -172,12 +167,6 @@ class TestMirrorsTypedResults:
 
     def test_get_mirror_returns_mirror_record(self, tmp_path: Path) -> None:
         """get_mirror returns a MirrorRecord instance."""
-        from teleclaude.mirrors.store import (
-            MirrorRecord,
-            get_mirror,
-            upsert_mirror,
-        )
-
         db_path = tmp_path / "mirrors.db"
         record = MirrorRecord(
             session_id="sess-typed-001",
@@ -206,13 +195,6 @@ class TestMirrorsTypedResults:
 
     def test_search_returns_mirror_search_results(self, tmp_path: Path) -> None:
         """search_mirrors returns MirrorSearchResult instances."""
-        from teleclaude.mirrors.store import (
-            MirrorRecord,
-            MirrorSearchResult,
-            search_mirrors,
-            upsert_mirror,
-        )
-
         db_path = tmp_path / "mirrors.db"
         record = MirrorRecord(
             session_id="sess-sr-001",
@@ -246,12 +228,6 @@ class TestReadOnlyPatternPreserved:
 
     def test_list_mirrors_uses_read_connection(self, tmp_path: Path) -> None:
         """list_mirrors can operate with a read-only engine/connection."""
-        from teleclaude.mirrors.store import (
-            MirrorRecord,
-            list_mirrors,
-            upsert_mirror,
-        )
-
         db_path = tmp_path / "mirrors.db"
         record = MirrorRecord(
             session_id="sess-ro-001",
@@ -284,12 +260,6 @@ class TestTombstoneOperationsPreserved:
 
     def test_tombstone_upsert_and_fetch(self, tmp_path: Path) -> None:
         """Tombstones can be created and queried via the migrated engine."""
-        from teleclaude.mirrors.store import (
-            MirrorTombstoneRecord,
-            get_mirror_tombstone,
-            upsert_mirror_tombstone,
-        )
-
         db_path = tmp_path / "mirrors.db"
         tombstone = MirrorTombstoneRecord(
             source_identity="claude:tomb-001",
@@ -308,13 +278,6 @@ class TestTombstoneOperationsPreserved:
 
     def test_tombstone_delete(self, tmp_path: Path) -> None:
         """Tombstones can be deleted via the migrated engine."""
-        from teleclaude.mirrors.store import (
-            MirrorTombstoneRecord,
-            delete_mirror_tombstone,
-            get_mirror_tombstone,
-            upsert_mirror_tombstone,
-        )
-
         db_path = tmp_path / "mirrors.db"
         tombstone = MirrorTombstoneRecord(
             source_identity="claude:tomb-del",
@@ -341,8 +304,6 @@ class TestSchemaInitPreserved:
 
     def test_mirrors_table_created_on_first_access(self, tmp_path: Path) -> None:
         """Accessing a fresh database creates the mirrors table and FTS index."""
-        from teleclaude.mirrors.store import list_mirrors
-
         db_path = tmp_path / "mirrors.db"
         # This should trigger schema initialization
         results = list_mirrors(db=str(db_path))

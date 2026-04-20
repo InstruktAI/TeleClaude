@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 
-class BaseView:  # pylint: disable=too-few-public-methods
+class BaseView:
     """Base class for all TUI views.
 
     Provides testable interface for view rendering without curses dependency.

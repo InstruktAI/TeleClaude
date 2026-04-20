@@ -76,8 +76,6 @@ class ProjectCatalogService:
 # -- Singleton factory -------------------------------------------------------
 
 # Single-slot dict so the module-level cache has a stable, mutable container
-# (avoids the ``global`` statement + constant-redefinition friction between
-# pylint's naming rules and pyright's constant detection).
 _INSTANCE_SLOT: dict[str, ProjectCatalogService] = {}
 
 

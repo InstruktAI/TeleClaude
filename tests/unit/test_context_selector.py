@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.context_selector."""
-# pylint: disable=protected-access,consider-using-from-import
 
 from __future__ import annotations
 

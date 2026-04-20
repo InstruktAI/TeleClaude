@@ -18,7 +18,7 @@ logger = get_logger(__name__)
 class DbOperationsMixin:
     """Durable operation persistence helpers."""
 
-    async def create_operation(  # pylint: disable=too-many-arguments  # Operation rows intentionally persist explicit request fields.
+    async def create_operation(
         self,
         *,
         operation_id: str,
@@ -131,7 +131,7 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def update_operation_progress(  # pylint: disable=too-many-arguments  # Progress updates persist multiple audit fields explicitly.
+    async def update_operation_progress(
         self,
         operation_id: str,
         *,
@@ -175,9 +175,7 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def fail_operation(  # pylint: disable=too-many-arguments  # Callers pass terminal state details explicitly for auditing.
-        self, operation_id: str, error_text: str, now_iso: str, *, state: str = "failed"
-    ) -> None:
+    async def fail_operation(self, operation_id: str, error_text: str, now_iso: str, *, state: str = "failed") -> None:
         """Mark an operation as terminal failure."""
         stmt = (
             update(db_models.Operation)

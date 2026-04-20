@@ -1,5 +1,4 @@
 """Tests for teleclaude.core.polling_coordinator helpers."""
-# pylint: disable=protected-access  # tests access module-private state sets intentionally
 
 from __future__ import annotations
 
@@ -70,7 +69,7 @@ def _make_session(
 
 
 @pytest.fixture(autouse=True)
-def _reset_codex_sets() -> Generator[None, None, None]:  # pylint: disable=protected-access
+def _reset_codex_sets() -> Generator[None, None, None]:
     pc._codex_transcript_bind_attempted.clear()
     pc._title_projection_signatures.clear()
     yield

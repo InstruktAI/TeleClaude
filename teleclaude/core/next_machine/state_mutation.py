@@ -10,8 +10,6 @@ No direct :class:`TodosDb` writes happen outside this module in the migrated
 flows — persistence is always driven by ``StateWriter``.
 """
 
-# pylint: disable=cyclic-import  # State mutation boundary participates in existing next_machine import cycles.
-
 from __future__ import annotations
 
 from dataclasses import dataclass

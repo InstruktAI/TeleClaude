@@ -27,7 +27,7 @@ from ._tokens import DbTokensMixin
 from ._webhooks import DbWebhooksMixin
 
 
-class Db(  # pylint: disable=too-many-ancestors  # The DB facade is intentionally composed from focused mixins.
+class Db(
     DbConversationDeliveryMixin,
     DbTokensMixin,
     DbLinksMixin,

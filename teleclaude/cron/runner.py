@@ -29,15 +29,24 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
+from typing import cast
 
 from instrukt_ai_logging import get_logger
 
 from jobs.base import JobResult
-from teleclaude.config.loader import load_project_config
-from teleclaude.config.schema import JobScheduleConfig
+from teleclaude.cli.api_client import TelecAPIClient
+from teleclaude.config import config as global_config
+from teleclaude.config.loader import load_person_config, load_project_config
+from teleclaude.config.schema import JobScheduleConfig, JobSubscription
+from teleclaude.constants import ROLE_SYSTEM
+from teleclaude.core.models import Session
 from teleclaude.cron.notification_scan import find_undelivered_reports
 from teleclaude.cron.state import CronState
-from teleclaude.paths import CRON_PID_PATH, TELECLAUDE_HOME
+from teleclaude.paths import CRON_PID_PATH, LOG_BUG_HUNTER_STATE_DIR, TELECLAUDE_HOME
+from teleclaude.services.log_bug_hunter_service import LOG_BUG_HUNTER_JOB, LogBugHunterService
+from teleclaude.services.project_catalog import ProjectNode, get_project_catalog_service
+from teleclaude.services.project_jobs import ProjectJobOrchestrator
+from teleclaude.types.commands import CreateSessionCommand
 
 logger = get_logger(__name__)
 
@@ -188,7 +197,7 @@ def _next_monthly_occurrence(after: datetime, preferred_day: int, preferred_hour
             month += 1
 
 
-def _is_first_run_due(  # pylint: disable=too-many-return-statements,too-many-branches
+def _is_first_run_due(
     schedule_config: JobScheduleConfig,
     first_seen_at: datetime | None,
     now: datetime,
@@ -325,9 +334,6 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
     Instead of spawning a subprocess directly, this sends a request to the daemon
     to create a session with job metadata. The daemon handles execution.
     """
-    from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
-    from teleclaude.config import config as global_config  # pylint: disable=import-outside-toplevel
-
     message = _build_agent_job_message(job_name, config)
     if not message:
         return False
@@ -354,7 +360,7 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
                 metadata={"system_role": "system", "job": job_name, "job_type": config.type or "agent"},
             )
             return True
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("agent job API trigger failed", name=job_name, error=str(e))
             return False
         finally:
@@ -362,12 +368,12 @@ def _run_agent_job(job_name: str, config: JobScheduleConfig) -> bool:
 
     try:
         return asyncio.run(_trigger())
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.error("agent job trigger crashed", name=job_name, error=str(e))
         return False
 
 
-def _run_log_bug_hunter_orchestrated() -> bool:  # pylint: disable=too-many-locals
+def _run_log_bug_hunter_orchestrated() -> bool:
     """Dispatch ``log_bug_hunter`` across all subscribed registered projects.
 
     Unlike other agent jobs — which spawn a single session rooted at the
@@ -381,24 +387,6 @@ def _run_log_bug_hunter_orchestrated() -> bool:  # pylint: disable=too-many-loca
     """
     # Imports are local so that cron_runner startup stays lean and importing
     # this module does not pull in the daemon API client at module load time.
-    from typing import cast  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.cli.api_client import TelecAPIClient  # pylint: disable=import-outside-toplevel
-    from teleclaude.config import config as global_config  # pylint: disable=import-outside-toplevel
-    from teleclaude.constants import ROLE_SYSTEM  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.models import Session  # pylint: disable=import-outside-toplevel
-    from teleclaude.paths import LOG_BUG_HUNTER_STATE_DIR  # pylint: disable=import-outside-toplevel
-    from teleclaude.services.log_bug_hunter_service import (  # pylint: disable=import-outside-toplevel
-        LOG_BUG_HUNTER_JOB,
-        LogBugHunterService,
-    )
-    from teleclaude.services.project_catalog import (  # pylint: disable=import-outside-toplevel
-        ProjectNode,
-        get_project_catalog_service,
-    )
-    from teleclaude.services.project_jobs import ProjectJobOrchestrator  # pylint: disable=import-outside-toplevel
-    from teleclaude.types.commands import CreateSessionCommand  # pylint: disable=import-outside-toplevel
-
     catalog = get_project_catalog_service()
     catalog.refresh()
     computer = global_config.computer.name
@@ -417,7 +405,6 @@ def _run_log_bug_hunter_orchestrated() -> bool:  # pylint: disable=too-many-loca
                     project_path=cmd.project_path,
                     agent=intent.agent or "codex",
                     thinking_mode=intent.thinking_mode or "fast",
-                    title=cmd.title or f"Job: {LOG_BUG_HUNTER_JOB}",
                     message=intent.message or "",
                     metadata={
                         "system_role": cmd.system_role or ROLE_SYSTEM,
@@ -461,12 +448,12 @@ def _run_log_bug_hunter_orchestrated() -> bool:  # pylint: disable=too-many-loca
 
     try:
         return asyncio.run(_orchestrate())
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.error("log_bug_hunter orchestration crashed", error=str(exc))
         return False
 
 
-def _should_run_subscription_job(  # pylint: disable=too-many-branches
+def _should_run_subscription_job(
     job_name: str,
     state: CronState,
     now: datetime,
@@ -478,9 +465,6 @@ def _should_run_subscription_job(  # pylint: disable=too-many-branches
     Iterates person configs for enabled JobSubscription entries matching
     *job_name* and checks if any subscriber's ``when`` schedule is due.
     """
-    from teleclaude.config.loader import load_person_config  # pylint: disable=import-outside-toplevel
-    from teleclaude.config.schema import JobSubscription  # pylint: disable=import-outside-toplevel
-
     if root is None:
         root = TELECLAUDE_HOME
 
@@ -498,7 +482,7 @@ def _should_run_subscription_job(  # pylint: disable=too-many-branches
             continue
         try:
             person_cfg = load_person_config(cfg_path)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             continue
 
         for sub in person_cfg.subscriptions:
@@ -524,7 +508,7 @@ def _should_run_subscription_job(  # pylint: disable=too-many-branches
 
 def _scan_and_notify(
     state: CronState,
-    schedules: dict[str, JobScheduleConfig],  # pylint: disable=unused-argument
+    schedules: dict[str, JobScheduleConfig],
     root: Path | None = None,
 ) -> None:
     """Scan for undelivered reports and mark them notified. Delivery is via event platform."""
@@ -610,7 +594,7 @@ def _run_script_job(job: ScriptJob, timeout_s: int | None = None) -> JobResult:
         )
     except subprocess.TimeoutExpired:
         return JobResult(success=False, message=f"{job.name} timed out after {timeout}s")
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         return JobResult(success=False, message=f"{job.name} failed to start: {exc}")
 
     parsed = _parse_script_job_result(completed.stdout)
@@ -638,7 +622,7 @@ def _dispatch_agent_job(job_name: str, schedule_config: JobScheduleConfig) -> bo
     return _run_agent_job(job_name, schedule_config)
 
 
-def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+def run_due_jobs(
     *,
     force: bool = False,
     job_filter: str | None = None,
@@ -750,7 +734,7 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
                     )
                 results[job_name] = result.success
 
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 state.mark_failed(job_name, str(e))
                 logger.exception("job error", name=job_name, error=str(e))
                 results[job_name] = False
@@ -759,7 +743,7 @@ def run_due_jobs(  # pylint: disable=too-many-branches,too-many-locals,too-many-
     if not dry_run:
         try:
             _scan_and_notify(state, schedules, root=root)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("notification scan failed", error=str(exc))
 
     return results

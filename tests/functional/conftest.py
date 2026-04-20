@@ -1,9 +1,8 @@
 """Functional test fixtures — real FastAPI app, real auth, real DB, no network."""
-# pylint: disable=import-outside-toplevel,too-many-locals,too-many-statements
-# pylint: disable=too-many-positional-arguments,unused-argument
 
 from __future__ import annotations
 
+import importlib
 import os
 from collections.abc import AsyncGenerator, Awaitable
 from pathlib import Path
@@ -12,6 +11,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+
+from teleclaude import config as config_module
+from teleclaude.api import auth as auth_mod
+from teleclaude.api_server import APIServer
+from teleclaude.core import tmux_bridge
+from teleclaude.core.command_handlers import _session as session_handler_mod
+from teleclaude.core.command_registry import init_command_service, reset_command_service
+from teleclaude.core.command_service import CommandService
+from teleclaude.core.db import Db
+from teleclaude.core.identity import IdentityContext
+from teleclaude.core.tmux_bridge import _session as tmux_session_mod
 
 # Point config at the minimal test config before any teleclaude imports.
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", "tests/integration/config.yml")
@@ -27,16 +37,12 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     Returns an httpx AsyncClient that speaks ASGI directly to the app.
     """
     # --- DB: in-memory SQLite ---
-    from teleclaude.core.db import Db
-
     test_db = Db(":memory:")
     await test_db.initialize()
 
     # Patch the canonical db singleton. All modules import `db` from
     # `teleclaude.core.db`, which re-exports it from `_base`. Patch both
     # the package attribute and every module that has already cached it.
-    import importlib
-
     db_mod = importlib.import_module("teleclaude.core.db")
     monkeypatch.setattr(db_mod, "db", test_db)
 
@@ -58,9 +64,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
             monkeypatch.setattr(mod, "db", test_db)
 
     # --- Config: single-user mode (no login required → admin) ---
-    from teleclaude.api import auth as auth_mod
-    from teleclaude.core.identity import IdentityContext
-
     class _StubIdentityResolver:
         registered_people_count = 1
 
@@ -79,8 +82,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     monkeypatch.setattr(auth_mod, "get_identity_resolver", _get_identity_resolver)
 
     # --- tmux: no-op ---
-    from teleclaude.core import tmux_bridge
-
     _created = set()
 
     async def _mock_create(name, working_dir, cols=80, rows=24, session_id=None, env_vars=None):
@@ -89,8 +90,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
         return True
 
     # Mock at the submodule level (where handlers import from) AND package level.
-    from teleclaude.core.tmux_bridge import _session as tmux_session_mod
-
     monkeypatch.setattr(tmux_session_mod, "ensure_tmux_session", _mock_create)
     monkeypatch.setattr(tmux_bridge, "ensure_tmux_session", _mock_create)
     monkeypatch.setattr(tmux_bridge, "session_exists", AsyncMock(return_value=True))
@@ -104,8 +103,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     monkeypatch.setattr(tmux_bridge, "get_pane_pid", AsyncMock(return_value=None))
 
     # --- Config: mock computer ---
-    from teleclaude import config as config_module
-
     mock_computer = SimpleNamespace(
         name="TestComputer",
         default_working_dir=str(tmp_path),
@@ -123,8 +120,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     monkeypatch.setattr(config_module.config, "computer", mock_computer)
 
     # Patch config in session handler module too.
-    from teleclaude.core.command_handlers import _session as session_handler_mod
-
     monkeypatch.setattr(session_handler_mod, "config", config_module.config)
 
     # --- Identity resolver: no platform identity ---
@@ -142,9 +137,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     )
 
     # --- CommandService: wired with no-op callbacks ---
-    from teleclaude.core.command_registry import init_command_service, reset_command_service
-    from teleclaude.core.command_service import CommandService
-
     reset_command_service()
 
     async def _noop_bootstrap(session_id, launch_intent=None):
@@ -168,8 +160,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
     init_command_service(cmd_service, force=True)
 
     # --- Build real FastAPI app ---
-    from teleclaude.api_server import APIServer
-
     server = APIServer(client=stub_client, cache=None)
 
     # --- httpx async client over ASGI ---

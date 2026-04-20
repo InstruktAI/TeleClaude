@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,import-error,no-name-in-module,too-few-public-methods
+
 """Test spec (xfail) for R4: typed query results at all boundaries.
 
 Every database query across all four databases returns typed results. No raw
@@ -15,6 +15,11 @@ import inspect
 import re
 
 import pytest
+
+from teleclaude.core.todos_db._roadmap import TodosDbRoadmapMixin
+from teleclaude.core.todos_db._state import TodosDbStateMixin
+from teleclaude.mirrors import store
+from teleclaude.mirrors.store import get_mirror, list_mirrors, search_mirrors
 
 pytestmark = pytest.mark.unit
 
@@ -50,8 +55,6 @@ class TestNoRawRowTypesInSignatures:
 
     def test_mirrors_store_has_no_raw_row_returns(self) -> None:
         """mirrors/store.py public functions return typed dataclasses, not sqlite3.Row."""
-        from teleclaude.mirrors import store
-
         source = inspect.getsource(store)
         # Check that public function return annotations don't include sqlite3.Row
         tree = ast.parse(source)
@@ -123,8 +126,6 @@ class TestTodosDbQueryResultTypes:
 
     def test_roadmap_list_returns_typed_entries(self) -> None:
         """list_entries has an explicit return annotation that does not include Row."""
-        from teleclaude.core.todos_db._roadmap import TodosDbRoadmapMixin
-
         hints = inspect.get_annotations(TodosDbRoadmapMixin.list_entries, eval_str=False)
         assert "return" in hints, "list_entries has no return annotation"
         return_hint = str(hints["return"])
@@ -132,8 +133,6 @@ class TestTodosDbQueryResultTypes:
 
     def test_state_get_returns_typed_result(self) -> None:
         """get_state has an explicit return annotation that does not include Row."""
-        from teleclaude.core.todos_db._state import TodosDbStateMixin
-
         hints = inspect.get_annotations(TodosDbStateMixin.get_state, eval_str=False)
         assert "return" in hints, "get_state has no return annotation"
         return_hint = str(hints["return"])
@@ -145,24 +144,18 @@ class TestMirrorsQueryResultTypes:
 
     def test_search_mirrors_returns_typed_results(self) -> None:
         """search_mirrors returns list[MirrorSearchResult], not raw rows."""
-        from teleclaude.mirrors.store import search_mirrors
-
         hints = inspect.get_annotations(search_mirrors, eval_str=False)
         return_hint = str(hints.get("return", ""))
         assert "MirrorSearchResult" in return_hint
 
     def test_get_mirror_returns_typed_result(self) -> None:
         """get_mirror returns MirrorRecord | None, not raw row."""
-        from teleclaude.mirrors.store import get_mirror
-
         hints = inspect.get_annotations(get_mirror, eval_str=False)
         return_hint = str(hints.get("return", ""))
         assert "MirrorRecord" in return_hint
 
     def test_list_mirrors_returns_typed_results(self) -> None:
         """list_mirrors returns list[MirrorRecord], not raw rows."""
-        from teleclaude.mirrors.store import list_mirrors
-
         hints = inspect.get_annotations(list_mirrors, eval_str=False)
         return_hint = str(hints.get("return", ""))
         assert "MirrorRecord" in return_hint

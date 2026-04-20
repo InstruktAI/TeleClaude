@@ -34,7 +34,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
-        async def _broadcast_to_ui_adapters(  # pylint: disable=unused-argument
+        async def _broadcast_to_ui_adapters(
             self,
             session: "Session",
             operation: str,
@@ -42,7 +42,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             include_adapters: set[str] | None = None,
         ) -> list[tuple[str, object]]: ...
 
-        async def _route_to_ui(  # pylint: disable=unused-argument
+        async def _route_to_ui(
             self,
             session: "Session",
             method: str,
@@ -63,7 +63,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
     def _resolve_admin_output_target(
         self,
-        session: "Session",  # pylint: disable=unused-argument  # kept for the commented system_role guard below
+        session: "Session",
         origin_adapter: str | None,
     ) -> str | None:
         """Return "discord" when the session is eligible for the admin output copy.
@@ -145,7 +145,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         if first_error is not None:
             raise first_error
 
-    async def send_message(  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches
+    async def send_message(
         self,
         session: "Session",
         text: str,
@@ -206,7 +206,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                         deleted += 1
                     else:
                         failed += 1
-                except Exception as e:  # pylint: disable=broad-exception-caught  # Deletion failures are best-effort.
+                except Exception as e:
                     logger.debug("Best-effort feedback deletion failed: %s", e)
                     failed += 1
             if pending:
@@ -263,7 +263,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return message_id
 
-    async def broadcast_user_input(  # pylint: disable=too-many-arguments  # Reflection payload is adapter-facing API.
+    async def broadcast_user_input(
         self,
         session: "Session",
         text: str,
@@ -323,7 +323,7 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             include_adapters={"discord"},
         )
 
-    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+    async def send_output_update(
         self,
         session: "Session",
         output: str,

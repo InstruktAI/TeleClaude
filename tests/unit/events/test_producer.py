@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import teleclaude.events.producer as _mod
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import (
     EventProducer,
@@ -70,8 +71,6 @@ class TestEventProducer:
 
 class TestConfigureProducer:
     def test_configure_sets_module_producer(self) -> None:
-        import teleclaude.events.producer as _mod
-
         redis = _make_redis()
         producer = EventProducer(redis)
         configure_producer(producer)
@@ -83,8 +82,6 @@ class TestConfigureProducer:
 class TestEmitEvent:
     @pytest.mark.asyncio
     async def test_raises_when_not_configured(self) -> None:
-        import teleclaude.events.producer as _mod
-
         _mod._PRODUCER_STATE["producer"] = None
         with pytest.raises(RuntimeError):
             await emit_event(
@@ -95,8 +92,6 @@ class TestEmitEvent:
 
     @pytest.mark.asyncio
     async def test_emits_via_configured_producer(self) -> None:
-        import teleclaude.events.producer as _mod
-
         redis = _make_redis("9999-0")
         producer = EventProducer(redis)
         configure_producer(producer)
@@ -114,8 +109,6 @@ class TestEmitEvent:
 
     @pytest.mark.asyncio
     async def test_emit_event_passes_visibility(self) -> None:
-        import teleclaude.events.producer as _mod
-
         redis = _make_redis()
         producer = EventProducer(redis)
         configure_producer(producer)

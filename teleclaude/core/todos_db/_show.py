@@ -120,7 +120,7 @@ class ShowPayload(TypedDict, total=False):
 
 def _project_root_from_db(todos_db: TodosDb) -> Path:
     """Return the project root directory inferred from a TodosDb instance."""
-    db_path = todos_db._db_path  # pylint: disable=protected-access
+    db_path = todos_db._db_path
     return db_path.parent.parent if db_path.parent.name == ".teleclaude" else db_path.parent
 
 
@@ -199,7 +199,7 @@ def _derive_next(current_value: str) -> str | None:
     return _PHASE_LABEL.get(next_value, next_value)
 
 
-async def _build_blocked_by(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def _build_blocked_by(
     slug: str,
     deps: dict[str, list[str]],
     delivered_slugs: set[str],
@@ -283,7 +283,7 @@ async def _assemble_draft_payload(todos_db: TodosDb, slug: str) -> ShowPayload:
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
-async def assemble_show_payload(  # pylint: disable=too-many-locals,too-many-branches
+async def assemble_show_payload(
     todos_db: TodosDb,
     slug: str,
 ) -> ShowPayload | None:

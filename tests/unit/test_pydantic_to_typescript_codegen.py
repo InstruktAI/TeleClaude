@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,too-few-public-methods,import-error,no-name-in-module
+
 # pyright: reportMissingImports=false
 # mypy: ignore-errors
 """Test spec (xfail) for pydantic-to-typescript-codegen.
@@ -20,6 +20,7 @@ import pytest
 from pydantic import BaseModel
 
 from teleclaude import api_models
+from teleclaude.codegen import pydantic_to_typescript
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 
 pytestmark = [
@@ -69,8 +70,6 @@ _TODO_PREVIOUSLY_MISSING = [
 
 def _import_codegen():
     """Import the codegen module. Fails with ImportError if not implemented."""
-    from teleclaude.codegen import pydantic_to_typescript
-
     return pydantic_to_typescript
 
 
@@ -170,7 +169,7 @@ class TestInheritanceFlattening:
     def test_session_dto_has_all_timestamp_fields(self) -> None:
         """SessionDTO must include every field from SessionDTOTimestampFields."""
         output = _generate()
-        for field_name in SessionDTOTimestampFields.model_fields:  # pylint: disable=not-an-iterable
+        for field_name in SessionDTOTimestampFields.model_fields:
             assert re.search(rf"\b{re.escape(field_name)}\b", output), (
                 f"Inherited timestamp field '{field_name}' missing from SessionDTO output"
             )
@@ -178,7 +177,7 @@ class TestInheritanceFlattening:
     def test_session_dto_has_all_identity_fields(self) -> None:
         """SessionDTO must include every field from SessionDTOIdentityFields."""
         output = _generate()
-        for field_name in SessionDTOIdentityFields.model_fields:  # pylint: disable=not-an-iterable
+        for field_name in SessionDTOIdentityFields.model_fields:
             assert re.search(rf"\b{re.escape(field_name)}\b", output), (
                 f"Inherited identity field '{field_name}' missing from SessionDTO output"
             )

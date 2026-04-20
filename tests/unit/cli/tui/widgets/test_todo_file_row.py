@@ -1,7 +1,5 @@
 """Characterization tests for teleclaude.cli.tui.widgets.todo_file_row."""
 
-# pylint: disable=protected-access
-
 from __future__ import annotations
 
 import pytest

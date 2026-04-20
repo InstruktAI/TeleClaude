@@ -86,5 +86,5 @@ class IntegrationTriggerCartridge:
             if asyncio.iscoroutine(result):
                 await result
             logger.info("spawn callback completed for %s", slug)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception("spawn callback failed for %s", slug)

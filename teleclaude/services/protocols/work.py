@@ -4,7 +4,6 @@ These protocols define the service interface for the work schema pillar.
 Implementations may target SQLite (current) or Postgres (target).
 Callers (CLI, API, daemon) import these protocols — never the implementation.
 """
-# pylint: disable=missing-function-docstring,too-many-arguments
 
 from __future__ import annotations
 

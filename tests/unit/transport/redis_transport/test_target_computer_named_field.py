@@ -1,4 +1,3 @@
-# pylint: disable=too-many-ancestors
 # guard: no-companion
 """Specification tests for typed actor fields and legacy actor-bag removal.
 

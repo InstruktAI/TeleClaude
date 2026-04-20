@@ -56,7 +56,7 @@ class ObservationResult:
 
 
 @dataclass
-class SearchResult:  # pylint: disable=too-many-instance-attributes
+class SearchResult:
     """Search result from memory observation queries."""
 
     id: int

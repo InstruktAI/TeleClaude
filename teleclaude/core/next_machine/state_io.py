@@ -8,6 +8,7 @@ core.py (circular-import guard).
 
 from __future__ import annotations
 
+import hashlib as _hl
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
     FinalizeState,
@@ -22,6 +24,7 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     default_state,
 )
+from teleclaude.core.next_machine.artifacts import artifact_name_to_state_key
 from teleclaude.core.next_machine.file_io import (
     file_sha256 as _file_sha256,
 )
@@ -29,8 +32,25 @@ from teleclaude.core.next_machine.file_io import (
     read_text_sync,
     write_text_sync,
 )
+from teleclaude.core.next_machine.git_ops import (
+    get_head_commit,
+    get_ref_commit,
+    get_remote_branch_head,
+    has_uncommitted_changes,
+    run_git_command,
+)
+from teleclaude.core.next_machine.phase_derivation import (
+    _has_build_commits_beyond_main,
+)
+from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
+from teleclaude.core.next_machine.state_mutation import (
+    GroundingManager,
+    ReviewManager,
+    StateWriter,
+)
+from teleclaude.core.todos_db import TodosDb, _new_instance_hook
 from teleclaude.project_root import resolve_main_repo_root
-from teleclaude.types.todos import TodoState
+from teleclaude.types.todos import ArtifactEntry, BreakdownState, DorState, FinalizeModel, TodoState
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -40,6 +60,46 @@ logger = get_logger(__name__)
 # ---------------------------------------------------------------------------
 # Project root / DB helpers
 # ---------------------------------------------------------------------------
+
+
+def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
+    """Read artifact digest from todos.db."""
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()
+    try:
+        row = conn.execute(
+            "SELECT digest FROM todo_artifacts WHERE slug = ? AND name = ? LIMIT 1",  # guard: raw-sql
+            (slug, artifact_name),
+        ).fetchone()
+        return row[0] if row else ""
+    finally:
+        conn.close()
+
+
+def _record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
+    """Record artifact production metadata in state."""
+    key = artifact_name_to_state_key(artifact_name)
+    digest = _artifact_digest(cwd, slug, artifact_name)
+    now = datetime.now(UTC).isoformat()
+
+    state = read_phase_state(cwd, slug)
+    artifacts = state.get("artifacts", {})
+    if not isinstance(artifacts, dict):
+        artifacts = {}
+    entry = artifacts.get(key, {})
+    if not isinstance(entry, dict):
+        entry = {}
+    entry["digest"] = digest
+    entry["produced_at"] = now
+    entry["stale"] = False
+    artifacts[key] = entry
+    state["artifacts"] = artifacts
+    write_phase_state(cwd, slug, state)
+
+    _emit_prepare_event(
+        "domain.software-development.prepare.artifact_produced",
+        {"slug": slug, "artifact": artifact_name, "digest": digest},
+    )
 
 
 def _project_root_from_cwd(cwd: str) -> str:
@@ -56,8 +116,6 @@ def _get_todos_db_sync(cwd: str) -> TodosDb:
     Schema already exists (daemon creates it at startup). Skips initialize_sync
     after first call to avoid repeated DDL write locks on the database.
     """
-    from teleclaude.core.todos_db import TodosDb, _new_instance_hook  # pylint: disable=import-outside-toplevel
-
     project_root = _project_root_from_cwd(cwd)
     cached = _db_cache.get(project_root)
     if cached is not None:
@@ -167,10 +225,6 @@ def validate_work_phase_preconditions(
     Minimal validation: prevents clearly invalid states without blocking
     intentional operator skips. Called by mark-phase before writing.
     """
-    from teleclaude.core.next_machine.phase_derivation import (  # pylint: disable=import-outside-toplevel
-        _has_build_commits_beyond_main,
-    )
-
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     verdict = build_review.get("verdict", "")
@@ -223,11 +277,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     Returns:
         Updated state dict
     """
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        ReviewManager,
-        StateWriter,
-    )
-
     if phase == _BUILD_VERDICT_PHASE:
         if verdict not in _BUILD_VERDICT_VALUES:
             raise ValueError(
@@ -239,9 +288,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         build_review = writer.state.build_review
         build_review.verdict = verdict
         if not build_review.baseline_commit:
-            from teleclaude.constants import WORKTREE_DIR  # pylint: disable=import-outside-toplevel
-            from teleclaude.core.next_machine.git_ops import get_head_commit  # pylint: disable=import-outside-toplevel
-
             project_root = _project_root_from_cwd(cwd)
             worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
             head = get_head_commit(worktree_path)
@@ -284,16 +330,6 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     Raises:
         RuntimeError: when any validation step fails.
     """
-    from teleclaude.constants import WORKTREE_DIR  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.git_ops import (  # pylint: disable=import-outside-toplevel
-        get_head_commit,
-        get_ref_commit,
-        get_remote_branch_head,
-        has_uncommitted_changes,
-    )
-    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-    from teleclaude.types.todos import FinalizeModel  # pylint: disable=import-outside-toplevel
-
     project_root = _project_root_from_cwd(cwd)
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     if not worktree_path.exists():
@@ -420,14 +456,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         ValueError: when a required artifact is missing or git HEAD cannot be read.
     """
     # pylint: disable=too-many-locals,too-many-statements
-    from teleclaude.core.next_machine.git_ops import run_git_command  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        GroundingManager,
-        ReviewManager,
-        StateWriter,
-    )
-    from teleclaude.types.todos import DorState  # pylint: disable=import-outside-toplevel
-
     project_root = _project_root_from_cwd(cwd)
     db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
@@ -445,8 +473,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     current_sha = current_sha_raw.strip()
 
     if not _has_artifact_content(cwd, slug, "quality-checklist"):
-        import hashlib as _hl  # pylint: disable=import-outside-toplevel
-
         checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
         now_iso = datetime.now(UTC).isoformat()
         digest = _hl.sha256(checklist_content.encode("utf-8")).hexdigest()
@@ -585,11 +611,6 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         assessed: Whether breakdown assessment has been performed
         todos: List of todo slugs created from split (empty if no breakdown)
     """
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        StateWriter,
-    )
-    from teleclaude.types.todos import BreakdownState  # pylint: disable=import-outside-toplevel
-
     db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
@@ -662,21 +683,12 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     Returns:
         Updated state dict
     """
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        StateWriter,
-    )
-    from teleclaude.types.todos import ArtifactEntry  # pylint: disable=import-outside-toplevel
-
     if artifact_key not in _PREPARE_ARTIFACT_PHASES:
         raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_PHASES)}")
 
     artifact_name = _PREPARE_ARTIFACT_NAMES.get(artifact_key)
     if artifact_name is not None:
-        from teleclaude.core.next_machine.artifacts import (  # pylint: disable=import-outside-toplevel
-            record_artifact_produced,
-        )
-
-        record_artifact_produced(cwd, slug, artifact_name)
+        _record_artifact_produced(cwd, slug, artifact_name)
         return read_phase_state(cwd, slug)
 
     db = _get_todos_db_sync(cwd)

@@ -10,9 +10,9 @@ try:
     from py65emu.cpu import CPU as _CPU
     from py65emu.mmu import MMU
 
-    _py65emu_available = True  # pylint: disable=invalid-name
+    _py65emu_available = True
 except ImportError:
-    _py65emu_available = False  # pylint: disable=invalid-name
+    _py65emu_available = False
     _CPU = None  # type: ignore[unused-ignore]
     MMU = object  # type: ignore[unused-ignore]
 
@@ -126,7 +126,7 @@ class SIDDriver:
                 break
             try:
                 self._cpu.step()
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.debug("CPU exception during emulation: %s", exc)
                 break
 

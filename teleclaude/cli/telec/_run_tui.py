@@ -22,9 +22,9 @@ def _load_tui_runtime() -> tuple[Any, ...]:
     api_client = importlib.import_module("teleclaude.cli.api_client").TelecAPIClient
     misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")
     app_module = importlib.import_module("teleclaude.cli.tui.app")
-    ensure_tmux_mouse_on = misc._ensure_tmux_mouse_on  # pylint: disable=protected-access
-    ensure_tmux_status_hidden_for_tui = misc._ensure_tmux_status_hidden_for_tui  # pylint: disable=protected-access
-    maybe_kill_tui_session = misc._maybe_kill_tui_session  # pylint: disable=protected-access
+    ensure_tmux_mouse_on = misc._ensure_tmux_mouse_on
+    ensure_tmux_status_hidden_for_tui = misc._ensure_tmux_status_hidden_for_tui
+    maybe_kill_tui_session = misc._maybe_kill_tui_session
     return (
         logger,
         api_client,

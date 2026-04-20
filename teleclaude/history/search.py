@@ -141,7 +141,7 @@ def _fetch_local_daemon_computers() -> list[RemoteComputerPayload]:
 def _resolve_remote_computer_urls(computers: Sequence[str]) -> tuple[dict[str, str], dict[str, str]]:
     try:
         discovered = _fetch_local_daemon_computers()
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         error = f"Failed to resolve remote computers via local daemon: {exc}"
         return {}, {computer: error for computer in computers}
 
@@ -185,7 +185,7 @@ async def _run_remote_searches(
     return await asyncio.gather(*tasks, return_exceptions=True)
 
 
-def display_combined_history(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+def display_combined_history(
     agents: list[AgentName],
     search_term: str = "",
     limit: int = 20,
@@ -239,7 +239,7 @@ def display_combined_history(  # pylint: disable=too-many-arguments,too-many-pos
     _print_results(search_term, local_results, show_computer=False, limit=limit)
 
 
-def show_transcript(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
+def show_transcript(
     agents: list[AgentName],
     session_id: str,
     tail_chars: int = 0,
@@ -264,7 +264,7 @@ def show_transcript(  # pylint: disable=too-many-arguments,too-many-locals,too-m
         path = f"/api/mirrors/{session_id}/transcript" if raw else f"/api/mirrors/{session_id}"
         try:
             response = asyncio.run(_remote_get(base_url, path))
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             print(f"Failed to fetch session '{session_id}' from {computer}: {exc}")
             sys.exit(1)
         if raw:

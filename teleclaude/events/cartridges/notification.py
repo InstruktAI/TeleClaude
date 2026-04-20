@@ -127,7 +127,7 @@ async def _invoke_push_callbacks(context: PipelineContext, change: PushNotificat
             )
             if asyncio.iscoroutine(result):
                 await result
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception(
                 "push callback failed",
                 event_type=change.event_type,

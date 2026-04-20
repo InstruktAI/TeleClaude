@@ -41,7 +41,6 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   const [projectPath, setProjectPath] = useState(prefill?.project ?? "");
   const [agent, setAgent] = useState<AgentName>("claude");
   const [thinkingMode, setThinkingMode] = useState<ThinkingMode>("med");
-  const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [nativeSessionId, setNativeSessionId] = useState("");
   const [subdir, setSubdir] = useState("");
@@ -102,7 +101,6 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   }, [computer]);
 
   function reset() {
-    setTitle("");
     setMessage("");
     setNativeSessionId("");
     setSubdir("");
@@ -124,7 +122,6 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
         agent,
         thinking_mode: thinkingMode,
         launch_kind: message ? "agent_then_message" : "agent",
-        title: title || null,
         message: message || null,
       };
 
@@ -256,18 +253,6 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
               ))}
             </div>
           </fieldset>
-
-          {/* Title */}
-          <label className="flex flex-col gap-1">
-            <span className="text-xs font-medium text-muted-foreground">Title (optional)</span>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Auto-generated"
-              className="rounded-md border bg-background px-3 py-2 text-sm"
-            />
-          </label>
 
           {/* Initial message */}
           <label className="flex flex-col gap-1">

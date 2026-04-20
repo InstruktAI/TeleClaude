@@ -14,10 +14,7 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_messages import (
-    format_human_in_the_loop_message,
-    format_linked_output_message,
-)
+from teleclaude.core.conversation_messages import format_human_in_the_loop_message, format_linked_output_message
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
@@ -54,7 +51,6 @@ def _later_timestamp(first: datetime | None, second: datetime | None) -> datetim
     return first if first >= second else second
 
 
-# pylint: disable=too-many-arguments
 def _delivery_key(
     *,
     link_id: str,
@@ -141,7 +137,6 @@ async def _collect_visible_conversation_segments_since(
     return await asyncio.to_thread(_collect)
 
 
-# pylint: disable=too-many-arguments,too-many-locals
 async def _deliver_segment(
     *,
     source_session: Session,
@@ -211,7 +206,6 @@ async def _deliver_segment(
     return True
 
 
-# pylint: disable=too-many-locals,too-many-branches
 async def deliver_pending_conversation_updates(
     source_session_id: str,
     *,
@@ -279,7 +273,7 @@ async def deliver_pending_conversation_updates(
                         client=client,
                         command_service=service,
                     )
-                except Exception as exc:  # pylint: disable=broad-exception-caught
+                except Exception as exc:
                     logger.warning(
                         "Conversation delivery failed: source=%s peer=%s link=%s error=%s",
                         source_session_id,

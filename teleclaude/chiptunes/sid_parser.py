@@ -9,7 +9,7 @@ from typing import cast
 
 
 @dataclass
-class SIDHeader:  # pylint: disable=too-many-instance-attributes
+class SIDHeader:
     """Parsed PSID/RSID file header."""
 
     magic: bytes  # b'PSID' or b'RSID'
@@ -41,7 +41,7 @@ _HEADER_V2_EXTRA_FMT = ">H4B"
 _HEADER_V2_EXTRA_SIZE = struct.calcsize(_HEADER_V2_EXTRA_FMT)  # 6 bytes
 
 
-def parse_sid_file(path: Path) -> SIDHeader:  # pylint: disable=too-many-locals
+def parse_sid_file(path: Path) -> SIDHeader:
     """Parse a PSID or RSID file and return its header.
 
     Raises:

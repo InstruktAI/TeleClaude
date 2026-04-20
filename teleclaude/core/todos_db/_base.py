@@ -56,7 +56,7 @@ def _table_sql(conn: sqlite3.Connection, table_name: str) -> str:
     return str(row[0]) if row and row[0] else ""
 
 
-def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:  # pylint: disable=too-many-locals
+def _migrate_to_uuid_schema(conn: sqlite3.Connection) -> None:
     """Migrate from slug-as-PK to id-as-PK schema if needed."""
     roadmap_columns = _table_columns(conn, "roadmap")
     if "id" in roadmap_columns:
@@ -270,7 +270,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
     maybe_auto_import_legacy_markdown_todos(db_path)
 
 
-class TodosDbBase:  # pylint: disable=too-many-instance-attributes
+class TodosDbBase:
     """Database base class for the todos lifecycle store."""
 
     def __init__(self, db_path: str) -> None:
@@ -281,7 +281,7 @@ class TodosDbBase:  # pylint: disable=too-many-instance-attributes
         self._sync_engine: Engine | None = None
         self._sessionmaker: async_sessionmaker[SqlAsyncSession] | None = None
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
-        self._on_mutation: Callable[[], None] = lambda: None
+        self._on_mutation: Callable[[str], None] = lambda _event_hint: None
 
     async def initialize(self) -> None:
         """Bootstrap schema and initialize async + sync runtime access."""

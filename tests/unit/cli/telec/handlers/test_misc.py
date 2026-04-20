@@ -6,12 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.git import InvalidGitRepositoryError
+
 misc = importlib.import_module("teleclaude.cli.telec.handlers.misc")
 
 
 def test_git_short_commit_hash_returns_unknown_on_git_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    from teleclaude.git import InvalidGitRepositoryError
-
     def _raise(*_args: object, **_kwargs: object) -> None:
         raise InvalidGitRepositoryError("mock")
 

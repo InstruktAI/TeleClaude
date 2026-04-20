@@ -96,9 +96,8 @@ def _wrap_thinking_emphasis(text: str) -> str:
         return text
 
     # Avoid double wrapping lines that already look emphasized.
-    if (  # pylint: disable=too-many-boolean-expressions
-        (core_stripped.startswith("*") and core_stripped.endswith("*") and len(core_stripped) >= 2)
-        or (core_stripped.startswith("_") and core_stripped.endswith("_") and len(core_stripped) >= 2)
+    if (core_stripped.startswith("*") and core_stripped.endswith("*") and len(core_stripped) >= 2) or (
+        core_stripped.startswith("_") and core_stripped.endswith("_") and len(core_stripped) >= 2
     ):
         return text
 
@@ -175,7 +174,7 @@ def _apply_tail_limit_codex(result: str, tail_chars: int) -> str:
     we prefer to start at a recent section boundary that keeps most of the
     newest window while dropping older content.
     """
-    if not (0 < tail_chars < len(result)):  # pylint: disable=superfluous-parens
+    if not (0 < tail_chars < len(result)):
         return result
 
     truncated = result[-tail_chars:]

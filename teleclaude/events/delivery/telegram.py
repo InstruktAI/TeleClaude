@@ -39,7 +39,7 @@ class TelegramDeliveryAdapter:
         level: int,
         was_created: bool,
         _is_meaningful: bool,
-    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    ) -> None:
         """Deliver a notification callback to Telegram when it meets the level threshold."""
         if not was_created:
             return
@@ -50,7 +50,7 @@ class TelegramDeliveryAdapter:
         try:
             message = f"[{event_type}] Notification #{notification_id} created."
             await self._send_fn(chat_id=self._chat_id, content=message)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception(
                 "TelegramDeliveryAdapter failed to send",
                 event_type=event_type,

@@ -1,6 +1,5 @@
 """Characterization tests for teleclaude.resource_validation._snippet."""
 
-# pylint: disable=protected-access
 from __future__ import annotations
 
 from pathlib import Path

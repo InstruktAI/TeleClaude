@@ -147,7 +147,6 @@ def _digest_stability_view(stability_view: str) -> str:
     return hashlib.sha256(stability_view.encode("utf-8", errors="replace")).hexdigest()
 
 
-# pylint: disable=too-many-locals
 async def wait_for_agent_ready(
     agent_name: str,
     session: Session,
@@ -211,6 +210,3 @@ async def wait_for_agent_ready(
         elapsed,
     )
     return False, last_tail
-
-
-# pylint: enable=too-many-locals

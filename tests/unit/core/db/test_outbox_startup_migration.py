@@ -16,6 +16,11 @@ from typing import TypedDict
 
 import pytest
 
+from teleclaude.core.db.connection_factory import create_sync_db_engine, get_outbox_db_path, init_outbox_schema
+from teleclaude.core.db.outbox_migration import (
+    migrate_outbox_on_startup,
+)
+
 pytestmark = [pytest.mark.unit]
 
 
@@ -68,8 +73,6 @@ class TestOutboxMigrationCopiesPendingRows:
 
     def test_pending_rows_appear_in_outbox_db(self, tmp_path: Path) -> None:
         """After migration, all pending rows from teleclaude.db appear in the outbox DB."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -87,10 +90,6 @@ class TestOutboxMigrationCopiesPendingRows:
         ]
         _seed_old_outbox(main_db, rows)
 
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
-        )
-
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 
         # Verify rows in outbox DB
@@ -104,8 +103,6 @@ class TestOutboxMigrationCopiesPendingRows:
 
     def test_payload_integrity_preserved(self, tmp_path: Path) -> None:
         """Migrated rows preserve their original payload content."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -119,10 +116,6 @@ class TestOutboxMigrationCopiesPendingRows:
                     "payload": json.dumps(original_payload),
                 }
             ],
-        )
-
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
         )
 
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
@@ -139,18 +132,12 @@ class TestOutboxMigrationDropsOldTable:
 
     def test_hook_outbox_table_removed_from_main(self, tmp_path: Path) -> None:
         """The hook_outbox table no longer exists in teleclaude.db after migration."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
         _seed_old_outbox(
             main_db,
             [{"session_id": "sess-drop", "event_type": "test", "payload": "{}"}],
-        )
-
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
         )
 
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
@@ -166,18 +153,12 @@ class TestOutboxMigrationIdempotent:
 
     def test_second_run_is_noop(self, tmp_path: Path) -> None:
         """Running migration a second time does not duplicate rows or error."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
         _seed_old_outbox(
             main_db,
             [{"session_id": "sess-idem", "event_type": "test", "payload": "{}"}],
-        )
-
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
         )
 
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
@@ -191,8 +172,6 @@ class TestOutboxMigrationIdempotent:
 
     def test_no_pending_rows_is_noop(self, tmp_path: Path) -> None:
         """When no hook_outbox table exists in teleclaude.db, migration is a no-op."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -202,26 +181,16 @@ class TestOutboxMigrationIdempotent:
         conn.commit()
         conn.close()
 
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
-        )
-
         # Should not raise
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 
     def test_empty_table_is_noop_and_drops_table(self, tmp_path: Path) -> None:
         """When hook_outbox exists but has zero rows, table is dropped (no data to migrate)."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
         # Create empty hook_outbox
         _seed_old_outbox(main_db, [])
-
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
-        )
 
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 
@@ -237,8 +206,6 @@ class TestOutboxMigrationAttemptCountPreserved:
 
     def test_attempt_count_and_timestamps_copied(self, tmp_path: Path) -> None:
         """Migrated rows retain their attempt_count, created_at, and next_attempt_at."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -258,10 +225,6 @@ class TestOutboxMigrationAttemptCountPreserved:
             ],
         )
 
-        from teleclaude.core.db.outbox_migration import (  # pyright: ignore[reportMissingImports]
-            migrate_outbox_on_startup,
-        )
-
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 
         conn = sqlite3.connect(str(outbox_db))
@@ -278,8 +241,6 @@ class TestOutboxMigrationCollisionSafety:
 
     def test_preexisting_outbox_rows_do_not_block_legacy_copy(self, tmp_path: Path) -> None:
         """Legacy rows are inserted with new IDs even when the outbox DB already has rows."""
-        from teleclaude.core.db.connection_factory import create_sync_db_engine, get_outbox_db_path, init_outbox_schema
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -305,8 +266,6 @@ class TestOutboxMigrationCollisionSafety:
         pre_conn.commit()
         pre_conn.close()
 
-        from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
-
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 
         conn = sqlite3.connect(str(outbox_db))
@@ -321,8 +280,6 @@ class TestOutboxMigrationCollisionSafety:
 
     def test_legacy_table_dropped_after_successful_copy(self, tmp_path: Path) -> None:
         """The legacy table is dropped only after all rows are verified as inserted."""
-        from teleclaude.core.db.connection_factory import create_sync_db_engine, get_outbox_db_path, init_outbox_schema
-
         main_db = tmp_path / "teleclaude.db"
         outbox_db = get_outbox_db_path(tmp_path)
 
@@ -344,8 +301,6 @@ class TestOutboxMigrationCollisionSafety:
         )
         pre_conn.commit()
         pre_conn.close()
-
-        from teleclaude.core.db.outbox_migration import migrate_outbox_on_startup
 
         migrate_outbox_on_startup(str(main_db), str(outbox_db))
 

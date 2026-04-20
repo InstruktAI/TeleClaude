@@ -3,7 +3,6 @@
 Handles forum topic creation, updating, closing, reopening, deletion,
 session-from-topic resolution, menu message management, and output streaming.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ if TYPE_CHECKING:
 
     from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 
-    class _ChannelOperationsHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _ChannelOperationsHost(Protocol):
         user_whitelist: set[int]
         computer_name: str
         _qos_scheduler: OutputQoSScheduler
@@ -510,7 +509,7 @@ class ChannelOperationsMixin:
         """
         raise NotImplementedError("Telegram adapter does not support poll_output_stream")
         # This yield is unreachable but satisfies mypy's async generator requirements
-        yield ""  # pylint: disable=unreachable
+        yield ""
 
     def drop_pending_output(self, session_id: str) -> int:
         """Drop pending QoS payloads for a session to prevent stale output after turn break."""

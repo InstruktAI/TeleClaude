@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.core.next_machine._types import WorkPhase
+from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.prepare import next_prepare
+from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
@@ -25,8 +27,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 @pytest.mark.asyncio
 async def test_work_loop_clears_work_phase_on_dispatch_return() -> None:
     """Work loop must clear work_phase on dispatch return for non-BUILD_STARTED phases."""
-    from teleclaude.core.next_machine.work import next_work
-
     mock_db = AsyncMock()
     mock_todos_db = AsyncMock()
     mock_todos_db.slug_in_roadmap = AsyncMock(return_value=True)
@@ -69,8 +69,6 @@ async def test_work_loop_clears_work_phase_on_dispatch_return() -> None:
 @pytest.mark.asyncio
 async def test_work_loop_preserves_work_phase_for_build_started() -> None:
     """Work loop must NOT clear work_phase when phase is BUILD_STARTED (the anchor)."""
-    from teleclaude.core.next_machine.work import next_work
-
     mock_db = AsyncMock()
     mock_todos_db = AsyncMock()
     mock_todos_db.slug_in_roadmap = AsyncMock(return_value=True)
@@ -113,9 +111,6 @@ async def test_work_loop_preserves_work_phase_for_build_started() -> None:
 @pytest.mark.asyncio
 async def test_prepare_loop_clears_prepare_phase_on_dispatch_return(todos_db: TodosDb) -> None:
     """Prepare loop must clear prepare_phase on dispatch return."""
-    from teleclaude.core.next_machine._types import PreparePhase
-    from teleclaude.core.next_machine.prepare import next_prepare
-
     await todos_db.add_to_roadmap("prep-slug")
     state_dict = TodoState.defaults().model_dump(exclude_none=True)
     state_dict["prepare_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value

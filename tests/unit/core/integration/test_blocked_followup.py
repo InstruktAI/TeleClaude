@@ -6,13 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.core.integration.blocked_followup import (
-    BlockedFollowUpError,
-    BlockedFollowUpLink,
-    BlockedFollowUpStore,
-)
+from teleclaude.core.integration.blocked_followup import BlockedFollowUpError, BlockedFollowUpLink, BlockedFollowUpStore
 from teleclaude.core.integration.events import IntegrationBlockedPayload
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 
 _BLOCKED_AT = "2024-01-01T12:00:00+00:00"
 
@@ -71,8 +68,6 @@ def test_ensure_follow_up_creates_todo_artifacts_in_db(tmp_path: Path) -> None:
     store = _make_store(tmp_path)
     payload = _make_payload()
     link = store.ensure_follow_up(payload)
-
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
     db = _get_todos_db_sync(str(tmp_path))
     assert db.read_artifact_sync(link.follow_up_slug, "requirements") is not None

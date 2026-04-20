@@ -12,13 +12,7 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.todos_db._base import _generate_id
-from teleclaude.core.todos_db._models import (
-    ROADMAP_DEPS_TABLE,
-    ROADMAP_TABLE,
-    RoadmapDep,
-    TodoRoadmap,
-    TodoStateModel,
-)
+from teleclaude.core.todos_db._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
 from teleclaude.core.todos_db._rows import RoadmapRow
 
 
@@ -64,7 +58,7 @@ def _collect_entry_updates(
 class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
-    _on_mutation: Callable[[], None]
+    _on_mutation: Callable[[str], None]
 
     async def _next_position(self, session: SqlAsyncSession) -> int:
         """Return the next available position value."""
@@ -132,7 +126,7 @@ class TodosDbRoadmapMixin:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.add_to_roadmap(slug, description=description, position=position)
 
-    async def add_to_roadmap(  # pylint: disable=too-many-arguments,too-many-locals
+    async def add_to_roadmap(
         self,
         slug: str,
         *,
@@ -159,7 +153,7 @@ class TodosDbRoadmapMixin:
                     )
                 if owns_session:
                     await db_session.commit()
-                    self._on_mutation()
+                    self._on_mutation("todo_updated")
                 return True
 
             now = datetime.now(UTC).isoformat()
@@ -203,7 +197,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
             return True
         finally:
             if owns_session:
@@ -223,7 +217,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_removed")
             return True
         finally:
             if owns_session:
@@ -251,7 +245,7 @@ class TodosDbRoadmapMixin:
             ).first()
             return str(entry_id) if entry_id is not None else None
 
-    async def deliver(  # pylint: disable=too-many-arguments
+    async def deliver(
         self,
         slug: str,
         *,
@@ -288,7 +282,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
             return True
         finally:
             if owns_session:
@@ -310,7 +304,7 @@ class TodosDbRoadmapMixin:
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
             await session.commit()
-        self._on_mutation()
+        self._on_mutation("todo_updated")
         return True
 
     async def unfreeze(self, slug: str) -> bool:
@@ -329,7 +323,7 @@ class TodosDbRoadmapMixin:
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
             await session.commit()
-        self._on_mutation()
+        self._on_mutation("todo_updated")
         return True
 
     async def set_deps(
@@ -348,7 +342,7 @@ class TodosDbRoadmapMixin:
                 db_session.add(RoadmapDep(slug=slug, depends_on=dep))
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()
@@ -378,7 +372,7 @@ class TodosDbRoadmapMixin:
             await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()
@@ -425,7 +419,7 @@ class TodosDbRoadmapMixin:
             session.add(source)
             await session.commit()
 
-        self._on_mutation()
+        self._on_mutation("todo_updated")
         return True
 
     async def move_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
@@ -438,7 +432,7 @@ class TodosDbRoadmapMixin:
             result = session.exec(select(TodoRoadmap.slug).where(ROADMAP_TABLE.c.status == "delivered"))
             return {str(slug) for slug in result.all()}
 
-    def deliver_sync(  # pylint: disable=too-many-arguments
+    def deliver_sync(
         self,
         slug: str,
         *,
@@ -476,5 +470,5 @@ class TodosDbRoadmapMixin:
 
             session.commit()
 
-        self._on_mutation()
+        self._on_mutation("todo_updated")
         return True

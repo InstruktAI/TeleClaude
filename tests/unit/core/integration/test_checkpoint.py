@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
 
 from teleclaude.core.integration.checkpoint import (
@@ -79,8 +81,6 @@ def test_write_checkpoint_updates_last_updated_at(tmp_path: Path) -> None:
     _write_checkpoint(path, checkpoint)
     restored = _read_checkpoint(path)
     assert restored.last_updated_at != "2024-01-01T12:00:00+00:00"
-    from datetime import datetime
-
     datetime.fromisoformat(restored.last_updated_at)
 
 
@@ -108,8 +108,6 @@ def test_warnings_round_trips(tmp_path: Path) -> None:
 
 def test_old_checkpoint_without_warnings_reads_as_empty_list(tmp_path: Path) -> None:
     """Backward compat: old checkpoint files without warnings key read as []."""
-    import json
-
     path = tmp_path / "checkpoint.json"
     payload = {
         "version": 1,

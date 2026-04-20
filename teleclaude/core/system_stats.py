@@ -27,7 +27,7 @@ def get_memory_stats() -> dict[str, float]:
             "used_gb": round(mem.used / (1024**3), 2),
             "percent": round(mem.percent, 2),
         }
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("Failed to get memory stats: %s", e)
         return {"total_gb": 0.0, "used_gb": 0.0, "percent": 0.0}
 
@@ -52,7 +52,7 @@ def get_disk_stats(path: str = "/") -> dict[str, float]:
             "used_gb": round(used_gb, 2),
             "percent": round(percent, 2),
         }
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("Failed to get disk stats: %s", e)
         return {"total_gb": 0.0, "used_gb": 0.0, "percent": 0.0}
 
@@ -68,7 +68,7 @@ def get_cpu_percent() -> float:
             raise ImportError("psutil not available")
         cpu_value: float = psutil.cpu_percent(interval=0.1)
         return round(cpu_value, 2)
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("Failed to get CPU stats: %s", e)
         return 0.0
 

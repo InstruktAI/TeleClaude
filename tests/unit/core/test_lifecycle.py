@@ -1,5 +1,4 @@
 """Unit tests for daemon lifecycle startup ordering."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 

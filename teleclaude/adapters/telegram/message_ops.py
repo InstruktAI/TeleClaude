@@ -13,13 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from telegram import (
-    ForceReply,
-    InlineKeyboardMarkup,
-    Message,
-    ReplyKeyboardMarkup,
-    ReplyKeyboardRemove,
-)
+from telegram import ForceReply, InlineKeyboardMarkup, Message, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError, TimedOut
 
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES, UI_MESSAGE_MAX_CHARS
@@ -214,7 +208,7 @@ class MessageOperationsMixin:
             raise
 
     @command_retry(max_retries=3, max_timeout=15.0)
-    async def _send_document_with_retry(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def _send_document_with_retry(
         self,
         chat_id: int,
         message_thread_id: int,

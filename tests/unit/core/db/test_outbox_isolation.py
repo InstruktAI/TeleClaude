@@ -17,6 +17,16 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import text
+from sqlmodel import Session as SqlSession
+
+from teleclaude.core import db_models
+from teleclaude.core.db import Db
+from teleclaude.core.db.connection_factory import (
+    create_sync_db_engine,
+    get_outbox_db_path,
+    init_outbox_schema,
+)
+from teleclaude.hooks.receiver import enqueue_hook_event
 
 pytestmark = [pytest.mark.unit]
 
@@ -26,8 +36,6 @@ class TestOutboxDatabaseSeparation:
 
     def test_outbox_db_file_is_separate_from_main(self, tmp_path: Path) -> None:
         """Outbox engine targets a different file than the main teleclaude.db engine."""
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-
         main_path = tmp_path / "teleclaude.db"
         outbox_path = get_outbox_db_path(tmp_path)
         assert outbox_path != main_path
@@ -35,12 +43,6 @@ class TestOutboxDatabaseSeparation:
 
     def test_outbox_table_exists_in_outbox_db(self, tmp_path: Path) -> None:
         """After explicit outbox schema initialization, hook_outbox table exists."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_sync_db_engine,
-            get_outbox_db_path,
-            init_outbox_schema,  # pyright: ignore[reportMissingImports]
-        )
-
         outbox_path = get_outbox_db_path(tmp_path)
         engine = create_sync_db_engine(outbox_path)
         # Explicit schema initialization is required — engine creation alone may not create tables
@@ -52,8 +54,6 @@ class TestOutboxDatabaseSeparation:
     def test_outbox_table_absent_from_main_db_after_migration(self, tmp_path: Path) -> None:
         """After a fresh install, teleclaude.db does not contain hook_outbox."""
         # This verifies that new installs get the separated schema from the start.
-        from teleclaude.core.db import Db
-
         db = Db(str(tmp_path / "teleclaude.db"))
         loop = asyncio.new_event_loop()
         try:
@@ -77,12 +77,6 @@ class TestOutboxSchemaIntegrity:
 
     def test_outbox_schema_has_required_columns(self, tmp_path: Path) -> None:
         """hook_outbox in the outbox DB has all required columns."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_sync_db_engine,
-            get_outbox_db_path,
-            init_outbox_schema,
-        )
-
         outbox_path = get_outbox_db_path(tmp_path)
         engine = create_sync_db_engine(outbox_path)
         init_outbox_schema(engine)  # pyright: ignore[reportCallIssue]
@@ -113,9 +107,6 @@ class TestReceiverWritesToOutboxDb:
         This test exercises the actual receiver code path rather than bypassing it.
         The receiver's enqueue function must write to the outbox DB, not teleclaude.db.
         """
-        from teleclaude.core.db.connection_factory import get_outbox_db_path  # pyright: ignore[reportMissingImports]
-        from teleclaude.hooks.receiver import enqueue_hook_event  # pyright: ignore[reportMissingImports]
-
         outbox_path = get_outbox_db_path(tmp_path)
 
         enqueue_hook_event(  # pyright: ignore[reportCallIssue]
@@ -142,11 +133,6 @@ class TestOutboxWriteIsolation:
         This is the core contention fix: the outbox lives in a separate file,
         so the receiver never contends with the daemon for teleclaude.db locks.
         """
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_sync_db_engine,
-            get_outbox_db_path,
-        )
-
         main_db_path = tmp_path / "teleclaude.db"
         outbox_path = get_outbox_db_path(tmp_path)
 
@@ -161,10 +147,6 @@ class TestOutboxWriteIsolation:
         main_conn.execute("BEGIN EXCLUSIVE")
         try:
             # Outbox write should succeed despite main DB being locked
-            from sqlmodel import Session as SqlSession
-
-            from teleclaude.core import db_models
-
             now = datetime.now(UTC).isoformat()
             with SqlSession(outbox_engine) as session:
                 row = db_models.HookOutbox(

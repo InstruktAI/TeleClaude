@@ -6,8 +6,6 @@ import importlib
 
 surface = importlib.import_module("teleclaude.cli.telec.surface")
 
-# pylint: disable=missing-function-docstring
-
 
 def test_cli_surface_exposes_expected_top_level_commands() -> None:
     for command in ("sessions", "todo", "docs", "roadmap", "auth", "signals"):

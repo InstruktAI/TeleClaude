@@ -8,7 +8,6 @@ The service exposes sub-services as properties:
 Callers get one service instance; each domain concern lives in its own
 focused class. No mixins, no multiple inheritance.
 """
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 

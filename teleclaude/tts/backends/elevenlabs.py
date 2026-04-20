@@ -2,12 +2,14 @@
 
 import os
 
+from elevenlabs.client import ElevenLabs
+from elevenlabs.play import play
 from instrukt_ai_logging import get_logger
 
 logger = get_logger(__name__)
 
 
-class ElevenLabsBackend:  # pylint: disable=too-few-public-methods
+class ElevenLabsBackend:
     """ElevenLabs TTS using Flash v2.5 model."""
 
     def speak(self, text: str, voice_id: str | None = None) -> bool:
@@ -22,9 +24,6 @@ class ElevenLabsBackend:  # pylint: disable=too-few-public-methods
             True if successful, False otherwise
         """
         try:
-            from elevenlabs.client import ElevenLabs  # pylint: disable=import-outside-toplevel
-            from elevenlabs.play import play  # pylint: disable=import-outside-toplevel
-
             api_key = os.getenv("ELEVENLABS_API_KEY")
             if not api_key:
                 logger.debug("ELEVENLABS_API_KEY not set")
@@ -43,11 +42,11 @@ class ElevenLabsBackend:  # pylint: disable=too-few-public-methods
             )
 
             play(audio)
-            logger.debug(f"ElevenLabs: spoke {len(text)} chars with voice {voice_id}")  # pylint: disable=logging-fstring-interpolation
+            logger.debug(f"ElevenLabs: spoke {len(text)} chars with voice {voice_id}")
             return True
         except ImportError:
             logger.debug("elevenlabs library not installed")
             return False
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.debug(f"ElevenLabs failed: {e}")  # pylint: disable=logging-fstring-interpolation
+        except Exception as e:
+            logger.debug(f"ElevenLabs failed: {e}")
             return False

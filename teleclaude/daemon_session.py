@@ -122,7 +122,7 @@ class OutputChangeSummary:
     after_snippet: str | None = None
 
 
-class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Mixin only exposes private hooks.
+class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
     """Session and agent event handling methods extracted from TeleClaudeDaemon."""
 
     if TYPE_CHECKING:
@@ -136,9 +136,9 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         command_service: CommandService
         output_poller: OutputPoller
 
-        def _track_background_task(self, task: asyncio.Task[object], label: str) -> None: ...  # pylint: disable=unused-argument
-        async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None: ...  # pylint: disable=unused-argument
-        async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None: ...  # pylint: disable=unused-argument
+        def _track_background_task(self, task: asyncio.Task[object], label: str) -> None: ...
+        async def _poll_and_send_output(self, session_id: str, tmux_session_name: str) -> None: ...
+        async def _start_polling_for_session(self, session_id: str, tmux_session_name: str) -> None: ...
 
     def _queue_background_task(self, coro: Coroutine[object, object, object], label: str) -> None:
         """Create and track a background task."""
@@ -159,7 +159,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             return
         try:
             await handle_mirror_agent_stop(context)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("Mirror AGENT_STOP handler failed: %s", exc, exc_info=True)
 
     async def _handle_session_closed(self, _event: str, context: SessionLifecycleContext) -> None:
@@ -186,10 +186,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
                 await worker
             except asyncio.CancelledError:
                 pass
-        polling_coordinator._cleanup_codex_input_state(ctx.session_id)  # pylint: disable=protected-access
+        polling_coordinator._cleanup_codex_input_state(ctx.session_id)
         try:
             await handle_mirror_session_closed(ctx)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("Mirror SESSION_CLOSED handler failed: %s", exc, exc_info=True)
 
     async def _handle_session_close_requested(self, _event: str, context: SessionLifecycleContext) -> None:
@@ -218,7 +218,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
                 reason="close_requested",
                 session=session,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("Failed to close session %s: %s", ctx.session_id, exc, exc_info=True)
 
             restored = await db.get_session(ctx.session_id)
@@ -348,7 +348,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         if launch_intent and launch_intent.kind != SessionLaunchKind.EMPTY:
             try:
                 launch_result = await self._execute_launch_intent(session_id, launch_intent)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.error(
                     "Bootstrap launch intent failed for session %s",
                     session_id,
@@ -368,7 +368,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             launch_result.get("status") if launch_result else "n/a",
         )
 
-    async def _handle_agent_then_message(  # pylint: disable=too-many-locals,too-many-return-statements
+    async def _handle_agent_then_message(
         self,
         session_id: str,
         *,
@@ -516,7 +516,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
     async def _wait_for_output_change(
         self,
         session: Session,
-        before: str,  # pylint: disable=unused-argument
+        before: str,
         before_digest: str,
         timeout_s: float,
     ) -> tuple[bool, str]:

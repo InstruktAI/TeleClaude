@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.adapter_client._channels."""
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods
 
 from __future__ import annotations
 

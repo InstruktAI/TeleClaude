@@ -46,7 +46,7 @@ _GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
 _PEOPLE_DIR = PEOPLE_DIR
 
 
-class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-instance-attributes
+class IdentityResolver:
     """Resolves human identity from channel metadata."""
 
     def __init__(self) -> None:
@@ -105,7 +105,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
 
         try:
             global_config = load_global_config()
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Failed to load global config for identity resolution: %s", e)
             return
 
@@ -127,7 +127,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
                 continue
             try:
                 person_conf = load_person_config(person_config_path)
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 logger.warning("Failed to load person config for %s: %s", person.name, e)
                 continue
 
@@ -163,7 +163,7 @@ class IdentityResolver:  # pylint: disable=too-few-public-methods,too-many-insta
         self._reload_if_stale()
         return self._registered_people_count
 
-    def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:  # pylint: disable=too-many-branches,too-many-return-statements
+    def resolve(self, origin: str, origin_metadata: Mapping[str, object]) -> IdentityContext:
         """Resolve identity from origin and metadata.
 
         Args:
@@ -278,12 +278,12 @@ def derive_identity_key(origin_metadata: dict[str, object]) -> str | None:  # gu
     return None
 
 
-_resolver_instance: IdentityResolver | None = None  # pylint: disable=invalid-name
+_resolver_instance: IdentityResolver | None = None
 
 
 def get_identity_resolver() -> IdentityResolver:
     """Get the singleton IdentityResolver instance."""
-    global _resolver_instance  # pylint: disable=global-statement
+    global _resolver_instance
     if _resolver_instance is None:
         _resolver_instance = IdentityResolver()
     return _resolver_instance

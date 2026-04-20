@@ -19,6 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -371,7 +372,7 @@ def validate_artifact(post: frontmatter.Post, path: str, *, kind: str, project_r
 # ---------------------------------------------------------------------------
 
 
-def validate_all_artifacts(project_root: Path) -> list[str]:  # pylint: disable=too-many-locals
+def validate_all_artifacts(project_root: Path) -> list[str]:
     """Validate all agent artifact source files. Returns list of errors."""
     teleclaude_root = REPO_ROOT
     is_mother_project = Path(project_root).resolve() == teleclaude_root.resolve()
@@ -421,7 +422,7 @@ def validate_all_artifacts(project_root: Path) -> list[str]:  # pylint: disable=
                         with open(item_path, encoding="utf-8") as f:
                             post = frontmatter.load(f)
                         validate_artifact(post, item_path, kind=kind, project_root=project_root)
-                    except Exception as e:  # pylint: disable=broad-exception-caught
+                    except Exception as e:
                         errors.append(str(e))
     return errors
 
@@ -562,8 +563,6 @@ def validate_jobs_config(project_root: Path) -> list[str]:
 
 def validate_todo(slug: str, project_root: Path) -> list[str]:
     """Validate a todo's state and artifacts in todos.db."""
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
     db = _get_todos_db_sync(str(project_root))
     errors: list[str] = []
 
@@ -591,10 +590,8 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
 
 def validate_all_todos(project_root: Path) -> list[str]:
     """Enumerate and validate all active todos from todos.db."""
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
     db = _get_todos_db_sync(str(project_root))
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     try:
         rows = conn.execute(
             "SELECT slug FROM roadmap WHERE status = 'active' ORDER BY position",  # guard: raw-sql

@@ -87,7 +87,7 @@ def get_session_tmpdir(session_id: str) -> Path | None:
     return path if path.is_dir() else None
 
 
-async def _create_tmux_session(  # pylint: disable=too-many-locals  # Existing env/bootstrap flow is intentionally flat.
+async def _create_tmux_session(
     name: str,
     working_dir: str,
     session_id: str | None = None,

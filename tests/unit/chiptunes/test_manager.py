@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import tempfile
 import threading
 from collections.abc import Generator, Mapping
 from pathlib import Path
@@ -93,8 +94,6 @@ class _FakeWorkerServer:
 @pytest.fixture()
 def fake_worker() -> Generator[_FakeWorkerServer]:
     # Use /tmp to stay within macOS AF_UNIX path length limit (104 bytes)
-    import tempfile  # pylint: disable=import-outside-toplevel
-
     fd, sock_path = tempfile.mkstemp(prefix="tc_ct_", suffix=".sock", dir="/tmp")
     os.close(fd)
     os.unlink(sock_path)

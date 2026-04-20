@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -62,8 +63,6 @@ class TestEventProcessorInit:
         assert processor._consumer == "my-consumer"
 
     def test_consumer_name_defaults_to_pid_based(self) -> None:
-        import os
-
         redis = _make_redis()
         pipeline = MagicMock()
         processor = EventProcessor(redis, pipeline)

@@ -12,7 +12,7 @@ import yaml
 from teleclaude.cli.tui.views._project_actions import save_new_project
 
 
-class _FakeApp:  # pylint: disable=too-few-public-methods
+class _FakeApp:
     """Minimal app stub that captures notifications."""
 
     def __init__(self) -> None:

@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add one_shot column to session_listeners table."""
 
 from __future__ import annotations

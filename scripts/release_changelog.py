@@ -109,7 +109,7 @@ def git_tag_date(tag: str) -> str:
     )
     date = result.stdout.strip()
     if not date:
-        from datetime import datetime  # pylint: disable=import-outside-toplevel
+        from datetime import datetime
 
         date = datetime.now(UTC).strftime("%Y-%m-%d")
     return date

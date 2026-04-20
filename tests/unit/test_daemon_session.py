@@ -1,10 +1,5 @@
 """Characterization tests for teleclaude.daemon_session."""
 
-# pylint: disable=consider-using-from-import
-# pylint: disable=too-many-instance-attributes,too-few-public-methods
-# pylint: disable=missing-function-docstring,protected-access
-# pylint: disable=import-outside-toplevel,unused-argument
-
 from __future__ import annotations
 
 import asyncio
@@ -16,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import teleclaude.daemon_session as daemon_session
+from teleclaude.constants import ROLE_INTEGRATOR
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 
 
@@ -93,8 +89,6 @@ async def test_handle_session_closed_cleans_state_and_cancels_worker(monkeypatch
 @pytest.mark.unit
 async def test_bootstrap_writes_system_role_to_identity_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """When a session has system_role in metadata, it is written to the identity file."""
-    from teleclaude.constants import ROLE_INTEGRATOR
-
     daemon_inst = _TestDaemon()
     identity_calls: list[dict[str, str]] = []
 

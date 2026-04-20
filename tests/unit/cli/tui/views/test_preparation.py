@@ -1,5 +1,4 @@
 """Behavioral tests for teleclaude.cli.tui.views.preparation."""
-# pylint: disable=missing-function-docstring,protected-access
 
 from __future__ import annotations
 

@@ -65,7 +65,7 @@ class DefaultSignalAIClient:
                 messages=[{"role": "user", "content": prompt}],
             )
             return resp.content[0].text.strip()  # type: ignore[no-any-return]
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.warning("summarise failed: %s", e)
             raise
 
@@ -86,7 +86,7 @@ class DefaultSignalAIClient:
             raw = resp.content[0].text.strip()
             tags = [t.strip().lower().replace(" ", "-") for t in raw.split(",") if t.strip()]
             return tags[:7]
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.warning("extract_tags failed: %s", e)
             return []
 
@@ -128,6 +128,6 @@ class DefaultSignalAIClient:
                 confidence=float(data.get("confidence", 0.5)),
                 recommended_action=data.get("recommended_action"),
             )
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("synthesise_cluster failed: %s", e)
             raise

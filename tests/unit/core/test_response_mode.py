@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import pytest
 
+import teleclaude.types.commands as cmds
+from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
+
 
 class TestImmediateCommandModes:
     """Commands whose endpoints are 'already correct' per input audit declare IMMEDIATE.
@@ -52,9 +55,6 @@ class TestImmediateCommandModes:
         self, command_cls_name: str, constructor_kwargs: dict[str, str]
     ) -> None:
         """Commands for 'already correct' 200 endpoints declare IMMEDIATE mode."""
-        import teleclaude.types.commands as cmds
-        from teleclaude.types.commands import ResponseMode
-
         cls = getattr(cmds, command_cls_name)
         instance = cls(**constructor_kwargs)
         assert instance.response_mode == ResponseMode.IMMEDIATE
@@ -89,8 +89,6 @@ class TestImmediateCommandModes:
         self, command_cls_name: str, constructor_kwargs: dict[str, str]
     ) -> None:
         """IMMEDIATE commands have completion_event=None."""
-        import teleclaude.types.commands as cmds
-
         cls = getattr(cmds, command_cls_name)
         instance = cls(**constructor_kwargs)
         assert instance.completion_event is None
@@ -118,9 +116,6 @@ class TestFireAndForgetCommandModes:
         self, command_cls_name: str, constructor_kwargs: dict[str, str]
     ) -> None:
         """FIRE_AND_FORGET commands declare that response mode."""
-        import teleclaude.types.commands as cmds
-        from teleclaude.types.commands import ResponseMode
-
         cls = getattr(cmds, command_cls_name)
         instance = cls(**constructor_kwargs)
         assert instance.response_mode == ResponseMode.FIRE_AND_FORGET
@@ -141,8 +136,6 @@ class TestFireAndForgetCommandModes:
         self, command_cls_name: str, constructor_kwargs: dict[str, str]
     ) -> None:
         """Every FIRE_AND_FORGET command declares a non-empty completion_event string."""
-        import teleclaude.types.commands as cmds
-
         cls = getattr(cmds, command_cls_name)
         instance = cls(**constructor_kwargs)
         assert isinstance(instance.completion_event, str)
@@ -159,8 +152,6 @@ class TestFireAndForgetConstructionInvariant:
         This is the fail-fast invariant from FR-1: enforcement at construction,
         not at dispatch.
         """
-        from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
-
         with pytest.raises((ValueError, TypeError)):
             InternalCommand(
                 command_type=CommandType.CLOSE_SESSION,

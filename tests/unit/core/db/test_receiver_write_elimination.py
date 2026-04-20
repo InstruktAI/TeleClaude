@@ -10,11 +10,27 @@ converted to outbox event types that the daemon processes asynchronously.
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
+from sqlalchemy import Engine
+
+from teleclaude import daemon_hook_outbox
+from teleclaude.core.db.connection_factory import (
+    create_sync_db_engine,
+    get_outbox_db_path,
+)
+from teleclaude.core.events import AgentHookEvents
+from teleclaude.daemon_hook_outbox import (
+    handle_checkpoint_seen,
+    handle_native_metadata_update,
+    handle_native_session_refresh,
+)
+from teleclaude.hooks.receiver import _session as receiver_session
+from teleclaude.hooks.receiver import enqueue_checkpoint_seen
 
 pytestmark = [pytest.mark.unit]
 
@@ -34,10 +50,6 @@ class TestReceiverZeroWritesToMainDb:
         Calling it with an outbox path must return a session bound to that path,
         not to teleclaude.db — proving no write path to the main DB remains.
         """
-        from sqlalchemy import Engine
-
-        from teleclaude.hooks.receiver import _session as receiver_session  # pyright: ignore[reportMissingImports]
-
         outbox_path = tmp_path / "hook_outbox.db"
         session = receiver_session.get_outbox_session(str(outbox_path))  # pyright: ignore[reportAttributeAccessIssue]
         try:
@@ -54,11 +66,6 @@ class TestReceiverZeroWritesToMainDb:
         an outbox path and assert the returned engine URL targets the outbox file,
         not teleclaude.db.
         """
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_sync_db_engine,
-            get_outbox_db_path,
-        )
-
         outbox_path = get_outbox_db_path(tmp_path)
         engine = create_sync_db_engine(outbox_path)
         # Engine URL must reference the outbox path, never teleclaude.db
@@ -81,8 +88,6 @@ class TestCheckpointSeenOutboxEvent:
 
     def test_checkpoint_seen_event_type_defined(self) -> None:
         """AgentHookEvents or equivalent defines 'checkpoint_seen' as a valid event type."""
-        from teleclaude.core.events import AgentHookEvents
-
         # The exact attribute name may differ, but the event type string must exist
         event_types = set()
         for attr in dir(AgentHookEvents):
@@ -98,16 +103,12 @@ class TestCheckpointSeenOutboxEvent:
         We call the receiver's public enqueue API with a temp outbox path and verify
         a checkpoint_seen row appears in the outbox DB.
         """
-        from teleclaude.hooks.receiver import enqueue_checkpoint_seen  # pyright: ignore[reportMissingImports]
-
         outbox_path = tmp_path / "hook_outbox.db"
         enqueue_checkpoint_seen(  # pyright: ignore[reportCallIssue]
             session_id="sess-cp-emit-001",
             checkpoint_at=datetime.now(UTC).isoformat(),
             outbox_db=str(outbox_path),
         )
-
-        import sqlite3
 
         conn = sqlite3.connect(str(outbox_path))
         rows = conn.execute("SELECT event_type FROM hook_outbox WHERE session_id='sess-cp-emit-001'").fetchall()
@@ -120,8 +121,6 @@ class TestNativeMetadataUpdateOutboxEvent:
 
     def test_native_metadata_update_event_type_defined(self) -> None:
         """AgentHookEvents defines 'native_metadata_update' as a valid event type."""
-        from teleclaude.core.events import AgentHookEvents
-
         event_types = set()
         for attr in dir(AgentHookEvents):
             val = getattr(AgentHookEvents, attr)
@@ -143,8 +142,6 @@ class TestNativeMetadataUpdateOutboxEvent:
             title="Payload Structure Test",
             session_id="sess-payload-001",
         )
-
-        from teleclaude.daemon_hook_outbox import handle_native_metadata_update  # pyright: ignore[reportMissingImports]
 
         # Call the actual handler with the expected payload shape; if the handler
         # rejects or ignores required fields, the session state won't reflect them.
@@ -170,8 +167,6 @@ class TestNativeSessionRefreshOutboxEvent:
 
     def test_native_session_refresh_event_type_defined(self) -> None:
         """AgentHookEvents defines 'native_session_refresh' as a valid event type."""
-        from teleclaude.core.events import AgentHookEvents
-
         event_types = set()
         for attr in dir(AgentHookEvents):
             val = getattr(AgentHookEvents, attr)
@@ -201,8 +196,6 @@ class TestDaemonProcessesNewEventTypes:
         After processing native_session_refresh, session.native_session_id is refreshed.
         """
         # The daemon hook outbox module should have handler registration
-        from teleclaude import daemon_hook_outbox
-
         source_path = Path(daemon_hook_outbox.__file__)
         source = source_path.read_text(encoding="utf-8")
         assert event_type in source, f"Daemon outbox worker has no handler for '{event_type}'"
@@ -231,8 +224,6 @@ class TestCheckpointSeenDaemonHandler:
         # 1. Parse the event payload for the checkpoint timestamp
         # 2. Update session.last_checkpoint_at
         # The test verifies the end state after handler execution.
-        from teleclaude.daemon_hook_outbox import handle_checkpoint_seen  # pyright: ignore[reportMissingImports]
-
         await handle_checkpoint_seen(
             db,
             session_id="sess-cp-001",
@@ -258,8 +249,6 @@ class TestNativeMetadataDaemonHandler:
             title="Native Meta Test",
             session_id="sess-nm-001",
         )
-
-        from teleclaude.daemon_hook_outbox import handle_native_metadata_update  # pyright: ignore[reportMissingImports]
 
         await handle_native_metadata_update(
             db,
@@ -288,8 +277,6 @@ class TestNativeMetadataDaemonHandler:
             title="Chain Test",
             session_id="sess-chain-001",
         )
-
-        from teleclaude.daemon_hook_outbox import handle_native_metadata_update  # pyright: ignore[reportMissingImports]
 
         # First update: set initial transcript
         await handle_native_metadata_update(
@@ -339,8 +326,6 @@ class TestNativeSessionRefreshDaemonHandler:
             session_id="sess-refresh-001",
         )
 
-        from teleclaude.daemon_hook_outbox import handle_native_session_refresh  # pyright: ignore[reportMissingImports]
-
         await handle_native_session_refresh(
             db,
             session_id="sess-refresh-001",
@@ -364,11 +349,6 @@ class TestNativeSessionRefreshDaemonHandler:
         )
 
         # First set a native_session_id via metadata update
-        from teleclaude.daemon_hook_outbox import (
-            handle_native_metadata_update,  # pyright: ignore[reportMissingImports]
-            handle_native_session_refresh,  # pyright: ignore[reportMissingImports]
-        )
-
         await handle_native_metadata_update(
             db,
             session_id="sess-refresh-002",

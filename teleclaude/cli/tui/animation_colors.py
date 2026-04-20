@@ -12,7 +12,7 @@ from teleclaude.cli.tui.color_utils import hex_to_rgb, rgb_to_hex
 from teleclaude.cli.tui.theme import get_agent_color
 
 
-class MultiGradient:  # pylint: disable=too-few-public-methods
+class MultiGradient:
     """Multi-stop gradient returning interpolated hex colors for a 0.0-1.0 factor."""
 
     def __init__(self, stops: list[str]) -> None:

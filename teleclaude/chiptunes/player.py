@@ -18,9 +18,9 @@ from teleclaude.chiptunes.sid_renderer import SIDRenderer
 try:
     import sounddevice as sd
 
-    _sounddevice_available = True  # pylint: disable=invalid-name
+    _sounddevice_available = True
 except ImportError:
-    _sounddevice_available = False  # pylint: disable=invalid-name
+    _sounddevice_available = False
     sd = None
 
 logger = get_logger(__name__)
@@ -51,11 +51,11 @@ def _get_default_output_device() -> int | None:  # used by ChiptunesPlayer._open
             val = raw[1]
             return int(val) if val is not None else None
         return int(str(raw)) if raw is not None else None
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return None
 
 
-class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
+class ChiptunesPlayer:
     """Plays a SID file in a background thread via sounddevice."""
 
     def __init__(self, volume: float = 1.0) -> None:
@@ -123,7 +123,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
 
         try:
             header = parse_sid_file(sid_path)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Failed to parse SID file %s: %s", sid_path, exc)
             self._notify_track_end("sid_parse_failed")
             return
@@ -297,7 +297,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 stream.start()
                 self._start_device_monitor()
                 return True
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Failed to open audio stream: %s", exc)
                 self._stream = None
                 return False
@@ -313,7 +313,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         try:
             stream.stop()  # type: ignore
             stream.close()  # type: ignore
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.debug("Stream cleanup error: %s", exc)
 
     def _start_device_monitor(self) -> None:
@@ -350,7 +350,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             try:
                 old_stream.stop()  # type: ignore
                 old_stream.close()  # type: ignore
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.debug("Old stream cleanup on device switch: %s", exc)
             # Open new stream on the new default device
             if not self._open_stream():
@@ -369,7 +369,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                 self._stop_event.wait(wait_s)
         return False
 
-    def _emulation_loop(  # noqa: C901 - pylint: disable=too-many-locals,too-many-branches,too-many-statements
+    def _emulation_loop(  # noqa: C901 # TODO: refactor to reduce complexity
         self,
         header: SIDHeader,
         start_position_seconds: float = 0.0,
@@ -390,7 +390,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             frame_rate = driver.frame_rate(pal)
             frame_duration = 1.0 / frame_rate
             logger.debug("ChipTunes: emulation started (subtune=%d, pal=%s, frame_rate=%.3f)", subtune, pal, frame_rate)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("SID init failed: %s", exc)
             self._playing = False
             self._notify_track_end("init_failed")
@@ -407,7 +407,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
             with self._position_lock:
                 self._playback_position_seconds = playback_elapsed
 
-        while not self._stop_event.is_set():  # pylint: disable=too-many-nested-blocks
+        while not self._stop_event.is_set():
             if not self._resume_event.wait(timeout=0.1):
                 continue
             if self._stop_event.is_set():
@@ -448,7 +448,7 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
                         pass
                 if done:
                     break
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 print(f"[CHIPTUNES] EMULATION ERROR: {exc}", flush=True)
                 logger.warning("Emulation error (skipping track): %s", exc)
                 self._notify_track_end("emulation_error")
@@ -534,5 +534,5 @@ class ChiptunesPlayer:  # pylint: disable=too-many-instance-attributes
         if self.on_track_end is not None:
             try:
                 self.on_track_end(reason)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.warning("on_track_end callback error: %s", exc)

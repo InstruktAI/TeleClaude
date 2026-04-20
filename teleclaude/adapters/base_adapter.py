@@ -5,12 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Awaitable, Callable
 from functools import wraps
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Protocol,
-    runtime_checkable,
-)
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from instrukt_ai_logging import get_logger
 
@@ -25,7 +20,7 @@ logger = get_logger(__name__)
 
 
 @runtime_checkable
-class _HasSessionId(Protocol):  # pylint: disable=too-few-public-methods
+class _HasSessionId(Protocol):
     """Protocol for objects exposing a session_id attribute."""
 
     session_id: str
@@ -321,6 +316,7 @@ class BaseAdapter(ABC):
             Output chunks as they arrive
         """
         raise NotImplementedError("poll_output_stream must be implemented by subclass")
+        yield  # make this an async generator so return type matches subclass overrides
 
     # ==================== Platform-Specific Parameters ====================
 

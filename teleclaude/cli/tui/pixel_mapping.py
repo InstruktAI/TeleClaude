@@ -115,7 +115,7 @@ class PixelMap:
         return (x, y) in target.get_all_pixels()
 
     @staticmethod
-    def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:  # pylint: disable=unused-argument
+    def get_is_letter(target_arg: bool | str, x: int, y: int) -> bool:
         """Check if a specific coordinate corresponds to a letter character."""
         target_name = PixelMap._resolve_target(target_arg)
         target = target_registry.get(target_name)

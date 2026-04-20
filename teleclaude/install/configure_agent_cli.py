@@ -20,6 +20,7 @@ from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.paths import BIN_DIR, ENV_PATH
 from teleclaude.project_root import resolve_main_repo_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
@@ -220,7 +221,7 @@ def _filter_receiver_handled_events(
     }
 
 
-def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:  # pylint: disable=unused-argument
+def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
     """Return TeleClaude hook definitions for Claude Code."""
     return _build_hook_map(
         receiver_invocation,
@@ -229,7 +230,7 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
     )
 
 
-def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:  # pylint: disable=unused-argument
+def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
     # Installer contract:
     # - Tool lane comes only from BeforeTool/AfterTool.
@@ -246,7 +247,7 @@ def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
     )
 
 
-def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[str, list[dict[str, Any]]]:  # pylint: disable=unused-argument
+def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[str, list[dict[str, Any]]]:
     """Return TeleClaude native hook blocks for Codex."""
     command = _build_hook_command_without_event(receiver_invocation, CODEX_AGENT)
     return {
@@ -286,9 +287,7 @@ def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[
     }
 
 
-def _prune_agent_hooks(  # pylint: disable=too-many-branches
-    existing_hooks: dict[str, Any], allowed_events: set[str]
-) -> dict[str, Any]:
+def _prune_agent_hooks(existing_hooks: dict[str, Any], allowed_events: set[str]) -> dict[str, Any]:
     """Remove TeleClaude receiver hooks from unused events.
 
     Keep TeleClaude hooks only for allowed_events.
@@ -339,7 +338,7 @@ def _prune_agent_hooks(  # pylint: disable=too-many-branches
     return pruned
 
 
-def _configure_json_agent_hooks(  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
+def _configure_json_agent_hooks(
     repo_root: Path,
     agent: str,
     settings_path: Path,
@@ -397,7 +396,7 @@ def _configure_json_agent_hooks(  # pylint: disable=too-many-locals  # Flat data
     if overrides:
         settings = _deep_merge(settings, overrides)
 
-    with open(settings_path, "w") as f:  # pylint: disable=unspecified-encoding
+    with open(settings_path, "w") as f:
         json.dump(settings, f, indent=2)
 
     print(f"{agent.capitalize()} hooks and settings configured in {settings_path}")
@@ -437,7 +436,7 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
 
     if changed:
         settings["mcpServers"] = mcp_servers
-        with open(settings_path, "w") as f:  # pylint: disable=unspecified-encoding
+        with open(settings_path, "w") as f:
             json.dump(settings, f, indent=2)
         print(f"{label} MCP servers updated in {settings_path}")
     else:
@@ -471,7 +470,7 @@ def configure_gemini(repo_root: Path) -> None:
     _ensure_json_mcp_servers(Path.home() / ".gemini" / "settings.json", managed_mcp_servers, "Gemini")
 
 
-def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
+def configure_codex(
     repo_root: Path,
 ) -> None:
     """Configure native Codex hooks and settings."""
@@ -613,7 +612,7 @@ def _write_codex_hooks_json(hooks_path: Path, managed_hooks: dict[str, list[dict
     for event_name, managed_blocks in managed_hooks.items():
         updated_hooks[event_name] = _merge_codex_hook_blocks(existing_hooks.get(event_name), managed_blocks)
 
-    with open(hooks_path, "w") as handle:  # pylint: disable=unspecified-encoding
+    with open(hooks_path, "w") as handle:
         json.dump({"hooks": updated_hooks}, handle, indent=2)
 
 
@@ -733,8 +732,6 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
         print(f"Warning: wrapper source missing: {source_path}")
         return
 
-    from teleclaude.paths import BIN_DIR  # pylint: disable=import-outside-toplevel
-
     bin_dir = BIN_DIR
     bin_dir.mkdir(parents=True, exist_ok=True)
     target_path = bin_dir / wrapper_name
@@ -755,8 +752,6 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
-    from teleclaude.paths import ENV_PATH  # pylint: disable=import-outside-toplevel
-
     target = ENV_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
 

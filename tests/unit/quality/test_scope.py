@@ -1,4 +1,3 @@
-# pylint: disable=import-outside-toplevel
 """Tests for teleclaude.quality.scope — shared scope utilities."""
 
 from __future__ import annotations
@@ -7,8 +6,11 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.quality.scope import get_project_languages, resolve_project_root, validate_scoped_paths
 
-class TestResolveProjectRoot:  # pylint: disable=too-few-public-methods
+
+class TestResolveProjectRoot:
     """resolve_project_root walks up to find teleclaude.yml."""
 
     def test_finds_root_with_teleclaude_yml(self, tmp_path: Path) -> None:
@@ -16,8 +18,6 @@ class TestResolveProjectRoot:  # pylint: disable=too-few-public-methods
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
         sub = tmp_path / "a" / "b"
         sub.mkdir(parents=True)
-
-        from teleclaude.quality.scope import resolve_project_root
 
         assert resolve_project_root(sub) == tmp_path
 
@@ -27,15 +27,11 @@ class TestValidateScopedPaths:
 
     def test_filters_traversal_paths(self, tmp_path: Path) -> None:
         """Paths containing '..' are rejected."""
-        from teleclaude.quality.scope import validate_scoped_paths
-
         result = validate_scoped_paths(["../etc/passwd", "ok.py"], tmp_path)
         assert result == ["ok.py"]
 
     def test_filters_absolute_paths_outside_root(self, tmp_path: Path) -> None:
         """Absolute paths outside project root are rejected."""
-        from teleclaude.quality.scope import validate_scoped_paths
-
         result = validate_scoped_paths(["/etc/passwd", "ok.py"], tmp_path)
         assert result == ["ok.py"]
 
@@ -47,15 +43,11 @@ class TestGetProjectLanguages:
         """Reads the languages list when present."""
         (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n  - typescript\n", encoding="utf-8")
 
-        from teleclaude.quality.scope import get_project_languages
-
         assert get_project_languages(tmp_path) == ["python", "typescript"]
 
     def test_falls_back_to_singular_language_field(self, tmp_path: Path) -> None:
         """Backward compat: wraps singular language in a list."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
-
-        from teleclaude.quality.scope import get_project_languages
 
         assert get_project_languages(tmp_path) == ["python"]
 
@@ -63,22 +55,16 @@ class TestGetProjectLanguages:
         """When both fields exist, languages takes precedence."""
         (tmp_path / "teleclaude.yml").write_text("language: python\nlanguages:\n  - typescript\n", encoding="utf-8")
 
-        from teleclaude.quality.scope import get_project_languages
-
         assert get_project_languages(tmp_path) == ["typescript"]
 
     def test_returns_empty_list_when_no_language_fields(self, tmp_path: Path) -> None:
         """Returns empty list when neither field exists."""
         (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
 
-        from teleclaude.quality.scope import get_project_languages
-
         assert get_project_languages(tmp_path) == []
 
     def test_returns_empty_list_when_no_config_file(self, tmp_path: Path) -> None:
         """Returns empty list when teleclaude.yml doesn't exist."""
-        from teleclaude.quality.scope import get_project_languages
-
         assert get_project_languages(tmp_path) == []
 
 
@@ -93,8 +79,6 @@ class TestResolveInvocationCwd:
 
     def test_prefers_telec_env_var_over_pwd_and_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TELEC_INVOCATION_CWD wins over PWD and Path.cwd()."""
-        from teleclaude.project_root import resolve_invocation_cwd
-
         invocation = tmp_path / "worktree"
         invocation.mkdir()
         wrong_pwd = tmp_path / "shell_pwd"
@@ -112,8 +96,6 @@ class TestResolveInvocationCwd:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """PWD wins over Path.cwd() when TELEC_INVOCATION_CWD is unset."""
-        from teleclaude.project_root import resolve_invocation_cwd
-
         invocation = tmp_path / "worktree"
         invocation.mkdir()
         wrong_cwd = tmp_path / "process_cwd"
@@ -129,8 +111,6 @@ class TestResolveInvocationCwd:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Path.cwd() is the last resort when no env var is set."""
-        from teleclaude.project_root import resolve_invocation_cwd
-
         monkeypatch.delenv("TELEC_INVOCATION_CWD", raising=False)
         monkeypatch.delenv("PWD", raising=False)
         monkeypatch.chdir(tmp_path)
@@ -150,9 +130,6 @@ class TestResolveInvocationCwd:
         silently. Using the invocation cwd instead of Path.cwd() prevents
         this.
         """
-        from teleclaude.project_root import resolve_invocation_cwd
-        from teleclaude.quality.scope import resolve_project_root
-
         main_repo = tmp_path / "main"
         main_repo.mkdir()
         (main_repo / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")

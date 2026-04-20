@@ -107,7 +107,7 @@ class DbLinksMixin:
         links = await self.get_active_links_between_sessions(session_a, session_b, mode=mode)
         return links[0] if links else None
 
-    async def upsert_conversation_link_member(  # pylint: disable=too-many-arguments  # Membership metadata maps directly to row columns.
+    async def upsert_conversation_link_member(
         self,
         *,
         link_id: str,

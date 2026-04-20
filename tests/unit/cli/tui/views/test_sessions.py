@@ -12,11 +12,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from teleclaude.cli.tui.messages import PreviewChanged
+from teleclaude.cli.tui.views.sessions import SessionsView, _PendingSelect
+
 
 @pytest.mark.unit
 def test_sessions_view_is_importable() -> None:
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     assert SessionsView is not None
 
 
@@ -31,8 +32,6 @@ class _FakeSessionRow:
 
 def _make_view(pending_id: str | None, nav_items: list[object], *, request_focus: bool = False) -> MagicMock:
     """Return a minimal mock that satisfies _apply_pending_selection's interface."""
-    from teleclaude.cli.tui.views.sessions import _PendingSelect
-
     view = MagicMock()
     if pending_id is not None:
         view._pending_select = _PendingSelect(pending_id, request_focus)
@@ -49,8 +48,6 @@ def test_apply_pending_selection_waits_for_tmux_pane() -> None:
     The method waits for tmux_session_name to be set before consuming the
     pending ID, so the layout can actually render the pane.
     """
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     row = _FakeSessionRow("test-123", tmux_session_name=None)
     view = _make_view("test-123", [row])
 
@@ -66,9 +63,6 @@ def test_apply_pending_selection_waits_for_tmux_pane() -> None:
 @pytest.mark.unit
 def test_apply_pending_selection_selects_when_tmux_ready() -> None:
     """Session is selected and previewed once tmux_session_name is available."""
-    from teleclaude.cli.tui.messages import PreviewChanged
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     row = _FakeSessionRow("sess-abc", tmux_session_name="tc_sess-abc")
     view = _make_view("sess-abc", [row])
 
@@ -85,8 +79,6 @@ def test_apply_pending_selection_selects_when_tmux_ready() -> None:
 @pytest.mark.unit
 def test_apply_pending_selection_noop_when_session_not_in_tree() -> None:
     """Pending ID is kept when the session is not yet in the nav tree."""
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     other_row = _FakeSessionRow("other-session")
     view = _make_view("missing-session", [other_row])
 
@@ -101,8 +93,6 @@ def test_apply_pending_selection_noop_when_session_not_in_tree() -> None:
 @pytest.mark.unit
 def test_apply_pending_selection_noop_when_no_pending() -> None:
     """Method returns immediately when no pending selection is set."""
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     view = _make_view(None, [])
 
     with patch("teleclaude.cli.tui.views.sessions.SessionRow", _FakeSessionRow):

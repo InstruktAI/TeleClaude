@@ -36,7 +36,6 @@ _STARTUP_BOUNDARY_IMPORT_ALLOWLIST = frozenset(
         "teleclaude/core/adapter_client/_client.py",
     }
 )
-_STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"
 MODULE_SIZE_EXCEPTIONS = frozenset(
     {
         "teleclaude/daemon.py",
@@ -277,7 +276,7 @@ def _check_mypy_invariants(pyproject: str) -> None:
         _fail("pyproject.toml: [tool.mypy] strict must be true")
 
 
-def _check_lint_pipeline_integrity(repo_root: Path) -> None:  # pylint: disable=too-many-branches
+def _check_lint_pipeline_integrity(repo_root: Path) -> None:
     """Verify critical tool config files haven't been structurally weakened."""
     # .pre-commit-config.yaml: must contain required hook IDs.
     # When telec code lint consolidates the pipeline, ruff-check and typecheck are
@@ -603,14 +602,12 @@ def _iter_rule_candidate_paths(
 
 
 def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[str] | None = None) -> None:
-    """Enforce startup-boundary import exceptions stay in the approved files.
+    """Enforce that noqa suppression of PLC0415 only appears in allowlisted files.
 
-    The repo still has a legacy baseline of import-outside-toplevel suppressions.
-    This guardrail enforces the explicit startup-boundary policy without breaking
-    unrelated transitional exceptions elsewhere.
+    Ruff enforces PLC0415 (import-outside-top-level). The per-file-ignores in
+    pyproject.toml allow the 3 startup-boundary files. This guardrail catches
+    agents trying to add inline ``# noqa: PLC0415`` in any other file.
     """
-
-    missing_reason: list[str] = []
     outside_allowlist: list[str] = []
 
     candidates: Iterable[Path]
@@ -631,42 +628,30 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
 
     for path in candidates:
         rel = path.relative_to(repo_root).as_posix()
+        if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST or rel == "tools/lint/guardrails.py":
+            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             continue
 
         for lineno, line in enumerate(lines, start=1):
-            if "pylint: disable=import-outside-toplevel" not in line:
-                continue
-
-            has_startup_reason = _STARTUP_BOUNDARY_IMPORT_REASON in line
-            if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
-                if not has_startup_reason:
-                    missing_reason.append(f"{rel}:{lineno}: {line.strip()}")
-                continue
-
-            if has_startup_reason:
+            if "PLC0415" in line and "noqa" in line:
                 outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
 
-    if missing_reason or outside_allowlist:
-        chunks: list[str] = []
-        if missing_reason:
-            formatted = "\n".join(f"- {item}" for item in missing_reason)
-            chunks.append(
-                "startup-boundary import exceptions in approved files must include "
-                f"the same-line reason '{_STARTUP_BOUNDARY_IMPORT_REASON}':\n{formatted}"
-            )
-        if outside_allowlist:
-            formatted = "\n".join(f"- {item}" for item in outside_allowlist)
-            allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
-            chunks.append(f"startup-boundary import exceptions are only allowed in:\n{allowlist}\n{formatted}")
-        _fail("\n\n".join(chunks))
+    if outside_allowlist:
+        formatted = "\n".join(f"- {item}" for item in outside_allowlist)
+        allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
+        _fail(
+            "PLC0415 (import-outside-top-level) noqa suppression is only allowed in "
+            "startup-boundary files:\n"
+            f"{allowlist}\n"
+            "Remove the noqa comment and move the import to the top of the file.\n"
+            f"{formatted}"
+        )
 
 
-def _warn_for_loose_dicts(  # pylint: disable=too-many-branches,too-many-locals
-    repo_root: Path, selected_paths: set[str] | None = None
-) -> None:
+def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Check for loose dict typings without proper justification.
 
     Allows exceptions when documented with:

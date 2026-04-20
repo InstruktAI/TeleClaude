@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -145,8 +146,6 @@ def test_set_env_var_updates_existing_var_in_file(tmp_path: Path, monkeypatch: p
 
 
 def test_set_env_var_updates_os_environ(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    import os
-
     env_file = tmp_path / ".env"
     monkeypatch.delenv("TELECLAUDE_ENV_PATH", raising=False)
     set_env_var("MY_UNIQUE_TEST_KEY", "set_value", env_path=env_file)

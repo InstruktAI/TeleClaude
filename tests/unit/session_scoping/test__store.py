@@ -54,7 +54,7 @@ def test_store_round_trips_workspace_ledger_fields(monkeypatch: pytest.MonkeyPat
 
 def test_store_limits_corruption_to_a_single_session_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(store_module, "SESSION_SCOPING_DIR", tmp_path)
-    broken_path = store_module._ledger_path("broken-session")  # pylint: disable=protected-access
+    broken_path = store_module._ledger_path("broken-session")
     broken_path.parent.mkdir(parents=True, exist_ok=True)
     broken_path.write_text("{not-json", encoding="utf-8")
 

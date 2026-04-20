@@ -1,5 +1,4 @@
 """Tests for teleclaude.api.auth — verify_caller token path, clearance checks, principal wiring."""
-# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 
@@ -12,10 +11,13 @@ from fastapi import HTTPException
 
 from teleclaude.api.auth import (
     CallerIdentity,
+    _is_tool_denied,
     clearance_sessions_run,
     clearance_sessions_start,
     verify_caller,
 )
+from teleclaude.cli.telec import CommandAuth, is_command_allowed
+from teleclaude.core import db_models
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -43,8 +45,6 @@ def _make_token_record(
     principal: str = "system:sess-001",
     role: str = "admin",
 ) -> MagicMock:
-    from teleclaude.core import db_models
-
     record = MagicMock(spec=db_models.SessionToken)
     record.token = token or str(uuid.uuid4())
     record.session_id = session_id
@@ -296,44 +296,32 @@ class TestCommandAuthAllows:
 
     @pytest.mark.unit
     def test_agent_allowed_when_system_role_in_set(self):
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(system=frozenset({"worker"}), human=frozenset({"admin"}))
         assert auth.allows(system_role="worker", human_role=None) is True
 
     @pytest.mark.unit
     def test_agent_denied_when_system_role_not_in_set(self):
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(system=frozenset({"system"}), human=frozenset({"admin"}))
         assert auth.allows(system_role="worker", human_role=None) is False
 
     @pytest.mark.unit
     def test_human_allowed_when_human_role_in_set(self):
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(system=frozenset({"worker"}), human=frozenset({"admin", "member"}))
         assert auth.allows(system_role=None, human_role="admin") is True
 
     @pytest.mark.unit
     def test_human_denied_when_human_role_not_in_set(self):
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(system=frozenset({"worker"}), human=frozenset({"member"}))
         assert auth.allows(system_role=None, human_role="admin") is False
 
     @pytest.mark.unit
     def test_no_roles_returns_false(self):
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(system=frozenset({"worker"}), human=frozenset({"admin"}))
         assert auth.allows(system_role=None, human_role=None) is False
 
     @pytest.mark.unit
     def test_escalate_blocks_admin(self):
         """sessions escalate uses _HR_ALL_NON_ADMIN — admin is not in the set."""
-        from teleclaude.cli.telec import CommandAuth
-
         auth = CommandAuth(
             system=frozenset({"worker", "system", "integrator"}),
             human=frozenset({"member", "contributor", "newcomer", "customer"}),
@@ -353,38 +341,26 @@ class TestIsCommandAllowed:
 
     @pytest.mark.unit
     def test_admin_allowed_for_standard_commands(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("sessions list", system_role=None, human_role="admin") is True
 
     @pytest.mark.unit
     def test_no_roles_denied(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("sessions list", system_role=None, human_role=None) is False
 
     @pytest.mark.unit
     def test_unknown_command_denied(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("nonexistent command", system_role=None, human_role="admin") is False
 
     @pytest.mark.unit
     def test_escalate_blocks_admin_human(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("sessions escalate", system_role=None, human_role="admin") is False
 
     @pytest.mark.unit
     def test_escalate_allows_member(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("sessions escalate", system_role=None, human_role="member") is True
 
     @pytest.mark.unit
     def test_escalate_allows_worker_agent(self):
-        from teleclaude.cli.telec import is_command_allowed
-
         assert is_command_allowed("sessions escalate", system_role="worker", human_role=None) is True
 
 
@@ -398,8 +374,6 @@ class TestIsToolDeniedPrincipalWiring:
 
     @pytest.mark.unit
     def test_principal_role_used_when_human_role_absent(self):
-        from teleclaude.api.auth import _is_tool_denied
-
         identity = CallerIdentity(
             session_id="sess-001",
             system_role=None,
@@ -413,8 +387,6 @@ class TestIsToolDeniedPrincipalWiring:
 
     @pytest.mark.unit
     def test_human_role_takes_precedence_over_principal_role(self):
-        from teleclaude.api.auth import _is_tool_denied
-
         identity = CallerIdentity(
             session_id="sess-001",
             system_role=None,
@@ -428,8 +400,6 @@ class TestIsToolDeniedPrincipalWiring:
 
     @pytest.mark.unit
     def test_no_principal_no_human_role_denies(self):
-        from teleclaude.api.auth import _is_tool_denied
-
         identity = CallerIdentity(
             session_id="sess-001",
             system_role=None,
@@ -443,8 +413,6 @@ class TestIsToolDeniedPrincipalWiring:
 
     @pytest.mark.unit
     def test_principal_without_principal_role_denies(self):
-        from teleclaude.api.auth import _is_tool_denied
-
         identity = CallerIdentity(
             session_id="sess-001",
             system_role=None,

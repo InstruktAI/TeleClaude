@@ -27,11 +27,8 @@ from teleclaude.cli.tui.views._config_constants import (
 )
 
 if TYPE_CHECKING:
-    from teleclaude.cli.tui.views._config_constants import (
-        AdapterSectionProjection,
-        NotificationProjection,
-    )
-    from teleclaude.config.schema import PersonEntry  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from teleclaude.cli.tui.views._config_constants import AdapterSectionProjection, NotificationProjection
+    from teleclaude.config.schema import PersonEntry
 
 
 class ConfigContentRenderMixin:
@@ -164,7 +161,7 @@ class ConfigContentRenderMixin:
             if selected:
                 self._render_guidance(result, status.info.name)
 
-    def _render_people(self, result: Text) -> None:  # pylint: disable=too-many-locals
+    def _render_people(self, result: Text) -> None:
         """Render configured people and any expanded editable fields."""
         result.append("\n")
         result.append("  People\n", style=Style(bold=True))
@@ -291,7 +288,7 @@ class ConfigContentRenderMixin:
 
         return result
 
-    def on_click(self, event: object) -> None:  # pylint: disable=too-many-branches,too-many-locals
+    def on_click(self, event: object) -> None:
         """Handle click interactions for tabs, rows, and editable fields."""
         x = getattr(event, "x", -1)
         y = getattr(event, "y", -1)

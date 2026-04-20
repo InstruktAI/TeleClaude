@@ -31,7 +31,7 @@ async def _close_client(client: httpx.AsyncClient) -> None:
     logger.debug("telegram http client close done", task_name=task_name)
 
 
-async def send_telegram_dm(  # pylint: disable=too-many-locals,too-many-branches
+async def send_telegram_dm(
     chat_id: str,
     content: str,
     file: str | None = None,

@@ -1,14 +1,14 @@
 """Characterization tests for teleclaude.cli.tui.widgets.todo_row."""
 
-# pylint: disable=import-outside-toplevel
-
 from __future__ import annotations
 
 import pytest
+from rich.text import Text
 
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.todo_row import (
+    _COL_GAP,
     TodoRow,
     _gold_color,
     _ok_color,
@@ -173,8 +173,6 @@ def test_compute_col_widths_returns_zero_for_absent_columns() -> None:
 
 @pytest.mark.unit
 def test_compute_col_widths_includes_col_gap() -> None:
-    from teleclaude.cli.tui.widgets.todo_row import _COL_GAP
-
     todo = TodoItem(
         slug="test",
         status=TodoStatus.PENDING,
@@ -193,8 +191,6 @@ def test_compute_col_widths_includes_col_gap() -> None:
 
 @pytest.mark.unit
 def test_pad_adds_dot_leaders_to_reach_target_width() -> None:
-    from rich.text import Text
-
     t = Text("ab")
     result = _pad(t, 5)
     plain = result.plain
@@ -204,8 +200,6 @@ def test_pad_adds_dot_leaders_to_reach_target_width() -> None:
 
 @pytest.mark.unit
 def test_pad_does_not_shorten_text_wider_than_target() -> None:
-    from rich.text import Text
-
     t = Text("abcdef")
     result = _pad(t, 3)
     assert len(result.plain) == 6  # unchanged

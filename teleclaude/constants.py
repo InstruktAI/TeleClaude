@@ -60,7 +60,7 @@ SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
 
 
-class ResultStatus(str, Enum):  # pylint: disable=missing-class-docstring
+class ResultStatus(str, Enum):
     SUCCESS = "success"
     ERROR = "error"
     SENT = "sent"
@@ -69,13 +69,13 @@ class ResultStatus(str, Enum):  # pylint: disable=missing-class-docstring
     UNKNOWN = "unknown"
 
 
-class ComputerStatus(str, Enum):  # pylint: disable=missing-class-docstring
+class ComputerStatus(str, Enum):
     ONLINE = "online"
     OFFLINE = "offline"
     RESTARTING = "restarting"
 
 
-class SystemCommand(str, Enum):  # pylint: disable=missing-class-docstring
+class SystemCommand(str, Enum):
     HEALTH_CHECK = "health_check"
     EXIT = "exit"
 
@@ -123,7 +123,7 @@ class JobRole(str, Enum):
     INTEGRATOR = "integrator"
 
 
-class Platform(str, Enum):  # pylint: disable=missing-class-docstring
+class Platform(str, Enum):
     DARWIN = "darwin"
 
 
@@ -167,7 +167,7 @@ def format_system_message(label: str, content: str = "") -> str:
 CHECKPOINT_PREFIX = "[TeleClaude Checkpoint] - "
 CHECKPOINT_MESSAGE = (
     f"{CHECKPOINT_PREFIX}Continue or validate your work if needed. "
-    "Perform checkpoint housekeeping silently, then send a short user-relevant debrief without mentioning checkpoint chores. "  # pylint: disable=line-too-long
+    "Perform checkpoint housekeeping silently, then send a short user-relevant debrief without mentioning checkpoint chores. "
     "Any truly interesting memories to be created that meet our criteria? "
     "(DON'T abuse it as work log!) If everything that is expected of you is done, do not respond."
 )
@@ -181,7 +181,7 @@ TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`
 
 
 @dataclass(frozen=True)
-class FileCategory:  # pylint: disable=too-many-instance-attributes
+class FileCategory:
     """Maps file patterns to checkpoint action instructions."""
 
     name: str
@@ -323,7 +323,7 @@ MARKDOWN_INLINE_CODE = "`"
 
 
 # Cache/event names
-class CacheEvent(str, Enum):  # pylint: disable=missing-class-docstring
+class CacheEvent(str, Enum):
     SESSION_STARTED = "session_started"
     SESSION_UPDATED = "session_updated"
     SESSION_CLOSED = "session_closed"
@@ -351,20 +351,20 @@ DATA_TYPE_PREPARATION = "preparation"
 
 
 # WebSocket subscription keys
-class WsAction(str, Enum):  # pylint: disable=missing-class-docstring
+class WsAction(str, Enum):
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
 
 
-class AdapterKey(str, Enum):  # pylint: disable=missing-class-docstring
+class AdapterKey(str, Enum):
     API = "api"
 
 
-class AdapterOp(str, Enum):  # pylint: disable=missing-class-docstring
+class AdapterOp(str, Enum):
     DELETE_MESSAGE = "delete_message"
 
 
-class UiScope(str, Enum):  # pylint: disable=missing-class-docstring
+class UiScope(str, Enum):
     ALL = "all_ui"
 
 

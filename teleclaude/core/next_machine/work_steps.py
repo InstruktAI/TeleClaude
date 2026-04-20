@@ -11,8 +11,6 @@ Mirrors the prepare lifecycle loop pattern. Each handler is a pure
 No imports from core.py (circular-import guard).
 """
 
-# pylint: disable=cyclic-import  # Work state machine bridges next_machine sub-modules.
-
 from __future__ import annotations
 
 import asyncio
@@ -32,11 +30,7 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
-from teleclaude.core.next_machine.git_ops import (
-    compose_agent_guidance,
-    get_head_commit,
-    has_uncommitted_changes,
-)
+from teleclaude.core.next_machine.git_ops import compose_agent_guidance, get_head_commit, has_uncommitted_changes
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -45,10 +39,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_uncommitted_changes,
 )
 from teleclaude.core.next_machine.phase_derivation import _has_build_commits_beyond_main
-from teleclaude.core.next_machine.prepare_steps import (
-    _commit_writer,
-    _derive_project_root,
-)
+from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state_sync
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -56,6 +47,7 @@ from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, resolve_pending_review_state
 
 logger = get_logger(__name__)
 
@@ -123,7 +115,7 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     try:
         child_sessions = await db.list_sessions(initiator_session_id=session_id)
         return [session.session_id for session in child_sessions]
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.warning("Failed to query child sessions for cleanup", session_id=session_id)
         return []
 
@@ -133,7 +125,7 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_step_build_started(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -210,7 +202,7 @@ async def _work_step_build_started(  # pylint: disable=too-many-arguments,too-ma
     )
 
 
-async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_step_build_complete(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -227,11 +219,6 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
     detects ground shifts from merge, tracks dispatch HEAD, and reuses active
     reviewer sessions across rounds.
     """
-    from teleclaude.core.next_machine.review_runtime import (  # pylint: disable=import-outside-toplevel
-        ReviewDispatchContext,
-        resolve_pending_review_state,
-    )
-
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
@@ -318,7 +305,7 @@ async def _work_step_build_complete(  # pylint: disable=too-many-arguments,too-m
     )
 
 
-async def _work_step_review_changes_requested(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_step_review_changes_requested(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -407,7 +394,7 @@ async def _work_step_review_changes_requested(  # pylint: disable=too-many-argum
     )
 
 
-async def _work_step_review_approved(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_step_review_approved(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -453,7 +440,7 @@ async def _work_step_review_approved(  # pylint: disable=too-many-arguments,too-
     review_round = round_raw if isinstance(round_raw, int) else 0
     try:
         await emit_review_approved(slug=slug, reviewer_session_id=session_id, review_round=max(review_round, 1))
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.warning("Failed to emit review.approved event for %s", slug, exc_info=True)
 
     try:
@@ -480,7 +467,7 @@ async def _work_step_review_approved(  # pylint: disable=too-many-arguments,too-
     )
 
 
-async def _work_step_handed_off(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_step_handed_off(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -501,7 +488,7 @@ async def _work_step_handed_off(  # pylint: disable=too-many-arguments,too-many-
 # ---------------------------------------------------------------------------
 
 
-async def _work_dispatch(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+async def _work_dispatch(
     *,
     db: Db,
     todos_db: TodosDb,

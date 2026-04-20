@@ -11,6 +11,7 @@ from teleclaude.core.models import MessageMetadata
 from teleclaude.types.commands import (
     CloseSessionCommand,
     CreateSessionCommand,
+    HandleVoiceCommand,
     KeysCommand,
     ProcessMessageCommand,
     ResumeAgentCommand,
@@ -48,6 +49,13 @@ class TestCommandMapperTelegram:
         cmd = CommandMapper.map_telegram_input("message", ["hello", "world"], metadata, "sess-1")
         assert isinstance(cmd, ProcessMessageCommand)
         assert cmd.text == "hello world"
+
+    @pytest.mark.unit
+    def test_message_event_carries_origin_metadata(self):
+        metadata = MessageMetadata(origin="telegram", origin_metadata={"user_id": 42})
+        cmd = CommandMapper.map_telegram_input("message", ["hello"], metadata, "sess-1")
+        assert isinstance(cmd, ProcessMessageCommand)
+        assert cmd.origin_metadata == {"user_id": 42}
 
     @pytest.mark.unit
     def test_agent_event_returns_start_agent_command(self):
@@ -106,6 +114,17 @@ class TestCommandMapperRedis:
         assert cmd.source_message_id == "linked:delivery:001"
 
     @pytest.mark.unit
+    def test_message_command_carries_origin_metadata(self):
+        cmd = CommandMapper.map_redis_input(
+            "message hello world",
+            origin="terminal",
+            session_id="sess-2",
+            metadata=MessageMetadata(origin="terminal", origin_metadata={"email": "maurice@instrukt.ai"}),
+        )
+        assert isinstance(cmd, ProcessMessageCommand)
+        assert cmd.origin_metadata == {"email": "maurice@instrukt.ai"}
+
+    @pytest.mark.unit
     def test_key_command_returns_keys_command(self):
         cmd = CommandMapper.map_redis_input("cancel", origin="telegram", session_id="sess-3")
         assert isinstance(cmd, KeysCommand)
@@ -135,6 +154,20 @@ class TestCommandMapperApi:
         cmd = CommandMapper.map_api_input("message", {"session_id": "s1", "text": "hi"}, metadata)
         assert isinstance(cmd, ProcessMessageCommand)
         assert cmd.text == "hi"
+
+    @pytest.mark.unit
+    def test_message_carries_origin_metadata(self):
+        metadata = MessageMetadata(origin="web", origin_metadata={"email": "maurice@instrukt.ai"})
+        cmd = CommandMapper.map_api_input("message", {"session_id": "s1", "text": "hi"}, metadata)
+        assert isinstance(cmd, ProcessMessageCommand)
+        assert cmd.origin_metadata == {"email": "maurice@instrukt.ai"}
+
+    @pytest.mark.unit
+    def test_handle_voice_carries_origin_metadata(self):
+        metadata = MessageMetadata(origin="web", origin_metadata={"email": "maurice@instrukt.ai"})
+        cmd = CommandMapper.map_api_input("handle_voice", {"session_id": "s1", "file_path": "/tmp/a.ogg"}, metadata)
+        assert isinstance(cmd, HandleVoiceCommand)
+        assert cmd.origin_metadata == {"email": "maurice@instrukt.ai"}
 
     @pytest.mark.unit
     def test_end_session_returns_close_command(self):

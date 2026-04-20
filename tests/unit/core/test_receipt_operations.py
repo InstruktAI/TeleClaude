@@ -8,9 +8,21 @@ emit completion event on terminal transition.
 
 from __future__ import annotations
 
+import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.routing import APIRoute
+
+from teleclaude.api import todo_routes
+from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.todo_routes import router, todo_create
+from teleclaude.core.operations.service import (
+    _COMPLETION_EVENTS,
+    OPERATION_KIND_TODO_CREATE,
+    OPERATION_KIND_TODO_PREPARE,
+    OperationsService,
+)
 
 
 class TestTodoCreateReturnsReceipt:
@@ -19,10 +31,6 @@ class TestTodoCreateReturnsReceipt:
     @pytest.mark.unit
     def test_todo_create_route_returns_202(self) -> None:
         """The /todos/create route is registered with status_code=202."""
-        from fastapi.routing import APIRoute
-
-        from teleclaude.api.todo_routes import router
-
         create_route = next(
             route for route in router.routes if isinstance(route, APIRoute) and route.path == "/todos/create"
         )
@@ -32,9 +40,6 @@ class TestTodoCreateReturnsReceipt:
     @pytest.mark.asyncio
     async def test_todo_create_returns_receipt_with_operation_id(self) -> None:
         """Todo create response contains an operation_id for polling."""
-        from teleclaude.api import todo_routes
-        from teleclaude.api.auth import CallerIdentity
-
         operations = MagicMock()
         operations.submit_todo_create = AsyncMock(
             return_value={
@@ -57,10 +62,6 @@ class TestTodoCreateReturnsReceipt:
     @pytest.mark.unit
     def test_todo_create_accepts_client_request_id_parameter(self) -> None:
         """Todo create route signature accepts client_request_id for idempotent submissions."""
-        import inspect
-
-        from teleclaude.api.todo_routes import todo_create
-
         sig = inspect.signature(todo_create)
         assert "client_request_id" in sig.parameters
 
@@ -71,10 +72,6 @@ class TestTodoPrepareReturnsReceipt:
     @pytest.mark.unit
     def test_todo_prepare_route_returns_202(self) -> None:
         """The /todos/prepare route is registered with status_code=202."""
-        from fastapi.routing import APIRoute
-
-        from teleclaude.api.todo_routes import router
-
         prepare_route = next(
             route for route in router.routes if isinstance(route, APIRoute) and route.path == "/todos/prepare"
         )
@@ -84,9 +81,6 @@ class TestTodoPrepareReturnsReceipt:
     @pytest.mark.asyncio
     async def test_todo_prepare_returns_receipt_with_operation_id(self) -> None:
         """Todo prepare response contains an operation_id for polling."""
-        from teleclaude.api import todo_routes
-        from teleclaude.api.auth import CallerIdentity
-
         operations = MagicMock()
         operations.submit_todo_prepare = AsyncMock(
             return_value={
@@ -115,12 +109,6 @@ class TestCompletionEventEmissionOnTerminalTransition:
     async def test_parametric_runner_handles_all_operation_kinds(self) -> None:
         """The parametric _run_operation runner emits completion events for
         all operation kinds, including todo_create and todo_prepare."""
-        from teleclaude.core.operations.service import (
-            _COMPLETION_EVENTS,
-            OPERATION_KIND_TODO_CREATE,
-            OPERATION_KIND_TODO_PREPARE,
-        )
-
         assert OPERATION_KIND_TODO_CREATE in _COMPLETION_EVENTS
         assert OPERATION_KIND_TODO_PREPARE in _COMPLETION_EVENTS
 
@@ -135,10 +123,6 @@ class TestClientRequestIdDeduplication:
         The existing submit_todo_work already implements dedup via client_request_id.
         The new submit_todo_create must follow the same pattern.
         """
-        import inspect
-
-        from teleclaude.core.operations.service import OperationsService
-
         sig = inspect.signature(OperationsService.submit_todo_create)
         assert "client_request_id" in sig.parameters, (
             "submit_todo_create must accept client_request_id for idempotent submissions"

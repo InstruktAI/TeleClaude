@@ -23,19 +23,11 @@ for _p in (_REPO_ROOT, _SCRIPTS_DIR):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
-from release_consolidator import (  # type: ignore[import-not-found]  # pylint: disable=wrong-import-position
-    ARBITER_PREFERENCE,
-    load_report,
-    resolve_consensus,
-)
+from release_consolidator import ARBITER_PREFERENCE, load_report, resolve_consensus  # type: ignore[import-not-found]
 
-from teleclaude.core.agents import get_enabled_agents  # pylint: disable=wrong-import-position
-from teleclaude.helpers.agent_cli import (  # pylint: disable=wrong-import-position
-    _extract_json_object,
-    _load_schema,
-    _run_agent,
-)
-from teleclaude.helpers.agent_types import AgentName, ThinkingMode  # pylint: disable=wrong-import-position
+from teleclaude.core.agents import get_enabled_agents
+from teleclaude.helpers.agent_cli import _extract_json_object, _load_schema, _run_agent
+from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 
 
 async def _run_lane(
@@ -74,7 +66,7 @@ async def _run_lane(
 
         report_path.write_text(json.dumps(parsed, indent=2) + "\n", encoding="utf-8")
         print(f"  {agent_name}: classification={parsed.get('classification', '?')}")
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         print(f"  {agent_name}: FAILED — {exc}", file=sys.stderr)
         # Write empty JSON so consolidator can detect failure
         report_path.write_text("{}\n", encoding="utf-8")
@@ -124,7 +116,7 @@ async def run_lanes(prompt_file: Path, schema_file: Path) -> int:
 
 def main() -> int:
     """CLI entrypoint."""
-    import argparse  # pylint: disable=import-outside-toplevel
+    import argparse
 
     parser = argparse.ArgumentParser(description="Run release lanes and consolidate")
     parser.add_argument("--prompt-file", type=Path, required=True, help="Path to assembled prompt")

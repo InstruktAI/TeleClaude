@@ -11,6 +11,7 @@ from teleclaude.cli.tui.animations.particles import (
     MatrixRain,
     SearchlightSweep,
 )
+from teleclaude.cli.tui.pixel_mapping import BIG_BANNER_WIDTH
 
 
 def _palette() -> SpectrumPalette:
@@ -50,8 +51,6 @@ class TestMatrixRain:
         assert cols_before != cols_after
 
     def test_width_matches_banner(self) -> None:
-        from teleclaude.cli.tui.pixel_mapping import BIG_BANNER_WIDTH
-
         anim = _make(MatrixRain, is_big=True)
         assert anim.width == BIG_BANNER_WIDTH
 

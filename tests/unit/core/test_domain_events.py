@@ -1,4 +1,3 @@
-# pylint: disable=import-outside-toplevel,protected-access,too-many-locals,no-value-for-parameter
 # guard: no-companion
 """Test specifications for FR-4: Domain event emission for fire-and-forget mutations.
 
@@ -7,15 +6,29 @@ All new events must follow the existing domain event pattern (typed payload data
 The 202 response for fire-and-forget endpoints includes the completion_event name.
 """
 
-# pylint: disable=import-outside-toplevel,no-value-for-parameter,protected-access,too-many-locals
-
 from __future__ import annotations
 
+import dataclasses
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi.routing import APIRoute
 
+import teleclaude.core.events as events_mod
+from teleclaude.api.sessions_routes import router
+from teleclaude.core.command_handlers._agent import agent_restart
+from teleclaude.core.command_handlers._session import close_session
 from teleclaude.core.command_service import CommandService
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import (
+    AgentRestartDispatchedPayload,
+    JobStartedPayload,
+    NotificationClaimedPayload,
+    NotificationResolvedPayload,
+    SessionCloseCompletedPayload,
+    SessionEscalatedPayload,
+)
+from teleclaude.types.commands import CloseSessionCommand, RestartAgentCommand
 
 # ---------------------------------------------------------------------------
 # FR-4.1: Agent restart event emission
@@ -33,11 +46,6 @@ class TestAgentRestartEventEmission:
         Must emit the declared event type (not just any string containing 'restart')
         with a typed payload carrying session_id.
         """
-        from teleclaude.core.command_handlers._agent import agent_restart
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import AgentRestartDispatchedPayload
-        from teleclaude.types.commands import RestartAgentCommand
-
         cmd = RestartAgentCommand(session_id="s1")
 
         mock_session = MagicMock()
@@ -109,10 +117,6 @@ class TestSessionEscalationEventEmission:
     async def test_escalation_handler_emits_typed_event(self) -> None:
         """The escalation handler emits a typed SessionEscalatedPayload event."""
         # Verify the payload type is a dataclass with required fields
-        import dataclasses
-
-        from teleclaude.core.events import SessionEscalatedPayload
-
         assert dataclasses.is_dataclass(SessionEscalatedPayload)
 
         payload = SessionEscalatedPayload(session_id="s1")
@@ -126,9 +130,6 @@ class TestSessionEscalationEventEmission:
         Must call event_bus.emit with the declared event name and a typed payload
         carrying the session_id — not a raw dict or ad-hoc string.
         """
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import SessionEscalatedPayload
-
         # A minimal stub that passes the isinstance(adapter, DiscordAdapter) check
         # by replacing the class itself in the module during the call.
         class _FakeDiscordAdapter:
@@ -194,10 +195,6 @@ class TestJobLifecycleEventEmission:
         self, payload_cls_name: str, required_fields: list[str]
     ) -> None:
         """Each job lifecycle payload is a frozen dataclass with required correlation fields."""
-        import dataclasses
-
-        import teleclaude.core.events as events_mod
-
         cls = getattr(events_mod, payload_cls_name)
         assert dataclasses.is_dataclass(cls), f"{payload_cls_name} is not a dataclass"
 
@@ -209,8 +206,6 @@ class TestJobLifecycleEventEmission:
     @pytest.mark.unit
     def test_job_started_payload_construction(self) -> None:
         """JobStartedPayload can be constructed with job_name."""
-        from teleclaude.core.events import JobStartedPayload
-
         payload = JobStartedPayload(job_name="cleanup")
         assert payload.job_name == "cleanup"
 
@@ -227,10 +222,6 @@ class TestSessionCloseCompletedEventEmission:
     @pytest.mark.asyncio
     async def test_close_session_handler_emits_completion_event(self) -> None:
         """The close_session handler emits a typed completion event after processing."""
-        import dataclasses
-
-        from teleclaude.core.events import SessionCloseCompletedPayload
-
         assert dataclasses.is_dataclass(SessionCloseCompletedPayload)
 
         payload = SessionCloseCompletedPayload(session_id="s1")
@@ -244,11 +235,6 @@ class TestSessionCloseCompletedEventEmission:
         The already-closed guard must emit SessionCloseCompletedPayload so callers
         waiting on session.close_completed don't block forever.
         """
-        from teleclaude.core.command_handlers._session import close_session
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import SessionCloseCompletedPayload
-        from teleclaude.types.commands import CloseSessionCommand
-
         cmd = CloseSessionCommand(session_id="s1")
 
         mock_session = MagicMock()
@@ -281,11 +267,6 @@ class TestSessionCloseCompletedEventEmission:
     @pytest.mark.asyncio
     async def test_close_session_emits_completion_event_after_normal_close(self) -> None:
         """close_session emits SessionCloseCompletedPayload after terminating an active session."""
-        from teleclaude.core.command_handlers._session import close_session
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import SessionCloseCompletedPayload
-        from teleclaude.types.commands import CloseSessionCommand
-
         cmd = CloseSessionCommand(session_id="s2")
 
         mock_session = MagicMock()
@@ -328,10 +309,6 @@ class TestNotificationClaimEventEmission:
     @pytest.mark.asyncio
     async def test_claim_notification_emits_typed_event(self) -> None:
         """claim_notification emits a NotificationClaimedPayload event."""
-        import dataclasses
-
-        from teleclaude.core.events import NotificationClaimedPayload
-
         assert dataclasses.is_dataclass(NotificationClaimedPayload)
 
         payload = NotificationClaimedPayload(notification_id=42, agent_id="agent-1")
@@ -346,10 +323,6 @@ class TestNotificationResolveEventEmission:
     @pytest.mark.asyncio
     async def test_resolve_notification_emits_typed_event(self) -> None:
         """resolve_notification emits a NotificationResolvedPayload event."""
-        import dataclasses
-
-        from teleclaude.core.events import NotificationResolvedPayload
-
         assert dataclasses.is_dataclass(NotificationResolvedPayload)
 
         payload = NotificationResolvedPayload(notification_id=42)
@@ -380,10 +353,6 @@ class TestDomainEventPayloadPattern:
     )
     def test_event_payload_is_dataclass(self, payload_cls_name: str) -> None:
         """Each event payload is a dataclass, not an ad-hoc dict."""
-        import dataclasses
-
-        import teleclaude.core.events as events_mod
-
         cls = getattr(events_mod, payload_cls_name)
         assert dataclasses.is_dataclass(cls), f"{payload_cls_name} is not a dataclass"
 
@@ -399,10 +368,6 @@ class TestFireAndForget202ResponseIncludesCompletionEvent:
     @pytest.mark.unit
     def test_delete_session_route_returns_202(self) -> None:
         """DELETE /sessions/{id} route is registered with status_code=202."""
-        from fastapi.routing import APIRoute
-
-        from teleclaude.api.sessions_routes import router
-
         delete_routes = [
             route
             for route in router.routes
@@ -418,8 +383,6 @@ class TestFireAndForget202ResponseIncludesCompletionEvent:
         The input audit confirms this endpoint already returns 202. The requirement
         adds that the response body must include the completion_event name.
         """
-        from teleclaude.types.commands import RestartAgentCommand
-
         cmd = RestartAgentCommand(session_id="s1")
         # The response body for F&F endpoints must include the completion_event
         assert cmd.completion_event is not None
@@ -428,8 +391,6 @@ class TestFireAndForget202ResponseIncludesCompletionEvent:
     @pytest.mark.unit
     def test_close_session_command_declares_completion_event(self) -> None:
         """CloseSessionCommand declares a completion_event for the 202 response body."""
-        from teleclaude.types.commands import CloseSessionCommand
-
         cmd = CloseSessionCommand(session_id="s1")
         assert cmd.completion_event is not None
         assert isinstance(cmd.completion_event, str)

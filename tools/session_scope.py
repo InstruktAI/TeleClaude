@@ -19,7 +19,7 @@ from pathlib import Path
 
 from teleclaude.git import InvalidGitRepositoryError, Repo
 from teleclaude.session_identity import get_session_id
-from teleclaude.todo_scaffold import (  # pylint: disable=protected-access
+from teleclaude.todo_scaffold import (
     NoSessionTouchedFiles,
     TranscriptUnavailable,
     _classify_porcelain_status,
@@ -123,7 +123,7 @@ def main() -> None:
     except NoSessionTouchedFiles:
         # A clean worktree or a session with no owned dirty files is a valid empty scope.
         touched = set()
-    except Exception as exc:  # pylint: disable=broad-exception-caught # all collection errors → exit 3 per protocol
+    except Exception as exc:
         print(f"session_scope: collection failed for session {session_id}: {exc}", file=sys.stderr)
         sys.exit(3)
 

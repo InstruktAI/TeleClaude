@@ -1,5 +1,5 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel,not-an-iterable,too-few-public-methods
+
 """Tests for R1: telec code lint command.
 
 Behavioral contracts for the telec code lint command: language-aware lint pipeline
@@ -11,6 +11,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+from teleclaude.quality.lint import (
+    LintRunner,
+    PythonLintPipeline,
+    TypeScriptLintPipeline,
+    get_project_languages,
+    resolve_project_root,
+)
 
 # ---------------------------------------------------------------------------
 # R1.1 — Project root resolution from cwd
@@ -26,15 +34,11 @@ class TestProjectRootResolution:
         sub = tmp_path / "subdir" / "nested"
         sub.mkdir(parents=True)
 
-        from teleclaude.quality.lint import resolve_project_root  # pyright: ignore[reportMissingImports]
-
         resolved = resolve_project_root(sub)
         assert resolved == tmp_path
 
     def test_raises_when_no_teleclaude_yml_found(self, tmp_path: Path) -> None:
         """Resolution raises an error when no teleclaude.yml is found in the hierarchy."""
-        from teleclaude.quality.lint import resolve_project_root  # pyright: ignore[reportMissingImports]
-
         with pytest.raises((FileNotFoundError, RuntimeError, SystemExit)):
             resolve_project_root(tmp_path)
 
@@ -51,16 +55,12 @@ class TestLanguageDetection:
         """teleclaude.yml with language:python returns ['python'] as the project languages."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        from teleclaude.quality.lint import get_project_languages  # pyright: ignore[reportMissingImports]
-
         langs = get_project_languages(tmp_path)
         assert langs == ["python"]
 
     def test_no_language_field_returns_empty_list(self, tmp_path: Path) -> None:
         """teleclaude.yml without a language field returns empty list."""
         (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
-
-        from teleclaude.quality.lint import get_project_languages  # pyright: ignore[reportMissingImports]
 
         langs = get_project_languages(tmp_path)
         assert langs == []
@@ -78,8 +78,6 @@ class TestSharedBranchScopeFailure:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When scope resolution fails on a shared branch with a session, the command exits non-zero."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         def _fail_scope(_path: Path) -> list[str]:
             raise RuntimeError("transcript unavailable")
 
@@ -96,8 +94,6 @@ class TestSharedBranchScopeFailure:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Scope failure on shared branch must never silently run against all source dirs."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         pipeline_calls: list[object] = []
 
         def _fail_scope(_path: Path) -> list[str]:
@@ -124,15 +120,13 @@ class TestSharedBranchScopeFailure:
 # ---------------------------------------------------------------------------
 
 
-class TestWorktreeContext:  # pylint: disable=too-few-public-methods
+class TestWorktreeContext:
     """In a worktree, the command runs against source directories (worktree is isolated)."""
 
     def test_worktree_receives_source_dirs_not_scoped_files(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """In a worktree, the pipeline receives directory targets, not session-scoped files."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
@@ -166,8 +160,6 @@ class TestMultiLanguageSourceDirs:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When languages list has multiple entries, source dirs from all registered toolchains are collected."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
@@ -189,8 +181,6 @@ class TestMultiLanguageSourceDirs:
 
     def test_unregistered_language_skipped_gracefully(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Languages without a registered toolchain are skipped, not errored."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
@@ -221,8 +211,6 @@ class TestSharedBranchScopeSuccess:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Session scope resolves successfully on shared branch — pipeline gets scoped file list."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         scoped_files = ["teleclaude/foo/bar.py", "teleclaude/baz/qux.py"]
         received_targets: list[object] = []
 
@@ -255,8 +243,6 @@ class TestSharedBranchScopeSuccess:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Without session identity on shared branch, pipeline runs against source dirs."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
@@ -284,8 +270,6 @@ class TestExplicitFilesOverride:
 
     def test_explicit_files_bypass_scoping(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Explicit file arguments go directly to the pipeline without scoping."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         received_targets: list[object] = []
 
         monkeypatch.setattr(
@@ -304,8 +288,6 @@ class TestExplicitFilesOverride:
 
     def test_explicit_yaml_files_skip_python_steps(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Explicit YAML files run repo-global checks only, not Python-specific steps."""
-        from teleclaude.quality.lint import LintRunner
-
         step_calls: list[tuple[str, list[str]]] = []
 
         monkeypatch.setattr(
@@ -335,8 +317,6 @@ class TestExplicitFilesOverride:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Explicit TS files dispatch to frontend lint steps without Python fallback."""
-        from teleclaude.quality.lint import LintRunner
-
         step_calls: list[tuple[str, str, list[str]]] = []
 
         monkeypatch.setattr(
@@ -378,13 +358,11 @@ class TestExplicitFilesOverride:
 # ---------------------------------------------------------------------------
 
 
-class TestPythonPipelineOrder:  # pylint: disable=too-few-public-methods
+class TestPythonPipelineOrder:
     """The Python lint pipeline runs in a deterministic, required order."""
 
     def test_pipeline_steps_run_in_required_order(self, tmp_path: Path) -> None:
         """Pipeline order: guardrails, markdown, resource_validation, ruff, pyright, mypy, jscpd."""
-        from teleclaude.quality.lint import PythonLintPipeline  # pyright: ignore[reportMissingImports]
-
         pipeline = PythonLintPipeline(project_root=tmp_path)
         step_names = [step.name for step in pipeline.steps]
 
@@ -428,8 +406,6 @@ class TestTypeScriptLintPipeline:
 
     def test_typescript_pipeline_has_eslint_and_tsc(self, tmp_path: Path) -> None:
         """TypeScript pipeline contains eslint and tsc steps."""
-        from teleclaude.quality.lint import TypeScriptLintPipeline  # pyright: ignore[reportMissingImports]
-
         pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
         assert "eslint" in step_names, f"eslint not found in TS pipeline: {step_names}"
@@ -437,8 +413,6 @@ class TestTypeScriptLintPipeline:
 
     def test_typescript_pipeline_eslint_before_tsc(self, tmp_path: Path) -> None:
         """eslint runs before tsc in the TypeScript pipeline."""
-        from teleclaude.quality.lint import TypeScriptLintPipeline  # pyright: ignore[reportMissingImports]
-
         pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
         assert step_names.index("eslint") < step_names.index("tsc"), "eslint must run before tsc"
@@ -456,8 +430,6 @@ class TestMultiLanguageLintDispatch:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """LintRunner.run() runs TypeScript pipeline when typescript is in languages."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         python_calls: list[object] = []
         ts_step_calls: list[tuple[str, list[str]]] = []
 
@@ -494,8 +466,6 @@ class TestMultiLanguageLintDispatch:
 
     def test_typescript_steps_run_from_frontend_root_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TypeScript lint steps (eslint, tsc) execute from the frontend_root directory as cwd."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         cwd_captures: list[tuple[str, str]] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
@@ -526,8 +496,6 @@ class TestMultiLanguageLintDispatch:
 
     def test_eslint_not_in_python_pipeline(self, tmp_path: Path) -> None:
         """eslint is not a step in the Python lint pipeline."""
-        from teleclaude.quality.lint import PythonLintPipeline  # pyright: ignore[reportMissingImports]
-
         pipeline = PythonLintPipeline(project_root=tmp_path)
         py_step_names = [s.name for s in pipeline.steps]
         assert "eslint" not in py_step_names
@@ -543,8 +511,6 @@ class TestFailingStepDiagnostic:
 
     def test_failing_guardrails_step_exits_nonzero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A failing guardrails step causes the overall lint to exit non-zero."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
 
         def _step_fail(_self: object, _targets: object) -> None:
@@ -559,8 +525,6 @@ class TestFailingStepDiagnostic:
 
     def test_pipeline_exposes_step_failure_identity(self, tmp_path: Path) -> None:
         """The pipeline identifies which tool step failed in its failure report."""
-        from teleclaude.quality.lint import PythonLintPipeline  # pyright: ignore[reportMissingImports]
-
         pipeline = PythonLintPipeline(project_root=tmp_path)
         # Each step must have a name attribute for diagnostic identification
         for step in pipeline.steps:
@@ -578,8 +542,6 @@ class TestPathValidation:
 
     def test_traversal_paths_rejected_from_session_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Paths containing '../' traversal sequences from session scope are rejected or stripped."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
@@ -613,8 +575,6 @@ class TestPathValidation:
 
     def test_absolute_paths_outside_project_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Absolute paths outside the project root from session scope are rejected or stripped."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
@@ -663,8 +623,6 @@ class TestRunStep:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """run_step finds the named step in the pipeline and calls its run() with the files."""
-        from teleclaude.quality.lint import LintRunner, PythonLintPipeline  # pyright: ignore[reportMissingImports]
-
         captured: dict[str, list[str]] = {}
 
         class _Recording:
@@ -676,7 +634,7 @@ class TestRunStep:
                 """Record targets for assertion."""
                 captured["targets"] = list(targets)
 
-        def _pipeline(project_root: Path | None = None) -> PythonLintPipeline:  # pylint: disable=unused-argument
+        def _pipeline(project_root: Path | None = None) -> PythonLintPipeline:
             pipe = PythonLintPipeline(project_root=tmp_path)
             pipe.steps = [_Recording()]  # pyright: ignore[reportAttributeAccessIssue]
             return pipe
@@ -690,8 +648,6 @@ class TestRunStep:
 
     def test_run_step_rejects_unknown_step_name(self, tmp_path: Path) -> None:
         """Unknown step name exits non-zero — no silent no-op."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
             runner.run_step("bogus_step", [])
@@ -699,8 +655,6 @@ class TestRunStep:
 
     def test_run_step_rejects_traversal_files(self, tmp_path: Path) -> None:
         """All files rejected by path validation → exit 1, not silent pass."""
-        from teleclaude.quality.lint import LintRunner  # pyright: ignore[reportMissingImports]
-
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
             runner.run_step("guardrails", ["../etc/passwd"])

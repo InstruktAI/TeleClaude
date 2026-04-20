@@ -3,8 +3,6 @@
 No imports from core.py (circular-import guard).
 """
 
-# pylint: disable=cyclic-import  # Legacy sync wrappers still depend on state_io helpers.
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -14,6 +12,8 @@ from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.phase_derivation import is_prepared
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state
 
 
 async def resolve_slug_async(
@@ -96,8 +96,6 @@ async def _get_item_phase_db(
 
 async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     """Check if the derived prepare phase has reached PREPARED — ready for work dispatch."""
-    from teleclaude.core.next_machine.phase_derivation import is_prepared  # pylint: disable=import-outside-toplevel
-
     state = await todos_db.read_state(slug)
     if state is None:
         return False
@@ -203,8 +201,6 @@ def resolve_canonical_project_root(cwd: str) -> str:
 
 def get_item_phase(cwd: str, slug: str) -> str:
     """Sync legacy: resolve item phase using todos.db-backed state."""
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
     todos_db = _get_todos_db_sync(cwd)
     delivered = todos_db.delivered_slugs_sync()
     is_delivered = slug in delivered
@@ -239,11 +235,6 @@ async def slug_in_roadmap(todos_db: TodosDb, slug: str) -> bool:
 
 def set_item_phase(cwd: str, slug: str, phase: str) -> None:
     """Sync legacy: set item phase on filesystem. Use set_item_phase_db for new code."""
-    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-        read_phase_state,
-        write_phase_state,
-    )
-
     state = read_phase_state(cwd, slug)
     state["phase"] = phase
     write_phase_state(cwd, slug, state)

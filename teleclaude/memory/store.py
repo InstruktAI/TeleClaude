@@ -49,7 +49,7 @@ class MemoryStore:
             identity_key=inp.identity_key,
         )
 
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             session.add(obs)
             await session.commit()
             await session.refresh(obs)
@@ -91,7 +91,7 @@ class MemoryStore:
 
     async def delete_observation(self, observation_id: int) -> bool:
         """Delete an observation by ID. Returns True if deleted, False if not found."""
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "DELETE FROM memory_observations WHERE id = :id"
@@ -112,7 +112,7 @@ class MemoryStore:
             params["project"] = project  # type: ignore[assignment]
         sql += " ORDER BY created_at_epoch DESC"
 
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(sql).bindparams(**params)  # guard: raw-sql
             )
@@ -121,7 +121,7 @@ class MemoryStore:
 
     async def get_recent(self, project: str, limit: int = 50) -> list[db_models.MemoryObservation]:
         """Get recent observations for a project."""
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT * FROM memory_observations WHERE project = :project "
@@ -133,7 +133,7 @@ class MemoryStore:
 
     async def get_recent_summaries(self, project: str, limit: int = 5) -> list[db_models.MemorySummary]:
         """Get recent summaries for a project."""
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT * FROM memory_summaries WHERE project = :project "
@@ -145,7 +145,7 @@ class MemoryStore:
 
     async def _get_or_create_manual_session(self, project: str) -> str:
         """Get or create a manual session for API-created observations."""
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
                     "SELECT memory_session_id FROM memory_manual_sessions WHERE project = :project"
@@ -194,7 +194,7 @@ class MemoryStore:
             engine.dispose()
 
 
-def _auto_title(text: str) -> str:  # pylint: disable=redefined-outer-name
+def _auto_title(text: str) -> str:
     """Extract first sentence as title, truncated to 80 chars."""
     first_line = text.strip().split("\n")[0]
     for sep in (".", "!", "?"):

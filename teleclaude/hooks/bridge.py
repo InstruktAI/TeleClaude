@@ -114,5 +114,5 @@ class EventBusBridge:
 
         try:
             await self._dispatcher.dispatch(event)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.error("Bridge dispatch failed: %s", exc, exc_info=True)

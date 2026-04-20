@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict
 
 from teleclaude.memory.context import generate_context
@@ -70,7 +70,7 @@ async def search_memory(
     query: str,
     limit: int = Query(default=20, ge=1, le=100),
     project: str | None = None,
-    type: ObservationType | None = Query(  # pylint: disable=redefined-builtin
+    type: ObservationType | None = Query(
         default=None, description="Filter by observation type for progressive disclosure"
     ),
     identity_key: str | None = None,
@@ -108,8 +108,6 @@ async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-
     store = MemoryStore()
     deleted = await store.delete_observation(observation_id)
     if not deleted:
-        from fastapi import HTTPException  # pylint: disable=import-outside-toplevel
-
         raise HTTPException(status_code=404, detail="Observation not found")
     return {"deleted": observation_id}
 

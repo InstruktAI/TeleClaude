@@ -50,9 +50,7 @@ class SignalSynthesizeCartridge:
         self._ai = ai
         self._signal_db = signal_db
 
-    async def process(  # pylint: disable=too-many-locals,unused-argument
-        self, event: EventEnvelope, context: PipelineContext
-    ) -> EventEnvelope | None:
+    async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Synthesize cluster items into a digest summary."""
         if event.event != "signal.cluster.formed":
             return event
@@ -91,7 +89,7 @@ class SignalSynthesizeCartridge:
 
         try:
             artifact = await self._ai.synthesise_cluster(deduped)  # type: ignore[arg-type]
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("Synthesis failed for cluster %s: %s", cluster_id, e, exc_info=True)
             return event
         artifact_dict = artifact.model_dump()

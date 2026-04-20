@@ -1,14 +1,15 @@
 """Persistence helpers for Textual TUI state."""
-# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 from typing import Any
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.tui.theme import get_pane_theming_mode, normalize_pane_theming_mode
 from teleclaude.paths import TUI_STATE_PATH
 
 logger = get_logger(__name__)
@@ -34,8 +35,6 @@ def _normalize_animation_mode(value: object) -> str:
 
 
 def _normalize_pane_theming_mode(value: object) -> str:
-    from teleclaude.cli.tui.theme import normalize_pane_theming_mode
-
     if not isinstance(value, str):
         return _default_pane_theming_mode()
     try:
@@ -45,8 +44,6 @@ def _normalize_pane_theming_mode(value: object) -> str:
 
 
 def _default_pane_theming_mode() -> str:
-    from teleclaude.cli.tui.theme import get_pane_theming_mode
-
     return get_pane_theming_mode()
 
 
@@ -160,8 +157,6 @@ def save_state(state: dict[str, object]) -> None:  # guard: loose-dict - namespa
         lock_path = TUI_STATE_PATH.with_suffix(".lock")
         with open(lock_path, "w", encoding="utf-8") as lock_file:
             try:
-                import fcntl
-
                 fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
             except (ImportError, OSError):
                 pass

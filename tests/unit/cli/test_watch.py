@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import pytest
@@ -172,8 +173,6 @@ def test_trigger_sync_skips_during_cooldown_after_lock_released(
     watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
 
     # Simulate: lock was seen recently but is now gone
-    import time
-
     watcher._last_git_lock_seen = time.time()
     watcher.last_run_time = 0.0
 
@@ -186,8 +185,6 @@ def test_trigger_sync_skips_during_cooldown_after_lock_released(
 def test_trigger_sync_runs_after_cooldown_expires(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(SmartWatcher, "_sync", _noop_sync)
     watcher = SmartWatcher(tmp_path, debounce_seconds=0.0)
-
-    import time
 
     # Simulate: lock was seen long ago (beyond cooldown)
     watcher._last_git_lock_seen = time.time() - SmartWatcher._GIT_COOLDOWN_S - 1

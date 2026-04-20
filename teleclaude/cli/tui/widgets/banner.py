@@ -16,8 +16,20 @@ from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 
+from teleclaude.cli.tui.animations.base import Z0, Z50
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.pixel_mapping import PixelMap
 from teleclaude.cli.tui.sky_compositing import consume_sky_entity_value as _consume_sky_entity_value
+from teleclaude.cli.tui.theme import (
+    blend_colors,
+    deepen_for_light_mode,
+    get_banner_hex,
+    get_billboard_background,
+    get_neutral_color,
+    is_dark_mode,
+    letter_color_floor,
+    resolve_haze,
+)
 
 logger = get_logger(__name__)
 
@@ -95,8 +107,6 @@ def _scan_sky_entity(
     is behind: scanning continues to deeper Z-levels to find the behind color
     instead of hardcoding the sky gradient.
     """
-    from teleclaude.cli.tui.animations.base import Z0
-
     state: dict[str, str | bool | None] = {
         "fg_char": " ",
         "fg_color": None,
@@ -136,8 +146,6 @@ def _resolve_sky_background(
 ) -> str:
     if scene is not None:
         return scene.sky_background(x, y)
-    from teleclaude.cli.tui.animations.base import Z0
-
     bg_color = engine.get_layer_color(Z0, x, y, target="header") if engine else None
     return bg_color if isinstance(bg_color, str) else sky_fallback
 
@@ -157,13 +165,6 @@ def _render_art_content(
     sky_fallback: str,
     z_levels: list[int],
 ) -> None:
-    from teleclaude.cli.tui.animations.base import Z50
-    from teleclaude.cli.tui.pixel_mapping import PixelMap
-    from teleclaude.cli.tui.theme import (
-        get_banner_hex,
-        resolve_haze,
-    )
-
     for y, line in enumerate(lines):
         if y > 0:
             result.append("\n")
@@ -232,14 +233,6 @@ def _append_animation_pixel(
     engine: AnimationEngine | None,
     dark_mode: bool,
 ) -> bool:
-    from teleclaude.cli.tui.theme import (
-        blend_colors,
-        deepen_for_light_mode,
-        get_banner_hex,
-        letter_color_floor,
-        resolve_haze,
-    )
-
     _ = (fg_color, x)
     if not (engine and engine.has_active_animation and is_on_plate):
         return False
@@ -370,14 +363,6 @@ class Banner(TelecMixin, Widget):
     def _render_banner(self, scene: HeaderSceneFrame | None = None) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z50
-        from teleclaude.cli.tui.theme import (
-            get_billboard_background,
-            get_neutral_color,
-            is_dark_mode,
-            resolve_haze,
-        )
-
         dark_mode = is_dark_mode()
         plate_bg = get_billboard_background()
         pipe_color = resolve_haze(get_neutral_color("muted"))
@@ -419,14 +404,6 @@ class Banner(TelecMixin, Widget):
     def _render_logo(self, scene: HeaderSceneFrame | None = None) -> Text:
         result = Text()
         engine = self.animation_engine
-        from teleclaude.cli.tui.animations.base import Z50
-        from teleclaude.cli.tui.theme import (
-            get_billboard_background,
-            get_neutral_color,
-            is_dark_mode,
-            resolve_haze,
-        )
-
         dark_mode = is_dark_mode()
         plate_bg = get_billboard_background()
         pipe_color = resolve_haze(get_neutral_color("muted"))

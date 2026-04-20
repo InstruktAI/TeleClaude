@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import pytest
 
+from teleclaude.cli.tui.views.sessions_actions import SessionsViewActionsMixin
+
 
 @pytest.mark.unit
 def test_sessions_view_actions_mixin_is_importable() -> None:
-    from teleclaude.cli.tui.views.sessions_actions import SessionsViewActionsMixin
-
     assert SessionsViewActionsMixin is not None

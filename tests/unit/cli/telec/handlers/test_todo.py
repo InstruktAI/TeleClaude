@@ -115,7 +115,13 @@ class TestHandleTodoRemove:
     """telec todo remove <slug>."""
 
     def test_success_prints_confirmation(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}):
+        receipt = {"operation_id": "op-1", "kind": "todo_remove", "state": "queued", "poll_after_ms": 250}
+        completed = {"operation_id": "op-1", "kind": "todo_remove", "state": "completed", "result": "removed my-slug"}
+
+        with (
+            patch(f"{_MODULE}.tool_api_call", return_value=receipt),
+            patch(f"{_MODULE}.poll_operation", return_value=completed),
+        ):
             _handle_todo_remove(["my-slug"])
 
         assert "Removed todo: my-slug" in capsys.readouterr().out
@@ -154,7 +160,7 @@ class TestHandleTodoFromMain:
         monkeypatch.chdir(tmp_path)
 
         with (
-            patch("teleclaude.todo_scaffold.create_from_main_skeleton", return_value="Todo created: my-slug"),
+            patch(f"{_MODULE}.create_from_main_skeleton", return_value="Todo created: my-slug"),
             patch(f"{_MODULE}.tool_api_request") as mock_api,
         ):
             _handle_todo_from_main(["--slug", "my-slug"])
@@ -178,7 +184,7 @@ class TestHandleTodoFromMain:
         monkeypatch.chdir(tmp_path)
 
         with (
-            patch("teleclaude.todo_scaffold.create_from_main_skeleton", return_value="Todo created: my-slug"),
+            patch(f"{_MODULE}.create_from_main_skeleton", return_value="Todo created: my-slug"),
             patch(f"{_MODULE}.tool_api_request", side_effect=RuntimeError("emit failed")),
         ):
             _handle_todo_from_main(["--slug", "my-slug"])

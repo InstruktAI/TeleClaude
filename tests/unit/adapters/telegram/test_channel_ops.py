@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.adapters.telegram.channel_ops."""
-# pylint: disable=protected-access,missing-function-docstring,too-many-instance-attributes
 
 from __future__ import annotations
 

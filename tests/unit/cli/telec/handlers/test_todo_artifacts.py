@@ -1,13 +1,14 @@
 # guard: no-companion
 """Tests for telec todo artifacts {list|read|write} and telec todo stamp."""
 
-# pylint: disable=import-outside-toplevel
 from __future__ import annotations
 
 from unittest.mock import patch
 
 import pytest
 
+from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts, _handle_todo_stamp, handle_mark_phase
+from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.types.state_value import StateValue
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
@@ -17,14 +18,10 @@ class TestHandleTodoArtifactsList:
     """telec todo artifacts list <slug>."""
 
     def test_missing_slug_exits(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["list"])
 
     def test_lists_names(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with patch(f"{_MODULE}.tool_api_request", return_value={"artifacts": ["input", "requirements"]}):
             _handle_todo_artifacts(["list", "my-slug"])
 
@@ -37,14 +34,10 @@ class TestHandleTodoArtifactsRead:
     """telec todo artifacts read <slug> <name>."""
 
     def test_missing_args_exits(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["read", "my-slug"])
 
     def test_prints_content(self, capsys: pytest.CaptureFixture[str]) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with patch(f"{_MODULE}.tool_api_request", return_value={"content": "artifact-content"}):
             _handle_todo_artifacts(["read", "my-slug", "requirements"])
 
@@ -55,14 +48,10 @@ class TestHandleTodoArtifactsWrite:
     """telec todo artifacts write <slug> <name> <content>."""
 
     def test_missing_args_exits(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["write", "my-slug"])
 
     def test_writes_inline_content(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts
-
         with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
             _handle_todo_artifacts(["write", "my-slug", "requirements", "inline-content"])
 
@@ -75,14 +64,10 @@ class TestHandleTodoStamp:
     """telec todo stamp <slug> --verdict approve."""
 
     def test_missing_slug_exits(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_stamp
-
         with pytest.raises(SystemExit):
             _handle_todo_stamp([])
 
     def test_verdict_stamp(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import _handle_todo_stamp
-
         with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
             _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "requirements_review"])
 
@@ -96,9 +81,6 @@ class TestHandleMarkPhase:
     """telec todo mark-phase <slug> --phase <value>."""
 
     def test_prepare_phase_value_writes_prepare_phase_field(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
-        from teleclaude.core.next_machine._types import PreparePhase
-
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -118,9 +100,6 @@ class TestHandleMarkPhase:
         assert persisted.get("kind") == "todo"
 
     def test_work_phase_value_writes_work_phase_field(self) -> None:
-        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
-        from teleclaude.core.next_machine._types import WorkPhase
-
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -139,9 +118,6 @@ class TestHandleMarkPhase:
 
     def test_unknown_phase_value_rejected_with_listing(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Unknown values exit non-zero, do not write, and list both enums' values."""
-        from teleclaude.cli.telec.handlers.todo import handle_mark_phase
-        from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
-
         write_calls: list[tuple[str, str, dict[str, StateValue]]] = []
 
         def _recording_write(cwd: str, slug: str, state: dict[str, StateValue]) -> None:

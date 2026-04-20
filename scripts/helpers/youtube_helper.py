@@ -29,12 +29,12 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, cast
 
-import dateparser  # pylint: disable=import-error
+import dateparser
 from aiohttp import ClientSession
-from munch import munchify  # pylint: disable=import-error
+from munch import munchify
 from pydantic import BaseModel
 from typing_extensions import TypedDict
-from youtube_transcript_api import YouTubeTranscriptApi  # pylint: disable=import-error
+from youtube_transcript_api import YouTubeTranscriptApi
 
 # Inline type aliases (originally from teleclaude.core.models)
 JsonPrimitive = str | int | float | bool | None

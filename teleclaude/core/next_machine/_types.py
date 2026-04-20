@@ -4,7 +4,7 @@ All sub-modules import from here for shared definitions so that no circular
 dependencies arise from sub-modules importing from core.py.
 """
 
-# pylint: disable=cyclic-import,useless-import-alias,unused-import
+
 # Central type module participates in legacy next-machine import cycles;
 # re-exports StateValue/StateScalar from teleclaude.types for backwards compatibility.
 
@@ -21,6 +21,7 @@ from typing import TypedDict
 # for backward compatibility with the historical import path.
 from teleclaude.types.state_value import StateScalar as StateScalar  # re-export
 from teleclaude.types.state_value import StateValue as StateValue  # re-export
+from teleclaude.types.todos import TodoState
 
 
 class FinalizeState(TypedDict, total=False):
@@ -177,6 +178,4 @@ class EnsureWorktreeResult:
 
 def default_state() -> dict[str, StateValue]:
     """Return a fresh default state dict from the canonical TodoState model."""
-    from teleclaude.types.todos import TodoState  # pylint: disable=import-outside-toplevel
-
     return TodoState().model_dump(exclude_none=True)

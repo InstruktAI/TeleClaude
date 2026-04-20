@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add last_conversation_injected_at column to sessions."""
 
 from __future__ import annotations

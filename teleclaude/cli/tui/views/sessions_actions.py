@@ -13,24 +13,16 @@ from teleclaude.cli.tui.messages import (
     RestartSessionsRequest,
     StickyChanged,
 )
-from teleclaude.cli.tui.views._footer_actions import (
-    refresh_footer_bindings,
-    sync_default_footer_action,
-)
+from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.views.interaction import TreeInteractionAction
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
-from teleclaude.cli.tui.widgets.modals import (
-    ConfirmModal,
-    NewProjectModal,
-    NewProjectResult,
-    StartSessionModal,
-)
+from teleclaude.cli.tui.widgets.modals import ConfirmModal, NewProjectModal, NewProjectResult, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
 
 if TYPE_CHECKING:
-    from textual.widget import Widget  # pylint: disable=import-outside-toplevel,ungrouped-imports
+    from textual.widget import Widget
 
 # Double-press detection threshold (seconds)
 DOUBLE_PRESS_THRESHOLD = 0.65
@@ -385,7 +377,7 @@ class SessionsViewActionsMixin:
             on_result,
         )
 
-    def action_toggle_sticky_sessions(self) -> None:  # pylint: disable=too-many-branches
+    def action_toggle_sticky_sessions(self) -> None:
         """a: batch-toggle sticky sessions scoped to project, computer, or globally."""
         item = self._current_item()  # type: ignore[attr-defined]
 

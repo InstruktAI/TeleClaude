@@ -108,7 +108,7 @@ class DbSettingsMixin:
             .where(
                 db_models.Session.closed_at.is_(None),
                 or_(
-                    db_models.Session.lifecycle_status.is_(None),  # pylint: disable=no-member  # SQLModel comparator methods are attached dynamically.
+                    db_models.Session.lifecycle_status.is_(None),
                     db_models.Session.lifecycle_status != "closed",
                 ),
                 db_models.VoiceAssignment.service_name.is_not(None),

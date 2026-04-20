@@ -117,7 +117,7 @@ class _AppRuntimeState:
 
 
 @dataclass
-class _AppMediaState:  # pylint: disable=too-many-instance-attributes
+class _AppMediaState:
     animation_engine: AnimationEngine = field(default_factory=AnimationEngine)
     animation_perf: AnimationPerfTracker = field(default_factory=AnimationPerfTracker)
     periodic_trigger: object | None = None
@@ -130,8 +130,6 @@ class _AppMediaState:  # pylint: disable=too-many-instance-attributes
 
 class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
     """Main TeleClaude TUI application."""
-
-    # pylint: disable=too-many-instance-attributes
 
     api: TelecAPIClient
     _persisted: dict[str, dict[str, object]]  # guard: loose-dict - dynamic payload

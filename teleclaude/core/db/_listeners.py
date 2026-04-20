@@ -106,7 +106,7 @@ class DbListenersMixin:
 
     async def count_listeners(self) -> int:
         """Get total number of active listeners."""
-        stmt = sqlalchemy_select(func.count()).select_from(db_models.SessionListenerRow)  # pylint: disable=not-callable
+        stmt = sqlalchemy_select(func.count()).select_from(db_models.SessionListenerRow)
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             return result.one()[0]  # type: ignore[index]

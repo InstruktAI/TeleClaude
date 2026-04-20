@@ -1,5 +1,4 @@
 """Behavioral coverage for teleclaude.cli.editor."""
-# pylint: disable=import-outside-toplevel,missing-function-docstring,protected-access
 
 from __future__ import annotations
 
@@ -12,6 +11,8 @@ from pathlib import Path
 import pytest
 from textual.widgets import Markdown, TextArea
 
+from teleclaude.cli import editor
+from teleclaude.cli.editor import EditorApp, MaterializedArtifact, persist_if_changed
 from teleclaude.core.todos_db import TodosDb
 
 
@@ -27,7 +28,7 @@ def _seed_artifact_project(
     db.initialize_sync()
     row_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     try:
         conn.execute(
             "INSERT INTO roadmap "  # guard: raw-sql
@@ -44,8 +45,6 @@ def _seed_artifact_project(
 
 
 def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import MaterializedArtifact
-
     project_root, _db = _seed_artifact_project(tmp_path)
     materialized = MaterializedArtifact.from_db(
         project_root=project_root,
@@ -62,8 +61,6 @@ def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path:
 
 @pytest.mark.unit
 async def test_editor_app_view_mode_renders_markdown_and_uses_requested_theme(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
     target = tmp_path / "input"
     target.write_text("# Heading\n", encoding="utf-8")
     app = EditorApp(target, view_mode=True, theme_name="teleclaude-light-agent")
@@ -77,8 +74,6 @@ async def test_editor_app_view_mode_renders_markdown_and_uses_requested_theme(tm
 
 @pytest.mark.unit
 async def test_editor_app_edit_mode_renders_markdown_text_area(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
     target = tmp_path / "artifact"
     target.write_text("# Heading\n", encoding="utf-8")
     app = EditorApp(target, theme_name="teleclaude-dark-agent")
@@ -91,8 +86,6 @@ async def test_editor_app_edit_mode_renders_markdown_text_area(tmp_path: Path) -
 
 
 def test_persist_if_changed_skips_identical_content(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import persist_if_changed
-
     target = tmp_path / "artifact"
     target.write_text("same\n", encoding="utf-8")
     saved: list[str] = []
@@ -109,8 +102,6 @@ def test_persist_if_changed_skips_identical_content(tmp_path: Path) -> None:
 
 
 def test_persist_if_changed_writes_and_calls_callback(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import persist_if_changed
-
     target = tmp_path / "artifact"
     target.write_text("before\n", encoding="utf-8")
     saved: list[str] = []
@@ -128,8 +119,6 @@ def test_persist_if_changed_writes_and_calls_callback(tmp_path: Path) -> None:
 
 @pytest.mark.timeout(60)
 async def test_editor_app_enter_and_escape_persist_multiline_buffer(tmp_path: Path) -> None:
-    from teleclaude.cli.editor import EditorApp
-
     target = tmp_path / "artifact"
     target.write_text("before\n", encoding="utf-8")
     app = EditorApp(target)
@@ -144,8 +133,6 @@ def test_main_view_mode_launches_themed_markdown_preview(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from teleclaude.cli import editor
-
     project_root, _db = _seed_artifact_project(tmp_path, artifact_name="input", content="hello\n")
     calls: list[tuple[Path, str, bool, str, object]] = []
 
@@ -194,8 +181,6 @@ def test_main_edit_mode_persists_artifact_back_to_db(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from teleclaude.cli import editor
-
     project_root, db = _seed_artifact_project(tmp_path, artifact_name="requirements", content="before\n")
 
     def _fake_inline_editor(

@@ -23,7 +23,6 @@ export interface LaunchSessionParams {
   projectPath: string;
   agent: AgentName;
   thinkingMode: ThinkingMode;
-  title?: string;
   message?: string;
   subfolder?: string;
 }
@@ -65,7 +64,6 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
     project_path: params.projectPath,
     agent: params.agent,
     thinking_mode: params.thinkingMode,
-    title: params.title ?? null,
     message: params.message ?? null,
     subdir: params.subfolder ?? null,
   };
@@ -89,7 +87,7 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
     const session: SessionInfo = {
       session_id: response.session_id,
       tmux_session_name: response.tmux_session_name,
-      title: params.title ?? "",
+      title: "Untitled",
       project_path: params.projectPath,
       subdir: params.subfolder ?? null,
       thinking_mode: params.thinkingMode,

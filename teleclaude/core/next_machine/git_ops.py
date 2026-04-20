@@ -34,7 +34,7 @@ def get_head_commit(cwd: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse("HEAD").strip()
         return result
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+    except (GitCommandError, Exception):
         return ""
 
 
@@ -44,7 +44,7 @@ def get_ref_commit(cwd: str, ref: str) -> str:
         repo = Repo(cwd)
         result: str = repo.git.rev_parse(ref).strip()
         return result
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+    except (GitCommandError, Exception):
         return ""
 
 
@@ -53,7 +53,7 @@ def get_remote_branch_head(cwd: str, branch: str) -> str:
     try:
         repo = Repo(cwd)
         output = repo.git.ls_remote("origin", f"refs/heads/{branch}").strip()
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+    except (GitCommandError, Exception):
         return ""
     parts = output.split()
     return parts[0] if parts else ""

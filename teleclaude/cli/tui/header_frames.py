@@ -1,7 +1,5 @@
 """Shared header scene projection for animated TUI widgets."""
 
-# pylint: disable=duplicate-code  # Shares projection logic with banner/tab widgets by design.
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -67,7 +65,6 @@ class HeaderSceneFrame:
             state["bg_entity_color"] if isinstance(state["bg_entity_color"], str) else None,
         )
 
-    # pylint: disable=too-many-return-statements,too-many-branches
     def scan_tab_entity(
         self,
         x: int,
@@ -106,8 +103,6 @@ class HeaderSceneFrame:
         if pending:
             return pending[0], scene_bg, pending[1]
         return None
-
-    # pylint: enable=too-many-return-statements,too-many-branches
 
 
 def build_header_scene_frame(

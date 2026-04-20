@@ -2,16 +2,33 @@
 
 from __future__ import annotations
 
+import hashlib as _hashlib
 import shutil
+import uuid as _uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from instrukt_ai_logging import get_logger
 from sqlalchemy import text  # guard: raw-sql - narrow sync lookup must tolerate pre-migration local DBs
+from sqlmodel import Session as SqlSession
 
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core import db_models
+from teleclaude.core.agents import AgentName, get_default_agent
+from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
+from teleclaude.core.next_machine.slug_resolution import set_item_phase
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync, apply_prepared_state
+from teleclaude.core.next_machine.worktrees import (
+    _create_or_attach_worktree,
+    _decide_worktree_prep,
+    _prepare_worktree,
+    _write_worktree_prep_state,
+)
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
+from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
+from teleclaude.session_scoping import resolve_scoped_paths
 from teleclaude.slug import validate_slug
 
 
@@ -28,7 +45,7 @@ class NoSessionTouchedFiles(ValueError):
     """Raised when session scoping succeeds but owns no transferable paths."""
 
 
-def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-many-locals
+def remove_todo(project_root: Path, slug: str) -> None:
     """Remove a todo and all its references. Best-effort: removes whatever exists.
 
     Removes worktree and local branch for the given slug. DB cleanup
@@ -41,8 +58,6 @@ def remove_todo(project_root: Path, slug: str) -> None:  # pylint: disable=too-m
     Raises:
         ValueError: If slug format is invalid
     """
-    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
-
     validate_slug(slug)
     slug = slug.strip()
 
@@ -114,7 +129,7 @@ def _transfer_files_to_worktree(
                 dst.unlink()
 
 
-def _clean_main_working_tree(  # pylint: disable=too-many-branches
+def _clean_main_working_tree(
     repo: Any,
     project_root: Path,
     modified: list[str],
@@ -125,7 +140,7 @@ def _clean_main_working_tree(  # pylint: disable=too-many-branches
     if modified:
         try:
             repo.git.checkout("HEAD", "--", *modified)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
 
     # Added files don't exist at HEAD — delete from disk and unstage
@@ -159,7 +174,7 @@ def _clean_main_working_tree(  # pylint: disable=too-many-branches
     if all_files:
         try:
             repo.git.reset("HEAD", "--", *all_files)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
 
 
@@ -173,9 +188,6 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
     so the lookup keeps working against local session DBs that have not yet
     applied newer schema migrations.
     """
-    from sqlmodel import Session as SqlSession  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.hooks.receiver._session import _create_sync_engine  # pylint: disable=import-outside-toplevel
 
     with SqlSession(_create_sync_engine()) as db_session:
         row = db_session.exec(  # type: ignore[call-overload]
@@ -187,8 +199,6 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
         try:
             active_agent_raw, native_log_file_raw, native_session_id_raw = row
         except (TypeError, ValueError):
-            from teleclaude.core import db_models  # pylint: disable=import-outside-toplevel
-
             fallback_row = db_session.get(db_models.Session, session_id)
             if not fallback_row:
                 raise ValueError(f"Session {session_id} not found in database") from None
@@ -203,7 +213,7 @@ def _load_session_transcript_metadata(session_id: str) -> tuple[str | None, str 
     )
 
 
-def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: disable=too-many-locals
+def _collect_session_touched_files(project_path: str) -> set[str]:
     """Extract files touched by the current agent session from its transcript.
 
     Uses the same transcript parsing as the checkpoint system to determine
@@ -215,13 +225,6 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
         ValueError: If session ID is missing, transcript is unavailable,
             or no touched files can be determined.
     """
-    from teleclaude.core.agents import AgentName, get_default_agent  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.codex_transcript import (  # pylint: disable=import-outside-toplevel
-        discover_codex_transcript_path,
-        discover_current_codex_transcript_path,
-    )
-    from teleclaude.session_scoping import resolve_scoped_paths  # pylint: disable=import-outside-toplevel
-
     session_id = _get_session_id()
     if not session_id:
         raise ValueError("from-main requires an active agent session ($TMPDIR/teleclaude_identity.json not found)")
@@ -265,7 +268,7 @@ def _collect_session_touched_files(project_path: str) -> set[str]:  # pylint: di
     )
 
 
-def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-statements
+def create_from_main_skeleton(
     cwd: str,
     slug: str,
     *,
@@ -295,15 +298,6 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         ValueError: If not on main or no uncommitted changes
         RuntimeError: If scaffold push or worktree creation fails
     """
-    from teleclaude.core.next_machine.slug_resolution import set_item_phase  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_io import apply_prepared_state  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.worktrees import (  # pylint: disable=import-outside-toplevel
-        _create_or_attach_worktree,
-        _decide_worktree_prep,
-        _prepare_worktree,
-        _write_worktree_prep_state,
-    )
-    from teleclaude.git import InvalidGitRepositoryError, Repo  # pylint: disable=import-outside-toplevel
 
     # --- 5a. Validate preconditions ---
     validate_slug(slug)
@@ -365,13 +359,10 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
 
     # --- 5g. Ensure roadmap entry exists (write_state requires slug→UUID resolution) ---
     worktree_cwd = str(worktree_path)
-    from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
     _from_main_db = _get_todos_db_sync(worktree_cwd)
-    _from_main_conn = _from_main_db._sync_conn()  # pylint: disable=protected-access
+    _from_main_conn = _from_main_db._sync_conn()
     try:
-        import uuid as _uuid  # pylint: disable=import-outside-toplevel
-
         _existing = _from_main_conn.execute(
             "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
             (slug,),
@@ -392,10 +383,8 @@ def create_from_main_skeleton(  # pylint: disable=too-many-locals,too-many-state
         _from_main_conn.close()
 
     # --- 5h. Write DB artifacts (apply_prepared_state validates their existence) ---
-    import hashlib as _hashlib  # pylint: disable=import-outside-toplevel
-
     _art_db = _get_todos_db_sync(worktree_cwd)
-    _art_conn = _art_db._sync_conn()  # pylint: disable=protected-access
+    _art_conn = _art_db._sync_conn()
     try:
         _art_id_row = _art_conn.execute(
             "SELECT id FROM roadmap WHERE slug = ? AND status != 'delivered' LIMIT 1",  # guard: raw-sql

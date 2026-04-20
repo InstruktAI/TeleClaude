@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.utils.transcript._parsers."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 

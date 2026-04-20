@@ -6,7 +6,10 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
+import json as _json
 
+from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_main_repo_root
@@ -29,7 +32,7 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
                 entity=slug,
                 payload=dict(payload),
             )
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass  # Never block prepare on event emission failure
 
     try:
@@ -39,11 +42,11 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
         # No running loop (thread or sync CLI context) — fire-and-forget via new event loop
         try:
             asyncio.run(_emit())
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass  # Never block prepare on event emission failure
 
 
-def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:  # pylint: disable=too-many-locals
+def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:
     """Scan all active todos and invalidate those with overlapping referenced paths.
 
     Reads state from todos.db (sync). When a todo's ``grounding.referenced_paths``
@@ -51,21 +54,13 @@ def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[st
     :class:`StateWriter` + :class:`GroundingManager` boundary and the final
     commit uses ``commit_sync`` so malformed persisted state fails fast at load.
     """
-    import json as _json  # pylint: disable=import-outside-toplevel
-
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        GroundingManager,
-        StateWriter,
-    )
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
     invalidated: list[str] = []
     changed_set = set(changed_paths)
 
     project_root = resolve_main_repo_root(cwd)
     db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
     db.initialize_sync()
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
 
     try:
         rows = conn.execute(

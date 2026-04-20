@@ -1,4 +1,3 @@
-# pylint: disable=consider-using-from-import,import-outside-toplevel,protected-access,too-many-instance-attributes
 # guard: no-companion
 """Specification tests for headless session creation and terminal identity cleanup."""
 
@@ -13,10 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import teleclaude.cli.config_cli as config_module
 import teleclaude.daemon_hook_outbox as daemon_hook_outbox
+from teleclaude.cli.telec.handlers import docs as docs_module
 from teleclaude.core import hook_outbox_queue
 from teleclaude.core.command_handlers import _session as session_handler
 from teleclaude.core.events import AgentEventContext, AgentHookEvents
+from teleclaude.core.identity import IdentityResolver
 from teleclaude.core.models import Session
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -235,8 +237,6 @@ class TestIdentityResolverSurface:
             mock_cfg.return_value = MagicMock(people=[])
             mock_dir.glob.return_value = []
 
-            from teleclaude.core.identity import IdentityResolver
-
             resolver = IdentityResolver()
 
         assert not hasattr(resolver, _legacy_terminal_helper_name())
@@ -250,8 +250,6 @@ class TestCliCallersAlternativePath:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from teleclaude.cli.telec.handlers import docs as docs_module
-
         mock_resolver = SimpleNamespace(
             resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
         )
@@ -266,8 +264,6 @@ class TestCliCallersAlternativePath:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        import teleclaude.cli.config_cli as config_module
-
         mock_resolver = SimpleNamespace(
             resolve_by_email=lambda email: SimpleNamespace(person_role="admin", email=email)
         )

@@ -1,4 +1,3 @@
-# pylint: disable=protected-access,consider-using-from-import
 """Characterization tests for teleclaude.project_setup.init_flow."""
 
 from __future__ import annotations
@@ -10,7 +9,9 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+import teleclaude.project_setup.domain_seeds as domain_seeds
 import teleclaude.project_setup.init_flow as init_flow
+from teleclaude import project_manifest
 
 
 def test_is_teleclaude_project_detects_repo_layout(tmp_path: Path) -> None:
@@ -71,13 +72,9 @@ def test_init_project_writes_project_slug_and_registers_root(tmp_path: Path, mon
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
     monkeypatch.setattr(init_flow, "_offer_enrichment", lambda _p: None)
     # seed_event_domains is imported lazily; patch at source.
-    import teleclaude.project_setup.domain_seeds as domain_seeds  # pylint: disable=import-outside-toplevel
-
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
 
     # Redirect the manifest to a test-local path.
-    from teleclaude import project_manifest  # pylint: disable=import-outside-toplevel
-
     monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 
     init_flow.init_project(project_root)
@@ -127,11 +124,7 @@ def test_init_project_writes_project_slug_for_fresh_project(tmp_path: Path, monk
     monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
     monkeypatch.setattr(init_flow, "_offer_enrichment", lambda _p: None)
-    import teleclaude.project_setup.domain_seeds as domain_seeds  # pylint: disable=import-outside-toplevel
-
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
-
-    from teleclaude import project_manifest  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 

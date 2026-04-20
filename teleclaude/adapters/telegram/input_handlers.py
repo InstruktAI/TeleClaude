@@ -3,7 +3,6 @@
 Handles user input: text messages, voice messages, file attachments,
 topic lifecycle events, and error handling.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -25,7 +24,7 @@ from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.dates import ensure_utc
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
@@ -36,7 +35,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
-    class _InputHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _InputHandlersHost(Protocol):
         client: AdapterClient
         user_whitelist: set[int]
         _processed_voice_messages: set[str]
@@ -140,42 +139,6 @@ class InputHandlersMixin:
     _topic_ready_events: dict[int, asyncio.Event]
     _topic_ready_cache: set[int]
 
-    # =========================================================================
-    # Input Handler Implementation
-    # =========================================================================
-
-    async def _handle_help(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Handle /help command - dynamically generates from UiCommands."""
-        host = cast("_InputHandlersHost", self)
-        user = update.effective_user
-        if not user or user.id not in self.user_whitelist:
-            return
-
-        # Build command list from UiCommands (sorted alphabetically)
-        cmd_lines = [f"/{cmd} - {desc}" for cmd, desc in sorted(UiCommands.items())]
-        commands_text = "\n".join(cmd_lines)
-
-        help_text = f"""TeleClaude Bot Commands:
-
-{commands_text}
-
-Usage:
-1. Use /new_session to create a tmux session
-2. Send text messages in the session topic to execute commands
-3. Use /cancel to interrupt a running command
-4. Use /claude to start Claude Code
-5. View output in real-time
-        """
-
-        message = update.effective_message
-        if message:
-            await host._send_general_message_with_retry(
-                message.message_thread_id,
-                help_text,
-                None,
-                None,
-            )
-
     async def _handle_text_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle text messages in topics and General topic.
 
@@ -258,7 +221,7 @@ Usage:
             lambda: get_command_service().process_message(cmd),  # type: ignore[arg-type]
         )
 
-    async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:  # pylint: disable=too-many-locals
+    async def _handle_voice_message(self, update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle voice messages in topics - both new and edited messages."""
         # Handle both regular messages and edited messages
         message = update.effective_message

@@ -47,7 +47,7 @@ class SignalClusterCartridge:
         await self.cluster_pass(context)
         return event
 
-    async def cluster_pass(self, context: PipelineContext) -> int:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
+    async def cluster_pass(self, context: PipelineContext) -> int:
         """Explicit cluster pass — returns count of clusters formed."""
         window_start = datetime.now(UTC) - timedelta(seconds=self._config.window_seconds)
         items = await self._signal_db.get_unclustered_items(since=window_start)
@@ -91,7 +91,7 @@ class SignalClusterCartridge:
             summary_prompt = "; ".join(t for t in titles if t)
             try:
                 summary = await self._ai.summarise(summary_prompt, "")
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 logger.warning(
                     "Cluster summary generation failed for group of %d items: %s; skipping cluster this pass",
                     len(group),

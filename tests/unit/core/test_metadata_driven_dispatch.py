@@ -8,9 +8,22 @@ to the dispatcher.
 
 from __future__ import annotations
 
+import ast
+import inspect
+import textwrap
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+from teleclaude.transport.redis_transport._messaging import _MessagingMixin
+from teleclaude.types.commands import (
+    CloseSessionCommand,
+    CommandType,
+    CreateSessionCommand,
+    GetSessionDataCommand,
+    InternalCommand,
+    ResponseMode,
+)
 
 
 class TestDispatchBranchesOnResponseMode:
@@ -24,8 +37,6 @@ class TestDispatchBranchesOnResponseMode:
         Verifies the actual dispatch path returns data for IMMEDIATE commands,
         not just that a mock returns what we told it to.
         """
-        from teleclaude.types.commands import GetSessionDataCommand, ResponseMode
-
         cmd = GetSessionDataCommand(session_id="s1")
         assert cmd.response_mode == ResponseMode.IMMEDIATE
 
@@ -37,8 +48,6 @@ class TestDispatchBranchesOnResponseMode:
             "teleclaude.transport.redis_transport._messaging.get_command_service",
             return_value=mock_service,
         ):
-            from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
             messaging = MagicMock(spec=_MessagingMixin)
             messaging._dispatch_command = _MessagingMixin._dispatch_command.__get__(messaging)
             result = await messaging._dispatch_command(cmd)
@@ -52,8 +61,6 @@ class TestDispatchBranchesOnResponseMode:
 
         The dispatcher must not propagate the handler's return value for F&F commands.
         """
-        from teleclaude.types.commands import CloseSessionCommand, ResponseMode
-
         cmd = CloseSessionCommand(session_id="s1")
         assert cmd.response_mode == ResponseMode.FIRE_AND_FORGET
 
@@ -64,8 +71,6 @@ class TestDispatchBranchesOnResponseMode:
             "teleclaude.transport.redis_transport._messaging.get_command_service",
             return_value=mock_service,
         ):
-            from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
             messaging = MagicMock(spec=_MessagingMixin)
             messaging._dispatch_command = _MessagingMixin._dispatch_command.__get__(messaging)
             result = await messaging._dispatch_command(cmd)
@@ -76,8 +81,6 @@ class TestDispatchBranchesOnResponseMode:
     @pytest.mark.asyncio
     async def test_receipt_command_reaching_dispatch_raises(self) -> None:
         """RECEIPT commands must not reach the redis dispatcher — they go through OperationsService."""
-        from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
-
         cmd = InternalCommand(command_type=CommandType.CREATE_SESSION, response_mode=ResponseMode.RECEIPT)
 
         mock_service = MagicMock()
@@ -89,8 +92,6 @@ class TestDispatchBranchesOnResponseMode:
             ),
             pytest.raises(ValueError, match="RECEIPT"),
         ):
-            from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
             messaging = MagicMock(spec=_MessagingMixin)
             messaging._dispatch_command = _MessagingMixin._dispatch_command.__get__(messaging)
             await messaging._dispatch_command(cmd)
@@ -107,12 +108,6 @@ class TestDispatchDoesNotUseClassBasedRouting:
         class identity rather than by response_mode. This catches isinstance(),
         type(command) is/==, and match/case on type.
         """
-        import ast
-        import inspect
-        import textwrap
-
-        from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
         source = inspect.getsource(_MessagingMixin._dispatch_command)
         source = textwrap.dedent(source)
         tree = ast.parse(source)
@@ -165,8 +160,6 @@ class TestNewCommandRequiresNoDispatcherChanges:
         The dispatcher routes by command_type for handler lookup and response_mode
         for execution behavior. This proves the execution layer is metadata-driven.
         """
-        from teleclaude.types.commands import CloseSessionCommand
-
         cmd = CloseSessionCommand(session_id="s1")
 
         mock_service = MagicMock()
@@ -176,8 +169,6 @@ class TestNewCommandRequiresNoDispatcherChanges:
             "teleclaude.transport.redis_transport._messaging.get_command_service",
             return_value=mock_service,
         ):
-            from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
             messaging = MagicMock(spec=_MessagingMixin)
             messaging._dispatch_command = _MessagingMixin._dispatch_command.__get__(messaging)
             result = await messaging._dispatch_command(cmd)
@@ -189,8 +180,6 @@ class TestNewCommandRequiresNoDispatcherChanges:
     @pytest.mark.asyncio
     async def test_immediate_command_with_registered_handler_returns_result(self) -> None:
         """An IMMEDIATE command with a registered handler returns the handler's result."""
-        from teleclaude.types.commands import CreateSessionCommand
-
         cmd = CreateSessionCommand(project_path="/tmp", origin="test")
 
         expected = {"session_id": "new-session"}
@@ -201,8 +190,6 @@ class TestNewCommandRequiresNoDispatcherChanges:
             "teleclaude.transport.redis_transport._messaging.get_command_service",
             return_value=mock_service,
         ):
-            from teleclaude.transport.redis_transport._messaging import _MessagingMixin
-
             messaging = MagicMock(spec=_MessagingMixin)
             messaging._dispatch_command = _MessagingMixin._dispatch_command.__get__(messaging)
             result = await messaging._dispatch_command(cmd)

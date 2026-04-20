@@ -37,7 +37,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
 
         def _ui_adapters(self) -> list[tuple[str, UiAdapter]]: ...
 
-        async def _fanout_excluding(  # pylint: disable=unused-argument
+        async def _fanout_excluding(
             self,
             session: "Session",
             operation: str,
@@ -73,10 +73,10 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
                 type(result).__name__ if result else "None",
             )
             return result
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # UI lanes isolate adapter failures.
+        except Exception as exc:
             try:
                 return await adapter.recover_lane_error(session, exc, task_factory, display_title)
-            except Exception:  # pylint: disable=broad-exception-caught  # Recovery is also adapter-defined.
+            except Exception:
                 logger.error(
                     "[UI_LANE] UI adapter %s failed in lane for session %s: %s",
                     adapter_type,
@@ -154,7 +154,7 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         """Run UI post-handler after executing a user command."""
         await self._call_post_handler(session, "command", message_id, source_adapter)
 
-    async def create_channel(  # pylint: disable=too-many-locals  # Fanout bookkeeping is intentionally explicit.
+    async def create_channel(
         self,
         session: "Session",
         title: str,

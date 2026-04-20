@@ -110,7 +110,7 @@ def build_computer_prefix(
     return f"${computer_name}"
 
 
-def build_session_title(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
+def build_session_title(
     computer_name: str,
     short_project: str,
     description: str,
@@ -269,7 +269,7 @@ def update_title_with_agent(
     return None
 
 
-def build_display_title(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Parameters are explicit for clarity. Parameters are explicit for clarity.
+def build_display_title(
     description: str,
     computer_name: str,
     project_path: str | None,

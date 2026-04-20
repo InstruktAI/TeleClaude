@@ -24,6 +24,7 @@ from teleclaude.adapters.discord import (
 from teleclaude.adapters.discord._runtime import recoverable_operation_errors
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import discord_policy
+from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
@@ -31,6 +32,7 @@ from teleclaude.core.events import SessionUpdatedContext
 from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
+    _gfm_closers,
     continuation_prefix_for_gfm_state,
     discordify_markdown,
     scan_gfm_state,
@@ -41,13 +43,15 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import TeleClaudeEvents
 
 logger = get_logger(__name__)
 
 DISCORD_TYPING_INTERVAL_S = 5.0
 
 
-class DiscordClientLike(Protocol):  # pylint: disable=too-few-public-methods
+class DiscordClientLike(Protocol):
     """Minimal discord.py client surface used by the adapter."""
 
     user: object | None
@@ -62,7 +66,7 @@ class DiscordClientLike(Protocol):  # pylint: disable=too-few-public-methods
         """Close the client connection."""
 
 
-class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-attributes,line-too-long  # pyright: ignore[reportIncompatibleMethodOverride,reportIncompatibleVariableOverride]  # type: ignore[misc]
+class DiscordAdapter(
     ChannelOperationsMixin,
     GatewayHandlersMixin,
     InfrastructureMixin,
@@ -73,7 +77,7 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
 ):
     """Discord bot adapter using discord.py."""
 
-    ADAPTER_KEY = "discord"
+    ADAPTER_KEY: str = "discord"
     OUTPUT_MESSAGE_ID_FIELD = "id"
     max_message_size = 2000
     _TRUNCATION_SUFFIX = "\n[...truncated...]"
@@ -94,6 +98,26 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     def _scan_markdown_state(self, consumed: str, state: object) -> object:
         return scan_gfm_state(consumed, initial_state=state)
 
+    def _balance_intermediate_chunk(self, text: str) -> str:
+        state = scan_gfm_state(text, initial_state=GFM_MARKDOWN_INITIAL_STATE)
+        return f"{text}{_gfm_closers(text, state)}"
+
+    def _finalize_overflow_split(
+        self,
+        active_text: str,
+        overflow_context: OverflowContext,
+        split_idx: int,
+        chunk: str,
+    ) -> tuple[int, str]:
+        _ = (split_idx, chunk)
+        source_limit = max(1, overflow_context.available_for_content - len(overflow_context.continuation_prefix))
+        source_chunk = self._pack_complete_lines(active_text, source_limit)[0]
+        consumed = len(source_chunk)
+        if active_text[consumed : consumed + 1] == "\n":
+            consumed += 1
+        display_chunk = f"{overflow_context.continuation_prefix}{source_chunk}"
+        return consumed, self._balance_intermediate_chunk(display_chunk)
+
     def _convert_markdown_for_platform(self, text: str) -> str:
         """Convert generic markdown into Discord-friendly markdown/text."""
         return discordify_markdown(text)
@@ -105,9 +129,6 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
         self.client = client
         self.task_registry = task_registry
         # Discord-specific: refresh thread topper on native_session_id changes.
-        from teleclaude.core.event_bus import event_bus  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.events import TeleClaudeEvents  # pylint: disable=import-outside-toplevel
-
         event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         self._discord: ModuleType = importlib.import_module("discord")
         configured_token = config.discord.token.strip() if config.discord.token else ""

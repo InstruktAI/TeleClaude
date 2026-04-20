@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
+from teleclaude.core.next_machine.state_io import _get_todos_db_sync
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.session_scoping import ScopedPathsResult
 from teleclaude.todo_scaffold import NoSessionTouchedFiles, _collect_session_touched_files, create_from_main_skeleton
@@ -124,8 +125,6 @@ class TestCreateFromMainSkeleton:
         assert "telec sessions run" not in output
 
         # Verify todo artifacts were written to DB
-        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
         db = _get_todos_db_sync(str(worktree_path))
         requirements = db.read_artifact_sync("test-slug", "requirements") or ""
         implementation_plan = db.read_artifact_sync("test-slug", "implementation-plan") or ""
@@ -184,7 +183,7 @@ class TestCreateFromMainSkeleton:
         db_path = str(project / ".teleclaude" / "todos.db")
         db = TodosDb(db_path)
         db.initialize_sync()
-        conn = db._sync_conn()  # pylint: disable=protected-access
+        conn = db._sync_conn()
         try:
             roadmap_row = conn.execute(
                 "SELECT slug FROM roadmap WHERE slug = ? AND status != 'delivered'",
@@ -265,8 +264,6 @@ class TestCreateFromMainSkeleton:
             patch(f"{_SI}.apply_prepared_state"),
         ):
             create_from_main_skeleton(str(project), "no-desc")
-
-        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
 
         db = _get_todos_db_sync(str(worktree_path))
         req_content = db.read_artifact_sync("no-desc", "requirements") or ""

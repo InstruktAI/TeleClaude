@@ -1,5 +1,4 @@
 """Handlers for telec roadmap commands."""
-# pylint: disable=import-outside-toplevel,too-many-branches,no-else-raise
 
 from __future__ import annotations
 
@@ -13,6 +12,11 @@ from teleclaude.slug import validate_slug
 
 if TYPE_CHECKING:
     from teleclaude.api_models import TodoDTO
+import asyncio
+import json
+
+from teleclaude.core.next_machine.core import cleanup_delivered_slug
+from teleclaude.services.work import get_work_service
 
 __all__ = [
     "_handle_roadmap",
@@ -62,10 +66,6 @@ def _handle_roadmap(args: list[str]) -> None:
 
 def _handle_roadmap_show(args: list[str]) -> None:
     """Display the roadmap grouped by group, with deps and state."""
-    import json
-
-    from teleclaude.services.work import get_work_service
-
     parsed = _parse_roadmap_show_args(args)
     project_root = _resolve_roadmap_project_root()
 
@@ -187,9 +187,8 @@ def _resolve_roadmap_project_root() -> Path:
     return resolve_main_repo_root(resolve_invocation_cwd())
 
 
-def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:  # pylint: disable=too-many-arguments
+def _run_db(project_root: Path, slug: str, method: str, **kwargs: object) -> object:
     """Run a TodosDb method synchronously via asyncio.run."""
-    import asyncio  # pylint: disable=import-outside-toplevel
 
     async def _execute() -> object:
         db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
@@ -469,7 +468,7 @@ def _handle_roadmap_unfreeze(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_roadmap_migrate_icebox(args: list[str]) -> None:  # pylint: disable=unused-argument
+def _handle_roadmap_migrate_icebox(args: list[str]) -> None:
     """Handle telec roadmap migrate-icebox (deprecated — no-op after DB migration)."""
     print("No-op: icebox migration is no longer needed (data lives in todos.db).")
 
@@ -479,8 +478,6 @@ def _handle_roadmap_deliver(args: list[str]) -> None:
 
     Marks as delivered in DB and cleans up worktree/branch.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
-
     if not args:
         print(_usage("roadmap", "deliver"))
         return

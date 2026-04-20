@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add summary, human_email, and visibility columns to the mirrors table.
 
 The mirrors table lives in a separate SQLite database (~/.teleclaude/mirrors.db)

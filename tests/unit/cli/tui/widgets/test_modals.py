@@ -122,12 +122,12 @@ def test_session_id_type_selector_cell_width_is_16() -> None:
     assert SessionIdTypeSelector._CELL_WIDTH == 16
 
 
-class _FakeInput:  # pylint: disable=too-few-public-methods
+class _FakeInput:
     def __init__(self, value: str) -> None:
         self.value = value
 
 
-class _FakeLabel:  # pylint: disable=too-few-public-methods
+class _FakeLabel:
     def __init__(self) -> None:
         self.message = ""
 

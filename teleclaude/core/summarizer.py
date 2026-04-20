@@ -108,7 +108,7 @@ async def _call_summarizer(
                 )
                 text = response.content[0].text  # type: ignore[union-attr]
             return parser(text)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             errors.append(f"Anthropic: {e}")
 
     openai_key = os.getenv("OPENAI_API_KEY")
@@ -132,7 +132,7 @@ async def _call_summarizer(
                 response_any = cast(Any, oai_response)
                 text = response_any.choices[0].message.content or ""
             return parser(text)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             errors.append(f"OpenAI: {e}")
 
     if errors:

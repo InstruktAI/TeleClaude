@@ -14,7 +14,6 @@
 # ///
 """Transpile and deploy agent artifacts and generated documentation."""
 
-# pylint: disable=too-many-lines
 from __future__ import annotations
 
 import argparse
@@ -39,16 +38,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.docs_index import write_third_party_index_yaml  # pylint: disable=wrong-import-position
-from teleclaude.required_reads import (  # pylint: disable=wrong-import-position
-    extract_required_reads,
-    normalize_required_refs,
-)
-from teleclaude.resource_validation import (  # pylint: disable=wrong-import-position
-    resolve_ref_path,
-    validate_artifact,
-)
-from teleclaude.snippet_roots import iter_snippet_roots, snippet_files  # pylint: disable=wrong-import-position
+from teleclaude.docs_index import write_third_party_index_yaml
+from teleclaude.required_reads import extract_required_reads, normalize_required_refs
+from teleclaude.resource_validation import resolve_ref_path, validate_artifact
+from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 
 Transform = Callable[[Post], str]
 
@@ -115,7 +108,7 @@ def _split_frontmatter_block(content: str) -> tuple[str, str, bool]:
     return header, body, True
 
 
-def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:  # pylint: disable=too-many-locals
+def _normalize_frontmatter_single_quotes_for_codex(content: str) -> str:
     """Normalize Codex frontmatter scalars to explicit single-quoted values.
 
     Note: GitHub issue openai/codex#11495 tracks removal of this workaround.
@@ -324,7 +317,7 @@ def _filter_frontmatter(metadata: ArtifactFrontmatter, agent_name: str) -> Artif
     return filtered
 
 
-def _prepare_post(  # pylint: disable=too-many-arguments
+def _prepare_post(
     post: Post,
     *,
     agent_prefix: str,
@@ -512,15 +505,11 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
     return EXEC_DIRECTIVE_RE.sub(_run, content)
 
 
-def expand_inline_refs(  # pylint: disable=too-many-statements
-    content: str, *, project_root: Path, current_path: Path, warn_only: bool = False
-) -> str:
+def expand_inline_refs(content: str, *, project_root: Path, current_path: Path, warn_only: bool = False) -> str:
     """Inline @path.md references into the content (Codex speedup)."""
     seen: set[Path] = set()
 
-    def _expand_document(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-statements
-        text: str, *, current_path: Path, depth: int
-    ) -> str:
+    def _expand_document(text: str, *, current_path: Path, depth: int) -> str:
         if depth <= 0:
             return text
 
@@ -715,7 +704,7 @@ def _resolve_git_common_root(project_root: Path) -> Path:
     return common_path.parent
 
 
-def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def main() -> None:  # noqa: C901
     """Transpile and optionally deploy agent artifacts for supported CLIs."""
     parser = argparse.ArgumentParser(description="Transpile and distribute agent markdown files.")
     parser.add_argument("--deploy", action="store_true", help="Sync generated files to their locations.")
@@ -879,7 +868,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
     global_sources = _existing_sources(global_sources)
     local_sources = _existing_sources(local_sources)
 
-    def _validate_sources(sources: list[dict[str, str]]) -> list[str]:  # pylint: disable=too-many-branches
+    def _validate_sources(sources: list[dict[str, str]]) -> list[str]:
         errors: list[str] = []
         artifact_items: dict[str, list[str]] = {spec.name: [] for spec in artifact_specs}
         for source in sources:
@@ -919,7 +908,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
                     validate_artifact(post, item_path, kind=spec.artifact_kind, project_root=Path(project_root))
                     if spec.kind == "skill":
                         resolve_skill_name(post, item)
-                except Exception as e:  # pylint: disable=broad-exception-caught
+                except Exception as e:
                     errors.append(str(e))
         return errors
 
@@ -939,7 +928,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
         shutil.rmtree(dist_dir)
     os.makedirs(dist_dir)
 
-    def _run_phase(  # noqa: C901  # pylint: disable=too-many-arguments,too-many-locals,too-many-branches,too-many-statements
+    def _run_phase(  # noqa: C901
         *,
         sources: list[dict[str, str]],
         prefix_root: str,
@@ -1098,7 +1087,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
                                         shutil.copytree(src_entry, dst_entry)
                                     else:
                                         shutil.copy2(src_entry, dst_entry)
-                        except Exception as e:  # pylint: disable=broad-exception-caught
+                        except Exception as e:
                             print(f"Error processing {spec.name} item {item} for agent {agent_name}: {e}")
 
             built_agents.append(agent_name)
@@ -1172,7 +1161,7 @@ def main() -> None:  # noqa: C901  # pylint: disable=too-many-locals,too-many-br
             try:
                 dst_path.symlink_to(src_path)
                 print(f"  Synced: {dst_path} -> {src_path}")
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 print(f"  Error syncing {entry}: {e}")
 
         # Generate index.yaml for global third-party docs

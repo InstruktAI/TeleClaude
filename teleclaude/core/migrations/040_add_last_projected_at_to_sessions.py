@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name,unused-argument
 """Add last_projected_at column to sessions table.
 
 Projection-owned watermark: only the transcript projector writes this field.

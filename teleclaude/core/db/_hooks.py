@@ -1,7 +1,5 @@
 """Mixin: DbHooksMixin."""
 
-# pylint: disable=no-member  # SQLModel columns expose SQLAlchemy comparators dynamically.
-
 import json
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -27,7 +25,7 @@ class DbHooksMixin:
     """Agent availability and hook outbox persistence helpers."""
 
     @staticmethod
-    def _emit_agent_availability_event(  # pylint: disable=too-many-arguments
+    def _emit_agent_availability_event(
         *,
         agent: str,
         available: bool | None,

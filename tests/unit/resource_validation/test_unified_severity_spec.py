@@ -1,6 +1,6 @@
 # guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportUnknownLambdaType=false
-# pylint: disable=import-outside-toplevel,protected-access
+
 """Test spec for R1: Unified validation severity.
 
 The resource validation pipeline must use a single severity level for all
@@ -38,14 +38,18 @@ from pathlib import Path
 
 import pytest
 
+import teleclaude.resource_validation as rv
+from teleclaude import sync
+from teleclaude.resource_validation import _models as m
+from teleclaude.resource_validation import _models as resource_models
+from teleclaude.resource_validation import _snippet
+
 
 class TestUnifiedSeverityAPI:
     """R1: The module exposes a single collection, retrieval, and clear function."""
 
     def test_error_function_records_findings(self) -> None:
         """Single collection function records validation findings as errors."""
-        from teleclaude.resource_validation import _models as m
-
         m.clear_errors()
 
         m._error("test_code", path="docs/a.md", reason="test")
@@ -60,8 +64,6 @@ class TestUnifiedSeverityAPI:
 
     def test_clear_errors_empties_collection(self) -> None:
         """Single clear function empties the findings collection."""
-        from teleclaude.resource_validation import _models as m
-
         m.clear_errors()
         m._error("code_a", path="docs/a.md")
         m._error("code_b", path="docs/b.md")
@@ -74,8 +76,6 @@ class TestUnifiedSeverityAPI:
 
     def test_get_errors_returns_copy(self) -> None:
         """Retrieval function returns a copy, not a reference to internal state."""
-        from teleclaude.resource_validation import _models as m
-
         m.clear_errors()
         m._error("code_x", path="docs/x.md")
 
@@ -88,8 +88,6 @@ class TestUnifiedSeverityAPI:
 
     def test_extra_kwargs_preserved_in_findings(self) -> None:
         """Arbitrary keyword arguments are preserved in the finding dict."""
-        from teleclaude.resource_validation import _models as m
-
         m.clear_errors()
         m._error("ref_broken", path="docs/a.md", ref="@docs/b.md", resolved="/tmp/b.md")
 
@@ -105,26 +103,18 @@ class TestWarningAPIRemoved:
 
     def test_warn_function_removed(self) -> None:
         """``_warn()`` is no longer exposed — all findings use ``_error()``."""
-        from teleclaude.resource_validation import _models as m
-
         assert not hasattr(m, "_warn"), "_warn should be removed; all findings are errors"
 
     def test_get_warnings_removed(self) -> None:
         """``get_warnings()`` is no longer exposed."""
-        from teleclaude.resource_validation import _models as m
-
         assert not hasattr(m, "get_warnings"), "get_warnings should be removed"
 
     def test_get_warnings_removed_from_package(self) -> None:
         """``get_warnings()`` is no longer re-exported from the package surface."""
-        import teleclaude.resource_validation as rv
-
         assert not hasattr(rv, "get_warnings"), "resource_validation must not expose get_warnings"
 
     def test_clear_warnings_removed(self) -> None:
         """``clear_warnings()`` is no longer exposed — use ``clear_errors()``."""
-        from teleclaude.resource_validation import _models as m
-
         assert not hasattr(m, "clear_warnings"), "clear_warnings should be removed; use clear_errors"
 
 
@@ -136,9 +126,6 @@ class TestThirdPartyValidationUsesErrors:
 
     def test_non_url_source_reported_as_error(self, tmp_path: Path) -> None:
         """Invalid third-party sources produce error findings, not warnings."""
-        from teleclaude.resource_validation import _models as resource_models
-        from teleclaude.resource_validation import _snippet
-
         resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
@@ -169,9 +156,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """When ``warn_only=True``, sync returns True even if findings exist."""
-        from teleclaude import sync
-        from teleclaude.resource_validation import _models as m
-
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_third_party_docs", lambda _pr: None)
@@ -197,9 +181,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """When ``warn_only=False``, sync returns False if findings exist."""
-        from teleclaude import sync
-        from teleclaude.resource_validation import _models as m
-
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_third_party_docs", lambda _pr: None)

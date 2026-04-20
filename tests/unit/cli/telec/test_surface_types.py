@@ -8,8 +8,6 @@ from teleclaude.constants import HUMAN_ROLE_MEMBER, ROLE_SYSTEM
 
 surface_types = importlib.import_module("teleclaude.cli.telec.surface_types")
 
-# pylint: disable=missing-function-docstring,protected-access
-
 
 def test_command_auth_prefers_system_roles_for_agent_callers() -> None:
     auth = surface_types.CommandAuth(system=frozenset({"orch"}), human=frozenset({"member"}))

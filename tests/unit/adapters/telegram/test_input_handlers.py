@@ -62,10 +62,6 @@ class _StubInputHandlers(InputHandlersMixin):
         self.sent_messages.append((message_thread_id, text, parse_mode, reply_markup))
         return MagicMock()
 
-    async def handle_help(self, update: object, context: object) -> None:
-        """Expose the mixin boundary without calling a protected method from tests."""
-        await self._handle_help(update, context)
-
 
 # ---------------------------------------------------------------------------
 # FILE_SUBDIR mapping
@@ -186,40 +182,6 @@ def test_describe_update_extras_returns_poll_update_when_present():
     update.poll = MagicMock()
     result = _describe_update_extras(update)
     assert "poll update" in result
-
-
-# ---------------------------------------------------------------------------
-# _handle_help
-# ---------------------------------------------------------------------------
-
-
-async def test_handle_help_ignores_users_outside_whitelist():
-    """Help handler ignores callers outside the whitelist."""
-    handler = _StubInputHandlers()
-    update = MagicMock()
-    update.effective_user = MagicMock(id=99)
-    update.effective_message = MagicMock(message_thread_id=13)
-
-    await handler.handle_help(update, MagicMock())
-
-    assert not handler.sent_messages
-
-
-async def test_handle_help_sends_help_text_to_whitelisted_user():
-    """Help handler responds to whitelisted callers."""
-    handler = _StubInputHandlers()
-    update = MagicMock()
-    update.effective_user = MagicMock(id=7)
-    update.effective_message = MagicMock(message_thread_id=13)
-
-    await handler.handle_help(update, MagicMock())
-
-    assert len(handler.sent_messages) == 1
-    message_thread_id, text, parse_mode, reply_markup = handler.sent_messages[0]
-    assert message_thread_id == 13
-    assert text
-    assert parse_mode is None
-    assert reply_markup is None
 
 
 async def test_handle_text_message_dispatches_typed_actor_metadata() -> None:

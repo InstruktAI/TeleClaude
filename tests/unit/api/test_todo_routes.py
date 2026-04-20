@@ -16,6 +16,9 @@ from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity
+from teleclaude.api_models import TodoDumpRequest
+from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.state_value import StateValue
 
 
@@ -185,16 +188,14 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_mark_phase_writes_prepare_phase_and_returns_updated_state(self) -> None:
         """PreparePhase values write state['prepare_phase'] and the route returns the new state."""
-        from teleclaude.core.next_machine._types import PreparePhase
-
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
             captured["state"] = dict(state)
 
         with (
-            patch("teleclaude.core.next_machine.state_io.write_phase_state", _fake_write),
-            patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"kind": "bug"}),
+            patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
+            patch("teleclaude.api.todo_routes.read_phase_state", return_value={"kind": "bug"}),
         ):
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
@@ -215,16 +216,14 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_mark_phase_writes_work_phase_when_value_matches_work_enum(self) -> None:
         """WorkPhase values write state['work_phase']."""
-        from teleclaude.core.next_machine._types import WorkPhase
-
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
             captured["state"] = dict(state)
 
         with (
-            patch("teleclaude.core.next_machine.state_io.write_phase_state", _fake_write),
-            patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={}),
+            patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
+            patch("teleclaude.api.todo_routes.read_phase_state", return_value={}),
         ):
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
@@ -240,70 +239,45 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_todo_remove_skips_cleanup_for_draft_todos(self) -> None:
-        """Draft todos should not trigger worktree/branch cleanup on removal."""
-        mock_session = AsyncMock()
-        mock_session.begin = asynccontextmanager(async_begin)
+    async def test_todo_remove_returns_receipt(self) -> None:
+        """POST /todos/remove returns a 202 receipt via the operations service."""
+        mock_operations = AsyncMock()
+        mock_operations.submit_todo_remove = AsyncMock(
+            return_value={
+                "operation_id": "op-123",
+                "kind": "todo_remove",
+                "state": "queued",
+                "poll_after_ms": 250,
+                "status_path": "/operations/op-123",
+                "recovery_command": "telec operations get op-123",
+            }
+        )
 
-        mock_db = AsyncMock()
-        mock_db.read_state = AsyncMock(return_value={"kind": "draft"})
-        mock_db.delete_state = AsyncMock()
-        mock_db.delete_artifacts = AsyncMock()
-        mock_db.remove_from_roadmap = AsyncMock()
-        mock_db.clean_dep_references = AsyncMock()
-        mock_db._on_mutation = MagicMock()
-        mock_db._session = lambda: _async_ctx(mock_session)
+        with patch("teleclaude.api.todo_routes.get_operations_service", return_value=mock_operations):
+            response = await todo_routes.todo_remove(
+                slug="test-slug",
+                cwd="/repo",
+                client_request_id="req-1",
+                identity=MagicMock(session_id="session-1"),
+            )
 
-        with (
-            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
-            patch("teleclaude.api.todo_routes.asyncio") as mock_asyncio,
-        ):
-            response = await todo_routes.todo_remove(slug="draft-slug", cwd="/repo")
-
-        assert response.slug == "draft-slug"
-        # cleanup_delivered_slug must NOT be called for draft todos
-        mock_asyncio.to_thread.assert_not_called()
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_todo_remove_runs_cleanup_for_non_draft_todos(self) -> None:
-        """Non-draft todos should still trigger worktree/branch cleanup on removal."""
-        mock_session = AsyncMock()
-        mock_session.begin = asynccontextmanager(async_begin)
-
-        mock_db = AsyncMock()
-        mock_db.read_state = AsyncMock(return_value={"kind": "todo"})
-        mock_db.delete_state = AsyncMock()
-        mock_db.delete_artifacts = AsyncMock()
-        mock_db.remove_from_roadmap = AsyncMock()
-        mock_db.clean_dep_references = AsyncMock()
-        mock_db._on_mutation = MagicMock()
-        mock_db._session = lambda: _async_ctx(mock_session)
-
-        mock_cleanup = MagicMock()
-
-        with (
-            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
-            patch("teleclaude.api.todo_routes.asyncio.to_thread", new_callable=AsyncMock) as mock_to_thread,
-            patch("teleclaude.core.next_machine.delivery.cleanup_delivered_slug", mock_cleanup),
-        ):
-            await todo_routes.todo_remove(slug="real-slug", cwd="/repo")
-
-        # cleanup_delivered_slug must be called for non-draft todos
-        mock_to_thread.assert_called_once()
+        assert response["operation_id"] == "op-123"
+        assert response["kind"] == "todo_remove"
+        mock_operations.submit_todo_remove.assert_awaited_once_with(
+            slug="test-slug",
+            cwd="/repo",
+            caller_session_id="session-1",
+            client_request_id="req-1",
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_todo_dump_persists_draft_kind_in_state(self, tmp_path: Path) -> None:
         """POST /todos/dump with kind='draft' must persist kind='draft' in the DB state record."""
-        from teleclaude.core.todos_db import TodosDb
-
         database = TodosDb(str(tmp_path / "todos.db"))
         await database.initialize()
         try:
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
-                from teleclaude.api_models import TodoDumpRequest
-
                 request = TodoDumpRequest(slug="my-draft", content="idea", kind="draft", cwd="/repo")
                 response = await todo_routes.todo_dump(request)
 
@@ -318,8 +292,6 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_mark_phase_rejects_unknown_phase_value_with_400(self) -> None:
         """Unknown phase values yield HTTP 400 and list both enums' valid values."""
-        from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
-
         with pytest.raises(HTTPException) as exc_info:
             await todo_routes.mark_phase(
                 slug="chartest-api-routes",

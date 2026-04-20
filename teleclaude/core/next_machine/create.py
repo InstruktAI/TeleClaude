@@ -16,13 +16,11 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
-from teleclaude.core.next_machine.runtime.sessions import (
-    find_all_live_sessions_for_slug,
-    find_live_session_for_slug,
-)
+from teleclaude.core.next_machine.runtime.sessions import find_all_live_sessions_for_slug, find_live_session_for_slug
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
 
@@ -213,9 +211,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
     return None
 
 
-async def _creative_instruction(  # pylint: disable=too-many-return-statements
-    db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str
-) -> str:
+async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
     creative_subdir = f"workspace/{slug}"
     post_block = f"WHEN WORKER IDLES:\nCall telec todo create {slug}. The state machine emits the next action."
@@ -310,8 +306,6 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     Derives creative phase from DB state and artifacts,
     returns plain text instructions for the orchestrator to execute.
     """
-    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
-
     todos_db = await get_todos_db(cwd)
 
     resolved_slug = slug or await _find_next_creative_slug(todos_db, cwd)

@@ -66,7 +66,7 @@ def _clean_message_content(
     return new_message
 
 
-def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
+def _extract_codex_reasoning_text(
     payload: Mapping[str, object],  # guard: loose-dict - External payload
 ) -> str:
     """Extract displayable reasoning text from a Codex reasoning payload.
@@ -103,7 +103,7 @@ def _extract_codex_reasoning_text(  # pylint: disable=too-many-branches
     return "\n\n".join(deduped)
 
 
-def normalize_transcript_entry_message(  # pylint: disable=too-many-return-statements
+def normalize_transcript_entry_message(
     entry: Mapping[str, object],  # guard: loose-dict - External entry
 ) -> dict[str, object] | None:  # guard: loose-dict - Normalized message
     """Normalize transcript entry variants into a message-like dict.

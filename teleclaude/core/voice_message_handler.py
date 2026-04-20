@@ -97,7 +97,7 @@ async def transcribe_voice(
             if text:
                 logger.info("STT transcribed via %s: %d chars", name, len(text))
                 return text
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             errors.append(f"{name}: {e}")
             logger.warning("STT backend %s failed: %s", name, e)
 
@@ -125,7 +125,7 @@ async def transcribe_voice_with_retry(
         try:
             text = await transcribe_voice(audio_file_path, language)
             return text, None
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             last_error = str(e).strip() or e.__class__.__name__
             if attempt < max_retries:
                 logger.warning("Transcription attempt %d failed, retrying: %s", attempt + 1, e)
@@ -180,7 +180,7 @@ async def handle_voice(
         try:
             Path(audio_path).unlink()
             logger.debug("Cleaned up voice file (rejected - no active process): %s", audio_path)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
         return None
 
@@ -206,7 +206,7 @@ async def handle_voice(
     try:
         Path(audio_path).unlink()
         logger.debug("Cleaned up voice file: %s", audio_path)
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("Failed to clean up voice file %s: %s", audio_path, e)
 
     if not text:
@@ -232,7 +232,7 @@ async def handle_voice(
     if msg_id is not None and delete_message is not None:
         try:
             await delete_message(session_id, msg_id)
-        except Exception as exc:  # pragma: no cover - best-effort cleanup  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
             logger.warning("Failed to delete transcribing message for session %s: %s", session_id, exc)
 
     logger.debug("Transcribed voice input for session %s: %s", session_id, text)

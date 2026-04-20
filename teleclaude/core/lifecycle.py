@@ -25,14 +25,17 @@ if TYPE_CHECKING:  # pragma: no cover
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.cache import DaemonCache
     from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.api_models import TodoDTO
+from teleclaude.core import command_handlers
+from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
 
 
-class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
+class DaemonLifecycle:
     """Own startup/shutdown ordering and API server restart policy."""
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         client: AdapterClient,
@@ -128,8 +131,6 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
         self._init_voice_handler()
         logger.info("Voice handler initialized")
 
-        from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
-
         logger.info("[STARTUP] Starting inbound queue manager (usually <1s)")
         await get_inbound_queue_manager().startup()
         logger.info("Inbound queue manager started")
@@ -154,7 +155,7 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
                 len(sessions),
                 config.computer.name,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Failed to warm session cache: %s", exc, exc_info=True)
             return
 
@@ -212,10 +213,8 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
     async def _warm_local_projects_cache(self) -> None:
         """Seed cache with current local projects AND todos for instant UI."""
         try:
-            from teleclaude.core import command_handlers  # pylint: disable=import-outside-toplevel
-
             projects = await command_handlers.list_projects_with_todos()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Failed to warm projects cache: %s", exc, exc_info=True)
             return
 
@@ -229,8 +228,6 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             logger.info("Seeded cache with %d local projects", len(projects))
 
         # Warm todo cache alongside projects
-        from teleclaude.api_models import TodoDTO  # pylint: disable=import-outside-toplevel
-
         todos_by_project: dict[str, list[TodoDTO]] = {}
         for p in projects:
             if p.path and p.todos:
@@ -242,8 +239,6 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
     async def shutdown(self) -> None:
         """Stop core components in a defined order."""
         try:
-            from teleclaude.core.inbound_queue import get_inbound_queue_manager  # noqa: I001  # pylint: disable=import-outside-toplevel
-
             await get_inbound_queue_manager().shutdown()
             logger.info("Inbound queue manager shut down")
         except RuntimeError:
@@ -339,6 +334,6 @@ class DaemonLifecycle:  # pylint: disable=too-many-instance-attributes
             try:
                 await api_server.restart_server()
                 return True
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("API server restart failed: %s", exc, exc_info=True)
                 return False

@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.adapters.ui_adapter."""
-# pylint: disable=protected-access,invalid-name,unused-argument,unreachable,use-implicit-booleaness-not-comparison
 
 from __future__ import annotations
 
@@ -15,13 +14,7 @@ from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.events import SessionStatusContext, SessionTitleChangedContext
-from teleclaude.core.models import (
-    ChannelMetadata,
-    CleanupTrigger,
-    MessageMetadata,
-    PeerInfo,
-    Session,
-)
+from teleclaude.core.models import ChannelMetadata, CleanupTrigger, MessageMetadata, PeerInfo, Session
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass for testing (UiAdapter is abstract in spirit)

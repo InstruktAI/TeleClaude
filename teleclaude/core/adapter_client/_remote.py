@@ -81,7 +81,7 @@ class _RemoteMixin:  # pyright: ignore[reportUnusedClass]
                         peer_dict["tmux_binary"] = peer_info.tmux_binary
                     all_peers.append(peer_dict)
                 logger.debug("Discovered %d peers from %s adapter", len(peers), adapter_type)
-            except Exception as e:  # pylint: disable=broad-exception-caught  # Adapters are isolated during discovery.
+            except Exception as e:
                 logger.error("Failed to discover peers from %s: %s", adapter_type, e)
 
         # Deduplicate by name (keep first occurrence = primary adapter wins)

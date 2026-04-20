@@ -101,7 +101,7 @@ def _strip_suggestion_segments(text: str) -> str:
     return "".join(out)
 
 
-def _extract_prompt_block(output: str) -> tuple[str, bool]:  # pylint: disable=too-many-branches,too-many-locals,too-many-return-statements
+def _extract_prompt_block(output: str) -> tuple[str, bool]:
     """Extract the current prompt block and whether a submit boundary follows it."""
     lines = output.rstrip().split("\n")
     if not lines:
@@ -180,11 +180,11 @@ def _find_recent_tool_action(output: str) -> tuple[str, str, str] | None:  # pyr
 
         def _preview_for(action: str) -> str:
             detail = ""
-            if action_word and tail.startswith(action_word):  # pylint: disable=cell-var-from-loop
-                detail = tail[len(action_word) :].strip()  # pylint: disable=cell-var-from-loop
+            if action_word and tail.startswith(action_word):
+                detail = tail[len(action_word) :].strip()
 
             if not detail:
-                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):  # pylint: disable=cell-var-from-loop
+                for continuation_idx in range(idx + 1, min(len(lines), idx + 4)):
                     continuation = _strip_ansi(lines[continuation_idx]).strip()
                     if not continuation:
                         continue

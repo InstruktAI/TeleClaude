@@ -494,7 +494,7 @@ class TestResolveAdminOutputTarget:
         session = _make_session(last_input_origin="discord")
         client.register_adapter("discord", _make_ui_adapter())
 
-        target = client._resolve_admin_output_target(session, "discord")  # pylint: disable=protected-access
+        target = client._resolve_admin_output_target(session, "discord")
 
         assert target is None
 
@@ -505,7 +505,7 @@ class TestResolveAdminOutputTarget:
         client.register_adapter("telegram", _make_ui_adapter())
         client.register_adapter("discord", _make_ui_adapter())
 
-        target = client._resolve_admin_output_target(session, "telegram")  # pylint: disable=protected-access
+        target = client._resolve_admin_output_target(session, "telegram")
 
         assert target == "discord"
 
@@ -515,7 +515,7 @@ class TestResolveAdminOutputTarget:
         session = _make_session(last_input_origin="telegram")
         client.register_adapter("telegram", _make_ui_adapter())
 
-        target = client._resolve_admin_output_target(session, "telegram")  # pylint: disable=protected-access
+        target = client._resolve_admin_output_target(session, "telegram")
 
         assert target is None
 

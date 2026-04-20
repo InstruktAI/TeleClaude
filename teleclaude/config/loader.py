@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 from pydantic import BaseModel
 
 from teleclaude.config.schema import AppConfig, GlobalConfig, PersonConfig, ProjectConfig
+from teleclaude.paths import GLOBAL_CONFIG_PATH
 from teleclaude.utils import expand_env_vars
 
 logger = get_logger(__name__)
@@ -84,8 +85,6 @@ def save_project_config(path: Path, config: ProjectConfig) -> None:
 def load_global_config(path: Path | None = None) -> GlobalConfig:
     """Load global-level configuration."""
     if path is None:
-        from teleclaude.paths import GLOBAL_CONFIG_PATH  # pylint: disable=import-outside-toplevel
-
         path = GLOBAL_CONFIG_PATH
     return load_config(path, GlobalConfig)
 

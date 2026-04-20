@@ -1,5 +1,5 @@
 # pyright: reportUnknownLambdaType=false
-# pylint: disable=unused-argument,protected-access,useless-return
+
 """Characterization tests for teleclaude.history.search."""
 
 from __future__ import annotations

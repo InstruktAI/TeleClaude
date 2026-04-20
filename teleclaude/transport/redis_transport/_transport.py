@@ -36,7 +36,6 @@ logger = get_logger(__name__)
 
 
 class RedisTransport(  # pyright: ignore[reportIncompatibleMethodOverride]
-    # pylint: disable=too-many-ancestors,too-many-instance-attributes  # Redis transport requires mixins and state
     _ConnectionMixin,
     _RefreshMixin,
     _MessagingMixin,

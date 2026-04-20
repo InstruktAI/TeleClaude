@@ -12,6 +12,8 @@ import pytest
 from fastapi import BackgroundTasks
 
 from teleclaude.api import jobs_routes
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import JobCompletedPayload, JobFailedPayload, JobStartedPayload
 
 
 async def _run_sync_immediately(func: Callable[[], object]) -> object:
@@ -77,9 +79,6 @@ class TestJobsRoutes:
         A regression that removes either emit call would pass the HTTP-shape test above
         but fail here — this is the exact failure mode that caused C-4 in review round 1.
         """
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import JobCompletedPayload, JobStartedPayload
-
         background_tasks = BackgroundTasks()
         emitted: list[tuple[str, object]] = []
 
@@ -110,9 +109,6 @@ class TestJobsRoutes:
     @pytest.mark.asyncio
     async def test_run_job_background_task_emits_failed_event_on_error(self) -> None:
         """The job background closure emits job.started then job.failed when the runner raises."""
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import JobFailedPayload, JobStartedPayload
-
         background_tasks = BackgroundTasks()
         emitted: list[tuple[str, object]] = []
 

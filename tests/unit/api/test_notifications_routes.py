@@ -8,6 +8,8 @@ import pytest
 from fastapi import HTTPException
 
 from teleclaude.api import notifications_routes
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import NotificationClaimedPayload, NotificationResolvedPayload
 
 
 @pytest.fixture
@@ -95,9 +97,6 @@ class TestNotificationsRoutes:
 
         A regression removing the emit call would not break the HTTP-shape tests above.
         """
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import NotificationClaimedPayload
-
         emitted: list[tuple[str, object]] = []
 
         def capture_emit(event: str, context: object) -> None:
@@ -117,9 +116,6 @@ class TestNotificationsRoutes:
     @pytest.mark.asyncio
     async def test_resolve_notification_emits_resolved_event(self, configured_event_db: object) -> None:
         """resolve_notification emits NotificationResolvedPayload with the notification ID."""
-        from teleclaude.core.event_bus import event_bus
-        from teleclaude.core.events import NotificationResolvedPayload
-
         emitted: list[tuple[str, object]] = []
 
         def capture_emit(event: str, context: object) -> None:

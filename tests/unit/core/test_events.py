@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from typing import get_args
+
 import pytest
 
 from teleclaude.core.events import (
     AgentHookEvents,
     AgentOutputPayload,
     AgentStopPayload,
+    EventType,
+    TeleClaudeEvents,
     build_agent_payload,
     parse_command_string,
 )
@@ -107,17 +111,11 @@ class TestEventsReadinessSpec:
 
     def test_teleclaude_events_has_readiness_types(self):
         """TeleClaudeEvents must have AGENT_READY and AGENT_READINESS_TIMEOUT."""
-        from teleclaude.core.events import TeleClaudeEvents
-
         assert getattr(TeleClaudeEvents, "AGENT_READY", None) == "agent_ready"
         assert getattr(TeleClaudeEvents, "AGENT_READINESS_TIMEOUT", None) == "agent_readiness_timeout"
 
     def test_event_type_includes_readiness_types(self):
         """EventType literal must include readiness types for type-safety."""
-        from typing import get_args
-
-        from teleclaude.core.events import EventType
-
         allowed_types = get_args(EventType)
         assert "agent_ready" in allowed_types
         assert "agent_readiness_timeout" in allowed_types

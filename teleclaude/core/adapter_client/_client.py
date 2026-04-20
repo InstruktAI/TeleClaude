@@ -182,7 +182,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
             else:
                 logger.info("%s adapter stopped", adapter_type)
 
-    async def _fanout_excluding(  # pylint: disable=arguments-differ  # Mixin stubs describe the composed interface for type checkers.
+    async def _fanout_excluding(
         self,
         session: "Session",
         operation: str,
@@ -227,7 +227,7 @@ class AdapterRuntime(_OutputMixin, _ChannelsMixin, _RemoteMixin):
                         "UI adapter %s completed %s for session %s", adapter_type, operation, session.session_id
                     )
 
-    async def _route_to_ui(  # pylint: disable=arguments-differ  # Mixin stubs describe the composed interface for type checkers.
+    async def _route_to_ui(
         self,
         session: "Session",
         method: str,

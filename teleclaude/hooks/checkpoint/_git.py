@@ -1,7 +1,5 @@
 """Git diff analysis, file categorization, and shell parsing utilities."""
 
-# pylint: disable=broad-exception-caught,subprocess-run-check,too-many-return-statements,too-many-branches,too-many-nested-blocks
-
 import re
 import shlex
 from collections.abc import Mapping
@@ -10,11 +8,7 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import (
-    CHECKPOINT_FILE_CATEGORIES,
-    CHECKPOINT_NO_ACTION_PATTERNS,
-    FileCategory,
-)
+from teleclaude.constants import CHECKPOINT_FILE_CATEGORIES, CHECKPOINT_NO_ACTION_PATTERNS, FileCategory
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.hooks.checkpoint._models import TranscriptObservability
 from teleclaude.utils.transcript import TurnTimeline

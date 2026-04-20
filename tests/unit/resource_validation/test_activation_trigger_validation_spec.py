@@ -1,6 +1,5 @@
 # guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
-# pylint: disable=import-outside-toplevel
 """Test spec for R2: ``activation_trigger`` frontmatter field validation.
 
 Procedure snippets may declare an optional ``activation_trigger`` field.
@@ -20,6 +19,9 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+
+from teleclaude.resource_validation import _models as m
+from teleclaude.resource_validation._snippet import validate_snippet
 
 
 def _make_snippet(
@@ -69,9 +71,6 @@ class TestActivationTriggerAcceptedOnProcedure:
 
     def test_procedure_with_valid_activation_trigger_produces_no_error(self, tmp_path: Path) -> None:
         """A procedure snippet with a non-empty string ``activation_trigger`` passes validation."""
-        from teleclaude.resource_validation import _models as m
-        from teleclaude.resource_validation._snippet import validate_snippet
-
         m.clear_errors()
 
         path, content = _make_snippet(
@@ -97,9 +96,6 @@ class TestActivationTriggerRejectedOnNonProcedure:
     @pytest.mark.parametrize("snippet_type", ["policy", "spec", "principle", "concept", "design"])
     def test_non_procedure_with_activation_trigger_produces_error(self, tmp_path: Path, snippet_type: str) -> None:
         """Non-procedure snippet types must not declare ``activation_trigger``."""
-        from teleclaude.resource_validation import _models as m
-        from teleclaude.resource_validation._snippet import validate_snippet
-
         m.clear_errors()
 
         path, content = _make_snippet(
@@ -122,9 +118,6 @@ class TestActivationTriggerRejectedOnInvalidValues:
 
     def test_empty_string_activation_trigger_produces_error(self, tmp_path: Path) -> None:
         """An empty string ``activation_trigger`` is rejected."""
-        from teleclaude.resource_validation import _models as m
-        from teleclaude.resource_validation._snippet import validate_snippet
-
         m.clear_errors()
 
         path, content = _make_snippet(
@@ -143,9 +136,6 @@ class TestActivationTriggerRejectedOnInvalidValues:
 
     def test_non_string_activation_trigger_produces_error(self, tmp_path: Path) -> None:
         """A non-string ``activation_trigger`` value (e.g., integer) is rejected."""
-        from teleclaude.resource_validation import _models as m
-        from teleclaude.resource_validation._snippet import validate_snippet
-
         m.clear_errors()
 
         path, content = _make_snippet(

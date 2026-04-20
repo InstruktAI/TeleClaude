@@ -5,11 +5,12 @@ import subprocess
 import tempfile
 
 from instrukt_ai_logging import get_logger
+from openai import OpenAI
 
 logger = get_logger(__name__)
 
 
-class OpenAITTSBackend:  # pylint: disable=too-few-public-methods
+class OpenAITTSBackend:
     """OpenAI TTS using gpt-4o-mini-tts model."""
 
     def speak(self, text: str, voice_name: str | None = None) -> bool:
@@ -24,8 +25,6 @@ class OpenAITTSBackend:  # pylint: disable=too-few-public-methods
             True if successful, False otherwise
         """
         try:
-            from openai import OpenAI  # pylint: disable=import-outside-toplevel
-
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
                 logger.debug("OPENAI_API_KEY not set")
@@ -47,7 +46,7 @@ class OpenAITTSBackend:  # pylint: disable=too-few-public-methods
             try:
                 response.write_to_file(tmp_path)
                 subprocess.run(["afplay", tmp_path], check=True, capture_output=True, timeout=300)
-                logger.debug(f"OpenAI: spoke {len(text)} chars with voice {voice}")  # pylint: disable=logging-fstring-interpolation
+                logger.debug(f"OpenAI: spoke {len(text)} chars with voice {voice}")
                 return True
             finally:
                 # Clean up temp file
@@ -60,6 +59,6 @@ class OpenAITTSBackend:  # pylint: disable=too-few-public-methods
         except FileNotFoundError:
             logger.debug("afplay command not found (not on macOS?)")
             return False
-        except Exception as e:  # pylint: disable=broad-exception-caught
-            logger.debug(f"OpenAI TTS failed: {e}")  # pylint: disable=logging-fstring-interpolation
+        except Exception as e:
+            logger.debug(f"OpenAI TTS failed: {e}")
             return False

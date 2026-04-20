@@ -39,7 +39,7 @@ class WhatsAppDeliveryAdapter:
         level: int,
         was_created: bool,
         _is_meaningful: bool,
-    ) -> None:  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    ) -> None:
         """Deliver a notification callback to WhatsApp when it meets the level threshold."""
         if not was_created:
             return
@@ -50,7 +50,7 @@ class WhatsAppDeliveryAdapter:
         try:
             message = f"[{event_type}] Notification #{notification_id} created."
             await self._send_fn(phone_number=self._phone_number, content=message)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception(
                 "WhatsAppDeliveryAdapter failed to send",
                 event_type=event_type,

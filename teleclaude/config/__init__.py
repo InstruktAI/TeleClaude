@@ -66,8 +66,7 @@ class PollingConfig:
 
 
 @dataclass
-class ComputerConfig:  # pylint: disable=missing-class-docstring
-    # pylint: disable=too-many-instance-attributes  # Config classes naturally have many fields
+class ComputerConfig:
     name: str
     user: str
     role: str
@@ -91,7 +90,7 @@ class ComputerConfig:  # pylint: disable=missing-class-docstring
 
 
 @dataclass
-class AgentConfig:  # pylint: disable=too-many-instance-attributes
+class AgentConfig:
     """Configuration for a specific AI agent."""
 
     binary: str  # Resolved by runtime policy (not user-configurable)
@@ -121,7 +120,7 @@ class AgentConfig:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
-class RedisConfig:  # pylint: disable=too-many-instance-attributes
+class RedisConfig:
     """Redis configuration with user-configurable and internal settings."""
 
     enabled: bool
@@ -135,7 +134,7 @@ class RedisConfig:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass
-class TelegramQoSConfig:  # pylint: disable=too-many-instance-attributes
+class TelegramQoSConfig:
     """QoS configuration for Telegram output pacing and coalescing."""
 
     enabled: bool = True
@@ -174,7 +173,6 @@ class TelegramConfig:
 class DiscordConfig:
     """Discord adapter configuration."""
 
-    # pylint: disable=too-many-instance-attributes
     enabled: bool
     token: str | None
     guild_id: int | None
@@ -192,7 +190,6 @@ class DiscordConfig:
 class WhatsAppConfig:
     """WhatsApp adapter configuration."""
 
-    # pylint: disable=too-many-instance-attributes
     enabled: bool = False
     phone_number_id: str | None = None
     access_token: str | None = None
@@ -320,7 +317,6 @@ class CredsConfig:
 class Config:
     """Top-level application configuration."""
 
-    # pylint: disable=too-many-instance-attributes
     computer: ComputerConfig
     polling: PollingConfig
     redis: RedisConfig
@@ -526,7 +522,7 @@ def _parse_categories(raw: object) -> dict[str, int] | None:
     return result or None
 
 
-def _parse_trusted_dirs(  # pylint: disable=too-many-locals,too-many-nested-blocks
+def _parse_trusted_dirs(
     raw_dirs: list[object],
 ) -> list[TrustedDir]:
     """Parse trusted_dirs from config.
@@ -684,7 +680,7 @@ def _parse_optional_int(value: object) -> int | None:
     return None
 
 
-def _build_config(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
+def _build_config(
     raw: dict[str, object],  # guard: loose-dict - YAML deserialization input
 ) -> Config:
     """Build typed Config from raw dict with proper type conversion."""

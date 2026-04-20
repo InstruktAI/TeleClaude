@@ -8,12 +8,11 @@ from pathlib import Path
 import pytest
 
 import teleclaude.session_scoping._store as store_module
+from teleclaude.git import _find_real_git
 from teleclaude.session_scoping import resolve_scoped_paths
 
 
 def _run_git(args: list[str], cwd: Path) -> None:
-    from teleclaude.git import _find_real_git  # pylint: disable=import-outside-toplevel
-
     subprocess.run([_find_real_git(), *args], cwd=cwd, check=True, capture_output=True, text=True)
 
 

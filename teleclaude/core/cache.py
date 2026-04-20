@@ -3,6 +3,7 @@
 Provides instant reads for API endpoints and emits change events when data updates.
 """
 
+import asyncio
 import hashlib
 import json
 from collections.abc import Callable
@@ -12,13 +13,15 @@ from datetime import UTC, datetime
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.config import config
 from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
+from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 
 logger = get_logger(__name__)
 
 
-class CachedItem[T]:  # pylint: disable=too-few-public-methods
+class CachedItem[T]:
     """Wrapper for cached items with timestamp tracking."""
 
     def __init__(self, data: T, cached_at: datetime | None = None) -> None:
@@ -58,7 +61,7 @@ class TodoCacheEntry:
     todos: list[TodoDTO]
 
 
-class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-public-methods
+class DaemonCache:
     """Central cache for remote data with TTL management.
 
     Data categories:
@@ -87,7 +90,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         # Session cache: key = session_id
         self._sessions: dict[str, CachedItem[SessionSnapshot]] = {}
 
-        # Todo cache: key = f"{computer}:{project_path}"  # pylint: disable=fixme
+        # Todo cache: key = f"{computer}:{project_path}"
         self._todos: dict[str, CachedItem[list[TodoDTO]]] = {}
 
         # Snapshot fingerprints + versions (per computer)
@@ -116,7 +119,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
             return
         try:
             self._on_stale_read(resource_type, computer)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error("on_stale_read callback failed: %s", e, exc_info=True)
 
     # ==================== TTL Management ====================
@@ -203,8 +206,6 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         Returns:
             List of session snapshot objects
         """
-        from teleclaude.config import config  # pylint: disable=import-outside-toplevel
-
         local_name = config.computer.name
         sessions = []
 
@@ -392,8 +393,6 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
             project_path: Project path
             event_hint: Granular event name (todo_created/todo_updated/todo_removed)
         """
-        from teleclaude.core import command_handlers  # pylint: disable=import-outside-toplevel
-
         todos = await command_handlers.list_todos(project_path)
         self.set_todos(computer, project_path, todos, event_name=event_hint)
 
@@ -586,8 +585,6 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
         """
         if not self._subscribers:
             return
-        import asyncio  # pylint: disable=import-outside-toplevel
-
         logger.debug("Cache notification: event=%s, subscribers=%d", event, len(self._subscribers))
         try:
             loop = asyncio.get_running_loop()
@@ -596,7 +593,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
             for callback in self._subscribers:
                 try:
                     callback(event, data)
-                except Exception as e:  # pylint: disable=broad-exception-caught
+                except Exception as e:
                     logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
             return
 
@@ -605,7 +602,7 @@ class DaemonCache:  # pylint: disable=too-many-instance-attributes,too-many-publ
             def _safe_call(cb: Callable[[str, object], None] = callback) -> None:
                 try:
                     cb(event, data)
-                except Exception as e:  # pylint: disable=broad-exception-caught
+                except Exception as e:
                     logger.error("Cache subscriber callback failed: %s", e, exc_info=True)
 
             loop.call_soon(_safe_call)

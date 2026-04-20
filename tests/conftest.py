@@ -11,6 +11,14 @@ from pathlib import Path
 
 import pytest
 
+import teleclaude.paths as tc_paths
+from teleclaude import paths
+from teleclaude.cli.tui import state_store
+from teleclaude.config import config as tc_config
+from teleclaude.core import db as db_module
+from teleclaude.core import session_cleanup, session_utils
+from teleclaude.runtime import binaries as binaries_mod
+
 _repo_root = Path(__file__).resolve().parents[1]
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
 os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
@@ -57,9 +65,6 @@ def _reset_event_bus():
 @pytest.fixture(autouse=True)
 def _isolate_tui_state(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch):  # type: ignore[no-untyped-def]
     """Isolate TUI sticky state from user ~/.teleclaude/tui_state.json."""
-    from teleclaude import paths
-    from teleclaude.cli.tui import state_store
-
     tui_state = tmp_path / "tui_state.json"
     monkeypatch.setattr(paths, "TUI_STATE_PATH", tui_state)
     monkeypatch.setattr(state_store, "TUI_STATE_PATH", tui_state)
@@ -82,23 +87,17 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     temp_db_path = tmp_path / "teleclaude.db"
 
     try:
-        import teleclaude.paths as tc_paths
-
         monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", temp_db_path)
     except Exception:
         pass
 
     try:
-        from teleclaude.core import db as db_module
-
         db_module.db.db_path = str(temp_db_path)
     except Exception:
         pass
 
     # Isolate session workspaces for polling-related cleanup and file storage.
     try:
-        from teleclaude.core import session_cleanup, session_utils
-
         workspace_root = tmp_path / "workspace"
         monkeypatch.setattr(session_utils, "OUTPUT_DIR", workspace_root, raising=False)
         monkeypatch.setattr(session_cleanup, "OUTPUT_DIR", workspace_root, raising=False)
@@ -111,9 +110,6 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
 @pytest.fixture(autouse=True)
 def _neutralize_launcher_binaries(monkeypatch: pytest.MonkeyPatch) -> None:
     """Prevent any un-mocked subprocess call from executing real macOS launcher binaries."""
-    from teleclaude.config import config as tc_config
-    from teleclaude.runtime import binaries as binaries_mod
-
     # Neutralize already-resolved config values
     monkeypatch.setattr(tc_config.computer, "tmux_binary", "/dev/null/tmux-NEUTERED")
     for agent_cfg in tc_config.agents.values():

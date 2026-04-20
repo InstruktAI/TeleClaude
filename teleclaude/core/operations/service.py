@@ -18,22 +18,18 @@ from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.integration.state_machine import next_integrate
-from teleclaude.core.next_machine import next_create, next_prepare
+from teleclaude.core.next_machine.create import next_create
+from teleclaude.core.next_machine.prepare import next_prepare
+from teleclaude.core.next_machine.remove import execute_todo_remove
 from teleclaude.core.next_machine.work import next_work
-from teleclaude.core.operation_caller_identity import (
-    reset_caller_session_id,
-    set_caller_session_id,
-)
-from teleclaude.core.operation_progress import (
-    reset_progress_callback,
-    set_progress_callback,
-)
+from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
+from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.task_registry import TaskRegistry
 
 logger = get_logger(__name__)
 
 
-class SerializedOperation(TypedDict, total=False):  # pylint: disable=missing-class-docstring
+class SerializedOperation(TypedDict, total=False):
     operation_id: str
     kind: str
     state: str
@@ -54,21 +50,23 @@ OPERATION_KIND_TODO_WORK = "todo_work"
 OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
 OPERATION_KIND_TODO_CREATE = "todo_create"
 OPERATION_KIND_TODO_PREPARE = "todo_prepare"
+OPERATION_KIND_TODO_REMOVE = "todo_remove"
 _COMPLETION_EVENTS: dict[str, str] = {
     OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
     OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
     OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",
     OPERATION_KIND_TODO_PREPARE: "operation.todo_prepare.completed",
+    OPERATION_KIND_TODO_REMOVE: "operation.todo_remove.completed",
 }
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
 NONTERMINAL_OPERATION_STATES = {"queued", "running"}
 
-_operations_service: OperationsService | None = None  # pylint: disable=invalid-name
+_operations_service: OperationsService | None = None
 
 
 def set_operations_service(service: OperationsService) -> None:
     """Install the process-wide operations service."""
-    global _operations_service  # pylint: disable=global-statement
+    global _operations_service
     _operations_service = service
 
 
@@ -79,10 +77,10 @@ def get_operations_service() -> OperationsService:
     return _operations_service
 
 
-class OperationsService:  # pylint: disable=too-many-instance-attributes
+class OperationsService:
     """Submit, track, and inspect durable background operations."""
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         db: Db,
@@ -393,6 +391,73 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_PREPARE)
             return self._serialize_operation(created)
 
+    async def submit_todo_remove(
+        self,
+        *,
+        slug: str,
+        cwd: str,
+        caller_session_id: str,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-remove operation."""
+        lock = await self._get_submit_lock(
+            kind=OPERATION_KIND_TODO_REMOVE,
+            caller_session_id=caller_session_id,
+            cwd=cwd,
+            slug=slug,
+        )
+        async with lock:
+            if client_request_id:
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_REMOVE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is not None:
+                    return self._serialize_operation(existing)
+
+            existing = await self._db.find_matching_nonterminal_operation(
+                kind=OPERATION_KIND_TODO_REMOVE,
+                caller_session_id=caller_session_id,
+                cwd=cwd,
+                slug=slug,
+            )
+            if existing is not None:
+                if existing.state == "queued":
+                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_REMOVE)
+                return self._serialize_operation(existing)
+
+            payload_json = json.dumps(
+                {"kind": OPERATION_KIND_TODO_REMOVE, "slug": slug, "cwd": cwd},
+                sort_keys=True,
+            )
+            operation_id = str(uuid.uuid4())
+            try:
+                created = await self._db.create_operation(
+                    operation_id=operation_id,
+                    kind=OPERATION_KIND_TODO_REMOVE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                    cwd=cwd,
+                    slug=slug,
+                    payload_json=payload_json,
+                    state="queued",
+                )
+            except IntegrityError:
+                if not client_request_id:
+                    raise
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_REMOVE,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is None:
+                    raise
+                return self._serialize_operation(existing)
+
+            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_REMOVE)
+            return self._serialize_operation(created)
+
     async def get_operation_for_caller(
         self,
         *,
@@ -430,6 +495,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: lambda op: next_prepare(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_REMOVE: lambda op: execute_todo_remove(self._db, op.slug, op.cwd),
         }
         factory = factories.get(kind)
         if factory is None:
@@ -445,7 +511,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
             )
             self._live_tasks[operation_id] = task
 
-    async def _run_operation(  # pylint: disable=too-many-locals
+    async def _run_operation(
         self,
         operation_id: str,
         kind: str,
@@ -502,7 +568,7 @@ class OperationsService:  # pylint: disable=too-many-instance-attributes
                 state="stale",
             )
             raise
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             await self._db.fail_operation(
                 operation_id,
                 f"{type(exc).__name__}: {exc}",

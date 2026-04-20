@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import importlib
+
 from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.cli.telec.help import _usage
+from teleclaude.history.search import display_combined_history, parse_agents, show_transcript
+from teleclaude.mirrors.store import list_mirrors
 
 __all__ = [
     "_handle_history",
@@ -19,8 +23,6 @@ def resolve_cli_caller_role() -> str | None:
     if not email:
         return None
     try:
-        import importlib  # pylint: disable=import-outside-toplevel
-
         global_cfg = importlib.import_module("teleclaude.config.loader").load_global_config()
     except (AttributeError, ImportError, OSError, TypeError, ValueError):
         return None
@@ -53,10 +55,8 @@ def _handle_history(args: list[str]) -> None:
         raise SystemExit(1)
 
 
-def _handle_history_list(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
+def _handle_history_list(args: list[str]) -> None:
     """Handle telec history list."""
-    from teleclaude.mirrors.store import list_mirrors  # pylint: disable=import-outside-toplevel
-
     identity: str | None = None
     project: str | None = None
     limit = 20
@@ -127,13 +127,8 @@ def _handle_history_list(args: list[str]) -> None:  # pylint: disable=too-many-b
         )
 
 
-def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
+def _handle_history_search(args: list[str]) -> None:
     """Handle telec history search."""
-    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
-        display_combined_history,
-        parse_agents,
-    )
-
     agent_arg = "all"
     limit = 20
     computers: list[str] = []
@@ -198,13 +193,8 @@ def _handle_history_search(args: list[str]) -> None:  # pylint: disable=too-many
     )
 
 
-def _handle_history_show(args: list[str]) -> None:  # pylint: disable=too-many-branches,too-many-statements
+def _handle_history_show(args: list[str]) -> None:
     """Handle telec history show."""
-    from teleclaude.history.search import (  # pylint: disable=import-outside-toplevel
-        parse_agents,
-        show_transcript,
-    )
-
     agent_arg = "all"
     thinking = False
     raw = False

@@ -14,7 +14,7 @@ from teleclaude.chiptunes.worker import _WorkerProcess
 
 
 class _ImmediateThread:
-    def __init__(  # pylint: disable=too-many-positional-arguments
+    def __init__(
         self,
         target: Callable[..., object],
         args: tuple[object, ...] = (),
@@ -51,7 +51,7 @@ class _FakePlayer:
         self.on_track_end: Callable[[str | None], None] | None = None
         type(self).instances.append(self)
 
-    def play(  # pylint: disable=too-many-positional-arguments
+    def play(
         self,
         track: Path,
         *,

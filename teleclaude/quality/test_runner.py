@@ -23,6 +23,9 @@ from teleclaude.quality.scope import (
     typescript_files,
     validate_scoped_paths,
 )
+from teleclaude.session_identity import (
+    get_session_id,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -127,10 +130,6 @@ class TestRunner:
         Without a session identity (human/CI), fall back to configured test dirs.
         With a session identity but scope failure, exit with guidance.
         """
-        from teleclaude.session_identity import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
-            get_session_id,
-        )
-
         session_id = get_session_id()
         if not session_id:
             logger.info("No session identity — using configured test directories")

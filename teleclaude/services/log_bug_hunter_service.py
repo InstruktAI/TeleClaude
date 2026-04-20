@@ -93,7 +93,7 @@ class LogBugHunterState:
 class LogBugHunterService:
     """Checks a single project's recent logs and dispatches the bug hunter when needed."""
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         create_session: Callable[[CreateSessionCommand], Awaitable[dict[str, str]]],
@@ -207,7 +207,6 @@ class LogBugHunterService:
             CreateSessionCommand(
                 project_path=str(self._project_root),
                 origin=InputOrigin.TERMINAL.value,
-                title=f"Job: log_bug_hunter [{self._project_slug}]",
                 launch_intent=SessionLaunchIntent(
                     kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
                     agent=LOG_BUG_HUNTER_AGENT,

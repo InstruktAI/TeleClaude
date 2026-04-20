@@ -56,7 +56,7 @@ def test_load_state_round_trips_serialized_fields(tmp_path: Path) -> None:
     )
 
     service = _make_service(tmp_path)
-    state = service._state  # pylint: disable=protected-access
+    state = service._state
 
     assert state.last_checked_at == datetime(2026, 4, 6, 8, 0, tzinfo=UTC)
     assert state.last_dispatched_at == datetime(2026, 4, 6, 8, 5, tzinfo=UTC)

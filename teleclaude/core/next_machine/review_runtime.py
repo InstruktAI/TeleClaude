@@ -22,6 +22,7 @@ from teleclaude.core.next_machine.runtime.sessions import find_live_session_with
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.state_mutation import StateWriter
 
 
 def _read_build_review(state: dict[str, StateValue]) -> dict[str, StateValue]:
@@ -58,8 +59,6 @@ async def _persist_review_dispatch_metadata(
     dispatch_head: str | None = None,
 ) -> dict[str, StateValue]:
     """Persist review-dispatch bookkeeping via the validated state boundary."""
-    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-
     writer = StateWriter(state)
     if baseline_commit is not None:
         writer.state.build_review.baseline_commit = baseline_commit
@@ -71,7 +70,6 @@ async def _persist_review_dispatch_metadata(
     return state
 
 
-# pylint: disable=too-many-arguments
 async def _resolve_live_review(
     context: ReviewDispatchContext,
     state: dict[str, StateValue],
@@ -164,7 +162,6 @@ async def _reconcile_finished_review(
     return None
 
 
-# pylint: disable=too-many-locals
 async def resolve_pending_review_state(
     context: ReviewDispatchContext,
     state: dict[str, StateValue],

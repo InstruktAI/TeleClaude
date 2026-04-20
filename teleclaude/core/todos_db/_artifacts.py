@@ -28,7 +28,7 @@ def _sha256(content: str) -> str:
 class TodosDbArtifactsMixin:
     """Read, write, and version todo artifacts."""
 
-    _on_mutation: Callable[[], None]
+    _on_mutation: Callable[[str], None]
 
     async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
         """Resolve slug to roadmap id for artifact reads. Prefers active/icebox, falls back to delivered."""
@@ -98,7 +98,7 @@ class TodosDbArtifactsMixin:
             artifact = session.get(TodoArtifact, (str(roadmap_id), name))
             return artifact.content if artifact is not None else ""
 
-    async def write_artifact(  # pylint: disable=too-many-arguments
+    async def write_artifact(
         self,
         slug: str,
         name: str,
@@ -148,7 +148,7 @@ class TodosDbArtifactsMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()
@@ -207,7 +207,7 @@ class TodosDbArtifactsMixin:
                 artifact.updated_at = now
             session.add(artifact)
             session.commit()
-        self._on_mutation()
+        self._on_mutation("todo_updated")
 
     async def artifact_digest(self, slug: str, name: str) -> str:
         """Return SHA-256 digest of current artifact content. Empty string if not found."""
@@ -280,7 +280,7 @@ class TodosDbArtifactsMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation()
+                self._on_mutation("todo_updated")
         finally:
             if owns_session:
                 await db_session.close()

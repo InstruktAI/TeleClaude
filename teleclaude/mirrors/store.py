@@ -30,7 +30,7 @@ _main_ro_engines: dict[str, Engine] = {}
 
 
 @dataclass(frozen=True)
-class MirrorSearchResult:  # pylint: disable=too-many-instance-attributes
+class MirrorSearchResult:
     """A single FTS5 search hit from the mirrors table."""
 
     session_id: str
@@ -49,7 +49,7 @@ class MirrorSearchResult:  # pylint: disable=too-many-instance-attributes
 
 
 @dataclass(frozen=True)
-class MirrorRecord:  # pylint: disable=too-many-instance-attributes
+class MirrorRecord:
     """Full mirror row for a session transcript."""
 
     session_id: str
@@ -83,7 +83,7 @@ class MirrorTombstoneRecord:
 
 
 @dataclass(frozen=True)
-class SessionMirrorContext:  # pylint: disable=too-many-instance-attributes
+class SessionMirrorContext:
     """Lightweight session context looked up for mirror reconciliation."""
 
     session_id: str
@@ -362,7 +362,7 @@ def _tombstone_from_row(row: RowMapping) -> MirrorTombstoneRecord:
     )
 
 
-def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
+def search_mirrors(
     query: str,
     agents: Sequence[AgentName | str],
     *,
@@ -431,7 +431,7 @@ def search_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
     return [_mirror_search_result_from_row(row) for row in rows]
 
 
-def get_mirror(  # pylint: disable=too-many-arguments
+def get_mirror(
     session_id: str | None = None,
     *,
     db: str | Path | None = None,
@@ -631,7 +631,7 @@ def _apply_role_filter(
         params["caller_email"] = caller_email
 
 
-def list_mirrors(  # pylint: disable=too-many-arguments,too-many-locals
+def list_mirrors(
     *,
     limit: int = 20,
     project: str | None = None,

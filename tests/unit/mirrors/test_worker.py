@@ -7,14 +7,13 @@ import pytest
 
 from teleclaude.core.agents import AgentName
 from teleclaude.mirrors import worker as worker_module
+from teleclaude.mirrors.store import _connect_rw
 from teleclaude.utils.transcript_discovery import TranscriptCandidate
 
 pytestmark = pytest.mark.unit
 
 
 def _prepare_worker_db(path: Path) -> None:
-    from teleclaude.mirrors.store import _connect_rw  # pylint: disable=import-outside-toplevel
-
     _connect_rw(str(path)).close()
 
 

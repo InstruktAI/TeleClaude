@@ -53,7 +53,7 @@ def cookies_to_netscape(cookies: list[JsonDict]) -> str:
     return "\n".join(lines)
 
 
-def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statements  # Sequential pipeline is intentionally flat.
+def setup_profile(profile_dir: Path) -> bool:
     """Interactive setup: launch browser for user to log in to YouTube.
 
     Args:
@@ -120,7 +120,7 @@ def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statem
                     print(f"Captured {len(cookies)} cookies - AUTH DETECTED: {found}")
                 else:
                     print(f"Captured {len(cookies)} cookies (no auth yet): {list(cookie_names)[:5]}...")
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 pass
 
         # Capture cookies periodically and on close
@@ -130,7 +130,7 @@ def setup_profile(profile_dir: Path) -> bool:  # pylint: disable=too-many-statem
             while len(context.pages) > 0:
                 capture_cookies()  # type: ignore[no-untyped-call]
                 time.sleep(2)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             pass
 
         # Final capture attempt
@@ -221,7 +221,7 @@ def _extract_playwright_cookies(*, playwright: Any, profile_dir: Path, headless:
         print("Navigating to youtube.com...")
         try:
             page.goto("https://www.youtube.com", timeout=timeout, wait_until="networkidle")
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             print(f"Navigation warning (may still work): {exc}", file=sys.stderr)
         page.wait_for_timeout(2000)
         raw_cookies = context.cookies(["https://www.youtube.com", "https://accounts.google.com"])

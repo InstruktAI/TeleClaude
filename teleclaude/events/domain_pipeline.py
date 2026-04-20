@@ -7,12 +7,7 @@ from dataclasses import dataclass, field, fields
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.events.domain_config import (
-    AutonomyLevel,
-    AutonomyMatrix,
-    DomainConfig,
-    DomainGuardianConfig,
-)
+from teleclaude.events.domain_config import AutonomyLevel, AutonomyMatrix, DomainConfig, DomainGuardianConfig
 from teleclaude.events.domain_handlers import DomainHandlerSpec
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.events.pipeline import PipelineContext
@@ -93,7 +88,7 @@ class DomainPipeline:
 
         try:
             result = await handler.process(event, ctx)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.error(
                 "Handler '%s' in domain '%s' raised an exception: %s",
                 handler_id,

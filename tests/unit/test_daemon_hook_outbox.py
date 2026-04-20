@@ -18,7 +18,7 @@ from teleclaude.core.models import Session
 from teleclaude.transport.redis_transport import RedisTransport
 
 
-class _FakeRedisTransport(RedisTransport):  # pylint: disable=too-many-ancestors
+class _FakeRedisTransport(RedisTransport):
     """Marker subclass used for isinstance checks."""
 
 
@@ -244,7 +244,7 @@ async def test_worker_drops_stale_rows_and_increments_counter() -> None:
 
     deleted_row_ids: list[int] = []
 
-    async def fake_fetch(  # pylint: disable=unused-argument
+    async def fake_fetch(
         _now_iso: str,
         _limit: int,
         _lock_cutoff_iso: str,

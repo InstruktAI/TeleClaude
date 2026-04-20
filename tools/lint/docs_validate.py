@@ -8,12 +8,7 @@ from pathlib import Path
 
 import frontmatter
 
-from teleclaude.resource_validation import (
-    clear_errors,
-    get_errors,
-    validate_all_artifacts,
-    validate_artifact,
-)
+from teleclaude.resource_validation import clear_errors, get_errors, validate_all_artifacts, validate_artifact
 from teleclaude.resource_validation._snippet import validate_all_snippets, validate_snippet
 from teleclaude.snippet_validation import load_domains
 
@@ -119,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             with open(path, encoding="utf-8") as handle:
                 post = frontmatter.load(handle)
             validate_artifact(post, str(path), kind=artifact_kind, project_root=repo_root)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             extra_errors.append(str(exc))
 
     return _print_diagnostics(extra_errors)

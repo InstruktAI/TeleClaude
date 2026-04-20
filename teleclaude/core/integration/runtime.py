@@ -98,7 +98,6 @@ class ShadowOutcome:
 
 
 @dataclass(frozen=True)
-# pylint: disable=too-many-instance-attributes
 class IntegrationBlockedOutcome:
     """Structured blocked-outcome payload with durable evidence fields."""
 
@@ -130,7 +129,7 @@ class RuntimeDrainResult:
     lease_acquired: bool
 
 
-class MainBranchClearanceProbe:  # pylint: disable=too-few-public-methods
+class MainBranchClearanceProbe:
     """Evaluate whether canonical main is currently safe to process."""
 
     def __init__(
@@ -204,10 +203,9 @@ class _RuntimeCheckpointPayload(TypedDict):
     updated_at: str
 
 
-class IntegratorShadowRuntime:  # pylint: disable=too-many-instance-attributes
+class IntegratorShadowRuntime:
     """Drain READY candidates under a singleton lease in shadow mode."""
 
-    # pylint: disable=too-many-arguments,too-many-locals
     def __init__(
         self,
         *,

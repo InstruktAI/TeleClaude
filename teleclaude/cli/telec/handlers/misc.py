@@ -1,5 +1,4 @@
 """Miscellaneous handlers: version, sync, revive, computers, projects, tmux helpers."""
-# pylint: disable=import-outside-toplevel
 
 from __future__ import annotations
 
@@ -15,6 +14,7 @@ from teleclaude.cli.api_client import APIError, TelecAPIClient
 from teleclaude.cli.telec._shared import TMUX_ENV_KEY, TUI_ENV_KEY, TUI_SESSION_NAME, config
 from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
+from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import resolve_invocation_cwd
 
 __all__ = [
@@ -63,8 +63,6 @@ def _handle_tool_command(name: str, args: list[str]) -> None:
 
 def _git_short_commit_hash() -> str:
     """Return HEAD short hash, or 'unknown' when unavailable."""
-    from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
-
     try:
         repo = Repo(resolve_invocation_cwd(), search_parent_directories=True)
         short_hash = repo.head.commit.hexsha[:7]

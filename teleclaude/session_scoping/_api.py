@@ -14,7 +14,7 @@ logger = get_logger(__name__)
 __all__ = ["resolve_scoped_paths"]
 
 
-def resolve_scoped_paths(  # pylint: disable=too-many-arguments
+def resolve_scoped_paths(
     *,
     session_id: str,
     workspace_root: str | None,
@@ -49,7 +49,7 @@ def resolve_scoped_paths(  # pylint: disable=too-many-arguments
             transcript_path=transcript_path,
             native_session_id=native_session_id,
         )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.warning(
             "Session scoping failed",
             session_id=session_id,

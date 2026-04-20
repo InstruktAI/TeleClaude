@@ -1,4 +1,3 @@
-# pylint: disable=invalid-name
 """Initial schema — full database state as of v1."""
 
 from __future__ import annotations

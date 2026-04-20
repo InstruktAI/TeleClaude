@@ -12,7 +12,7 @@ from teleclaude.tts.backends.pyttsx3_tts import Pyttsx3Backend
 logger = get_logger(__name__)
 
 
-class TTSBackend(Protocol):  # pylint: disable=too-few-public-methods
+class TTSBackend(Protocol):
     """Common interface for all TTS backends."""
 
     def speak(self, text: str, voice: str | None = None, /) -> bool:
@@ -44,12 +44,12 @@ if sys.platform == "darwin":
                     try:
                         BACKENDS[service_name] = MLXTTSBackend(service_name, service_cfg.model, service_cfg.params)
                         logger.info("Registered MLX TTS backend: %s (model=%s)", service_name, service_cfg.model)
-                    except Exception:  # pylint: disable=broad-exception-caught
+                    except Exception:
                         logger.warning("MLX TTS backend '%s' failed to initialize", service_name, exc_info=True)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.warning("MLX TTS backends unavailable", exc_info=True)
 
 
-def get_backend(service_name: str):  # type: ignore[no-untyped-def]  # pylint: disable=redefined-outer-name
+def get_backend(service_name: str):  # type: ignore[no-untyped-def]
     """Get backend by service name."""
     return BACKENDS.get(service_name)

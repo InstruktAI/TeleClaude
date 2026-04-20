@@ -560,7 +560,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Set adapter-specific char offset."""
         await self._set_origin_field(session, char_offset=value)
 
-    def drop_pending_output(self, session_id: str) -> int:  # pylint: disable=unused-argument
+    def drop_pending_output(self, session_id: str) -> int:
         """Drop pending QoS output for a session. Override in subclasses with a QoS scheduler.
 
         Returns the number of dropped items (0 by default).
@@ -626,7 +626,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             latest_user_ts.isoformat(),
         )
 
-    async def send_output_update(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def send_output_update(
         self,
         session: Session,
         output: str,
@@ -798,7 +798,7 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             return None
         return await action()
 
-    async def _dispatch_command(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def _dispatch_command(
         self,
         session: Session,
         message_id: str | None,

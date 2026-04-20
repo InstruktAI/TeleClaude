@@ -50,7 +50,6 @@ export function useCreateSession() {
   return useMutation({
     mutationFn: async (body: {
       computer: string;
-      title?: string;
       initial_message?: string;
     }) => {
       const res = await fetch("/api/sessions", {

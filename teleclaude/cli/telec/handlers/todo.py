@@ -1,22 +1,38 @@
 """Handlers for telec todo commands."""
-# pylint: disable=import-outside-toplevel,too-many-branches,too-many-locals,too-many-statements
-# pylint: disable=no-else-raise,broad-exception-caught
 
 from __future__ import annotations
 
+import json as _json
 import shlex
 import sys
+import uuid
+from pathlib import Path
 from typing import Literal
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
-from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
+from teleclaude.cli.tool_commands import (
+    handle_todo_create,
+    handle_todo_integrate,
+    handle_todo_prepare,
+    handle_todo_set_deps,
+    handle_todo_work,
+)
+from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
-from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import (
+    apply_prepared_state,
+    read_phase_state,
+    validate_work_phase_preconditions,
+    write_phase_state,
+)
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.resource_validation import validate_all_todos, validate_todo
+from teleclaude.todo_scaffold import create_from_main_skeleton
 
 __all__ = [
     "_handle_todo",
@@ -41,8 +57,6 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     Validates required artifacts exist, then stamps DOR, grounding, and review verdicts so
     ``derive_prepare_phase`` resolves to ``PREPARED``.
     """
-    from teleclaude.core.next_machine.state_io import apply_prepared_state
-
     if not args:
         print("Usage: telec todo mark-ready <slug> [<slug> ...]")
         raise SystemExit(1)
@@ -94,12 +108,6 @@ def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
 
     state = dict(read_phase_state(cwd, slug))
     if field == "work_phase":
-        from pathlib import Path  # pylint: disable=import-outside-toplevel
-
-        from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-            validate_work_phase_preconditions,
-        )
-
         worktree_cwd = str(Path(cwd) / "trees" / slug)
         wt = worktree_cwd if Path(worktree_cwd).exists() else None
         error = validate_work_phase_preconditions(state, phase, wt)
@@ -149,14 +157,6 @@ def _handle_todo_mark_phase(args: list[str]) -> None:
 
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""
-    from teleclaude.cli.tool_commands import (
-        handle_todo_create,
-        handle_todo_integrate,
-        handle_todo_prepare,
-        handle_todo_set_deps,
-        handle_todo_work,
-    )
-
     if not args:
         print(_usage("todo"))
         return
@@ -200,8 +200,6 @@ def _handle_todo(args: list[str]) -> None:
 
 def _handle_todo_validate(args: list[str]) -> None:
     """Handle telec todo validate."""
-
-    from teleclaude.resource_validation import validate_all_todos, validate_todo
 
     slug: str | None = None
     project_root = resolve_invocation_cwd()
@@ -436,27 +434,29 @@ def _handle_todo_remove(args: list[str]) -> None:
         print(_usage("todo", "remove"))
         raise SystemExit(1)
 
-    result = tool_api_request(
-        "POST",
-        "/todos/remove",
-        json_body={"slug": slug, "cwd": str(resolve_invocation_cwd())},
-        timeout=10.0,
-    )
+    body = {
+        "slug": slug,
+        "cwd": str(resolve_invocation_cwd()),
+        "client_request_id": str(uuid.uuid4()),
+    }
+    receipt: object = tool_api_call("POST", "/todos/remove", json_body=body)
+    if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+        print_json(receipt)
+        raise SystemExit(1)
 
-    if isinstance(result, dict) and result.get("status") == "ok":
+    status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
+    if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
         print(f"Removed todo: {slug}")
-    elif isinstance(result, dict) and result.get("detail"):
-        print(f"Error: {result['detail']}")
+    elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
+        print(f"Error: {status['error']}", file=sys.stderr)
         raise SystemExit(1)
     else:
-        print(f"Error: {result}")
+        print_json(status)
         raise SystemExit(1)
 
 
 def _handle_todo_from_main(args: list[str]) -> None:
     """Handle telec todo from-main --slug <name> [--description <desc>] [--all]."""
-    from teleclaude.todo_scaffold import create_from_main_skeleton
-
     slug: str | None = None
     description: str | None = None
     all_files = False
@@ -718,8 +718,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
 
 def _handle_todo_show(args: list[str]) -> None:
     """Handle telec todo show <slug> — display full todo state payload."""
-    import json as _json  # pylint: disable=import-outside-toplevel
-
     if not args or args[0].startswith("-"):
         print("Usage: telec todo show <slug>")
         raise SystemExit(1)

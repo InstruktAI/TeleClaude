@@ -4,8 +4,6 @@ Covers spawn_integrator_session guard (already running) and spawn branches,
 plus Db._to_core_session system_role/job column reads.
 """
 
-# pylint: disable=import-outside-toplevel,protected-access
-
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +11,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.constants import ROLE_INTEGRATOR, JobRole
+from teleclaude.core.db import Db
+from teleclaude.core.integration_bridge import spawn_integrator_session
 from teleclaude.core.models import SessionLaunchKind
 
 # ---------------------------------------------------------------------------
@@ -60,16 +60,12 @@ def _db_row(system_role: str | None = None, job: str | None = None) -> MagicMock
 
 
 def test_to_core_session_no_role_yields_none():
-    from teleclaude.core.db import Db
-
     session = Db._to_core_session(_db_row())
     assert session.system_role is None
     assert session.job is None
 
 
 def test_to_core_session_reads_role_columns():
-    from teleclaude.core.db import Db
-
     session = Db._to_core_session(_db_row(system_role=ROLE_INTEGRATOR, job=JobRole.INTEGRATOR.value))
     assert session.system_role == ROLE_INTEGRATOR
     assert session.job == JobRole.INTEGRATOR.value
@@ -87,8 +83,6 @@ async def test_spawn_rejects_missing_caller_identity():
     mock_db.list_sessions = AsyncMock(return_value=[])
 
     with patch("teleclaude.core.db.db", mock_db):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         with pytest.raises(ValueError, match="missing caller session identity"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "")
 
@@ -100,8 +94,6 @@ async def test_spawn_rejects_unknown_caller_identity():
     mock_db.list_sessions = AsyncMock(return_value=[])
 
     with patch("teleclaude.core.db.db", mock_db):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         with pytest.raises(ValueError, match="missing caller session identity"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "unknown")
 
@@ -121,8 +113,6 @@ async def test_spawn_notifies_running_integrator():
         patch("teleclaude.core.db.db", mock_db),
         patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "caller-sess")
 
     assert result is None
@@ -144,8 +134,6 @@ async def test_spawn_notifies_running_integrator_without_caller_identity():
         patch("teleclaude.core.db.db", mock_db),
         patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "")
 
     assert result is None
@@ -169,8 +157,6 @@ async def test_spawn_notify_failure_raises():
         patch("teleclaude.core.db.db", mock_db),
         patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         with pytest.raises(RuntimeError, match="session gone"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
 
@@ -193,8 +179,6 @@ async def test_spawn_creates_session_with_identity():
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123", "orchestrator-sess-1")
 
     assert result is not None
@@ -227,8 +211,6 @@ async def test_spawn_failure_raises():
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         with pytest.raises(RuntimeError, match="tmux creation failed"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
 
@@ -247,8 +229,6 @@ async def test_spawn_db_error_raises():
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
-        from teleclaude.core.integration_bridge import spawn_integrator_session
-
         with pytest.raises(RuntimeError, match="DB unavailable"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
 

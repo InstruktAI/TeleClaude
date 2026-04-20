@@ -22,12 +22,7 @@ from pydantic import BaseModel, ValidationError
 from ruamel.yaml import YAML
 
 from teleclaude.config.loader import load_global_config, load_person_config
-from teleclaude.config.schema import (
-    CredsConfig,
-    GlobalConfig,
-    PersonConfig,
-    PersonEntry,
-)
+from teleclaude.config.schema import CredsConfig, GlobalConfig, PersonConfig, PersonEntry
 from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
@@ -552,12 +547,12 @@ def discover_config_areas() -> list[ConfigArea]:
             except (ValueError, ValidationError):
                 continue
 
-        field_info = CredsConfig.model_fields[adapter_name]  # pylint: disable=unsubscriptable-object
+        field_info = CredsConfig.model_fields[adapter_name]
         model_class = field_info.annotation
         # Unwrap Optional
         if hasattr(model_class, "__args__"):
             model_class = next(
-                (a for a in model_class.__args__ if a is not type(None)),  # pylint: disable=unidiomatic-typecheck
+                (a for a in model_class.__args__ if a is not type(None)),
                 model_class,
             )
 

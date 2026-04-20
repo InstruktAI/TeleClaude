@@ -22,6 +22,7 @@ from teleclaude.cli.tui.animations.general import (
     WithinLetterSweepRL,
     WordSplitBlink,
 )
+from teleclaude.cli.tui.animations.sky import GlobalSky
 
 
 def _palette() -> SpectrumPalette:
@@ -47,8 +48,6 @@ class TestGeneralAnimationsList:
         assert expected.issubset(set(GENERAL_ANIMATIONS))
 
     def test_globalsky_not_in_pool(self) -> None:
-        from teleclaude.cli.tui.animations.sky import GlobalSky
-
         assert GlobalSky not in GENERAL_ANIMATIONS
 
 

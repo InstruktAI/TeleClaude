@@ -16,12 +16,8 @@ from typing import Any
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.integration.checkpoint import (
-    IntegrationCheckpoint,
-    IntegrationPhase,
-    _now_iso,
-    _write_checkpoint,
-)
+from teleclaude.core import integration_bridge as bridge
+from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
 from teleclaude.core.integration.formatters import (
     _format_commit_decision,
     _format_conflict_decision,
@@ -32,6 +28,8 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.core.next_machine.core import cleanup_delivered_slug
+from teleclaude.core.todos_db import TodosDb
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.project_root import resolve_main_repo_root
@@ -53,8 +51,6 @@ def _get_todos_db_sync(cwd: str) -> Any:
     (read_state_sync, write_state_sync, deliver_sync) create their own
     sqlite3 connections per call.
     """
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
     project_root = resolve_main_repo_root(cwd)
     db_path = str(project_root / ".teleclaude" / "todos.db")
     db = TodosDb(db_path)
@@ -67,7 +63,7 @@ def _get_todos_db_sync(cwd: str) -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:  # pylint: disable=unused-argument
+def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
     """Run a git command via GitPython; return (returncode, stdout, stderr)."""
     try:
         repo = Repo(cwd, search_parent_directories=True)
@@ -76,7 +72,7 @@ def _run_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, st
     except GitCommandError as exc:
         rc = exc.status if isinstance(exc.status, int) else 1
         return rc, exc.stdout or "", exc.stderr or ""
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.warning("git %s failed: %s", " ".join(args[:2]), exc)
         return 1, "", str(exc)
 
@@ -130,11 +126,9 @@ def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
 def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
     """Read a todo artifact from todos.db, returning empty string on failure."""
     try:
-        from teleclaude.core.next_machine.state_io import _get_todos_db_sync  # pylint: disable=import-outside-toplevel
-
         db = _get_todos_db_sync(cwd)
-        return db.read_artifact_sync(slug, name)
-    except Exception:  # pylint: disable=broad-exception-caught
+        return str(db.read_artifact_sync(slug, name))
+    except Exception:
         logger.debug("_read_artifact_safe failed for %s/%s", slug, name, exc_info=True)
         return ""
 
@@ -159,7 +153,7 @@ def _integration_worktree_path(cwd: str) -> Path:
     return Path(cwd) / WORKTREE_DIR / "_integration"
 
 
-def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:  # pylint: disable=too-many-return-statements
+def _ensure_integration_worktree(cwd: str) -> tuple[Path, str]:
     """Ensure persistent integration worktree exists and is synced to origin/main.
 
     Returns (worktree_path, error_message). Error is empty on success.
@@ -210,8 +204,6 @@ async def _bridge_emit(
 ) -> None:
     """Dispatch lifecycle event to the appropriate integration_bridge helper."""
     # Lazy import to avoid circular dependency at module load time
-    from teleclaude.core import integration_bridge as bridge  # pylint: disable=import-outside-toplevel
-
     try:
         if event_type == "integration.started":
             await bridge.emit_integration_started(
@@ -233,7 +225,7 @@ async def _bridge_emit(
                 reason=payload.get("reason", ""),
             )
         # Other event types are observability-only; logged below, not wired to bridge
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug("_bridge_emit failed for %s", event_type, exc_info=True)
 
 
@@ -249,7 +241,7 @@ def _emit_lifecycle_event(
         return
     try:
         asyncio.run_coroutine_threadsafe(_bridge_emit(event_type, payload), loop)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug("_emit_lifecycle_event scheduling failed for %s", event_type, exc_info=True)
 
 
@@ -301,7 +293,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
             state = todos_db.read_state_sync(slug)
             if state is None:
                 continue
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             continue
 
         finalize = state.get("finalize", {})
@@ -340,7 +332,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
     return candidates
 
 
-def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylint: disable=too-many-return-statements
+def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
     """Check if a specific slug's worktree state.yaml shows finalize-ready.
 
     Same validations as the scanner but targeted to a single slug.
@@ -354,7 +346,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:  # pylin
         state = todos_db.read_state_sync(slug)
         if state is None:
             return None
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return None
 
     finalize = state.get("finalize", {})
@@ -394,10 +386,8 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     Returns list of swept slug names. Each step is idempotent — safe to
     call on every IDLE entry without risk of double-cleanup.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
-
     todos_db = _get_todos_db_sync(cwd)
-    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    conn = todos_db._sync_conn()
     try:
         rows = conn.execute(
             "SELECT slug FROM roadmap WHERE status = 'delivered'",  # guard: raw-sql
@@ -420,7 +410,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
             logger.info("Sweeping stale artifact for delivered slug: %s", entry.name)
             try:
                 cleanup_delivered_slug(cwd, entry.name)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.warning("Stale artifact sweep failed for %s", entry.name, exc_info=True)
             swept.append(entry.name)
 
@@ -429,7 +419,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     return swept
 
 
-def _step_idle(  # pylint: disable=too-many-arguments,too-many-locals
+def _step_idle(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -493,7 +483,7 @@ def _step_idle(  # pylint: disable=too-many-arguments,too-many-locals
     return True, ""  # loop into CANDIDATE_DEQUEUED → _do_merge
 
 
-def _do_merge(  # pylint: disable=too-many-locals
+def _do_merge(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -556,7 +546,7 @@ def _do_merge(  # pylint: disable=too-many-locals
             _write_checkpoint(checkpoint_path, checkpoint)
             return True, ""
 
-    if rc == 0:  # pylint: disable=no-else-return
+    if rc == 0:
         # Clean merge — read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
@@ -624,7 +614,7 @@ def _step_awaiting_commit(
 
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
-    if merge_type == "clean":  # pylint: disable=no-else-return
+    if merge_type == "clean":
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, "requirements")
@@ -653,7 +643,7 @@ def _step_committed(
     return True, ""  # loop into DELIVERY_BOOKKEEPING
 
 
-def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-statements
+def _step_delivery_bookkeeping(
     *,
     checkpoint: IntegrationCheckpoint,
     checkpoint_path: Path,
@@ -685,7 +675,7 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
 
     # --- Clean dependency references in DB ---
     todos_db = _get_todos_db_sync(cwd)
-    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    conn = todos_db._sync_conn()
     try:
         conn.execute("DELETE FROM roadmap_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
         conn.commit()
@@ -716,7 +706,7 @@ def _step_delivery_bookkeeping(  # pylint: disable=too-many-locals,too-many-stat
     # Serialize under flock to prevent races with concurrent bookkeeping commits.
     with main_branch_lock():
         rc, stdout, stderr = _run_git(["push", "origin", "HEAD:main"], cwd=wt)
-    if rc == 0:  # pylint: disable=no-else-return
+    if rc == 0:
         head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
@@ -845,8 +835,6 @@ def _do_cleanup(
     removal, branch deletion, leftover directory removal) and also runs
     clean_dependency_references idempotently on repo root.
     """
-    from teleclaude.core.next_machine.core import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
-
     # Merge commit SHA lives in the integration worktree (where delivery was committed)
     wt = str(_integration_worktree_path(cwd))
     merge_commit = _get_head_sha(wt) or "unknown"
@@ -855,7 +843,7 @@ def _do_cleanup(
     # branch, leftover dirs) plus idempotent dependency reference cleanup.
     try:
         cleanup_delivered_slug(cwd, key.slug, branch=key.branch)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         msg = f"cleanup_delivered_slug failed for {key.slug} (non-fatal)"
         logger.warning(msg, exc_info=True)
         warnings = checkpoint.warnings if checkpoint.warnings is not None else []
@@ -886,7 +874,7 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
         return
     try:
         lease_store.release(key=_INTEGRATION_LEASE_KEY, owner_session_id=session_id, lease_token=lease_token)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.warning("Failed to release integration lease for session %s", session_id, exc_info=True)
 
 
@@ -904,7 +892,7 @@ def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
             return
         state["integration_phase"] = phase
         todos_db.write_state_sync(slug, state)
-    except Exception as exc:  # pylint: disable=broad-except
+    except Exception as exc:
         logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
 
 

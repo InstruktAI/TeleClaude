@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.discord._channel_lookup import find_existing_text_channel_id
 from teleclaude.cli.config_handlers import get_person_config
+from teleclaude.paths import PEOPLE_DIR
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -46,9 +47,13 @@ class TeamChannelsMixin:
     if TYPE_CHECKING:
         _discord: ModuleType
         _client: object
-        _parse_optional_int: Callable[[object], int | None]
-        _require_async_callable: Callable[..., AsyncDiscordCallable]
-        _get_channel: Callable[[int], Awaitable[object | None]]
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
+        @staticmethod
+        def _require_async_callable(fn: object, *, label: str) -> AsyncDiscordCallable: ...
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
 
     async def ensure_team_channels(self, guild: object, category: object | None, people: list[object]) -> None:
         """Public wrapper for team-channel provisioning."""
@@ -89,8 +94,6 @@ class TeamChannelsMixin:
 
             ch_id = await self._find_or_create_private_text_channel(guild, category, slug, discord_user_id)
             if ch_id is not None:
-                from teleclaude.paths import PEOPLE_DIR  # pylint: disable=import-outside-toplevel
-
                 person_folder = str(PEOPLE_DIR / name)
                 self._team_channel_map[ch_id] = person_folder
                 logger.info("Team channel mapped: %s -> channel_id=%d discord_user=%s", name, ch_id, discord_user_id)

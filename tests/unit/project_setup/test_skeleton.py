@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel
 """Tests for R4: telec init skeleton deployment.
 
 Behavioral contracts for skeleton file deployment during telec init:
@@ -9,6 +8,8 @@ language-aware deployment, no-overwrite, project name substitution.
 from __future__ import annotations
 
 from pathlib import Path
+
+from teleclaude.project_setup.skeleton import deploy_skeleton
 
 # ---------------------------------------------------------------------------
 # R4.1 — Python skeleton deployed to empty project
@@ -22,16 +23,12 @@ class TestSkeletonDeployment:
         """Deploying Python skeleton creates pyproject.toml in an empty project."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "pyproject.toml").exists(), "pyproject.toml was not deployed"
 
     def test_deploy_creates_precommit_config(self, tmp_path: Path) -> None:
         """Deploying Python skeleton creates .pre-commit-config.yaml with real content."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
 
         deploy_skeleton(project_root=tmp_path)
         precommit = tmp_path / ".pre-commit-config.yaml"
@@ -45,8 +42,6 @@ class TestSkeletonDeployment:
         """Deploying Python skeleton creates a Makefile with real targets."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         makefile = tmp_path / "Makefile"
         assert makefile.exists(), "Makefile was not deployed"
@@ -58,8 +53,6 @@ class TestSkeletonDeployment:
     def test_deployed_pyproject_is_non_trivial(self, tmp_path: Path) -> None:
         """Deployed pyproject.toml contains actual tool configuration (not a stub)."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
 
         deploy_skeleton(project_root=tmp_path)
         content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
@@ -82,16 +75,12 @@ class TestSkeletonMultiLanguage:
         """teleclaude.yml with languages: [python] triggers Python skeleton deployment."""
         (tmp_path / "teleclaude.yml").write_text("languages:\n  - python\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "pyproject.toml").exists(), "Python skeleton not deployed from languages list"
 
     def test_deploy_skips_unrecognized_language(self, tmp_path: Path) -> None:
         """Unrecognized languages in the list are skipped, not errored."""
         (tmp_path / "teleclaude.yml").write_text("languages:\n  - cobol\n", encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
 
         deploy_skeleton(project_root=tmp_path)
         assert not (tmp_path / "pyproject.toml").exists(), "No skeleton expected for unrecognized language"
@@ -111,8 +100,6 @@ class TestNoOverwrite:
         original = "[project]\nname = 'custom'\n"
         (tmp_path / "pyproject.toml").write_text(original, encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == original
 
@@ -122,8 +109,6 @@ class TestNoOverwrite:
         original = "repos: []\n"
         (tmp_path / ".pre-commit-config.yaml").write_text(original, encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / ".pre-commit-config.yaml").read_text(encoding="utf-8") == original
 
@@ -132,8 +117,6 @@ class TestNoOverwrite:
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
         original = "custom: echo hello\n"
         (tmp_path / "Makefile").write_text(original, encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
 
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "Makefile").read_text(encoding="utf-8") == original
@@ -151,8 +134,6 @@ class TestNoDeploymentWithoutLanguage:
         """No pyproject.toml deployed when teleclaude.yml has no language field."""
         (tmp_path / "teleclaude.yml").write_text("business:\n  domains: {}\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert not (tmp_path / "pyproject.toml").exists(), (
             "pyproject.toml was deployed despite no language being declared"
@@ -162,15 +143,11 @@ class TestNoDeploymentWithoutLanguage:
         """No Makefile deployed when teleclaude.yml has no language field."""
         (tmp_path / "teleclaude.yml").write_text("{}\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         assert not (tmp_path / "Makefile").exists(), "Makefile was deployed despite no language being declared"
 
     def test_missing_teleclaude_yml_deploys_nothing(self, tmp_path: Path) -> None:
         """When teleclaude.yml is absent, deployment is silently skipped."""
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
-
         deploy_skeleton(project_root=tmp_path)
         # None of the skeleton files should appear
         assert not (tmp_path / "pyproject.toml").exists()
@@ -195,8 +172,6 @@ class TestDiffAndPrompt:
         """Existing file identical to template content is skipped without output."""
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton
-
         # Deploy once to get the template content
         deploy_skeleton(project_root=tmp_path)
         content = (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
@@ -210,8 +185,6 @@ class TestDiffAndPrompt:
         (tmp_path / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
         original = "[project]\nname = 'custom'\n"
         (tmp_path / "pyproject.toml").write_text(original, encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton
 
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "pyproject.toml").read_text(encoding="utf-8") == original
@@ -233,8 +206,6 @@ class TestTypeScriptSkeleton:
         )
         (tmp_path / "frontend").mkdir()
 
-        from teleclaude.project_setup.skeleton import deploy_skeleton
-
         deploy_skeleton(project_root=tmp_path)
         # At minimum, tsconfig.json should be deployed
         assert (tmp_path / "frontend" / "tsconfig.json").exists(), "tsconfig.json not deployed to frontend/"
@@ -246,8 +217,6 @@ class TestTypeScriptSkeleton:
             encoding="utf-8",
         )
         (tmp_path / "frontend").mkdir()
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton
 
         deploy_skeleton(project_root=tmp_path)
         assert (tmp_path / "frontend" / "tsconfig.json").exists()
@@ -266,8 +235,6 @@ class TestProjectNameSubstitution:
         project_dir = tmp_path / "my-new-project"
         project_dir.mkdir()
         (project_dir / "teleclaude.yml").write_text("language: python\n", encoding="utf-8")
-
-        from teleclaude.project_setup.skeleton import deploy_skeleton  # pyright: ignore[reportMissingImports]
 
         deploy_skeleton(project_root=project_dir)
         content = (project_dir / "pyproject.toml").read_text(encoding="utf-8")

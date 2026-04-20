@@ -14,6 +14,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.core.command_handlers import _session
+from teleclaude.types.commands import CreateSessionCommand
+
 
 def _admin_resolver() -> SimpleNamespace:
     """Return a mock identity resolver that resolves to admin."""
@@ -39,9 +42,6 @@ class TestWorkingSlugDerivation:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """subdir='trees/my-slug' must produce working_slug='my-slug'."""
-        from teleclaude.core.command_handlers import _session
-        from teleclaude.types.commands import CreateSessionCommand
-
         project_path = tmp_path / "project"
         project_path.mkdir()
         worktree_path = project_path / "trees" / "my-slug"
@@ -84,9 +84,6 @@ class TestWorkingSlugDerivation:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """subdir='some-other-dir' must produce working_slug=None."""
-        from teleclaude.core.command_handlers import _session
-        from teleclaude.types.commands import CreateSessionCommand
-
         project_path = tmp_path / "project"
         project_path.mkdir()
         other_dir = project_path / "some-other-dir"
@@ -129,9 +126,6 @@ class TestWorkingSlugDerivation:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """No subdir at all must produce working_slug=None."""
-        from teleclaude.core.command_handlers import _session
-        from teleclaude.types.commands import CreateSessionCommand
-
         project_path = tmp_path / "project"
         project_path.mkdir()
 

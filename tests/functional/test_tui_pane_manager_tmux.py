@@ -1,5 +1,4 @@
 """Functional tmux-backed coverage for the inline document pane flow."""
-# pylint: disable=duplicate-code,too-many-locals,protected-access
 
 from __future__ import annotations
 
@@ -78,7 +77,7 @@ def _seed_project_artifact(
     db.initialize_sync()
     row_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     try:
         conn.execute(
             "INSERT INTO roadmap "  # guard: raw-sql

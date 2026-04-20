@@ -26,19 +26,11 @@ from teleclaude.helpers.youtube_helper import (
     _safe_get_str,
     youtube_subscriptions,
 )
-from teleclaude.tagging.youtube_shared import (
-    KNOWLEDGE_TAGGING_RULES as STRICT_TAGGING_RULES,
-)
-from teleclaude.tagging.youtube_shared import (
-    WEB_RESEARCH_RULES,
-    build_batch_response_schema,
-)
-from teleclaude.tagging.youtube_shared import (
-    round_robin as _round_robin,
-)
-from teleclaude.tagging.youtube_shared import (
-    validate_tags as _validate_tags,
-)
+from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.tagging.youtube_shared import KNOWLEDGE_TAGGING_RULES as STRICT_TAGGING_RULES
+from teleclaude.tagging.youtube_shared import WEB_RESEARCH_RULES, build_batch_response_schema
+from teleclaude.tagging.youtube_shared import round_robin as _round_robin
+from teleclaude.tagging.youtube_shared import validate_tags as _validate_tags
 
 
 def _load_tags(path: Path, scope: str = "person") -> list[str]:
@@ -143,7 +135,7 @@ def _enrich_batch_descriptions(rows: list[dict[str, str]]) -> None:
     asyncio.run(_fetch_all())
 
 
-def _call_agent_cli(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+def _call_agent_cli(
     agent: str,
     thinking_mode: str,
     prompt: str,
@@ -171,7 +163,7 @@ def _call_agent_cli(  # pylint: disable=too-many-arguments  # Parameters are exp
         result = payload.get("result", {})
         if isinstance(result, dict):
             return result
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.error("tag error: %s (agent=%s)", str(exc), agent)
         return None
     return None
@@ -252,7 +244,7 @@ def _configure_stdio() -> None:
             sys.stdout.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
         if hasattr(sys.stderr, "reconfigure"):
             sys.stderr.reconfigure(line_buffering=True)  # type: ignore[unused-ignore]
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         pass
 
 
@@ -300,8 +292,6 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
-    from teleclaude.paths import TELECLAUDE_HOME  # pylint: disable=import-outside-toplevel
-
     if args.scope == "global":
         return TELECLAUDE_HOME / "teleclaude.yml", TELECLAUDE_HOME / "subscriptions" / "youtube.csv"
     return (
@@ -390,7 +380,7 @@ def _chunk_rows(rows: list[dict[str, str]], batch_size: int) -> list[list[dict[s
     return [rows[i : i + batch_size] for i in range(0, len(rows), batch_size)]
 
 
-def _retry_single_row(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
+def _retry_single_row(
     row: dict[str, str],
     *,
     rr: Iterable[str],
@@ -440,7 +430,7 @@ def _print_verbose_tags(args: argparse.Namespace, row: dict[str, str], valid: li
         )
 
 
-def _single_group_result(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
+def _single_group_result(
     group: list[dict[str, str]],
     *,
     agent: str,
@@ -507,7 +497,7 @@ def _single_group_result(  # pylint: disable=too-many-arguments,too-many-locals 
     return {row["channel_id"]: ",".join(valid)}
 
 
-def _batch_group_result(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
+def _batch_group_result(
     group: list[dict[str, str]],
     *,
     agent: str,
@@ -571,7 +561,7 @@ def _batch_group_result(  # pylint: disable=too-many-arguments,too-many-locals  
     return results
 
 
-def _process_group(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+def _process_group(
     group: list[dict[str, str]],
     agent: str,
     *,
@@ -637,7 +627,7 @@ def _apply_batch_updates(
     _write_csv(csv_path, all_rows)
 
 
-def _run_chunks(  # pylint: disable=too-many-arguments,too-many-locals  # Parameters are explicit for clarity. Flat data assembly is intentionally verbose.
+def _run_chunks(
     *,
     chunks: list[list[dict[str, str]]],
     use_web: bool,
@@ -695,7 +685,7 @@ def _run_chunks(  # pylint: disable=too-many-arguments,too-many-locals  # Parame
             time.sleep(args.batch_pause_seconds)
 
 
-def _run_mode_stages(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+def _run_mode_stages(
     *,
     args: argparse.Namespace,
     batch_size: int,
@@ -751,7 +741,7 @@ def _run_mode_stages(  # pylint: disable=too-many-arguments  # Parameters are ex
     )
 
 
-def _run_refresh_stage(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+def _run_refresh_stage(
     *,
     args: argparse.Namespace,
     batch_size: int,

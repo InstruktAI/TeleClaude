@@ -139,7 +139,6 @@ class TelecAppActionsMixin:
                 project_path=message.project_path,
                 agent=message.agent,
                 thinking_mode=message.thinking_mode or "slow",
-                title=message.title,
                 message=message.message,
             )
             self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
@@ -300,10 +299,6 @@ class TelecAppActionsMixin:
         box_tabs.active_tab = tab_id
         self._focus_active_view(tab_id)
         self.post_message(StateChanged())  # type: ignore[attr-defined]
-
-    def on_box_tab_bar_tab_clicked(self, message: BoxTabBar.TabClicked) -> None:
-        """Handle click on custom tab bar."""
-        self.action_switch_tab(message.tab_id)
 
     def _focus_active_view(self, tab_id: str) -> None:
         """Focus the view widget inside the active tab so key bindings work."""

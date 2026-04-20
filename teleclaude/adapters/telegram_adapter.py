@@ -1,6 +1,4 @@
 """Telegram adapter for TeleClaude."""
-# pylint: disable=wrong-import-position,ungrouped-imports,import-outside-toplevel,broad-exception-caught
-# pylint: disable=too-many-locals,redefined-outer-name,protected-access
 
 from __future__ import annotations
 
@@ -18,34 +16,29 @@ if TYPE_CHECKING:
 
     from teleclaude.core.adapter_client import AdapterClient
 
-from telegram import (
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-    Update,
-)
+from telegram import Update
 from telegram.constants import ChatAction
 from telegram.ext import filters
 
 from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
+from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
-from teleclaude.core.models import (
-    ChannelMetadata,
-    MessageMetadata,
-    Session,
-    TelegramAdapterMetadata,
-)
+from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, TelegramAdapterMetadata
 from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
+    escape_markdown_v2_preformatted,
     leading_balanced_markdown_v2_entity_span,
     scan_markdown_v2_state,
+    telegramify_markdown,
+    truncate_markdown_v2,
     truncate_markdown_v2_with_consumed,
 )
 
-from .telegram.callback_handlers import CallbackAction, CallbackHandlersMixin
+from .telegram.callback_handlers import CallbackHandlersMixin
 from .telegram.channel_ops import ChannelOperationsMixin
 from .telegram.command_handlers import CommandHandlersMixin
 from .telegram.input_handlers import InputHandlersMixin
@@ -58,7 +51,7 @@ from .ui_adapter import UiAdapter
 logger = get_logger(__name__)
 
 
-class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[reportIncompatibleMethodOverride]  # type: ignore[misc]
+class TelegramAdapter(
     PrivateHandlersMixin,
     LifecycleMixin,
     InputHandlersMixin,
@@ -67,7 +60,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     MessageOperationsMixin,
     ChannelOperationsMixin,
     UiAdapter,
-):  # pylint: disable=too-many-instance-attributes  # Telegram adapter manages many handlers and state
+):
     """Telegram bot adapter using python-telegram-bot."""
 
     ADAPTER_KEY = "telegram"
@@ -367,7 +360,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
         logger.warning("Message from untrusted bot: %s", bot_username)
         return False
 
-    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:  # pylint: disable=unused-argument
+    def _topic_owned_by_this_bot(self, update: Update, topic_id: int) -> bool:
         """Check if a forum topic was created by this bot.
 
         Uses the reply_to_message on the topic close event, which references
@@ -391,8 +384,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
     def format_output(self, tmux_output: str) -> str:
         """Format tmux output with Telegram MarkdownV2 escaping and line shortening."""
-        from teleclaude.utils.markdown import escape_markdown_v2_preformatted
-
         if not tmux_output:
             return ""
 
@@ -408,8 +399,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
     def _convert_markdown_for_platform(self, text: str) -> str:
         """Convert markdown to Telegram MarkdownV2 format."""
-        from teleclaude.utils.markdown import telegramify_markdown
-
         return telegramify_markdown(text)
 
     def _build_metadata_for_thread(self) -> MessageMetadata:
@@ -418,9 +407,6 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
     def _fit_output_to_limit(self, tmux_output: str) -> str:
         """Fit output within Telegram's 4096 byte limit with MarkdownV2 escaping."""
-        from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
-        from teleclaude.utils.markdown import truncate_markdown_v2
-
         display_output = self.format_output(tmux_output)
         if self._fits_budget(display_output, TELEGRAM_MAX_MESSAGE_BYTES):
             return display_output
@@ -489,7 +475,7 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
 
     # ==================== Output QoS Integration ====================
 
-    async def send_threaded_output(  # type: ignore[override]  # pylint: disable=arguments-differ
+    async def send_threaded_output(  # type: ignore[override]
         self,
         session: Session,
         text: str,
@@ -576,47 +562,3 @@ class TelegramAdapter(  # pylint: disable=too-many-ancestors  # pyright: ignore[
     def _get_command_handler_update_filter(self) -> filters.BaseFilter:
         """Return UpdateType filter for command handlers."""
         return filters.UpdateType.MESSAGE
-
-    def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
-        """Build inline keyboard for project selection.
-
-        Uses index-based callbacks to stay under Telegram's 64-byte limit.
-
-        Args:
-            callback_prefix: Prefix for callback_data (e.g., "s", "as:claude", "ars:gemini")
-
-        Returns:
-            InlineKeyboardMarkup with buttons for each trusted directory
-        """
-        keyboard = []
-        for idx, trusted_dir in enumerate(self.trusted_dirs):
-            button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
-            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"{callback_prefix}:{idx}")])
-        return InlineKeyboardMarkup(keyboard)
-
-    def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
-        """Build the heartbeat keyboard with session and agent launch actions."""
-        from teleclaude.core.agents import get_enabled_agents
-
-        keyboard: list[list[InlineKeyboardButton]] = [
-            [
-                InlineKeyboardButton(
-                    text="🚀 Tmux Session",
-                    callback_data=f"{CallbackAction.SESSION_SELECT.value}:{bot_username}",
-                )
-            ],
-        ]
-        for agent in get_enabled_agents():
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        text=f"🤖 New {agent.title()}",
-                        callback_data=f"{CallbackAction.AGENT_SELECT.value}:{agent}:{bot_username}",
-                    ),
-                    InlineKeyboardButton(
-                        text=f"🔄 Resume {agent.title()}",
-                        callback_data=f"{CallbackAction.AGENT_RESUME_SELECT.value}:{agent}:{bot_username}",
-                    ),
-                ]
-            )
-        return InlineKeyboardMarkup(keyboard)

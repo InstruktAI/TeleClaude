@@ -22,7 +22,7 @@ _BRACKETED_PASTE_START = "\x1b[200~"
 _BRACKETED_PASTE_END = "\x1b[201~"
 
 
-def wrap_bracketed_paste(text: str, active_agent: str | None = None) -> str:  # pylint: disable=unused-argument
+def wrap_bracketed_paste(text: str, active_agent: str | None = None) -> str:
     """Wrap text in bracketed paste sequences when it contains special characters."""
     if not text:
         return text

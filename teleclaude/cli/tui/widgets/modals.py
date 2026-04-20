@@ -7,8 +7,6 @@ Visual design:
 - Labeled field groups with thin borders
 """
 
-# pylint: disable=missing-function-docstring
-
 from __future__ import annotations
 
 import os
@@ -33,7 +31,7 @@ from teleclaude.cli.tui.theme import resolve_style
 from teleclaude.core.agents import get_enabled_agents
 from teleclaude.slug import SLUG_PATTERN
 
-WIDGET_TYPE = TypeVar("WIDGET_TYPE", bound=Widget)  # pylint: disable=invalid-name
+WIDGET_TYPE = TypeVar("WIDGET_TYPE", bound=Widget)
 
 
 @dataclass
@@ -340,7 +338,7 @@ class ConfirmModal(ModalScreen[bool]):
 class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
     """Session creation modal with thin border and titled field groups.
 
-    Fields: Agent, Mode, Prompt, Title, Session ID (with native/teleclaude toggle).
+    Fields: Agent, Mode, Prompt, Session ID (with native/teleclaude toggle).
     Up/down arrows navigate between field groups. Left/right within radio selectors.
 
     When a TeleClaude session ID is provided, agent selection is grayed out
@@ -355,7 +353,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         ("down", "focus_next_group", "Down"),
     ]
 
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(
         self,
         computer: str,
@@ -421,10 +418,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
                     id="message-input",
                 )
 
-            with Vertical(id="title-group") as tg:
-                tg.border_title = "Title"
-                yield Input(placeholder="Session title (optional)", id="title-input")
-
             with Vertical(id="session-id-group") as sg:
                 sg.border_title = "Session ID (resume/revive)"
                 yield SessionIdTypeSelector(id="session-id-type")
@@ -443,7 +436,7 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
         """Return a widget when it exists, or ``None`` for optional form sections."""
         try:
             return self.query_one(selector, widget_type)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             return None
 
     def _get_focusable_groups(self) -> list[Widget]:
@@ -460,7 +453,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             [
                 self._query_optional("#mode-selector", ModeSelector),
                 self._query_optional("#message-input", Input),
-                self._query_optional("#title-input", Input),
                 self._query_optional("#session-id-type", SessionIdTypeSelector),
                 self._query_optional("#session-id-input", Input),
                 self._query_optional("#create-btn", Button),
@@ -569,7 +561,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
 
         agent_sel = self.query_one("#agent-selector", AgentSelector)
         mode_sel = self.query_one("#mode-selector", ModeSelector)
-        title_input = self.query_one("#title-input", Input)
         message_input = self.query_one("#message-input", Input)
         session_id_input = self.query_one("#session-id-input", Input)
         session_id_type = self.query_one("#session-id-type", SessionIdTypeSelector)
@@ -590,7 +581,6 @@ class StartSessionModal(ModalScreen[CreateSessionRequest | None]):
             project_path=project_path,
             agent=agent_sel.selected_agent,
             thinking_mode=mode_sel.selected_mode,
-            title=title_input.value or None,
             message=message_input.value or None if not session_id else None,
             revive_session_id=revive_session_id,
             native_session_id=native_session_id,

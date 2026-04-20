@@ -21,7 +21,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.cli.telec.handlers import todo as todo_handler
+from teleclaude.core.next_machine import prepare_steps, work_steps
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase, derive_work_phase
+from teleclaude.core.next_machine.state_io import apply_prepared_state
+from teleclaude.types.todos import TodoState
 
 if TYPE_CHECKING:
     pass
@@ -34,8 +39,6 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 def test_todo_state_has_authoritative_subphase_fields_with_empty_default() -> None:
     """TodoState must carry prepare_phase and work_phase as strings defaulting to ''."""
-    from teleclaude.types.todos import TodoState
-
     state = TodoState.defaults()
 
     assert hasattr(state, "prepare_phase")
@@ -48,8 +51,6 @@ def test_todo_state_has_authoritative_subphase_fields_with_empty_default() -> No
 
 def test_item_phase_remains_independent_of_subphase_fields() -> None:
     """Item-level phase keeps holding ItemPhase values; sub-phase fields are independent."""
-    from teleclaude.types.todos import TodoState
-
     state = TodoState.defaults()
     state.phase = ItemPhase.IN_PROGRESS.value
     state.prepare_phase = PreparePhase.PREPARED.value
@@ -66,8 +67,6 @@ def test_item_phase_remains_independent_of_subphase_fields() -> None:
 @pytest.mark.asyncio
 async def test_derive_prepare_phase_returns_authoritative_field_when_set() -> None:
     """Authoritative prepare_phase value beats primitive derivation."""
-    from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
-
     todos_db = AsyncMock()
     # primitives would derive to INPUT_ASSESSMENT (no requirements artifact)
     todos_db.artifact_exists = AsyncMock(return_value=False)
@@ -86,8 +85,6 @@ def test_derive_work_phase_returns_authoritative_field_when_set() -> None:
     finalize, no verdict). Authoritative says REVIEW_APPROVED. The new
     contract requires the authoritative value to win.
     """
-    from teleclaude.core.next_machine.phase_derivation import derive_work_phase
-
     state = {"work_phase": WorkPhase.REVIEW_APPROVED.value}
 
     result = derive_work_phase(state, "/tmp/worktree", "slug", gates_checker=lambda _c, _s: (True, ""))
@@ -98,8 +95,6 @@ def test_derive_work_phase_returns_authoritative_field_when_set() -> None:
 @pytest.mark.asyncio
 async def test_derive_prepare_phase_falls_back_to_primitives_when_unset() -> None:
     """Empty prepare_phase falls through to primitive derivation."""
-    from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
-
     todos_db = AsyncMock()
     todos_db.artifact_exists = AsyncMock(return_value=False)
 
@@ -112,8 +107,6 @@ async def test_derive_prepare_phase_falls_back_to_primitives_when_unset() -> Non
 
 def test_derive_work_phase_falls_back_to_primitives_when_unset() -> None:
     """Empty work_phase falls through to primitive derivation."""
-    from teleclaude.core.next_machine.phase_derivation import derive_work_phase
-
     state = {
         "work_phase": "",
         "build_review": {"verdict": "approve"},
@@ -132,8 +125,6 @@ async def test_derivation_logs_warning_on_authoritative_field_disagreement(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Disagreement between authoritative field and primitives logs a warning."""
-    from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
-
     todos_db = AsyncMock()
     # primitives would say INPUT_ASSESSMENT; authoritative claims PREPARED
     todos_db.artifact_exists = AsyncMock(return_value=False)
@@ -165,8 +156,6 @@ async def test_prepare_step_transitions_write_authoritative_phase() -> None:
     carries ``prepare_phase == REQUIREMENTS_REVIEW`` — the destination of the
     INPUT_ASSESSMENT → REQUIREMENTS_REVIEW transition.
     """
-    from teleclaude.core.next_machine import prepare_steps
-
     captured: dict[str, StateValue] = {}
 
     async def _fake_commit(writer, _todos_db, _slug, state: dict[str, StateValue]) -> None:
@@ -206,8 +195,6 @@ async def test_work_step_transitions_write_authoritative_phase() -> None:
     the handler records the BUILD_STARTED entry via ``write_phase_state`` before
     doing any dispatch work.
     """
-    from teleclaude.core.next_machine import work_steps
-
     captured: dict[str, StateValue] = {}
 
     async def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -242,8 +229,6 @@ def test_apply_prepared_state_writes_prepare_phase_prepared() -> None:
     path by stubbing the artifact/git checks and captures the final state that
     StateWriter.commit_sync persists via todos_db.write_state_sync.
     """
-    from teleclaude.core.next_machine.state_io import apply_prepared_state
-
     captured: dict[str, StateValue] = {}
 
     def _fake_write_state_sync(_slug: str, state: dict[str, StateValue]) -> None:
@@ -279,8 +264,6 @@ def test_apply_prepared_state_raises_and_does_not_persist_when_artifacts_missing
     ``ValueError`` and no write must reach write_phase_state or
     write_state_sync — the todo stays in its prior phase.
     """
-    from teleclaude.core.next_machine.state_io import apply_prepared_state
-
     write_phase_state_calls: list[tuple[str, str, dict[str, StateValue]]] = []
     write_state_sync_calls: list[tuple[str, dict[str, StateValue]]] = []
 
@@ -321,8 +304,6 @@ def test_apply_prepared_state_raises_and_does_not_persist_when_git_head_unreacha
     be established. The function must raise and no write must reach
     write_phase_state or write_state_sync.
     """
-    from teleclaude.core.next_machine.state_io import apply_prepared_state
-
     write_phase_state_calls: list[tuple[str, str, dict[str, StateValue]]] = []
     write_state_sync_calls: list[tuple[str, dict[str, StateValue]]] = []
 
@@ -357,8 +338,6 @@ def test_apply_prepared_state_raises_and_does_not_persist_when_git_head_unreacha
 
 def test_mark_phase_cli_writes_prepare_phase_when_value_matches_prepare_enum() -> None:
     """mark-phase with a PreparePhase value writes state['prepare_phase']."""
-    from teleclaude.cli.telec.handlers import todo as todo_handler
-
     captured: dict[str, StateValue] = {}
 
     def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -378,8 +357,6 @@ def test_mark_phase_cli_writes_prepare_phase_when_value_matches_prepare_enum() -
 
 def test_mark_phase_cli_writes_work_phase_when_value_matches_work_enum() -> None:
     """mark-phase with a WorkPhase value writes state['work_phase']."""
-    from teleclaude.cli.telec.handlers import todo as todo_handler
-
     captured: dict[str, StateValue] = {}
 
     def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -401,8 +378,6 @@ def test_mark_phase_cli_rejects_invalid_phase_value_with_listing(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Unknown phase value exits non-zero and lists valid values for both enums."""
-    from teleclaude.cli.telec.handlers import todo as todo_handler
-
     exit_code = todo_handler.handle_mark_phase(slug="slug", phase="not_a_real_phase", cwd="/tmp/cwd")
 
     assert exit_code != 0

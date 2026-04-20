@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
+
 
 @pytest.mark.unit
 def test_config_content_render_mixin_is_importable() -> None:
-    from teleclaude.cli.tui.views.config_render import ConfigContentRenderMixin
-
     assert ConfigContentRenderMixin is not None

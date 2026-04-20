@@ -2,7 +2,7 @@
 # Component-scoped lint hook for pre-commit.
 # Usage: ./tools/lint/precommit-hook.sh <component> [files...]
 #
-# Components: guardrails, ruff-check, pyright, mypy, pylint, markdown, docs-validate
+# Components: guardrails, ruff-check, pyright, mypy, markdown, docs-validate
 set -e
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -13,14 +13,12 @@ if [ -f "${REPO_ROOT}/.venv/bin/python" ]; then
     RUN="${REPO_ROOT}/.venv/bin/python"
     RUFF="${REPO_ROOT}/.venv/bin/ruff"
     PYRIGHT="${REPO_ROOT}/.venv/bin/pyright"
-    PYLINT="${REPO_ROOT}/.venv/bin/pylint"
     MYPY="${REPO_ROOT}/.venv/bin/mypy"
     export PYTHONPATH="${REPO_ROOT}:${PYTHONPATH:-}"
 else
     RUN="uv run --quiet python"
     RUFF="uv run --quiet ruff"
     PYRIGHT="uv run --quiet pyright"
-    PYLINT="uv run --quiet pylint"
     MYPY="uv run --quiet mypy"
 fi
 
@@ -60,16 +58,8 @@ case "$component" in
             $MYPY
         fi
         ;;
-    pylint)
-        # Pre-commit must validate the staged snapshot only.
-        if [ $# -gt 0 ]; then
-            $PYLINT "$@"
-        else
-            $PYLINT teleclaude
-        fi
-        ;;
     parallel-typecheck)
-        # Run pyright, mypy, and pylint concurrently. Collects output and
+        # Run pyright, mypy concurrently. Collects output and
         # exits non-zero if any checker fails.
         tmpdir=$(mktemp -d)
         trap 'rm -rf "$tmpdir"' EXIT
@@ -106,37 +96,10 @@ case "$component" in
         fi) &
         pid_mypy=$!
 
-        # Pylint (staged-file scoped when invoked by pre-commit)
-        # Test files get pytest-structural checks disabled via CLI args;
-        # pyproject.toml remains the single config source.
-        PYLINT_TEST_DISABLE="missing-module-docstring,missing-class-docstring,missing-function-docstring,too-few-public-methods,redefined-outer-name,too-many-arguments,protected-access,too-many-locals,too-many-instance-attributes,consider-using-from-import"
-        (if [ $# -gt 0 ]; then
-            src_files=""
-            test_files=""
-            for f in "$@"; do
-                case "$f" in tests/*) test_files="$test_files $f" ;; *) src_files="$src_files $f" ;; esac
-            done
-            pylint_ok=true
-            if [ -n "$src_files" ]; then
-                $PYLINT $src_files >> "$tmpdir/pylint.out" 2>&1 || pylint_ok=false
-            fi
-            if [ -n "$test_files" ]; then
-                $PYLINT --disable="$PYLINT_TEST_DISABLE" $test_files >> "$tmpdir/pylint.out" 2>&1 || pylint_ok=false
-            fi
-            if $pylint_ok; then echo 0 > "$tmpdir/pylint.rc"; else echo 1 > "$tmpdir/pylint.rc"; fi
-        else
-            if $PYLINT teleclaude > "$tmpdir/pylint.out" 2>&1; then
-                echo 0 > "$tmpdir/pylint.rc"
-            else
-                echo $? > "$tmpdir/pylint.rc"
-            fi
-        fi) &
-        pid_pylint=$!
-
-        wait $pid_pyright $pid_mypy $pid_pylint
+        wait $pid_pyright $pid_mypy
 
         failed=0
-        for checker in pyright mypy pylint; do
+        for checker in pyright mypy; do
             rc=$(cat "$tmpdir/$checker.rc" 2>/dev/null || echo 1)
             if [ "$rc" != "0" ]; then
                 echo "=== $checker FAILED ==="

@@ -22,7 +22,7 @@ class SessionMessageRejectedError(RuntimeError):
         super().__init__(message)
 
     @property
-    def http_status_code(self) -> int:  # pylint: disable=missing-function-docstring
+    def http_status_code(self) -> int:
         if self.reason == "not_found":
             return 404
         return 409

@@ -23,7 +23,7 @@ class ChannelMetadata:
 
 
 @dataclass
-class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapter call metadata
+class MessageMetadata:
     """Per-call metadata for message operations."""
 
     reply_markup: Optional["InlineKeyboardMarkup"] = None
@@ -134,7 +134,7 @@ class TranscriptFormat(str, Enum):
 
 
 @dataclass
-class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: disable=too-many-instance-attributes
+class Session(SessionRecentOutputFields, SessionRecentToolFields):
     """Represents a tmux session."""
 
     session_id: str
@@ -182,7 +182,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
             return dict(section)
         return {}
 
-    def to_dict(self) -> JsonDict:  # pylint: disable=too-many-branches  # Datetime field serialization
+    def to_dict(self) -> JsonDict:
         """Convert session to dictionary for JSON serialization."""
         data = cast(JsonDict, asdict(self))
         if self.created_at:
@@ -218,7 +218,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):  # pylint: di
         return data
 
     @classmethod
-    def from_dict(  # pylint: disable=too-many-locals  # Session deserialization normalizes many optional fields
+    def from_dict(
         cls,
         data: dict[str, object],  # guard: loose-dict - JSON deserialization
     ) -> "Session":

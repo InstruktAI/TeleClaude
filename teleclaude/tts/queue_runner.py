@@ -40,14 +40,14 @@ def run_tts_with_lock(
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
 
             for service_name, voice_param in service_chain:
-                logger.debug(  # pylint: disable=logging-fstring-interpolation
+                logger.debug(
                     f"Trying TTS service: {service_name}",
                     extra={"session_id": session_id},
                 )
 
                 backend = backends.get_backend(service_name)
                 if not backend:
-                    logger.debug(  # pylint: disable=logging-fstring-interpolation
+                    logger.debug(
                         f"Backend not available: {service_name}",
                         extra={"session_id": session_id},
                     )
@@ -55,19 +55,19 @@ def run_tts_with_lock(
 
                 try:
                     if backend.speak(text, voice_param):
-                        logger.debug(  # pylint: disable=logging-fstring-interpolation
+                        logger.debug(
                             f"TTS succeeded: {service_name} voice={voice_param}",
                             extra={"session_id": session_id},
                         )
                         return True, service_name, voice_param
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.debug(  # pylint: disable=logging-fstring-interpolation
+                except Exception as e:
+                    logger.debug(
                         f"TTS service failed: {service_name}: {e}",
                         extra={"session_id": session_id},
                     )
                     continue
 
-                logger.debug(  # pylint: disable=logging-fstring-interpolation
+                logger.debug(
                     f"TTS failed, trying next: {service_name}",
                     extra={"session_id": session_id},
                 )
@@ -77,8 +77,8 @@ def run_tts_with_lock(
                 extra={"session_id": session_id},
             )
         return False, None, None
-    except Exception as e:  # pylint: disable=broad-exception-caught
-        logger.error(  # pylint: disable=logging-fstring-interpolation
+    except Exception as e:
+        logger.error(
             f"TTS lock error: {e}",
             extra={"session_id": session_id},
         )

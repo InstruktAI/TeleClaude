@@ -33,15 +33,14 @@ from teleclaude.core.events import (
     UserPromptSubmitPayload,
 )
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
 
 from ._fanout import _FanoutMixin
-from ._helpers import (
-    _is_checkpoint_prompt,
-)
+from ._helpers import _is_checkpoint_prompt
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -52,7 +51,7 @@ logger = get_logger(__name__)
 _LINKED_OUTPUT_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
 
 
-class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coordinator tracks per-session runtime state
+class AgentCoordinator(
     _FanoutMixin,
 ):
     """Coordinator for agent events and inter-agent communication."""
@@ -83,7 +82,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 done.result()
             except asyncio.CancelledError:
                 return
-            except Exception as exc:  # pylint: disable=broad-exception-caught  # Background task boundary
+            except Exception as exc:
                 logger.error("Background task '%s' failed: %s", label, exc, exc_info=True)
 
                 # Emit error event for user-visible failures (title updates, TTS)
@@ -97,7 +96,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                                 "severity": "warning",
                             },  # type: ignore[arg-type]
                         )
-                    except Exception:  # pylint: disable=broad-exception-caught  # Best-effort error reporting
+                    except Exception:
                         pass
 
         task.add_done_callback(_on_done)
@@ -110,7 +109,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         await db.update_last_activity(session_id)
         await polling_coordinator.schedule_headless_projection(session_id, self.client)
 
-    def _emit_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Event contract fields
+    def _emit_activity_event(
         self,
         session_id: str,
         event_type: AgentHookEventType,
@@ -159,7 +158,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                     delivery_scope=canonical.delivery_scope if canonical else None,
                 ),
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Event emission boundary
+        except Exception as exc:
             logger.error(
                 "Failed to emit activity event: %s",
                 exc,
@@ -168,7 +167,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             )
 
     @staticmethod
-    def _build_activity_event(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def _build_activity_event(
         *,
         session_id: str,
         event_type: AgentHookEventType,
@@ -272,7 +271,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
                 status,
                 reason,
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Event emission boundary
+        except Exception as exc:
             logger.error(
                 "Failed to emit status event: %s",
                 exc,
@@ -338,9 +337,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         await self._speak_session_start(context.session_id)
 
-    async def handle_user_prompt_submit(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # Turn orchestration
-        self, context: AgentEventContext
-    ) -> None:
+    async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
 
         Hook payloads are a signal only. Canonical prompt content, ordering,
@@ -439,7 +436,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
-        await polling_coordinator.finalize_session_title_on_agent_stop(session_id, session)
+        await generate_session_title_from_transcript(session)
 
         await self._finalize_agent_stop(
             session_id,
@@ -500,10 +497,10 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             return
         try:
             await self.tts_manager.speak(summary, session_id=session_id)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # TTS boundary
+        except Exception as exc:
             logger.warning("TTS agent_stop failed: %s", exc, extra={"session_id": session_id})
 
-    async def _finalize_agent_stop(  # pylint: disable=too-many-arguments,too-many-positional-arguments  # Stop fanout inputs
+    async def _finalize_agent_stop(
         self,
         session_id: str,
         session: "Session | None",

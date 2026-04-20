@@ -84,12 +84,12 @@ def _generate_session_summary(conversation_text: str) -> str | None:
         return asyncio.run(  # type: ignore[no-any-return]
             _call_summarizer(prompt, SUMMARY_SCHEMA, _parse_summary_response)
         )
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug("Mirror summary generation failed (best-effort skip)")
         return None
 
 
-def generate_mirror_sync(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
+def generate_mirror_sync(
     session_id: str,
     source_identity: str,
     transcript_path: str,
@@ -151,7 +151,7 @@ def generate_mirror_sync(  # pylint: disable=too-many-arguments,too-many-positio
     return True
 
 
-async def generate_mirror(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def generate_mirror(
     session_id: str,
     source_identity: str,
     transcript_path: str,

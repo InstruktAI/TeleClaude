@@ -1,5 +1,4 @@
 # guard: no-companion
-# pylint: disable=import-outside-toplevel
 """Tests for R2: telec code test command.
 
 Behavioral contracts for the telec code test command: language-aware test execution
@@ -11,6 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
+from teleclaude.quality.test_runner import TestRunner, map_source_to_companion, resolve_test_targets
 
 # ---------------------------------------------------------------------------
 # R2.1 — Companion file mapping convention
@@ -35,15 +36,11 @@ class TestCompanionMapping:
     )
     def test_source_maps_to_correct_companion(self, source_path: str, expected_companion: str) -> None:
         """teleclaude/x/y.py maps to tests/unit/x/test_y.py."""
-        from teleclaude.quality.test_runner import map_source_to_companion  # pyright: ignore[reportMissingImports]
-
         companion = map_source_to_companion(source_path)
         assert companion == expected_companion
 
     def test_missing_companion_not_included_in_targets(self, tmp_path: Path) -> None:
         """resolve_test_targets omits source files whose companion does not exist on disk."""
-        from teleclaude.quality.test_runner import resolve_test_targets  # pyright: ignore[reportMissingImports]
-
         targets = resolve_test_targets(
             project_root=tmp_path,
             touched_files={"teleclaude/nonexistent_module.py"},
@@ -65,8 +62,6 @@ class TestDirectlyTouchedTestFiles:
         test_file.parent.mkdir(parents=True)
         test_file.touch()
 
-        from teleclaude.quality.test_runner import resolve_test_targets  # pyright: ignore[reportMissingImports]
-
         targets = resolve_test_targets(
             project_root=tmp_path,
             touched_files={"tests/unit/test_direct.py"},
@@ -78,8 +73,6 @@ class TestDirectlyTouchedTestFiles:
         test_file = tmp_path / "tests" / "unit" / "test_foo.py"
         test_file.parent.mkdir(parents=True)
         test_file.touch()
-
-        from teleclaude.quality.test_runner import resolve_test_targets  # pyright: ignore[reportMissingImports]
 
         targets = resolve_test_targets(
             project_root=tmp_path,
@@ -98,8 +91,6 @@ class TestExpensiveTestExclusion:
 
     def test_default_pytest_args_exclude_expensive_marker(self, tmp_path: Path) -> None:
         """Default test runner args include -m 'not expensive' to exclude slow tests."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         runner = TestRunner(project_root=tmp_path)
         pytest_args = runner.build_pytest_args(targets=["tests/unit"])
 
@@ -108,8 +99,6 @@ class TestExpensiveTestExclusion:
 
     def test_include_expensive_flag_removes_exclusion(self, tmp_path: Path) -> None:
         """When include_expensive=True, the expensive exclusion is not present."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         runner = TestRunner(project_root=tmp_path, include_expensive=True)
         pytest_args = runner.build_pytest_args(targets=["tests/unit"])
 
@@ -127,8 +116,6 @@ class TestNonWorktreeFullSuite:
 
     def test_worktree_targets_configured_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """In worktree context, targets are the project's configured test directories."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
 
         (tmp_path / "pyproject.toml").write_text(
@@ -146,8 +133,6 @@ class TestNonWorktreeFullSuite:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """On shared branch with session, targets come from companion mapping."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
         companion.parent.mkdir(parents=True)
         companion.touch()
@@ -175,8 +160,6 @@ class TestExitBehavior:
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
 
         def _failing_pytest_run(*_args: object, **_kwargs: object) -> int:
@@ -191,8 +174,6 @@ class TestExitBehavior:
 
     def test_exits_zero_when_all_tests_pass(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits zero when all tests pass."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
 
         def _passing_pytest_run(*_args: object, **_kwargs: object) -> int:
@@ -213,8 +194,6 @@ class TestExplicitFileTargets:
 
     def test_explicit_python_source_maps_to_companion(self, tmp_path: Path) -> None:
         """A direct Python source file resolves to its existing pytest companion."""
-        from teleclaude.quality.test_runner import TestRunner
-
         companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
         companion.parent.mkdir(parents=True)
         companion.touch()
@@ -228,8 +207,6 @@ class TestExplicitFileTargets:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A direct TS file triggers vitest only and does not hand source files to pytest."""
-        from teleclaude.quality.test_runner import TestRunner
-
         pytest_calls: list[list[str]] = []
         vitest_calls: list[bool] = []
 
@@ -262,8 +239,6 @@ class TestPathValidation:
 
     def test_traversal_paths_rejected_from_session_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Paths containing '../' traversal sequences from session scope are rejected or stripped."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
@@ -285,8 +260,6 @@ class TestPathValidation:
 
     def test_absolute_paths_outside_project_rejected(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Absolute paths outside the project root from session scope are rejected or stripped."""
-        from teleclaude.quality.test_runner import TestRunner  # pyright: ignore[reportMissingImports]
-
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
@@ -321,8 +294,6 @@ class TestVitestScoping:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """On shared branch with session scope of only Python files, vitest is not invoked."""
-        from teleclaude.quality.test_runner import TestRunner
-
         vitest_calls: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
@@ -357,8 +328,6 @@ class TestVitestScoping:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """On shared branch with session scope including TypeScript files, vitest is invoked."""
-        from teleclaude.quality.test_runner import TestRunner
-
         vitest_calls: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)

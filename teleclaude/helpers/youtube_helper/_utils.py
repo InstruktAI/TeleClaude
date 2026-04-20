@@ -211,7 +211,7 @@ def _refresh_cookies_if_needed() -> bool:
             return False
 
     try:
-        from teleclaude.helpers.youtube.refresh_cookies import (  # pylint: disable=import-outside-toplevel
+        from teleclaude.helpers.youtube.refresh_cookies import (
             refresh_cookies,
         )
     except Exception as exc:  # pylint: disable=broad-exception-caught

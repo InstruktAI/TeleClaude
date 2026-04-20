@@ -14,12 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import (
-    DEFAULT_MAX_REVIEW_ROUNDS,
-    DOR_READY_THRESHOLD,
-    PreparePhase,
-    StateValue,
-)
+from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, DOR_READY_THRESHOLD, PreparePhase, StateValue
 from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
@@ -180,7 +175,7 @@ async def _prepare_step_input_assessment(
     )
 
 
-async def _prepare_step_requirements_review(  # pylint: disable=too-many-locals,too-many-statements
+async def _prepare_step_requirements_review(
     db: Db,
     todos_db: TodosDb,
     slug: str,
@@ -339,7 +334,7 @@ async def _prepare_step_test_spec_build(
     )
 
 
-async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too-many-statements
+async def _prepare_step_test_spec_review(
     db: Db,
     todos_db: TodosDb,
     slug: str,
@@ -424,7 +419,7 @@ async def _prepare_step_test_spec_review(  # pylint: disable=too-many-locals,too
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`.",  # pylint: disable=line-too-long
+            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`.",
             next_call=f"telec todo prepare {slug}",
             post_block=_reviewer_idle_post_block(slug),
         )
@@ -470,7 +465,7 @@ async def _prepare_step_plan_drafting(
     )
 
 
-async def _prepare_step_plan_review(  # pylint: disable=too-many-locals,too-many-statements
+async def _prepare_step_plan_review(
     db: Db,
     todos_db: TodosDb,
     slug: str,
@@ -626,7 +621,7 @@ async def _prepare_step_gate(
     )
 
 
-async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals
+async def _prepare_step_grounding_check(
     db: Db,
     todos_db: TodosDb,
     slug: str,
@@ -709,7 +704,7 @@ async def _prepare_step_grounding_check(  # pylint: disable=too-many-locals
     return True, ""  # loop — derive routes to PREPARED
 
 
-async def _handle_stale_grounding(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def _handle_stale_grounding(
     *,
     db: Db,
     todos_db: TodosDb,
@@ -783,7 +778,7 @@ async def _prepare_step_prepared(db: Db, slug: str) -> tuple[bool, str]:
 # =============================================================================
 
 
-async def _prepare_dispatch(  # pylint: disable=too-many-return-statements,too-many-arguments
+async def _prepare_dispatch(
     *,
     db: Db,
     todos_db: TodosDb,

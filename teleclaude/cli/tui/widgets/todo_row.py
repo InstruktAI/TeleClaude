@@ -216,7 +216,6 @@ class TodoRow(TelecMixin, Widget):
     }
     """
 
-    # pylint: disable=too-many-arguments,too-many-positional-arguments
     def __init__(
         self,
         todo: TodoItem,
@@ -236,7 +235,7 @@ class TodoRow(TelecMixin, Widget):
         self._max_depth = max_depth
 
     @staticmethod
-    def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:  # pylint: disable=too-many-locals
+    def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
         Column order: P | I | DOR | B | R | F | D
@@ -312,7 +311,7 @@ class TodoRow(TelecMixin, Widget):
         """Max rendered column width across all paths — the target for uniform padding."""
         return self._col_widths.get("_max", 0)
 
-    def _build_columns(self) -> Text:  # pylint: disable=too-many-locals
+    def _build_columns(self) -> Text:
         """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
         target = self._total_col_width()
 
@@ -394,7 +393,7 @@ class TodoRow(TelecMixin, Widget):
         result.append_text(dor_text)
         return _pad(result, target)
 
-    def render(self) -> Text:  # pylint: disable=too-many-locals
+    def render(self) -> Text:
         """Render the tree prefix, slug, and aligned property columns."""
         line = Text(no_wrap=True)
         is_selected = self.has_class("selected")

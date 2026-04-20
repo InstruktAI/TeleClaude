@@ -12,7 +12,7 @@ __all__ = ["DeliveryOptions", "_delivery_options_from_kwargs"]
 
 
 @dataclass(frozen=True)
-class DeliveryOptions:  # pylint: disable=too-few-public-methods
+class DeliveryOptions:
     """Delivery flags shared between the lock wrapper and unlocked implementation."""
 
     multi_message: bool = False

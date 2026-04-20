@@ -137,7 +137,7 @@ class RuntimeSettings:
             raw = json.loads(self._settings_path.read_text(encoding="utf-8"))
             if isinstance(raw, dict):
                 return raw
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception("Failed to read runtime settings from %s", self._settings_path)
         return None
 
@@ -162,5 +162,5 @@ class RuntimeSettings:
             }
             self._settings_path.write_text(f"{json.dumps(payload, indent=2, sort_keys=True)}\n", encoding="utf-8")
             logger.info("Runtime settings flushed to %s", self._settings_path)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception("Failed to flush runtime settings to disk")

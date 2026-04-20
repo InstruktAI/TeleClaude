@@ -5,7 +5,7 @@ from __future__ import annotations
 from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS
 
 
-def format_fix_findings_message(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def format_fix_findings_message(
     slug: str,
     phase_label: str,
     rounds: int,
@@ -110,7 +110,6 @@ def _truncate_file_list(paths: list[str], limit: int = 6) -> str:
     return f"{shown}, and {len(paths) - limit} more"
 
 
-# pylint: disable=too-many-arguments
 def format_review_ground_shift_script(
     slug: str,
     reviewer_id: str,

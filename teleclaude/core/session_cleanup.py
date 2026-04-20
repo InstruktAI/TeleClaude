@@ -29,6 +29,7 @@ from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
+from teleclaude.core.inbound_queue import get_inbound_queue_manager
 
 logger = get_logger(__name__)
 
@@ -88,7 +89,7 @@ async def cleanup_session_resources(
         try:
             await adapter_client.delete_channel(session)
             logger.info("Deleted channels for session %s", session_id)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.warning("Failed to delete channels for session %s: %s", session_id, e)
 
     # Clean up entire workspace directory (workspace/{session_id}/)
@@ -97,7 +98,7 @@ async def cleanup_session_resources(
         try:
             await asyncio.to_thread(shutil.rmtree, workspace_dir)
             logger.debug("Deleted workspace directory for session %s", session_id)
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except Exception as e:
             logger.warning("Failed to delete workspace for session %s: %s", session_id, e)
 
 
@@ -118,7 +119,7 @@ async def _end_escalation_if_active(session: "Session") -> None:
     logger.info("Escalation ended (session close) for %s", session.session_id)
 
 
-async def terminate_session(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+async def terminate_session(
     session_id: str,
     adapter_client: "AdapterClient",
     *,
@@ -159,7 +160,7 @@ async def terminate_session(  # pylint: disable=too-many-arguments  # Parameters
         _cleanup_in_flight.discard(session_id)
 
 
-async def _terminate_session_inner(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+async def _terminate_session_inner(
     session_id: str,
     adapter_client: "AdapterClient",
     *,
@@ -184,7 +185,7 @@ async def _terminate_session_inner(  # pylint: disable=too-many-arguments  # Par
     try:
         await db.revoke_session_tokens(session_id)
         invalidate_token_cache(session_id)
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.error("Failed to revoke tokens for session %s: %s", session_id, exc)
 
     if not already_closed:
@@ -201,15 +202,13 @@ async def _terminate_session_inner(  # pylint: disable=too-many-arguments  # Par
                 logger.info("Killed tmux session %s", session.tmux_session_name)
             else:
                 logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
-        except Exception as exc:  # pragma: no cover - defensive  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pragma: no cover - defensive
             logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
 
     await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
 
     # Expire any pending inbound messages before marking the session closed.
     try:
-        from teleclaude.core.inbound_queue import get_inbound_queue_manager  # pylint: disable=import-outside-toplevel
-
         await get_inbound_queue_manager().expire_session(session.session_id)
     except RuntimeError:
         pass  # Queue manager not initialized (e.g. tests) — skip
@@ -436,7 +435,7 @@ async def cleanup_orphan_workspaces() -> int:
                 shutil.rmtree(workspace_dir)
                 removed_count += 1
                 logger.info("Removed orphan workspace: %s", session_id)
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 logger.error("Failed to remove orphan workspace %s: %s", session_id, e)
 
     if removed_count > 0:

@@ -68,7 +68,6 @@ class _LeaseStatePayload(TypedDict):
 class IntegrationLeaseStore:
     """Atomic lease lifecycle manager backed by a durable JSON state file."""
 
-    # pylint: disable=too-many-arguments
     def __init__(
         self,
         *,
@@ -92,7 +91,6 @@ class IntegrationLeaseStore:
         """Return durable lease state file path."""
         return self._state_path
 
-    # pylint: disable=too-many-arguments
     def acquire(
         self,
         *,
@@ -143,7 +141,6 @@ class IntegrationLeaseStore:
                 replaced_stale=replaced_stale,
             )
 
-    # pylint: disable=too-many-arguments
     def renew(
         self,
         *,
@@ -339,7 +336,6 @@ def _record_from_payload(key: str, payload: dict[object, object]) -> LeaseRecord
     )
 
 
-# pylint: disable=too-many-arguments
 def _build_lease_record(
     *,
     key: str,

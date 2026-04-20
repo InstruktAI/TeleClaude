@@ -26,7 +26,7 @@ async def seeded_db(todos_db: TodosDb) -> TodosDb:
 
 def test_stamp_verdict_updates_requirements_review(seeded_db: TodosDb) -> None:
     """stamp_verdict for requirements_review persists the verdict."""
-    db_path = seeded_db._db_path  # pylint: disable=protected-access
+    db_path = seeded_db._db_path
     cwd = str(db_path.parent.parent)
 
     with (
@@ -42,7 +42,7 @@ def test_stamp_verdict_updates_requirements_review(seeded_db: TodosDb) -> None:
 
 def test_stamp_verdict_updates_build_review(seeded_db: TodosDb) -> None:
     """stamp_verdict for build_review persists the verdict."""
-    db_path = seeded_db._db_path  # pylint: disable=protected-access
+    db_path = seeded_db._db_path
     cwd = str(db_path.parent.parent)
 
     with (
@@ -58,7 +58,7 @@ def test_stamp_verdict_updates_build_review(seeded_db: TodosDb) -> None:
 
 def test_stamp_verdict_rejects_unknown_phase(seeded_db: TodosDb) -> None:
     """stamp_verdict raises for unrecognized phase names."""
-    db_path = seeded_db._db_path  # pylint: disable=protected-access
+    db_path = seeded_db._db_path
     cwd = str(db_path.parent.parent)
 
     with (

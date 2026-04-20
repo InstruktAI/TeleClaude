@@ -18,7 +18,7 @@ REPO_ROOT = _PACKAGE_DIR.parents[1]  # repo root (above teleclaude/)
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402  # pylint: disable=wrong-import-position
+from teleclaude.constants import TAXONOMY_TYPES  # noqa: E402
 
 __all__ = [
     "REPO_ROOT",
@@ -122,7 +122,7 @@ def _as_str_list(value: object) -> list[str]:
     return []
 
 
-def _load_schema() -> SchemaConfig:  # pylint: disable=too-many-branches
+def _load_schema() -> SchemaConfig:
     if not _SCHEMA_PATH.exists():
         return {"global_": {}, "sections": {}}
     raw_obj = yaml.safe_load(_SCHEMA_PATH.read_text(encoding="utf-8")) or {}

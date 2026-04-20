@@ -115,7 +115,7 @@ class MirrorWorker:
             wal_after_kb,
         )
 
-    def _reconcile_sync(self) -> ReconcileResult:  # pylint: disable=too-many-locals
+    def _reconcile_sync(self) -> ReconcileResult:
         """Reconcile all known transcripts once."""
         wal_before_kb = self._wal_size_kb()
         started_at = perf_counter()
@@ -164,7 +164,7 @@ class MirrorWorker:
                     self._record_tombstone(source_identity, candidate)
                     delete_mirror(session_id=session_id, source_identity=source_identity, db=self.db_path)
                 result.processed += 1
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 result.failed += 1
                 logger.error(
                     "Mirror reconciliation failed for transcript %s (%s): %s",
@@ -225,8 +225,8 @@ class MirrorWorker:
         while True:
             try:
                 await self.run_once()
-            except asyncio.CancelledError:  # pylint: disable=try-except-raise
+            except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Mirror reconciliation cycle failed: %s", exc, exc_info=True)
             await asyncio.sleep(self.interval_s)

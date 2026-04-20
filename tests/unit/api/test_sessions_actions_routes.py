@@ -1,7 +1,5 @@
 """Characterization tests for session action routes."""
 
-# pylint: disable=protected-access
-
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -785,7 +783,7 @@ class TestSessionsActionsRoutes:
             tmux_session_name=None,
             email="alice@example.com",
         )
-        plan = sessions_actions_routes._prepare_run_session(request, identity)  # pylint: disable=protected-access
+        plan = sessions_actions_routes._prepare_run_session(request, identity)
         assert plan.origin_metadata is not None
         assert plan.origin_metadata["email"] == "alice@example.com"
 

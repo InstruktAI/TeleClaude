@@ -1,5 +1,4 @@
 """Roadmap operations — list, add, move, freeze, deliver, deps."""
-# pylint: disable=missing-function-docstring,too-many-arguments
 
 from __future__ import annotations
 
@@ -55,20 +54,20 @@ class RoadmapOps:
         return None
 
     async def dependencies(self, slug: str) -> list[str]:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.get_deps(slug)
 
     async def dependents(self, slug: str) -> list[str]:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         all_deps = await db.load_deps()
         return [s for s, deps in all_deps.items() if slug in deps]
 
     async def all_dependencies(self) -> dict[str, list[str]]:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.load_deps()
 
     async def delivered_slugs(self) -> set[str]:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.delivered_slugs()
 
     # -- mutations ------------------------------------------------------------
@@ -83,7 +82,7 @@ class RoadmapOps:
         after: str | list[str] | None = None,
     ) -> str:
         """Add a new roadmap entry."""
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         after_list: list[str] | None
         if isinstance(after, str):
             after_list = [p.strip() for p in after.split(",") if p.strip()]
@@ -99,7 +98,7 @@ class RoadmapOps:
         return slug
 
     async def remove(self, slug: str) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.remove_from_roadmap(slug)
 
     async def move(
@@ -109,21 +108,21 @@ class RoadmapOps:
         before: str | None = None,
         after: str | None = None,
     ) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.move_in_roadmap(slug, before=before, after=after)
 
     async def set_dependencies(self, slug: str, *, after: list[str]) -> None:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         await db.set_deps(slug, after=after)
 
     async def freeze(self, slug: str) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.freeze(slug)
 
     async def unfreeze(self, slug: str) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.unfreeze(slug)
 
     async def deliver(self, slug: str, *, commit: str | None = None) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.deliver(slug, commit=commit)

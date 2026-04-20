@@ -3,8 +3,6 @@
 Registers Discord gateway events (on_ready, on_message, thread delete/update)
 and the /cancel slash command.
 """
-# pylint: disable=import-outside-toplevel,too-many-locals,too-many-branches,too-many-return-statements,too-many-statements
-# pylint: disable=not-callable,assignment-from-no-return,function-redefined,unexpected-keyword-arg,broad-exception-caught
 
 from __future__ import annotations
 
@@ -24,11 +22,22 @@ if TYPE_CHECKING:
     from types import ModuleType
 
     from teleclaude.core.models import Session
+import asyncio
+from datetime import datetime
+
+from teleclaude.cli.config_handlers import find_person_by_invite_token
+from teleclaude.core.agents import get_default_agent
+from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.dates import ensure_utc
+from teleclaude.core.identity import get_identity_resolver
+from teleclaude.core.origins import InputOrigin
+from teleclaude.invite import bind_discord_credentials, scaffold_personal_workspace
+from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
 
-class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
+class GatewayHandlersMixin:
     """Mixin providing Discord gateway event registration and handlers for DiscordAdapter.
 
     Required host attributes:
@@ -82,16 +91,12 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
         _launcher_registration_view: object | None
         _escalation_channel_id: int | None
 
-        import asyncio
-
         _ready_event: asyncio.Event
 
-        def _parse_optional_int(self, value: object) -> int | None: ...  # pylint: disable=unused-argument
+        def _parse_optional_int(self, value: object) -> int | None: ...
 
         @staticmethod
-        def _require_async_callable(  # pylint: disable=unused-argument
-            fn: object, *, label: str
-        ) -> Callable[..., Awaitable[object]]: ...
+        def _require_async_callable(fn: object, *, label: str) -> Callable[..., Awaitable[object]]: ...
 
         @property
         def _multi_agent(self) -> bool: ...
@@ -100,52 +105,44 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
         async def _ensure_discord_infrastructure(self) -> None: ...
 
-        async def _post_or_update_launcher(self, forum_id: int) -> None: ...  # pylint: disable=unused-argument
+        async def _post_or_update_launcher(self, forum_id: int) -> None: ...
 
-        async def _handle_discord_dm(self, message: object) -> None: ...  # pylint: disable=unused-argument
+        async def _handle_discord_dm(self, message: object) -> None: ...
 
-        async def _handle_relay_thread_message(  # pylint: disable=unused-argument
-            self, message: object, text: str
-        ) -> None: ...
+        async def _handle_relay_thread_message(self, message: object, text: str) -> None: ...
 
-        def _is_managed_message(self, message: object) -> bool: ...  # pylint: disable=unused-argument
+        def _is_managed_message(self, message: object) -> bool: ...
 
-        def _is_help_desk_thread(self, message: object) -> bool: ...  # pylint: disable=unused-argument
+        def _is_help_desk_thread(self, message: object) -> bool: ...
 
-        def _is_bot_message(self, message: object) -> bool: ...  # pylint: disable=unused-argument
+        def _is_bot_message(self, message: object) -> bool: ...
 
-        def _extract_audio_attachment(self, message: object) -> object | None: ...  # pylint: disable=unused-argument
+        @staticmethod
+        def _extract_audio_attachment(message: object) -> object | None: ...
 
-        def _extract_file_attachments(self, message: object) -> list[object]: ...  # pylint: disable=unused-argument
+        @staticmethod
+        def _extract_file_attachments(message: object) -> list[object]: ...
 
-        async def _handle_voice_attachment(  # pylint: disable=unused-argument
-            self, message: object, attachment: object
-        ) -> None: ...
+        async def _handle_voice_attachment(self, message: object, attachment: object) -> None: ...
 
-        async def _handle_file_attachments(  # pylint: disable=unused-argument
-            self, message: object, attachments: list[object]
-        ) -> None: ...
+        async def _handle_file_attachments(self, message: object, attachments: list[object]) -> None: ...
 
-        async def _resolve_or_create_session(  # pylint: disable=unused-argument
-            self, message: object
+        async def _resolve_or_create_session(
+            self, message: object, *, first_message: str | None = None
         ) -> Session | None: ...
 
-        async def _forward_to_relay_thread(  # pylint: disable=unused-argument
-            self, session: object, text: str, message: object
-        ) -> None: ...
+        async def _forward_to_relay_thread(self, session: object, text: str, message: object) -> None: ...
 
-        async def _handle_cancel_slash(  # pylint: disable=unused-argument
-            self, interaction: object
-        ) -> None: ...
+        async def _handle_cancel_slash(self, interaction: object) -> None: ...
 
         @staticmethod
-        def _is_customer_session(session: object) -> bool: ...  # pylint: disable=unused-argument
+        def _is_customer_session(session: Session) -> bool: ...
 
         @staticmethod
-        def _discord_actor_name(author: object, user_id: str) -> str: ...  # pylint: disable=unused-argument
+        def _discord_actor_name(author: object, user_id: str) -> str: ...
 
         @staticmethod
-        def _discord_actor_avatar_url(author: object) -> str | None: ...  # pylint: disable=unused-argument
+        def _discord_actor_avatar_url(author: object) -> str | None: ...
 
     # =========================================================================
     # Slash Command Registration
@@ -224,7 +221,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             logger.info(
                 "Discord on_ready: infrastructure provisioned, team_channel_map=%d entries", len(self._team_channel_map)
             )
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Discord infrastructure provisioning failed: %s", exc, exc_info=True)
 
         if self._tree is not None and self._guild_id is not None:
@@ -266,11 +263,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
     async def _handle_discord_dm(self, message: object) -> None:
         """Handle Direct Message (no guild) — invite token binding or bound user messaging."""
-        from teleclaude.core.agents import get_default_agent
-        from teleclaude.core.command_registry import get_command_service
-        from teleclaude.core.origins import InputOrigin
-        from teleclaude.types.commands import CreateSessionCommand, ProcessMessageCommand
-
         author = getattr(message, "author", None)
         if not author:
             return
@@ -289,8 +281,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             return
 
         # Resolve identity
-        from teleclaude.core.identity import get_identity_resolver
-
         identity = get_identity_resolver().resolve("discord", {"user_id": user_id, "discord_user_id": user_id})
 
         if not identity or not identity.person_name:
@@ -313,13 +303,10 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
         if not session:
             # Create new session in personal workspace
-            from teleclaude.invite import scaffold_personal_workspace
-
             workspace_path = scaffold_personal_workspace(identity.person_name)
 
             create_cmd = CreateSessionCommand(
                 project_path=str(workspace_path),
-                title=f"Discord: {identity.person_name}",
                 origin=InputOrigin.DISCORD.value,
                 origin_metadata={
                     "user_id": user_id,
@@ -358,12 +345,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
     async def _handle_discord_invite_token(self, message: object, user_id: str, token: str) -> None:
         """Handle invite token binding in Discord DM."""
-        from teleclaude.cli.config_handlers import find_person_by_invite_token
-        from teleclaude.core.agents import get_default_agent
-        from teleclaude.core.command_registry import get_command_service
-        from teleclaude.core.origins import InputOrigin
-        from teleclaude.types.commands import CreateSessionCommand
-
         result = find_person_by_invite_token(token)
         if not result:
             channel = getattr(message, "channel", None)
@@ -388,20 +369,15 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                 return
         else:
             # Bind credentials
-            from teleclaude.invite import bind_discord_credentials
-
             bind_discord_credentials(person_name, user_id)
             logger.info("Bound Discord user %s to person %s", user_id, person_name)
 
         # Scaffold personal workspace and create session
-        from teleclaude.invite import scaffold_personal_workspace
-
         workspace_path = scaffold_personal_workspace(person_name)
 
         # Create session
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
-            title=f"Discord: {person_name}",
             origin=InputOrigin.DISCORD.value,
             origin_metadata={
                 "user_id": user_id,
@@ -429,10 +405,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             await channel.send(f"Hi {person_name}, I'm your personal assistant. What would you like to work on?")
 
     async def _handle_on_message(self, message: object) -> None:
-        from teleclaude.core.command_registry import get_command_service
-        from teleclaude.core.origins import InputOrigin
-        from teleclaude.types.commands import ProcessMessageCommand
-
         author = getattr(message, "author", None)
         channel = getattr(message, "channel", None)
         logger.debug(
@@ -497,7 +469,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             return  # No text — if attachments existed, they were already handled above
 
         try:
-            session = await self._resolve_or_create_session(message, first_message=text)  # type: ignore
+            session = await self._resolve_or_create_session(message, first_message=text)
         except Exception as exc:
             logger.error("Discord session resolution failed: %s", exc, exc_info=True)
             return
@@ -585,10 +557,6 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
 
         # Grace period: ignore events for sessions still initialising.
         if session.created_at:
-            from datetime import datetime
-
-            from teleclaude.core.dates import ensure_utc
-
             created_at = ensure_utc(session.created_at)
             age = (datetime.now(UTC) - created_at).total_seconds()
             if age < 10.0:

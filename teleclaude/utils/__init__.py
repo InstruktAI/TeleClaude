@@ -49,7 +49,7 @@ def command_retry(
                 try:
                     return await func(*args, **kwargs)
 
-                except Exception as e:  # pylint: disable=broad-exception-caught
+                except Exception as e:
                     # Elapsed operation time (excludes rate-limit waits)
                     elapsed_time = time.time() - start_time - excluded_wait_time
 

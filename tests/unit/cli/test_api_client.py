@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude/cli/api_client.py."""
-# pylint: disable=import-outside-toplevel,protected-access
 
 from __future__ import annotations
 

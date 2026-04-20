@@ -1,5 +1,4 @@
 """Particle and atmospheric TUI animations (rain, fire, searchlight, prism, bioluminescence)."""
-# pylint: disable=too-many-locals,too-many-arguments,too-many-positional-arguments
 
 from __future__ import annotations
 

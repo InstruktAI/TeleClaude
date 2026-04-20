@@ -12,14 +12,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import (
-    ROLE_INTEGRATOR,
-    ROLE_ORCHESTRATOR,
-    ROLE_SYSTEM,
-    ROLE_WORKER,
-    JobRole,
-    SlashCommand,
-)
+from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_SYSTEM, ROLE_WORKER, JobRole, SlashCommand
 from teleclaude.core.command_handlers import (
     EndSessionHandlerResult,
     SessionDataPayload,
@@ -55,6 +48,16 @@ from teleclaude.types.commands import (
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+from datetime import UTC, datetime
+
+from teleclaude.adapters.base_adapter import AdapterError
+from teleclaude.adapters.discord_adapter import DiscordAdapter
+from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionEscalatedPayload
+from teleclaude.core.inbound_queue import init_inbound_queue_manager
+from teleclaude.core.models import MessageMetadata
+from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
 
@@ -142,7 +145,7 @@ def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict 
 class CommandService:
     """Explicit command executor with typed command methods."""
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         client: AdapterClient,
@@ -158,14 +161,12 @@ class CommandService:
         self._bootstrap_session = bootstrap_session
 
         # Initialize the inbound queue manager singleton with delivery wired to this service's deps.
-        from teleclaude.core.inbound_queue import init_inbound_queue_manager  # pylint: disable=import-outside-toplevel
-
         init_inbound_queue_manager(
             functools.partial(deliver_inbound, client=client, start_polling=start_polling),
             force=True,
         )
 
-    async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:  # pylint: disable=missing-function-docstring
+    async def create_session(self, cmd: CreateSessionCommand) -> dict[str, str]:
         return await create_session(
             cmd,
             self.client,
@@ -173,53 +174,53 @@ class CommandService:
             self._bootstrap_session,  # type: ignore[arg-type]
         )
 
-    async def process_message(self, cmd: ProcessMessageCommand) -> None:  # pylint: disable=missing-function-docstring
+    async def process_message(self, cmd: ProcessMessageCommand) -> None:
         await process_message(cmd, self.client, self._start_polling)
 
-    async def handle_voice(self, cmd: HandleVoiceCommand) -> None:  # pylint: disable=missing-function-docstring
+    async def handle_voice(self, cmd: HandleVoiceCommand) -> None:
         await handle_voice(cmd, self.client, self._start_polling)
 
-    async def handle_file(self, cmd: HandleFileCommand) -> None:  # pylint: disable=missing-function-docstring
+    async def handle_file(self, cmd: HandleFileCommand) -> None:
         await handle_file(cmd, self.client)
 
-    async def keys(self, cmd: KeysCommand) -> None:  # pylint: disable=missing-function-docstring
+    async def keys(self, cmd: KeysCommand) -> None:
         await keys(cmd, self.client, self._start_polling)
 
-    async def start_agent(self, cmd: StartAgentCommand) -> None:  # pylint: disable=missing-function-docstring
+    async def start_agent(self, cmd: StartAgentCommand) -> None:
         args = list(cmd.args)
         valid_modes = {mode.value for mode in ThinkingMode}
         if cmd.thinking_mode and (not args or args[0] not in valid_modes):
             args.insert(0, cmd.thinking_mode)
         cmd.args = args
-        await start_agent(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
+        await start_agent(cmd, self.client, self._execute_terminal_command)
 
-    async def resume_agent(self, cmd: ResumeAgentCommand) -> None:  # pylint: disable=missing-function-docstring
-        await resume_agent(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
+    async def resume_agent(self, cmd: ResumeAgentCommand) -> None:
+        await resume_agent(cmd, self.client, self._execute_terminal_command)
 
-    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None]:  # pylint: disable=missing-function-docstring
-        return await agent_restart(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
+    async def restart_agent(self, cmd: RestartAgentCommand) -> tuple[bool, str | None]:
+        return await agent_restart(cmd, self.client, self._execute_terminal_command)
 
-    async def run_agent_command(self, cmd: RunAgentCommand) -> None:  # pylint: disable=missing-function-docstring
-        await run_agent_command(cmd, self.client, self._execute_terminal_command)  # pylint: disable=no-value-for-parameter
+    async def run_agent_command(self, cmd: RunAgentCommand) -> None:
+        await run_agent_command(cmd, self.client, self._execute_terminal_command)
 
-    async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:  # pylint: disable=missing-function-docstring
+    async def get_session_data(self, cmd: GetSessionDataCommand) -> SessionDataPayload:
         return await get_session_data(cmd)
 
-    async def close_session(self, cmd: CloseSessionCommand) -> None:  # pylint: disable=missing-function-docstring
-        await close_session(cmd, self.client)  # pylint: disable=no-value-for-parameter
+    async def close_session(self, cmd: CloseSessionCommand) -> None:
+        await close_session(cmd, self.client)
 
-    async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:  # pylint: disable=missing-function-docstring
+    async def end_session(self, cmd: CloseSessionCommand) -> EndSessionHandlerResult:
         return await end_session(cmd, self.client)
 
-    async def deliver_result(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+    async def deliver_result(self, cmd: SystemCommand) -> object:
         """Deliver a formatted result to a session's user via the adapter."""
         return await self._dispatch_system_command(cmd)
 
-    async def render_widget(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+    async def render_widget(self, cmd: SystemCommand) -> object:
         """Render a widget expression and send summary to the session's user."""
         return await self._dispatch_system_command(cmd)
 
-    async def escalate_session(self, cmd: SystemCommand) -> object:  # pylint: disable=missing-function-docstring
+    async def escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a customer session to admin via Discord."""
         return await self._dispatch_system_command(cmd)
 
@@ -241,11 +242,6 @@ class CommandService:
 
     async def _handle_deliver_result(self, cmd: SystemCommand) -> object:
         """Send a formatted result message to a session's user via the adapter."""
-        from teleclaude.adapters.base_adapter import AdapterError  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
-        from teleclaude.utils.markdown import telegramify_markdown  # pylint: disable=import-outside-toplevel
-
         content = str((cmd.data or {}).get("content", ""))
 
         session = await db.get_session(cmd.session_id)
@@ -289,10 +285,6 @@ class CommandService:
 
     async def _handle_render_widget(self, cmd: SystemCommand) -> object:
         """Render a rich widget and send text summary to the session's user."""
-        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.models import MessageMetadata  # pylint: disable=import-outside-toplevel
-        from teleclaude.utils.markdown import telegramify_markdown  # pylint: disable=import-outside-toplevel
-
         raw_widget = (cmd.data or {}).get("widget_data")
         if not isinstance(raw_widget, dict):
             raise ValueError("widget_data must be a dict")
@@ -317,13 +309,6 @@ class CommandService:
 
     async def _handle_escalate_session(self, cmd: SystemCommand) -> object:
         """Escalate a customer session to an admin via Discord."""
-        from datetime import UTC, datetime  # pylint: disable=import-outside-toplevel
-
-        from teleclaude.adapters.discord_adapter import DiscordAdapter  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.event_bus import event_bus  # pylint: disable=import-outside-toplevel
-        from teleclaude.core.events import SessionEscalatedPayload  # pylint: disable=import-outside-toplevel
-
         session = await db.get_session(cmd.session_id)
         if not session:
             raise ValueError(f"Session {cmd.session_id} not found")

@@ -46,7 +46,7 @@ class SignalIngestCartridge:
         await self.pull(context)
         return None
 
-    async def pull(self, context: PipelineContext) -> int:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
+    async def pull(self, context: PipelineContext) -> int:
         """Explicit pull — returns count of new items ingested."""
         sources = await load_sources(self._config)
         sem = asyncio.Semaphore(self._config.ai_concurrency)

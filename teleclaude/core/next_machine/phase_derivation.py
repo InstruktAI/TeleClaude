@@ -17,12 +17,7 @@ from collections.abc import Callable
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from teleclaude.core.next_machine._types import (
-    DOR_READY_THRESHOLD,
-    PreparePhase,
-    StateValue,
-    WorkPhase,
-)
+from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.git import GitCommandError, Repo
 
@@ -83,7 +78,7 @@ def derive_work_phase(
     return primitive
 
 
-def _derive_work_phase_from_primitives(  # pylint: disable=too-many-return-statements
+def _derive_work_phase_from_primitives(
     state: dict[str, StateValue],
     worktree_cwd: str,
     slug: str,
@@ -156,7 +151,7 @@ async def derive_prepare_phase(
     return primitive
 
 
-async def _derive_prepare_phase_from_primitives(  # pylint: disable=too-many-return-statements,too-many-locals
+async def _derive_prepare_phase_from_primitives(
     state: dict[str, StateValue],
     todos_db: TodosDb,
     slug: str,

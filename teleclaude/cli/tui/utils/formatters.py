@@ -21,7 +21,7 @@ def format_time(iso_timestamp: str | None) -> str:
         return ""
 
 
-def format_relative_time(iso_timestamp: str | None) -> str:  # pylint: disable=too-many-return-statements
+def format_relative_time(iso_timestamp: str | None) -> str:
     """Convert ISO timestamp to relative time like '2m ago', '1h ago'.
 
     Returns empty string if unavailable.

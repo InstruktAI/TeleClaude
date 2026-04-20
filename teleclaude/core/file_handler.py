@@ -71,12 +71,12 @@ async def is_agent_running(tmux_session_name: str) -> bool:
 
         return is_agent_title(output)
 
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("Failed to detect Claude Code in session %s: %s", tmux_session_name, e)
         return False
 
 
-async def handle_file(  # pylint: disable=too-many-locals
+async def handle_file(
     session_id: str,
     file_path: str,
     filename: str,

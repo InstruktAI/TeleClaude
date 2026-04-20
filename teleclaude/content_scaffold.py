@@ -9,6 +9,7 @@ from typing import TypedDict
 
 import yaml
 
+from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.slug import ensure_unique_slug, normalize_slug
 
 
@@ -24,11 +25,9 @@ def _derive_slug(text: str) -> str:
 def _resolve_author() -> str:
     """Resolve the current terminal auth identity, or 'unknown'."""
     try:
-        from teleclaude.cli.session_auth import read_current_session_email  # pylint: disable=import-outside-toplevel
-
         email = read_current_session_email()
         return email or "unknown"
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         return "unknown"
 
 

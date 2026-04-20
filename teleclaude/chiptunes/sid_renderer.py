@@ -9,12 +9,12 @@ try:
     from pyresidfp import SoundInterfaceDevice, WritableRegister
     from pyresidfp._pyresidfp import ChipModel, SamplingMethod
 
-    _pyresidfp_available = True  # pylint: disable=invalid-name
+    _pyresidfp_available = True
 
     # Map SID register offsets (0-24) to pyresidfp WritableRegister enum values
     _REGISTER_MAP: list[WritableRegister] = list(WritableRegister)  # pyright: ignore[reportInvalidTypeForm]
 except ImportError:
-    _pyresidfp_available = False  # pylint: disable=invalid-name
+    _pyresidfp_available = False
     SoundInterfaceDevice = None  # type: ignore[misc]
     WritableRegister = None  # type: ignore[misc]
     ChipModel = None  # type: ignore[misc]

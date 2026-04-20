@@ -17,34 +17,18 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import (
-    SessionCloseCompletedPayload,
-    SessionLifecycleContext,
-    TeleClaudeEvents,
-)
+from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
-from teleclaude.core.models import (
-    ComputerInfo,
-    ProjectInfo,
-    Session,
-    SessionSnapshot,
-)
+from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionSnapshot
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
+from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
-from teleclaude.types.commands import (
-    CloseSessionCommand,
-    CreateSessionCommand,
-    GetSessionDataCommand,
-    InternalCommand,
-)
+from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand, InternalCommand
 from teleclaude.utils import strip_ansi_codes
-from teleclaude.utils.transcript import (
-    get_transcript_parser_info,
-    parse_session_transcript,
-)
+from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
 from ._utils import EndSessionHandlerResult, SessionDataPayload, with_session
 
@@ -73,7 +57,7 @@ async def forward_command(
 logger = get_logger(__name__)
 
 
-async def create_session(  # pylint: disable=too-many-locals,too-many-branches,too-many-statements  # noqa: C901
+async def create_session(  # noqa: C901 # TODO: refactor to reduce complexity
     cmd: CreateSessionCommand,
     client: "AdapterClient",
 ) -> dict[str, str]:
@@ -202,10 +186,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
             working_dir_path.mkdir(parents=True, exist_ok=True)
         working_dir = str(working_dir_path)
 
-    # Store only the description as title - UI adapters construct display title
-    # The full formatted title (with agent/computer prefix) is built by UI adapters
-    # using build_display_title() when displaying to users
-    title = cmd.title or "Untitled"
+    title = initial_session_title(cmd.initial_input)
 
     # Create session atomically with all known fields — the SESSION_STARTED
     # event must carry complete data so downstream consumers never see partial state.
@@ -251,7 +232,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
                     initiator_session_id,
                     session_id,
                 )
-            except Exception as exc:  # pylint: disable=broad-exception-caught  # Listener failures must not abort session creation.
+            except Exception as exc:
                 logger.warning(
                     "Listener registration failed: caller=%s target=%s error=%s",
                     initiator_session_id,
@@ -415,7 +396,7 @@ async def get_computer_info() -> ComputerInfo:
     return info
 
 
-async def get_session_data(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches,too-many-statements
+async def get_session_data(
     cmd: GetSessionDataCommand,
 ) -> SessionDataPayload:
     """Get session data from native_log_file.
@@ -467,7 +448,7 @@ async def get_session_data(  # pylint: disable=too-many-locals,too-many-return-s
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
             pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Transcript fallback must degrade gracefully.
+        except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",
                 session_id,
@@ -574,7 +555,7 @@ async def get_session_data(  # pylint: disable=too-many-locals,too-many-return-s
             len(markdown_content),
             session_id,
         )
-    except Exception as e:  # pylint: disable=broad-exception-caught  # Transcript parsers may fail in varied ways.
+    except Exception as e:
         logger.error("Failed to parse session file %s: %s", native_log_file, e)
         return {"status": "error", "error": f"Failed to parse session file: {e}"}
 

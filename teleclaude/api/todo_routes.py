@@ -12,6 +12,9 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC
+from datetime import datetime as _dt
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -23,11 +26,17 @@ from teleclaude.api.auth import (
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
+    clearance_todos_remove,
     clearance_todos_set_deps,
     clearance_todos_work,
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
+from teleclaude.core.next_machine._types import (
+    PreparePhase,
+    WorkPhase,
+    default_state,
+)
 from teleclaude.core.next_machine.core import (
     _BUILD_VERDICT_PHASE,
     _BUILD_VERDICT_VALUES,
@@ -36,11 +45,27 @@ from teleclaude.core.next_machine.core import (
 )
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
+from teleclaude.core.next_machine.state_io import (
+    apply_prepared_state,
+    read_phase_state,
+    stamp_finalize_ready,
+    stamp_verdict,
+    validate_work_phase_preconditions,
+    write_phase_state,
+)
+from teleclaude.core.next_machine.state_mutation import (
+    GroundingManager,
+    StateMutationError,
+    StateWriter,
+)
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
+from teleclaude.core.todos_db import get_todos_db
+from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import BreakdownState, DorState
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -256,8 +281,6 @@ async def todo_set_deps(  # pyright: ignore
 
 async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     """Resolve the todos DB for the given project cwd."""
-    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
-
     project_root = resolve_canonical_project_root(cwd)
     return await get_todos_db(project_root)
 
@@ -324,8 +347,6 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
       - "prepped": writes the content as an "implementation-plan" artifact; stamps
         all prepare primitives so the todo is immediately ready for build.
     """
-    from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
-
     slug = request.slug
     try:
         effective_cwd = request.cwd or _default_cwd()
@@ -353,17 +374,13 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     input_content = f"# {slug} — Input\n\n{request.content}\n"
                     await todos_db.write_artifact(slug, "input", input_content, session=session)
 
-        todos_db._on_mutation()  # pylint: disable=protected-access
+        todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
 
         if request.kind in ("prepped", "bug"):
             # Stamp DOR, grounding baseline, plan_review=approve, and
             # requirements_review=skipped so derive_prepare_phase resolves to PREPARED.
-            from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-                apply_prepared_state,
-            )
-
             apply_prepared_state(effective_cwd, slug)
-            todos_db._on_mutation()  # pylint: disable=protected-access
+            todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
 
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
@@ -380,10 +397,6 @@ async def todo_split(
     cwd: Annotated[str | None, Body()] = None,
 ) -> _SplitResponse:
     """Split a todo into children: create child state + roadmap entries, update parent breakdown."""
-    from teleclaude.core.next_machine._types import default_state  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.next_machine.state_mutation import StateWriter  # pylint: disable=import-outside-toplevel
-    from teleclaude.types.todos import BreakdownState  # pylint: disable=import-outside-toplevel
-
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
 
@@ -413,43 +426,31 @@ async def todo_split(
 
             await parent_writer.commit(todos_db, slug, session=session)
 
-    todos_db._on_mutation()  # pylint: disable=protected-access
+    todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
 
     return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 
 
-@router.post("/remove")
-async def todo_remove(
+@router.post("/remove", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
+async def todo_remove(  # pyright: ignore
     slug: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
-) -> _SlugStatusResponse:
-    """Remove a todo: delete state, artifacts, and roadmap entry from todos.db.
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_remove),
+) -> SerializedOperation:
+    """Remove a todo: delete state, artifacts, roadmap entry, and clean up worktree.
 
-    Also cleans up worktree and branch if they exist.
+    Submits a durable receipt-backed remove operation. Returns immediately
+    with a receipt for polling.
     """
-    from teleclaude.core.next_machine.delivery import cleanup_delivered_slug  # pylint: disable=import-outside-toplevel
-
     effective_cwd = cwd or _default_cwd()
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-
-    # Read state before deletion to determine if cleanup is needed
-    state = await todos_db.read_state(slug)
-    is_draft = isinstance(state, dict) and state.get("kind") == "draft"
-
-    async with todos_db._session() as session:  # pylint: disable=protected-access
-        async with session.begin():
-            await todos_db.delete_state(slug, session=session)
-            await todos_db.delete_artifacts(slug, session=session)
-            await todos_db.remove_from_roadmap(slug, session=session)
-            await todos_db.clean_dep_references(slug, session=session)
-
-    todos_db._on_mutation()  # pylint: disable=protected-access
-
-    # Draft todos never have worktrees or branches — skip filesystem/git cleanup
-    if not is_draft:
-        await asyncio.to_thread(cleanup_delivered_slug, effective_cwd, slug)
-
-    return _SlugStatusResponse(status="ok", slug=slug)
+    operations = get_operations_service()
+    return await operations.submit_todo_remove(
+        slug=slug,
+        cwd=effective_cwd,
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
 
 
 @router.post("/freeze/{slug}")
@@ -486,10 +487,6 @@ def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
     Both branches route through :class:`GroundingManager` so the stamp path
     shares one contract with the rest of the grounding lifecycle.
     """
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        GroundingManager,
-    )
-
     grounding_manager = GroundingManager(writer)
     if value == "valid":
         grounding_manager.clear_invalidation()
@@ -499,8 +496,6 @@ def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
 
 def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
     """Apply a `dor` stamp, parsing either a compound score/status or a bare status."""
-    from teleclaude.types.todos import DorState  # pylint: disable=import-outside-toplevel
-
     dor_model = writer.state.dor or DorState()
     if "," in value and ":" in value:
         for part in value.split(","):
@@ -533,15 +528,6 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     state no longer tracks a persistent ``current`` pointer. Accepted phases
     are the three prepare review keys and ``build_review`` for the work lane.
     """
-    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-        stamp_finalize_ready,
-        stamp_verdict,
-    )
-    from teleclaude.core.next_machine.state_mutation import (  # pylint: disable=import-outside-toplevel
-        StateMutationError,
-        StateWriter,
-    )
-
     effective_cwd = cwd or _default_cwd()
 
     if stamp_type == "verdict":
@@ -602,9 +588,6 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
         elif stamp_type == "dor":
             _apply_dor_stamp(writer, value)
         elif stamp_type == "specs_built":
-            from datetime import UTC  # pylint: disable=import-outside-toplevel
-            from datetime import datetime as _dt  # pylint: disable=import-outside-toplevel
-
             writer.state.artifacts.test_specs.produced_at = _dt.now(UTC).isoformat()
             writer.state.artifacts.test_specs.stale = False
         else:
@@ -632,16 +615,6 @@ async def mark_phase(
     authoritative field in the same round trip and drive subsequent decisions
     from the persisted state, not a metadata echo.
     """
-    from teleclaude.core.next_machine._types import (  # pylint: disable=import-outside-toplevel
-        PreparePhase,
-        WorkPhase,
-    )
-    from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-        read_phase_state,
-        validate_work_phase_preconditions,
-        write_phase_state,
-    )
-
     effective_cwd = cwd or _default_cwd()
     prepare_values = {p.value for p in PreparePhase}
     work_values = {p.value for p in WorkPhase}
@@ -663,8 +636,6 @@ async def mark_phase(
     def _apply() -> dict[str, StateValue]:
         state = dict(read_phase_state(effective_cwd, slug))
         if field == "work_phase":
-            from pathlib import Path  # pylint: disable=import-outside-toplevel
-
             worktree_cwd = str(Path(effective_cwd) / "trees" / slug)
             wt = worktree_cwd if Path(worktree_cwd).exists() else None
             error = validate_work_phase_preconditions(state, phase, wt)
@@ -683,8 +654,6 @@ async def todo_show(
     cwd: str | None = None,
 ) -> ShowPayload:
     """Return full show payload for a slug."""
-    from teleclaude.core.todos_db._show import assemble_show_payload  # pylint: disable=import-outside-toplevel
-
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     payload = await assemble_show_payload(todos_db, slug)

@@ -56,14 +56,14 @@ class InternalCommand:
 
 
 @dataclass(kw_only=True)
-class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
+class CreateSessionCommand(InternalCommand):
     """Intent to create a new session."""
 
     command_type: CommandType = field(init=False, default=CommandType.CREATE_SESSION)
     project_path: str
     origin: str
     session_id: str | None = None
-    title: str | None = None
+    initial_input: str | None = None
     subdir: str | None = None
     headless: bool = False
     native_session_id: str | None = None
@@ -78,7 +78,7 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     job: str | None = None
 
     def to_payload(self) -> dict[str, object]:
-        args: list[str] = [self.title] if self.title else []
+        args: list[str] = [self.initial_input] if self.initial_input else []
         return {"session_id": "", "args": args}
 
 
@@ -92,7 +92,7 @@ class StartAgentCommand(InternalCommand):
     args: list[str] = field(default_factory=list)
     origin: str | None = None
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -123,7 +123,7 @@ class ResumeAgentCommand(InternalCommand):
     native_session_id: str | None = None
     origin: str | None = None
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -148,7 +148,7 @@ class ResumeAgentCommand(InternalCommand):
 
 
 @dataclass(kw_only=True)
-class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
+class ProcessMessageCommand(InternalCommand):
     """Intent to process an incoming user message for a session."""
 
     session_id: str
@@ -161,7 +161,7 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
     source_channel_id: str | None = None  # Platform channel ID for additional context
     origin_metadata: Mapping[str, object] | None = None
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -200,7 +200,7 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
 
 
 @dataclass(kw_only=True)
-class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-attributes
+class HandleVoiceCommand(InternalCommand):
     """Intent to handle a voice input for a session."""
 
     session_id: str
@@ -214,7 +214,7 @@ class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-
     actor_avatar_url: str | None = None
     origin_metadata: Mapping[str, object] | None = None
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -275,7 +275,7 @@ class HandleFileCommand(InternalCommand):
     caption: str | None = None
     file_size: int = 0
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -312,7 +312,7 @@ class KeysCommand(InternalCommand):
     key: str
     args: list[str] = field(default_factory=list)
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -338,7 +338,7 @@ class RunAgentCommand(InternalCommand):
     args: str = ""
     origin: str
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -365,7 +365,7 @@ class RestartAgentCommand(InternalCommand):
     agent_name: str | None = None
     self_restart: bool = False
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -399,7 +399,7 @@ class GetSessionDataCommand(InternalCommand):
     until_timestamp: str | None = None
     tail_chars: int = 5000
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -430,7 +430,7 @@ class CloseSessionCommand(InternalCommand):
 
     session_id: str
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         session_id: str,
@@ -457,7 +457,7 @@ class SystemCommand(InternalCommand):
     data: dict[str, object] | None = None
     session_id: str | None = None
 
-    def __init__(  # pylint: disable=too-many-arguments
+    def __init__(
         self,
         *,
         command: str,

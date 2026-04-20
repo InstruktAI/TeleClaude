@@ -12,11 +12,25 @@ accepts per-database overrides for pool strategy, pool size, etc.
 
 from __future__ import annotations
 
+import ast
+import inspect
 from pathlib import Path
 from textwrap import dedent
 from typing import TYPE_CHECKING, TypedDict
 
 import pytest
+from sqlalchemy import Engine, text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.pool import StaticPool
+
+from teleclaude.core.db._base import DbBase
+from teleclaude.core.db.connection_factory import (
+    create_async_db_engine,
+    create_sync_db_engine,
+)
+from teleclaude.core.todos_db._base import TodosDbBase
+from teleclaude.hooks.receiver import _session
+from teleclaude.mirrors import store
 
 pytestmark = [pytest.mark.unit]
 
@@ -36,9 +50,6 @@ class _PragmaValues(TypedDict):
 
 async def _read_async_pragmas(engine: AsyncEngine) -> _PragmaValues:
     """Read the PRAGMA baseline through a real async session."""
-    from sqlalchemy import text
-    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
-
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     try:
         async with session_factory() as session:
@@ -63,58 +74,36 @@ class TestConnectionFactoryPragmaBaseline:
 
     async def test_async_engine_sets_wal_mode(self, tmp_path: Path) -> None:
         """Async engine connections report journal_mode=wal."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         pragmas = await _read_async_pragmas(engine)
         assert str(pragmas["journal_mode"]).lower() == "wal"
 
     async def test_async_engine_sets_synchronous_normal(self, tmp_path: Path) -> None:
         """Async engine connections set synchronous=NORMAL (1)."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         pragmas = await _read_async_pragmas(engine)
         assert pragmas["synchronous"] == 1  # NORMAL
 
     async def test_async_engine_sets_busy_timeout(self, tmp_path: Path) -> None:
         """Async engine connections set busy_timeout=5000."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         pragmas = await _read_async_pragmas(engine)
         assert pragmas["busy_timeout"] == 5000
 
     async def test_async_engine_sets_foreign_keys_on(self, tmp_path: Path) -> None:
         """Async engine connections enable foreign_keys (R1 adds this to teleclaude.db)."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         pragmas = await _read_async_pragmas(engine)
         assert pragmas["foreign_keys"] == 1
 
     async def test_async_engine_sets_cache_size(self, tmp_path: Path) -> None:
         """Async engine connections set cache_size=-8000 (8MB)."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         pragmas = await _read_async_pragmas(engine)
         assert pragmas["cache_size"] == -8000
 
     def test_sync_engine_sets_identical_pragmas(self, tmp_path: Path) -> None:
         """Sync engine connections get the same PRAGMA set as async engines."""
-        from teleclaude.core.db.connection_factory import create_sync_db_engine  # pyright: ignore[reportMissingImports]
-
         engine = create_sync_db_engine(tmp_path / "test.db")
         with engine.connect() as conn:
             pragmas = {
@@ -143,10 +132,6 @@ class TestConnectionFactoryAsyncPragmaPath:
         This test exercises the async path to confirm PRAGMAs are applied
         on async connections, not just via engine.sync_engine.connect().
         """
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "async_pragma.db")
         pragmas = await _read_async_pragmas(engine)
 
@@ -162,10 +147,6 @@ class TestConnectionFactoryOverrides:
 
     def test_custom_pool_class_accepted(self, tmp_path: Path) -> None:
         """Factory accepts poolclass override without breaking PRAGMAs."""
-        from sqlalchemy.pool import StaticPool
-
-        from teleclaude.core.db.connection_factory import create_sync_db_engine  # pyright: ignore[reportMissingImports]
-
         engine = create_sync_db_engine(tmp_path / "test.db", poolclass=StaticPool)
         with engine.connect() as conn:
             result = conn.exec_driver_sql("PRAGMA journal_mode")
@@ -173,10 +154,6 @@ class TestConnectionFactoryOverrides:
 
     async def test_custom_pool_size_accepted(self, tmp_path: Path) -> None:
         """Factory accepts pool_size override."""
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db", pool_size=5)
         pragmas = await _read_async_pragmas(engine)
         assert str(pragmas["journal_mode"]).lower() == "wal"
@@ -187,21 +164,11 @@ class TestConnectionFactoryEngineTypes:
 
     def test_async_engine_is_async_engine_type(self, tmp_path: Path) -> None:
         """create_async_db_engine returns an AsyncEngine."""
-        from sqlalchemy.ext.asyncio import AsyncEngine
-
-        from teleclaude.core.db.connection_factory import (  # pyright: ignore[reportMissingImports]
-            create_async_db_engine,
-        )
-
         engine = create_async_db_engine(tmp_path / "test.db")
         assert isinstance(engine, AsyncEngine)
 
     def test_sync_engine_is_engine_type(self, tmp_path: Path) -> None:
         """create_sync_db_engine returns a sync Engine."""
-        from sqlalchemy import Engine
-
-        from teleclaude.core.db.connection_factory import create_sync_db_engine  # pyright: ignore[reportMissingImports]
-
         engine = create_sync_db_engine(tmp_path / "test.db")
         assert isinstance(engine, Engine)
 
@@ -218,11 +185,6 @@ class TestPragmaConsolidation:
         """DbBase.initialize() obtains its engine from the shared factory,
         not from a local create_async_engine call with inline PRAGMAs.
         """
-        import ast
-        import inspect
-
-        from teleclaude.core.db._base import DbBase
-
         source = inspect.getsource(DbBase.initialize)
         tree = ast.parse(dedent(source))
         # No direct PRAGMA execution in initialize (cursor.execute/conn.execute with PRAGMA)
@@ -234,11 +196,6 @@ class TestPragmaConsolidation:
 
     def test_todos_db_init_uses_factory(self) -> None:
         """TodosDbBase.initialize() obtains its engine from the shared factory."""
-        import ast
-        import inspect
-
-        from teleclaude.core.todos_db._base import TodosDbBase
-
         source = inspect.getsource(TodosDbBase.initialize)
         tree = ast.parse(dedent(source))
         for node in ast.walk(tree):
@@ -249,10 +206,6 @@ class TestPragmaConsolidation:
 
     def test_mirrors_store_uses_factory(self) -> None:
         """mirrors/store.py connection helpers use the shared factory, not inline PRAGMAs."""
-        import ast
-
-        from teleclaude.mirrors import store
-
         source_path = Path(store.__file__)
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         pragma_calls: list[str] = []
@@ -264,10 +217,6 @@ class TestPragmaConsolidation:
 
     def test_receiver_session_uses_factory(self) -> None:
         """Hook receiver _create_sync_engine uses the shared factory."""
-        import ast
-
-        from teleclaude.hooks.receiver import _session
-
         source_path = Path(_session.__file__)
         tree = ast.parse(source_path.read_text(encoding="utf-8"))
         pragma_calls: list[str] = []
@@ -287,8 +236,6 @@ class TestAllDatabasesPragmaConsistency:
     )
     def test_pragma_values_match_baseline(self, tmp_path: Path, db_name: str) -> None:
         """Each database engine reports the canonical PRAGMA baseline."""
-        from teleclaude.core.db.connection_factory import create_sync_db_engine  # pyright: ignore[reportMissingImports]
-
         db_path = tmp_path / f"{db_name}.db"
         engine = create_sync_db_engine(db_path)
         with engine.connect() as conn:

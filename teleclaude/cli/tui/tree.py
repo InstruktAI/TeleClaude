@@ -97,7 +97,7 @@ def _same_project(path_a: str | None, path_b: str | None) -> bool:
     return _base_project_path(path_a) == _base_project_path(path_b)
 
 
-def build_tree(  # pylint: disable=too-many-locals,too-many-branches
+def build_tree(
     computers: list[ComputerDisplayInfo],
     projects: list[ProjectDTO],
     sessions: list[SessionDTO],

@@ -1,5 +1,4 @@
 """Todo state operations — read/write phase state and classification."""
-# pylint: disable=missing-function-docstring
 
 from __future__ import annotations
 
@@ -21,25 +20,25 @@ class StateOps:
         self._base = base
 
     async def read(self, slug: str) -> dict[str, StateValue] | None:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.read_state(slug)
 
     async def write(self, slug: str, state: dict[str, StateValue]) -> None:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         await db.write_state(slug, state)
 
     async def delete(self, slug: str) -> None:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         await db.delete_state(slug)
 
     async def list_slugs(self) -> list[str]:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.list_slugs()
 
     async def is_bug(self, slug: str) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.is_bug_todo(slug)
 
     async def has_pending_deferrals(self, slug: str) -> bool:
-        db = await self._base._ensure_db()  # pylint: disable=protected-access
+        db = await self._base._ensure_db()
         return await db.has_pending_deferrals(slug)

@@ -19,6 +19,8 @@ from typing import Literal
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.core.db import db
+from teleclaude.core.tmux_delivery import deliver_listener_message
 
 logger = get_logger(__name__)
 _PAIR_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
@@ -37,7 +39,7 @@ class SessionListener:
 
 
 @dataclass
-class ConversationLink:  # pylint: disable=too-many-instance-attributes  # Attributes are explicit for runtime state.
+class ConversationLink:
     """Conversation link metadata."""
 
     link_id: str
@@ -131,8 +133,6 @@ async def register_listener(
     Returns:
         True if listener was newly registered, False if this caller already has one
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     is_new = await db.register_listener(
         target_session_id=target_session_id,
         caller_session_id=caller_session_id,
@@ -176,8 +176,6 @@ async def unregister_listener(target_session_id: str, caller_session_id: str) ->
     Returns:
         True if listener was found and removed, False if no such listener exists
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     removed = await db.unregister_listener(target_session_id, caller_session_id)
     if removed:
         logger.info(
@@ -196,8 +194,6 @@ async def unregister_listener(target_session_id: str, caller_session_id: str) ->
 
 async def get_listeners(target_session_id: str) -> list[SessionListener]:
     """Get all listeners for a target session."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     rows = await db.get_listeners_for_target(target_session_id)
     return [
         SessionListener(
@@ -222,8 +218,6 @@ async def pop_listeners(target_session_id: str) -> list[SessionListener]:
     Returns:
         List of removed listeners (may be empty)
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     rows = await db.pop_listeners_for_target(target_session_id)
     listeners = [
         SessionListener(
@@ -257,8 +251,6 @@ async def cleanup_caller_listeners(caller_session_id: str) -> int:
     Returns:
         Number of listeners removed
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     count = await db.cleanup_caller_listeners(caller_session_id)
     if count:
         logger.info(
@@ -271,8 +263,6 @@ async def cleanup_caller_listeners(caller_session_id: str) -> int:
 
 async def get_all_listeners() -> dict[str, list[SessionListener]]:
     """Get all active listeners (for debugging/monitoring)."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     rows = await db.get_all_listeners()
     result: dict[str, list[SessionListener]] = {}
     for row in rows:
@@ -289,8 +279,6 @@ async def get_all_listeners() -> dict[str, list[SessionListener]]:
 
 async def get_listeners_for_caller(caller_session_id: str) -> list[SessionListener]:
     """Get all listeners registered by a specific caller."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     rows = await db.get_listeners_for_caller(caller_session_id)
     return [
         SessionListener(
@@ -306,8 +294,6 @@ async def get_listeners_for_caller(caller_session_id: str) -> list[SessionListen
 
 async def count_listeners() -> int:
     """Get total number of active listeners."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     return await db.count_listeners()
 
 
@@ -326,8 +312,6 @@ async def get_stale_targets(max_age_minutes: int = 10) -> list[str]:
     Returns:
         List of target session IDs that need health checks
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     threshold = datetime.now(UTC) - timedelta(minutes=max_age_minutes)
     threshold_iso = threshold.isoformat()
     now_iso = datetime.now(UTC).isoformat()
@@ -353,9 +337,6 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
     Returns:
         Number of listeners successfully notified
     """
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-    from teleclaude.core.tmux_delivery import deliver_listener_message  # pylint: disable=import-outside-toplevel
-
     listeners = await get_listeners(target_session_id)
     if not listeners:
         logger.debug("No listeners for session %s", target_session_id)
@@ -448,8 +429,6 @@ async def create_link(
     metadata: dict[str, object] | None = None,  # guard: loose-dict - persisted metadata payload.
 ) -> ConversationLink:
     """Create a conversation link."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     metadata_json = json.dumps(metadata) if metadata is not None else None
     row = await db.create_conversation_link(
         mode=mode,
@@ -459,7 +438,7 @@ async def create_link(
     return _to_conversation_link(row)
 
 
-async def add_link_member(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+async def add_link_member(
     *,
     link_id: str,
     session_id: str,
@@ -469,8 +448,6 @@ async def add_link_member(  # pylint: disable=too-many-arguments  # Parameters a
     computer_name: str | None = None,
 ) -> None:
     """Create or update a link member."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     await db.upsert_conversation_link_member(
         link_id=link_id,
         session_id=session_id,
@@ -483,16 +460,12 @@ async def add_link_member(  # pylint: disable=too-many-arguments  # Parameters a
 
 async def get_link_members(link_id: str) -> list[ConversationLinkMember]:
     """List members for a link."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     rows = await db.list_conversation_link_members(link_id)
     return [_to_conversation_link_member(row) for row in rows]
 
 
 async def get_link(link_id: str) -> ConversationLink | None:
     """Get link by ID."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     row = await db.get_conversation_link(link_id)
     if row is None:
         return None
@@ -501,8 +474,6 @@ async def get_link(link_id: str) -> ConversationLink | None:
 
 async def get_active_links_for_session(session_id: str) -> list[ConversationLink]:
     """Get active links containing the provided member session."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     try:
         rows = await db.get_active_links_for_session(session_id)
     except RuntimeError:
@@ -511,7 +482,7 @@ async def get_active_links_for_session(session_id: str) -> list[ConversationLink
     return [_to_conversation_link(row) for row in rows]
 
 
-async def create_or_reuse_direct_link(  # pylint: disable=too-many-arguments  # Parameters are explicit for clarity.
+async def create_or_reuse_direct_link(
     *,
     caller_session_id: str,
     target_session_id: str,
@@ -521,8 +492,6 @@ async def create_or_reuse_direct_link(  # pylint: disable=too-many-arguments  # 
     target_computer: str | None = None,
 ) -> tuple[ConversationLink, bool]:
     """Create or reuse an active two-member direct link."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     pair_lock = await _get_pair_lock(caller_session_id, target_session_id)
     async with pair_lock:
         existing_links = await db.get_active_links_between_sessions(
@@ -602,8 +571,6 @@ async def get_peer_members(
 
 async def close_link(link_id: str) -> bool:
     """Sever a shared link for all members."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     return await db.sever_conversation_link(link_id)
 
 
@@ -613,8 +580,6 @@ async def close_link_for_member(
     target_session_id: str | None = None,
 ) -> str | None:
     """Close a link if caller is a member (optionally scoped by target member)."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     if target_session_id:
         links = await db.get_active_links_between_sessions(caller_session_id, target_session_id)
         if not links:
@@ -633,8 +598,6 @@ async def close_link_for_member(
 
 async def cleanup_session_links(session_id: str) -> int:
     """Sever all active links involving this session."""
-    from teleclaude.core.db import db  # pylint: disable=import-outside-toplevel
-
     try:
         return await db.cleanup_conversation_links_for_session(session_id)
     except RuntimeError:

@@ -40,7 +40,6 @@ class NormalizerRegistry:
         return self._normalizers.get(key)
 
 
-# pylint: disable=too-few-public-methods
 class InboundEndpointRegistry:
     """Manages dynamic inbound webhook routes on a FastAPI app."""
 
@@ -61,7 +60,6 @@ class InboundEndpointRegistry:
         normalizer_key: str,
         verify_config: dict[str, object] | None = None,  # guard: loose-dict - Verify config is dynamic JSON
     ) -> None:
-        # pylint: disable=too-many-statements
         """Register an inbound webhook endpoint.
 
         Args:
@@ -123,7 +121,7 @@ class InboundEndpointRegistry:
 
             try:
                 normalized = self._invoke_normalizer(normalizer, payload, headers)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Normalization failed: %s error=%s", normalizer_key, exc, exc_info=True)
                 raise HTTPException(status_code=400, detail="Failed to normalize payload") from exc
 
@@ -136,7 +134,7 @@ class InboundEndpointRegistry:
             try:
                 for event in events:
                     await self._dispatch(event)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("Dispatch failed for inbound %s: %s", path, exc, exc_info=True)
                 # Return 502 so platforms (WhatsApp, etc.) can retry the delivery.
                 raise HTTPException(status_code=502, detail="dispatch error") from exc

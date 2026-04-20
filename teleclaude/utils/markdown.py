@@ -9,7 +9,7 @@ from telegramify_markdown import markdownify as _markdownify
 from teleclaude.constants import MARKDOWN_FENCE, MARKDOWN_INLINE_CODE
 
 
-class MarkdownifyFn(Protocol):  # pylint: disable=too-few-public-methods
+class MarkdownifyFn(Protocol):
     """Callable protocol for HTML-to-markdown conversion."""
 
     def __call__(
@@ -242,7 +242,7 @@ def _consume_markdown_code_state(text: str, index: int, stack: list[str]) -> int
     return None
 
 
-def _consume_markdown_format_marker(text: str, index: int, stack: list[str]) -> int | None:  # pylint: disable=too-many-return-statements
+def _consume_markdown_format_marker(text: str, index: int, stack: list[str]) -> int | None:
     if text[index] == "[":
         return index + 1
     if text[index : index + 2] == "||":
@@ -453,7 +453,7 @@ def _required_markdown_closers_from_state(text: str, state: MarkdownV2State) -> 
     return "".join(closers)
 
 
-def _opening_marker_for_state(marker: str) -> str:  # pylint: disable=too-many-return-statements
+def _opening_marker_for_state(marker: str) -> str:
     """Return opening marker string for a state token."""
     if marker == _STATE_SPOILER:
         return "||"
@@ -472,7 +472,7 @@ def _opening_marker_for_state(marker: str) -> str:  # pylint: disable=too-many-r
     return ""
 
 
-def _closing_marker_for_state(marker: str, source_text: str) -> str:  # pylint: disable=too-many-return-statements
+def _closing_marker_for_state(marker: str, source_text: str) -> str:
     """Return closing marker string for a state token."""
     if marker == _STATE_SPOILER:
         return "||"
@@ -607,9 +607,7 @@ def _find_matching_backtick_run(text: str, start: int, run_length: int) -> int:
     return -1
 
 
-def scan_gfm_state(  # pylint: disable=too-many-branches
-    text: str, initial_state: GfmMarkdownState = GFM_MARKDOWN_INITIAL_STATE
-) -> GfmMarkdownState:
+def scan_gfm_state(text: str, initial_state: GfmMarkdownState = GFM_MARKDOWN_INITIAL_STATE) -> GfmMarkdownState:
     """Scan GFM text and return parser state after consuming it.
 
     Inline code spans are treated as atomic: a backtick run of length N is
@@ -823,7 +821,7 @@ class WhatsAppMarkdownState:
 WA_MARKDOWN_INITIAL_STATE = WhatsAppMarkdownState()
 
 
-def _scan_wa_token(text: str, index: int, stack: list[str]) -> int:  # pylint: disable=too-many-return-statements
+def _scan_wa_token(text: str, index: int, stack: list[str]) -> int:
     """Consume one WhatsApp token at *index*, mutating *stack*. Returns new index."""
     in_code = bool(stack and stack[-1] == _WA_STATE_CODE_BLOCK)
     if in_code:

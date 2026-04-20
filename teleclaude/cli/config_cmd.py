@@ -2,7 +2,6 @@
 
 Operates on the daemon's config.yml (not user-facing teleclaude.yml).
 """
-# pylint: disable=import-outside-toplevel,too-many-branches,too-many-statements,broad-exception-caught
 
 import json
 import os
@@ -10,6 +9,8 @@ import sys
 from pathlib import Path
 
 import yaml
+
+from teleclaude.cli.telec import _maybe_show_help
 
 
 def handle_config_command(args: list[str]) -> None:
@@ -23,8 +24,6 @@ def handle_config_command(args: list[str]) -> None:
 
     # Intercept --help/-h at any level
     if subcommand in ("--help", "-h") or "--help" in sub_args or "-h" in sub_args:
-        from teleclaude.cli.telec import _maybe_show_help
-
         _maybe_show_help("config", args)
         return
 

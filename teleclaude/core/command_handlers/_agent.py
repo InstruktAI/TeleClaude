@@ -23,12 +23,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, Session, ThinkingMode
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
-from teleclaude.types.commands import (
-    RestartAgentCommand,
-    ResumeAgentCommand,
-    RunAgentCommand,
-    StartAgentCommand,
-)
+from teleclaude.types.commands import RestartAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
 
 from ._keys import _ensure_tmux_for_headless
 from ._utils import with_session
@@ -49,7 +44,7 @@ def _get_session_profile(session: Session) -> str:
 
 
 @with_session
-async def start_agent(  # pylint: disable=too-many-locals  # Existing handler keeps startup state explicit.
+async def start_agent(
     session: Session,
     cmd: StartAgentCommand,
     client: "AdapterClient",
@@ -259,7 +254,7 @@ async def _terminate_agent_process(tmux_session_name: str) -> None:
 
 
 @with_session
-async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements  # Restart flow is intentionally linear.
+async def agent_restart(
     session: Session,
     cmd: RestartAgentCommand,
     client: "AdapterClient",

@@ -33,7 +33,7 @@ class TestEventBusBridge:
             tool_preview="shell ls",
         )
 
-        await bridge._handle("agent_activity", context)  # pylint: disable=protected-access
+        await bridge._handle("agent_activity", context)
 
         assert dispatcher.events[0].type == "agent.activity.tool_use"
         assert dispatcher.events[0].properties["tool_name"] == "shell"

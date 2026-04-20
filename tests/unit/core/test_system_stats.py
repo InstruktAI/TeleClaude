@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tempfile
+
 import pytest
 
 from teleclaude.core.system_stats import get_all_stats, get_cpu_percent, get_disk_stats, get_memory_stats
@@ -44,8 +46,6 @@ class TestGetDiskStats:
 
     @pytest.mark.unit
     def test_accepts_custom_path(self):
-        import tempfile
-
         stats = get_disk_stats(tempfile.gettempdir())
         assert stats["total_gb"] >= 0.0
 

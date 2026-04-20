@@ -44,11 +44,7 @@ from teleclaude.api_models import (
 from teleclaude.config import config
 from teleclaude.constants import SlashCommand
 from teleclaude.core import agents as agents_module
-from teleclaude.core.agents import (
-    assert_agent_enabled,
-    get_default_agent,
-    get_known_agents,
-)
+from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
@@ -59,7 +55,7 @@ from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMet
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_listeners import unregister_listener
 from teleclaude.core.session_status import compute_agent_status
-from teleclaude.core.session_utils import get_short_project_name, split_project_path_and_subdir
+from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
 from teleclaude.output_projection import serializers as output_serializers
 from teleclaude.output_projection.models import VisibilityPolicy
@@ -68,6 +64,8 @@ from teleclaude.utils.transcript_discovery import discover_transcripts, extract_
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.paths import COMMANDS_DIR
+from teleclaude.types.commands import ResponseMode, SystemCommand
 
 logger = get_logger(__name__)
 
@@ -168,13 +166,10 @@ async def _resolve_revive_session_id(
     new_session_id = str(uuid.uuid4())
     project_path: str | None = None
     subdir: str | None = None
-    title = "Revived"
     raw_project = http_request.query_params.get("project")
     if raw_project:
         trusted_dirs = [trusted_dir.path for trusted_dir in config.computer.get_all_trusted_dirs()]
         project_path, subdir = split_project_path_and_subdir(raw_project, trusted_dirs)
-        if project_path:
-            title = get_short_project_name(project_path, subdir)
 
     cmd = CreateSessionCommand(
         session_id=new_session_id,
@@ -182,7 +177,6 @@ async def _resolve_revive_session_id(
         native_session_id=session_id,
         native_log_file=None,
         project_path=project_path or "",
-        title=title,
         subdir=subdir,
         origin=InputOrigin.TERMINAL.value,
         initiator_session_id=identity.session_id or None,
@@ -294,8 +288,6 @@ def _resolve_run_session_agent(request: RunSessionRequest) -> str:
 
 def _build_codex_loader_message(command_name: str, slug: str) -> str:
     """Build the generic Codex loader message for a compiled prompt file."""
-    from teleclaude.paths import COMMANDS_DIR  # pylint: disable=import-outside-toplevel
-
     prompt_path = COMMANDS_DIR / f"{command_name}.md"
     return (
         f"Read {prompt_path} and follow it exactly as the active instruction set for this session.\n\n"
@@ -645,7 +637,6 @@ async def run_session(
     plan = _prepare_run_session(request, identity)
 
     metadata = _build_metadata(
-        title=plan.full_command,
         project_path=request.project,
         subdir=request.subfolder or None,
         origin_metadata=plan.origin_metadata,
@@ -656,7 +647,11 @@ async def run_session(
 
     cmd = CommandMapper.map_api_input(
         "new_session",
-        {"skip_listener_registration": request.detach, "initiator_session_id": plan.initiator_session_id},
+        {
+            "skip_listener_registration": request.detach,
+            "initiator_session_id": plan.initiator_session_id,
+            "initial_input": plan.full_command,
+        },
         metadata,
     )
     try:
@@ -705,8 +700,6 @@ async def send_result_endpoint(
     Dispatches through CommandService.deliver_result() which handles adapter
     delivery with formatting fallback. Requires dual-factor caller identity.
     """
-    from teleclaude.types.commands import SystemCommand  # pylint: disable=import-outside-toplevel
-
     cmd = SystemCommand(
         command="deliver_result",
         session_id=identity.session_id,
@@ -728,8 +721,6 @@ async def render_widget_endpoint(
     Dispatches through CommandService.render_widget() which builds the summary
     and sends through the adapter. Requires dual-factor caller identity.
     """
-    from teleclaude.types.commands import SystemCommand  # pylint: disable=import-outside-toplevel
-
     cmd = SystemCommand(
         command="render_widget",
         session_id=identity.session_id,
@@ -752,8 +743,6 @@ async def escalate_session(
     SystemCommand. Returns 202 with completion_event. Requires dual-factor
     caller identity.
     """
-    from teleclaude.types.commands import ResponseMode, SystemCommand  # pylint: disable=import-outside-toplevel
-
     cmd = SystemCommand(
         command="escalate_session",
         session_id=identity.session_id,

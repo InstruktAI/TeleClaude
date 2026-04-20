@@ -1,13 +1,13 @@
 """Characterization tests for teleclaude.hooks.checkpoint._git."""
 
-# pylint: disable=missing-class-docstring,missing-function-docstring,protected-access,too-few-public-methods,import-outside-toplevel
-
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.git import GitCommandError
 from teleclaude.hooks.checkpoint import _git
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
 
@@ -30,10 +30,6 @@ class TestGitDiffHelpers:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from unittest.mock import MagicMock
-
-        from teleclaude.git import GitCommandError
-
         mock_repo = MagicMock()
         # First rev_parse returns "true" (bare repo), normalize sets core.bare=false
         # First diff raises "must be run in a work tree"

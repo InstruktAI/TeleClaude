@@ -1,7 +1,5 @@
 """Unit tests for Discord adapter helpers."""
 
-# pylint: disable=missing-function-docstring,protected-access
-
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -12,6 +10,7 @@ import pytest
 from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisionedError
 from teleclaude.adapters.discord_adapter import DISCORD_TYPING_INTERVAL_S, DiscordAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
+from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.core.events import SessionUpdatedContext
 from teleclaude.core.models import DiscordAdapterMetadata, Session
 
@@ -156,6 +155,46 @@ def test_get_action_throttle_interval_uses_discord_typing_window() -> None:
     adapter._action_throttler = AdapterActionThrottler()
 
     assert adapter.get_action_throttle_interval_s("typing") == pytest.approx(DISCORD_TYPING_INTERVAL_S)
+
+
+def test_finalize_overflow_split_uses_previous_newline() -> None:
+    adapter = _make_adapter()
+
+    split_idx, chunk = adapter._finalize_overflow_split(
+        "first line\nsecond line\nthird line",
+        OverflowContext(continuation_prefix="", available_for_content=22),
+        0,
+        "unused",
+    )
+
+    assert split_idx == len("first line\nsecond line\n")
+    assert chunk == "first line\nsecond line"
+
+
+def test_finalize_overflow_split_starts_new_message_for_next_full_line() -> None:
+    adapter = _make_adapter()
+
+    split_idx, chunk = adapter._finalize_overflow_split(
+        "1234\n5678\n90",
+        OverflowContext(continuation_prefix="", available_for_content=10),
+        0,
+        "unused",
+    )
+
+    assert split_idx == len("1234\n5678\n")
+    assert chunk == "1234\n5678"
+
+
+def test_finalize_overflow_split_raises_when_no_newline_exists_before_limit() -> None:
+    adapter = _make_adapter()
+
+    with pytest.raises(ValueError, match="line packing"):
+        adapter._finalize_overflow_split(
+            "single very long line without separators",
+            OverflowContext(continuation_prefix="", available_for_content=20),
+            20,
+            "unused",
+        )
 
 
 @pytest.mark.asyncio

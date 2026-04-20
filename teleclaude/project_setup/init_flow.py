@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,8 +13,12 @@ import yaml
 from instrukt_ai_logging import get_logger
 from ruamel.yaml import YAML
 
+from teleclaude.config import config
+from teleclaude.git import Repo
 from teleclaude.install.configure_agent_cli import main as configure_agent_cli
 from teleclaude.project_manifest import register_root
+from teleclaude.project_setup.domain_seeds import seed_event_domains
+from teleclaude.project_setup.enrichment import read_existing_snippets
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -37,8 +42,6 @@ def _is_teleclaude_project(project_root: Path) -> bool:
 
 def _has_generated_snippets(project_root: Path) -> bool:
     """Check whether the project already has telec-init generated snippets."""
-    from teleclaude.project_setup.enrichment import read_existing_snippets  # pylint: disable=import-outside-toplevel
-
     return bool(read_existing_snippets(project_root))
 
 
@@ -168,7 +171,7 @@ def _detect_and_set_languages(project_root: Path) -> None:
     logger.info("Updated languages: %s", detected_languages)
 
 
-def _prompt_release_channel(project_root: Path) -> None:  # pylint: disable=too-many-return-statements,too-many-branches,too-many-statements
+def _prompt_release_channel(project_root: Path) -> None:
     """Prompt for release-channel enrollment and persist to teleclaude.yml."""
     config_path = project_root / "teleclaude.yml"
     if not config_path.exists():
@@ -341,7 +344,7 @@ def _ensure_project_slug(project_root: Path) -> None:
     yaml_rt.preserve_quotes = True
     try:
         raw = yaml_rt.load(config_path.read_text(encoding="utf-8"))
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         raise RuntimeError(f"cannot read {config_path} to write project_slug: {exc}") from exc
     if not isinstance(raw, dict):
         raw = {}
@@ -391,8 +394,6 @@ def init_project(project_root: Path) -> None:
     deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
-    from teleclaude.project_setup.domain_seeds import seed_event_domains  # pylint: disable=import-outside-toplevel
-
     seed_event_domains(project_root)
 
     if is_macos():
@@ -401,11 +402,7 @@ def init_project(project_root: Path) -> None:
 
     # Bootstrap help desk workspace if running from the TeleClaude project
     if _is_teleclaude_project(project_root):
-        from teleclaude.project_setup.help_desk_bootstrap import (  # pylint: disable=import-outside-toplevel
-            bootstrap_help_desk,
-        )
-
-        bootstrap_help_desk()
+        _bootstrap_help_desk(project_root)
 
     # Release channel enrollment
     _prompt_release_channel(project_root)
@@ -414,3 +411,50 @@ def init_project(project_root: Path) -> None:
     _offer_enrichment(project_root)
 
     print("telec init complete.")
+
+
+# ---------------------------------------------------------------------------
+# Help desk bootstrap (inlined to avoid circular import with init_flow)
+# ---------------------------------------------------------------------------
+
+
+def _resolve_help_desk_dir() -> Path:
+    """Resolve help desk directory from config or default sibling location."""
+    configured = config.computer.help_desk_dir
+    if configured:
+        return Path(configured).expanduser().resolve()
+    teleclaude_root = Path(__file__).resolve().parents[2]
+    return teleclaude_root.parent / "help-desk"
+
+
+def _bootstrap_help_desk(project_root: Path) -> None:
+    """Scaffold the help desk workspace if it does not exist.
+
+    Idempotent: skips if the directory already exists. Calls ``init_project``
+    on the new directory, which is why this lives in init_flow rather than a
+    separate module — the bootstrap is a sub-step of init.
+    """
+    help_desk_dir = _resolve_help_desk_dir()
+    if help_desk_dir.exists():
+        logger.info("help_desk_exists", path=str(help_desk_dir))
+        return
+
+    template_dir = project_root / "templates" / "help-desk"
+    if not template_dir.exists():
+        logger.warning("help_desk_template_missing", path=str(template_dir))
+        return
+
+    logger.info("help_desk_bootstrap_start", path=str(help_desk_dir))
+
+    shutil.copytree(template_dir, help_desk_dir)
+
+    try:
+        repo = Repo.init(help_desk_dir)
+        init_project(help_desk_dir)
+        repo.git.add(".")
+        repo.index.commit("Initial help desk scaffold")
+    except Exception:
+        shutil.rmtree(help_desk_dir, ignore_errors=True)
+        raise
+
+    logger.info("help_desk_bootstrap_complete", path=str(help_desk_dir))

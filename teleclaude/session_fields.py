@@ -10,7 +10,7 @@ from sqlmodel import SQLModel
 
 
 @dataclass(kw_only=True)
-class SessionSnapshotTimestampFields:  # pylint: disable=too-many-instance-attributes
+class SessionSnapshotTimestampFields:
     """Shared timing fields carried by session snapshots and DTOs."""
 
     created_at: str | None = None

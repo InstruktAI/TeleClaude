@@ -48,38 +48,50 @@ class MessageOperationsMixin:
     _reflection_webhook_cache: dict[int, object]
     _qos_scheduler: OutputQoSScheduler
     _discord: ModuleType
-    _is_thread_channel: Callable[[object], bool]
-    _require_async_callable: Callable[..., AsyncDiscordCallable]
     format_output: Callable[[str], str]
     _resolve_destination_channel: Callable[..., Awaitable[object]]
     _fetch_destination_message: Callable[..., Awaitable[object]]
+
+    if TYPE_CHECKING:
+
+        @staticmethod
+        def _is_thread_channel(channel: object) -> bool: ...
+
+        @staticmethod
+        def _require_async_callable(fn: object, *, label: str) -> AsyncDiscordCallable: ...
 
     # =========================================================================
     # Message Chunking
     # =========================================================================
 
-    def _split_message_chunks(self, text: str) -> list[str]:
-        """Split text into chunks that fit within Discord's message size limit.
-
-        Splits on newline boundaries when possible, falling back to hard
-        splits at max_message_size.
-        """
-        limit = self.max_message_size
+    @staticmethod
+    def _pack_complete_lines(text: str, limit: int) -> list[str]:
+        """Pack complete newline-delimited lines into chunks up to *limit* chars."""
+        if limit <= 0:
+            raise ValueError("Discord message packing requires a positive limit")
         if len(text) <= limit:
             return [text]
 
         chunks: list[str] = []
-        while text:
-            if len(text) <= limit:
-                chunks.append(text)
+        remaining = text
+        while remaining:
+            if len(remaining) <= limit:
+                chunks.append(remaining)
                 break
-            # Try to split at a newline within the limit
-            split_at = text.rfind("\n", 0, limit)
-            if split_at <= 0:
-                split_at = limit
-            chunks.append(text[:split_at])
-            text = text[split_at:].lstrip("\n")
+            split_at = remaining.rfind("\n", 0, limit + 1)
+            if split_at < 0:
+                raise ValueError("Discord line packing requires a prior newline within the message limit")
+            if split_at == 0:
+                remaining = remaining[1:]
+                continue
+            chunks.append(remaining[:split_at])
+            remaining = remaining[split_at + 1 :]
         return chunks
+
+    def _split_message_chunks(self, text: str) -> list[str]:
+        """Split text into chunks that fit within Discord's message size limit."""
+        limit = self.max_message_size
+        return self._pack_complete_lines(text, limit)
 
     def drop_pending_output(self, session_id: str) -> int:
         """Drop pending QoS payloads for a session to prevent stale output after turn break."""

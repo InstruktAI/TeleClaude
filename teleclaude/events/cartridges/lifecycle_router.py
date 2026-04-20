@@ -16,8 +16,10 @@ from typing import TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient
 from teleclaude.core.models import JsonDict
 from teleclaude.core.next_machine._types import StateValue
+from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.producer import emit_event
@@ -121,7 +123,7 @@ def score_requirements(content: str) -> RequirementsScoreResult:
     return {"dimensions": dims, "gaps": gaps, "raw": sum(dims.values()), "max": 8}
 
 
-def score_plan(content: str, requirements: str) -> PlanScoreResult:  # pylint: disable=too-many-locals  # Flat data assembly is intentionally verbose.
+def score_plan(content: str, requirements: str) -> PlanScoreResult:
     """Score implementation-plan.md against DOR rubric. Returns scores and gaps."""
     dims: dict[str, int] = {}
     gaps: list[str] = []
@@ -286,7 +288,7 @@ def _fill_plan_gaps(plan_content: str, gaps: list[str]) -> tuple[str, list[str]]
 # ── State & Report I/O ────────────────────────────────────────────────────────
 
 
-def _get_todo_commit(slug: str, project_root: Path) -> str:  # pylint: disable=unused-argument
+def _get_todo_commit(slug: str, project_root: Path) -> str:
     """Todo state lives in todos.db, not git-tracked files.
 
     Always returns 'unknown' to disable git-based idempotency.
@@ -295,7 +297,7 @@ def _get_todo_commit(slug: str, project_root: Path) -> str:  # pylint: disable=u
     return "unknown"
 
 
-def _build_dor_report(  # pylint: disable=too-many-arguments,too-many-locals,too-many-positional-arguments
+def _build_dor_report(
     slug: str,
     score: int,
     verdict: str,
@@ -385,7 +387,7 @@ class LifecycleRouterCartridge:
         start = time.monotonic()
         try:
             await self._assess(slug, event, context)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception("assessment failed", slug=slug, event=event.event)
         elapsed = time.monotonic() - start
         if elapsed > 2.0:
@@ -400,8 +402,6 @@ class LifecycleRouterCartridge:
         is read during dispatch. Missing and unknown kinds degrade to the
         default todo lane.
         """
-        from teleclaude.cli.api_client import RunSessionArgs, TelecAPIClient  # pylint: disable=import-outside-toplevel
-
         project_path = os.environ.get("TELECLAUDE_PROJECT_PATH", os.getcwd())
         dispatch_args: RunSessionArgs
         resolved_kind: str
@@ -468,18 +468,14 @@ class LifecycleRouterCartridge:
                 kind=resolved_kind,
                 command=dispatch_args["command"],
             )
-        except Exception:  # pylint: disable=broad-exception-caught
+        except Exception:
             logger.exception(
                 "failed to dispatch lane",
                 slug=slug,
                 kind=resolved_kind,
             )
 
-    async def _assess(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
-        self, slug: str, _event: EventEnvelope, context: PipelineContext
-    ) -> None:
-        from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
-
+    async def _assess(self, slug: str, _event: EventEnvelope, context: PipelineContext) -> None:
         project_root = _find_project_root()
 
         # Skip delivered/icebox slugs
@@ -636,11 +632,9 @@ class LifecycleRouterCartridge:
 
 
 def _is_slug_delivered_or_frozen(slug: str, project_root: Path) -> bool:
-    from teleclaude.core.todos_db import TodosDb  # pylint: disable=import-outside-toplevel
-
     db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
     db.initialize_sync()
-    conn = db._sync_conn()  # pylint: disable=protected-access
+    conn = db._sync_conn()
     try:
         row = conn.execute(
             "SELECT status FROM roadmap WHERE slug = ?",  # guard: raw-sql

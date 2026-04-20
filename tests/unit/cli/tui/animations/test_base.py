@@ -20,6 +20,7 @@ from teleclaude.cli.tui.animations.base import (
     render_sprite,
 )
 from teleclaude.cli.tui.animations.sprites.composite import CompositeSprite, SpriteLayer
+from teleclaude.cli.tui.color_utils import hex_to_rgb
 
 # ---------------------------------------------------------------------------
 # Z-level constants
@@ -258,8 +259,6 @@ class TestAnimationHelpers:
         anim.dark_mode = True
         # Very dark color should be boosted
         result = anim.get_contrast_safe_color("#050505")
-        from teleclaude.cli.tui.color_utils import hex_to_rgb
-
         r, g, b = hex_to_rgb(result)
         avg = (r + g + b) / 3
         assert avg >= 100

@@ -19,26 +19,22 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, StateValue
-from teleclaude.core.next_machine.git_ops import (
-    _merge_origin_main_into_worktree,
-    compose_agent_guidance,
-)
+from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.prepare_helpers import (
-    _ARTIFACT_CASCADE,
-    check_artifact_staleness_db,
-)
+from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, check_artifact_staleness_db
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
-from teleclaude.core.next_machine.slug_resolution import (
-    resolve_canonical_project_root,
-)
+from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.types.todos import ArtifactEntry
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine._types import PreparePhase as _PP
+from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
+from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state
+from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
 
@@ -49,8 +45,6 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
     Returns the first roadmap entry whose derived prepare phase is not PREPARED
     (i.e., still has prepare work remaining). Skips items already marked done.
     """
-    from teleclaude.core.next_machine._types import PreparePhase as _PP  # pylint: disable=import-outside-toplevel
-
     entries = await todos_db.list_roadmap()
     for entry in entries:
         slug = entry["slug"]
@@ -119,18 +113,13 @@ async def _apply_stale_artifact_reroute(
     return state
 
 
-async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals
+async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     """Phase A state machine for collaborative architect work.
 
     Reads durable state from todos.db, derives the current prepare phase via
     :func:`derive_prepare_phase` on every iteration, executes the next step,
     and returns structured tool-call instructions for the orchestrator.
     """
-    from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
-        resolve_holder_children_db,
-    )
-    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
-
     # Silence unused-import warnings for the helpers re-exported here.
     _ = _commit_writer
 
@@ -207,10 +196,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:  # pylint: di
             pp = state.get("prepare_phase", "")
             if pp:
                 state["prepare_phase"] = ""
-                from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-                    write_phase_state as _write_phase_state,
-                )
-
                 await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 

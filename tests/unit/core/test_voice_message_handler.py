@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from teleclaude.core.voice_message_handler import (
     DEFAULT_TRANSCRIBE_LANGUAGE,
+    init_voice_handler,
     transcribe_voice_with_retry,
 )
 
@@ -62,10 +64,6 @@ class TestTranscribeVoiceWithRetry:
 class TestInitVoiceHandler:
     @pytest.mark.unit
     def test_init_with_api_key_sets_env_var(self):
-        import os
-
-        from teleclaude.core.voice_message_handler import init_voice_handler
-
         # Ensure the env var is not already set to a conflicting value
         original = os.environ.pop("OPENAI_API_KEY", None)
         try:
@@ -79,7 +77,5 @@ class TestInitVoiceHandler:
 
     @pytest.mark.unit
     def test_init_without_api_key_does_not_raise(self):
-        from teleclaude.core.voice_message_handler import init_voice_handler
-
         # Should be a no-op, not raise
         init_voice_handler()

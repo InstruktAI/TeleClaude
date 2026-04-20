@@ -22,7 +22,7 @@ class _ScriptedCPU:
         self.cc = 0
         self.stack_words: list[int] = []
 
-    def stackPushWord(self, word: int) -> None:  # pylint: disable=invalid-name
+    def stackPushWord(self, word: int) -> None:
         self.stack_words.append(word)
 
     def step(self) -> None:
@@ -145,7 +145,7 @@ class TestSIDDriver:
         assert cpu.r.a == 2
         assert cpu.r.x == 0
         assert cpu.r.y == 0
-        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]  # pylint: disable=no-member
+        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]
         assert not driver._mmu.flush_writes()
 
     def test_play_frame_returns_captured_sid_writes(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -173,7 +173,7 @@ class TestSIDDriver:
         cpu = cast(_ScriptedCPU, driver._cpu)
 
         assert cpu.r.pc == 0x2345
-        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]  # pylint: disable=no-member
+        assert cpu.stack_words == [sid_cpu._SENTINEL_ADDR - 1]
 
     def test_frame_rate_vbi_pal_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         driver = self._make_driver(

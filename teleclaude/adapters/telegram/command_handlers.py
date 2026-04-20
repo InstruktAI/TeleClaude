@@ -2,7 +2,6 @@
 
 Handles slash commands like /new_session, /claude.
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -22,7 +21,7 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import MessageMetadata, Session
 
-    class _CommandHandlersHost(Protocol):  # pylint: disable=too-few-public-methods
+    class _CommandHandlersHost(Protocol):
         client: AdapterClient
         user_whitelist: set[int]
         _validate_update_for_command: Callable[[Update], bool]

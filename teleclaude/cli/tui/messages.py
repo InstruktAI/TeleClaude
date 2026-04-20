@@ -251,7 +251,6 @@ class CreateSessionRequest(Message):
         expected = {
             "agent",
             "thinking_mode",
-            "title",
             "message",
             "revive_session_id",
             "native_session_id",
@@ -265,7 +264,6 @@ class CreateSessionRequest(Message):
             "project_path": project_path,
             "agent": options.get("agent"),
             "thinking_mode": options.get("thinking_mode"),
-            "title": options.get("title"),
             "message": options.get("message"),
             "revive_session_id": options.get("revive_session_id"),
             "native_session_id": options.get("native_session_id"),
@@ -290,11 +288,6 @@ class CreateSessionRequest(Message):
     def thinking_mode(self) -> str | None:
         """Return the requested thinking mode when provided."""
         return self._request["thinking_mode"] if isinstance(self._request["thinking_mode"], str) else None
-
-    @property
-    def title(self) -> str | None:
-        """Return the requested session title when provided."""
-        return self._request["title"] if isinstance(self._request["title"], str) else None
 
     @property
     def message(self) -> str | None:

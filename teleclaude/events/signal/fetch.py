@@ -78,7 +78,7 @@ async def fetch_url(url: str, timeout: int = 10) -> FetchResult:
                     body=None,
                     error=f"HTTP {resp.status}",
                 )
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         return FetchResult(url=url, status=0, content_type="", body=None, error=str(e))
 
 
@@ -91,7 +91,7 @@ async def fetch_full_content(url: str, max_chars: int = 8000) -> str | None:
     try:
         extractor.feed(result.body)
         text = extractor.get_text()
-    except Exception as e:  # pylint: disable=broad-exception-caught
+    except Exception as e:
         logger.warning("HTML parse fallback for %s: %s", url, e)
         text = re.sub(r"<[^>]+>", " ", result.body)
         text = re.sub(r"\s+", " ", text).strip()

@@ -7,6 +7,7 @@ resolve_consensus() against the restored fixture scenarios.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from scripts.release_consolidator import LaneReport, load_report, main, resolve_consensus
@@ -184,8 +185,6 @@ class TestMainExitCodes:
     def test_main_returns_1_on_quorum_failure(self, tmp_path: Path) -> None:
         """Quorum not met → exit 1."""
         # Write only one valid report
-        import json
-
         report = {"classification": "patch", "rationale": "test", "contract_changes": [], "release_notes": ""}
         (tmp_path / "claude-report.json").write_text(json.dumps(report))
         # Missing codex and gemini → quorum fails
@@ -205,8 +204,6 @@ class TestMainExitCodes:
 
     def test_main_returns_0_on_valid_no_release(self, tmp_path: Path) -> None:
         """Quorum met, unanimous 'none' → exit 0."""
-        import json
-
         none_report = {"classification": "none", "rationale": "nothing", "contract_changes": [], "release_notes": ""}
         for name in ("claude", "codex", "gemini"):
             (tmp_path / f"{name}-report.json").write_text(json.dumps(none_report))
@@ -226,8 +223,6 @@ class TestMainExitCodes:
 
     def test_main_returns_0_on_authorized_release(self, tmp_path: Path) -> None:
         """Quorum met, release authorized → exit 0."""
-        import json
-
         patch_report = {
             "classification": "patch",
             "rationale": "bugfix",

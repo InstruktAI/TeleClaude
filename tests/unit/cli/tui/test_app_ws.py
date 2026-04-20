@@ -1,4 +1,3 @@
-# pylint: disable=protected-access,too-many-instance-attributes,use-implicit-booleaness-not-comparison,import-outside-toplevel,duplicate-code
 from __future__ import annotations
 
 from unittest.mock import Mock
@@ -13,7 +12,7 @@ from teleclaude.api_models import (
     SessionStartedEventDTO,
 )
 from teleclaude.cli.tui import app_ws
-from teleclaude.cli.tui.messages import AgentActivity, SessionClosed
+from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
 
 
 class _PaneBridge:
@@ -225,8 +224,6 @@ def test_on_session_started_updates_bridge_and_view_optimistically() -> None:
         initiator_session_id="parent-1",
     )
 
-    from teleclaude.cli.tui.messages import SessionStarted
-
     app.on_session_started(SessionStarted(session))
 
     assert app._session_agents["session-2"] == "claude"
@@ -250,8 +247,6 @@ def test_on_session_updated_updates_bridge_catalog() -> None:
         active_agent="claude",
         tmux_session_name="tc_session1",
     )
-
-    from teleclaude.cli.tui.messages import SessionUpdated
 
     app.on_session_updated(SessionUpdated(session))
 
@@ -278,8 +273,6 @@ def test_on_session_started_daemon_spawned_session_does_not_auto_focus() -> None
         job="integrator",
     )
 
-    from teleclaude.cli.tui.messages import SessionStarted
-
     app.on_session_started(SessionStarted(session))
 
     assert len(sessions_view.updated) == 1
@@ -302,8 +295,6 @@ def test_on_session_started_user_initiated_session_auto_focuses() -> None:
         computer="c1",
         active_agent="claude",
     )
-
-    from teleclaude.cli.tui.messages import SessionStarted
 
     app.on_session_started(SessionStarted(session))
 
@@ -330,8 +321,6 @@ def test_on_session_started_user_run_session_with_job_auto_focuses() -> None:
         system_role="integrator",
         job="integrator",
     )
-
-    from teleclaude.cli.tui.messages import SessionStarted
 
     app.on_session_started(SessionStarted(session))
 

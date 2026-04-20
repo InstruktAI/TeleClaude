@@ -48,7 +48,7 @@ Z80 = 80
 Z90 = 90
 
 
-class Spectrum:  # pylint: disable=too-few-public-methods
+class Spectrum:
     """G1: Multi-stop HSV gradient engine for mud-free transitions."""
 
     def __init__(self, hex_colors: list[str]):
@@ -60,7 +60,7 @@ class Spectrum:  # pylint: disable=too-few-public-methods
             except (ValueError, TypeError, AttributeError):
                 self._hsv_stops.append((0, 0, 0))
 
-    def get_color(self, position: float) -> str:  # pylint: disable=too-many-locals
+    def get_color(self, position: float) -> str:
         """Interpolate across the spectrum [0.0 to 1.0]."""
         pos = max(0.0, min(1.0, position))
         if not self._hsv_stops:
@@ -126,7 +126,7 @@ def _norm_color(c: str | None) -> str | None:
     return c
 
 
-def render_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def render_sprite(
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -150,7 +150,7 @@ def render_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arg
     _render_plain_sprite(buffer, z, x, y, sprite, width, height)
 
 
-def _render_composite_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _render_composite_sprite(
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -198,7 +198,7 @@ def _resolve_layer_pixel(
     return (ch, prev, color, prev is None)
 
 
-def _write_composite_grid(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _write_composite_grid(
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -220,7 +220,7 @@ def _write_composite_grid(  # pylint: disable=too-many-arguments,too-many-positi
             buffer.add_pixel(z, px, py, fg + ch)
 
 
-def _render_plain_sprite(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+def _render_plain_sprite(
     buffer: RenderBuffer,
     z: int,
     x: int,
@@ -243,7 +243,7 @@ def _render_plain_sprite(  # pylint: disable=too-many-arguments,too-many-positio
                 buffer.add_pixel(z, px, py, ch)
 
 
-class Animation(ABC):  # pylint: disable=too-many-instance-attributes
+class Animation(ABC):
     """Abstract base class for all banner/logo animations."""
 
     # Class attribute: Override to False for big-only animations
@@ -255,7 +255,7 @@ class Animation(ABC):  # pylint: disable=too-many-instance-attributes
     # If True, this color applies to the billboard background (reflection) as well
     is_external_light: bool = False
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(
         self,
         palette: ColorPalette,
         is_big: bool,
@@ -302,7 +302,7 @@ class Animation(ABC):  # pylint: disable=too-many-instance-attributes
             return 0.0
         return 1.0 - (dist / width)
 
-    def radial_field(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def radial_field(
         self,
         x: int,
         y: int,

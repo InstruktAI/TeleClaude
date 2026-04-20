@@ -1,7 +1,5 @@
 """Characterization tests for teleclaude.adapters.telegram_adapter."""
 
-# pylint: disable=missing-function-docstring,redefined-outer-name,protected-access
-
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch

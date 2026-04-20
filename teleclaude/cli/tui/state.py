@@ -38,8 +38,6 @@ class DocPreviewState:
 class SessionViewState:
     """State for Sessions view."""
 
-    # pylint: disable=too-many-instance-attributes
-
     selected_index: int = 0
     selected_session_id: str | None = None
     last_selection_source: str = "system"  # "user" | "pane" | "system"

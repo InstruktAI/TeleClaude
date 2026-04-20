@@ -53,7 +53,7 @@ AgentHookEventType = Literal[
 ]
 
 
-class AgentHookEvents:  # pylint: disable=too-few-public-methods
+class AgentHookEvents:
     """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
 
     AGENT_SESSION_START: AgentHookEventType = "session_start"
@@ -314,7 +314,6 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
 
 
 # UI commands mapping (intentionally lowercase - not a constant despite dict type)
-# pylint: disable=invalid-name  # UiCommands is a module-level mapping, not a constant
 UiCommands = {
     "agent_restart": "Restart generic agent session",
     "agent_resume": "Resume an AI agent session",
@@ -341,7 +340,7 @@ UiCommands = {
 }
 
 
-class TeleClaudeEvents:  # pylint: disable=too-few-public-methods
+class TeleClaudeEvents:
     """Standard TeleClaude events that daemon handles.
 
     These events are emitted by adapters and handled by the daemon.

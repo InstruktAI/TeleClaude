@@ -53,7 +53,7 @@ def test_sweep_stale_artifacts_cleans_up_delivered_slugs(tmp_path: Path) -> None
             "teleclaude.core.integration.step_functions._get_todos_db_sync",
             return_value=_mock_todos_db({"slug-1", "slug-2"}),
         ),
-        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug") as mock_cleanup,
+        patch("teleclaude.core.integration.step_functions.cleanup_delivered_slug") as mock_cleanup,
     ):
         swept = _sweep_stale_artifacts(str(tmp_path))
 

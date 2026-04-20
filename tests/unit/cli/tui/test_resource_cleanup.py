@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
 
 from teleclaude.cli.tui import app_media
+from teleclaude.cli.tui.app import TelecApp
+from teleclaude.cli.tui.views.sessions import SessionsView
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -154,8 +156,6 @@ def test_schedule_sky_width_invalidation_stores_timer() -> None:
     app_mock._sky_width_timer = None
     app_mock.set_timer = Mock(return_value=mock_timer)
 
-    from teleclaude.cli.tui.app import TelecApp
-
     TelecApp._schedule_sky_width_invalidation(app_mock)
     assert app_mock._sky_width_timer is mock_timer
 
@@ -168,8 +168,6 @@ def test_schedule_sky_width_invalidation_stops_previous_timer() -> None:
     app_mock = MagicMock()
     app_mock._sky_width_timer = old_timer
     app_mock.set_timer = Mock(return_value=new_timer)
-
-    from teleclaude.cli.tui.app import TelecApp
 
     TelecApp._schedule_sky_width_invalidation(app_mock)
     old_timer.stop.assert_called_once()
@@ -187,8 +185,6 @@ def test_cancel_sky_width_timer_noop_when_none() -> None:
     app_mock = MagicMock()
     app_mock._sky_width_timer = None
 
-    from teleclaude.cli.tui.app import TelecApp
-
     TelecApp._cancel_sky_width_timer(app_mock)
     assert app_mock._sky_width_timer is None
 
@@ -199,8 +195,6 @@ def test_cancel_sky_width_timer_stops_and_nulls() -> None:
     timer = MagicMock()
     app_mock = MagicMock()
     app_mock._sky_width_timer = timer
-
-    from teleclaude.cli.tui.app import TelecApp
 
     TelecApp._cancel_sky_width_timer(app_mock)
     timer.stop.assert_called_once()
@@ -221,8 +215,6 @@ def test_on_unmount_stops_all_highlight_timers() -> None:
     view_mock = MagicMock()
     view_mock._highlight_timers = {"sess-a": timer_a, "sess-b": timer_b}
 
-    from teleclaude.cli.tui.views.sessions import SessionsView
-
     SessionsView.on_unmount(view_mock)
 
     timer_a.stop.assert_called_once()
@@ -235,8 +227,6 @@ def test_on_unmount_noop_when_no_timers() -> None:
     """on_unmount with empty timers dict must be a safe no-op."""
     view_mock = MagicMock()
     view_mock._highlight_timers = {}
-
-    from teleclaude.cli.tui.views.sessions import SessionsView
 
     SessionsView.on_unmount(view_mock)
     assert len(view_mock._highlight_timers) == 0

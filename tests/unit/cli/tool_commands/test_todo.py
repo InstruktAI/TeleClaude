@@ -46,7 +46,7 @@ def test_handle_todo_work_polls_until_terminal_state(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(todo_commands.uuid, "uuid4", lambda: "req-1")
     monkeypatch.setattr(receipt_module.time, "sleep", sleep_calls.append)
 
-    def api_call(*_args: object, **_kwargs: object) -> object:  # pylint: disable=unused-argument
+    def api_call(*_args: object, **_kwargs: object) -> object:
         return next(responses)
 
     monkeypatch.setattr(todo_commands, "tool_api_call", api_call)

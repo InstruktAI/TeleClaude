@@ -4,7 +4,6 @@ Sub-services (roadmap, state, artifacts) hold a reference to this base
 and call _ensure_db() to get a ready TodosDb instance. The base exists
 so sub-services don't each own their own connection lifecycle.
 """
-# pylint: disable=missing-function-docstring,too-few-public-methods
 
 from __future__ import annotations
 

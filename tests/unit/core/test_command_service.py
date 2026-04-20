@@ -17,7 +17,7 @@ from teleclaude.types.commands import SystemCommand
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
-def _is_direct_session_creation_bypass(node: ast.AST) -> str | None:  # pylint: disable=too-many-return-statements
+def _is_direct_session_creation_bypass(node: ast.AST) -> str | None:
     """Return the forbidden core-service call name when a caller bypasses the API edge."""
     if not isinstance(node, ast.Call):
         return None
@@ -128,7 +128,7 @@ class TestCommandRoleMap:
         assert not offenders, offenders
 
 
-class TestBuildWidgetSummary:  # pylint: disable=too-few-public-methods
+class TestBuildWidgetSummary:
     """Widget summary builder tests."""
 
     @pytest.mark.unit

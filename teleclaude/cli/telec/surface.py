@@ -87,7 +87,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Start a new agent session",
                 args=(
                     "[--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>]"
-                    " [--message <msg>] [--title <title>] [--direct] [--detach]"
+                    " [--message <msg>] [--direct] [--detach]"
                 ),
                 flags=[
                     _H,
@@ -96,7 +96,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--agent", desc="Agent: claude, gemini, codex"),
                     Flag("--mode", desc="Thinking mode: fast, med, slow"),
                     Flag("--message", desc="Initial message to send"),
-                    Flag("--title", desc="Session title"),
                     Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
                     Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
                 ],

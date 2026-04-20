@@ -48,7 +48,7 @@ class CommandMapper:
     """Maps transport-specific payloads to internal command models."""
 
     @staticmethod
-    def map_telegram_input(  # pylint: disable=too-many-return-statements
+    def map_telegram_input(
         event: str,
         args: list[str],
         metadata: MessageMetadata,
@@ -63,9 +63,14 @@ class CommandMapper:
             )
 
         if event == "new_session":
+            initial_input = None
+            if metadata.launch_intent and metadata.launch_intent.message:
+                initial_input = metadata.launch_intent.message
+            elif args:
+                initial_input = " ".join(args)
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
-                title=metadata.title or (args[0] if args else None),
+                initial_input=initial_input,
                 subdir=metadata.subdir,
                 origin=InputOrigin.TELEGRAM.value,
                 origin_metadata=metadata.origin_metadata,
@@ -114,7 +119,7 @@ class CommandMapper:
         raise ValueError(f"Unknown telegram command: {event}")
 
     @staticmethod
-    def map_redis_input(  # pylint: disable=too-many-arguments,too-many-branches,too-many-locals,too-many-return-statements
+    def map_redis_input(  # noqa: C901 # TODO: refactor to reduce complexity
         command_str: str,
         *,
         origin: str,
@@ -123,7 +128,7 @@ class CommandMapper:
         title: str | None = None,
         metadata: MessageMetadata | None = None,
         launch_intent: SessionLaunchIntent | dict[str, object] | None = None,
-        initiator: str | None = None,  # pylint: disable=unused-argument
+        initiator: str | None = None,
     ) -> InternalCommand:
         """Map Redis inbound message to internal command."""
         cmd_name, args = parse_command_string(command_str)
@@ -192,9 +197,14 @@ class CommandMapper:
             )
 
         if cmd_name == "new_session":
+            initial_input = None
+            if launch_intent_obj and launch_intent_obj.message:
+                initial_input = launch_intent_obj.message
+            elif args:
+                initial_input = " ".join(args)
             return CreateSessionCommand(
                 project_path=project_path or "",
-                title=title or (" ".join(args) if args else None),
+                initial_input=initial_input,
                 origin=origin,
                 launch_intent=launch_intent_obj,
             )
@@ -239,7 +249,7 @@ class CommandMapper:
         raise ValueError(f"Unknown redis command: {cmd_name}")
 
     @staticmethod
-    def map_api_input(  # pylint: disable=too-many-locals,too-many-return-statements
+    def map_api_input(
         command_name: str,
         payload: dict[str, object],
         metadata: MessageMetadata,
@@ -254,9 +264,11 @@ class CommandMapper:
             )
             initiator_raw = payload.get("initiator_session_id")
             initiator_session_id = str(initiator_raw) if initiator_raw else None
+            initial_input_raw = payload.get("initial_input")
+            initial_input = str(initial_input_raw) if initial_input_raw is not None else None
             return CreateSessionCommand(
                 project_path=metadata.project_path or "",
-                title=metadata.title,
+                initial_input=initial_input,
                 subdir=metadata.subdir,
                 human_email=metadata.human_email,
                 human_role=metadata.human_role,

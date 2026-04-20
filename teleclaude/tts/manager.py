@@ -111,7 +111,7 @@ class TTSManager:
                 logger.debug("All %s voices in use, trying next service", service_name)
                 continue
             voice = random.choice(available)
-            logger.info(  # pylint: disable=logging-fstring-interpolation
+            logger.info(
                 f"Assigned voice: {voice.name} from service {service_name}",
             )
             return (service_name, voice.voice_id or voice.name)
@@ -131,7 +131,7 @@ class TTSManager:
         # Try to get existing voice assignment
         voice = await db.get_voice(session_id)
         if voice and voice.service_name:
-            logger.debug(  # pylint: disable=logging-fstring-interpolation
+            logger.debug(
                 f"Using stored voice: {voice.voice} from {voice.service_name}",
                 extra={"session_id": session_id},
             )
@@ -145,13 +145,13 @@ class TTSManager:
         service_name, voice_param = voice_result
         new_voice = VoiceConfig(service_name=service_name, voice=voice_param or "")
         await db.assign_voice(session_id, new_voice)
-        logger.info(  # pylint: disable=logging-fstring-interpolation
+        logger.info(
             f"Assigned new voice: {voice_param} from {service_name}",
             extra={"session_id": session_id},
         )
         return new_voice
 
-    async def trigger_event(  # pylint: disable=too-many-locals,too-many-return-statements,too-many-branches
+    async def trigger_event(
         self,
         event_name: str | AgentHookEventType,
         session_id: str,
@@ -178,7 +178,7 @@ class TTSManager:
             return False
         event_cfg = self.tts_config.events.get(normalized_event_name)
         if not event_cfg or not event_cfg.enabled:
-            logger.debug(f"Event {normalized_event_name} disabled or not configured")  # pylint: disable=logging-fstring-interpolation
+            logger.debug(f"Event {normalized_event_name} disabled or not configured")
             return False
 
         # Use custom text, or built-in session_start messages, or config messages, or fallback message
@@ -192,7 +192,7 @@ class TTSManager:
             text_to_speak = event_cfg.message or "Session started."
 
         if not text_to_speak:
-            logger.debug(f"No message for event {event_name}")  # pylint: disable=logging-fstring-interpolation
+            logger.debug(f"No message for event {event_name}")
             return False
 
         # Get session to check origin
@@ -250,7 +250,7 @@ class TTSManager:
 
             service_chain.append((service_name, fallback_voice))
 
-        logger.debug(  # pylint: disable=logging-fstring-interpolation
+        logger.debug(
             f"TTS triggered for {normalized_event_name}: {text_to_speak[:50]}...",
             extra={"session_id": session_id},
         )
@@ -353,9 +353,9 @@ class TTSManager:
             job = await self._speech_queue.get()
             try:
                 await self._run_speech_job(job)
-            except asyncio.CancelledError:  # pylint: disable=try-except-raise
+            except asyncio.CancelledError:
                 raise
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except Exception as exc:
                 logger.error("TTS worker failed: %s", exc, extra={"session_id": job.session_id})
             finally:
                 self._speech_queue.task_done()

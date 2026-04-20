@@ -1,4 +1,3 @@
-# pylint: disable=too-many-ancestors
 """Characterization tests for teleclaude.transport.redis_transport._messaging."""
 
 from __future__ import annotations

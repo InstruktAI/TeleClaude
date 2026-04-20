@@ -63,7 +63,7 @@ def _archive_binary_artifacts(project_root: Path, slug: str) -> None:
         try:
             shutil.move(str(source), str(dest))
             logger.info("Archived %s/%s → %s", slug, dirname, dest)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             logger.warning("Failed to archive %s/%s: %s", slug, dirname, exc)
 
 

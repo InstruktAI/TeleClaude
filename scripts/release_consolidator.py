@@ -141,7 +141,7 @@ def load_report(path: Path) -> LaneReport | None:
     )
 
 
-def resolve_consensus(  # pylint: disable=too-many-locals
+def resolve_consensus(
     reports: dict[str, LaneReport | None],
     enabled_agents: list[str],
 ) -> ArbiterDecision:
@@ -258,7 +258,7 @@ def _pick_arbiter(reports: dict[str, LaneReport], enabled_agents: list[str]) -> 
     return None
 
 
-def _decision(  # pylint: disable=too-many-arguments
+def _decision(
     *,
     authorized: bool,
     quorum_met: bool,

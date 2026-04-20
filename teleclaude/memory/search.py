@@ -16,10 +16,10 @@ from teleclaude.memory.types import ObservationType, SearchResult
 logger = get_logger(__name__)
 
 
-def _row_to_search_result(row: Any) -> SearchResult:  # pylint: disable=too-many-return-statements
+def _row_to_search_result(row: Any) -> SearchResult:
     """Convert a raw SQL row to SearchResult."""
     if hasattr(row, "_mapping"):
-        m = row._mapping  # pylint: disable=protected-access
+        m = row._mapping
         facts_raw = m.get("facts")
     elif isinstance(row, tuple):
         # Tuple index layout: id, title, subtitle, type, project, narrative, facts, created_at, created_at_epoch
@@ -58,7 +58,7 @@ _SEARCH_COLUMNS = "id, title, subtitle, type, project, narrative, facts, created
 class MemorySearch:
     """Search memory observations via FTS5 or LIKE fallback."""
 
-    async def search(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    async def search(
         self,
         query: str,
         project: str | None = None,
@@ -77,7 +77,7 @@ class MemorySearch:
         """
         type_value = obs_type.value if obs_type else None
 
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             # Try FTS5 first
             try:
                 sql = (
@@ -100,7 +100,7 @@ class MemorySearch:
                 )
                 rows = result.fetchall()
                 return [_row_to_search_result(row) for row in rows]
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 logger.debug("FTS5 search failed, falling back to LIKE", query=query)
 
             # LIKE fallback
@@ -126,7 +126,7 @@ class MemorySearch:
             rows = result.fetchall()
             return [_row_to_search_result(row) for row in rows]
 
-    async def timeline(  # pylint: disable=too-many-locals
+    async def timeline(
         self,
         anchor_id: int,
         depth_before: int = 3,
@@ -134,7 +134,7 @@ class MemorySearch:
         project: str | None = None,
     ) -> list[SearchResult]:
         """Get observations around an anchor by created_at_epoch."""
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             # Get anchor epoch
             result = await session.exec(  # type: ignore[call-overload]
                 text(  # guard: raw-sql
@@ -212,7 +212,7 @@ class MemorySearch:
             params["project"] = project
         sql += " ORDER BY created_at_epoch DESC"
 
-        async with db._session() as session:  # pylint: disable=protected-access
+        async with db._session() as session:
             result = await session.exec(  # type: ignore[call-overload]
                 text(sql).bindparams(**params)  # guard: raw-sql
             )
@@ -248,7 +248,7 @@ class MemorySearch:
                     )
                     rows = result.fetchall()
                     return [_row_to_search_result(row) for row in rows]
-                except Exception:  # pylint: disable=broad-exception-caught
+                except Exception:
                     pass
 
                 # LIKE fallback

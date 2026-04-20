@@ -12,6 +12,10 @@ from pathlib import Path
 
 import yaml
 
+from teleclaude.git import GitCommandError, Repo
+from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
+from teleclaude.todo_scaffold import _collect_session_touched_files  # deferred: heavy transitive imports
+
 logger = logging.getLogger(__name__)
 
 _PYTHON_EXTENSIONS = (".py", ".pyi")
@@ -64,19 +68,11 @@ def resolve_session_scope(project_root: Path) -> list[str]:
     Wraps session_identity.get_session_id and todo_scaffold._collect_session_touched_files.
     Raises RuntimeError when no session identity exists or collection fails.
     """
-    from teleclaude.session_identity import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
-        get_session_id,
-    )
-
     session_id = get_session_id()
     if not session_id:
         raise RuntimeError("No active session identity")
 
     try:
-        from teleclaude.todo_scaffold import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
-            _collect_session_touched_files,
-        )
-
         touched: set[str] = _collect_session_touched_files(str(project_root))
     except Exception as exc:
         raise RuntimeError(f"Failed to collect session-touched files: {exc}") from exc
@@ -88,8 +84,6 @@ def resolve_session_scope(project_root: Path) -> list[str]:
     # Intersect with git-dirty files — only include files that are actually
     # modified or untracked. Touched files that were already committed or
     # reverted are not actionable.
-    from teleclaude.git import GitCommandError, Repo  # pylint: disable=import-outside-toplevel
-
     try:
         repo = Repo(str(project_root))
         status = repo.git.status("--porcelain")
@@ -99,7 +93,7 @@ def resolve_session_scope(project_root: Path) -> list[str]:
                 dirty.add(line[3:].strip())
         if dirty:
             existing = [f for f in existing if f in dirty]
-    except (GitCommandError, Exception):  # pylint: disable=broad-exception-caught
+    except (GitCommandError, Exception):
         pass  # If git fails, return all existing files as fallback
 
     return existing
@@ -149,8 +143,12 @@ def get_project_language(project_root: Path) -> str | None:
 
 
 def python_files(paths: list[str]) -> list[str]:
-    """Return only Python targets from *paths*."""
-    return [path for path in paths if path.endswith(_PYTHON_EXTENSIONS)]
+    """Return only Python targets from *paths*.
+
+    Directories are passed through unchanged — ruff and pyright recurse into
+    them. Only individual file paths are filtered by extension.
+    """
+    return [path for path in paths if Path(path).is_dir() or path.endswith(_PYTHON_EXTENSIONS)]
 
 
 def typescript_files(paths: list[str]) -> list[str]:

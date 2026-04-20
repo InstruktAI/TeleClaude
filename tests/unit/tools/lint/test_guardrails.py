@@ -4,7 +4,6 @@
 Covers the _check_source_patterns function and SOURCE_PATTERN_RULES,
 with focus on the invalid-noqa rule (net-new behavior).
 """
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -280,9 +279,7 @@ class TestImportOutsideTopLevelPolicy:
         _write_file(
             tmp_path,
             "teleclaude/daemon.py",
-            "def f():\n"
-            "    from pkg import thing  # pylint: disable=import-outside-toplevel"
-            f"  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+            f"def f():\n    from pkg import thing  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is None
@@ -293,7 +290,7 @@ class TestImportOutsideTopLevelPolicy:
         _write_file(
             tmp_path,
             "teleclaude/daemon_event_platform.py",
-            "def f():\n    from pkg import thing  # pylint: disable=import-outside-toplevel\n",
+            "def f():\n    from pkg import thing\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is not None
@@ -305,9 +302,7 @@ class TestImportOutsideTopLevelPolicy:
         _write_file(
             tmp_path,
             "teleclaude/other.py",
-            "def f():\n"
-            "    from pkg import thing  # pylint: disable=import-outside-toplevel"
-            f"  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+            f"def f():\n    from pkg import thing  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is not None

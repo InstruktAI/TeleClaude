@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+import yaml
+
 from teleclaude.quality.scope import (
     get_project_languages,
     is_worktree,
@@ -26,6 +28,7 @@ from teleclaude.quality.scope import (
     validate_scoped_paths,
 )
 from teleclaude.quality.toolchain import get_toolchain
+from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
 
 __all__ = [
     "GuardrailsStep",
@@ -179,7 +182,7 @@ class _MypyStep:
 
 @dataclass
 class _JscpdStep:
-    """Copy-paste detection via jscpd (replaces pylint duplicate-code)."""
+    """Copy-paste detection via jscpd."""
 
     name: str = "jscpd"
     _project_root: Path = field(default_factory=Path)
@@ -371,10 +374,6 @@ class LintRunner:
         Without a session identity (human/CI), fall back to source dirs.
         With a session identity but scope failure, exit with guidance.
         """
-        from teleclaude.session_identity import (  # pylint: disable=import-outside-toplevel  # deferred: heavy transitive imports
-            get_session_id,
-        )
-
         session_id = get_session_id()
         if not session_id:
             logger.info("No session identity — running against source directories")
@@ -453,8 +452,6 @@ class LintRunner:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
         config_path = self._project_root / "teleclaude.yml"
         if config_path.exists():
-            import yaml
-
             with open(config_path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             if isinstance(data, dict):

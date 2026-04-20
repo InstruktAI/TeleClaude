@@ -1,6 +1,5 @@
 """Characterization tests for teleclaude.sync."""
 
-# pylint: disable=protected-access
 from __future__ import annotations
 
 import os
@@ -9,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from teleclaude import sync
+from teleclaude import project_manifest, sync
 from teleclaude.git import GitCommandError
 
 pytestmark = pytest.mark.unit
@@ -146,8 +145,6 @@ class TestSyncDoesNotRegisterProject:
 
     def test_sync_pipeline_does_not_touch_manifest_file(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """The sync pipeline must never write to ``~/.teleclaude/projects.yaml``."""
-        from teleclaude import project_manifest  # pylint: disable=import-outside-toplevel
-
         manifest_path = tmp_path / "state" / "projects.yaml"
         monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 

@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 
+from teleclaude.core import command_handlers
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
@@ -25,6 +26,11 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
 from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
 
@@ -42,18 +48,13 @@ _MESSAGE_EXCEPTIONS = (
 )
 _DECODE_EXCEPTIONS = (binascii.Error, UnicodeError, ValueError)
 
-if TYPE_CHECKING:
-    from redis.asyncio import Redis
-
-    from teleclaude.core.adapter_client import AdapterClient
-
 
 def _decode_redis_text(data: dict[bytes, bytes], key: bytes) -> str | None:
     """Decode an optional UTF-8 text field from a Redis payload."""
     return data.get(key, b"").decode("utf-8") or None
 
 
-class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-few-public-methods  # Internal mixin only exposes private polling hooks.:
+class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis stream polling, message parsing, command dispatch."""
 
     if TYPE_CHECKING:
@@ -211,8 +212,6 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=
                 await self.send_response(message_id, response_json)
                 return
             if cmd_name in {"list_sessions", "list_projects", "list_projects_with_todos", "get_computer_info"}:
-                from teleclaude.core import command_handlers  # pylint: disable=C0415
-
                 if cmd_name == "list_sessions":
                     payload = [s.to_dict() for s in await command_handlers.list_sessions()]
                 elif cmd_name == "list_projects":

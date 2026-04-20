@@ -73,7 +73,6 @@ dev = [
     "coverage[toml]>=7.4.0",
     "ruff>=0.12.0",
     "pyright>=1.1.0",
-    "pylint>=3.0.0",
     "pre-commit>=3.6.0",
     "mypy>=1.8.0",
 ]
@@ -100,6 +99,8 @@ quote-style = "double"
 indent-style = "space"
 
 [tool.ruff.lint]
+preview = true
+explicit-preview-rules = true  # only preview rules in extend-select are active
 select = [
   "E",    # pycodestyle errors
   "F",    # pyflakes
@@ -121,8 +122,9 @@ ignore = [
   "B905",   # zip-without-explicit-strict — 9 violations, needs review
 ]
 extend-select = [
-  "F403", # import * used; unable to detect undefined names
-  "F405", # name may be undefined, or defined from star imports
+  "F403",    # import * used; unable to detect undefined names
+  "F405",    # name may be undefined, or defined from star imports
+  "PLC0415", # import-outside-top-level (preview) — enforced via guardrail allowlist
 ]
 
 [tool.ruff.lint.mccabe]
@@ -138,6 +140,10 @@ max-complexity = 20
 "teleclaude/cli/telec/**" = ["B904", "E402"]
 "teleclaude/cli/tui/animations/base.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/hooks/receiver/__main__.py" = ["E402"]
+# Startup-boundary and guarded imports — allowlisted for PLC0415
+"teleclaude/daemon_event_platform.py" = ["PLC0415"]
+"teleclaude/core/adapter_client/_client.py" = ["PLC0415"]
+"teleclaude/helpers/youtube_helper/_utils.py" = ["PLC0415"]  # try/except guarded import
 "teleclaude/adapters/base_adapter.py" = ["B027"]  # Intentional non-abstract base methods
 "teleclaude/cli/config_cli.py" = ["B904"]
 "teleclaude/cli/tool_client.py" = ["B904"]
@@ -145,7 +151,7 @@ max-complexity = 20
 "teleclaude/core/integration/lease.py" = ["B904"]
 "teleclaude/core/tmux_bridge.py" = ["B904"]
 "teleclaude/core/codex_prompt_submit.py" = ["B023", "RUF001", "RUF002", "RUF003"]
-"teleclaude/daemon.py" = ["E402"]  # Import timing instrumentation intentionally interleaves imports
+"teleclaude/daemon.py" = ["E402", "PLC0415"]  # Import timing instrumentation + startup-boundary lazy imports
 "teleclaude/chiptunes/sid_cpu.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/chiptunes/sid_parser.py" = ["RUF001", "RUF002", "RUF003"]
 "teleclaude/cli/tui/animations/sprites/cars.py" = ["RUF001", "RUF002", "RUF003"]
@@ -250,22 +256,6 @@ disable_error_code = ["misc", "no-any-return"]
 module = "teleclaude.api.*"
 # FastAPI decorators and Pydantic BaseModel have internal Any types.
 disable_error_code = ["misc", "explicit-any", "arg-type", "unused-ignore"]
-
-[tool.pylint.'MESSAGES CONTROL']
-# CRITICAL: import-outside-toplevel (C0415) is ENABLED and will fail the build
-# ALL imports MUST be at the top of the file
-enable = ["import-outside-toplevel"]
-fail-on = ["import-outside-toplevel"]
-
-[tool.pylint.'SIMILARITIES']
-min-similarity-lines = 10  # Flag duplicate blocks of 10+ lines
-
-[tool.pylint.'FORMAT']
-max-line-length = 120
-
-[tool.pylint.typecheck]
-# Decorators that modify function signatures (inject parameters)
-signature-mutators = ["teleclaude.core.command_handlers.with_session"]
 
 [tool.pyproject-fmt]
 indent = 4

@@ -39,7 +39,6 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
     cmd = CreateSessionCommand(
         project_path=config.computer.help_desk_dir or "",
         origin=InputOrigin.WHATSAPP.value,
-        title=f"WhatsApp: {phone_number}",
         origin_metadata={
             "phone_number": phone_number,
             "platform": "whatsapp",
@@ -162,7 +161,7 @@ async def _dispatch_whatsapp_command(
         actor_name=payload_actor_name or None,
         actor_avatar_url=payload_actor_avatar_url or None,
     )
-    dispatch_command = adapter._dispatch_command  # pylint: disable=protected-access
+    dispatch_command = adapter._dispatch_command
     await dispatch_command(
         session,
         message_id,

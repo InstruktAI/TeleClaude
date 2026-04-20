@@ -53,7 +53,7 @@ class IngestScheduler:
             try:
                 count = await self._pull(self._context)
                 logger.info("IngestScheduler: pulled %d new items", count)
-            except Exception as e:  # pylint: disable=broad-exception-caught
+            except Exception as e:
                 logger.error("IngestScheduler pull failed: %s", e, exc_info=True)
 
         logger.info("IngestScheduler stopped")

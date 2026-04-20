@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.core.command_handlers import _session
+from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.types.commands import CreateSessionCommand
 
 
@@ -37,8 +39,6 @@ class TestTypedOriginMetadataOnCommand:
     @pytest.mark.unit
     def test_web_origin_metadata_preserves_email(self) -> None:
         """WebOriginMetadata on a command preserves email for identity resolution."""
-        from teleclaude.core.models._adapter import WebOriginMetadata
-
         web_meta = WebOriginMetadata(email="test@example.com")
         cmd = CreateSessionCommand(
             project_path="/tmp",
@@ -51,8 +51,6 @@ class TestTypedOriginMetadataOnCommand:
     @pytest.mark.unit
     def test_terminal_origin_metadata_preserves_email(self) -> None:
         """TerminalOriginMetadata on a command preserves email for identity resolution."""
-        from teleclaude.core.models._adapter import TerminalOriginMetadata
-
         term_meta = TerminalOriginMetadata(email="admin@example.com")
         cmd = CreateSessionCommand(
             project_path="/tmp",
@@ -73,9 +71,6 @@ class TestSessionHandlerOriginMetadata:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Identity resolver must receive the typed TerminalOriginMetadata, not a raw dict."""
-        from teleclaude.core.command_handlers import _session
-        from teleclaude.core.models._adapter import TerminalOriginMetadata
-
         project_path = tmp_path / "project"
         project_path.mkdir()
 
@@ -133,9 +128,6 @@ class TestSessionHandlerOriginMetadata:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """update_origin_metadata must receive the typed object, not a degraded dict."""
-        from teleclaude.core.command_handlers import _session
-        from teleclaude.core.models._adapter import TerminalOriginMetadata
-
         project_path = tmp_path / "project"
         project_path.mkdir()
 

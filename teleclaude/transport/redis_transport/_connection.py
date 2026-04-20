@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from teleclaude.core.task_registry import TaskRegistry
 
 
-class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too-many-instance-attributes  # Host transport owns the connection state bag.:
+class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
     """Mixin: Redis connection lifecycle, reconnect loop, start/stop."""
 
     if TYPE_CHECKING:

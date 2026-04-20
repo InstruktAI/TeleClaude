@@ -1,5 +1,4 @@
 """Characterization tests for output delivery on UiAdapter."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -18,12 +17,12 @@ from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, S
 # ---------------------------------------------------------------------------
 
 
-class _FakeHost(UiAdapter):  # pylint: disable=too-many-instance-attributes
+class _FakeHost(UiAdapter):
     ADAPTER_KEY = "telegram"
     max_message_size = 100
     OUTPUT_CADENCE_SECONDS = 0.0
 
-    def __init__(self):  # pylint: disable=super-init-not-called,too-many-instance-attributes
+    def __init__(self):
         # Skip UiAdapter.__init__ to avoid event_bus side effects
         self.client = MagicMock()
         self._output_message_id: str | None = None

@@ -11,6 +11,7 @@ from teleclaude.core.integration.events import (
     FinalizeReadyPayload,
     IntegrationBlockedPayload,
     IntegrationEvent,
+    IntegrationEventRecord,
     IntegrationEventValidationError,
     ReviewApprovedPayload,
     build_integration_event,
@@ -181,8 +182,6 @@ def test_event_to_record_and_back_round_trips():
 
 
 def test_event_from_record_rejects_missing_event_type():
-    from teleclaude.core.integration.events import IntegrationEventRecord
-
     bad: IntegrationEventRecord = {
         "event_id": "x",
         "event_type": "",  # type: ignore[typeddict-item]

@@ -1,5 +1,4 @@
 """Characterization tests for threaded output delivery on UiAdapter."""
-# pylint: disable=protected-access
 
 from __future__ import annotations
 
@@ -31,7 +30,7 @@ class _ThreadedHost(UiAdapter):
     THREADED_MARKDOWN_ATOMIC_ENTITY_MAX_CHARS = 50
     OUTPUT_CADENCE_SECONDS = 0.0
 
-    def __init__(self) -> None:  # pylint: disable=super-init-not-called
+    def __init__(self) -> None:
         # Skip UiAdapter.__init__ to avoid event_bus side effects
         self.client = MagicMock()
         self._char_offset: int = 0
@@ -114,7 +113,7 @@ class _ThreadedHost(UiAdapter):
     def _build_metadata_for_thread(self) -> MessageMetadata:
         return MessageMetadata(parse_mode=None)  # No MarkdownV2 by default
 
-    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+    async def _deliver_output_unlocked(
         self,
         session: Session,
         text: str,
@@ -159,7 +158,7 @@ class TestCharOffsetManagement:
     """Tests for char offset tracking and reset logic."""
 
     @pytest.mark.unit
-    async def test_offset_resets_when_text_shorter_than_offset(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+    async def test_offset_resets_when_text_shorter_than_offset(self, host: _ThreadedHost) -> None:
         """Offset resets to zero when text is shorter than the recorded offset."""
         session = _make_session()
         host._char_offset = 100  # More than text length
@@ -171,7 +170,7 @@ class TestCharOffsetManagement:
         assert host._char_offset == 0 or host._char_offset <= 5
 
     @pytest.mark.unit
-    async def test_no_active_text_with_existing_message_returns_id(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+    async def test_no_active_text_with_existing_message_returns_id(self, host: _ThreadedHost) -> None:
         """Returns existing message ID when there is no new text to deliver."""
         session = _make_session()
         host._char_offset = 5
@@ -193,7 +192,7 @@ class TestOverflowPagination:
     """Tests for message overflow splitting and pagination."""
 
     @pytest.mark.unit
-    async def test_long_text_triggers_pagination(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+    async def test_long_text_triggers_pagination(self, host: _ThreadedHost) -> None:
         """Long text causes the char offset to advance (pagination occurred)."""
         host.max_message_size = 20
         session = _make_session()
@@ -207,7 +206,7 @@ class TestOverflowPagination:
         assert host._char_offset > 0
 
     @pytest.mark.unit
-    async def test_short_text_within_limit_delivered_directly(self, host: _ThreadedHost) -> None:  # pylint: disable=redefined-outer-name
+    async def test_short_text_within_limit_delivered_directly(self, host: _ThreadedHost) -> None:
         """Short text within the size limit is delivered without pagination."""
         session = _make_session()
         short_text = "hi"
@@ -247,7 +246,7 @@ class _GfmHost(_ThreadedHost):
     def _scan_markdown_state(self, consumed: str, state: object) -> object:
         return scan_gfm_state(consumed, initial_state=cast(GfmMarkdownState, state))
 
-    async def _deliver_output_unlocked(  # pylint: disable=too-many-arguments,too-many-positional-arguments,unused-argument
+    async def _deliver_output_unlocked(
         self,
         session: Session,
         text: str,

@@ -1,5 +1,4 @@
 """Characterization tests for teleclaude.core.identity."""
-# pylint: disable=protected-access,import-outside-toplevel
 
 from __future__ import annotations
 
@@ -7,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import teleclaude.core.identity as identity_module
 from teleclaude.core.identity import IdentityContext, IdentityResolver, get_identity_resolver
 
 
@@ -182,8 +182,6 @@ class TestGetIdentityResolver:
         ):
             mock_cfg.return_value = MagicMock(people=[])
             mock_dir.glob.return_value = []
-            import teleclaude.core.identity as identity_module
-
             identity_module._resolver_instance = None
             resolver = get_identity_resolver()
         assert isinstance(resolver, IdentityResolver)

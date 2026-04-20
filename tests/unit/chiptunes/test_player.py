@@ -14,7 +14,7 @@ from teleclaude.chiptunes.sid_parser import SIDHeader
 
 
 class _RecordingThread:
-    def __init__(  # pylint: disable=too-many-positional-arguments
+    def __init__(
         self,
         target: Callable[..., object],
         args: tuple[object, ...] = (),
@@ -32,7 +32,7 @@ class _RecordingThread:
     def start(self) -> None:
         self.started = True
 
-    def join(self, timeout: float | None = None) -> None:  # pylint: disable=unused-argument
+    def join(self, timeout: float | None = None) -> None:
         return None
 
     def is_alive(self) -> bool:
@@ -122,8 +122,8 @@ class TestChiptunesPlayer:
         player.play(Path("song.sid"), start_paused=True, start_position_seconds=1.5)
 
         assert isinstance(player._thread, _RecordingThread)
-        assert player._thread.started is True  # pylint: disable=no-member
-        assert player._thread.args == (_header(flags=4), 1.5, None)  # pylint: disable=no-member
+        assert player._thread.started is True
+        assert player._thread.args == (_header(flags=4), 1.5, None)
         assert player.is_paused is True
         assert player.playback_position_seconds == 1.5
         assert player._stream_blocksize == int(48000 * (1.0 / 50.0)) * 4

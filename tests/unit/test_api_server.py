@@ -1,12 +1,11 @@
 """Characterization tests for teleclaude.api_server public boundaries."""
-# pylint: disable=protected-access,import-outside-toplevel
 
 from __future__ import annotations
 
 import sys
 import types
 from collections.abc import Generator
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -16,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api_models import TodoDTO
+from teleclaude.api_server import APIServer, verify_caller
 from teleclaude.core.cache import DaemonCache
 
 _ROUTE_MODULE_NAMES = (
@@ -55,8 +55,6 @@ def _api_server_harness(
     # Patch both sys.modules AND the parent package attributes so that
     # `from teleclaude.api import sessions_routes` inside the cache setter
     # resolves the fake module (Python checks package attrs before sys.modules).
-    from contextlib import ExitStack
-
     with ExitStack() as stack:
         stack.enter_context(patch.dict(sys.modules, fake_modules))
         stack.enter_context(patch("teleclaude.api_server.event_bus.subscribe"))
@@ -66,8 +64,6 @@ def _api_server_harness(
                 parent_mod = sys.modules.get(parts[0])
                 if parent_mod is not None:
                     stack.enter_context(patch.object(parent_mod, parts[1], mod, create=True))
-
-        from teleclaude.api_server import APIServer
 
         server = APIServer(
             client=MagicMock(adapters={}),
@@ -92,8 +88,6 @@ class TestApiServerHttpRoutes:
     @pytest.mark.unit
     def test_auth_whoami_returns_token_principal_when_present(self, tmp_path):
         with _api_server_harness(tmp_path, cache=None) as (server, _):
-            from teleclaude.api_server import verify_caller
-
             server.app.dependency_overrides[verify_caller] = lambda: CallerIdentity(
                 session_id="sess-001",
                 system_role=None,
@@ -111,8 +105,6 @@ class TestApiServerHttpRoutes:
     @pytest.mark.unit
     def test_auth_whoami_returns_human_role_when_principal_absent(self, tmp_path):
         with _api_server_harness(tmp_path, cache=None) as (server, _):
-            from teleclaude.api_server import verify_caller
-
             server.app.dependency_overrides[verify_caller] = lambda: CallerIdentity(
                 session_id="",
                 system_role=None,

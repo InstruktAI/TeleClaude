@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.config import config
+
 pytestmark = pytest.mark.expensive
 
 WRAPPER_CMD = [sys.executable, "-m", "teleclaude.helpers.agent_cli"]
@@ -35,8 +37,6 @@ TRANSPORT_PROMPT = (
 def _agent_enabled(agent: str) -> bool:
     """Check if an agent is enabled in config."""
     try:
-        from teleclaude.config import config
-
         cfg = config.agents.get(agent)
         return cfg is None or cfg.enabled
     except Exception:

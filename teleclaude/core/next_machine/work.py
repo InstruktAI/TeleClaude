@@ -8,8 +8,6 @@ worktree git log + build-gate results, then routes through
 No imports from core.py (circular-import guard).
 """
 
-# pylint: disable=cyclic-import  # Orchestration module bridges legacy next-machine/service boundaries.
-
 from __future__ import annotations
 
 import asyncio
@@ -28,15 +26,8 @@ from teleclaude.core.next_machine._types import (
     ItemPhase,
     WorkPhase,
 )
-from teleclaude.core.next_machine.git_ops import (
-    _merge_origin_main_into_worktree,
-    get_head_commit,
-    get_stash_entries,
-)
-from teleclaude.core.next_machine.output_formatting import (
-    format_error,
-    format_stash_debt,
-)
+from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
+from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.phase_derivation import derive_work_phase
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
@@ -45,12 +36,14 @@ from teleclaude.core.next_machine.slug_resolution import (
     set_item_phase_db,
 )
 from teleclaude.core.next_machine.work_steps import _work_dispatch
-from teleclaude.core.next_machine.worktrees import (
-    ensure_worktree_with_policy_async,
-)
+from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.slug_resolution import resolve_first_runnable_holder_child_db
+from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state
+from teleclaude.core.operation_progress import emit_operation_progress
+from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
 
@@ -85,14 +78,12 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         elapsed_ms,
     )
     try:
-        from teleclaude.core.operations import emit_operation_progress  # pylint: disable=import-outside-toplevel
-
         emit_operation_progress(phase, decision, reason)
-    except Exception:  # pylint: disable=broad-exception-caught
+    except Exception:
         logger.debug("Operation progress emission skipped", exc_info=True)
 
 
-async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disable=too-many-locals,too-many-return-statements
+async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
     Reads durable state from ``todos.db``, derives the current work phase via
@@ -108,8 +99,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
     Returns:
         Plain text instructions for the orchestrator to execute
     """
-    from teleclaude.core.todos_db import get_todos_db  # pylint: disable=import-outside-toplevel
-
     cwd = await _normalize_next_work_cwd(cwd)
     todos_db = await get_todos_db(cwd)
 
@@ -187,10 +176,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:  # pylint: disab
             wp = state.get("work_phase", "")
             if wp and wp != WorkPhase.BUILD_STARTED.value:
                 state["work_phase"] = ""
-                from teleclaude.core.next_machine.state_io import (  # pylint: disable=import-outside-toplevel
-                    write_phase_state as _write_phase_state,
-                )
-
                 await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 
@@ -287,10 +272,6 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    from teleclaude.core.next_machine.slug_resolution import (  # pylint: disable=import-outside-toplevel
-        resolve_first_runnable_holder_child_db,
-    )
-
     holder_child, holder_reason = await resolve_first_runnable_holder_child_db(todos_db, slug, deps)
     if holder_child:
         return holder_child, None
@@ -321,7 +302,7 @@ async def _resolve_holder_slug(
     return slug, None
 
 
-async def _validate_explicit_slug_readiness(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+async def _validate_explicit_slug_readiness(
     todos_db: TodosDb,
     slug: str,
     phase: str,
@@ -399,7 +380,7 @@ async def _ensure_worktree_ready(cwd: str, resolved_slug: str, phase_slug: str) 
             str(exc),
             next_call="Add tools/worktree-prepare.sh or fix its execution, then retry.",
         )
-    except Exception as exc:  # pylint: disable=broad-exception-caught
+    except Exception as exc:
         logger.error(
             "next_work worktree setup failed for slug=%s cwd=%s worktree_path=%s: %s",
             resolved_slug,

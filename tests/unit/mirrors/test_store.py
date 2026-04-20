@@ -6,16 +6,16 @@ from typing import Any, cast
 
 import pytest
 
+import teleclaude.paths as tc_paths
 from teleclaude.core.agents import AgentName
 from teleclaude.mirrors import store as store_module
+from teleclaude.mirrors.store import _connect_rw
 
 pytestmark = pytest.mark.unit
 
 
 def _prepare_store_db(path: Path) -> None:
     """Trigger schema auto-creation via _connect_rw, then add a sessions table for context lookups."""
-    from teleclaude.mirrors.store import _connect_rw  # pylint: disable=import-outside-toplevel
-
     with _connect_rw(str(path)) as conn:
         conn.executescript(
             """
@@ -152,8 +152,6 @@ class TestMirrorStore:
                 ("session-1", "mac", "claude", "alpha", transcript_path, "2025-01-01T00:00:00+00:00"),
             )
             conn.commit()
-
-        import teleclaude.paths as tc_paths
 
         monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", main_db_path)
 

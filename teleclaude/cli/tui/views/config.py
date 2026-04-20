@@ -37,7 +37,7 @@ from teleclaude.config.schema import PersonEntry
 __all__ = ["ConfigContent", "ConfigView"]
 
 
-class ConfigView(Widget, can_focus=True):  # pylint: disable=too-many-public-methods
+class ConfigView(Widget, can_focus=True):
     """Configuration tab with guided setup and inline edit behavior."""
 
     DEFAULT_CSS = """
@@ -252,7 +252,7 @@ class ConfigView(Widget, can_focus=True):  # pylint: disable=too-many-public-met
             self._sync_content()
 
 
-class ConfigContent(  # pylint: disable=too-many-instance-attributes
+class ConfigContent(
     ConfigContentEditingMixin,
     ConfigContentRenderMixin,
     TelecMixin,
@@ -349,7 +349,7 @@ class ConfigContent(  # pylint: disable=too-many-instance-attributes
         """Reload env vars, people, and derived projections from disk."""
         try:
             self._env_data = check_env_vars()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._env_data = []
             self._status_message = f"Failed to load env vars: {exc}"
             self._status_is_error = True
@@ -358,7 +358,7 @@ class ConfigContent(  # pylint: disable=too-many-instance-attributes
 
         try:
             self._people_data = list_people()
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._people_data = []
             self._status_message = f"Failed to load people: {exc}"
             self._status_is_error = True
@@ -379,7 +379,7 @@ class ConfigContent(  # pylint: disable=too-many-instance-attributes
             passed = sum(1 for result in self._validation_results if result.passed)
             self._status_message = f"Validation complete: {passed}/{len(self._validation_results)} checks passed"
             self._status_is_error = passed != len(self._validation_results)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except Exception as exc:
             self._validation_results = []
             self._status_message = f"Validation failed: {exc}"
             self._status_is_error = True
@@ -401,7 +401,7 @@ class ConfigContent(  # pylint: disable=too-many-instance-attributes
         for person in self._people_data:
             try:
                 person_config = get_person_config(person.name)
-            except Exception:  # pylint: disable=broad-exception-caught
+            except Exception:
                 continue
             count = len(person_config.subscriptions)
             if count > 0:

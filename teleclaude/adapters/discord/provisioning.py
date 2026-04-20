@@ -45,10 +45,16 @@ class ProvisioningMixin:
 
     if TYPE_CHECKING:
         _client: object
-        _parse_optional_int: Callable[[object], int | None]
-        _require_async_callable: Callable[..., AsyncDiscordCallable]
-        _get_channel: Callable[[int], Awaitable[object | None]]
-        _is_forum_channel: Callable[[object], bool]
+
+        def _parse_optional_int(self, value: object) -> int | None: ...
+
+        @staticmethod
+        def _require_async_callable(fn: object, *, label: str) -> AsyncDiscordCallable: ...
+
+        async def _get_channel(self, channel_id: int) -> object | None: ...
+
+        @staticmethod
+        def _is_forum_channel(channel: object) -> bool: ...
 
     async def resolve_guild(self) -> object | None:
         """Public wrapper for guild resolution used by infrastructure callers."""

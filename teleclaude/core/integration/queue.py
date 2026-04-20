@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Literal, TypedDict
 
 from teleclaude.core.integration.readiness_projection import CandidateKey
+from teleclaude.paths import INTEGRATION_DIR
 
 QueueStatus = Literal["queued", "in_progress", "integrated", "blocked", "superseded"]
 _RECOVERY_REQUEUE_REASON = "requeued after runtime restart"
@@ -28,8 +29,6 @@ class IntegrationQueueError(RuntimeError):
 
 def default_integration_state_dir() -> Path:
     """Return the canonical state directory shared by the trigger and integrator."""
-    from teleclaude.paths import INTEGRATION_DIR  # pylint: disable=import-outside-toplevel
-
     return INTEGRATION_DIR
 
 

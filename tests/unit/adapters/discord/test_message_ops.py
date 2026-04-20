@@ -32,10 +32,17 @@ def test_split_message_chunks_prefers_newline_breaks_within_limit() -> None:
     assert adapter._split_message_chunks("line1\nline2") == ["line1", "line2"]
 
 
-def test_split_message_chunks_falls_back_to_hard_splits_without_newlines() -> None:
+def test_split_message_chunks_packs_full_lines_until_next_line_would_overflow() -> None:
+    adapter = DummyMessageOperations(max_message_size=10)
+
+    assert adapter._split_message_chunks("1234\n5678\n90") == ["1234\n5678", "90"]
+
+
+def test_split_message_chunks_raises_without_newlines() -> None:
     adapter = DummyMessageOperations(max_message_size=5)
 
-    assert adapter._split_message_chunks("abcdef") == ["abcde", "f"]
+    with pytest.raises(ValueError, match="line packing"):
+        adapter._split_message_chunks("abcdef")
 
 
 def test_fit_message_text_truncates_with_suffix_until_suffix_exceeds_limit() -> None:

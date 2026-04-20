@@ -1,7 +1,5 @@
 """Session display row with expand/collapse, agent colors, activity indicators."""
 
-# pylint: disable=missing-function-docstring
-
 from __future__ import annotations
 
 from rich.style import Style
@@ -212,7 +210,7 @@ class SessionRow(TelecMixin, Widget):
 
         return None
 
-    def _build_summary_lines(self) -> list[Text]:  # pylint: disable=too-many-locals,too-many-statements
+    def _build_summary_lines(self) -> list[Text]:
         """Build always-visible summary lines with owner, input, and output."""
         lines: list[Text] = []
         connector_pad = " " * self._connector_col
