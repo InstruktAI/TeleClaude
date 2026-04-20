@@ -104,56 +104,18 @@ class TestResolveOrCreateSession:  # pylint: disable=too-few-public-methods
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_creates_missing_whatsapp_session_via_edge_session_route(
+    async def test_creates_missing_whatsapp_session_via_command_service(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        captured = SimpleNamespace(
-            connected=False,
-            closed=False,
-            computer=None,
-            project_path=None,
-            title=None,
-            auto_command=None,
-            origin=None,
-            origin_metadata=None,
-        )
         resolved_session = SimpleNamespace(session_id="session-whatsapp")
-
-        async def _connect() -> None:
-            captured.connected = True
-
-        async def _close() -> None:
-            captured.closed = True
-
-        async def _create_session(**kwargs: object) -> SimpleNamespace:
-            captured.computer = str(kwargs["computer"])
-            captured.project_path = str(kwargs["project_path"])
-            captured.title = str(kwargs["title"])
-            captured.auto_command = str(kwargs["auto_command"])
-            metadata = kwargs["metadata"]
-            assert isinstance(metadata, dict)
-            captured.origin = str(metadata["origin"])
-            origin_metadata = metadata["origin_metadata"]
-            assert isinstance(origin_metadata, dict)
-            captured.origin_metadata = {str(key): str(value) for key, value in origin_metadata.items()}
-            result = SimpleNamespace(session_id="session-whatsapp")
-            result.get = lambda key, default=None: result.session_id if key == "session_id" else default
-            return result
-
-        def _fake_api_client() -> SimpleNamespace:
-            return SimpleNamespace(
-                connect=_connect,
-                close=_close,
-                create_session=_create_session,
-            )
 
         mock_db = SimpleNamespace(
             get_sessions_by_origin_metadata=AsyncMock(return_value=[]),
             get_session=AsyncMock(return_value=resolved_session),
         )
         mock_service = SimpleNamespace(
-            create_session=AsyncMock(side_effect=AssertionError("WhatsApp create must not bypass the API edge"))
+            create_session=AsyncMock(return_value={"session_id": "session-whatsapp"}),
         )
         monkeypatch.setattr(whatsapp_handler, "db", mock_db)
         monkeypatch.setattr(
@@ -163,24 +125,21 @@ class TestResolveOrCreateSession:  # pylint: disable=too-few-public-methods
         )
         monkeypatch.setattr(whatsapp_handler, "get_default_agent", lambda: "claude")
         monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: mock_service)
-        monkeypatch.setattr("teleclaude.cli.api_client.TelecAPIClient", _fake_api_client)
 
         session = await whatsapp_handler._resolve_or_create_session("15551234567")  # pylint: disable=protected-access
 
         assert session is resolved_session
-        assert captured.connected is True
-        assert captured.closed is True
-        assert captured.computer == "local"
-        assert captured.project_path == "/help-desk"
-        assert captured.title == "WhatsApp: 15551234567"
-        assert captured.auto_command == "agent claude"
-        assert captured.origin == "whatsapp"
-        assert captured.origin_metadata == {
-            "phone_number": "15551234567",
-            "platform": "whatsapp",
-        }
+        mock_service.create_session.assert_awaited_once()
+        cmd = mock_service.create_session.await_args.args[0]
+        assert cmd.project_path == "/help-desk"
+        assert cmd.origin == "whatsapp"
+        assert cmd.title == "WhatsApp: 15551234567"
+        assert cmd.origin_metadata == {"phone_number": "15551234567", "platform": "whatsapp"}
+        assert cmd.launch_intent is not None
+        assert cmd.launch_intent.kind.value == "agent"
+        assert cmd.launch_intent.agent == "claude"
+        assert cmd.launch_intent.thinking_mode == "slow"
         mock_db.get_session.assert_awaited_once_with("session-whatsapp")
-        mock_service.create_session.assert_not_awaited()
 
 
 class TestHandleWhatsappEvent:
