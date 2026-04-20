@@ -628,7 +628,7 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
 
     for path in candidates:
         rel = path.relative_to(repo_root).as_posix()
-        if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST or rel == "tools/lint/guardrails.py":
+        if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
             continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
@@ -636,7 +636,12 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
             continue
 
         for lineno, line in enumerate(lines, start=1):
-            if "PLC0415" in line and "noqa" in line:
+            # Only match actual noqa directives on import lines, not string
+            # literals or docstrings that mention the rule.
+            stripped = line.lstrip()
+            if not stripped.startswith(("from ", "import ")):
+                continue
+            if "# noqa:" in line and "PLC0415" in line.split("# noqa:")[-1]:
                 outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
 
     if outside_allowlist:
