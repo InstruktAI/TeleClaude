@@ -10,7 +10,6 @@ import webbrowser
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from rich.style import Style
 from rich.text import Text
 from textual.events import Click
 from textual.reactive import reactive
@@ -19,6 +18,7 @@ from textual.widget import Widget
 from teleclaude.cli.tui.animations.base import Z0, Z50
 from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.pixel_mapping import PixelMap
+from teleclaude.cli.tui.render_runs import Cell, append_cells
 from teleclaude.cli.tui.sky_compositing import consume_sky_entity_value as _consume_sky_entity_value
 from teleclaude.cli.tui.theme import (
     blend_colors,
@@ -168,6 +168,7 @@ def _render_art_content(
     for y, line in enumerate(lines):
         if y > 0:
             result.append("\n")
+        row_cells: list[Cell] = []
         for x in range(total_width):
             local_x = x - pad
             is_on_plate = pad <= x < pad + plate_width
@@ -195,8 +196,7 @@ def _render_art_content(
                     entity_override = True
                 if bg_entity_color:
                     final_bg = bg_entity_color
-            if _append_animation_pixel(
-                result,
+            animated_cell = _append_animation_pixel(
                 fg_char=fg_char,
                 fg_color=fg_color,
                 final_bg=final_bg,
@@ -209,16 +209,18 @@ def _render_art_content(
                 entity_override=entity_override,
                 engine=engine,
                 dark_mode=dark_mode,
-            ):
+            )
+            if animated_cell is not None:
+                row_cells.append(animated_cell)
                 continue
             fg = str(fg_color or resolve_haze(get_banner_hex()))
             if not entity_override and _is_pipe(fg_char):
                 fg = _dim_color(fg, 0.8)
-            result.append(fg_char, style=Style(color=fg, bgcolor=_to_color(final_bg)))
+            row_cells.append((fg_char, _to_color(fg), _to_color(final_bg)))
+        append_cells(result, row_cells)
 
 
 def _append_animation_pixel(
-    result: Text,
     *,
     fg_char: str,
     fg_color: str | None,
@@ -232,13 +234,13 @@ def _append_animation_pixel(
     entity_override: bool,
     engine: AnimationEngine | None,
     dark_mode: bool,
-) -> bool:
+) -> Cell | None:
     _ = (fg_color, x)
     if not (engine and engine.has_active_animation and is_on_plate):
-        return False
+        return None
     color = engine.get_color(local_x, y, target=target)
     if not color or entity_override:
-        return False
+        return None
     color_str = resolve_haze(str(color))
     if is_letter:
         color_str = (
@@ -251,8 +253,7 @@ def _append_animation_pixel(
     if engine.is_external_light(target=target):
         blend_pct = 0.5 if is_letter else 0.2
         final_bg = blend_colors(str(final_bg), color_str, blend_pct)
-    result.append(fg_char, style=Style(color=color_str, bgcolor=_to_color(final_bg)))
-    return True
+    return (fg_char, _to_color(color_str), _to_color(final_bg))
 
 
 def _render_pipe_row(
@@ -269,6 +270,7 @@ def _render_pipe_row(
     pipe_color: str,
     z_threshold: int,
 ) -> None:
+    row_cells: list[Cell] = []
     for x in range(total_width):
         bg = _resolve_sky_background(engine, x, y, sky_fallback, scene)
         is_pipe = x in pipe_positions
@@ -295,7 +297,8 @@ def _render_pipe_row(
                 fg_color = ent_color
             if bg_ent:
                 bg = bg_ent
-        result.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(bg)))
+        row_cells.append((fg_char, _to_color(fg_color), _to_color(bg)))
+    append_cells(result, row_cells)
 
 
 class Banner(TelecMixin, Widget):
