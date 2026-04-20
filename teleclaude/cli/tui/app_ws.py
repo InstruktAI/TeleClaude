@@ -156,6 +156,8 @@ class TelecAppWsMixin:
     def _handle_chiptunes_event(self, event: WsEvent) -> bool:
         """Handle chiptunes status updates for the footer."""
         if isinstance(event, ChiptunesTrackEventDTO):
+            if event.track:
+                self.notify(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
             self._apply_chiptunes_footer_state(  # type: ignore[attr-defined]
                 loaded=True,
                 playback="loading",
@@ -166,8 +168,6 @@ class TelecAppWsMixin:
                 pending_command_id="",
                 pending_action="",
             )
-            if event.track:
-                self.notify(f"♪ Loading: {event.track}", timeout=4)  # type: ignore[attr-defined]
             return True
 
         if isinstance(event, ChiptunesStateEventDTO):
