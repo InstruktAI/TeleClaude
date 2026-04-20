@@ -27,9 +27,8 @@ from teleclaude.core.events import (
     SessionStatusContext,
     SystemCommandContext,
     TeleClaudeEvents,
-    parse_command_string,
 )
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
@@ -92,7 +91,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-# Agent auto-command startup detection
+# Agent startup detection
 AGENT_START_TIMEOUT_S = 5.0
 AGENT_START_POLL_INTERVAL_S = 0.5
 AGENT_START_SETTLE_DELAY_S = 0.5  # Initial delay after process starts
@@ -270,54 +269,57 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
         """Central handler for AGENT_EVENT."""
         await self.agent_coordinator.handle_event(context)
 
-    async def _execute_auto_command(self, session_id: str, auto_command: str) -> dict[str, str]:
-        """Execute a post-session auto_command and return status/message."""
-        cmd_name, auto_args = parse_command_string(auto_command)
+    async def _execute_launch_intent(
+        self,
+        session_id: str,
+        launch_intent: SessionLaunchIntent | None,
+    ) -> dict[str, str]:
+        """Execute a typed post-session launch intent and return status/message."""
+        if launch_intent is None or launch_intent.kind == SessionLaunchKind.EMPTY:
+            return {"status": "success"}
 
-        if cmd_name and auto_command:
-            session = await db.get_session(session_id)
-            if not session or not session.last_input_origin:
-                logger.error("Auto-command missing last_input_origin for session %s", session_id)
-                await db.update_session(
-                    session_id,
-                    last_message_sent=auto_command[:200],
-                    last_message_sent_at=datetime.now(UTC).isoformat(),
-                )
-            else:
-                await db.update_session(
-                    session_id,
-                    last_message_sent=auto_command[:200],
-                    last_message_sent_at=datetime.now(UTC).isoformat(),
-                    last_input_origin=session.last_input_origin,
-                )
-
-        if cmd_name == "agent_then_message":
-            return await self._handle_agent_then_message(session_id, auto_args)
-
-        if cmd_name == "agent" and auto_args:
-            agent_name = auto_args.pop(0)
+        if launch_intent.kind == SessionLaunchKind.AGENT:
+            if not launch_intent.agent:
+                return {"status": "error", "message": "agent launch intent missing agent"}
             await self.command_service.start_agent(
-                StartAgentCommand(session_id=session_id, agent_name=agent_name, args=auto_args)
+                StartAgentCommand(
+                    session_id=session_id,
+                    agent_name=launch_intent.agent,
+                    thinking_mode=launch_intent.thinking_mode or "slow",
+                )
             )
             return {"status": "success"}
 
-        if cmd_name == "agent_resume" and auto_args:
-            agent_name = auto_args.pop(0)
-            native_session_id = auto_args[0] if auto_args else None
+        if launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
+            if not launch_intent.agent:
+                return {"status": "error", "message": "agent_resume launch intent missing agent"}
             await self.command_service.resume_agent(
                 ResumeAgentCommand(
                     session_id=session_id,
-                    agent_name=agent_name,
-                    native_session_id=native_session_id,
+                    agent_name=launch_intent.agent,
+                    native_session_id=launch_intent.native_session_id,
                 )
             )
             return {"status": "success"}
 
-        logger.warning("Unknown or malformed auto_command: %s", auto_command)
-        return {"status": "error", "message": f"Unknown or malformed auto_command: {auto_command}"}
+        if launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
+            if not launch_intent.agent or launch_intent.message is None:
+                return {"status": "error", "message": "agent_then_message launch intent incomplete"}
+            return await self._handle_agent_then_message(
+                session_id,
+                agent_name=launch_intent.agent,
+                thinking_mode=launch_intent.thinking_mode or "slow",
+                message=launch_intent.message,
+            )
 
-    async def _bootstrap_session_resources(self, session_id: str, auto_command: str | None) -> None:
-        """Create tmux + start polling + run auto command."""
+        return {"status": "error", "message": f"Unsupported launch intent: {launch_intent.kind.value}"}
+
+    async def _bootstrap_session_resources(
+        self,
+        session_id: str,
+        launch_intent: SessionLaunchIntent | None,
+    ) -> None:
+        """Create tmux, start polling, and execute typed launch intent."""
         session = await db.get_session(session_id)
         if not session:
             logger.warning("Session %s missing during bootstrap", session_id)
@@ -339,20 +341,20 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
 
         await self._start_polling_for_session(session_id, session.tmux_session_name)
 
-        # Run auto-command BEFORE transitioning to active so that process_message
+        # Run launch work BEFORE transitioning to active so that process_message
         # callers waiting on the initializing gate see the transition only after
         # the startup command has been dispatched into tmux.
-        auto_command_result: dict[str, str] | None = None
-        if auto_command:
+        launch_result: dict[str, str] | None = None
+        if launch_intent and launch_intent.kind != SessionLaunchKind.EMPTY:
             try:
-                auto_command_result = await self._execute_auto_command(session_id, auto_command)
+                launch_result = await self._execute_launch_intent(session_id, launch_intent)
             except Exception:  # pylint: disable=broad-exception-caught
                 logger.error(
-                    "Bootstrap auto-command failed for session %s",
+                    "Bootstrap launch intent failed for session %s",
                     session_id,
                     exc_info=True,
                 )
-                auto_command_result = {"status": "error"}
+                launch_result = {"status": "error"}
 
         # Transition non-headless sessions to active so they appear in listings.
         # Headless sessions stay "headless" until explicitly adopted by a UI adapter.
@@ -360,25 +362,23 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disa
             await db.update_session(session_id, lifecycle_status="active")
 
         logger.info(
-            "Bootstrap complete for session %s: auto_command=%s result=%s",
+            "Bootstrap complete for session %s: launch_intent=%s result=%s",
             session_id,
-            bool(auto_command),
-            auto_command_result.get("status") if auto_command_result else "n/a",
+            launch_intent.kind.value if launch_intent else SessionLaunchKind.EMPTY.value,
+            launch_result.get("status") if launch_result else "n/a",
         )
 
     async def _handle_agent_then_message(  # pylint: disable=too-many-locals,too-many-return-statements
-        self, session_id: str, args: list[str]
+        self,
+        session_id: str,
+        *,
+        agent_name: str,
+        thinking_mode: str,
+        message: str,
     ) -> dict[str, str]:
         """Start agent, wait for TUI input prompt, then inject message."""
         start_time = time.time()
         logger.debug("agent_then_message: started for session=%s", session_id)
-
-        if len(args) < 3:
-            return {"status": "error", "message": "agent_then_message requires agent, thinking_mode, message"}
-
-        agent_name = args[0]
-        thinking_mode = args[1]
-        message = " ".join(args[2:]).strip()
         if not message:
             return {"status": "error", "message": "agent_then_message requires a non-empty message"}
 

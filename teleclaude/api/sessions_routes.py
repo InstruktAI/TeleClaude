@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Mapping
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -35,11 +34,10 @@ from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, format_system_message
 from teleclaude.core import command_handlers
-from teleclaude.core.agents import assert_agent_enabled, get_default_agent, get_known_agents
+from teleclaude.core.agents import assert_agent_enabled, get_default_agent
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.events import parse_command_string
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import (
     JsonDict,
@@ -232,33 +230,6 @@ def _resolve_enabled_agent(requested_agent: str | None) -> str:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-def _validate_auto_command_agent(
-    auto_command: str | None,
-    validated_request_agent: str | None,
-) -> None:
-    """Validate any agent references embedded in the auto-command."""
-    if not auto_command:
-        return
-
-    command_name, command_args = parse_command_string(auto_command)
-    normalized_command = (command_name or "").lower()
-    known_agents = set(get_known_agents())
-    resume_aliases = {f"{agent}_resume" for agent in known_agents}
-
-    if normalized_command in known_agents:
-        _resolve_enabled_agent(normalized_command)
-        return
-    if normalized_command in resume_aliases:
-        _resolve_enabled_agent(normalized_command.removesuffix("_resume"))
-        return
-    if normalized_command not in {"agent", "agent_then_message", "agent_resume", "agent_restart"}:
-        return
-
-    auto_command_agent = command_args[0] if command_args else validated_request_agent
-    if auto_command_agent:
-        _resolve_enabled_agent(auto_command_agent)
-
-
 def _effective_launch_agent(validated_request_agent: str | None) -> str:
     """Resolve the agent used for derived launch intents."""
     if validated_request_agent:
@@ -294,10 +265,7 @@ async def _build_launch_intent(
     validated_request_agent: str | None,
     thinking_mode: str,
 ) -> tuple[SessionLaunchIntent | None, Session | None]:
-    """Build a launch intent for requests without an explicit auto-command."""
-    if request.auto_command:
-        return None, None
-
+    """Build the typed launch intent for a new session."""
     launch_kind = SessionLaunchKind(request.launch_kind)
     if launch_kind == SessionLaunchKind.AGENT and request.message:
         launch_kind = SessionLaunchKind.AGENT_THEN_MESSAGE
@@ -349,26 +317,6 @@ async def _build_launch_intent(
         ),
         None,
     )
-
-
-def _derive_auto_command(
-    request_auto_command: str | None,
-    launch_intent: SessionLaunchIntent | None,
-) -> str | None:
-    """Derive the auto-command from the launch intent when needed."""
-    if request_auto_command or not launch_intent:
-        return request_auto_command
-
-    if launch_intent.kind == SessionLaunchKind.AGENT:
-        return f"agent {launch_intent.agent} {launch_intent.thinking_mode}"
-    if launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE:
-        quoted_message = shlex.quote(launch_intent.message or "")
-        return f"agent_then_message {launch_intent.agent} {launch_intent.thinking_mode} {quoted_message}"
-    if launch_intent.kind == SessionLaunchKind.AGENT_RESUME:
-        if launch_intent.native_session_id:
-            return f"agent_resume {launch_intent.agent} {launch_intent.native_session_id}"
-        return f"agent_resume {launch_intent.agent}"
-    return None
 
 
 def _resolve_effective_human_role(
@@ -479,7 +427,6 @@ async def _prepare_create_session(
 
     effective_thinking_mode = request.thinking_mode or "slow"
     validated_request_agent = _resolve_enabled_agent(request.agent) if request.agent else None
-    _validate_auto_command_agent(request.auto_command, validated_request_agent)
     launch_intent, direct_caller_session = await _build_launch_intent(
         request,
         identity,
@@ -488,7 +435,6 @@ async def _prepare_create_session(
     )
     metadata.title = title
     metadata.launch_intent = launch_intent
-    metadata.auto_command = _derive_auto_command(request.auto_command, launch_intent)
     return metadata, initiator_session_id, title, launch_intent, direct_caller_session
 
 
@@ -604,18 +550,14 @@ async def create_session(
         request, identity
     )
 
-    auto_command_source = "request" if request.auto_command else ("derived" if launch_intent else "none")
     logger.info(
-        "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s "
-        "native_session_id=%s auto_command=%s auto_command_source=%s",
+        "create_session request: computer=%s project=%s agent=%s thinking_mode=%s launch_kind=%s native_session_id=%s",
         request.computer,
         request.project_path,
         request.agent,
         request.thinking_mode,
         request.launch_kind,
         request.native_session_id,
-        metadata.auto_command,
-        auto_command_source,
     )
 
     cmd = CommandMapper.map_api_input(

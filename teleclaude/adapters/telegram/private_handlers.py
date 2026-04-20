@@ -7,7 +7,6 @@ dispatching, and the dynamic command-handler factory.
 
 from __future__ import annotations
 
-import shlex
 from collections.abc import Callable, Coroutine, Mapping
 from typing import TYPE_CHECKING, cast
 
@@ -24,7 +23,7 @@ from teleclaude.config.schema import TelegramCreds
 from teleclaude.core import command_registry
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.db import db
-from teleclaude.core.models import Session, TelegramAdapterMetadata
+from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKind, TelegramAdapterMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import CommandType, CreateSessionCommand, ProcessMessageCommand
 
@@ -163,7 +162,11 @@ class PrivateHandlersMixin:
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            auto_command=f"agent {agents_module.get_default_agent()}",
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent=agents_module.get_default_agent(),
+                thinking_mode="slow",
+            ),
         )
         result_dict = await get_command_service().create_session(create_cmd)
         session_id = str(result_dict.get("session_id", ""))
@@ -204,7 +207,7 @@ class PrivateHandlersMixin:
         session = await self._find_private_session(user_id)
 
         if not session:
-            # Create new session with user's message bundled into auto_command.
+            # Create new session with the first message bundled into launch_intent.
             # agent_then_message waits for the agent TUI to stabilize before injecting
             # the message, preventing the race where the message is sent to tmux before
             # the agent is ready to accept input.
@@ -312,10 +315,8 @@ class PrivateHandlersMixin:
         person_name: str,
         text: str,
     ) -> dict[str, str]:
-        """Create a private-chat session with the initial message bundled into auto_command."""
+        """Create a private-chat session with the initial message bundled into launch_intent."""
         workspace_path = invite_module.scaffold_personal_workspace(person_name)
-        quoted_text = shlex.quote(text)
-        auto_command = f"agent_then_message {agents_module.get_default_agent()} slow {quoted_text}"
         create_cmd = CreateSessionCommand(
             project_path=str(workspace_path),
             title=f"Telegram: {person_name}",
@@ -326,6 +327,11 @@ class PrivateHandlersMixin:
                 "platform": "telegram",
                 "chat_type": "private",
             },
-            auto_command=auto_command,
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=agents_module.get_default_agent(),
+                thinking_mode="slow",
+                message=text,
+            ),
         )
         return await get_command_service().create_session(create_cmd)

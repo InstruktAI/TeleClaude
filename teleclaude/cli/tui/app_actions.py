@@ -117,14 +117,14 @@ class TelecAppActionsMixin:
 
         # Resume by native session ID
         if message.native_session_id:
-            auto_command = f"agent_resume {message.agent} {message.native_session_id}"
             try:
                 result = await self.api.create_session(  # type: ignore[attr-defined]
                     computer=message.computer,
                     project_path=message.project_path,
                     agent=message.agent,
                     thinking_mode=message.thinking_mode or "slow",
-                    auto_command=auto_command,
+                    launch_kind="agent_resume",
+                    native_session_id=message.native_session_id,
                 )
                 self._tui_initiated_sessions.add(result.session_id)  # type: ignore[attr-defined]
                 self.notify("Resuming session...")  # type: ignore[attr-defined]

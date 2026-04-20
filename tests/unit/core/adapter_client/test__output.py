@@ -18,6 +18,7 @@ def _make_session(
     last_input_origin: str = "telegram",
     *,
     initiator_session_id: str | None = None,
+    human_email: str | None = None,
 ) -> Session:
     return Session(
         session_id=session_id,
@@ -26,6 +27,7 @@ def _make_session(
         title="Session",
         last_input_origin=last_input_origin,
         initiator_session_id=initiator_session_id,
+        human_email=human_email,
     )
 
 
@@ -307,6 +309,34 @@ class TestBroadcastUserInput:
             await client.broadcast_user_input(session, "hello", "discord")
 
         mock_route.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_terminal_origin_uses_human_email_when_terminal_metadata_is_missing(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="terminal", human_email="maurice@instrukt.ai")
+        client.register_adapter("discord", _make_ui_adapter())
+
+        with (
+            patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)),
+            patch("teleclaude.core.adapter_client._output.get_identity_resolver") as mock_resolver,
+            patch.object(client, "_route_to_ui", AsyncMock()) as mock_route,
+        ):
+            resolver = MagicMock()
+            resolver.resolve_by_email.return_value = MagicMock(
+                person_name="Maurice",
+                person_email="maurice@instrukt.ai",
+            )
+            mock_resolver.return_value = resolver
+
+            await client.broadcast_user_input(session, "hello", "terminal")
+
+        resolver.resolve.assert_not_called()
+        resolver.resolve_by_email.assert_called_once_with("maurice@instrukt.ai")
+        mock_route.assert_awaited_once()
+        metadata = mock_route.await_args.kwargs["metadata"]
+        assert metadata.reflection_origin == "terminal"
+        assert metadata.reflection_actor_name == "Maurice"
 
 
 class TestThreadState:

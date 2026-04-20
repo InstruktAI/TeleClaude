@@ -23,6 +23,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
+from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
 from teleclaude.utils import command_retry
 from teleclaude.utils.transcript import get_transcript_parser_info, parse_session_transcript
 
@@ -415,20 +416,24 @@ class CallbackHandlersMixin:
             await query.answer("❌ Invalid project selection", show_alert=True)
             return
 
-        auto_command = f"agent_resume {agent_name}" if is_resume else f"agent {agent_name}"
+        launch_intent = SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT_RESUME if is_resume else SessionLaunchKind.AGENT,
+            agent=agent_name,
+            thinking_mode="slow",
+        )
 
         # Restore menu immediately (optimistic UX)
         await self._restore_heartbeat_menu(query)
 
         # Create session in background
         logger.info(
-            "_handle_agent_start: creating session with project_path=%s, auto_command=%s",
+            "_handle_agent_start: creating session with project_path=%s, launch_intent=%s",
             project_path,
-            auto_command,
+            launch_intent.kind.value,
         )
         metadata = cast("_CallbackHandlersHost", self)._metadata(
             project_path=project_path,
-            auto_command=auto_command,
+            launch_intent=launch_intent,
         )
         if query.from_user:
             metadata.actor_id = f"telegram:{query.from_user.id}"

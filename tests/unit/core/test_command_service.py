@@ -42,7 +42,6 @@ def _make_service(*, client: object | None = None) -> CommandService:
         client=client or SimpleNamespace(send_message=AsyncMock(), adapters={}),
         start_polling=AsyncMock(),
         execute_terminal_command=AsyncMock(),
-        execute_auto_command=AsyncMock(),
         queue_background_task=MagicMock(),
         bootstrap_session=AsyncMock(),
     )

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import shlex
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -373,7 +372,7 @@ class TestSessionsRoutes:
         assert metadata.title == "/next-review-build chartest-api-routes"
         assert metadata.system_role == "worker"
         assert metadata.job == "reviewer"
-        assert metadata.auto_command == f"agent_then_message codex slow {shlex.quote(expected_startup_message)}"
+        assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert launch_intent.message == expected_startup_message
@@ -396,9 +395,7 @@ class TestSessionsRoutes:
             )
 
         assert metadata.title == "/next-review-build chartest-api-routes"
-        assert metadata.auto_command == (
-            f"agent_then_message claude slow {shlex.quote('/next-review-build chartest-api-routes')}"
-        )
+        assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert launch_intent.message == "/next-review-build chartest-api-routes"

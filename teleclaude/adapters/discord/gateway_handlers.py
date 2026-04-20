@@ -18,7 +18,7 @@ from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
-from teleclaude.core.models import DiscordAdapterMetadata
+from teleclaude.core.models import DiscordAdapterMetadata, SessionLaunchIntent, SessionLaunchKind
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -326,7 +326,11 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                     "discord_user_id": user_id,
                     "platform": "discord",
                 },
-                auto_command=f"agent {get_default_agent()}",
+                launch_intent=SessionLaunchIntent(
+                    kind=SessionLaunchKind.AGENT,
+                    agent=get_default_agent(),
+                    thinking_mode="slow",
+                ),
             )
             result = await get_command_service().create_session(create_cmd)
             session_id = str(result.get("session_id", ""))
@@ -404,7 +408,11 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
                 "discord_user_id": user_id,
                 "platform": "discord",
             },
-            auto_command=f"agent {get_default_agent()}",
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent=get_default_agent(),
+                thinking_mode="slow",
+            ),
         )
         result = await get_command_service().create_session(create_cmd)  # type: ignore[assignment]
         session_id = str(result.get("session_id", ""))  # type: ignore[attr-defined]
@@ -515,7 +523,7 @@ class GatewayHandlersMixin:  # pylint: disable=too-few-public-methods
             return
 
         # If the session was just created, the first message was bundled into
-        # the auto_command (agent_then_message) — skip the separate delivery.
+        # the launch intent (agent_then_message) — skip the separate delivery.
         if session.lifecycle_status == "initializing":
             return
 

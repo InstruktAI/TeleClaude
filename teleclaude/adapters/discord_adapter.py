@@ -289,11 +289,11 @@ class DiscordAdapter(  # pylint: disable=too-many-ancestors,too-many-instance-at
     async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
         """Refresh Discord thread topper when native session ID is bound."""
         updated_fields = context.updated_fields or {}
-        if "native_session_id" not in updated_fields:
+        if not {"native_session_id", "active_agent", "thinking_mode"} & set(updated_fields):
             return
 
         session = await db.get_session(context.session_id)
-        if not session or not session.native_session_id:
+        if not session:
             return
 
         dc = self._dc(session)

@@ -21,7 +21,13 @@ from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.identity import get_identity_resolver
-from teleclaude.core.models import DiscordAdapterMetadata, MessageMetadata, Session
+from teleclaude.core.models import (
+    DiscordAdapterMetadata,
+    MessageMetadata,
+    Session,
+    SessionLaunchIntent,
+    SessionLaunchKind,
+)
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.invite import scaffold_personal_workspace
@@ -144,11 +150,20 @@ class InputHandlersMixin:
         )
 
     @staticmethod
-    def _build_auto_command(agent_name: str, first_message: str | None) -> str:
-        """Build the auto-start command for a new Discord-backed session."""
+    def _build_launch_intent(agent_name: str, first_message: str | None) -> SessionLaunchIntent:
+        """Build the typed launch intent for a new Discord-backed session."""
         if first_message:
-            return f"agent_then_message {agent_name} slow {first_message}"
-        return f"agent {agent_name}"
+            return SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+                agent=agent_name,
+                thinking_mode="slow",
+                message=first_message,
+            )
+        return SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT,
+            agent=agent_name,
+            thinking_mode="slow",
+        )
 
     def _resolve_session_creation_target(
         self,
@@ -406,11 +421,15 @@ class InputHandlersMixin:
 
         create_cmd = CreateSessionCommand(
             project_path=project_path,
-            auto_command=f"agent {agent_name}",
             origin=InputOrigin.DISCORD.value,
             origin_metadata={"user_id": user_id, "discord_user_id": user_id, "platform": "discord"}
             if user_id
             else None,
+            launch_intent=SessionLaunchIntent(
+                kind=SessionLaunchKind.AGENT,
+                agent=agent_name,
+                thinking_mode="slow",
+            ),
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))
@@ -488,14 +507,14 @@ class InputHandlersMixin:
 
         agent = get_default_agent()
         effective_path, _human_role = self._resolve_session_creation_target(message, context)
-        auto_command = self._build_auto_command(agent, context.first_message)
+        launch_intent = self._build_launch_intent(agent, context.first_message)
 
         create_cmd = CreateSessionCommand(
             project_path=effective_path,
             title=f"Discord: {display_name}",
             origin=InputOrigin.DISCORD.value,
             origin_metadata=origin_metadata,
-            auto_command=auto_command,
+            launch_intent=launch_intent,
         )
         result = await get_command_service().create_session(create_cmd)
         session_id = str(result.get("session_id", ""))

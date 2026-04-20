@@ -44,7 +44,6 @@ class MessageMetadata:  # pylint: disable=too-many-instance-attributes  # Adapte
     origin_metadata: Mapping[str, object] | None = None
     system_role: str | None = None
     job: str | None = None
-    auto_command: str | None = None  # legacy adapter boundary (deprecated)
     launch_intent: Optional["SessionLaunchIntent"] = None
     is_transcription: bool = False
     cleanup_trigger: str | None = None

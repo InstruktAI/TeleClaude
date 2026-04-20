@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import shlex
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -26,7 +25,7 @@ from teleclaude.api_models import (
     VoiceInputRequest,
 )
 from teleclaude.constants import ROLE_INTEGRATOR, ROLE_ORCHESTRATOR, ROLE_WORKER, JobRole
-from teleclaude.core.models import MessageMetadata, Session
+from teleclaude.core.models import MessageMetadata, Session, SessionLaunchKind
 from teleclaude.core.origins import InputOrigin
 from teleclaude.types.commands import GetSessionDataCommand
 
@@ -646,7 +645,11 @@ class TestSessionsActionsRoutes:
         assert metadata.project_path == "/repo/demo"
         assert metadata.subdir == "api"
         assert metadata.origin_metadata is None
-        assert metadata.auto_command == f"agent_then_message codex med {shlex.quote(expected_startup_message)}"
+        assert metadata.launch_intent is not None
+        assert metadata.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+        assert metadata.launch_intent.agent == "codex"
+        assert metadata.launch_intent.thinking_mode == "med"
+        assert metadata.launch_intent.message == expected_startup_message
         assert metadata.system_role == expected_role[0]
         assert metadata.job == expected_role[1].value
 
@@ -684,7 +687,11 @@ class TestSessionsActionsRoutes:
         expected_message = "/next-review-build chartest-api-routes --direct"
         assert isinstance(metadata, MessageMetadata)
         assert metadata.title == expected_message
-        assert metadata.auto_command == f"agent_then_message claude slow {shlex.quote(expected_message)}"
+        assert metadata.launch_intent is not None
+        assert metadata.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+        assert metadata.launch_intent.agent == "claude"
+        assert metadata.launch_intent.thinking_mode == "slow"
+        assert metadata.launch_intent.message == expected_message
 
     @pytest.mark.unit
     @pytest.mark.asyncio

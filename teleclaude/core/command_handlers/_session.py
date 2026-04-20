@@ -94,10 +94,9 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         raise ValueError("Command missing origin")
 
     logger.info(
-        "CreateSession: origin=%s launch_intent=%s auto_command=%s",
+        "CreateSession: origin=%s launch_intent=%s",
         origin,
         cmd.launch_intent.kind.value if cmd.launch_intent else None,
-        cmd.auto_command,
     )
 
     computer_name = config.computer.name
@@ -230,7 +229,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
         job=cmd_job,
         active_agent=launch.agent if launch else None,
         thinking_mode=launch.thinking_mode if launch else None,
-        native_session_id=cmd.native_session_id,
+        native_session_id=cmd.native_session_id or (launch.native_session_id if launch else None),
         native_log_file=cmd.native_log_file,
         emit_session_started=False,
     )
@@ -276,7 +275,7 @@ async def create_session(  # pylint: disable=too-many-locals,too-many-branches,t
     if cmd.origin_metadata:
         await db.update_origin_metadata(session.session_id, last_input_origin, dict(cmd.origin_metadata))
 
-    # NOTE: tmux creation + auto-command execution are handled asynchronously
+    # NOTE: tmux creation + launch execution are handled asynchronously
     # by the daemon bootstrap task. Channel creation is deferred to UI lanes
     # on first output.
 

@@ -36,7 +36,7 @@ from teleclaude.core.command_handlers import (
     run_agent_command,
     start_agent,
 )
-from teleclaude.core.models import ThinkingMode
+from teleclaude.core.models import SessionLaunchIntent, ThinkingMode
 from teleclaude.core.session_launcher import create_session
 from teleclaude.types.commands import (
     CloseSessionCommand,
@@ -92,9 +92,8 @@ DISPATCH_ALLOWED: dict[str, frozenset[str]] = {
 
 StartPollingFunc = Callable[[str, str], Awaitable[None]]
 ExecuteTerminalCommandFunc = Callable[[str, str, str | None, bool], Awaitable[bool]]
-ExecuteAutoCommandFunc = Callable[[str, str], Awaitable[dict[str, str]]]
 QueueBackgroundTaskFunc = Callable[[Awaitable[object], str], None]
-BootstrapSessionFunc = Callable[[str, str | None], Awaitable[None]]
+BootstrapSessionFunc = Callable[[str, SessionLaunchIntent | None], Awaitable[None]]
 
 
 def _build_widget_summary(data: dict[str, object]) -> str:  # guard: loose-dict - dynamic payload
@@ -149,14 +148,12 @@ class CommandService:
         client: AdapterClient,
         start_polling: StartPollingFunc,
         execute_terminal_command: ExecuteTerminalCommandFunc,
-        execute_auto_command: ExecuteAutoCommandFunc,
         queue_background_task: QueueBackgroundTaskFunc,
         bootstrap_session: BootstrapSessionFunc,
     ) -> None:
         self.client = client
         self._start_polling = start_polling
         self._execute_terminal_command = execute_terminal_command
-        self._execute_auto_command = execute_auto_command
         self._queue_background_task = queue_background_task
         self._bootstrap_session = bootstrap_session
 
@@ -172,7 +169,6 @@ class CommandService:
         return await create_session(
             cmd,
             self.client,
-            self._execute_auto_command,  # type: ignore[arg-type]
             self._queue_background_task,
             self._bootstrap_session,  # type: ignore[arg-type]
         )

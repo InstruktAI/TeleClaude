@@ -33,7 +33,6 @@ export interface CreateSessionRequest {
   message?: string | null;
   direct?: boolean;
   skip_listener_registration?: boolean;
-  auto_command?: string | null;
   native_session_id?: string | null;
   subdir?: string | null;
   human_email?: string | null;

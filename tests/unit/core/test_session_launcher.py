@@ -6,79 +6,22 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-# Public API (create_session, create_agent_session) is async with infrastructure deps;
-# _intent_to_auto_command is the pure logic under test.
 from teleclaude.core import session_launcher
 from teleclaude.core.models import SessionLaunchIntent, SessionLaunchKind
-from teleclaude.core.session_launcher import _intent_to_auto_command
 from teleclaude.types.commands import CreateSessionCommand
 
 
-class TestIntentToAutoCommand:
-    @pytest.mark.unit
-    def test_empty_kind_returns_none(self):
-        intent = SessionLaunchIntent(kind=SessionLaunchKind.EMPTY)
-        result = _intent_to_auto_command(intent)
-        assert result is None
+@pytest.mark.unit
+def test_validate_launch_intent_rejects_incomplete_agent_then_message() -> None:
+    intent = SessionLaunchIntent(
+        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+        agent="claude",
+        thinking_mode="slow",
+        message=None,
+    )
 
-    @pytest.mark.unit
-    def test_agent_kind_with_complete_intent_returns_command(self):
-        intent = SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT,
-            agent="claude",
-            thinking_mode="slow",
-        )
-        result = _intent_to_auto_command(intent)
-        assert result is not None
-        assert "claude" in result
-        assert "slow" in result
-
-    @pytest.mark.unit
-    def test_agent_kind_missing_thinking_mode_returns_none(self):
-        intent = SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT,
-            agent="claude",
-            thinking_mode=None,
-        )
-        result = _intent_to_auto_command(intent)
-        assert result is None
-
-    @pytest.mark.unit
-    def test_agent_then_message_builds_quoted_command(self):
-        intent = SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
-            agent="claude",
-            thinking_mode="fast",
-            message="hello world",
-        )
-        result = _intent_to_auto_command(intent)
-        assert result is not None
-        assert "agent_then_message" in result
-        # shlex.quote wraps the message in single quotes
-        assert "'hello world'" in result
-
-    @pytest.mark.unit
-    def test_agent_resume_with_session_includes_native_id(self):
-        intent = SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT_RESUME,
-            agent="codex",
-            native_session_id="native-abc",
-        )
-        result = _intent_to_auto_command(intent)
-        assert result is not None
-        assert "agent_resume" in result
-        assert "native-abc" in result
-
-    @pytest.mark.unit
-    def test_agent_resume_without_native_id_returns_command(self):
-        intent = SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT_RESUME,
-            agent="claude",
-        )
-        result = _intent_to_auto_command(intent)
-        assert result is not None
-        assert "agent_resume" in result
-        assert "claude" in result
+    with pytest.raises(ValueError, match="agent_then_message"):
+        session_launcher._validate_launch_intent(intent)
 
 
 @pytest.mark.unit
@@ -92,10 +35,44 @@ async def test_headless_create_session_skips_bootstrap(monkeypatch: pytest.Monke
     result = await session_launcher.create_session(
         CreateSessionCommand(project_path="/repo", origin="terminal", headless=True),
         client=object(),
-        execute_auto_command=AsyncMock(),
         queue_background_task=lambda coro, label: queued.append((coro, label)),
         bootstrap_session=AsyncMock(),
     )
 
     assert result["session_id"] == "headless-001"
     assert not queued
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_agent_then_message_queues_bootstrap_with_launch_intent(monkeypatch: pytest.MonkeyPatch) -> None:
+    create_tmux = AsyncMock(return_value={"session_id": "sess-1", "tmux_session_name": "tc_sess_1"})
+    queued: list[tuple[object, str]] = []
+
+    monkeypatch.setattr(session_launcher, "create_tmux_session", create_tmux)
+
+    intent = SessionLaunchIntent(
+        kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+        agent="codex",
+        thinking_mode="slow",
+        message="hello",
+    )
+    bootstrap = AsyncMock()
+
+    result = await session_launcher.create_session(
+        CreateSessionCommand(
+            project_path="/repo",
+            origin="terminal",
+            launch_intent=intent,
+        ),
+        client=object(),
+        queue_background_task=lambda coro, label: queued.append((coro, label)),
+        bootstrap_session=bootstrap,
+    )
+
+    assert result["session_id"] == "sess-1"
+    assert len(queued) == 1
+    queued_coro, queued_label = queued[0]
+    assert queued_label == "session_bootstrap:sess-1"
+    queued_coro.close()
+    bootstrap.assert_not_awaited()

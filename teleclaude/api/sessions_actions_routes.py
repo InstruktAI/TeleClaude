@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import shlex
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
@@ -256,7 +255,7 @@ class RunSessionPlan:
 
     effective_agent: str
     full_command: str
-    auto_command: str
+    launch_intent: SessionLaunchIntent
     initiator_session_id: str | None
     origin_metadata: WebOriginMetadata | None
     system_role: str | None
@@ -335,7 +334,6 @@ def _prepare_run_session(
     if request.additional_context:
         full_command = f"{full_command}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
         startup_message = f"{startup_message}\n\nADDITIONAL CONTEXT:\n{request.additional_context}"
-    auto_command = f"agent_then_message {effective_agent} {request.thinking_mode} {shlex.quote(startup_message)}"
 
     initiator_session_id: str | None = None
     if identity.session_id and not identity.session_id.startswith("web:"):
@@ -367,7 +365,12 @@ def _prepare_run_session(
     return RunSessionPlan(
         effective_agent=effective_agent,
         full_command=full_command,
-        auto_command=auto_command,
+        launch_intent=SessionLaunchIntent(
+            kind=SessionLaunchKind.AGENT_THEN_MESSAGE,
+            agent=effective_agent,
+            thinking_mode=request.thinking_mode,
+            message=startup_message,
+        ),
         initiator_session_id=initiator_session_id,
         origin_metadata=origin_metadata,
         system_role=role_info[0] if role_info else None,
@@ -630,7 +633,7 @@ async def run_session(
 ) -> CreateSessionResponseDTO:
     """Run a slash command on a new agent session.
 
-    Creates a new session with an auto_command derived from the given
+    Creates a new session with a typed launch intent derived from the given
     slash command, arguments, project, agent, and thinking mode.
     Clearance is enforced by the clearance_sessions_run dependency.
     """
@@ -649,7 +652,7 @@ async def run_session(
         system_role=plan.system_role,
         job=plan.job,
     )
-    metadata.auto_command = plan.auto_command
+    metadata.launch_intent = plan.launch_intent
 
     cmd = CommandMapper.map_api_input(
         "new_session",

@@ -126,9 +126,9 @@ async def test_handle_private_text_processes_message_for_existing_private_sessio
     assert command.source_message_id == "123"
 
 
-async def test_handle_private_text_bundles_message_in_auto_command_for_new_session():
+async def test_handle_private_text_bundles_message_in_launch_intent_for_new_session():
     """When no session exists, the user's text must be delivered via agent_then_message
-    auto_command (which waits for agent TUI readiness) instead of process_message
+    launch intent (which waits for agent TUI readiness) instead of process_message
     (which races against agent startup).
     """
     stub = _StubPrivateHandlers()
@@ -156,9 +156,11 @@ async def test_handle_private_text_bundles_message_in_auto_command_for_new_sessi
     # Session was created with agent_then_message containing the user's text
     command_service.create_session.assert_awaited_once()
     create_cmd = command_service.create_session.await_args.args[0]
-    assert create_cmd.auto_command is not None
-    assert create_cmd.auto_command.startswith("agent_then_message claude slow ")
-    assert "Help me with Python" in create_cmd.auto_command
+    assert create_cmd.launch_intent is not None
+    assert create_cmd.launch_intent.kind.value == "agent_then_message"
+    assert create_cmd.launch_intent.agent == "claude"
+    assert create_cmd.launch_intent.thinking_mode == "slow"
+    assert create_cmd.launch_intent.message == "Help me with Python"
 
     # process_message must NOT be called — message delivery is handled by
     # agent_then_message which waits for agent TUI stabilization

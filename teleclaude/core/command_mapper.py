@@ -69,7 +69,7 @@ class CommandMapper:
                 subdir=metadata.subdir,
                 origin=InputOrigin.TELEGRAM.value,
                 origin_metadata=metadata.origin_metadata,
-                auto_command=metadata.auto_command,
+                launch_intent=metadata.launch_intent,
             )
 
         if event == "message":
@@ -80,6 +80,7 @@ class CommandMapper:
                 actor_id=metadata.actor_id,
                 actor_name=metadata.actor_name,
                 actor_avatar_url=metadata.actor_avatar_url,
+                origin_metadata=metadata.origin_metadata,
             )
 
         if event == "agent":
@@ -150,6 +151,7 @@ class CommandMapper:
                 actor_name=metadata.actor_name if metadata else None,
                 actor_avatar_url=metadata.actor_avatar_url if metadata else None,
                 source_message_id=metadata.platform_message_id if metadata else None,
+                origin_metadata=metadata.origin_metadata if metadata else None,
             )
 
         if cmd_name == "agent":
@@ -261,7 +263,6 @@ class CommandMapper:
                 origin=metadata.origin,
                 origin_metadata=metadata.origin_metadata,
                 launch_intent=metadata.launch_intent,
-                auto_command=metadata.auto_command,
                 system_role=metadata.system_role,
                 job=metadata.job,
                 skip_listener_registration=skip_listener_registration,
@@ -282,6 +283,7 @@ class CommandMapper:
                 actor_id=payload_actor_id or metadata.actor_id,
                 actor_name=payload_actor_name or metadata.actor_name,
                 actor_avatar_url=payload_actor_avatar or metadata.actor_avatar_url,
+                origin_metadata=metadata.origin_metadata,
             )
 
         if command_name == "keys":
@@ -310,6 +312,7 @@ class CommandMapper:
                 actor_id=payload_actor_id or metadata.actor_id,
                 actor_name=payload_actor_name or metadata.actor_name,
                 actor_avatar_url=payload_actor_avatar or metadata.actor_avatar_url,
+                origin_metadata=metadata.origin_metadata,
             )
 
         if command_name == "handle_file":

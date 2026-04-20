@@ -108,10 +108,11 @@ class CreateSessionArgs(TypedDict, total=False):
     project_path: Required[str]
     agent: Required[str]
     thinking_mode: Required[str]
+    launch_kind: NotRequired[str]
+    native_session_id: NotRequired[str | None]
     subdir: NotRequired[str | None]
     title: NotRequired[str | None]
     message: NotRequired[str | None]
-    auto_command: NotRequired[str | None]
     human_email: NotRequired[str | None]
     human_role: NotRequired[str | None]
     skip_listener_registration: NotRequired[bool]
@@ -538,13 +539,16 @@ class _TelecSessionAPI:
             "project_path": kwargs["project_path"],
             "agent": kwargs["agent"],
             "thinking_mode": kwargs["thinking_mode"],
+            "launch_kind": kwargs.get("launch_kind", "agent"),
             "title": kwargs.get("title"),
             "message": kwargs.get("message"),
-            "auto_command": kwargs.get("auto_command"),
             "human_email": kwargs.get("human_email"),
             "human_role": kwargs.get("human_role"),
             "metadata": kwargs.get("metadata"),
         }
+        native_session_id = kwargs.get("native_session_id")
+        if native_session_id is not None:
+            payload["native_session_id"] = native_session_id
         subdir = kwargs.get("subdir")
         if subdir is not None:
             payload["subdir"] = subdir

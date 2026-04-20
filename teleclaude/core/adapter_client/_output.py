@@ -17,6 +17,7 @@ from teleclaude.core.models import (
     TelegramAdapterMetadata,
     WhatsAppAdapterMetadata,
 )
+from teleclaude.core.origins import InputOrigin
 
 if TYPE_CHECKING:
     from teleclaude.adapters.base_adapter import BaseAdapter
@@ -283,10 +284,27 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
 
-        identity = get_identity_resolver().resolve(source, session_to_use.get_origin_section(source))
-        normalized_actor_name = (actor_name or "").strip() or identity.display_name
-
+        resolver = get_identity_resolver()
+        normalized_actor_name = (actor_name or "").strip()
         reflection_origin = source.strip().lower()
+
+        # Transcript-projected terminal input may not have a persisted
+        # terminal origin_metadata section, but it should still resolve to
+        # the session's human identity for Discord reflection.
+        if not normalized_actor_name and reflection_origin == InputOrigin.TERMINAL.value:
+            terminal_email = (session_to_use.human_email or "").strip()
+            if terminal_email:
+                terminal_identity = resolver.resolve_by_email(terminal_email)
+                normalized_actor_name = (
+                    (terminal_identity.person_name or "").strip()
+                    or (terminal_identity.person_email or "").strip()
+                    or terminal_email
+                )
+
+        if not normalized_actor_name:
+            identity = resolver.resolve(source, session_to_use.get_origin_section(source))
+            normalized_actor_name = identity.display_name
+
         reflection_metadata = MessageMetadata(
             parse_mode=None,
             reflection_actor_id=(actor_id or "").strip() or None,

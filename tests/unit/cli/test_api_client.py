@@ -171,7 +171,6 @@ async def test_create_session_posts_to_sessions_with_supplied_payload() -> None:
             agent="claude",
             thinking_mode="slow",
             title="WhatsApp: 15551234567",
-            auto_command="agent claude",
             metadata={
                 "origin": "whatsapp",
                 "origin_metadata": {
@@ -192,9 +191,9 @@ async def test_create_session_posts_to_sessions_with_supplied_payload() -> None:
         "project_path": "/help-desk",
         "agent": "claude",
         "thinking_mode": "slow",
+        "launch_kind": "agent",
         "title": "WhatsApp: 15551234567",
         "message": None,
-        "auto_command": "agent claude",
         "human_email": None,
         "human_role": None,
         "metadata": {

@@ -74,7 +74,6 @@ class CreateSessionCommand(InternalCommand):  # pylint: disable=too-many-instanc
     skip_listener_registration: bool = False
     origin_metadata: Mapping[str, object] | None = None
     launch_intent: Optional["SessionLaunchIntent"] = None
-    auto_command: str | None = None
     system_role: str | None = None
     job: str | None = None
 
@@ -160,6 +159,7 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
     actor_avatar_url: str | None = None
     source_message_id: str | None = None  # Platform message ID for inbound dedup
     source_channel_id: str | None = None  # Platform channel ID for additional context
+    origin_metadata: Mapping[str, object] | None = None
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -173,6 +173,7 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
         request_id: str | None = None,
         source_message_id: str | None = None,
         source_channel_id: str | None = None,
+        origin_metadata: Mapping[str, object] | None = None,
     ):
         super().__init__(command_type=CommandType.PROCESS_MESSAGE, request_id=request_id)
         self.session_id = session_id
@@ -183,6 +184,7 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
         self.actor_avatar_url = actor_avatar_url
         self.source_message_id = source_message_id
         self.source_channel_id = source_channel_id
+        self.origin_metadata = origin_metadata
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {"session_id": self.session_id, "text": self.text, "origin": self.origin}
@@ -192,6 +194,8 @@ class ProcessMessageCommand(InternalCommand):  # pylint: disable=too-many-instan
             payload["actor_name"] = self.actor_name
         if self.actor_avatar_url is not None:
             payload["actor_avatar_url"] = self.actor_avatar_url
+        if self.origin_metadata is not None:
+            payload["origin_metadata"] = dict(self.origin_metadata)
         return payload
 
 
@@ -208,6 +212,7 @@ class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-
     actor_id: str | None = None
     actor_name: str | None = None
     actor_avatar_url: str | None = None
+    origin_metadata: Mapping[str, object] | None = None
 
     def __init__(  # pylint: disable=too-many-arguments
         self,
@@ -221,6 +226,7 @@ class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-
         actor_id: str | None = None,
         actor_name: str | None = None,
         actor_avatar_url: str | None = None,
+        origin_metadata: Mapping[str, object] | None = None,
         request_id: str | None = None,
     ):
         super().__init__(command_type=CommandType.HANDLE_VOICE, request_id=request_id)
@@ -233,6 +239,7 @@ class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-
         self.actor_id = actor_id
         self.actor_name = actor_name
         self.actor_avatar_url = actor_avatar_url
+        self.origin_metadata = origin_metadata
 
     def to_payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
@@ -253,6 +260,8 @@ class HandleVoiceCommand(InternalCommand):  # pylint: disable=too-many-instance-
             payload["actor_name"] = self.actor_name
         if self.actor_avatar_url is not None:
             payload["actor_avatar_url"] = self.actor_avatar_url
+        if self.origin_metadata is not None:
+            payload["origin_metadata"] = dict(self.origin_metadata)
         return payload
 
 

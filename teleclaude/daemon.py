@@ -278,7 +278,6 @@ class TeleClaudeDaemon(  # pylint: disable=too-many-instance-attributes
                 client=self.client,
                 start_polling=self._start_polling_for_session,
                 execute_terminal_command=self._execute_terminal_command,
-                execute_auto_command=self._execute_auto_command,
                 queue_background_task=self._queue_background_task,  # type: ignore[arg-type]
                 bootstrap_session=self._bootstrap_session_resources,
             )

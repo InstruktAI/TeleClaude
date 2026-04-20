@@ -147,8 +147,9 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
 
     reset_command_service()
 
-    async def _noop_bootstrap(session_id, auto_command=None):
+    async def _noop_bootstrap(session_id, launch_intent=None):
         """Stand in for the daemon bootstrap task during functional tests."""
+        del session_id, launch_intent
         return None
 
     def _discard_background_task(task: Awaitable[object], _name: str | None = None) -> None:
@@ -161,7 +162,6 @@ async def api(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> AsyncGenerator
         client=stub_client,
         start_polling=AsyncMock(),
         execute_terminal_command=AsyncMock(),
-        execute_auto_command=AsyncMock(),
         queue_background_task=_discard_background_task,
         bootstrap_session=_noop_bootstrap,
     )
