@@ -9,13 +9,19 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from sqlmodel import Session as SqlSession
 from sqlmodel import SQLModel, select
 
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.events import AgentHookEvents
-from teleclaude.hooks.receiver import _handle_user_prompt_submit, _maybe_checkpoint_output, enqueue_hook_event
+from teleclaude.hooks.receiver import (
+    _handle_user_prompt_submit,
+    _maybe_checkpoint_output,
+    _resolve_checkpoint_project_path,
+    enqueue_hook_event,
+)
 
 
 def _make_outbox_db(tmp_path: Path) -> str:
@@ -113,6 +119,40 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
 
     assert result == "checkpoint"
     assert checkpoint_mock.call_args.kwargs["session_id"] == "session-1"
+
+
+class TestResolveCheckpointProjectPath:
+    @pytest.mark.unit
+    def test_worktree_session_resolves_to_worktree_path(self) -> None:
+        """Worktree sessions must resolve to the actual worktree dir, not repo root.
+
+        Without this, _current_branch runs against the repo root (always main)
+        and main_only checkpoint actions fire incorrectly in worktrees.
+        """
+        row = SimpleNamespace(
+            project_path="/repo",
+            subdir="trees/my-feature",
+            native_log_file=None,
+        )
+        assert _resolve_checkpoint_project_path(row) == "/repo/trees/my-feature"
+
+    @pytest.mark.unit
+    def test_repo_root_session_returns_project_path_unchanged(self) -> None:
+        row = SimpleNamespace(
+            project_path="/repo",
+            subdir=None,
+            native_log_file=None,
+        )
+        assert _resolve_checkpoint_project_path(row) == "/repo"
+
+    @pytest.mark.unit
+    def test_empty_subdir_returns_project_path_unchanged(self) -> None:
+        row = SimpleNamespace(
+            project_path="/repo",
+            subdir="",
+            native_log_file=None,
+        )
+        assert _resolve_checkpoint_project_path(row) == "/repo"
 
 
 def test_handle_user_prompt_submit_drops_xml_wrapped_internal_prompt() -> None:

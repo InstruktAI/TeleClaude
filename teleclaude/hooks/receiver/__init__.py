@@ -122,11 +122,18 @@ def _load_session_row(session_id: str) -> db_models.Session | None:
 
 
 def _resolve_checkpoint_project_path(row: db_models.Session) -> str:
-    """Resolve project_path, falling back to transcript-derived workdir."""
+    """Resolve project_path, falling back to transcript-derived workdir.
+
+    For worktree sessions (subdir starts with "trees/"), combines project_path
+    with subdir so branch detection runs against the worktree, not the repo root.
+    """
     transcript_path = getattr(row, "native_log_file", None)
     project_path = str(getattr(row, "project_path", "") or "")
     if not project_path and transcript_path:
         project_path = extract_workdir_from_transcript(transcript_path) or ""
+    subdir = str(getattr(row, "subdir", "") or "")
+    if subdir and project_path:
+        project_path = str(Path(project_path) / subdir)
     return project_path
 
 
