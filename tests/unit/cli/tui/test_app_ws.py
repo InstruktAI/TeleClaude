@@ -361,3 +361,17 @@ def test_chiptunes_track_event_sets_loading_state() -> None:
     toast_text = app.notify.call_args[0][0]
     assert "Loading" in toast_text
     assert "Lazy Jones" in toast_text
+
+
+@pytest.mark.unit
+def test_chiptunes_track_toast_fires_before_footer_update() -> None:
+    """Toast must render even if _apply_chiptunes_footer_state raises (e.g. footer not yet mounted)."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+    app._apply_chiptunes_footer_state.side_effect = RuntimeError("footer not mounted")
+
+    with pytest.raises(RuntimeError):
+        app._handle_ws_event(ChiptunesTrackEventDTO(track="Lazy Jones", sid_path="/music/Lazy_Jones.sid"))
+
+    app.notify.assert_called_once()
