@@ -1,22 +1,18 @@
 """Box-drawing tab bar matching old curses TUI style."""
 
-# pylint: disable=too-many-arguments,too-many-positional-arguments
-# pylint: disable=too-many-return-statements,too-many-branches,too-many-locals
-# pylint: disable=import-outside-toplevel,broad-exception-caught
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 from rich.console import Group
-from rich.style import Style
 from rich.text import Text
-from textual.message import Message
 from textual.reactive import reactive
 from textual.widget import Widget
 
+from teleclaude.cli.tui.animations.base import Z0, Z60, Z70, Z80
 from teleclaude.cli.tui.base import TelecMixin
+from teleclaude.cli.tui.render_runs import Cell, append_cells
 from teleclaude.cli.tui.theme import (
     blend_colors,
     get_neutral_color,
@@ -109,17 +105,9 @@ class BoxTabBar(TelecMixin, Widget):
 
     active_tab = reactive("sessions")
 
-    class TabClicked(Message):
-        """Posted when a tab is clicked."""
-
-        def __init__(self, tab_id: str) -> None:
-            super().__init__()
-            self.tab_id = tab_id
-
     def __init__(self, **kwargs: object) -> None:
         super().__init__(**kwargs)
         self.animation_engine: AnimationEngine | None = None
-        self._click_regions: list[tuple[int, int, str]] = []
         self._cached_render: Group | None = None
 
     def set_cached_render(self, renderable: Group | None) -> None:
@@ -147,8 +135,6 @@ class BoxTabBar(TelecMixin, Widget):
         width = self.size.width or 80
         engine = self.animation_engine
         dark_mode = is_dark_mode()
-        from teleclaude.cli.tui.animations.base import Z60, Z70, Z80
-
         sky_fallback = "#000000" if dark_mode else "#C8E8F8"
 
         pane_bg = resolve_haze(get_terminal_background())
@@ -167,7 +153,6 @@ class BoxTabBar(TelecMixin, Widget):
         inactive_tab_fg = resolve_haze(get_neutral_color("muted"))
 
         tabs = self._build_tab_specs(tab_gap)
-        self._click_regions = [(c, c + w, tid) for c, w, _, _, tid in tabs]
         entity_z_scan = engine.get_entity_z_levels("header") if engine else []
         rows = [
             self._render_tab_row(
@@ -230,8 +215,6 @@ class BoxTabBar(TelecMixin, Widget):
     ) -> str:
         if scene is not None:
             return scene.sky_background(x, global_y)
-        from teleclaude.cli.tui.animations.base import Z0
-
         sky_color = engine.get_layer_color(Z0, x, global_y, target="header") if engine else None
         return sky_color if isinstance(sky_color, str) else sky_fallback
 
@@ -255,23 +238,24 @@ class BoxTabBar(TelecMixin, Widget):
         z80: int,
     ) -> Text:
         row_text = Text()
+        row_cells: list[Cell] = []
         global_y = 7 + y_offset
         for x in range(width):
             cell = self._tab_cell(x, y_offset, tabs, active_tab_bg, active_tab_fg, inactive_tab_bg, inactive_tab_fg)
             sky_color = self._sky_color(engine, x, global_y, sky_fallback, scene)
             if y_offset == 2:
-                self._append_transition_row(
-                    row_text, x, global_y, cell, engine, scene, entity_z_scan, sky_color, pane_bg, z70, z80
+                row_cells.append(
+                    self._transition_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, pane_bg, z70, z80)
                 )
             elif y_offset == 0:
-                self._append_sky_row(row_text, x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color)
+                row_cells.append(self._sky_cell(x, global_y, engine, scene, entity_z_scan, sky_color, pipe_color))
             else:
-                self._append_label_row(row_text, x, global_y, cell, engine, scene, entity_z_scan, sky_color, z60, z80)
+                row_cells.append(self._label_cell(x, global_y, cell, engine, scene, entity_z_scan, sky_color, z60, z80))
+        append_cells(row_text, row_cells)
         return row_text
 
-    def _append_transition_row(
+    def _transition_cell(
         self,
-        row_text: Text,
         x: int,
         global_y: int,
         cell: tuple[str, bool, bool, str | None, str | None],
@@ -282,7 +266,7 @@ class BoxTabBar(TelecMixin, Widget):
         pane_bg: str,
         z70: int,
         z80: int,
-    ) -> None:
+    ) -> Cell:
         _char, in_tab, active_tab_under, tab_bg, _tab_fg = cell
         top_half = (
             tab_bg or pane_bg
@@ -294,8 +278,7 @@ class BoxTabBar(TelecMixin, Widget):
             if hit:
                 e_char, e_fg, e_bg = hit
                 if e_char is not None:
-                    row_text.append(e_char, style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)))
-                    return
+                    return (e_char, _to_color(e_fg), _to_color(e_bg or pane_bg))
                 if e_bg is not None:
                     top_half = e_bg
         elif engine:
@@ -303,15 +286,13 @@ class BoxTabBar(TelecMixin, Widget):
             if hit:
                 e_char, e_fg, e_bg = hit
                 if e_char is not None:
-                    row_text.append(e_char, style=Style(color=_to_color(e_fg), bgcolor=_to_color(e_bg or pane_bg)))
-                    return
+                    return (e_char, _to_color(e_fg), _to_color(e_bg or pane_bg))
                 if e_bg is not None:
                     top_half = e_bg
-        row_text.append("\u2580", style=Style(color=_to_color(top_half), bgcolor=_to_color(pane_bg)))
+        return ("\u2580", _to_color(top_half), _to_color(pane_bg))
 
-    def _append_sky_row(
+    def _sky_cell(
         self,
-        row_text: Text,
         x: int,
         global_y: int,
         engine: AnimationEngine | None,
@@ -319,7 +300,7 @@ class BoxTabBar(TelecMixin, Widget):
         entity_z_scan: list[int],
         sky_color: str,
         pipe_color: str,
-    ) -> None:
+    ) -> Cell:
         final_bg = sky_color
         is_pipe = x in {13, 70}
         fg_char = "\u2551" if is_pipe else " "
@@ -350,11 +331,10 @@ class BoxTabBar(TelecMixin, Widget):
                 color = engine.get_color(x, global_y)
                 if color:
                     final_bg = blend_colors(final_bg, str(color), 0.1)
-        row_text.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)))
+        return (fg_char, _to_color(fg_color), _to_color(final_bg))
 
-    def _append_label_row(
+    def _label_cell(
         self,
-        row_text: Text,
         x: int,
         global_y: int,
         cell: tuple[str, bool, bool, str | None, str | None],
@@ -364,7 +344,7 @@ class BoxTabBar(TelecMixin, Widget):
         sky_color: str,
         z60: int,
         z80: int,
-    ) -> None:
+    ) -> Cell:
         char, in_tab, active_tab_under, tab_bg, tab_fg = cell
         final_bg = (tab_bg or sky_color) if in_tab else sky_color
         fg_char = char
@@ -409,17 +389,21 @@ class BoxTabBar(TelecMixin, Widget):
                     final_bg = blend_colors(final_bg, str(color), 0.1)
         if not fg_color:
             fg_color = tab_fg if in_tab else resolve_haze(get_neutral_color("muted"))
-        row_text.append(fg_char, style=Style(color=_to_color(fg_color), bgcolor=_to_color(final_bg)))
-
-    def on_click(self, event: object) -> None:
-        """Handle mouse click to switch tabs."""
-        x = getattr(event, "x", -1)
-        for col_start, col_end, tab_id in self._click_regions:
-            if col_start <= x < col_end:
-                self.post_message(self.TabClicked(tab_id))
-                break
+        return (fg_char, _to_color(fg_color), _to_color(final_bg))
 
     def watch_active_tab(self, _value: str) -> None:
         """Refresh when the active tab selection changes."""
         self.clear_cached_render()
         self.refresh()
+
+    def on_click(self, event: object) -> None:
+        """Handle tab clicks via direct hit-testing, independent of render caching."""
+        x = getattr(event, "x", -1)
+        if x < 0:
+            return
+        for col, width, _label, _is_active, tab_id in self._build_tab_specs(tab_gap=1):
+            if col <= x < col + width:
+                switch_tab = getattr(self.app, "action_switch_tab", None)
+                if callable(switch_tab):
+                    switch_tab(tab_id)
+                break
