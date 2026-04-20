@@ -24,7 +24,6 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentHookEventType,
     AgentOutputPayload,
-    AgentSessionStartPayload,
     SessionTitleChangedContext,
     TeleClaudeEvents,
 )
@@ -205,26 +204,6 @@ def _clear_output_metrics(session_id: str) -> None:
     _title_projection_signatures.pop(session_id, None)
 
 
-def _mark_codex_turn_started(session_id: str) -> None:
-    """Mark a Codex turn as active when user submit is inferred."""
-    state = _codex_turn_state.get(session_id)
-    if state is None:
-        state = CodexTurnState()
-        _codex_turn_state[session_id] = state
-    state.turn_active = True
-
-
-seed_codex_prompt_from_message = codex_prompt_submit.seed_codex_prompt_from_message
-CodexInputState = codex_prompt_submit.CodexInputState
-_codex_input_state = codex_prompt_submit._codex_input_state  # pylint: disable=protected-access
-_find_prompt_input = codex_prompt_submit._find_prompt_input  # pylint: disable=protected-access
-_has_agent_marker = codex_prompt_submit._has_agent_marker  # pylint: disable=protected-access
-_has_live_prompt_marker = codex_prompt_submit._has_live_prompt_marker  # pylint: disable=protected-access
-_is_live_agent_marker_line = codex_prompt_submit._is_live_agent_marker_line  # pylint: disable=protected-access
-_is_suggestion_styled = codex_prompt_submit._is_suggestion_styled  # pylint: disable=protected-access
-_strip_suggestion_segments = codex_prompt_submit._strip_suggestion_segments  # pylint: disable=protected-access
-
-
 async def _emit_synthetic_codex_event(  # pylint: disable=too-many-arguments
     session_id: str,
     event_type: AgentHookEventType,
@@ -349,77 +328,13 @@ async def _maybe_emit_codex_turn_events(  # pylint: disable=too-many-branches,to
         return
 
 
-async def _maybe_emit_codex_input(
-    session_id: str,
-    active_agent: str | None,
-    current_output: str,
-    output_changed: bool,
-    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
-) -> None:
-    """Thin integration wrapper around the Codex synthetic-submit module."""
-    await codex_prompt_submit.maybe_emit_codex_input(
-        session_id=session_id,
-        active_agent=active_agent,
-        current_output=current_output,
-        output_changed=output_changed,
-        emit_agent_event=emit_agent_event,
-        on_submit_emitted=_mark_codex_turn_started,
-    )
-
-
-_codex_session_start_emitted: set[str] = set()
 _codex_transcript_bind_attempted: set[str] = set()
 
 
 def _cleanup_codex_input_state(session_id: str) -> None:
     """Clean up Codex input tracking state when session ends."""
-    codex_prompt_submit.cleanup_codex_prompt_state(session_id)
     _codex_turn_state.pop(session_id, None)
-    _codex_session_start_emitted.discard(session_id)
     _codex_transcript_bind_attempted.discard(session_id)
-
-
-async def _emit_codex_session_start(
-    session: "Session",
-    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
-) -> None:
-    """Emit synthetic session_start for Codex, enriched with transcript if available."""
-    if not session.active_agent or session.active_agent.lower() != AgentName.CODEX.value:
-        return
-    if session.session_id in _codex_session_start_emitted:
-        return
-
-    native_session_id = (session.native_session_id or "").strip() or None
-    transcript_path = (session.native_log_file or "").strip() or None
-
-    if native_session_id and not transcript_path:
-        transcript_path = discover_codex_transcript_path(native_session_id)
-
-    raw = {
-        "synthetic": True,
-        "source": "codex_native_discovery",
-        "session_id": native_session_id or "",
-        "transcript_path": transcript_path or "",
-    }
-
-    await emit_agent_event(
-        AgentEventContext(
-            session_id=session.session_id,
-            event_type=AgentHookEvents.AGENT_SESSION_START,
-            data=AgentSessionStartPayload(
-                session_id=native_session_id or "",
-                transcript_path=transcript_path,
-                raw=raw,
-            ),
-        )
-    )
-    _codex_session_start_emitted.add(session.session_id)
-    logger.debug(
-        "Emitted synthetic Codex session_start",
-        session_id=session.session_id,
-        native_session_id=native_session_id,
-        transcript_path=transcript_path,
-    )
 
 
 async def _try_bind_codex_transcript(session: "Session") -> bool:
@@ -789,14 +704,6 @@ async def poll_and_send_output(  # pylint: disable=too-many-arguments,too-many-b
                             emit_agent_event=emit_handler,
                             enable_synthetic_turn_events=synth_turn_events_enabled,
                         )
-                        await _maybe_emit_codex_input(
-                            session_id=event.session_id,
-                            active_agent=session.active_agent,
-                            current_output=clean_output,
-                            output_changed=True,  # OutputChanged event means output changed
-                            emit_agent_event=emit_handler,
-                        )
-                        await _emit_codex_session_start(session, emit_handler)
                         if await _try_bind_codex_transcript(session):
                             refreshed = await db.get_session(event.session_id)
                             if refreshed is not None:

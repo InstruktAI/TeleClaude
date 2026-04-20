@@ -14,7 +14,8 @@ from sqlmodel import SQLModel, select
 
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
-from teleclaude.hooks.receiver import _maybe_checkpoint_output, enqueue_hook_event
+from teleclaude.core.events import AgentHookEvents
+from teleclaude.hooks.receiver import _handle_user_prompt_submit, _maybe_checkpoint_output, enqueue_hook_event
 
 
 def _make_outbox_db(tmp_path: Path) -> str:
@@ -112,3 +113,17 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
 
     assert result == "checkpoint"
     assert checkpoint_mock.call_args.kwargs["session_id"] == "session-1"
+
+
+def test_handle_user_prompt_submit_drops_xml_wrapped_internal_prompt() -> None:
+    dropped = _handle_user_prompt_submit(
+        AgentHookEvents.USER_PROMPT_SUBMIT,
+        {
+            "prompt": '<hook_prompt hook_run_id="stop:2:/Users/Morriz/.codex/hooks.json">[TeleClaude Checkpoint] - Context-aware checkpoint'
+        },
+        "codex",
+        "session-1",
+        "native-1",
+    )
+
+    assert dropped is True

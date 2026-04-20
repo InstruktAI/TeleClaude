@@ -14,6 +14,7 @@ import shlex
 import shutil
 import tomllib
 from collections.abc import Mapping
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -57,7 +58,6 @@ AGENT_FLAG = "--agent"
 CODEX_AGENT = "codex"
 CODEX_COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 CODEX_COMPACTION_PROMPT_KEY = "experimental_compact_prompt_file"
-CODEX_NOTIFY_SUFFIX = [AGENT_FLAG, CODEX_AGENT]
 KNOWN_NATIVE_HOOK_EVENTS = {
     event_name for agent_map in AgentHookEvents.HOOK_EVENT_MAP.values() for event_name in agent_map.keys()
 }
@@ -174,6 +174,11 @@ def _build_hook_command(receiver_invocation: str, agent: str, event_arg: str) ->
     return f'{receiver_invocation} --agent {agent} --cwd "$PWD" {event_arg}'
 
 
+def _build_hook_command_without_event(receiver_invocation: str, agent: str) -> str:
+    """Build command string without a positional event argument."""
+    return f'{receiver_invocation} --agent {agent} --cwd "$PWD"'
+
+
 def _build_hook_map(
     receiver_invocation: str,
     agent: str,
@@ -239,6 +244,46 @@ def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
         _filter_receiver_handled_events(gemini_events),
         include_metadata=True,
     )
+
+
+def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[str, list[dict[str, Any]]]:  # pylint: disable=unused-argument
+    """Return TeleClaude native hook blocks for Codex."""
+    command = _build_hook_command_without_event(receiver_invocation, CODEX_AGENT)
+    return {
+        "SessionStart": [
+            {
+                "matcher": "startup|resume",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                        "statusMessage": "Loading session notes",
+                    }
+                ],
+            }
+        ],
+        "UserPromptSubmit": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                    }
+                ]
+            }
+        ],
+        "Stop": [
+            {
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                        "timeout": 30,
+                    }
+                ]
+            }
+        ],
+    }
 
 
 def _prune_agent_hooks(  # pylint: disable=too-many-branches
@@ -429,13 +474,7 @@ def configure_gemini(repo_root: Path) -> None:
 def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-many-statements
     repo_root: Path,
 ) -> None:
-    """Configure Codex CLI notify hook.
-
-    Codex uses TOML config at ~/.codex/config.toml with a simple `notify` key
-    that takes an array of command parts. Unlike Claude/Gemini which use JSON
-    with nested hook structures, Codex only supports one hook event type:
-    `agent-turn-complete` which maps to our internal "agent_stop" event.
-    """
+    """Configure native Codex hooks and settings."""
     repo_root = resolve_main_repo_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
@@ -445,67 +484,23 @@ def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-ma
     os.chmod(receiver_script, 0o755)
 
     config_path = Path.home() / ".codex" / "config.toml"
+    hooks_path = config_path.parent / "hooks.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
-
-    notify_value = [
-        str(receiver_script),
-        AGENT_FLAG,
-        CODEX_AGENT,
-    ]
 
     if config_path.exists():
         content = config_path.read_text()
         try:
-            config = tomllib.loads(content)
-        except tomllib.TOMLDecodeError as e:
-            print(f"Warning: Failed to parse Codex config: {e}")
+            tomllib.loads(content)
+        except tomllib.TOMLDecodeError as exc:
+            print(f"Warning: Failed to parse Codex config: {exc}")
             return
-
-        existing_notify = config.get(NOTIFY_KEY)
-        skip_notify_update = False
-        if existing_notify == notify_value:
-            print(f"Codex notify hook already configured in {config_path}")
-            skip_notify_update = True
-
-        if not skip_notify_update:
-            # Update or add notify line using text manipulation to preserve formatting
-            notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
-
-            if NOTIFY_KEY in config:
-                # Check if existing notify is our hook (contains receiver and --agent codex)
-                is_our_hook = False
-                if isinstance(existing_notify, list):
-                    str_parts = [str(part) for part in existing_notify]
-                    has_receiver = any(RECEIVER_TOKEN in part for part in str_parts)
-                    has_agent_flag = AGENT_FLAG in str_parts
-                    has_codex_name = CODEX_AGENT in str_parts
-                    is_our_hook = has_receiver and has_agent_flag and has_codex_name
-
-                if not is_our_hook:
-                    print(f"Warning: Existing notify hook in {config_path} is not ours, skipping")
-                    print(f"  Existing: {existing_notify}")
-                    skip_notify_update = True
-                else:
-                    # Remove previous notify block and reinsert normalized block.
-                    # Capture from `notify = [` up to matching closing `]`.
-                    notify_block_pattern = re.compile(rf"(?ms)^\s*{re.escape(NOTIFY_KEY)}\s*=\s*\[[^\]]*?\]\s*,?\s*$")
-                    content = notify_block_pattern.sub("", content).rstrip()
-            if not skip_notify_update:
-                # Add notify after any comments at top or before first section.
-                first_section = re.search(r"^\[", content, re.MULTILINE)
-                if first_section:
-                    insert_pos = first_section.start()
-                    if content and not content.endswith("\n"):
-                        notify_line = "\n" + notify_line
-                    content = content[:insert_pos] + notify_line + "\n\n" + content[insert_pos:]
-                else:
-                    if content and not content.endswith("\n"):
-                        notify_line = "\n" + notify_line
-                    content = content.rstrip() + "\n" + notify_line + "\n"
     else:
-        # Create new config with just the notify hook
-        notify_line = f"{NOTIFY_KEY} = {json.dumps(notify_value)}"
-        content = f"# Codex CLI configuration\n\n{notify_line}\n"
+        content = "# Codex CLI configuration\n"
+
+    receiver_invocation = _build_hook_invocation(receiver_script)
+    managed_hook_blocks = _codex_hook_blocks(receiver_invocation, receiver_script)
+    content = _remove_codex_top_level_key(content, NOTIFY_KEY)
+    content = _ensure_codex_feature_flag(content, "codex_hooks", True)
 
     compaction_prompt_source = SETTINGS_DIR / CODEX_COMPACTION_PROMPT_FILENAME
     compaction_prompt_target = config_path.parent / CODEX_COMPACTION_PROMPT_FILENAME
@@ -527,13 +522,99 @@ def configure_codex(  # pylint: disable=too-many-branches,too-many-locals,too-ma
         content, skip_keys=skipped_override_keys, value_overrides=compaction_value_overrides or None
     )
     config_path.write_text(content)
+    _write_codex_hooks_json(hooks_path, managed_hook_blocks)
     print(f"Codex hooks and settings configured in {config_path}")
 
 
 def _remove_codex_top_level_key(content: str, key: str) -> str:
-    """Remove a top-level scalar key assignment from Codex TOML content."""
+    """Remove a top-level key assignment from Codex TOML content."""
+    array_pattern = re.compile(rf"(?ms)^\s*{re.escape(key)}\s*=\s*\[[^\]]*?\]\s*(?:\n|$)")
+    content = array_pattern.sub("", content)
     key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*(?:\n|$)", re.MULTILINE)
     return key_pattern.sub("", content)
+
+
+def _ensure_codex_feature_flag(content: str, key: str, enabled: bool) -> str:
+    """Ensure ``[features]`` contains the requested boolean flag."""
+    try:
+        config = tomllib.loads(content) if content.strip() else {}
+    except tomllib.TOMLDecodeError:
+        return content
+
+    desired_value = "true" if enabled else "false"
+    feature_line = f"{key} = {desired_value}"
+    features = config.get("features")
+
+    if isinstance(features, dict):
+        header_match = re.search(r"(?m)^\[features\]\s*$", content)
+        if header_match is None:
+            return content
+        body_start = header_match.end() + 1
+        next_section_match = re.search(r"(?m)^\[", content[body_start:])
+        if next_section_match is None:
+            body_end = len(content)
+        else:
+            body_end = body_start + next_section_match.start()
+        stray_key_pattern = re.compile(rf"(?m)^\s*{re.escape(key)}\s*=.*(?:\n|$)")
+        prefix = stray_key_pattern.sub("", content[:body_start])
+        body = content[body_start:body_end]
+        suffix = stray_key_pattern.sub("", content[body_end:])
+        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
+        if key in features:
+            if features[key] is enabled:
+                return f"{prefix}{body}{suffix}"
+            body = key_pattern.sub(feature_line, body)
+        else:
+            body = f"{body.rstrip()}\n{feature_line}\n"
+        return f"{prefix}{body}{suffix}"
+
+    suffix = "\n" if content.strip() else ""
+    return f"{content.rstrip()}{suffix}[features]\n{feature_line}\n"
+
+
+def _merge_codex_hook_blocks(existing_blocks: object, managed_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Replace TeleClaude receiver hooks while preserving foreign Codex hook blocks."""
+    merged_blocks: list[dict[str, Any]] = []
+    if isinstance(existing_blocks, list):
+        for block in existing_blocks:
+            if not isinstance(block, dict):
+                continue
+            hooks_list = block.get("hooks", [])
+            if not isinstance(hooks_list, list):
+                merged_blocks.append(block)
+                continue
+            filtered_hooks = []
+            for hook in hooks_list:
+                if not isinstance(hook, dict):
+                    filtered_hooks.append(hook)
+                    continue
+                if _extract_receiver_script(hook.get("command", "")) == RECEIVER_TOKEN:
+                    continue
+                filtered_hooks.append(hook)
+            if filtered_hooks:
+                updated_block = block.copy()
+                updated_block["hooks"] = filtered_hooks
+                merged_blocks.append(updated_block)
+    merged_blocks.extend(deepcopy(managed_blocks))
+    return merged_blocks
+
+
+def _write_codex_hooks_json(hooks_path: Path, managed_hooks: dict[str, list[dict[str, Any]]]) -> None:
+    """Write Codex native hooks while preserving foreign non-TeleClaude hooks."""
+    existing = _load_json_settings(hooks_path, label="Codex hooks")
+    if existing is None:
+        return
+
+    existing_hooks = existing.get("hooks", {})
+    if not isinstance(existing_hooks, dict):
+        existing_hooks = {}
+
+    updated_hooks = _prune_agent_hooks(existing_hooks, set(managed_hooks.keys()))
+    for event_name, managed_blocks in managed_hooks.items():
+        updated_hooks[event_name] = _merge_codex_hook_blocks(existing_hooks.get(event_name), managed_blocks)
+
+    with open(hooks_path, "w") as handle:  # pylint: disable=unspecified-encoding
+        json.dump({"hooks": updated_hooks}, handle, indent=2)
 
 
 def _apply_codex_settings_overrides(

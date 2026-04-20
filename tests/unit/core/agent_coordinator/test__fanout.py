@@ -59,38 +59,6 @@ class TestSummarizeOutput:
         assert result == "summary text"
 
 
-class TestExtractUserInputForCodex:
-    @pytest.mark.unit
-    async def test_no_session_returns_none(self):
-        mixin = _make_fanout()
-        mock_payload = MagicMock()
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=None)
-            result = await mixin._extract_user_input_for_codex("sess-001", mock_payload)
-        assert result is None
-
-    @pytest.mark.unit
-    async def test_non_codex_agent_returns_none(self):
-        mixin = _make_fanout()
-        session = _make_session(active_agent="claude")
-        mock_payload = MagicMock()
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            result = await mixin._extract_user_input_for_codex("sess-001", mock_payload)
-        assert result is None
-
-    @pytest.mark.unit
-    async def test_codex_without_transcript_returns_none(self):
-        mixin = _make_fanout()
-        session = _make_session(active_agent="codex", native_log_file=None)
-        mock_payload = MagicMock()
-        mock_payload.transcript_path = None
-        with patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db:
-            mock_db.get_session = AsyncMock(return_value=session)
-            result = await mixin._extract_user_input_for_codex("sess-001", mock_payload)
-        assert result is None
-
-
 class TestFanoutLinkedStopOutput:
     @pytest.mark.unit
     async def test_no_links_returns_zero(self):
@@ -341,44 +309,3 @@ class TestForwardStopToInitiator:
             mock_db.get_session = AsyncMock(return_value=session)
             await mixin._forward_stop_to_initiator("sess-001")
         mixin.client.send_request.assert_called_once()  # pyright: ignore[reportAttributeAccessIssue]
-
-
-class TestMaybeInjectCheckpoint:
-    @pytest.mark.unit
-    async def test_no_session_returns_early(self):
-        mixin = _make_fanout()
-        with patch(
-            "teleclaude.core.agent_coordinator._fanout.inject_checkpoint_if_needed",
-            new_callable=AsyncMock,
-        ) as mock_inject:
-            await mixin._maybe_inject_checkpoint("sess-001", None)
-        mock_inject.assert_not_called()
-
-    @pytest.mark.unit
-    async def test_calls_inject_checkpoint_with_session(self):
-        mixin = _make_fanout()
-        session = _make_session(active_agent="claude")
-        with (
-            patch(
-                "teleclaude.core.agent_coordinator._fanout.inject_checkpoint_if_needed",
-                new_callable=AsyncMock,
-            ) as mock_inject,
-            patch("teleclaude.core.agent_coordinator._fanout.get_default_agent", return_value="claude"),
-        ):
-            await mixin._maybe_inject_checkpoint("sess-001", session)
-        mock_inject.assert_called_once()
-
-    @pytest.mark.unit
-    async def test_injection_failure_does_not_propagate(self):
-        mixin = _make_fanout()
-        session = _make_session(active_agent="claude")
-        with (
-            patch(
-                "teleclaude.core.agent_coordinator._fanout.inject_checkpoint_if_needed",
-                new_callable=AsyncMock,
-                side_effect=RuntimeError("checkpoint failed"),
-            ),
-            patch("teleclaude.core.agent_coordinator._fanout.get_default_agent", return_value="claude"),
-        ):
-            # Should not raise — failures are logged and swallowed
-            await mixin._maybe_inject_checkpoint("sess-001", session)

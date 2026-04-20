@@ -28,6 +28,7 @@ pytestmark = pytest.mark.unit
 
 COMPACTION_PROMPT_FILENAME = "CODEX.compaction.md"
 COMPACT_PROMPT_TOML_KEY = "experimental_compact_prompt_file"
+CODEX_HOOKS_FILENAME = "hooks.json"
 
 # Repo root: tests/unit/install/ → tests/unit/ → tests/ → repo root
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -103,6 +104,79 @@ def test_configure_codex_sets_compact_prompt_toml_key(tmp_path: Path) -> None:
         f"'{COMPACT_PROMPT_TOML_KEY}' must be the absolute deployed path, not a relative placeholder. "
         f"Expected: {expected_absolute_path!r}. Got: {value!r}"
     )
+
+
+def test_configure_codex_enables_native_hooks_feature_flag(tmp_path: Path) -> None:
+    """configure_codex must enable the native Codex hooks runtime feature."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
+    assert config["features"]["codex_hooks"] is True
+    assert "notify" not in config
+
+
+def test_configure_codex_writes_feature_flag_inside_features_table(tmp_path: Path) -> None:
+    """configure_codex must place codex_hooks under [features], not under a project block."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+    (codex_dir / "config.toml").write_text(
+        """
+[features]
+multi_agent = true
+
+[projects."/repo-a"]
+trust_level = "trusted"
+
+[projects."/repo-b"]
+trust_level = "trusted"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
+    assert config["features"]["codex_hooks"] is True
+    assert "codex_hooks" not in config["projects"]["/repo-a"]
+    assert "codex_hooks" not in config["projects"]["/repo-b"]
+
+
+def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -> None:
+    """configure_codex must install managed SessionStart/UserPromptSubmit/Stop hooks."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
+    assert set(hooks["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop"}
+
+    start_command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    submit_command = hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    stop_command = hooks["hooks"]["Stop"][0]["hooks"][0]["command"]
+    assert "--agent codex" in start_command
+    assert "--agent codex" in submit_command
+    assert "--agent codex" in stop_command
+    assert "SessionStart" not in start_command
+    assert "UserPromptSubmit" not in submit_command
+    assert " Stop" not in stop_command
 
 
 def test_configure_codex_compaction_prompt_deployment_is_idempotent(tmp_path: Path) -> None:

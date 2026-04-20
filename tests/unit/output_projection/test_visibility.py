@@ -30,6 +30,11 @@ class TestIsInternalUserText:
         assert is_internal_user_text("<system-reminder>content</system-reminder>") is True
 
     @pytest.mark.unit
+    def test_generic_xml_prefix_is_internal(self):
+        text = '<hook_prompt hook_run_id="stop:2:/Users/Morriz/.codex/hooks.json">[TeleClaude Checkpoint] - Context-aware checkpoint'
+        assert is_internal_user_text(text) is True
+
+    @pytest.mark.unit
     def test_normal_user_text_passes(self):
         assert is_internal_user_text("fix the bug please") is False
 
@@ -37,3 +42,4 @@ class TestIsInternalUserText:
     def test_leading_whitespace_stripped(self):
         assert is_internal_user_text("  [TeleClaude Test] padded") is True
         assert is_internal_user_text("  Stop hook feedback:\nstuff") is True
+        assert is_internal_user_text('  <hook_prompt hook_run_id="stop:2">wrapped') is True

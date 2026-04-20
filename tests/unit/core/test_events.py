@@ -48,9 +48,9 @@ class TestAgentHookEvents:
         assert claude_map["Stop"] == "agent_stop"
 
     @pytest.mark.unit
-    def test_codex_agent_turn_complete_maps_to_agent_stop(self):
+    def test_codex_stop_maps_to_agent_stop(self):
         codex_map = AgentHookEvents.HOOK_EVENT_MAP["codex"]
-        assert codex_map["agent-turn-complete"] == "agent_stop"
+        assert codex_map["Stop"] == "agent_stop"
 
 
 class TestBuildAgentPayload:

@@ -1,30 +1,81 @@
-# Codex CLI Hooks
+# Codex Hooks
 
 ## Overview
 
-Codex CLI supports a single hook event via the `notify` command.
+Codex uses native hooks from `~/.codex/hooks.json`, with the runtime feature
+enabled by `~/.codex/config.toml`:
 
-## Hook events
+```toml
+[features]
+codex_hooks = true
+```
 
-| Event               | When It Fires                | Common Use Cases            |
-| ------------------- | ---------------------------- | --------------------------- |
-| agent-turn-complete | When agent finishes its turn | Review output, update state |
+TeleClaude currently manages this native Codex subset:
 
-## Hook input contract (selected fields we use)
+- `SessionStart`
+- `UserPromptSubmit`
+- `Stop`
 
-- `thread-id` (string) — native session ID
-- `input-messages` (list of strings) — contains user prompts for the turn
-- `last-assistant-message` (string) — agent response
+`tool_use` and `tool_done` remain synthetic for now.
 
-## TeleClaude adapter mapping
+## Input shape we care about
 
-Mapping rules:
+Codex hook commands receive JSON on stdin with common fields plus event-specific
+fields.
 
-- `agent-turn-complete` → `event_type = "stop"`
-  - Requires `data.thread-id` (native session id).
-  - Extracts the last element of `data.input-messages` as `prompt` to update `last_message_sent` in the database.
+Shared fields TeleClaude relies on:
 
-## Sources
+- `hook_event_name` — native Codex hook event name
+- `session_id` — native Codex session id
+- `transcript_path` — native transcript path when available
+- `cwd` — working directory
 
-- https://developers.openai.com/codex/config-reference
-- https://developers.openai.com/codex/cli/reference
+`UserPromptSubmit` adds:
+
+- `turn_id` — active Codex turn id
+- `prompt` — user prompt about to be sent
+
+`Stop` adds:
+
+- `turn_id` — active Codex turn id
+- `stop_hook_active` — whether this turn was already continued by `Stop`
+- `last_assistant_message` — latest assistant text, if available
+
+## Stdout behavior
+
+`UserPromptSubmit`:
+
+- `matcher` is not currently used
+- plain stdout text is added as extra developer context
+- JSON stdout may include `hookSpecificOutput.additionalContext`
+- JSON stdout may also return `decision: "block"` with a reason
+
+`Stop`:
+
+- `matcher` is not currently used
+- plain stdout is invalid
+- stdout must be JSON when exiting `0`
+- `decision: "block"` does not reject the turn; it tells Codex to continue
+  using the provided reason as the continuation prompt
+
+## TeleClaude mapping
+
+- `SessionStart` → `session_start`
+- `UserPromptSubmit` → `user_prompt_submit`
+- `Stop` → `agent_stop`
+
+Payload normalization used by the adapter:
+
+- `prompt` stays `prompt`
+- `last_assistant_message` → `message`
+
+## TeleClaude notes
+
+- TeleClaude receiver commands do not need a positional event argument for Codex.
+- The receiver reads `hook_event_name` from stdin and maps it through the shared adapter path.
+- TeleClaude uses native `Stop` continuation JSON for checkpointing.
+- TeleClaude does not currently emit Codex `UserPromptSubmit` additional-context output.
+
+## Source
+
+- https://developers.openai.com/codex/hooks

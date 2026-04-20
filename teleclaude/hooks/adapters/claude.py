@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import argparse
 import json
-from typing import cast
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters._stdin import read_stdin_payload
+from teleclaude.hooks.adapters.base import normalize_common_payload, parse_stdin_hook_input
 
 
 class ClaudeAdapter:
@@ -20,24 +19,22 @@ class ClaudeAdapter:
 
     def parse_input(self, args: argparse.Namespace) -> tuple[str, str, JsonDict]:
         """Read JSON from stdin, event_type from args."""
-        event_type: str = args.event_type
-        raw_input, raw_data = read_stdin_payload()
-        return raw_input, event_type, cast(JsonDict, raw_data)
+        return parse_stdin_hook_input(args)
 
     def normalize_payload(self, data: JsonDict) -> JsonDict:
         """Identity: Claude already uses canonical field names."""
-        return data
+        return normalize_common_payload(data)
 
     def format_checkpoint_response(self, reason: str) -> str | None:
         """Serialize Claude's checkpoint block response payload."""
         return json.dumps({"decision": "block", "reason": reason})
 
-    def format_memory_injection(self, context: str) -> str:
-        """Serialize Claude's SessionStart memory injection payload."""
+    def format_additional_context(self, hook_event_name: str, context: str) -> str:
+        """Serialize Claude's stdout additional-context payload."""
         return json.dumps(
             {
                 "hookSpecificOutput": {
-                    "hookEventName": "SessionStart",
+                    "hookEventName": hook_event_name,
                     "additionalContext": context,
                 }
             }

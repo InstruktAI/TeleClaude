@@ -17,6 +17,7 @@ _INTERNAL_WRAPPER_RE = re.compile(
     r"^\s*<(task-notification|system-reminder)\b[^>]*>.*</\1>\s*$",
     re.DOTALL,
 )
+_XML_STYLE_PREFIX_RE = re.compile(r"^\s*</?[A-Za-z_][\w:.-]*(?:\s[^>]*)?>", re.DOTALL)
 
 
 def is_internal_user_text(text: str) -> bool:
@@ -25,6 +26,7 @@ def is_internal_user_text(text: str) -> bool:
     Detects:
     - TeleClaude system prefix ("[TeleClaude ...")
     - Claude Code hook feedback injections ("Stop hook feedback:", etc.)
+    - XML-style wrapper/tag prefixes (for example <hook_prompt ...>)
     - Claude Code task-notification wrappers (full or prefix)
     - Claude Code system-reminder wrappers (full or prefix)
     """
@@ -33,7 +35,7 @@ def is_internal_user_text(text: str) -> bool:
         return True
     if stripped.startswith(_HOOK_FEEDBACK_PREFIXES):
         return True
-    if stripped.startswith(("<task-notification", "<system-reminder")):
+    if _XML_STYLE_PREFIX_RE.match(stripped):
         return True
     if _INTERNAL_WRAPPER_RE.match(text):
         return True

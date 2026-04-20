@@ -158,7 +158,7 @@ def _load_checkpoint_row(session_id: str) -> db_models.Session | None:
 
 
 def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
-    """Return identity-key and person header metadata for memory injection."""
+    """Return identity-key and person header metadata for additional context."""
     row = _load_session_row(session_id)
     if not row:
         return None, None
@@ -264,7 +264,7 @@ def _maybe_checkpoint_output(
         )
         return None
 
-    # Claude stop_hook_active indicates we already blocked once for this turn.
+    # Native Stop continuation indicates we already blocked once for this turn.
     # If no explicit clear marker is provided, allow at most one extra recheck.
     if stop_hook_active:
         set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
@@ -317,8 +317,13 @@ def _render_person_header(person: PersonEntry) -> str:
     return "\n".join(lines)
 
 
-def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | None = None) -> None:
-    """Print memory context to stdout for agent context injection via SessionStart hook."""
+def _print_additional_context(
+    hook_event_name: str,
+    cwd: str | None,
+    adapter: object,
+    session_id: str | None = None,
+) -> None:
+    """Print stdout additional context for hook events that support context injection."""
     project_name = Path(cwd).name if cwd else None
     if not project_name:
         return
@@ -338,8 +343,10 @@ def _print_memory_injection(cwd: str | None, adapter: object, session_id: str | 
     if person_header:
         context = f"{person_header}\n{context}" if context else person_header
 
-    logger.debug("Memory context fetched", project=project_name, length=len(context), identity_key=identity_key or "")
-    payload = adapter.format_memory_injection(context)  # type: ignore[union-attr]
+    logger.debug(
+        "Additional context fetched", project=project_name, length=len(context), identity_key=identity_key or ""
+    )
+    payload = adapter.format_additional_context(hook_event_name, context)  # type: ignore[union-attr]
     if payload:
         print(payload)
 
@@ -696,21 +703,26 @@ def _handle_user_prompt_submit(
     return False
 
 
-def _maybe_inject_memory_context(
+def _maybe_emit_additional_context(
     *,
+    raw_event_type: str,
     event_type: str,
     cwd: str | None,
     adapter: object,
     session_id: str,
 ) -> None:
+    """Emit stdout additional context for context-injection hook events.
+
+    This lane is distinct from checkpoint blocking on Stop.
+    """
     if event_type != AgentHookEvents.AGENT_SESSION_START:
         return
     if cwd:
         project_name = Path(cwd).name
-        logger.debug("Injecting memory index for session_start", project=project_name)
-        _print_memory_injection(cwd, adapter, session_id=session_id)
+        logger.debug("Emitting additional context for session_start", project=project_name)
+        _print_additional_context(raw_event_type, cwd, adapter, session_id=session_id)
         return
-    logger.error("Skipping memory injection: no CWD provided (contract violation)")
+    logger.error("Skipping additional context: no CWD provided (contract violation)")
 
 
 def _maybe_emit_checkpoint_response(
@@ -850,7 +862,8 @@ def main() -> None:
     ):
         return
 
-    _maybe_inject_memory_context(
+    _maybe_emit_additional_context(
+        raw_event_type=raw_event_type,
         event_type=event_type,
         cwd=args.cwd,
         adapter=adapter,

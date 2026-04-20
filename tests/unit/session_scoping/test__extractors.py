@@ -46,6 +46,30 @@ def test_codex_extractor_ignores_shell_tools_and_keeps_structured_mutators(
     assert strategy == "codex_structured"
 
 
+def test_codex_extractor_normalizes_patch_apply_event_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    timeline = TurnTimeline(
+        has_data=True,
+        tool_calls=[
+            ToolCallRecord(
+                tool_name="apply_patch",
+                input_data={"paths": ["/repo/src/kept.py", "/repo/tests/test_kept.py"]},
+                had_error=False,
+            ),
+        ],
+    )
+    monkeypatch.setattr(codex_extractor, "extract_effective_tool_calls", lambda *args, **kwargs: timeline)
+
+    paths, strategy = codex_extractor.collect_codex_paths(
+        transcript_path="/tmp/session.jsonl",
+        native_session_id="native-1",
+        workspace_root="/repo",
+        scope_mode="turn_delta",
+    )
+
+    assert paths == {"src/kept.py", "tests/test_kept.py"}
+    assert strategy == "codex_structured"
+
+
 def test_claude_extractor_uses_file_history_delta_for_turn_scope(tmp_path: Path) -> None:
     transcript = tmp_path / "claude.jsonl"
     transcript.write_text(

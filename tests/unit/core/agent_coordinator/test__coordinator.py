@@ -388,6 +388,36 @@ class TestHandleSessionStart:
 
 
 class TestHandleUserPromptSubmit:
+    async def _run_normal_prompt(
+        self,
+    ) -> tuple[AgentCoordinator, MagicMock]:
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.prompt = "fix the bug"
+        context.data.raw = {}
+        session = _make_session(lifecycle_status="active", active_agent="claude")
+
+        def _close_coro(coro: object, label: str) -> None:
+            if hasattr(coro, "close"):
+                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._queue_background_task = MagicMock(side_effect=_close_coro)
+            await coord.handle_user_prompt_submit(context)
+
+        return coord, context
+
     @pytest.mark.unit
     async def test_no_session_returns_early(self):
         coord = _make_coordinator()
@@ -429,9 +459,6 @@ class TestHandleUserPromptSubmit:
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=True),
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator._is_codex_synthetic_prompt_event", return_value=False
-            ),
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             await coord.handle_user_prompt_submit(context)
@@ -440,73 +467,19 @@ class TestHandleUserPromptSubmit:
 
     @pytest.mark.unit
     async def test_normal_prompt_emits_activity_event(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.session_id = "sess-001"
-        context.data.prompt = "fix the bug"
-        context.data.raw = {}
-        session = _make_session(lifecycle_status="active", active_agent="claude")
-
-        def _close_coro(coro: object, label: str) -> None:
-            if hasattr(coro, "close"):
-                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
-
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator._is_codex_synthetic_prompt_event", return_value=False
-            ),
-            patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
-        ):
-            mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
-            mock_db.update_last_activity = AsyncMock()
-            mock_db.set_notification_flag = AsyncMock()
-            coord._emit_activity_event = MagicMock()
-            coord._emit_status_event = MagicMock()
-            coord._queue_background_task = MagicMock(side_effect=_close_coro)
-            await coord.handle_user_prompt_submit(context)
-
+        coord, _ = await self._run_normal_prompt()
         coord._emit_activity_event.assert_called_with("sess-001", AgentHookEvents.USER_PROMPT_SUBMIT)
 
     @pytest.mark.unit
     async def test_normal_prompt_emits_accepted_status_for_non_headless(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.session_id = "sess-001"
-        context.data.prompt = "fix the bug"
-        context.data.raw = {}
-        session = _make_session(lifecycle_status="active", active_agent="claude")
-
-        def _close_coro(coro: object, label: str) -> None:
-            if hasattr(coro, "close"):
-                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
-
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator._is_codex_synthetic_prompt_event", return_value=False
-            ),
-            patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
-        ):
-            mock_db.get_session = AsyncMock(return_value=session)
-            mock_db.update_session = AsyncMock()
-            mock_db.update_last_activity = AsyncMock()
-            mock_db.set_notification_flag = AsyncMock()
-            coord._emit_activity_event = MagicMock()
-            coord._emit_status_event = MagicMock()
-            coord._queue_background_task = MagicMock(side_effect=_close_coro)
-            await coord.handle_user_prompt_submit(context)
-
+        coord, _ = await self._run_normal_prompt()
         called_statuses = [c[0][1] for c in coord._emit_status_event.call_args_list]
         assert "accepted" in called_statuses
 
 
 class TestHandleAgentStop:
     @pytest.mark.unit
-    async def test_calls_record_input_and_output(self):
+    async def test_calls_record_output(self):
         coord = _make_coordinator()
         context = MagicMock()
         context.session_id = "sess-001"
@@ -521,14 +494,12 @@ class TestHandleAgentStop:
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
-        coord._record_agent_stop_input.assert_called_once()
         coord._record_agent_stop_output.assert_called_once()
         mock_finalize_title.assert_awaited_once()
         assert mock_finalize_title.await_args.args[0] == "sess-001"
@@ -545,7 +516,6 @@ class TestHandleAgentStop:
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -565,7 +535,6 @@ class TestHandleAgentStop:
         with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -592,7 +561,6 @@ class TestHandleAgentStop:
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=(None, "Summary text"))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -615,7 +583,6 @@ class TestHandleAgentStop:
         ):
             mock_db.get_session = AsyncMock(return_value=_make_session())
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=(None, None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -638,7 +605,6 @@ class TestHandleAgentStop:
         with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=("final output", None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -671,7 +637,6 @@ class TestHandleAgentStop:
         ):
             mock_db.get_session = AsyncMock(side_effect=[session, session])
             mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_input = AsyncMock()
             coord._record_agent_stop_output = AsyncMock(return_value=("final output", None))
             coord._emit_activity_event = MagicMock()
             coord._emit_status_event = MagicMock()
@@ -680,24 +645,6 @@ class TestHandleAgentStop:
             await coord.handle_agent_stop(context)
 
         assert coord._finalize_agent_stop.await_args.kwargs["linked_prompt_at"] == linked_at
-
-    @pytest.mark.unit
-    async def test_record_agent_stop_input_skips_codex_backfill_when_prompt_already_accepted(self):
-        coord = _make_coordinator()
-        session = _make_session(
-            last_message_sent="accepted prompt",
-            last_message_sent_at=datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC),
-            last_output_at=datetime(2026, 4, 14, 10, 23, 0, tzinfo=UTC),
-        )
-
-        coord._extract_user_input_for_codex = AsyncMock()
-        coord._emit_activity_event = MagicMock()
-        with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
-            mock_db.update_session = AsyncMock()
-            await coord._record_agent_stop_input("sess-001", MagicMock(), session)
-
-        coord._extract_user_input_for_codex.assert_not_awaited()
-        mock_db.update_session.assert_not_awaited()
 
 
 class TestFinalizeAgentStop:
@@ -709,7 +656,6 @@ class TestFinalizeAgentStop:
         coord._fanout_linked_stop_output = AsyncMock()
         coord._notify_session_listener = AsyncMock()
         coord._forward_stop_to_initiator = AsyncMock()
-        coord._maybe_inject_checkpoint = AsyncMock()
 
         payload = MagicMock()
         payload.raw = {}
@@ -741,7 +687,6 @@ class TestFinalizeAgentStop:
         coord._fanout_linked_stop_output = AsyncMock()
         coord._notify_session_listener = AsyncMock()
         coord._forward_stop_to_initiator = AsyncMock()
-        coord._maybe_inject_checkpoint = AsyncMock()
 
         payload = MagicMock()
         payload.raw = {}
@@ -928,60 +873,6 @@ class TestQueueBackgroundTask:
             coord._queue_background_task(MagicMock(), "test-label")
             self._run_done_callback(coord, mock_task)
         mock_logger.error.assert_not_called()
-
-
-class TestRecordAgentStopInput:
-    @pytest.mark.unit
-    async def test_no_codex_input_skips_db_update(self):
-        coord = _make_coordinator()
-        session = _make_session()
-        payload = MagicMock()
-        coord._extract_user_input_for_codex = AsyncMock(return_value=None)
-
-        with patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db:
-            mock_db.update_session = AsyncMock()
-            await coord._record_agent_stop_input("sess-001", payload, session)
-
-        mock_db.update_session.assert_not_called()
-
-    @pytest.mark.unit
-    async def test_codex_input_updates_db(self):
-        coord = _make_coordinator()
-        session = _make_session()
-        payload = MagicMock()
-        now = datetime.now(UTC)
-        coord._extract_user_input_for_codex = AsyncMock(return_value=("user typed this", now))
-
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator._is_codex_input_already_recorded", return_value=True),
-        ):
-            mock_db.update_session = AsyncMock()
-            await coord._record_agent_stop_input("sess-001", payload, session)
-
-        mock_db.update_session.assert_called_once()
-        call_kwargs = mock_db.update_session.call_args[1]
-        assert call_kwargs["last_message_sent"] == "user typed this"
-
-    @pytest.mark.unit
-    async def test_unrecorded_codex_input_emits_activity_and_broadcasts(self):
-        coord = _make_coordinator()
-        session = _make_session(lifecycle_status="active")
-        payload = MagicMock()
-        now = datetime.now(UTC)
-        coord._extract_user_input_for_codex = AsyncMock(return_value=("user typed this", now))
-
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator._is_codex_input_already_recorded", return_value=False
-            ),
-        ):
-            mock_db.update_session = AsyncMock()
-            coord._emit_activity_event = MagicMock()
-            await coord._record_agent_stop_input("sess-001", payload, session)
-
-        coord._emit_activity_event.assert_called_once_with("sess-001", AgentHookEvents.USER_PROMPT_SUBMIT)
 
 
 class TestRecordAgentStopOutput:

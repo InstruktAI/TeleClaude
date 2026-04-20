@@ -40,7 +40,7 @@ def make_session(
     )
 
 
-def make_row(*, session_id: str, content: str, origin: str = "ui") -> InboundQueueRow:
+def make_row(*, session_id: str, content: str, origin: str = "ui", payload_json: str | None = None) -> InboundQueueRow:
     """Build a typed inbound queue row for delivery tests."""
     return InboundQueueRow(
         id=1,
@@ -48,7 +48,7 @@ def make_row(*, session_id: str, content: str, origin: str = "ui") -> InboundQue
         origin=origin,
         message_type="text",
         content=content,
-        payload_json=None,
+        payload_json=payload_json,
         actor_id="actor-1",
         actor_name="Bob",
         actor_avatar_url="https://avatar.example/bob.png",
@@ -105,6 +105,7 @@ class TestHandleVoice:
             actor_id="actor-1",
             actor_name="Bob",
             actor_avatar_url="https://avatar.example/bob.png",
+            origin_metadata={"user_id": "123"},
         )
 
         await _message.handle_voice(cmd, client, AsyncMock())
@@ -117,6 +118,7 @@ class TestHandleVoice:
         assert forwarded.text == "hello there"
         assert forwarded.origin == "discord"
         assert forwarded.actor_id == "actor-1"
+        assert forwarded.origin_metadata == {"user_id": "123"}
 
     @pytest.mark.unit
     async def test_transcribed_voice_skip_delete_when_message_id_missing(
@@ -354,7 +356,7 @@ class TestDeliverInbound:
         start_polling.assert_not_awaited()
 
     @pytest.mark.unit
-    async def test_codex_message_seeds_prompt_and_starts_polling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_codex_message_starts_polling_without_synthetic_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Use headless lifecycle so _session_message_delivery_available returns True
         # without needing a separate patch (keeps mock count at 5).
         session = make_session(active_agent="codex", lifecycle_status="headless")
@@ -371,13 +373,9 @@ class TestDeliverInbound:
             process_text=AsyncMock(return_value=True),
             wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
-        polling_coordinator = SimpleNamespace(seed_codex_prompt_from_message=MagicMock())
-
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
         monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
-
-        monkeypatch.setattr(_message, "polling_coordinator", polling_coordinator)
 
         start_polling = AsyncMock()
 
@@ -388,10 +386,6 @@ class TestDeliverInbound:
             "<wrapped>",
             working_dir="/tmp/project",
             active_agent="codex",
-        )
-        polling_coordinator.seed_codex_prompt_from_message.assert_called_once_with(
-            session.session_id,
-            "hello agent",
         )
         db.update_last_activity.assert_awaited_once_with(session.session_id)
         start_polling.assert_awaited_once_with(session.session_id, session.tmux_session_name)
@@ -439,11 +433,43 @@ class TestProcessMessage:
             session_id=session.session_id,
             origin="web",
             content="ship it",
+            payload_json=None,
             actor_id="actor-1",
             actor_name="Bob",
             actor_avatar_url=None,
             source_message_id="msg-1",
             source_channel_id="chan-1",
+        )
+
+    @pytest.mark.unit
+    async def test_origin_metadata_is_encoded_into_queue_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session()
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        manager = SimpleNamespace(enqueue=AsyncMock())
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
+
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text="ship it",
+            origin="terminal",
+            origin_metadata={"email": "maurice@instrukt.ai"},
+        )
+
+        await _message.process_message(cmd, SimpleNamespace(), AsyncMock())
+
+        manager.enqueue.assert_awaited_once_with(
+            session_id=session.session_id,
+            origin="terminal",
+            content="ship it",
+            payload_json='{"origin_metadata": {"email": "maurice@instrukt.ai"}}',
+            actor_id=None,
+            actor_name=None,
+            actor_avatar_url=None,
+            source_message_id=None,
+            source_channel_id=None,
         )
 
 
@@ -478,6 +504,40 @@ class TestDeliverInboundReflectionBoundary:
         await _message.deliver_inbound(row, client, AsyncMock())
 
         client.broadcast_user_input.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_deliver_inbound_persists_origin_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session()
+        row = make_row(
+            session_id=session.session_id,
+            content="hello",
+            origin="terminal",
+            payload_json='{"origin_metadata": {"email": "maurice@instrukt.ai"}}',
+        )
+        client = AsyncMock()
+
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_origin_metadata=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
+        )
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        db.update_origin_metadata.assert_awaited_once_with(
+            session.session_id,
+            "terminal",
+            {"email": "maurice@instrukt.ai"},
+        )
 
     @pytest.mark.unit
     async def test_deliver_inbound_does_not_write_last_projected_at(self, monkeypatch: pytest.MonkeyPatch) -> None:

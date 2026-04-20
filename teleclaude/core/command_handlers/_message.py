@@ -1,14 +1,16 @@
 """Message, voice, and file command handlers."""
 
 import asyncio
+import json
 import time
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
-from teleclaude.core import polling_coordinator, tmux_bridge, tmux_io, voice_message_handler
+from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.conversation_messages import is_conversation_bridge_message
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
@@ -26,6 +28,34 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+
+def _encode_inbound_payload(origin_metadata: Mapping[str, object] | None) -> str | None:
+    """Serialize queue-side metadata needed at delivery time."""
+    if origin_metadata is None:
+        return None
+    payload = dict(origin_metadata)
+    if not payload:
+        return None
+    return json.dumps({"origin_metadata": payload})
+
+
+def _decode_inbound_origin_metadata(row: InboundQueueRow) -> Mapping[str, object] | None:
+    """Decode typed origin metadata carried through the inbound queue."""
+    payload_json = row["payload_json"]
+    if not payload_json:
+        return None
+    try:
+        payload = json.loads(payload_json)
+    except json.JSONDecodeError:
+        logger.warning("Invalid inbound payload_json for row %d", row["id"])
+        return None
+    if not isinstance(payload, dict):
+        return None
+    origin_metadata = payload.get("origin_metadata")
+    if not isinstance(origin_metadata, dict) or not origin_metadata:
+        return None
+    return origin_metadata
 
 
 async def _session_message_delivery_available(session: Session) -> bool:
@@ -127,6 +157,7 @@ async def handle_voice(
             actor_id=cmd.actor_id,
             actor_name=cmd.actor_name,
             actor_avatar_url=cmd.actor_avatar_url,
+            origin_metadata=cmd.origin_metadata,
         ),
         client,
         start_polling,
@@ -217,6 +248,7 @@ async def deliver_inbound(
     message_text = row["content"]
 
     logger.debug("Delivering inbound row %d for session %s: %s...", row["id"], session_id, message_text[:50])
+    origin_metadata = _decode_inbound_origin_metadata(row)
 
     session = await db.get_session(session_id)
     if not session:
@@ -250,6 +282,8 @@ async def deliver_inbound(
             last_message_sent_at=accepted_at,
             last_input_origin=row["origin"],
         )
+    if origin_metadata:
+        await db.update_origin_metadata(session_id, row["origin"], dict(origin_metadata))
 
     is_system_message = message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not is_conversation_bridge_message(
         message_text
@@ -286,9 +320,6 @@ async def deliver_inbound(
     if is_system_message:
         return
 
-    if (active_agent or "").lower() == "codex":
-        polling_coordinator.seed_codex_prompt_from_message(session_id, message_text)
-
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)
     logger.debug("Started polling for session %s", session_id)
@@ -317,6 +348,7 @@ async def process_message(
         session_id=session_id,
         origin=cmd.origin or "",
         content=cmd.text,
+        payload_json=_encode_inbound_payload(cmd.origin_metadata),
         actor_id=cmd.actor_id,
         actor_name=cmd.actor_name,
         actor_avatar_url=cmd.actor_avatar_url,

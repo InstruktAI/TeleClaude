@@ -41,9 +41,6 @@ from teleclaude.utils import strip_ansi_codes
 from ._fanout import _FanoutMixin
 from ._helpers import (
     _is_checkpoint_prompt,
-    _is_codex_input_already_recorded,
-    _is_codex_synthetic_prompt_event,
-    _to_utc,
 )
 
 if TYPE_CHECKING:
@@ -362,7 +359,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             logger.debug("Empty prompt detected, skipping user input persistence for session %s", session_id)
             return
 
-        is_codex_synthetic = _is_codex_synthetic_prompt_event(payload.raw)
         # System-injected checkpoint — not real user input, skip entirely
         if _is_checkpoint_prompt(prompt_text, raw_payload=payload.raw):
             logger.debug("Checkpoint prompt detected, skipping user input persistence for session %s", session_id)
@@ -373,27 +369,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
 
         # Clear checkpoint state on real user input
         await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
-
-        # Prepare batched update
-        now = datetime.now(UTC)
-        if is_codex_synthetic:
-            existing_input = (session.last_message_sent or "").strip()
-            incoming_input = prompt_text.strip()
-            existing_at = session.last_message_sent_at
-            recent_existing = isinstance(existing_at, datetime) and (now - existing_at).total_seconds() <= 300
-            if (
-                recent_existing
-                and existing_input
-                and incoming_input
-                and len(existing_input) > len(incoming_input)
-                and existing_input.startswith(incoming_input)
-            ):
-                logger.debug(
-                    "Skipping synthetic Codex prompt overwrite for session %s (existing=%r incoming=%r)",
-                    session_id,
-                    existing_input[:50],
-                    incoming_input[:50],
-                )
 
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
 
@@ -454,7 +429,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             last_agent_stop_at=stop_timestamp,
         )
 
-        await self._record_agent_stop_input(session_id, payload, session)
         link_output, summary = await self._record_agent_stop_output(session_id, payload)
 
         # Emit activity event for UI updates (summary flows to TUI via event, not DB)
@@ -475,46 +449,6 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
             source_computer,
             linked_prompt_at=linked_prompt_at,
         )
-
-    async def _record_agent_stop_input(
-        self,
-        session_id: str,
-        payload: AgentStopPayload,
-        session: "Session | None",
-    ) -> None:
-        """Backfill missing Codex input metadata and user prompt events."""
-        input_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
-        recovered_input_text: str | None = None
-
-        prompt_already_accepted = (
-            session is not None
-            and isinstance(session.last_message_sent_at, datetime)
-            and (
-                not isinstance(session.last_output_at, datetime)
-                or _to_utc(session.last_message_sent_at) > _to_utc(session.last_output_at)
-            )
-        )
-        if prompt_already_accepted:
-            return
-
-        codex_input = await self._extract_user_input_for_codex(session_id, payload)
-        if isinstance(codex_input, tuple) and len(codex_input) == 2:
-            input_text, input_timestamp = codex_input
-            input_update_kwargs["last_message_sent"] = input_text[:200]
-            if input_timestamp:
-                input_update_kwargs["last_message_sent_at"] = input_timestamp.isoformat()
-            if input_text.strip() and not _is_codex_input_already_recorded(session, input_text):
-                recovered_input_text = input_text
-        elif codex_input:
-            logger.debug("Ignoring malformed codex input tuple for session %s", session_id)
-
-        if input_update_kwargs:
-            await db.update_session(session_id, **input_update_kwargs)
-        if recovered_input_text is None:
-            return
-
-        logger.info("Backfilling missing user_prompt_submit from codex agent_stop for session %s", session_id)
-        self._emit_activity_event(session_id, AgentHookEvents.USER_PROMPT_SUBMIT)
 
     async def _record_agent_stop_output(
         self, session_id: str, payload: AgentStopPayload
@@ -579,7 +513,7 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         *,
         linked_prompt_at: datetime | None = None,
     ) -> None:
-        """Complete stop fan-out, listener notification, forwarding, and checkpoint injection."""
+        """Complete stop fan-out, listener notification, and forwarding."""
         fanout_output = link_output
         used_conversation_replay = False
         if session is not None and isinstance(session.last_conversation_injected_at, datetime):
@@ -606,13 +540,10 @@ class AgentCoordinator(  # pylint: disable=too-many-instance-attributes  # Coord
         if not (source_computer and source_computer != config.computer.name):
             await self._forward_stop_to_initiator(session_id, link_output)
 
-        await self._maybe_inject_checkpoint(session_id, session)
-
     async def handle_tool_use(self, context: AgentEventContext) -> None:
         """Handle tool_use event — agent started a tool call.
 
         Only records the FIRST tool_use per turn (when last_tool_use_at is NULL).
-        This gives _maybe_inject_checkpoint the true turn start time, not the last tool call.
         Cleared by handle_user_prompt_submit when a new turn begins.
         """
         session_id = context.session_id

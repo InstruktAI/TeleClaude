@@ -44,7 +44,7 @@ type: 'design'
 - **Exactly-Once Lock**: Each row claimed exclusively by one worker using locked_at + lock_cutoff.
 - **Exponential Backoff**: Retryable failures back off exponentially and cap at the configured max delay.
 - **Idempotent Processing**: Handlers tolerate duplicate delivery if lock expires during processing.
-- **Receiver-side burst debounce**: Codex notify-derived completion rows are latest-wins debounced for 10 seconds at outbox admission before persistence. This suppresses repeated completion pulses for the same session without changing downstream ordering rules.
+- **Receiver-side burst debounce**: Codex stop-hook completion rows are latest-wins debounced for 10 seconds at outbox admission before persistence. This suppresses repeated completion pulses for the same session without changing downstream ordering rules.
 - **Control-plane hooks**: `tool_use` / `tool_done` do not directly fan out adapter output.
   Transcript polling is the output data plane.
 - **Bounded burst handling**: per-session in-memory queue is bounded; bursty hook classes

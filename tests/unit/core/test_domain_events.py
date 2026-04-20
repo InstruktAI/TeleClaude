@@ -71,13 +71,13 @@ class TestAgentRestartEventEmission:
             patch("teleclaude.core.command_handlers._agent.tmux_io") as mock_tmux_io,
             patch("teleclaude.core.command_handlers._agent.assert_agent_enabled", return_value="claude"),
             patch("teleclaude.core.command_handlers._agent.get_agent_command", return_value="claude resume"),
-            patch("teleclaude.core.command_handlers._agent.inject_checkpoint_if_needed", new=AsyncMock()),
             patch("asyncio.create_task", side_effect=capture_task),
             patch.object(event_bus, "emit", side_effect=capture_emit),
         ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
             mock_tmux_bridge.session_exists = AsyncMock(return_value=True)
             mock_tmux_bridge.get_pane_pid = AsyncMock(return_value=None)
+            mock_tmux_bridge.send_keys_existing_tmux = AsyncMock(return_value=True)
             mock_tmux_io.send_signal = AsyncMock(return_value=False)
             mock_tmux_io.wait_for_shell_ready = AsyncMock(return_value=True)
             await agent_restart(cmd, client, execute_terminal_command)

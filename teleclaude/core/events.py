@@ -122,8 +122,9 @@ class AgentHookEvents:  # pylint: disable=too-few-public-methods
             ),
             "codex": MappingProxyType(
                 {
-                    # Codex only supports a single notify hook (agent-turn-complete)
-                    "agent-turn-complete": AGENT_STOP,
+                    "SessionStart": AGENT_SESSION_START,
+                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
+                    "Stop": AGENT_STOP,
                 }
             ),
         }

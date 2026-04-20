@@ -34,6 +34,23 @@ This spec must always document:
 - failure handling class,
 - ordering model.
 
+Current raw-to-normalized lifecycle mapping:
+
+| Agent  | Raw event                        | Normalized event         | Forwarding |
+| ------ | -------------------------------- | ------------------------ | ---------- |
+| Claude | `SessionStart`                   | `session_start`          | forwarded  |
+| Claude | `UserPromptSubmit`               | `user_prompt_submit`     | forwarded  |
+| Claude | `PreToolUse` / `PostToolUse`     | `tool_use` / `tool_done` | forwarded  |
+| Claude | `Stop`                           | `agent_stop`             | forwarded  |
+| Gemini | `SessionStart`                   | `session_start`          | forwarded  |
+| Gemini | `BeforeAgent`                    | `user_prompt_submit`     | forwarded  |
+| Gemini | `BeforeTool` / `AfterTool`       | `tool_use` / `tool_done` | forwarded  |
+| Gemini | `AfterAgent`                     | `agent_stop`             | forwarded  |
+| Codex  | `SessionStart`                   | `session_start`          | forwarded  |
+| Codex  | `UserPromptSubmit`               | `user_prompt_submit`     | forwarded  |
+| Codex  | synthetic tool lane from polling | `tool_use` / `tool_done` | forwarded  |
+| Codex  | `Stop`                           | `agent_stop`             | forwarded  |
+
 Receiver-added payload fields:
 
 - TeleClaude session id,

@@ -18,12 +18,11 @@ Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`").
 2. **Transcript-based** — Tool call timeline from the current turn provides suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
-Two delivery paths exist:
+One delivery path exists:
 
-- **Claude/Gemini**: Hook-based invisible checkpoint. The hook receiver (`receiver.py`) evaluates the checkpoint condition at the `agent_stop` boundary and returns blocking JSON to stdout. The CLI keeps the agent running without the checkpoint text appearing in the tmux pane.
-- **Codex**: Tmux injection. The daemon's `AgentCoordinator` injects the checkpoint message into the tmux pane via `send_keys` (Codex has no hook output mechanism).
+- **Claude/Gemini/Codex**: Hook-based invisible checkpoint. The hook receiver (`receiver.py`) evaluates the checkpoint condition at the `agent_stop` boundary and returns blocking hook output to stdout. The agent keeps running without the checkpoint text appearing in the tmux pane.
 
-Both paths call the same `get_checkpoint_content()` entry point, ensuring parity.
+All agents call the same `get_checkpoint_content()` entry point, ensuring parity.
 
 ## Inputs/Outputs
 
@@ -41,20 +40,20 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 - `CheckpointResult` — Structured heuristic output: matched file categories, required actions, observations, all-clear flag.
 - **Claude/Gemini**: Blocking JSON printed to stdout by `receiver.py`. Claude: `{"decision": "block", "reason": <context-aware message>}`. Gemini: `{"decision": "deny", "reason": <context-aware message>}`. The `agent_stop` event is NOT enqueued (agent stays running). For Claude, the reason is injected as a `<system-reminder>`. For Gemini, the reason becomes a new prompt triggering a retry turn.
-- **Codex**: Context-aware checkpoint message injected into the agent's tmux pane via `send_keys`.
+- **Codex**: Blocking JSON printed to stdout by `receiver.py`: `{"decision": "block", "reason": <context-aware message>}`. The `agent_stop` event is NOT enqueued (agent keeps running). The `reason` becomes Codex's continuation prompt.
 - DB field updated: `last_checkpoint_at`.
 
 ## Invariants
 
 1. **Unified turn timer**: `turn_start = max(last_message_sent_at, last_checkpoint_at)`. The most recent input event (real user message or previous checkpoint) marks when the agent's current work period began. If `now - turn_start < 30s`, the checkpoint is skipped. This works identically for all agent types and both delivery paths.
 
-2. **Checkpoint messages are invisible to session state**: They never persist as user input. `handle_user_prompt_submit` returns early (before notification clearing or DB writes). `_extract_user_input_for_codex` filters them out before writing to `last_message_sent`. The native session transcript retains them as ground truth.
+2. **Checkpoint messages are invisible to session state**: They never persist as user input. `handle_user_prompt_submit` returns early (before notification clearing or DB writes). The native session transcript retains them as ground truth.
 
 3. **Notification flag preservation**: Checkpoint injections do not clear the notification flag. Only real user input clears it. This prevents users from missing notifications about completed agent work.
 
 4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
 
-5. **Transcript-based dedup (Codex)**: For agents without `tool_use` support (e.g. Codex), an additional check reads the last user message from the session transcript via `extract_last_user_message`. If it matches the checkpoint constant, injection is skipped. This prevents checkpoint-response-stop loops specific to agents that fire `agent_stop` rapidly.
+5. **Stop-hook re-entry protection**: When a checkpoint blocks `agent_stop`, the next `Stop` re-enters through the same hook path. The receiver's clear-marker and recheck-limit logic prevents infinite checkpoint loops while still allowing one follow-up validation pass.
 
 6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_output_raw` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
 
@@ -72,7 +71,7 @@ Both paths call the same `get_checkpoint_content()` entry point, ensuring parity
 
 13. **Fail-open design**: Git unavailable → generic Phase 1 message. Transcript unavailable → file-based instructions only (no suppression). Any exception in the builder → generic Phase 1 message. The checkpoint never blocks due to infrastructure failure.
 
-14. **Delivery parity**: Both hook route (Claude/Gemini) and tmux route (Codex) call the same `get_checkpoint_content()` entry point with equivalent inputs, ensuring identical heuristic output regardless of delivery mechanism.
+14. **Delivery parity**: Claude, Gemini, and Codex all call the same `get_checkpoint_content()` entry point through the hook receiver, ensuring identical heuristic output regardless of agent runtime.
 
 15. **Dynamic log-check window**: The required `instrukt-ai-logs teleclaude --since <window>` action is derived from elapsed time since the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`.
 
@@ -142,25 +141,23 @@ sequenceDiagram
     Hook->>DB: Enqueue agent_stop (real stop enters daemon)
 ```
 
-### 2. Tmux checkpoint (Codex only)
+### 2. Hook checkpoint (Codex)
 
 ```mermaid
 sequenceDiagram
     participant User
     participant Agent
     participant Hook as Hook Receiver
-    participant Daemon
     participant DB
-    participant Tmux
 
     User->>Agent: Send message
-    Agent->>Hook: agent_stop (Codex notify)
-    Hook->>Daemon: Enqueue event
-    Daemon->>DB: Read last_message_sent_at, last_checkpoint_at
-    Daemon->>Daemon: turn_start = max(message_at, checkpoint_at)
-    Daemon->>Daemon: elapsed > 30s? Yes
-    Daemon->>Tmux: send_keys(context-aware message)
-    Daemon->>DB: Set last_checkpoint_at
+    Agent->>Hook: Stop
+    Hook->>DB: Read last_message_sent_at, last_checkpoint_at
+    Hook->>Hook: turn_start = max(message_at, checkpoint_at)
+    Hook->>Hook: elapsed > 30s? Yes
+    Hook->>DB: Set last_checkpoint_at
+    Hook-->>Agent: Print blocking JSON to stdout
+    Note over Hook: exit(0) — no enqueue
 ```
 
 ### 3. Checkpoint response cycle (no re-injection for quick responses)
@@ -206,7 +203,7 @@ sequenceDiagram
 | DB field missing (migration not run)                          | `AttributeError` on session access                              | Run migration 004; daemon auto-runs on startup      |
 | Agent silent after checkpoint                                 | Same output re-extracted at next `agent_stop`                   | TTS dedup skips speaking; DB still updates          |
 | Rapid successive stops (< 30s)                                | Checkpoint skipped due to threshold                             | Correct behavior                                    |
-| Codex checkpoint loop                                         | Transcript dedup detects own message                            | Correct behavior                                    |
+| Codex checkpoint loop                                         | Hook re-entry limiter detects repeated blocked stop             | Correct behavior                                    |
 | Both `last_message_sent_at` and `last_checkpoint_at` are None | No turn start → checkpoint skipped                              | First real user message sets `last_message_sent_at` |
 | DB unavailable in receiver                                    | `_maybe_checkpoint_output` returns None (fail-open)             | Stop passes through normally                        |
 | Hook output malformed                                         | CLI ignores non-JSON stdout; agent stops normally               | Next stop re-evaluates                              |

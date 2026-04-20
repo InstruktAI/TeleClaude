@@ -294,6 +294,48 @@ def _handle_response_item_entry(
     return False
 
 
+def _handle_event_msg_entry(
+    entry: Mapping[str, object],
+    entry_dt: datetime | None,
+    state: _ToolCallExtractionState,
+) -> bool:
+    """Handle Codex event_msg entries that represent mutating tools."""
+    if entry.get("type") != "event_msg":
+        return False
+
+    payload = entry.get("payload")
+    if not isinstance(payload, dict):
+        return False
+
+    payload_type = payload.get("type")
+    if payload_type != "patch_apply_end":
+        return False
+
+    _flush_pending_record(state)
+
+    changes = payload.get("changes")
+    touched_paths = list(changes.keys()) if isinstance(changes, dict) else []
+    success = payload.get("success")
+    status = str(payload.get("status", "")).strip().lower()
+    had_error = False
+    if isinstance(success, bool):
+        had_error = not success
+    elif status:
+        had_error = status not in {"success", "completed", "ok"}
+
+    result_text = str(payload.get("stdout") or payload.get("stderr") or "")
+    state.records.append(
+        ToolCallRecord(
+            tool_name="apply_patch",
+            input_data={"paths": touched_paths},
+            had_error=had_error,
+            result_snippet=result_text[:CHECKPOINT_RESULT_SNIPPET_MAX_CHARS],
+            timestamp=entry_dt,
+        )
+    )
+    return True
+
+
 def _start_pending_tool_use(block: Mapping[str, object], entry_dt: datetime | None) -> ToolCallRecord:
     """Create a pending record from a transcript tool_use block."""
     raw_input = block.get("input", {})
@@ -375,6 +417,8 @@ def _extract_tool_calls_for_scope(
         state = _ToolCallExtractionState()
         for entry in entries[turn_start_idx:]:
             entry_dt = _entry_timestamp(entry)
+            if _handle_event_msg_entry(entry, entry_dt, state):
+                continue
             if _handle_response_item_entry(entry, entry_dt, state):
                 continue
             _process_entry_message_blocks(entry, entry_dt, state)

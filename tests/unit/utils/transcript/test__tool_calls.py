@@ -120,6 +120,44 @@ class TestCurrentTurnExtraction:
             )
         ]
 
+    def test_extract_tool_calls_current_turn_maps_codex_patch_apply_end_to_apply_patch(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        entries = [
+            {"message": {"role": "user", "content": [{"type": "input_text", "text": "Prompt"}]}},
+            {
+                "timestamp": "2024-01-01T12:00:03Z",
+                "type": "event_msg",
+                "payload": {
+                    "type": "patch_apply_end",
+                    "success": True,
+                    "stdout": "Success. Updated the following files:\nM src/kept.py\n",
+                    "changes": {
+                        "/repo/src/kept.py": {"type": "update"},
+                        "/repo/tests/test_kept.py": {"type": "update"},
+                    },
+                },
+            },
+        ]
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "_get_entries_for_agent",
+            lambda transcript_path, agent_name, tail_entries=None: entries,
+        )
+
+        timeline = transcript_tool_calls.extract_tool_calls_current_turn("/tmp/demo.jsonl", AgentName.CODEX)
+
+        assert timeline.tool_calls == [
+            transcript_tool_calls.ToolCallRecord(
+                tool_name="apply_patch",
+                input_data={"paths": ["/repo/src/kept.py", "/repo/tests/test_kept.py"]},
+                had_error=False,
+                result_snippet="Success. Updated the following files:\nM src/kept.py\n",
+                timestamp=datetime(2024, 1, 1, 12, 0, 3, tzinfo=UTC),
+            )
+        ]
+
     def test_extract_tool_calls_current_turn_fails_open_when_loading_raises(
         self,
         monkeypatch: pytest.MonkeyPatch,

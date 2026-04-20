@@ -9,40 +9,27 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import (
-    LOCAL_COMPUTER,
-    format_system_message,
-)
-from teleclaude.core.agents import AgentName, get_default_agent
-from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
+from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import (
-    get_active_links_for_session,
-    get_peer_members,
-    notify_stop,
-)
+from teleclaude.core.session_listeners import get_active_links_for_session, get_peer_members, notify_stop
 from teleclaude.core.session_start_messages import SESSION_START_MESSAGES
 from teleclaude.core.summarizer import summarize_agent_output
 from teleclaude.tts.manager import TTSManager
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
     extract_last_agent_message,
-    extract_last_user_message_with_timestamp,
     get_assistant_messages_since,
 )
 
-from ._helpers import (
-    _MAX_FORWARDED_LINK_OUTPUT_CHARS,
-    _is_checkpoint_prompt,
-)
+from ._helpers import _MAX_FORWARDED_LINK_OUTPUT_CHARS
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.events import AgentStopPayload
-    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
 
@@ -176,51 +163,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
         except Exception as exc:  # pylint: disable=broad-exception-caught  # Summarizer boundary
             logger.warning("Summarization failed: %s", exc, extra={"session_id": session_id})
             return None
-
-    async def _extract_user_input_for_codex(  # pylint: disable=too-many-return-statements  # Guarded transcript extraction
-        self, session_id: str, payload: "AgentStopPayload"
-    ) -> tuple[str, datetime | None] | None:
-        """Extract last user input from transcript for Codex sessions.
-
-        Codex doesn't have user_prompt_submit hook, so we extract user input
-        from the transcript on agent stop as a fallback.
-        """
-        session = await db.get_session(session_id)
-        if not session:
-            return None
-
-        # Only for Codex sessions
-        agent_name_value = session.active_agent
-        if agent_name_value != AgentName.CODEX.value:
-            return None
-
-        transcript_path = payload.transcript_path or session.native_log_file
-        if not transcript_path:
-            logger.debug("Codex user input extraction skipped (no transcript)", session=session_id)
-            return None
-
-        try:
-            agent_name = AgentName.from_str(agent_name_value)
-        except ValueError:
-            return None
-
-        extracted = extract_last_user_message_with_timestamp(transcript_path, agent_name)
-        if not extracted:
-            logger.debug("Codex user input extraction skipped (no user message)", session=session_id)
-            return None
-        last_user_input, input_timestamp = extracted
-
-        # Don't persist our own checkpoint message as user input
-        if _is_checkpoint_prompt(last_user_input):
-            logger.debug("Codex user input skipped (checkpoint message) for session %s", session_id)
-            return None
-
-        logger.debug(
-            "Extracted Codex user input: session=%s input=%s...",
-            session_id,
-            last_user_input[:50],
-        )
-        return last_user_input, input_timestamp
 
     async def _notify_session_listener(
         self,
@@ -365,22 +307,3 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]  # pylint: disable=too
                 delivered,
             )
         return delivered
-
-    async def _maybe_inject_checkpoint(self, session_id: str, session: "Session | None") -> None:
-        """Conditionally inject a checkpoint message into the agent's tmux pane.
-
-        Claude/Gemini: handled by hook output in receiver.py (invisible checkpoint).
-        Codex: falls through to tmux injection below.
-        """
-        if not session:
-            return
-
-        try:
-            await inject_checkpoint_if_needed(
-                session_id,
-                route="codex_tmux",
-                include_elapsed_since_turn_start=True,
-                default_agent=AgentName.from_str(get_default_agent()),
-            )
-        except Exception as exc:  # pylint: disable=broad-exception-caught  # Checkpoint injection boundary
-            logger.warning("Checkpoint injection failed for session %s: %s", session_id, exc)

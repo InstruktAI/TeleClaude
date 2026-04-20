@@ -15,7 +15,6 @@ from teleclaude.core.polling_coordinator import (
     _assistant_projection_signature,
     _build_transcript_output_update,
     _cleanup_codex_input_state,
-    _emit_codex_session_start,
     _percentile,
     _try_bind_codex_transcript,
     project_session_from_transcript,
@@ -72,60 +71,11 @@ def _make_session(
 
 @pytest.fixture(autouse=True)
 def _reset_codex_sets() -> Generator[None, None, None]:  # pylint: disable=protected-access
-    pc._codex_session_start_emitted.clear()
     pc._codex_transcript_bind_attempted.clear()
     pc._title_projection_signatures.clear()
     yield
-    pc._codex_session_start_emitted.clear()
     pc._codex_transcript_bind_attempted.clear()
     pc._title_projection_signatures.clear()
-
-
-class TestEmitCodexSessionStart:
-    @pytest.mark.unit
-    async def test_non_codex_session_is_noop(self):
-        session = _make_session(active_agent="claude")
-        emit = AsyncMock()
-        with patch("teleclaude.core.polling_coordinator.discover_codex_transcript_path"):
-            await _emit_codex_session_start(session, emit)
-        emit.assert_not_called()
-        assert session.session_id not in pc._codex_session_start_emitted
-
-    @pytest.mark.unit
-    async def test_first_call_emits_event_and_sets_guard(self):
-        session = _make_session()
-        emit = AsyncMock()
-        with patch(
-            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
-            return_value="/tmp/transcript.jsonl",
-        ):
-            await _emit_codex_session_start(session, emit)
-        emit.assert_called_once()
-        assert session.session_id in pc._codex_session_start_emitted
-
-    @pytest.mark.unit
-    async def test_second_call_same_session_is_noop(self):
-        session = _make_session()
-        emit = AsyncMock()
-        with patch(
-            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
-            return_value="/tmp/transcript.jsonl",
-        ):
-            await _emit_codex_session_start(session, emit)
-            await _emit_codex_session_start(session, emit)
-        emit.assert_called_once()
-
-    @pytest.mark.unit
-    async def test_guard_not_set_on_emission_failure(self):
-        session = _make_session()
-        emit = AsyncMock(side_effect=RuntimeError("emit failed"))
-        with patch(
-            "teleclaude.core.polling_coordinator.discover_codex_transcript_path",
-            return_value="/tmp/transcript.jsonl",
-        ):
-            with pytest.raises(RuntimeError):
-                await _emit_codex_session_start(session, emit)
-        assert session.session_id not in pc._codex_session_start_emitted
 
 
 class TestTryBindCodexTranscript:
@@ -192,13 +142,11 @@ class TestTryBindCodexTranscript:
 
 class TestCleanupCodexInputState:
     @pytest.mark.unit
-    def test_discards_from_both_state_sets(self):
+    def test_discards_from_transcript_bind_set(self):
         sid = "sess-cleanup-1"
-        pc._codex_session_start_emitted.add(sid)
         pc._codex_transcript_bind_attempted.add(sid)
         with patch("teleclaude.core.polling_coordinator.codex_prompt_submit"):
             _cleanup_codex_input_state(sid)
-        assert sid not in pc._codex_session_start_emitted
         assert sid not in pc._codex_transcript_bind_attempted
 
 

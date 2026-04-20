@@ -3,17 +3,56 @@
 from __future__ import annotations
 
 import argparse
-from typing import Protocol
+from typing import Protocol, cast
 
 from teleclaude.core.events import AgentHookEventType
 from teleclaude.core.models import JsonDict
+from teleclaude.hooks.adapters._stdin import read_stdin_payload
+
+
+def parse_stdin_hook_input(args: argparse.Namespace) -> tuple[str, str, JsonDict]:
+    """Read a hook payload from stdin and resolve the raw event name."""
+    raw_input, raw_data = read_stdin_payload()
+    event_type = args.event_type
+    if not isinstance(event_type, str) or not event_type.strip():
+        hook_event_name = raw_data.get("hook_event_name")
+        if not isinstance(hook_event_name, str) or not hook_event_name.strip():
+            raise ValueError("Hook payload is missing hook_event_name")
+        event_type = hook_event_name
+    return raw_input, event_type, cast(JsonDict, raw_data)
+
+
+def normalize_common_payload(
+    data: JsonDict,
+    *,
+    prompt_keys: tuple[str, ...] = ("prompt", "user_prompt"),
+    message_keys: tuple[str, ...] = ("message", "last_assistant_message"),
+) -> JsonDict:
+    """Normalize shared hook field aliases to TeleClaude's internal shape."""
+    normalized = dict(data)
+
+    if "prompt" not in normalized:
+        for key in prompt_keys:
+            prompt_value = normalized.pop(key, None)
+            if isinstance(prompt_value, str):
+                normalized["prompt"] = prompt_value
+                break
+
+    if "message" not in normalized:
+        for key in message_keys:
+            message_value = normalized.pop(key, None)
+            if isinstance(message_value, str):
+                normalized["message"] = message_value
+                break
+
+    return normalized
 
 
 class HookAdapter(Protocol):
     """Protocol for agent-specific hook behavior.
 
     Each adapter encapsulates the differences between agent CLIs:
-    input format, field names, checkpoint responses, and memory injection.
+    input format, field names, checkpoint responses, and additional context.
     """
 
     agent_name: str
@@ -38,6 +77,6 @@ class HookAdapter(Protocol):
         """Format checkpoint blocking response, or None if unsupported."""
         raise NotImplementedError
 
-    def format_memory_injection(self, context: str) -> str:
-        """Format memory context for SessionStart stdout injection."""
+    def format_additional_context(self, hook_event_name: str, context: str) -> str:
+        """Format stdout additional context for a specific hook event."""
         raise NotImplementedError
