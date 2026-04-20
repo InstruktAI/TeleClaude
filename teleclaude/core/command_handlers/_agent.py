@@ -13,7 +13,6 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
-from teleclaude.core.checkpoint_dispatch import inject_checkpoint_if_needed
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -39,6 +38,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
+_RESTART_CONTINUATION_STIMULUS = "Session restarted. Continue pending work or remain idle."
 
 
 def _get_session_profile(session: Session) -> str:
@@ -367,51 +367,42 @@ async def agent_restart(  # pylint: disable=too-many-locals,too-many-statements 
 
     await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
-    async def _inject_after_restart() -> None:
-        ready_for_injection, readiness_tail = await wait_for_agent_ready(
-            target_agent,
-            session,
-            AGENT_PROMPT_READY_TIMEOUT_S,
-            AGENT_START_STABILIZE_QUIET_S,
-        )
-        if not ready_for_injection:
-            logger.warning(
-                "agent_restart readiness timeout: session=%s timeout_s=%.1f — checkpoint not injected",
-                session.session_id,
-                AGENT_PROMPT_READY_TIMEOUT_S,
-            )
-            logger.warning(
-                "agent_restart readiness timeout tail: session=%s tail=%r",
-                session.session_id,
-                readiness_tail[-160:],
-            )
-            event_bus.emit(
-                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-                SessionLifecycleContext(session_id=session.session_id),
-            )
-            await client.send_message(
+    if cmd.self_restart:
+
+        async def _inject_after_restart() -> None:
+            ready_for_injection, readiness_tail = await wait_for_agent_ready(
+                target_agent,
                 session,
-                "Agent readiness timed out after restart. Session kept alive for inspection; checkpoint not injected.",
+                AGENT_PROMPT_READY_TIMEOUT_S,
+                AGENT_START_STABILIZE_QUIET_S,
             )
-            return
-        if cmd.self_restart:
-            # Self-restart: inject minimal continuation prompt instead of full checkpoint.
+            if not ready_for_injection:
+                logger.warning(
+                    "agent_restart readiness timeout: session=%s timeout_s=%.1f — continuation stimulus not sent",
+                    session.session_id,
+                    AGENT_PROMPT_READY_TIMEOUT_S,
+                )
+                logger.warning(
+                    "agent_restart readiness timeout tail: session=%s tail=%r",
+                    session.session_id,
+                    readiness_tail[-160:],
+                )
+                event_bus.emit(
+                    TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+                    SessionLifecycleContext(session_id=session.session_id),
+                )
+                await client.send_message(
+                    session,
+                    "Agent readiness timed out after restart. Session kept alive for inspection; continuation stimulus not sent.",
+                )
+                return
             # The agent has full context via --resume; it just needs a stimulus.
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=session.tmux_session_name or "",
-                text="Session restarted. Continue pending work or remain idle.",
-            )
-        else:
-            await inject_checkpoint_if_needed(
-                session.session_id,
-                route="restart_tmux",
-                include_elapsed_since_turn_start=False,
-                default_agent=target_agent,
-                get_session_cb=db.get_session,
-                update_session_cb=db.update_session,
+                text=_RESTART_CONTINUATION_STIMULUS,
             )
 
-    asyncio.create_task(_inject_after_restart(), name="inject-checkpoint-restart")
+        asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
 
     event_bus.emit(
         cmd.completion_event,  # type: ignore[arg-type]
