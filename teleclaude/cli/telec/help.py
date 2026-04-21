@@ -134,10 +134,9 @@ def _usage_node_with_subcommands(path: list[str], node: CommandDef) -> str:
     lines = ["Usage:"]
     lines.extend(_iter_subcommand_entries_for(prefix, node, col))
 
-    notes = list(dict.fromkeys([*node.notes, *[n for s in node.subcommands.values() for n in s.notes]]))
-    if notes:
+    if node.notes:
         lines.append("\nNotes:")
-        for note in notes:
+        for note in node.notes:
             lines.append(f"  {note}")
     return "\n".join(lines) + "\n"
 
@@ -382,10 +381,9 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
     for label, flags in _group_subcommand_flags(cmd):
         _append_flag_section(lines, label, flags)
 
-    notes = list(dict.fromkeys([*cmd.notes, *[note for sub_cmd in cmd.subcommands.values() for note in sub_cmd.notes]]))
-    if notes:
+    if cmd.notes:
         lines.append("\nNotes:")
-        for note in notes:
+        for note in cmd.notes:
             lines.append(f"  {note}")
 
 

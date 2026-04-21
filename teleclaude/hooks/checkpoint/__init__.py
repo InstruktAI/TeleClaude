@@ -222,9 +222,8 @@ def _commit_instruction(on_main: bool) -> str:
     """Branch-aware commit instruction for the checkpoint message."""
     if on_main:
         return (
-            "You are on `main` — do NOT commit yet. State a recommendation to the human "
-            "(what changed, why, file types, scope) and wait for explicit approval. "
-            "If approved, commit with `telec code commit -m '…'`."
+            "Collect your changes (what changed, why, file types, scope) "
+            "Then execute `telec code commit -m '…'` to trigger options and present result."
         )
     return "Commit your changes with `telec code commit`"
 
@@ -366,14 +365,14 @@ def get_checkpoint_content(
         log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
 
         result = run_heuristics(effective_files, timeline, context, log_since_window=log_since_window)
-        if not effective_files or _is_docs_only(effective_files):
+        if not effective_files:
             logger.info(
-                "Checkpoint payload skipped (no turn-local code changes)",
+                "Checkpoint payload skipped (no turn-local changes)",
                 extra={
                     **base_extra,
                     "timeline_has_data": timeline.has_data,
                     "timeline_records": len(timeline.tool_calls),
-                    "changed_files": len(effective_files),
+                    "changed_files": 0,
                     "workspace_kind": scoped_paths.workspace_kind,
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
@@ -387,33 +386,8 @@ def get_checkpoint_content(
             )
             return None
 
-        if result.is_all_clear:
-            logger.info(
-                "Checkpoint payload skipped (all checks already satisfied)",
-                extra={
-                    **base_extra,
-                    "timeline_has_data": timeline.has_data,
-                    "timeline_records": len(timeline.tool_calls),
-                    "changed_files": len(effective_files),
-                    "workspace_kind": scoped_paths.workspace_kind,
-                    "strategy": scoped_paths.strategy,
-                    "ledger_updated": scoped_paths.ledger_updated,
-                    "categories": result.categories,
-                    "required_actions": len(result.required_actions),
-                    "observations": len(result.observations),
-                    "mode": "silent_all_clear",
-                    "message_len": 0,
-                    "used_session_fallback": used_session_fallback,
-                },
-            )
-            return None
-
         message = _compose_checkpoint_message(effective_files, result)
-        mode = (
-            "docs_only"
-            if (not effective_files or _is_docs_only(effective_files))
-            else ("all_clear" if result.is_all_clear else "actionable")
-        )
+        mode = "docs_only" if _is_docs_only(effective_files) else ("all_clear" if result.is_all_clear else "actionable")
         logger.info(
             "Checkpoint payload computed",
             extra={
