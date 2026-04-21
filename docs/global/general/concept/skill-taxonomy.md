@@ -35,7 +35,6 @@ In-scope skills (5):
 | `systematic-debugging`       | Root cause diagnosis — traces evidence before proposing any fix                |
 | `next-silent-failure-hunter` | Error path diagnosis — audits failure handling before recommending changes     |
 | `tech-stack-docs`            | Documentation research — gathers authoritative sources before writing snippets |
-| `youtube`                    | Information gathering and research — retrieves and processes external content  |
 
 Excluded from this pass (4 non-exploratory unmigrated skills):
 
