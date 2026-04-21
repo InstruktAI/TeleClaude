@@ -59,20 +59,20 @@ Orchestrator-managed files (`todos.db` roadmap, `todos.db` state) are part of th
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
-| Aspect     | When to use                 | Skill                      | Task                                                              |
-| ---------- | --------------------------- | -------------------------- | ----------------------------------------------------------------- |
-| scope      | Always                      | _(reviewer direct)_        | Verify delivery matches requirements — no gold-plating, no gaps   |
-| code       | Always                      | next-code-reviewer         | Find bugs and pattern violations                                  |
-| paradigm   | Always                      | _(reviewer direct)_        | Paradigm-fit assessment (see below)                               |
-| principles | Always                      | _(reviewer direct)_        | Principle violation hunt (see below)                              |
-| security   | Always                      | _(reviewer direct)_        | Check for secrets, injection, auth gaps, info leakage (see below) |
-| tests      | Always                      | next-test-analyzer         | Evaluate behavioral value, weak-test anti-patterns, and coverage  |
-| errors     | Always                      | next-silent-failure-hunter | Find silent failures                                              |
-| types      | Types added/modified        | next-type-design-analyzer  | Validate type design                                              |
-| comments   | Code changed                | next-comment-analyzer      | Check accuracy of comments on changed code                        |
-| logging    | Always                      | next-code-reviewer         | Enforce logging policy; reject ad-hoc debug probes                |
-| docs       | CLI, config, or API changed | _(reviewer direct)_        | Verify help text, config surface, README reflect changes          |
-| simplify   | After other lanes pass      | next-code-simplifier       | Simplify without behavior changes                                 |
+| Lane       | Reference                                                                   | Task                                                             |
+| ---------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| scope      | § Scope verification                                                        | Verify delivery matches requirements — no gold-plating, no gaps  |
+| code       | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                 |
+| paradigm   | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency            |
+| principles | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles              |
+| security   | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage            |
+| tests      | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage |
+| errors     | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling               |
+| types      | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement         |
+| comments   | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place    |
+| logging    | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes               |
+| docs       | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README reflect changes         |
+| simplify   | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                |
 
 ### Lane execution gate
 
@@ -115,6 +115,28 @@ Findings:
 - Gold-plating (scope creep beyond requirements) → Important.
 
 A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, or satisfaction analysis.
+
+#### Code quality review
+
+Systematically check changed code for bugs, pattern violations, and structural anti-patterns. Read `code-quality-practices` and `design-fundamentals` before starting.
+
+For each changed file, evaluate:
+
+1. **Bug detection** — Logic errors, null/undefined handling, race conditions, off-by-one errors, resource leaks. Focus on code paths that can produce wrong results or crash.
+2. **Contract fidelity** — Do call sites honour the contract of the functions they call? Are preconditions met? Are return values handled correctly?
+3. **Pattern violations** — Does the code follow the established patterns in adjacent code? Import conventions, error handling style, naming, module structure.
+4. **Duplication** — Is logic copy-pasted where it should be extracted? Is an existing utility ignored?
+5. **Unnecessary complexity** — Premature abstraction, over-engineering, dead code, unreachable branches, abstractions with a single consumer.
+
+Only report findings with high confidence — quality over quantity. Each finding must name the file, line range, the specific violation, and a concrete fix.
+
+Severity guidance:
+
+- Bugs that produce wrong results or crash → **Critical**.
+- Contract violations at boundaries → **Critical**.
+- Pattern violations that increase maintenance cost → **Important**.
+- Unnecessary complexity or duplication → **Important**.
+- Minor style inconsistencies → **Suggestion**.
 
 #### Paradigm-fit assessment
 
@@ -200,6 +222,92 @@ Severity guidance:
 Missing tests for new behavior are **Important** findings.
 Missing browser-smoke verification for browser-based frontend changes is an **Important** finding.
 
+#### Error handling review
+
+Audit all error handling paths in the diff for silent failures, inadequate logging, and inappropriate fallback behavior. Use the `silent-failure-audit` procedure for the systematic approach.
+
+Key targets:
+
+1. **Empty catch blocks** — absolutely forbidden.
+2. **Broad exception catches** — `catch (Exception)` or `except Exception` that hide unrelated errors.
+3. **Log-and-continue** — logging an error but continuing execution without surfacing to the caller.
+4. **Silent defaults** — returning `[]`, `None`, `0`, or fallback values on error without logging.
+5. **Optional chaining abuse** — `?.` chains that silently skip operations that should fail visibly.
+6. **Retry without escalation** — retry loops that exhaust attempts without informing the caller or user.
+
+For each handler, ask: would a developer debugging this 6 months from now have enough information in the logs to find the problem?
+
+Severity guidance:
+
+- Silent failures (error swallowed, no log, no user feedback) → **Critical**.
+- Broad catches that could mask unrelated errors → **Critical**.
+- Poor error messages or missing context in logs → **Important**.
+- Unjustified fallback behaviour → **Important** (or **Critical** if it masks data corruption).
+
+#### Type design review
+
+When the diff introduces or modifies types, data models, or dataclasses, evaluate the type design quality.
+
+For each type, assess:
+
+1. **Invariant identification** — What consistency rules, valid state constraints, or relationship constraints does the type encode? Are they explicit or implicit?
+2. **Encapsulation** — Are internals hidden? Can invariants be violated from outside the type?
+3. **Invariant enforcement** — Are invariants checked at construction? Are all mutation points guarded? Can invalid instances be created?
+4. **Usefulness** — Do the invariants prevent real bugs? Are they aligned with domain requirements?
+
+Common anti-patterns to flag:
+
+- Anemic domain models with no behaviour (just data bags with external logic).
+- Types that expose mutable internals.
+- Invariants enforced only through documentation, not code.
+- Missing validation at construction boundaries.
+- Types with too many responsibilities.
+
+Severity guidance:
+
+- Types that allow invalid states to be constructed → **Important**.
+- Exposed mutable internals on shared types → **Important**.
+- Missing construction validation on boundary types → **Important**.
+- Minor encapsulation improvements → **Suggestion**.
+
+#### Comment accuracy review
+
+Verify that comments on changed code are factually accurate, non-stale, and earn their place. A wrong comment is worse than no comment.
+
+For each comment on changed code:
+
+1. **Verify accuracy** — Cross-reference every claim against the actual implementation. Do described parameters, return types, and behaviour match the code?
+2. **Check for staleness** — Does the comment describe the code as it was before this change, not as it is now? Stale comments after a refactor are a common source of confusion.
+3. **Evaluate value** — Comments explaining "why" are valuable. Comments restating what the code obviously does are noise. Comments describing the past ("used to", "removed", "was previously") belong in git history, not in code.
+4. **Flag misleading elements** — Ambiguous language, outdated references, assumptions that no longer hold, TODOs that are already done.
+
+Severity guidance:
+
+- Factually incorrect comments that will mislead future readers → **Important**.
+- Stale comments that describe pre-change behaviour → **Important**.
+- Commented-out code → **Important**.
+- Redundant comments that restate obvious code → **Suggestion**.
+
+#### Logging review
+
+Verify that changed code follows the project's logging policy. Load the language-appropriate logging policy for the project before reviewing.
+
+Check for:
+
+1. **Correct log levels** — INFO for business-relevant events, DEBUG for successful outcomes with duration, WARNING for recoverable anomalies, ERROR for failures. TRACE for high-volume chatter. Misleveled logs pollute or hide signal.
+2. **Structured format** — Log statements must use structured key=value format through the project's logging framework, not f-string interpolation or print statements.
+3. **Sensitive data** — Log statements must never emit passwords, tokens, API keys, PII, or entire payloads.
+4. **Ad-hoc debug probes** — Print statements, console.log, or temporary logging added during development must be removed or converted to proper structured logs at the correct level.
+5. **Identifier integrity** — Never truncate UUIDs or session IDs in logs. Full values only.
+6. **Boundary coverage** — Key operations (API calls, state transitions, external service interactions) should have logging at entry or completion, not both (avoid start/end pairs; prefer one line with duration).
+
+Severity guidance:
+
+- Sensitive data in logs → **Critical**.
+- Ad-hoc debug probes left in production code → **Important**.
+- Wrong log levels that hide errors or pollute INFO → **Important**.
+- Missing boundary logging for significant operations → **Suggestion**.
+
 #### Documentation and config surface check
 
 When the delivery changes CLI subcommands, config keys, API endpoints, or user-facing behavior:
@@ -211,6 +319,27 @@ When the delivery changes CLI subcommands, config keys, API endpoints, or user-f
 5. Breaking changes documented.
 
 Missing documentation updates are **Important** findings. Missing config surface updates are **Critical** (agents depend on accurate config specs).
+
+#### Simplification review
+
+Run after all other lanes pass. Simplify changed code for clarity, consistency, and maintainability without changing behaviour.
+
+Focus on:
+
+1. **Unnecessary complexity** — Reduce nesting depth, eliminate redundant branches, flatten deeply nested conditionals.
+2. **Redundancy** — Remove duplicate logic, consolidate related operations, eliminate dead code.
+3. **Naming** — Improve variable and function names that don't communicate intent.
+4. **Over-abstraction** — Remove abstractions with a single consumer. Three similar lines are better than a premature abstraction.
+5. **Clarity over brevity** — Avoid nested ternaries; prefer explicit if/else or switch. Explicit code beats compact code.
+
+Constraints:
+
+- Never change what the code does — only how it does it.
+- Do not combine too many concerns into single functions.
+- Do not remove helpful abstractions that improve organisation.
+- Scope to recently changed code unless explicitly instructed otherwise.
+
+Simplification findings are **Suggestion** severity. They do not affect the verdict.
 
 ### 5. Quality gates
 

@@ -23,8 +23,6 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-Procedure: `software-development/procedure/lifecycle/work/review`
-
 ### Scope & completeness
 
 - [ ] All implementation-plan tasks checked (`[x]`); unchecked = REQUEST CHANGES
@@ -33,22 +31,20 @@ Procedure: `software-development/procedure/lifecycle/work/review`
 
 ### Review lanes executed
 
-Every lane whose trigger fires must produce a section in `review-findings.md` — even "No findings."
+**Read `§ Run review lanes` in `software-development/procedure/lifecycle/work/review` before executing. Each lane below must produce a section in `review-findings.md` — even "No findings." A missing section means the review is incomplete.**
 
-| Lane           | Trigger                     | Done |
-| -------------- | --------------------------- | :--: |
-| **scope**      | Always                      | [ ]  |
-| **code**       | Always                      | [ ]  |
-| **paradigm**   | Always                      | [ ]  |
-| **principles** | Always                      | [ ]  |
-| **security**   | Always                      | [ ]  |
-| **tests**      | Always                      | [ ]  |
-| **errors**     | Always                      | [ ]  |
-| **types**      | Types added/modified        | [ ]  |
-| **comments**   | Code changed                | [ ]  |
-| **logging**    | Always                      | [ ]  |
-| **docs**       | CLI, config, or API changed | [ ]  |
-| **simplify**   | After other lanes pass      | [ ]  |
+- [ ] **scope**
+- [ ] **code**
+- [ ] **paradigm**
+- [ ] **principles**
+- [ ] **security**
+- [ ] **tests**
+- [ ] **errors**
+- [ ] **types** (when types added/modified)
+- [ ] **comments**
+- [ ] **logging**
+- [ ] **docs** (when CLI, config, or API changed)
+- [ ] **simplify** (after other lanes pass)
 
 ### Quality gates
 
