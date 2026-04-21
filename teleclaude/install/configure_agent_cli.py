@@ -3,7 +3,7 @@
 
 This module configures Claude, Gemini, and Codex to use TeleClaude wrappers,
 hooks, MCP servers, and static settings overrides from
-``teleclaude/install/settings/*.json``. It idempotently merges the managed
+``teleclaude/install/settings/``. It idempotently merges the managed
 configuration into each agent CLI's user config directory.
 """
 
@@ -45,6 +45,69 @@ def _deep_merge(base: dict[str, object], overrides: dict[str, object]) -> dict[s
         else:
             merged[key] = value
     return merged
+
+
+_BARE_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _toml_key(key: str) -> str:
+    """Quote a TOML key if it contains special characters."""
+    if _BARE_KEY_RE.match(key):
+        return key
+    return json.dumps(key)
+
+
+def _toml_scalar(value: object) -> str:
+    """Serialize a Python scalar to a TOML value literal."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return str(value)
+    if isinstance(value, str):
+        return json.dumps(value)
+    if isinstance(value, list):
+        return json.dumps(value)
+    msg = f"Cannot serialize {type(value).__name__} to TOML"
+    raise TypeError(msg)
+
+
+def _serialize_toml(config: dict[str, object]) -> str:
+    """Serialize a config dict to TOML text.
+
+    Handles top-level scalars, single-depth sections, and dotted subsections.
+    """
+    lines: list[str] = []
+    sections: list[tuple[str, dict[str, object]]] = []
+
+    for key, value in config.items():
+        if isinstance(value, dict):
+            sections.append((key, value))
+        else:
+            lines.append(f"{_toml_key(key)} = {_toml_scalar(value)}")
+
+    for section_name, section_dict in sections:
+        if lines and lines[-1] != "":
+            lines.append("")
+
+        scalars = [(k, v) for k, v in section_dict.items() if not isinstance(v, dict)]
+        subsections = [(k, v) for k, v in section_dict.items() if isinstance(v, dict)]
+
+        if scalars:
+            lines.append(f"[{_toml_key(section_name)}]")
+            for key, value in scalars:
+                lines.append(f"  {_toml_key(key)} = {_toml_scalar(value)}")
+
+        for sub_name, sub_dict in subsections:
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.append(f"[{_toml_key(section_name)}.{_toml_key(sub_name)}]")
+            for key, value in sub_dict.items():
+                if not isinstance(value, dict):
+                    lines.append(f"  {_toml_key(key)} = {_toml_scalar(value)}")
+
+    return "\n".join(lines) + "\n"
 
 
 PY_EXTENSION = ".py"
@@ -487,88 +550,52 @@ def configure_codex(
     config_path.parent.mkdir(parents=True, exist_ok=True)
 
     if config_path.exists():
-        content = config_path.read_text()
         try:
-            tomllib.loads(content)
+            config: dict[str, object] = tomllib.loads(config_path.read_text())
         except tomllib.TOMLDecodeError as exc:
             print(f"Warning: Failed to parse Codex config: {exc}")
             return
     else:
-        content = "# Codex CLI configuration\n"
+        config = {}
 
-    receiver_invocation = _build_hook_invocation(receiver_script)
-    managed_hook_blocks = _codex_hook_blocks(receiver_invocation, receiver_script)
-    content = _remove_codex_top_level_key(content, NOTIFY_KEY)
-    content = _ensure_codex_feature_flag(content, "codex_hooks", True)
+    config.pop(NOTIFY_KEY, None)
+
+    overrides_path = SETTINGS_DIR / "codex.toml"
+    if overrides_path.exists():
+        try:
+            overrides: dict[str, object] = tomllib.loads(overrides_path.read_text())
+        except tomllib.TOMLDecodeError as exc:
+            print(f"Warning: Failed to parse Codex overrides: {exc}")
+            overrides = {}
+        config = _deep_merge(config, overrides)
 
     compaction_prompt_source = SETTINGS_DIR / CODEX_COMPACTION_PROMPT_FILENAME
     compaction_prompt_target = config_path.parent / CODEX_COMPACTION_PROMPT_FILENAME
-    compaction_prompt_available = compaction_prompt_source.exists()
-    if compaction_prompt_available:
+    if compaction_prompt_source.exists():
         shutil.copyfile(compaction_prompt_source, compaction_prompt_target)
+        config[CODEX_COMPACTION_PROMPT_KEY] = str(compaction_prompt_target)
     else:
         print(f"Warning: Codex compaction prompt not found at {compaction_prompt_source}")
+        config.pop(CODEX_COMPACTION_PROMPT_KEY, None)
 
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
-    content = _remove_codex_mcp_config(content)
-    content = _ensure_codex_mcp_servers(content, managed_mcp_servers)
-    skipped_override_keys = frozenset({CODEX_COMPACTION_PROMPT_KEY}) if not compaction_prompt_available else frozenset()
-    compaction_value_overrides: dict[str, object] = {}
-    if compaction_prompt_available:
-        # Resolve to absolute path so Codex can locate the prompt regardless of working directory.
-        compaction_value_overrides[CODEX_COMPACTION_PROMPT_KEY] = str(compaction_prompt_target)
-    content = _apply_codex_settings_overrides(
-        content, skip_keys=skipped_override_keys, value_overrides=compaction_value_overrides or None
-    )
-    config_path.write_text(content)
+    if managed_mcp_servers:
+        mcp = config.get("mcp_servers", {})
+        if not isinstance(mcp, dict):
+            mcp = {}
+        mcp.pop("teleclaude", None)
+        for name, base_spec in managed_mcp_servers.items():
+            spec = dict(base_spec)
+            spec["type"] = "stdio"
+            mcp[name] = spec
+        config["mcp_servers"] = mcp
+
+    config_path.write_text(_serialize_toml(config))
+
+    receiver_invocation = _build_hook_invocation(receiver_script)
+    managed_hook_blocks = _codex_hook_blocks(receiver_invocation, receiver_script)
     _write_codex_hooks_json(hooks_path, managed_hook_blocks)
     print(f"Codex hooks and settings configured in {config_path}")
-
-
-def _remove_codex_top_level_key(content: str, key: str) -> str:
-    """Remove a top-level key assignment from Codex TOML content."""
-    array_pattern = re.compile(rf"(?ms)^\s*{re.escape(key)}\s*=\s*\[[^\]]*?\]\s*(?:\n|$)")
-    content = array_pattern.sub("", content)
-    key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*(?:\n|$)", re.MULTILINE)
-    return key_pattern.sub("", content)
-
-
-def _ensure_codex_feature_flag(content: str, key: str, enabled: bool) -> str:
-    """Ensure ``[features]`` contains the requested boolean flag."""
-    try:
-        config = tomllib.loads(content) if content.strip() else {}
-    except tomllib.TOMLDecodeError:
-        return content
-
-    desired_value = "true" if enabled else "false"
-    feature_line = f"{key} = {desired_value}"
-    features = config.get("features")
-
-    if isinstance(features, dict):
-        header_match = re.search(r"(?m)^\[features\]\s*$", content)
-        if header_match is None:
-            return content
-        body_start = header_match.end() + 1
-        next_section_match = re.search(r"(?m)^\[", content[body_start:])
-        if next_section_match is None:
-            body_end = len(content)
-        else:
-            body_end = body_start + next_section_match.start()
-        stray_key_pattern = re.compile(rf"(?m)^\s*{re.escape(key)}\s*=.*(?:\n|$)")
-        prefix = stray_key_pattern.sub("", content[:body_start])
-        body = content[body_start:body_end]
-        suffix = stray_key_pattern.sub("", content[body_end:])
-        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
-        if key in features:
-            if features[key] is enabled:
-                return f"{prefix}{body}{suffix}"
-            body = key_pattern.sub(feature_line, body)
-        else:
-            body = f"{body.rstrip()}\n{feature_line}\n"
-        return f"{prefix}{body}{suffix}"
-
-    suffix = "\n" if content.strip() else ""
-    return f"{content.rstrip()}{suffix}[features]\n{feature_line}\n"
 
 
 def _merge_codex_hook_blocks(existing_blocks: object, managed_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -614,110 +641,6 @@ def _write_codex_hooks_json(hooks_path: Path, managed_hooks: dict[str, list[dict
 
     with open(hooks_path, "w") as handle:
         json.dump({"hooks": updated_hooks}, handle, indent=2)
-
-
-def _apply_codex_settings_overrides(
-    content: str,
-    *,
-    skip_keys: frozenset[str] = frozenset(),
-    value_overrides: dict[str, object] | None = None,
-) -> str:
-    """Apply settings overrides from settings/codex.json to TOML content.
-
-    For each top-level key in the overrides, ensure it exists in the TOML.
-    Replaces existing values; appends missing keys before the first section.
-    Callers may supply ``value_overrides`` to substitute specific key values
-    (e.g. to write an absolute path where codex.json stores a relative placeholder).
-    """
-    overrides = _load_settings_overrides("codex")
-    if not overrides:
-        return content
-
-    try:
-        config = tomllib.loads(content)
-    except tomllib.TOMLDecodeError:
-        return content
-
-    for key in skip_keys:
-        content = _remove_codex_top_level_key(content, key)
-        config.pop(key, None)
-
-    for key, value in overrides.items():
-        if key in skip_keys:
-            continue
-        resolved_value = (value_overrides or {}).get(key, value)
-        toml_value = json.dumps(resolved_value)
-        key_pattern = re.compile(rf"^\s*{re.escape(key)}\s*=.*$", re.MULTILINE)
-
-        if key in config:
-            if config[key] == resolved_value:
-                continue
-            content = key_pattern.sub(f"{key} = {toml_value}", content)
-        else:
-            # Insert before first section header
-            first_section = re.search(r"^\[", content, re.MULTILINE)
-            line = f"{key} = {toml_value}\n"
-            if first_section:
-                content = content[: first_section.start()] + line + content[first_section.start() :]
-            else:
-                content = content.rstrip() + "\n" + line
-
-    return content
-
-
-def _remove_codex_mcp_config(content: str) -> str:
-    """Remove TeleClaude MCP server section from Codex TOML config."""
-    section_name = "mcp_servers.teleclaude"
-    section_pattern = re.compile(
-        rf"(?m)^(?:[ \t]*#\s*TeleClaude MCP Server[ \t]*\n)?[ \t]*\[{re.escape(section_name)}\]\n"
-        r"(?:^(?![ \t]*\[).*(?:\n|$))*"
-    )
-    content = section_pattern.sub("", content)
-    return content.rstrip() + "\n" if content.strip() else ""
-
-
-def _ensure_codex_mcp_servers(content: str, mcp_servers_spec: dict[str, dict[str, object]]) -> str:
-    """Ensure managed MCP server sections exist in Codex TOML config."""
-    try:
-        config = tomllib.loads(content)
-    except tomllib.TOMLDecodeError:
-        return content
-
-    existing_mcp = config.get("mcp_servers", {})
-
-    for name, base_spec in mcp_servers_spec.items():
-        spec = dict(base_spec)
-        spec["type"] = "stdio"
-        if name in existing_mcp and existing_mcp[name] == spec:
-            continue
-
-        # Remove existing section if present (will be re-added)
-        section_pattern = re.compile(
-            rf"(?m)^[ \t]*\[mcp_servers\.{re.escape(name)}\]\n"
-            r"(?:^(?![ \t]*\[).*(?:\n|$))*"
-        )
-        content = section_pattern.sub("", content)
-
-        # Build TOML section
-        lines = [f"\n  [mcp_servers.{name}]"]
-        for key, value in spec.items():
-            lines.append(f"    {key}={json.dumps(value)}")
-        block = "\n".join(lines) + "\n"
-
-        # Insert after [mcp_servers] header or append
-        mcp_header = re.search(r"^\[mcp_servers\]\s*$", content, re.MULTILINE)
-        if mcp_header:
-            # Find end of mcp_servers section (next top-level section or EOF)
-            next_section = re.search(r"^\[[^\.]", content[mcp_header.end() :], re.MULTILINE)
-            if next_section:
-                insert_pos = mcp_header.end() + next_section.start()
-            else:
-                insert_pos = len(content.rstrip())
-            content = content[:insert_pos] + block + content[insert_pos:]
-        else:
-            content = content.rstrip() + "\n\n[mcp_servers]" + block
-
-    return content
 
 
 def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:

@@ -40,7 +40,7 @@ Test specifications for `codex-global-compaction-delivery-correction` are compre
 
 - ✓ Settings override mechanism routes the setting correctly
   - Test: `test_codex_settings_override_file_declares_compaction_prompt_key`
-  - **NEW:** Verifies the setting appears in `settings/codex.json`, not hardcoded in configure_codex
+  - **NEW:** Verifies the setting appears in `settings/codex.toml`, not hardcoded in configure_codex
 
 - ✓ No project-local `.codex/` directory in repo
   - Test: `test_no_project_local_codex_directory_in_repo`

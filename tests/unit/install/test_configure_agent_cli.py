@@ -8,7 +8,7 @@ Covers:
   R2 — Shell wrapper inlining: setup_agent_hooks.sh removed; bin/init.sh updated.
   R3 — Repo-owned compaction prompt source file exists with correct content.
   R4 — Compaction prompt deployment: file written, TOML key set, idempotent,
-       and delivered via the settings/codex.json override mechanism.
+       and delivered via the settings/codex.toml override mechanism.
   R6 — Prototype .codex/ files absent from the repository (regression guards).
 """
 
@@ -199,20 +199,14 @@ def test_configure_codex_compaction_prompt_deployment_is_idempotent(tmp_path: Pa
     )
 
 
-def test_compact_prompt_key_sourced_from_settings_override(tmp_path: Path) -> None:
-    """The experimental_compact_prompt_file key must be absent from config.toml when
-    absent from settings/codex.json — even when the prompt source file exists.
-    This proves the key is delivered exclusively through the settings override
-    mechanism, not hardcoded in configure_codex()."""
-    # Build a custom settings dir whose codex.json deliberately omits the key.
-    # The prompt source file IS present so compaction_prompt_available=True —
-    # the only missing ingredient is the key in codex.json.
+def test_compact_prompt_key_set_when_source_exists_even_if_overrides_omit_it(tmp_path: Path) -> None:
+    """The experimental_compact_prompt_file key must be present in config.toml when
+    the compaction prompt source file exists, regardless of whether codex.toml
+    declares the key. The runtime deploys the prompt and resolves its path."""
     custom_settings_dir = tmp_path / "custom-settings"
     custom_settings_dir.mkdir()
     (custom_settings_dir / COMPACTION_PROMPT_FILENAME).write_text("# compaction prompt\n", encoding="utf-8")
-    (custom_settings_dir / "codex.json").write_text(
-        json.dumps({"sandbox_mode": "danger-full-access"}), encoding="utf-8"
-    )
+    (custom_settings_dir / "codex.toml").write_text('sandbox_mode = "danger-full-access"\n', encoding="utf-8")
 
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
@@ -227,11 +221,12 @@ def test_compact_prompt_key_sourced_from_settings_override(tmp_path: Path) -> No
         configure_codex(tmp_path)
 
     config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
-    assert COMPACT_PROMPT_TOML_KEY not in config, (
-        f"config.toml must NOT contain '{COMPACT_PROMPT_TOML_KEY}' when the key is "
-        "absent from settings/codex.json — the key must be delivered exclusively "
-        "through the settings override mechanism, not hardcoded in configure_codex()"
+    assert COMPACT_PROMPT_TOML_KEY in config, (
+        f"config.toml must contain '{COMPACT_PROMPT_TOML_KEY}' when the prompt source "
+        "file exists — the runtime deploys the prompt independently of the overrides file"
     )
+    expected = str(codex_dir / COMPACTION_PROMPT_FILENAME)
+    assert config[COMPACT_PROMPT_TOML_KEY] == expected
 
 
 def test_configure_codex_omits_compact_prompt_key_when_prompt_source_missing(tmp_path: Path) -> None:
@@ -244,8 +239,8 @@ def test_configure_codex_omits_compact_prompt_key_when_prompt_source_missing(tmp
 
     broken_settings_dir = tmp_path / "broken-settings"
     broken_settings_dir.mkdir()
-    (broken_settings_dir / "codex.json").write_text(
-        json.dumps({COMPACT_PROMPT_TOML_KEY: COMPACTION_PROMPT_FILENAME}),
+    (broken_settings_dir / "codex.toml").write_text(
+        f'{COMPACT_PROMPT_TOML_KEY} = "{COMPACTION_PROMPT_FILENAME}"\n',
         encoding="utf-8",
     )
 
@@ -355,7 +350,7 @@ def test_prototype_codex_config_toml_not_in_repository() -> None:
     """.codex/config.toml must not be committed — superseded by the repo-managed install settings path."""
     assert not (_REPO_ROOT / ".codex" / "config.toml").exists(), (
         ".codex/config.toml must not exist in the repository — "
-        "use teleclaude/install/settings/codex.json for Codex settings"
+        "use teleclaude/install/settings/codex.toml for Codex settings"
     )
 
 
@@ -431,20 +426,29 @@ class TestPruneAgentHooks:
 
 
 class TestCodexMcpConfig:
-    """Tests for _ensure_codex_mcp_servers."""
+    """Tests for MCP server merge in configure_codex."""
 
-    def test_ensure_codex_mcp_servers_appends_stdio_sections(self) -> None:
-        """_ensure_codex_mcp_servers adds type=stdio MCP server sections."""
-        content = ""
-
-        updated = configure_agent_cli._ensure_codex_mcp_servers(
-            content, {"teleclaude": {"command": "uvx", "args": ["a"]}}
+    def test_configure_codex_merges_managed_mcp_servers(self, tmp_path: Path) -> None:
+        """configure_codex merges managed MCP servers with type=stdio into config.toml."""
+        codex_dir = tmp_path / ".codex"
+        codex_dir.mkdir()
+        receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+        receiver.parent.mkdir(parents=True)
+        receiver.touch()
+        mcp_json = tmp_path / "mcp.json"
+        mcp_json.write_text(
+            json.dumps({"mcpServers": {"test-server": {"command": "uvx", "args": ["a"]}}}),
+            encoding="utf-8",
         )
 
-        assert "[mcp_servers]" in updated
-        assert "[mcp_servers.teleclaude]" in updated
-        assert 'type="stdio"' in updated
-        assert 'command="uvx"' in updated
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            configure_codex(tmp_path)
+
+        config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
+        assert "test-server" in config.get("mcp_servers", {})
+        server = config["mcp_servers"]["test-server"]
+        assert server["type"] == "stdio"
+        assert server["command"] == "uvx"
 
 
 class TestResolveMainRepoRoot:
