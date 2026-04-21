@@ -23,12 +23,14 @@ from teleclaude.cli.tool_commands import (
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
     read_phase_state,
-    validate_work_phase_preconditions,
+    validate_mark_phase_preconditions,
     write_phase_state,
 )
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
@@ -81,42 +83,35 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
 
 
 def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
-    """Operator override: write the authoritative sub-phase field.
-
-    Dispatches by enum membership. A value that matches :class:`PreparePhase`
-    writes ``state["prepare_phase"]``; a value that matches :class:`WorkPhase`
-    writes ``state["work_phase"]``. An unknown value is rejected with a
-    non-zero exit code and a listing of valid values for both enums, so the
-    operator sees the full surface at once.
-    """
-    prepare_values = {p.value for p in PreparePhase}
-    work_values = {p.value for p in WorkPhase}
-
-    if phase in prepare_values:
-        field = "prepare_phase"
-    elif phase in work_values:
-        field = "work_phase"
-    else:
+    """Operator override: set the canonical lifecycle phase."""
+    lifecycle_values = {p.value for p in LifecyclePhase}
+    if phase not in lifecycle_values:
+        prepare_values = {p.value for p in PreparePhase}
+        work_values = {p.value for p in WorkPhase}
         print(f"Unknown phase value: {phase!r}", file=sys.stderr)
-        print("Valid prepare_phase values:", file=sys.stderr)
+        print("Valid lifecycle_phase values:", file=sys.stderr)
+        for value in sorted(lifecycle_values):
+            print(f"  {value}", file=sys.stderr)
+        print("Legacy prepare_phase values:", file=sys.stderr)
         for value in sorted(prepare_values):
             print(f"  {value}", file=sys.stderr)
-        print("Valid work_phase values:", file=sys.stderr)
+        print("Legacy work_phase values:", file=sys.stderr)
         for value in sorted(work_values):
             print(f"  {value}", file=sys.stderr)
         return 1
 
     state = dict(read_phase_state(cwd, slug))
-    if field == "work_phase":
-        worktree_cwd = str(Path(cwd) / "trees" / slug)
-        wt = worktree_cwd if Path(worktree_cwd).exists() else None
-        error = validate_work_phase_preconditions(state, phase, wt)
-        if error:
-            print(error, file=sys.stderr)
-            return 1
-    state[field] = phase
-    write_phase_state(cwd, slug, state)
-    print(f"Marked {slug} {field}={phase}")
+    worktree_cwd = str(Path(cwd) / "trees" / slug)
+    wt = worktree_cwd if Path(worktree_cwd).exists() else None
+    error = validate_mark_phase_preconditions(state, phase, wt)
+    if error:
+        print(error, file=sys.stderr)
+        return 1
+    writer = StateWriter(state)
+    normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
+    payload = writer.to_dict()
+    write_phase_state(cwd, slug, payload)
+    print(f"Marked {slug} lifecycle_phase={phase}")
     return 0
 
 

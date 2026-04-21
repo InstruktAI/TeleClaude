@@ -119,11 +119,11 @@ subcommands:
           --project-root: 'Project root (default: cwd).'
           --after: 'Comma-separated dependency slugs.'
       mark-phase:
-        description: 'Operator override for authoritative prepare/work sub-phase fields.'
+        description: 'Operator override for the authoritative lifecycle phase field.'
         args:
           - slug: 'string'
         flags:
-          --phase: 'Phase value matching a PreparePhase or WorkPhase enum member.'
+          --phase: 'Phase value matching a canonical lifecycle phase enum member.'
       validate:
         args:
           - slug: 'string (optional)'

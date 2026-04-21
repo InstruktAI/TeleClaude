@@ -26,11 +26,11 @@ def _mock_todos_db() -> AsyncMock:
     return db
 
 
-def _base_state(*, kind: str = "todo", dor_score: int = 8, work_phase: str = "build_started") -> dict:
+def _base_state(*, kind: str = "todo", dor_score: int = 8, lifecycle_phase: str = "build_started") -> dict:
     return {
         "kind": kind,
         "dor": {"score": dor_score},
-        "work_phase": work_phase,
+        "lifecycle_phase": lifecycle_phase,
     }
 
 
@@ -39,14 +39,13 @@ def _base_state(*, kind: str = "todo", dor_score: int = 8, work_phase: str = "bu
 
 @pytest.mark.asyncio
 async def test_build_started_advances_when_builder_exists_and_gates_pass() -> None:
-    """When builder is dispatched, commits exist, and gates pass, clear work_phase and loop."""
+    """When builder is active, commits exist, and gates pass, loop to build_complete."""
     state = _base_state()
 
     with (
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
         patch(f"{_WORK_STEPS}._has_build_commits_beyond_main", return_value=True),
         patch(f"{_WORK_STEPS}.run_build_gates", return_value=(True, "GATE PASSED")),
-        patch(f"{_WORK_STEPS}.write_phase_state", new=AsyncMock()) as mock_write,
     ):
         keep_going, instruction = await _work_step_build_started(
             db=_mock_db(),
@@ -59,8 +58,7 @@ async def test_build_started_advances_when_builder_exists_and_gates_pass() -> No
 
     assert keep_going is True
     assert instruction == ""
-    assert state["work_phase"] == ""
-    mock_write.assert_awaited_once()
+    assert state["lifecycle_phase"] == "build_started"
 
 
 @pytest.mark.asyncio
@@ -135,10 +133,10 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_clears_work_phase_on_round_advance() -> None:
-    """When builder committed fixes (HEAD != baseline), clear work_phase alongside verdict."""
+async def test_review_changes_requested_clears_verdict_on_round_advance() -> None:
+    """When builder committed fixes (HEAD != baseline), clear the review verdict and advance the round."""
     state: dict = {
-        "work_phase": "review_changes_requested",
+        "lifecycle_phase": "review_changes_requested",
         "build_review": {
             "verdict": "changes_requested",
             "baseline_commit": "aaa111",
@@ -162,8 +160,7 @@ async def test_review_changes_requested_clears_work_phase_on_round_advance() -> 
 
     assert keep_going is True
     assert instruction == ""
-    # Verify the writer received cleared work_phase — inspect the StateWriter passed to _commit_writer
     writer_arg = mock_commit.call_args[0][0]
-    assert writer_arg.state.work_phase == ""
     assert writer_arg.state.build_review.verdict == ""
+    assert writer_arg.state.build_review.reviewed_at == ""
     assert writer_arg.state.build_review.round == 1

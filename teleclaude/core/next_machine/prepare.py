@@ -1,9 +1,7 @@
 """Prepare stage — Phase A state machine for collaborative architect work.
 
-Each loop iteration re-derives :class:`PreparePhase` from the state primitives
-(stamped verdicts, DOR score, artifact presence, grounding validity) via
-:func:`derive_prepare_phase`, then routes through :func:`_prepare_dispatch`.
-No persistent ``current`` value, no mark-phase calls.
+Each loop iteration advances the canonical ``lifecycle_phase`` from persisted
+evidence, then routes through :func:`_prepare_dispatch`.
 
 No imports from core.py (circular-import guard).
 """
@@ -20,6 +18,7 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, StateValue
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, advance_until_blocked
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.next_machine._types import PreparePhase as _PP
 from teleclaude.core.next_machine.slug_resolution import resolve_holder_children_db
-from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state
 from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
@@ -83,6 +81,11 @@ async def _apply_stale_artifact_reroute(
         "requirements": ("test_spec_review", "plan_review"),
         "implementation_plan": ("plan_review",),
     }
+    reroute_phase = {
+        "input": LifecyclePhase.REQUIREMENTS_REVIEW,
+        "requirements": LifecyclePhase.TEST_SPEC_REVIEW,
+        "implementation_plan": LifecyclePhase.PLAN_REVIEW,
+    }
 
     writer = StateWriter(state)
     for key, artifact_name in _ARTIFACT_CASCADE:
@@ -96,6 +99,9 @@ async def _apply_stale_artifact_reroute(
             review = getattr(writer.state, review_key, None)
             if review is not None and getattr(review, "verdict", "") == "approve":
                 review.verdict = ""
+                if hasattr(review, "reviewed_at"):
+                    review.reviewed_at = ""
+        writer.state.lifecycle_phase = reroute_phase[key].value
 
     payload = await writer.commit(todos_db, slug)
     state.clear()
@@ -180,7 +186,14 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if stale_artifacts:
             state = await _apply_stale_artifact_reroute(todos_db, resolved_slug, state, stale_artifacts)
 
-        phase = await derive_prepare_phase(state, todos_db, resolved_slug)
+        writer = StateWriter(state)
+        if "lifecycle_phase" not in state:
+            writer.state.lifecycle_phase = (await derive_prepare_phase(state, todos_db, resolved_slug)).value
+        phase = advance_until_blocked(writer.state)
+        payload = writer.to_dict()
+        if payload != state:
+            await writer.commit(todos_db, resolved_slug)
+            state = payload
         logger.info(
             "NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d",
             resolved_slug,
@@ -189,14 +202,14 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         )
 
         keep_going, instruction = await _prepare_dispatch(
-            db=db, todos_db=todos_db, slug=resolved_slug, cwd=cwd, phase=phase, state=state
+            db=db,
+            todos_db=todos_db,
+            slug=resolved_slug,
+            cwd=cwd,
+            phase=_PP(phase.value),
+            state=state,
         )
         if not keep_going:
-            # Clear authoritative prepare_phase so primitives drive the next invocation.
-            pp = state.get("prepare_phase", "")
-            if pp:
-                state["prepare_phase"] = ""
-                await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 
     return (

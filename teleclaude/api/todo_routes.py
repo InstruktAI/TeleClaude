@@ -4,8 +4,7 @@ Exposes the next-machine state machine functions (prepare, work) and roadmap
 mutation operations as REST endpoints with dual-factor caller identity
 enforcement. Verdict, DOR, grounding, and finalize stamps flow through
 ``/stamp/{slug}``. Operator phase overrides flow through
-``/mark-phase/{slug}`` and write the authoritative ``prepare_phase`` or
-``work_phase`` field directly.
+``/mark-phase/{slug}`` and write the authoritative ``lifecycle_phase`` field.
 """
 
 from __future__ import annotations
@@ -44,13 +43,15 @@ from teleclaude.core.next_machine.core import (
     _PREPARE_VERDICT_VALUES,
 )
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
     read_phase_state,
+    stamp_artifact,
     stamp_finalize_ready,
     stamp_verdict,
-    validate_work_phase_preconditions,
+    validate_mark_phase_preconditions,
     write_phase_state,
 )
 from teleclaude.core.next_machine.state_mutation import (
@@ -312,6 +313,12 @@ async def write_artifact(
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
     await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
+    artifact_key = {
+        "requirements": "requirements",
+        "implementation-plan": "implementation_plan",
+    }.get(name)
+    if artifact_key is not None:
+        await asyncio.to_thread(stamp_artifact, effective_cwd, slug, artifact_key)
     return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
 
 
@@ -604,46 +611,34 @@ async def mark_phase(
     phase: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
 ) -> dict[str, StateValue]:
-    """Write the authoritative ``prepare_phase`` or ``work_phase`` field.
-
-    The operator-override escape hatch. Dispatches on enum membership: values
-    in :class:`PreparePhase` write ``prepare_phase``; values in :class:`WorkPhase`
-    write ``work_phase``. Unknown values yield a 400 with both enums' valid
-    values listed so callers can self-correct without a separate round-trip.
-
-    Returns the full updated state payload so the caller can read the new
-    authoritative field in the same round trip and drive subsequent decisions
-    from the persisted state, not a metadata echo.
-    """
+    """Set the canonical lifecycle phase after validating the target is reachable."""
     effective_cwd = cwd or _default_cwd()
-    prepare_values = {p.value for p in PreparePhase}
-    work_values = {p.value for p in WorkPhase}
-
-    if phase in prepare_values:
-        field = "prepare_phase"
-    elif phase in work_values:
-        field = "work_phase"
-    else:
+    lifecycle_values = {p.value for p in LifecyclePhase}
+    if phase not in lifecycle_values:
+        prepare_values = {p.value for p in PreparePhase}
+        work_values = {p.value for p in WorkPhase}
         raise HTTPException(
             status_code=400,
             detail=(
                 f"unknown phase value '{phase}': "
-                f"prepare_phase accepts {sorted(prepare_values)}; "
-                f"work_phase accepts {sorted(work_values)}"
+                f"lifecycle_phase accepts {sorted(lifecycle_values)}; "
+                f"legacy prepare_phase values {sorted(prepare_values)}; "
+                f"legacy work_phase values {sorted(work_values)}"
             ),
         )
 
     def _apply() -> dict[str, StateValue]:
-        state = dict(read_phase_state(effective_cwd, slug))
-        if field == "work_phase":
-            worktree_cwd = str(Path(effective_cwd) / "trees" / slug)
-            wt = worktree_cwd if Path(worktree_cwd).exists() else None
-            error = validate_work_phase_preconditions(state, phase, wt)
-            if error:
-                raise HTTPException(status_code=400, detail=error)
-        state[field] = phase
-        write_phase_state(effective_cwd, slug, state)
-        return state
+        raw_state = dict(read_phase_state(effective_cwd, slug))
+        worktree_cwd = str(Path(effective_cwd) / "trees" / slug)
+        wt = worktree_cwd if Path(worktree_cwd).exists() else None
+        error = validate_mark_phase_preconditions(raw_state, phase, wt)
+        if error:
+            raise HTTPException(status_code=400, detail=error)
+        writer = StateWriter(raw_state)
+        normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
+        payload = writer.to_dict()
+        write_phase_state(effective_cwd, slug, payload)
+        return payload
 
     return await asyncio.to_thread(_apply)
 

@@ -1,9 +1,8 @@
 """Work stage — Phase B state machine for deterministic builder work.
 
 Loop shaped like :func:`teleclaude.core.next_machine.prepare.next_prepare`:
-each iteration re-derives :class:`WorkPhase` from state primitives + the
-worktree git log + build-gate results, then routes through
-:func:`_work_dispatch`. No persistent ``current`` value, no mark-phase calls.
+each iteration advances the canonical ``lifecycle_phase`` from persisted
+evidence and routes through :func:`_work_dispatch`.
 
 No imports from core.py (circular-import guard).
 """
@@ -27,6 +26,7 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, advance_until_blocked, coerce_lifecycle_phase
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.phase_derivation import derive_work_phase
 from teleclaude.core.next_machine.slug_resolution import (
@@ -35,13 +35,13 @@ from teleclaude.core.next_machine.slug_resolution import (
     resolve_slug_async,
     set_item_phase_db,
 )
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.next_machine.slug_resolution import resolve_first_runnable_holder_child_db
-from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
 
@@ -142,7 +142,19 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
                 next_call=f"telec todo prepare {resolved_slug}",
             )
 
-        phase = derive_work_phase(state, worktree_cwd, resolved_slug)
+        writer = StateWriter(state)
+        if "lifecycle_phase" not in state:
+            legacy_phase = derive_work_phase(state, worktree_cwd, resolved_slug)
+            writer.state.lifecycle_phase = legacy_phase.value
+        current_phase = coerce_lifecycle_phase(writer.state.lifecycle_phase)
+        if current_phase == LifecyclePhase.PREPARED:
+            writer.state.lifecycle_phase = LifecyclePhase.BUILD_STARTED.value
+            writer.state.build_start_base_sha = get_head_commit(worktree_cwd)
+        phase = advance_until_blocked(writer.state, worktree_cwd=worktree_cwd)
+        payload = writer.to_dict()
+        if payload != state:
+            await writer.commit(todos_db, resolved_slug)
+            state = payload
         logger.info(
             "NEXT_WORK_PHASE slug=%s phase=%s iter=%d",
             resolved_slug,
@@ -157,7 +169,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             slug=resolved_slug,
             cwd=cwd,
             worktree_cwd=worktree_cwd,
-            phase=phase,
+            phase=WorkPhase(phase.value),
             state=state,
             head_before_merge=head_before_merge,
             head_after_merge=head_after_merge,
@@ -170,13 +182,6 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             phase.value,
         )
         if not keep_going:
-            # Clear authoritative work_phase so primitives drive the next
-            # invocation — except BUILD_STARTED which anchors across invocations
-            # to prevent premature BUILD_COMPLETE during active build.
-            wp = state.get("work_phase", "")
-            if wp and wp != WorkPhase.BUILD_STARTED.value:
-                state["work_phase"] = ""
-                await asyncio.to_thread(_write_phase_state, cwd, resolved_slug, state)
             return instruction
 
     return (

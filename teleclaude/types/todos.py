@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.types.state_value import StateValue
 
@@ -99,6 +99,7 @@ class BuildReviewState(BaseModel):
     """
 
     verdict: str = ""
+    reviewed_at: str = ""
     round: int = 0
     baseline_commit: str = ""
     dispatch_head: str = ""
@@ -169,21 +170,20 @@ class AuditState(BaseModel):
 class TodoState(BaseModel):
     """Canonical state for a TeleClaude work item (v1 schema).
 
-    ``phase`` is the coarse item-level phase (``ItemPhase`` values) and is
-    authoritative for the item's overall lifecycle. ``prepare_phase`` and
-    ``work_phase`` are authoritative sub-phase fields (values from the
-    ``PreparePhase`` and ``WorkPhase`` enums respectively); an empty string
-    signals "not yet set", in which case callers fall back to deriving the
-    sub-phase from primitives (verdict stamps, artifact presence, grounding
-    validity, DOR score, worktree state).
+    ``lifecycle_phase`` is the canonical software-development lifecycle step.
+    ``phase`` remains the coarse pending/in_progress/done item status used by
+    roadmap selection. ``prepare_phase`` and ``work_phase`` are retained only
+    for legacy row compatibility and should remain empty in the current model.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     schema_version: Literal[1] = 1
     phase: str = "pending"
+    lifecycle_phase: str = "input_assessment"
     prepare_phase: str = ""
     work_phase: str = ""
+    build_start_base_sha: str = ""
     kind: str = "todo"  # "todo" | "bug" | "draft" | "prepped"
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
@@ -198,6 +198,29 @@ class TodoState(BaseModel):
     creative: dict[str, StateValue] | None = None
     audit: AuditState = Field(default_factory=AuditState)
     events: list[Event] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_legacy_display_fields(cls, data: object) -> object:
+        """Drop legacy display-only fields before strict schema validation.
+
+        Older todos.db rows may still carry ``current`` and
+        ``integration_phase`` from the pre-authoritative-subphase model. They
+        are derived/display concerns now, not part of the canonical mutation
+        schema, so validation strips them and a subsequent write removes them
+        from persistence.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        legacy_keys = {"current", "integration_phase"}
+        if not legacy_keys.intersection(data):
+            return data
+
+        cleaned = dict(data)
+        for key in legacy_keys:
+            cleaned.pop(key, None)
+        return cleaned
 
     @classmethod
     def defaults(cls) -> TodoState:

@@ -12,11 +12,11 @@ type: 'design'
 
 TeleClaude's software development lifecycle is driven by three deterministic state machines, each governing a distinct phase of delivery. The orchestrator calls a machine, executes the returned instruction (typically dispatching a worker session), then calls again. This loop continues until a terminal state.
 
-| Phase | Name                                      | State Machine                  | Entry Point                   | Purpose                                             |
-| ----- | ----------------------------------------- | ------------------------------ | ----------------------------- | --------------------------------------------------- |
-| **A** | [Prepare](prepare-state-machine.md)       | `PreparePhase` (10 states)     | `telec todo prepare [slug]`   | Define scope, requirements, and implementation plan |
-| **B** | [Work](work-state-machine.md)             | Build/Review/Fix routing       | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation |
-| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states) | `telec todo integrate [slug]` | Merge to main, push, deliver                        |
+| Phase | Name                                      | State Machine                    | Entry Point                   | Purpose                                             |
+| ----- | ----------------------------------------- | -------------------------------- | ----------------------------- | --------------------------------------------------- |
+| **A** | [Prepare](prepare-state-machine.md)       | `lifecycle_phase` (prepare lane) | `telec todo prepare [slug]`   | Define scope, requirements, and implementation plan |
+| **B** | [Work](work-state-machine.md)             | `lifecycle_phase` (work lane)    | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation |
+| **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states)   | `telec todo integrate [slug]` | Merge to main, push, deliver                        |
 
 ### Referenced files
 
@@ -55,7 +55,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 ## Invariants
 
-- **Deterministic routing**: given the same artifact state on disk, the same instruction is produced.
+- **Deterministic routing**: given the same persisted evidence and `lifecycle_phase`, the same instruction is produced.
 - **Sequential phases**: Prepare → Work → Integrate. No phase skipping.
 - **Artifact immutability**: machines never modify artifacts directly; they delegate to workers.
 - **Dependency blocking**: cannot claim a work item until all its dependencies are complete.
@@ -116,7 +116,7 @@ sequenceDiagram
     end
     Prepare-->>Orchestrator: PREPARED
 
-    loop Until review=approved + finalize=handed_off
+    loop Until lifecycle_phase=handed_off
         Orchestrator->>Work: telec todo work [slug]
         Work-->>Orchestrator: instruction (dispatch worker)
         Note over Orchestrator: Dispatches builder, reviewer,<br/>fixer, or finalizer workers

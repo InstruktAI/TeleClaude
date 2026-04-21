@@ -435,7 +435,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 notes=[
                     "Requires requirements and implementation-plan artifacts to already exist with content.",
-                    "Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved, "
+                    "Sets lifecycle_phase=prepared, DOR pass, grounding=valid, reviews=approved, "
                     "generates quality-checklist.",
                     "Use for straightforward work items that don't need the full prepare ceremony.",
                     "Accepts multiple slugs to fast-track a batch in one call.",
@@ -443,10 +443,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "mark-phase": CommandDef(
-                desc="Operator override: write the authoritative prepare_phase or work_phase field",
+                desc="Operator override: write the authoritative lifecycle_phase field",
                 args="<slug> --phase <value>",
-                flags=[_H, Flag("--phase", desc="Phase value matching a PreparePhase or WorkPhase enum member")],
-                notes=["Dispatches by enum; invalid values list both. Recovery/testing only."],
+                flags=[_H, Flag("--phase", desc="Phase value matching the canonical lifecycle phase enum")],
+                notes=[
+                    "Validates the target step's prerequisites, then persists lifecycle_phase. Recovery/testing only."
+                ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "set-deps": CommandDef(

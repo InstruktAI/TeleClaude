@@ -5,7 +5,6 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -17,6 +16,7 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, DOR_READY_THRESHOLD, PreparePhase, StateValue
 from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.runtime.scripts import (
@@ -25,22 +25,11 @@ from teleclaude.core.next_machine.runtime.scripts import (
     format_review_blocked_script,
     format_review_needs_work_script,
 )
-from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state_sync
 from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-
-
-async def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Async entry point for authoritative phase persistence from prepare steps.
-
-    Wraps :func:`teleclaude.core.next_machine.state_io.write_phase_state` so
-    async handlers can record phase transitions without blocking the event
-    loop. The sync helper remains the single persistence implementation.
-    """
-    await asyncio.to_thread(_write_phase_state_sync, cwd, slug, state)
 
 
 logger = get_logger(__name__)
@@ -148,9 +137,6 @@ async def _prepare_step_input_assessment(
             {"slug": slug, "phase": "input_assessment", "digest": input_digest},
         )
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
-        # Authoritative: record the REQUIREMENTS_REVIEW transition so the next
-        # loop iteration routes from the recorded field, not primitives.
-        writer.state.prepare_phase = PreparePhase.REQUIREMENTS_REVIEW.value
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""  # loop — routes to REQUIREMENTS_REVIEW via authoritative field
 
@@ -168,6 +154,39 @@ async def _prepare_step_input_assessment(
                 "Work solo if the input is already concrete enough. If important intent, "
                 "constraints, or code grounding still need another perspective, run "
                 "triangulated discovery with a complementary partner."
+            ),
+            next_call=f"telec todo prepare {slug}",
+            post_block=_worker_idle_post_block(slug),
+        )
+    )
+
+
+async def _prepare_step_triangulation(
+    db: Db,
+    todos_db: TodosDb,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """TRIANGULATION: force a multi-perspective discovery pass."""
+    await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
+    writer = StateWriter(state)
+    writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
+    await _commit_writer(writer, todos_db, slug, state)
+
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
+            args=slug,
+            project=_derive_project_root(cwd, slug),
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=(
+                f"Run a triangulated discovery pass for {slug}. Read the input via "
+                f"`telec todo artifacts read {slug} input`, incorporate a complementary "
+                "perspective, and rewrite requirements via "
+                f"`telec todo artifacts write {slug} requirements <content>`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -739,9 +758,11 @@ async def _handle_stale_grounding(
         # forward motion on the derivation side.
         grounding_mgr.invalidate(reason=reason, changed_paths=changed_paths)
 
-    # Reset plan_review verdict so derivation returns PLAN_REVIEW on the next
-    # iteration after the draft worker writes the updated plan.
+    # Re-grounding means the plan must be refreshed and re-reviewed.
+    writer.state.lifecycle_phase = LifecyclePhase.RE_GROUNDING.value
+    writer.state.artifacts.implementation_plan.produced_at = ""
     writer.review("plan_review").verdict = ""
+    writer.review("plan_review").reviewed_at = ""
     await _commit_writer(writer, todos_db, slug, state)
 
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
@@ -767,6 +788,33 @@ async def _handle_stale_grounding(
     return False, instruction
 
 
+async def _prepare_step_re_grounding(
+    db: Db,
+    todos_db: TodosDb,
+    slug: str,
+    cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """RE_GROUNDING: refresh the plan against current truth before re-review."""
+    guidance = await compose_agent_guidance(db)
+    return False, format_tool_call(
+        ToolCallRequest(
+            command=SlashCommand.NEXT_PREPARE_DRAFT,
+            args=slug,
+            project=_derive_project_root(cwd, slug),
+            guidance=guidance,
+            subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=(
+                f"Re-ground {slug} and rewrite the implementation plan via "
+                f"`telec todo artifacts read {slug} implementation-plan` + "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`."
+            ),
+            next_call=f"telec todo prepare {slug}",
+            post_block=_worker_idle_post_block(slug),
+        )
+    )
+
+
 async def _prepare_step_prepared(db: Db, slug: str) -> tuple[bool, str]:
     """PREPARED: terminal success state. Emits cleanup for all live slug sessions + self-end."""
     live_sessions = await _find_all_live_sessions_for_slug(db, slug)
@@ -789,13 +837,14 @@ async def _prepare_dispatch(
 ) -> tuple[bool, str]:
     """Dispatch to the appropriate phase handler. Returns (continue_loop, instruction).
 
-    Only handlers for phases that derivation can return are listed. The
-    ``TRIANGULATION``, ``RE_GROUNDING``, and ``BLOCKED`` enum values exist for
-    backward compatibility with legacy emitters but are never produced by
-    :func:`derive_prepare_phase` — their handlers have been removed.
+    The canonical lifecycle may route through branch phases such as
+    ``TRIANGULATION`` and ``RE_GROUNDING`` when they are explicitly marked or
+    entered by stale-grounding handling.
     """
     if phase == PreparePhase.INPUT_ASSESSMENT:
         return await _prepare_step_input_assessment(db, todos_db, slug, cwd, state)
+    if phase == PreparePhase.TRIANGULATION:
+        return await _prepare_step_triangulation(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.REQUIREMENTS_REVIEW:
         return await _prepare_step_requirements_review(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.TEST_SPEC_BUILD:
@@ -810,6 +859,8 @@ async def _prepare_dispatch(
         return await _prepare_step_gate(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.GROUNDING_CHECK:
         return await _prepare_step_grounding_check(db, todos_db, slug, cwd, state)
+    if phase == PreparePhase.RE_GROUNDING:
+        return await _prepare_step_re_grounding(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PREPARED:
         return await _prepare_step_prepared(db, slug)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"

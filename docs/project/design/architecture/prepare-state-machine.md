@@ -13,7 +13,7 @@ type: 'design'
 The Prepare state machine transforms a human's idea (`input.md`) into a set of reviewed, approved, and grounded artifacts ready for implementation. It enforces sequential artifact production with review gates between each step — no artifact is produced until its predecessor is approved.
 
 **Entry point:** `telec todo prepare [slug]`
-**Implementation:** [`PreparePhase`](../../../../teleclaude/core/next_machine/core.py) enum (10 states)
+**Implementation:** canonical `lifecycle_phase` with prepare-lane states
 **Terminal states:** `PREPARED` (success), `BLOCKED` (failure)
 
 ### Referenced files
@@ -67,7 +67,8 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 ## Invariants
 
 - **Sequential gating**: no artifact is produced until its predecessor is reviewed and approved.
-- **Phase derivation**: when no durable `prepare_phase` exists in `todo state (todos.db)`, the machine derives the current phase from artifact existence on disk.
+- **Canonical phase storage**: `todo state (todos.db)` stores one authoritative `lifecycle_phase`. Reads use that field directly.
+- **Machine-owned advancement**: the machine evaluates evidence and advances `lifecycle_phase`; workers write artifacts and verdicts, not phase.
 - **Review round limits**: both requirements and plan reviews are capped at `DEFAULT_MAX_REVIEW_ROUNDS` (3). Exceeding the limit transitions to `BLOCKED`.
 - **Grounding freshness**: preparation is only valid if referenced files and input digest have not changed since grounding. Stale preparation triggers re-grounding.
 - **Idempotent re-entry**: `telec todo prepare` is safe to call at any time — first call creates, subsequent calls verify and heal.
@@ -115,20 +116,20 @@ stateDiagram-v2
 
 ### States reference
 
-| State                 | Description                                                   | Agent Action                               | Auto-advance                                         |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
-| `INPUT_ASSESSMENT`    | Evaluate input.md, check if requirements.md exists            | No                                         | Yes — routes to TRIANGULATION or REQUIREMENTS_REVIEW |
-| `TRIANGULATION`       | Requirements need to be written or reworked                   | Yes — dispatch `/next-prepare-discovery`   | No                                                   |
-| `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict                       | Yes — dispatch `/next-review-requirements` | No                                                   |
-| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec`   | No                                                   |
-| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-test-spec`    | No                                                   |
-| `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                                   |
-| `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                                   |
-| `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                                   |
-| `GROUNDING_CHECK`     | Verify freshness of artifacts against current codebase        | No                                         | Yes — routes to PREPARED or RE_GROUNDING             |
-| `RE_GROUNDING`        | Referenced files changed since grounding, plan must update    | Yes — dispatch `/next-prepare-draft`       | No                                                   |
-| `PREPARED`            | Terminal success — todo is ready for Phase B (Work)           | No                                         | —                                                    |
-| `BLOCKED`             | Terminal failure — human intervention needed                  | No                                         | —                                                    |
+| State                 | Description                                                   | Agent Action                               | Auto-advance                                     |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------ |
+| `INPUT_ASSESSMENT`    | Evaluate input.md, check if requirements.md exists            | No                                         | Yes — advances to REQUIREMENTS_REVIEW when ready |
+| `TRIANGULATION`       | Requirements need to be written or reworked                   | Yes — dispatch `/next-prepare-discovery`   | No                                               |
+| `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict                       | Yes — dispatch `/next-review-requirements` | No                                               |
+| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec`   | No                                               |
+| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-test-spec`    | No                                               |
+| `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                               |
+| `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                               |
+| `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                               |
+| `GROUNDING_CHECK`     | Verify freshness of artifacts against current codebase        | No                                         | Yes — routes to PREPARED or RE_GROUNDING         |
+| `RE_GROUNDING`        | Referenced files changed since grounding, plan must update    | Yes — dispatch `/next-prepare-draft`       | No                                               |
+| `PREPARED`            | Terminal success — todo is ready for Phase B (Work)           | No                                         | —                                                |
+| `BLOCKED`             | Terminal failure — human intervention needed                  | No                                         | —                                                |
 
 ### Flow diagram
 

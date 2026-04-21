@@ -20,7 +20,6 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
     FinalizeState,
-    PreparePhase,
     StateValue,
     default_state,
 )
@@ -38,6 +37,10 @@ from teleclaude.core.next_machine.git_ops import (
     get_remote_branch_head,
     has_uncommitted_changes,
     run_git_command,
+)
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    phase_is_complete,
 )
 from teleclaude.core.next_machine.phase_derivation import (
     _has_build_commits_beyond_main,
@@ -215,38 +218,117 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
     db.write_state_sync(slug, state)
 
 
+def validate_mark_phase_preconditions(
+    state: dict[str, StateValue],
+    phase: str,
+    worktree_cwd: str | None,
+) -> str | None:
+    """Return an error string when the target lifecycle phase cannot become current."""
+    try:
+        target = LifecyclePhase(phase)
+    except ValueError:
+        return f"Unknown lifecycle phase: {phase}"
+
+    model = TodoState.model_validate(state)
+    return _validate_mark_phase_target(model, target, worktree_cwd=worktree_cwd)
+
+
+def _phase_complete(model: TodoState, current: LifecyclePhase, *, worktree_cwd: str | None) -> bool:
+    return phase_is_complete(model, current, worktree_cwd=worktree_cwd)
+
+
+def _validate_prepare_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
+    if target in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
+        return None
+    if target == LifecyclePhase.REQUIREMENTS_REVIEW and not _phase_complete(
+        model, LifecyclePhase.INPUT_ASSESSMENT, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set requirements_review: requirements have not been produced"
+    if target == LifecyclePhase.TEST_SPEC_BUILD and not _phase_complete(
+        model, LifecyclePhase.REQUIREMENTS_REVIEW, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set test_spec_build: requirements_review is not complete"
+    if target == LifecyclePhase.TEST_SPEC_REVIEW and not _phase_complete(
+        model, LifecyclePhase.TEST_SPEC_BUILD, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set test_spec_review: test specs have not been produced"
+    if target == LifecyclePhase.PLAN_DRAFTING and not _phase_complete(
+        model, LifecyclePhase.TEST_SPEC_REVIEW, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set plan_drafting: test_spec_review is not complete"
+    if target == LifecyclePhase.PLAN_REVIEW and not _phase_complete(
+        model, LifecyclePhase.PLAN_DRAFTING, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set plan_review: implementation plan has not been produced"
+    if target == LifecyclePhase.GATE and not _phase_complete(
+        model, LifecyclePhase.PLAN_REVIEW, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set gate: plan_review is not complete"
+    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and not _phase_complete(
+        model, LifecyclePhase.GATE, worktree_cwd=worktree_cwd
+    ):
+        return f"Cannot set {target.value}: gate is not complete"
+    if target == LifecyclePhase.PREPARED and not _phase_complete(
+        model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
+    ):
+        return "Cannot set prepared: grounding_check is not complete"
+    return None
+
+
+def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
+    if target == LifecyclePhase.BUILD_STARTED:
+        if model.lifecycle_phase != LifecyclePhase.PREPARED.value and not _phase_complete(
+            model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
+        ):
+            return "Cannot set build_started: prepared prerequisites are not satisfied"
+        return None
+    if target == LifecyclePhase.BUILD_COMPLETE:
+        if worktree_cwd is not None and not _has_build_commits_beyond_main(worktree_cwd):
+            return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
+        return None
+    if target == LifecyclePhase.REVIEW_CHANGES_REQUESTED and model.build_review.verdict != "changes_requested":
+        return (
+            "Cannot set review_changes_requested: "
+            f"build_review.verdict must be 'changes_requested', got '{model.build_review.verdict}'"
+        )
+    if target == LifecyclePhase.REVIEW_APPROVED and model.build_review.verdict != "approve":
+        return f"Cannot set review_approved: build_review.verdict must be 'approve', got '{model.build_review.verdict}'"
+    if target == LifecyclePhase.FINALIZE_READY and model.finalize.status != "ready":
+        return f"Cannot set finalize_ready: finalize.status must be 'ready', got '{model.finalize.status}'"
+    if target == LifecyclePhase.HANDED_OFF and model.finalize.status != "handed_off":
+        return f"Cannot set handed_off: finalize.status must be 'handed_off', got '{model.finalize.status}'"
+    return None
+
+
+def _validate_mark_phase_target(
+    model: TodoState,
+    target: LifecyclePhase,
+    *,
+    worktree_cwd: str | None,
+) -> str | None:
+    if target == LifecyclePhase.PREPARED or target in (
+        LifecyclePhase.INPUT_ASSESSMENT,
+        LifecyclePhase.TRIANGULATION,
+        LifecyclePhase.REQUIREMENTS_REVIEW,
+        LifecyclePhase.TEST_SPEC_BUILD,
+        LifecyclePhase.TEST_SPEC_REVIEW,
+        LifecyclePhase.PLAN_DRAFTING,
+        LifecyclePhase.PLAN_REVIEW,
+        LifecyclePhase.GATE,
+        LifecyclePhase.GROUNDING_CHECK,
+        LifecyclePhase.RE_GROUNDING,
+    ):
+        return _validate_prepare_mark_phase(model, target, worktree_cwd=worktree_cwd)
+    return _validate_work_mark_phase(model, target, worktree_cwd=worktree_cwd)
+
+
 def validate_work_phase_preconditions(
     state: dict[str, StateValue],
     phase: str,
     worktree_cwd: str | None,
 ) -> str | None:
-    """Return error string if preconditions for the target work phase are not met, else None.
-
-    Minimal validation: prevents clearly invalid states without blocking
-    intentional operator skips. Called by mark-phase before writing.
-    """
-    build_review_raw = state.get("build_review")
-    build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-    verdict = build_review.get("verdict", "")
-
-    finalize_raw = state.get("finalize")
-    finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
-    finalize_status = finalize.get("status", "")
-
-    if phase == "build_complete":
-        if worktree_cwd is not None and not _has_build_commits_beyond_main(worktree_cwd):
-            return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
-    elif phase in ("review_changes_requested", "review_approved"):
-        if not verdict:
-            return f"Cannot set {phase}: build_review.verdict is not set"
-    elif phase == "finalize_ready":
-        if verdict != "approve":
-            return f"Cannot set finalize_ready: build_review.verdict must be 'approve', got '{verdict}'"
-    elif phase == "handed_off":
-        if finalize_status != "ready":
-            return f"Cannot set handed_off: finalize.status must be 'ready', got '{finalize_status}'"
-
-    return None
+    """Compatibility wrapper for older callers/tests."""
+    return validate_mark_phase_preconditions(state, phase, worktree_cwd)
 
 
 # ---------------------------------------------------------------------------
@@ -287,6 +369,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         writer = StateWriter(state)
         build_review = writer.state.build_review
         build_review.verdict = verdict
+        build_review.reviewed_at = datetime.now(UTC).isoformat()
         if not build_review.baseline_commit:
             project_root = _project_root_from_cwd(cwd)
             worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
@@ -315,7 +398,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
 
     The worktree must exist, have no uncommitted changes, and the worktree HEAD,
     local branch ref, and remote branch ref must all resolve to the same commit.
-    On success, writes a :class:`FinalizeModel` with ``status="handed_off"``.
+    On success, writes a :class:`FinalizeModel` with ``status="ready"``.
 
     The caller session identity is not stored here — it flows directly from
     the API route's ``CallerIdentity`` into the event payload.
@@ -358,11 +441,11 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
     writer.state.finalize = FinalizeModel(
-        status="handed_off",
+        status="ready",
         branch=slug,
         sha=branch_head,
         ready_at=now,
-        handed_off_at=now,
+        handed_off_at="",
     )
     return writer.commit_sync(db, slug)
 
@@ -534,7 +617,13 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     GroundingManager(writer).refresh(current_sha=current_sha)
     if input_digest:
         writer.grounding.input_digest = input_digest
-    writer.state.prepare_phase = PreparePhase.PREPARED.value
+    writer.state.lifecycle_phase = "prepared"
+    writer.state.prepare_phase = ""
+    writer.state.work_phase = ""
+    if kind not in ("prepped", "bug"):
+        writer.state.artifacts.requirements.produced_at = now_iso
+    if kind != "bug":
+        writer.state.artifacts.implementation_plan.produced_at = now_iso
 
     return writer.commit_sync(db, slug)
 
@@ -721,6 +810,8 @@ __all__ = [
     "stamp_artifact",
     "stamp_finalize_ready",
     "stamp_verdict",
+    "validate_mark_phase_preconditions",
+    "validate_work_phase_preconditions",
     "write_breakdown_state",
     "write_phase_state",
     "write_text_sync",

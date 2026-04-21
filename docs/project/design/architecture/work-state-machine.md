@@ -10,7 +10,7 @@ type: 'design'
 
 ## Purpose
 
-The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. Unlike the Prepare machine which has an explicit phase enum, the Work machine derives its routing decision from the combination of `build` and `review` status fields in `todo state (todos.db)`.
+The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. It now shares the same canonical `lifecycle_phase` field as Prepare; workers write evidence and the machine advances the stored phase.
 
 **Entry point:** `telec todo work [slug]`
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
@@ -63,8 +63,8 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 ```yaml
 phase: in_progress # pending | in_progress | done
-build: pending # pending | started | complete
-review: pending # pending | approved | changes_requested
+lifecycle_phase: build_started
+build_start_base_sha: abc123...
 deferrals_processed: false
 
 finalize:
@@ -72,22 +72,19 @@ finalize:
   branch: my-feature
   sha: abc123...
   ready_at: 2026-03-09T10:00:00+00:00
-  worker_session_id: sess-xyz
   handed_off_at: null
-  handoff_session_id: null
 
-review_round: 0 # counter for review iterations
-max_review_rounds: 3 # limit (configurable)
-review_baseline_commit: '' # SHA for incremental review scope
-review_dispatch_head: '' # HEAD currently owned by the live reviewer
-
-unresolved_findings: [] # R1-F1, R1-F2, ...
-resolved_findings: [] # R1-F1, R1-F2, ...
+build_review:
+  verdict: ''
+  reviewed_at: ''
+  round: 0
+  baseline_commit: ''
+  dispatch_head: ''
 ```
 
 ## Invariants
 
-- **Routing from state**: all routing decisions derive from `build` and `review` fields in `todo state (todos.db)`. No internal state.
+- **Routing from canonical phase**: all routing decisions read `lifecycle_phase` from `todo state (todos.db)`.
 - **Build gates before review**: diff-scoped tests must pass before dispatching a reviewer.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
 - **Reviewer reuse**: when review is already in flight for a slug, the state machine reuses the live reviewer session instead of dispatching a second reviewer.
@@ -95,7 +92,7 @@ resolved_findings: [] # R1-F1, R1-F2, ...
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Stale approval guard**: if new commits exist between `review_baseline_commit` and current HEAD, the machine resets `review=pending` to force a fresh review.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
-- **Finalize serialization**: only one finalize may run at a time; the integration queue serializes delivery.
+- **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready`; the Work machine performs the actual `finalize_ready -> handed_off` transition.
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
 
 ## Primary flows
@@ -135,16 +132,13 @@ stateDiagram-v2
 
 ### Routing logic
 
-The machine reads `todo state (todos.db)` and routes based on `build` and `review` status:
+The machine reads `todo state (todos.db)` and routes from the canonical `lifecycle_phase`:
 
 ```mermaid
 flowchart TD
     Start(["telec todo work [slug]"])
     ReadState["Read todo state (todos.db)"]
-
-    BuildCheck{"build status?"}
-    ReviewCheck{"review status?"}
-    FinalizeCheck{"finalize.status?"}
+    PhaseCheck{"lifecycle_phase?"}
 
     DispatchBuild["Dispatch /next-build"]
     DispatchReview["Dispatch or reuse /next-review-build"]
@@ -154,19 +148,14 @@ flowchart TD
     Handoff["Emit integration events<br/>Mark finalize=handed_off"]
 
     Start --> ReadState
-    ReadState --> BuildCheck
+    ReadState --> PhaseCheck
 
-    BuildCheck -->|"pending / started"| DispatchBuild
-    BuildCheck -->|"complete"| ReviewCheck
-
-    ReviewCheck -->|"pending"| DispatchReview
-    ReviewCheck -->|"changes_requested"| DispatchFix
-    ReviewCheck -->|"approved"| FinalizeCheck
-
-    FinalizeCheck -->|"pending, has deferrals"| DispatchDefer
-    FinalizeCheck -->|"pending, no deferrals"| DispatchFinalize
-    FinalizeCheck -->|"ready"| Handoff
-    FinalizeCheck -->|"handed_off"| Handoff
+    PhaseCheck -->|"build_started"| DispatchBuild
+    PhaseCheck -->|"build_complete"| DispatchReview
+    PhaseCheck -->|"review_changes_requested"| DispatchFix
+    PhaseCheck -->|"review_approved"| DispatchFinalize
+    PhaseCheck -->|"finalize_ready"| Handoff
+    PhaseCheck -->|"handed_off"| Handoff
 ```
 
 ### Precondition checks

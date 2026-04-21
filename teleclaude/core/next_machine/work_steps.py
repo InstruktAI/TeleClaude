@@ -31,6 +31,7 @@ from teleclaude.core.next_machine._types import (
 )
 from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, get_head_commit, has_uncommitted_changes
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -41,7 +42,6 @@ from teleclaude.core.next_machine.output_formatting import (
 from teleclaude.core.next_machine.phase_derivation import _has_build_commits_beyond_main
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
-from teleclaude.core.next_machine.state_io import write_phase_state as _write_phase_state_sync
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
 
@@ -50,16 +50,6 @@ if TYPE_CHECKING:
 from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, resolve_pending_review_state
 
 logger = get_logger(__name__)
-
-
-async def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
-    """Async entry point for authoritative phase persistence from work steps.
-
-    Wraps :func:`teleclaude.core.next_machine.state_io.write_phase_state` so
-    async handlers can record phase transitions without blocking the event
-    loop.
-    """
-    await asyncio.to_thread(_write_phase_state_sync, cwd, slug, state)
 
 
 # ---------------------------------------------------------------------------
@@ -142,12 +132,6 @@ async def _work_step_build_started(
     """
     _ = todos_db
 
-    # Authoritative: record BUILD_STARTED entry so routing reads the recorded
-    # phase on the next iteration instead of re-deriving from worktree primitives.
-    if state.get("work_phase") != WorkPhase.BUILD_STARTED.value:
-        state["work_phase"] = WorkPhase.BUILD_STARTED.value
-        await write_phase_state(cwd, slug, state)
-
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else "todo"
 
@@ -179,9 +163,6 @@ async def _work_step_build_started(
         gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
         if not gates_passed:
             return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
-        # Build complete — clear authoritative phase so primitives derive BUILD_COMPLETE
-        state["work_phase"] = ""
-        await write_phase_state(cwd, slug, state)
         return True, ""
 
     try:
@@ -335,9 +316,9 @@ async def _work_step_review_changes_requested(
         writer = StateWriter(state)
         review = writer.state.build_review
         review.verdict = ""
+        review.reviewed_at = ""
         review.dispatch_head = ""
         review.round = review.round + 1
-        writer.state.work_phase = ""  # clear authoritative — let primitives derive BUILD_COMPLETE
         _append_event(
             state,
             actor="work_state_machine",
@@ -467,6 +448,26 @@ async def _work_step_review_approved(
     )
 
 
+async def _work_step_finalize_ready(
+    *,
+    db: Db,
+    todos_db: TodosDb,
+    slug: str,
+    cwd: str,
+    worktree_cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str]:
+    """FINALIZE_READY: record the actual handoff under machine control."""
+    _ = db, cwd, worktree_cwd
+    writer = StateWriter(state)
+    finalize = writer.state.finalize
+    finalize.status = "handed_off"
+    finalize.handed_off_at = datetime.now(UTC).isoformat()
+    writer.state.lifecycle_phase = LifecyclePhase.HANDED_OFF.value
+    await _commit_writer(writer, todos_db, slug, state)
+    return True, ""
+
+
 async def _work_step_handed_off(
     *,
     db: Db,
@@ -522,6 +523,7 @@ async def _work_dispatch(
         WorkPhase.BUILD_STARTED: _work_step_build_started,
         WorkPhase.REVIEW_CHANGES_REQUESTED: _work_step_review_changes_requested,
         WorkPhase.REVIEW_APPROVED: _work_step_review_approved,
+        WorkPhase.FINALIZE_READY: _work_step_finalize_ready,
         WorkPhase.HANDED_OFF: _work_step_handed_off,
     }
     handler = handlers.get(phase)

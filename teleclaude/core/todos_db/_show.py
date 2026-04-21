@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine.lifecycle import coerce_lifecycle_phase
 from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase, derive_work_phase
 
 if TYPE_CHECKING:
@@ -135,7 +136,10 @@ async def _derive_phase_value(
     slug: str,
     worktree_cwd: str,
 ) -> str:
-    """Return the derived phase value for a slug from prepare + work primitives."""
+    """Return the current lifecycle phase value for a slug."""
+    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if lifecycle is not None:
+        return lifecycle.value
     prep = await derive_prepare_phase(state, todos_db, slug)
     if prep != PreparePhase.PREPARED:
         return str(prep.value)

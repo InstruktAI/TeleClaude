@@ -1,4 +1,4 @@
-"""Unit tests for state_io validation helpers."""
+"""Unit tests for mark-phase validation helpers."""
 
 from __future__ import annotations
 
@@ -6,72 +6,103 @@ from unittest.mock import patch
 
 import pytest
 
-from teleclaude.core.next_machine.state_io import validate_work_phase_preconditions
+from teleclaude.core.next_machine.state_io import validate_mark_phase_preconditions
+from teleclaude.types.state_value import StateValue
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 _STATE_IO = "teleclaude.core.next_machine.state_io"
 
 
-def test_build_started_always_valid() -> None:
-    """build_started has no preconditions — always returns None."""
-    assert validate_work_phase_preconditions({}, "build_started", None) is None
+def _prepared_state() -> dict[str, StateValue]:
+    return {
+        "requirements_review": {"verdict": "approve"},
+        "artifacts": {
+            "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
+            "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
+            "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
+        },
+        "test_spec_review": {"verdict": "approve"},
+        "plan_review": {"verdict": "approve"},
+        "dor": {"score": 8, "status": "pass"},
+        "grounding": {"valid": True},
+        "lifecycle_phase": "prepared",
+    }
+
+
+def test_input_assessment_always_valid() -> None:
+    assert validate_mark_phase_preconditions({}, "input_assessment", None) is None
+
+
+def test_build_started_requires_prepared_prerequisites() -> None:
+    result = validate_mark_phase_preconditions({}, "build_started", None)
+
+    assert result is not None
+    assert "prepared" in result
+
+
+def test_build_started_accepts_prepared_state() -> None:
+    result = validate_mark_phase_preconditions(_prepared_state(), "build_started", None)
+
+    assert result is None
 
 
 def test_build_complete_rejected_without_commits() -> None:
-    """build_complete requires commits beyond main."""
     with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=False):
-        result = validate_work_phase_preconditions({}, "build_complete", "/some/worktree")
+        result = validate_mark_phase_preconditions(_prepared_state(), "build_complete", "/some/worktree")
 
     assert result is not None
     assert "commits beyond main" in result
 
 
 def test_build_complete_accepted_with_commits() -> None:
-    """build_complete passes when commits exist."""
     with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=True):
-        result = validate_work_phase_preconditions({}, "build_complete", "/some/worktree")
+        result = validate_mark_phase_preconditions(_prepared_state(), "build_complete", "/some/worktree")
 
     assert result is None
 
 
-def test_build_complete_skips_check_without_worktree() -> None:
-    """build_complete passes when no worktree_cwd is provided (pre-worktree setup)."""
-    result = validate_work_phase_preconditions({}, "build_complete", None)
-    assert result is None
+def test_review_approved_requires_approve_verdict() -> None:
+    state = _prepared_state() | {"build_review": {"verdict": "changes_requested"}}
 
+    result = validate_mark_phase_preconditions(state, "review_approved", None)
 
-def test_finalize_ready_rejected_without_approve_verdict() -> None:
-    """finalize_ready requires build_review.verdict == 'approve'."""
-    state: dict = {"build_review": {"verdict": "changes_requested"}}
-    result = validate_work_phase_preconditions(state, "finalize_ready", None)
     assert result is not None
     assert "approve" in result
 
 
-def test_finalize_ready_accepted_with_approve_verdict() -> None:
-    """finalize_ready passes when verdict is approve."""
-    state: dict = {"build_review": {"verdict": "approve"}}
-    result = validate_work_phase_preconditions(state, "finalize_ready", None)
+def test_review_approved_accepts_approve_verdict() -> None:
+    state = _prepared_state() | {"build_review": {"verdict": "approve"}}
+
+    result = validate_mark_phase_preconditions(state, "review_approved", None)
+
     assert result is None
 
 
-def test_review_approved_rejected_without_verdict() -> None:
-    """review_approved requires a build_review.verdict to be set."""
-    result = validate_work_phase_preconditions({}, "review_approved", None)
+def test_finalize_ready_requires_ready_status() -> None:
+    state = _prepared_state() | {"build_review": {"verdict": "approve"}}
+
+    result = validate_mark_phase_preconditions(state, "finalize_ready", None)
+
     assert result is not None
-    assert "verdict" in result
+    assert "finalize.status" in result
 
 
-def test_review_approved_accepted_with_verdict() -> None:
-    """review_approved passes when any verdict is set."""
-    state: dict = {"build_review": {"verdict": "approve"}}
-    result = validate_work_phase_preconditions(state, "review_approved", None)
+def test_finalize_ready_accepts_ready_status() -> None:
+    state = _prepared_state() | {
+        "build_review": {"verdict": "approve"},
+        "finalize": {"status": "ready"},
+    }
+
+    result = validate_mark_phase_preconditions(state, "finalize_ready", None)
+
     assert result is None
 
 
-def test_handed_off_rejected_without_finalize_ready() -> None:
-    """handed_off requires finalize.status == 'ready'."""
-    result = validate_work_phase_preconditions({}, "handed_off", None)
+def test_handed_off_requires_handed_off_status() -> None:
+    state = _prepared_state() | {"finalize": {"status": "ready"}}
+
+    result = validate_mark_phase_preconditions(state, "handed_off", None)
+
     assert result is not None
-    assert "finalize" in result.lower()
+    assert "handed_off" in result

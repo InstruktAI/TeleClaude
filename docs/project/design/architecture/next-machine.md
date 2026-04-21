@@ -63,12 +63,12 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- Phase derived from authoritative sub-phase fields first, with stamped primitives as fallback consistency signals
+- One authoritative `lifecycle_phase` stored in todos.db; only write-time transition logic derives from primitives
 - Dependency resolution via set_dependencies tool
 
 ## Invariants
 
-- **Stateless Derivation**: All state derived from filesystem artifacts; no internal state stored.
+- **Canonical Lifecycle State**: Current phase is read from stored `lifecycle_phase`; derivation happens only during transition evaluation.
 - **Artifact Immutability**: Machine never modifies artifacts directly; delegates to workers.
 - **Dependency Blocking**: Cannot claim item until all dependencies complete.
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.

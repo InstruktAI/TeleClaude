@@ -80,7 +80,23 @@ class TestHandleTodoStamp:
 class TestHandleMarkPhase:
     """telec todo mark-phase <slug> --phase <value>."""
 
-    def test_prepare_phase_value_writes_prepare_phase_field(self) -> None:
+    def _prepared_state(self) -> dict[str, StateValue]:
+        return {
+            "requirements_review": {"verdict": "approve"},
+            "artifacts": {
+                "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
+            },
+            "test_spec_review": {"verdict": "approve"},
+            "plan_review": {"verdict": "approve"},
+            "dor": {"score": 8, "status": "pass"},
+            "grounding": {"valid": True},
+            "lifecycle_phase": "prepared",
+            "kind": "todo",
+        }
+
+    def test_prepare_phase_value_writes_lifecycle_phase_field(self) -> None:
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -88,18 +104,17 @@ class TestHandleMarkPhase:
 
         with (
             patch(f"{_MODULE}.write_phase_state", _fake_write),
-            patch(f"{_MODULE}.read_phase_state", return_value={"kind": "todo"}),
+            patch(f"{_MODULE}.read_phase_state", return_value=self._prepared_state()),
         ):
             exit_code = handle_mark_phase(slug="my-slug", phase=PreparePhase.PREPARED.value, cwd="/tmp/cwd")
 
         assert exit_code == 0
         persisted = captured.get("state", {})
         assert isinstance(persisted, dict)
-        assert persisted.get("prepare_phase") == PreparePhase.PREPARED.value
-        # Existing state keys must be preserved, not overwritten.
+        assert persisted.get("lifecycle_phase") == PreparePhase.PREPARED.value
         assert persisted.get("kind") == "todo"
 
-    def test_work_phase_value_writes_work_phase_field(self) -> None:
+    def test_work_phase_value_writes_lifecycle_phase_field(self) -> None:
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
@@ -107,14 +122,14 @@ class TestHandleMarkPhase:
 
         with (
             patch(f"{_MODULE}.write_phase_state", _fake_write),
-            patch(f"{_MODULE}.read_phase_state", return_value={}),
+            patch(f"{_MODULE}.read_phase_state", return_value=self._prepared_state()),
         ):
             exit_code = handle_mark_phase(slug="my-slug", phase=WorkPhase.BUILD_STARTED.value, cwd="/tmp/cwd")
 
         assert exit_code == 0
         persisted = captured.get("state", {})
         assert isinstance(persisted, dict)
-        assert persisted.get("work_phase") == WorkPhase.BUILD_STARTED.value
+        assert persisted.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
 
     def test_unknown_phase_value_rejected_with_listing(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Unknown values exit non-zero, do not write, and list both enums' values."""

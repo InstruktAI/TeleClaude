@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_work_lifecycle_phase
 from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
@@ -99,6 +100,9 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     state = await todos_db.read_state(slug)
     if state is None:
         return False
+    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if lifecycle is not None:
+        return lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
     return await is_prepared(state, todos_db, slug)
 
 

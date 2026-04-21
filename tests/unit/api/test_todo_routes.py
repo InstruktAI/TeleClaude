@@ -186,16 +186,31 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_mark_phase_writes_prepare_phase_and_returns_updated_state(self) -> None:
-        """PreparePhase values write state['prepare_phase'] and the route returns the new state."""
+    async def test_mark_phase_writes_lifecycle_phase_and_returns_updated_state(self) -> None:
+        """mark-phase writes the canonical lifecycle phase and returns updated state."""
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
             captured["state"] = dict(state)
 
+        prepared_state: dict[str, StateValue] = {
+            "requirements_review": {"verdict": "approve"},
+            "artifacts": {
+                "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
+            },
+            "test_spec_review": {"verdict": "approve"},
+            "plan_review": {"verdict": "approve"},
+            "dor": {"score": 8, "status": "pass"},
+            "grounding": {"valid": True},
+            "lifecycle_phase": "prepared",
+            "kind": "bug",
+        }
+
         with (
             patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
-            patch("teleclaude.api.todo_routes.read_phase_state", return_value={"kind": "bug"}),
+            patch("teleclaude.api.todo_routes.read_phase_state", return_value=prepared_state),
         ):
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
@@ -203,27 +218,39 @@ class TestTodoRoutes:
                 cwd="/repo",
             )
 
-        # Persisted state carries the authoritative field.
         persisted = captured.get("state", {})
         assert isinstance(persisted, dict)
-        assert persisted.get("prepare_phase") == PreparePhase.PREPARED.value
-        # Route returns the full updated state payload, not a metadata echo.
+        assert persisted.get("lifecycle_phase") == PreparePhase.PREPARED.value
         assert isinstance(response, dict)
-        assert response.get("prepare_phase") == PreparePhase.PREPARED.value
+        assert response.get("lifecycle_phase") == PreparePhase.PREPARED.value
         assert response.get("kind") == "bug"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_mark_phase_writes_work_phase_when_value_matches_work_enum(self) -> None:
-        """WorkPhase values write state['work_phase']."""
+    async def test_mark_phase_writes_work_target_when_prerequisites_hold(self) -> None:
+        """Work lifecycle targets persist through the canonical lifecycle field."""
         captured: dict[str, StateValue] = {}
 
         def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
             captured["state"] = dict(state)
 
+        prepared_state: dict[str, StateValue] = {
+            "requirements_review": {"verdict": "approve"},
+            "artifacts": {
+                "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
+                "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
+            },
+            "test_spec_review": {"verdict": "approve"},
+            "plan_review": {"verdict": "approve"},
+            "dor": {"score": 8, "status": "pass"},
+            "grounding": {"valid": True},
+            "lifecycle_phase": "prepared",
+        }
+
         with (
             patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
-            patch("teleclaude.api.todo_routes.read_phase_state", return_value={}),
+            patch("teleclaude.api.todo_routes.read_phase_state", return_value=prepared_state),
         ):
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
@@ -233,9 +260,9 @@ class TestTodoRoutes:
 
         persisted = captured.get("state", {})
         assert isinstance(persisted, dict)
-        assert persisted.get("work_phase") == WorkPhase.BUILD_STARTED.value
+        assert persisted.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
         assert isinstance(response, dict)
-        assert response.get("work_phase") == WorkPhase.BUILD_STARTED.value
+        assert response.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio

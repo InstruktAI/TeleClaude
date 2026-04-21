@@ -1,49 +1,31 @@
-"""Pure derivation of work and prepare phases from authoritative state + fallback primitives.
+"""Lifecycle compatibility helpers.
 
-Both ``derive_work_phase`` and ``derive_prepare_phase`` first honor the
-authoritative ``work_phase`` / ``prepare_phase`` field when it contains a valid
-enum value. When the field is unset, they fall back to primitive signals
-(stamped verdicts, DOR, grounding, artifact presence, git commits, and — for
-work — a build-gate check). The next-machine loop calls these functions once
-per iteration; no side effects, no mutation, safe to call idempotently.
-
-No imports from core.py (circular-import guard).
+The canonical current-phase source is now ``state["lifecycle_phase"]``. These
+helpers remain as compatibility shims for legacy callers that still ask for a
+prepare/work projection. When the canonical field is missing, they fall back to
+the historical primitive derivation so old rows continue to load.
 """
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Callable
-from enum import Enum
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.build_gates import run_build_gates
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    is_prepare_lifecycle_phase,
+    is_work_lifecycle_phase,
+)
 from teleclaude.git import GitCommandError, Repo
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 
-logger = logging.getLogger(__name__)
-
 GatesChecker = Callable[[str, str], tuple[bool, str]]
-
-
-def _coerce_authoritative[PhaseEnumT: Enum](raw: StateValue | None, enum_cls: type[PhaseEnumT]) -> PhaseEnumT | None:
-    """Return the enum member for ``raw`` when it is a valid value, else None.
-
-    Empty strings and non-string values resolve to ``None`` so the caller
-    falls through to primitive derivation. Unknown strings also resolve to
-    ``None``: the primitive result stands and we avoid propagating garbage
-    authoritative writes.
-    """
-    if not isinstance(raw, str) or not raw:
-        return None
-    try:
-        return enum_cls(raw)
-    except ValueError:
-        return None
 
 
 def derive_work_phase(
@@ -53,29 +35,11 @@ def derive_work_phase(
     *,
     gates_checker: GatesChecker = run_build_gates,
 ) -> WorkPhase:
-    """Derive the current work phase.
-
-    Reads the authoritative ``state["work_phase"]`` field first. When set to a
-    valid :class:`WorkPhase` value that is the result. When the authoritative
-    field is set, the primitive-derived phase is also computed so a disagreement
-    warning can be emitted; the authoritative value is never overridden.
-
-    When the authoritative field is empty or invalid the function falls back
-    to :func:`_derive_work_phase_from_primitives`, preserving the prior signal
-    precedence.
-    """
-    authoritative = _coerce_authoritative(state.get("work_phase"), WorkPhase)
-    primitive = _derive_work_phase_from_primitives(state, worktree_cwd, slug, gates_checker=gates_checker)
-    if authoritative is not None:
-        if authoritative is not primitive:
-            logger.warning(
-                "authoritative work_phase %s disagrees with derived primitive %s for slug %s",
-                authoritative.value,
-                primitive.value,
-                slug,
-            )
-        return authoritative
-    return primitive
+    """Return the current work projection from canonical lifecycle state."""
+    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if lifecycle is not None and is_work_lifecycle_phase(lifecycle):
+        return WorkPhase(lifecycle.value)
+    return _derive_work_phase_from_primitives(state, worktree_cwd, slug, gates_checker=gates_checker)
 
 
 def _derive_work_phase_from_primitives(
@@ -125,30 +89,14 @@ async def derive_prepare_phase(
     todos_db: TodosDb,
     slug: str,
 ) -> PreparePhase:
-    """Derive the current prepare phase.
-
-    Reads the authoritative ``state["prepare_phase"]`` field first. When set to
-    a valid :class:`PreparePhase` value that is the result. When the
-    authoritative field is set, the primitive-derived phase is also computed so
-    a disagreement warning can be emitted; the authoritative value is never
-    overridden.
-
-    When the authoritative field is empty or invalid the function falls back to
-    :func:`_derive_prepare_phase_from_primitives`, preserving the prior signal
-    precedence.
-    """
-    authoritative = _coerce_authoritative(state.get("prepare_phase"), PreparePhase)
-    primitive = await _derive_prepare_phase_from_primitives(state, todos_db, slug)
-    if authoritative is not None:
-        if authoritative is not primitive:
-            logger.warning(
-                "authoritative prepare_phase %s disagrees with derived primitive %s for slug %s",
-                authoritative.value,
-                primitive.value,
-                slug,
-            )
-        return authoritative
-    return primitive
+    """Return the current prepare projection from canonical lifecycle state."""
+    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if lifecycle is not None:
+        if is_prepare_lifecycle_phase(lifecycle):
+            return PreparePhase(lifecycle.value)
+        if lifecycle in WORK_LIFECYCLE_EQUIVALENT_PREPARED:
+            return PreparePhase.PREPARED
+    return await _derive_prepare_phase_from_primitives(state, todos_db, slug)
 
 
 async def _derive_prepare_phase_from_primitives(
@@ -223,7 +171,22 @@ async def _derive_prepare_phase_from_primitives(
 
 async def is_prepared(state: dict[str, StateValue], todos_db: TodosDb, slug: str) -> bool:
     """Return True when the prepare lifecycle has reached the PREPARED terminal phase."""
+    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if lifecycle is not None:
+        return lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
     return (await derive_prepare_phase(state, todos_db, slug)) == PreparePhase.PREPARED
+
+
+WORK_LIFECYCLE_EQUIVALENT_PREPARED: frozenset[LifecyclePhase] = frozenset(
+    {
+        LifecyclePhase.BUILD_STARTED,
+        LifecyclePhase.BUILD_COMPLETE,
+        LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+        LifecyclePhase.REVIEW_APPROVED,
+        LifecyclePhase.FINALIZE_READY,
+        LifecyclePhase.HANDED_OFF,
+    }
+)
 
 
 def _has_build_commits_beyond_main(worktree_cwd: str) -> bool:
