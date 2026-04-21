@@ -21,8 +21,8 @@ Three execution contexts drive file resolution:
    current session's touched files via transcript.
 3. **Explicit files** — caller passes file arguments directly. Skip all scoping.
 
-`make lint` and `make test` defer to `telec code lint` and `telec code test` bare — they
-rely on the scoping logic described here.
+`make lint` and `make test` defer to `telec code lint --all` and `telec code test --all` bare — they
+do NOT rely on the scoping logic described here.
 
 Pre-commit hooks are a separate path: they use `telec code lint --step <name>` with
 `pass_filenames: true`. Pre-commit passes staged files directly. The scoping

@@ -33,15 +33,15 @@ findings in `bug.md` for reviewer verification.
    not complete until the test passes.
 8. Document what changed in the `## Fix Applied` section.
 9. Commit the fix and `bug.md` updates together.
-10. Run tests: `make test`.
-11. Run lint: `make lint`.
+10. Run tests: `telec code test`.
+11. Run lint: `telec code lint`.
 12. Commit all remaining files in the worktree. Everything in the worktree belongs to the task.
 
 ## Pre-completion checklist
 
 - Reproduction test exists and passes.
-- All tests pass: `make test`.
-- Lint passes: `make lint`.
+- All tests pass: `telec code test`.
+- Lint passes: `telec code lint`.
 
 ## Outputs
 

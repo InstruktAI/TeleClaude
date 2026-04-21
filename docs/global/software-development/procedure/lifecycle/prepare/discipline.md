@@ -52,21 +52,6 @@ it, flag it.
 For each artifact element, identify which DoD gates it triggers and verify those
 implications are reflected.
 
-### 6. Know your failure mode
-
-Each role has a characteristic error:
-
-- **Requirements creator**: inventing constraints not in the input, prescribing
-  implementation detail, omitting `[inferred]` markers.
-- **Requirements reviewer**: adding scope through auto-remediation instead of
-  marking `needs_work`.
-- **Plan drafter**: tasks without rationale, references to APIs/paths not
-  confirmed against specs.
-- **Plan reviewer**: approving plans that enumerate implementation choices
-  belonging to the builder.
-- **Gate assessor**: scoring structure without loading domain specs — checking
-  form without substance.
-
 ## Outputs
 
 - No artifacts produced. This procedure modifies behavior, not files.

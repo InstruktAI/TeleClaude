@@ -49,11 +49,11 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 ## Pre-completion checklist
 
 1. All tasks in `implementation-plan.md` are `[x]`.
-2. Tests pass: `make test`.
+2. Tests pass: `telec code test`.
 3. All expected-failure markers removed for in-scope test specifications (spec-satisfaction mode).
 4. No test assertions weakened or deleted from spec-delivered tests (spec-satisfaction mode).
    For characterization mode: each test verified via mutation check (VERIFY step).
-5. Lint passes: `make lint`.
+5. Lint passes: `telec code lint`.
 6. User-facing verification:
    - For browser-based frontend or web UI changes, run a Playwright smoke test in a real browser that exercises the changed path. Record the path exercised and the observed result in `quality-checklist.md` under the Build section.
    - For other user-facing changes (CLI output, TUI, interactive behavior), verify the change is observable and record what was checked and the result in `quality-checklist.md`.

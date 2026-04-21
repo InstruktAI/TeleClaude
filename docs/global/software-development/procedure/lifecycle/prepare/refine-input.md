@@ -14,7 +14,7 @@ Capture the human's evolving thinking about a todo and produce a coherent, integ
 
 ## Preconditions
 
-- Slug is provided and exists in `todos.db` roadmap.
+- Slug is provided and exists in `telec roadmap list`.
 - Human is present and ready to share thinking.
 
 ## Steps
@@ -25,7 +25,7 @@ Read the existing state of the todo:
 
 - `telec todo artifacts read {slug} input` — current brain dump (may not exist yet).
 - `telec todo artifacts read {slug} requirements` — what has already been derived (if exists). This tells you what the system already understands, so you can focus the conversation on what's new or changed.
-- `todos.db` roadmap — the slug's description and position.
+- `telec roadmap list` — the slug's description and position.
 
 ### 2. Listen and clarify
 
