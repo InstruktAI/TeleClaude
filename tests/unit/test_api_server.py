@@ -158,7 +158,7 @@ class TestApiServerHttpRoutes:
                 "after": [],
                 "group": None,
                 "delivered_at": None,
-                "prepare_phase": None,
+                "lifecycle_phase": None,
                 "integration_phase": None,
                 "finalize_status": None,
             }

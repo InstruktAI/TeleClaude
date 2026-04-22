@@ -112,7 +112,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 ",".join(t.files),
                 ",".join(t.after),
                 t.group or "",
-                getattr(t, "prepare_phase", None) or "",
+                getattr(t, "lifecycle_phase", None) or "",
                 getattr(t, "integration_phase", None) or "",
                 getattr(t, "finalize_status", None) or "",
             )
@@ -185,7 +185,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     files=t.files,
                     after=t.after,
                     group=t.group,
-                    prepare_phase=t.prepare_phase,
+                    lifecycle_phase=t.lifecycle_phase,
                     integration_phase=t.integration_phase,
                     finalize_status=t.finalize_status,
                     project_path=t.project_path or p.path,

@@ -13,12 +13,11 @@ from teleclaude.cli.tui.widgets.todo_row import (
     _gold_color,
     _ok_color,
     _pad,
-    _red_color,
     integration_phase_label,
-    prepare_phase_label,
+    lifecycle_phase_label,
 )
 from teleclaude.core.integration.state_machine import IntegrationPhase
-from teleclaude.core.next_machine.core import PreparePhase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 
 
 def _make_todo(*, slug: str = "test-slug", status: TodoStatus = TodoStatus.PENDING) -> TodoItem:
@@ -31,22 +30,22 @@ def _make_todo(*, slug: str = "test-slug", status: TodoStatus = TodoStatus.PENDI
     )
 
 
-# --- prepare_phase_label ---
+# --- lifecycle_phase_label ---
 
 
 @pytest.mark.unit
 def test_prepare_phase_label_returns_none_for_none_phase() -> None:
-    assert prepare_phase_label(None) is None
+    assert lifecycle_phase_label(None) is None
 
 
 @pytest.mark.unit
 def test_prepare_phase_label_returns_none_for_unknown_phase() -> None:
-    assert prepare_phase_label("bogus-phase") is None
+    assert lifecycle_phase_label("bogus-phase") is None
 
 
 @pytest.mark.unit
-def test_prepare_phase_label_input_assessment_maps_to_discovery() -> None:
-    result = prepare_phase_label(PreparePhase.INPUT_ASSESSMENT.value)
+def test_lifecycle_phase_label_input_assessment_maps_to_discovery() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.INPUT_ASSESSMENT.value)
     assert result is not None
     prefix, value, _ = result
     assert prefix == "P"
@@ -54,28 +53,23 @@ def test_prepare_phase_label_input_assessment_maps_to_discovery() -> None:
 
 
 @pytest.mark.unit
-def test_prepare_phase_label_blocked_returns_red_color() -> None:
-    result = prepare_phase_label(PreparePhase.BLOCKED.value)
-    assert result is not None
-    prefix, value, color = result
-    assert prefix == "P"
-    assert value == "blocked"
-    assert color == _red_color()
+def test_lifecycle_phase_label_returns_none_for_work_phase() -> None:
+    assert lifecycle_phase_label(LifecyclePhase.BUILD_STARTED.value) is None
 
 
 @pytest.mark.unit
-def test_prepare_phase_label_test_spec_phases_map_to_requirements() -> None:
-    for phase in (PreparePhase.TEST_SPEC_BUILD, PreparePhase.TEST_SPEC_REVIEW):
-        result = prepare_phase_label(phase.value)
+def test_lifecycle_phase_label_test_spec_phases_map_to_requirements() -> None:
+    for phase in (LifecyclePhase.TEST_SPEC_BUILD, LifecyclePhase.TEST_SPEC_REVIEW):
+        result = lifecycle_phase_label(phase.value)
         assert result is not None
         _, value, _ = result
         assert value == "requirements"
 
 
 @pytest.mark.unit
-def test_prepare_phase_label_planning_phases_map_to_planning() -> None:
-    for phase in (PreparePhase.PLAN_DRAFTING, PreparePhase.PLAN_REVIEW, PreparePhase.GATE):
-        result = prepare_phase_label(phase.value)
+def test_lifecycle_phase_label_planning_phases_map_to_planning() -> None:
+    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW, LifecyclePhase.GATE):
+        result = lifecycle_phase_label(phase.value)
         assert result is not None
         _, value, _ = result
         assert value == "planning"
@@ -237,7 +231,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=False,
-        prepare_phase="input_assessment",
+        lifecycle_phase="input_assessment",
     )
     integration_item = TodoItem(
         slug="integ-item",

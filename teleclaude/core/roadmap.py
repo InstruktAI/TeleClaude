@@ -150,10 +150,10 @@ def assemble_roadmap_from_db(
                     build_status = "complete"
                     review_status = "approved"
 
-            # Prepare phase: read directly from the canonical lifecycle pointer.
-            prepare_phase: str | None = None
-            if not is_draft and not is_delivered and not build_status:
-                prepare_phase = current_value
+            # Lifecycle display phase: read directly from the canonical lifecycle pointer.
+            lifecycle_phase: str | None = None
+            if not is_draft and not is_delivered:
+                lifecycle_phase = current_value
 
             integration_phase = _non_empty_str(state.get("integration_phase"))
 
@@ -164,9 +164,9 @@ def assemble_roadmap_from_db(
                 integration_phase = "candidate_delivered"
             if not is_draft and todo_status == "active" and build_status:
                 todo_status = "in_progress"
-            elif not is_draft and todo_status == "active" and prepare_phase == "prepared":
+            elif not is_draft and todo_status == "active" and lifecycle_phase == "prepared":
                 todo_status = "ready"
-            elif not is_draft and todo_status == "active" and prepare_phase:
+            elif not is_draft and todo_status == "active" and lifecycle_phase:
                 todo_status = "in_progress"
 
             todos.append(
@@ -182,7 +182,7 @@ def assemble_roadmap_from_db(
                     after=deps_map.get(slug, []),
                     group=row[3],
                     delivered_at=row[6],
-                    prepare_phase=prepare_phase,
+                    lifecycle_phase=lifecycle_phase,
                     integration_phase=integration_phase,
                     finalize_status=finalize_status,
                     files=[ar[0] for ar in artifact_rows],

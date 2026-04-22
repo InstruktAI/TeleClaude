@@ -54,7 +54,7 @@ _LITERAL_FIELDS: list[tuple[str, str, list[str]]] = [
 
 # Fields that were missing from the hand-maintained TodoInfo (the drift that motivates R8).
 _TODO_PREVIOUSLY_MISSING = [
-    "prepare_phase",
+    "lifecycle_phase",
     "integration_phase",
     "finalize_status",
     "delivered_at",

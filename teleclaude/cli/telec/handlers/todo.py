@@ -23,10 +23,7 @@ from teleclaude.cli.tool_commands import (
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-from teleclaude.core.next_machine.state_io import (
-    apply_prepared_state,
-    mark_phase_state,
-)
+from teleclaude.core.next_machine.state_io import mark_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
@@ -51,9 +48,8 @@ __all__ = [
 def _handle_todo_mark_ready(args: list[str]) -> None:
     """Handle telec todo mark-ready <slug> [<slug> ...].
 
-    Fast-track one or more TODOs to work-ready state, bypassing the full prepare lifecycle.
-    Validates required artifacts exist, then stamps DOR, grounding, and review verdicts so
-    ``derive_prepare_phase`` resolves to ``PREPARED``.
+    Fast-track one or more TODOs to work-ready state by delegating to mark-phase
+    with ``prepared``.
     """
     if not args:
         print("Usage: telec todo mark-ready <slug> [<slug> ...]")
@@ -67,11 +63,10 @@ def _handle_todo_mark_ready(args: list[str]) -> None:
     cwd = str(resolve_invocation_cwd())
     failed = 0
     for slug in slugs:
-        try:
-            apply_prepared_state(cwd, slug)
+        rc = handle_mark_phase(slug, "prepared", cwd)
+        if rc == 0:
             print(f"✓ {slug} fast-tracked to work-ready (prepared)")
-        except (ValueError, FileNotFoundError) as exc:
-            print(str(exc))
+        else:
             failed += 1
 
     if failed:

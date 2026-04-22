@@ -13,7 +13,8 @@ from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.core.integration.state_machine import IntegrationPhase
-from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD, PreparePhase
+from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -42,19 +43,18 @@ _TODO_STATUS_APPROVED = "approved"
 _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
 
-_PREPARE_PHASE_LABELS: dict[PreparePhase, str] = {
-    PreparePhase.INPUT_ASSESSMENT: _PREPARE_LABEL_DISCOVERY,
-    PreparePhase.TRIANGULATION: _PREPARE_LABEL_DISCOVERY,
-    PreparePhase.REQUIREMENTS_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
-    PreparePhase.TEST_SPEC_BUILD: _PREPARE_LABEL_REQUIREMENTS,
-    PreparePhase.TEST_SPEC_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
-    PreparePhase.PLAN_DRAFTING: _PREPARE_LABEL_PLANNING,
-    PreparePhase.PLAN_REVIEW: _PREPARE_LABEL_PLANNING,
-    PreparePhase.GATE: _PREPARE_LABEL_PLANNING,
-    PreparePhase.GROUNDING_CHECK: _PREPARE_LABEL_PLANNING,
-    PreparePhase.RE_GROUNDING: _PREPARE_LABEL_PLANNING,
-    PreparePhase.PREPARED: _PREPARE_LABEL_READY,
-    PreparePhase.BLOCKED: _PREPARE_LABEL_BLOCKED,
+_PREPARE_PHASE_LABELS: dict[LifecyclePhase, str] = {
+    LifecyclePhase.INPUT_ASSESSMENT: _PREPARE_LABEL_DISCOVERY,
+    LifecyclePhase.TRIANGULATION: _PREPARE_LABEL_DISCOVERY,
+    LifecyclePhase.REQUIREMENTS_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
+    LifecyclePhase.TEST_SPEC_BUILD: _PREPARE_LABEL_REQUIREMENTS,
+    LifecyclePhase.TEST_SPEC_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
+    LifecyclePhase.PLAN_DRAFTING: _PREPARE_LABEL_PLANNING,
+    LifecyclePhase.PLAN_REVIEW: _PREPARE_LABEL_PLANNING,
+    LifecyclePhase.GATE: _PREPARE_LABEL_PLANNING,
+    LifecyclePhase.GROUNDING_CHECK: _PREPARE_LABEL_PLANNING,
+    LifecyclePhase.RE_GROUNDING: _PREPARE_LABEL_PLANNING,
+    LifecyclePhase.PREPARED: _PREPARE_LABEL_READY,
 }
 
 _FINALIZE_LABEL_READY = "ready"
@@ -83,28 +83,16 @@ _INTEGRATION_DELIVERED_PHASES: frozenset[str] = frozenset(
 )
 
 
-def _coerce_prepare_phase(phase: str | None) -> PreparePhase | None:
-    """Convert persisted prepare-phase text into an enum value when possible."""
-    if not phase:
+def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
+    """Return the prepare-lane lifecycle column tuple for a todo, if any."""
+    lifecycle_phase = coerce_lifecycle_phase(phase)
+    if lifecycle_phase is None:
         return None
-    try:
-        return PreparePhase(phase)
-    except ValueError:
-        return None
-
-
-def prepare_phase_label(phase: str | None) -> tuple[str, str, str] | None:
-    """Return the prepare-phase column tuple for a todo, if any."""
-    prepared_phase = _coerce_prepare_phase(phase)
-    if not prepared_phase:
-        return None
-    value = _PREPARE_PHASE_LABELS.get(prepared_phase)
+    value = _PREPARE_PHASE_LABELS.get(lifecycle_phase)
     if not value:
         return None
-    if prepared_phase == PreparePhase.PREPARED:
+    if lifecycle_phase == LifecyclePhase.PREPARED:
         color = _ok_color()
-    elif prepared_phase == PreparePhase.BLOCKED:
-        color = _red_color()
     else:
         color = _gold_color()
     return _PHASE_PREFIX_PREPARE, value, color
@@ -150,9 +138,6 @@ _OK_DARK = "color(71)"
 _OK_LIGHT = "color(28)"
 _GOLD_DARK = "color(178)"
 _GOLD_LIGHT = "color(136)"
-_RED_DARK = "color(196)"
-_RED_LIGHT = "color(160)"
-
 # Column gap between aligned properties
 _COL_GAP = 2
 
@@ -173,11 +158,6 @@ def _ok_color() -> str:
 def _gold_color() -> str:
     """Return the theme-aware warning color."""
     return _GOLD_DARK if is_dark_mode() else _GOLD_LIGHT
-
-
-def _red_color() -> str:
-    """Return the theme-aware error color."""
-    return _RED_DARK if is_dark_mode() else _RED_LIGHT
 
 
 def _icebox_color() -> str:
@@ -245,7 +225,7 @@ class TodoRow(TelecMixin, Widget):
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_PREPARE}:icebox"))
                 continue
-            p_result = prepare_phase_label(t.prepare_phase)
+            p_result = lifecycle_phase_label(t.lifecycle_phase)
             if p_result is not None:
                 p_prefix, p_value, _ = p_result
                 maxes["P"] = max(maxes["P"], len(f"{p_prefix}:{p_value}"))
@@ -346,7 +326,7 @@ class TodoRow(TelecMixin, Widget):
         # Phase detection: top-to-bottom, first match wins.
 
         # 1. Active prepare phase
-        p_result = prepare_phase_label(self.todo.prepare_phase)
+        p_result = lifecycle_phase_label(self.todo.lifecycle_phase)
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(dor_text)
