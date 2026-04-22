@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio
 
 
 async def test_show_payload_draft_todo_reports_draft_stage(todos_db: TodosDb) -> None:
-    """Draft todos should report stage='draft' and current.phase='draft' without phase derivation."""
+    """Draft todos should report stage='draft' and current.phase='draft' from canonical lifecycle state."""
     await todos_db.add_to_roadmap("draft-item")
     await todos_db.write_state("draft-item", {"kind": "draft", "schema_version": 1, "phase": "pending"})
     await todos_db.write_artifact("draft-item", "input", "some idea")

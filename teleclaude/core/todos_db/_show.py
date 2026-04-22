@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import PreparePhase, StateValue, WorkPhase
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
 # Map derived phase value → human-readable phase label for CurrentBlock.phase.
 _PHASE_LABEL: dict[str, str] = {
+    LifecyclePhase.DRAFT.value: "draft",
     PreparePhase.INPUT_ASSESSMENT.value: "input_assessment",
     PreparePhase.TRIANGULATION.value: "triangulation",
     PreparePhase.REQUIREMENTS_REVIEW.value: "requirements_review",
@@ -36,6 +37,7 @@ _PHASE_LABEL: dict[str, str] = {
 
 # Ordered list of derived phase values for previous/next navigation.
 _LIFECYCLE_ORDER: list[str] = [
+    LifecyclePhase.DRAFT.value,
     PreparePhase.INPUT_ASSESSMENT.value,
     PreparePhase.REQUIREMENTS_REVIEW.value,
     PreparePhase.TEST_SPEC_BUILD.value,
@@ -66,6 +68,7 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
 # Values belonging to the prepare lifecycle for stage classification.
 _PREPARE_VALUES: frozenset[str] = frozenset(
     {
+        LifecyclePhase.DRAFT.value,
         PreparePhase.INPUT_ASSESSMENT.value,
         PreparePhase.TRIANGULATION.value,
         PreparePhase.REQUIREMENTS_REVIEW.value,
@@ -137,14 +140,18 @@ async def _derive_phase_value(
 ) -> str:
     """Return the current canonical lifecycle phase value for a slug."""
     _ = todos_db, slug, worktree_cwd
-    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-    return (lifecycle or LifecyclePhase.INPUT_ASSESSMENT).value
+    return require_lifecycle_phase(
+        state.get("lifecycle_phase"),
+        context=f"assemble_show_payload({slug})",
+    ).value
 
 
 def _derive_stage(current_value: str, *, delivered: bool) -> str:
     """Classify current value into stage bucket (delivered/prepare/work)."""
     if delivered:
         return "delivered"
+    if current_value == LifecyclePhase.DRAFT.value:
+        return "draft"
     if current_value in _PREPARE_VALUES:
         return "prepare"
     return "work"
@@ -248,36 +255,6 @@ async def _build_blocked_by(
     return blockers if blockers else None
 
 
-# ── Draft fast-path ────────────────────────────────────────────────────────
-
-
-async def _assemble_draft_payload(todos_db: TodosDb, slug: str) -> ShowPayload:
-    """Build a minimal show payload for draft todos — no phase derivation."""
-    payload = ShowPayload(slug=slug, stage="draft")
-
-    roadmap_entries = await todos_db.list_roadmap(include_icebox=True, include_delivered=True)
-    for entry in roadmap_entries:
-        if entry["slug"] == slug:
-            desc = entry.get("description")
-            if desc:
-                payload["description"] = desc
-            break
-
-    payload["current"] = CurrentBlock(phase="draft", state="in_progress")
-
-    artifact_names = await todos_db.list_artifacts(slug)
-    if artifact_names:
-        artifacts: dict[str, str] = {}
-        for name in artifact_names:
-            content = await todos_db.read_artifact(slug, name)
-            if content:
-                artifacts[name] = content
-        if artifacts:
-            payload["artifacts"] = artifacts
-
-    return payload
-
-
 # ── Main assembler ──────────────────────────────────────────────────────────
 
 
@@ -294,10 +271,6 @@ async def assemble_show_payload(
         if state is None:
             return None
         is_delivered = True
-
-    # Draft todos bypass phase derivation entirely — they haven't entered any lifecycle.
-    if state.get("kind") == "draft":
-        return await _assemble_draft_payload(todos_db, slug)
 
     project_root = _project_root_from_db(todos_db)
     worktree_cwd = _worktree_cwd_for(project_root, slug)

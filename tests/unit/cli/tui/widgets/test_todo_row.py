@@ -53,8 +53,12 @@ def test_lifecycle_phase_label_input_assessment_maps_to_discovery() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_returns_none_for_work_phase() -> None:
-    assert lifecycle_phase_label(LifecyclePhase.BUILD_STARTED.value) is None
+def test_lifecycle_phase_label_draft_maps_to_draft() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.DRAFT.value)
+    assert result is not None
+    prefix, value, _ = result
+    assert prefix == "P"
+    assert value == "draft"
 
 
 @pytest.mark.unit
@@ -247,6 +251,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=True,
+        lifecycle_phase="build_complete",
         build_status="complete",
         review_status="approved",
         dor_score=9,
@@ -276,3 +281,26 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
 
     widths = list(rendered_widths.values())
     assert len(set(widths)) == 1, f"Row widths differ — all must be equal. Got: {rendered_widths}"
+
+
+@pytest.mark.unit
+def test_render_work_row_does_not_include_prepare_phase_column() -> None:
+    work_item = TodoItem(
+        slug="work-item",
+        status=TodoStatus.IN_PROGRESS,
+        description=None,
+        has_requirements=True,
+        has_impl_plan=True,
+        lifecycle_phase="build_complete",
+        build_status="complete",
+        review_status="approved",
+        dor_score=9,
+    )
+    col_widths = TodoRow.compute_col_widths([work_item])
+    row = TodoRow(todo=work_item, slug_width=len(work_item.slug), col_widths=col_widths, max_depth=0)
+
+    rendered = row.render().plain
+
+    assert "B:complete" in rendered
+    assert "R:approved" in rendered
+    assert "P:" not in rendered

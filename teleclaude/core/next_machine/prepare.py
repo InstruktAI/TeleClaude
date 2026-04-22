@@ -18,8 +18,8 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
-    coerce_lifecycle_phase,
     is_work_lifecycle_phase,
+    require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
@@ -43,12 +43,12 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
         state = await todos_db.read_state(slug)
         if state is None:
             continue
-        if state.get("kind") == "draft":
-            continue
         item_phase = state.get("phase")
         if item_phase == "done":
             continue
-        lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase")) or LifecyclePhase.INPUT_ASSESSMENT
+        lifecycle = require_lifecycle_phase(state.get("lifecycle_phase"), context=f"_find_next_prepare_slug_db({slug})")
+        if lifecycle == LifecyclePhase.DRAFT:
+            continue
         if lifecycle != LifecyclePhase.PREPARED and not is_work_lifecycle_phase(lifecycle):
             return slug
     return None
@@ -69,7 +69,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     # Draft todos bypass the lifecycle entirely — reject even explicit prepare calls.
     if resolved_slug:
         _draft_state = await todos_db.read_state(resolved_slug)
-        if isinstance(_draft_state, dict) and _draft_state.get("kind") == "draft":
+        _draft_lifecycle = (
+            require_lifecycle_phase(_draft_state.get("lifecycle_phase"), context=f"next_prepare({resolved_slug})")
+            if isinstance(_draft_state, dict)
+            else None
+        )
+        if _draft_lifecycle == LifecyclePhase.DRAFT:
             resolved_slug = None
 
     if not resolved_slug:
@@ -113,7 +118,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             raise RuntimeError(msg)
 
         writer = StateWriter(state)
-        lifecycle = coerce_lifecycle_phase(writer.state.lifecycle_phase) or LifecyclePhase.INPUT_ASSESSMENT
+        lifecycle = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_prepare({resolved_slug})")
         if lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle):
             phase = _PP.PREPARED
         else:

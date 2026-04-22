@@ -23,6 +23,7 @@ from teleclaude.types.todos import ReviewVerdictState, TestSpecReviewState, Todo
 class LifecyclePhase(str, Enum):
     """Ordered software-development lifecycle phases."""
 
+    DRAFT = "draft"
     INPUT_ASSESSMENT = "input_assessment"
     TRIANGULATION = "triangulation"
     REQUIREMENTS_REVIEW = "requirements_review"
@@ -45,6 +46,7 @@ class LifecyclePhase(str, Enum):
 LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
+        LifecyclePhase.DRAFT,
         LifecyclePhase.INPUT_ASSESSMENT,
         LifecyclePhase.TRIANGULATION,
         LifecyclePhase.REQUIREMENTS_REVIEW,
@@ -78,6 +80,15 @@ def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
         return LifecyclePhase(raw)
     except ValueError:
         return None
+
+
+def require_lifecycle_phase(raw: object, *, context: str) -> LifecyclePhase:
+    """Return the stored lifecycle phase or raise on invalid canonical state."""
+    lifecycle = coerce_lifecycle_phase(raw)
+    if lifecycle is None:
+        msg = f"{context}: missing or invalid lifecycle_phase {raw!r}"
+        raise ValueError(msg)
+    return lifecycle
 
 
 def lifecycle_phase_index(phase: LifecyclePhase) -> int:
@@ -197,6 +208,8 @@ def phase_is_complete(
 ) -> bool:
     """Return True when authoritative state says ``phase`` is complete."""
     _ = worktree_cwd
+    if phase == LifecyclePhase.DRAFT:
+        return False
     if phase in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         return bool(model.artifacts.requirements.produced_at) or model.requirements_review.verdict == "skipped"
     if phase == LifecyclePhase.REQUIREMENTS_REVIEW:
@@ -366,7 +379,7 @@ def apply_authoritative_signal(
     or DOR value), then this function decides whether the current phase should
     move to its immediate successor.
     """
-    current = coerce_lifecycle_phase(model.lifecycle_phase) or LifecyclePhase.INPUT_ASSESSMENT
+    current = require_lifecycle_phase(model.lifecycle_phase, context="apply_authoritative_signal")
     now = _now_iso()
 
     for outcome in (
@@ -383,6 +396,10 @@ def apply_authoritative_signal(
 
 
 def _normalize_prepare_mark_phase(model: TodoState, target: LifecyclePhase) -> None:
+    if target == LifecyclePhase.DRAFT:
+        model.artifacts.requirements.produced_at = ""
+        _reset_after_requirements(model)
+        return
     if target in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         model.artifacts.requirements.produced_at = ""
         _reset_after_requirements(model)
@@ -469,8 +486,6 @@ def normalize_mark_phase(
 ) -> None:
     """Clear current/downstream authority and persist ``target`` as the pointer."""
     _ = worktree_cwd
-    model.prepare_phase = ""
-    model.work_phase = ""
     if is_prepare_lifecycle_phase(target):
         _normalize_prepare_mark_phase(model, target)
     else:
@@ -490,4 +505,5 @@ __all__ = [
     "lifecycle_phase_index",
     "normalize_mark_phase",
     "phase_is_complete",
+    "require_lifecycle_phase",
 ]

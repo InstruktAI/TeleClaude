@@ -44,7 +44,7 @@ async def test_build_started_waits_for_explicit_build_complete_stamp_when_gates_
 
     with (
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}._has_build_commits_beyond_main", return_value=True),
+        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=True),
         patch(f"{_WORK_STEPS}.run_build_gates", return_value=(True, "GATE PASSED")),
     ):
         keep_going, instruction = await _work_step_build_started(
@@ -68,7 +68,7 @@ async def test_build_started_returns_gate_failure_when_gates_fail() -> None:
 
     with (
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}._has_build_commits_beyond_main", return_value=True),
+        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=True),
         patch(f"{_WORK_STEPS}.run_build_gates", return_value=(False, "GATE FAILED: scoped tests")),
     ):
         keep_going, instruction = await _work_step_build_started(
@@ -91,7 +91,7 @@ async def test_build_started_waits_when_builder_has_no_commits() -> None:
 
     with (
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}._has_build_commits_beyond_main", return_value=False),
+        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=False),
     ):
         keep_going, instruction = await _work_step_build_started(
             db=_mock_db(),

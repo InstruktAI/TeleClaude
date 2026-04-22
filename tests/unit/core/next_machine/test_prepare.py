@@ -17,7 +17,11 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
     db = AsyncMock()
     db.slug_in_roadmap = AsyncMock(return_value=overrides.get("in_roadmap", True))
     db.add_to_roadmap = AsyncMock(return_value=True)
-    db.read_state = AsyncMock(return_value=overrides.get("state", {"schema_version": 1, "phase": "pending"}))
+    db.read_state = AsyncMock(
+        return_value=overrides.get(
+            "state", {"schema_version": 2, "phase": "pending", "lifecycle_phase": "input_assessment"}
+        )
+    )
     db.write_state = AsyncMock()
     return db
 
@@ -26,7 +30,9 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
 async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
     """next_prepare must resolve worktree paths to the project root."""
     db = AsyncMock()
-    todos_db = _mock_todos_db(state={"schema_version": 1, "phase": "in_progress"})
+    todos_db = _mock_todos_db(
+        state={"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"}
+    )
 
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo") as mock_resolve,
@@ -76,7 +82,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
 async def test_next_prepare_reads_stored_phase_and_returns_dispatch_instruction() -> None:
     """next_prepare reads the stored lifecycle pointer and returns the dispatch result."""
     db = AsyncMock()
-    todos_db = _mock_todos_db(state={"schema_version": 1, "phase": "in_progress", "lifecycle_phase": "triangulation"})
+    todos_db = _mock_todos_db(state={"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "triangulation"})
 
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
@@ -99,7 +105,7 @@ async def test_next_prepare_keeps_marked_phase_even_when_later_artifacts_exist(t
     await todos_db.write_state(
         "slug-a",
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "phase": "in_progress",
             "lifecycle_phase": "test_spec_build",
             "requirements_review": {"verdict": "approve"},
@@ -179,12 +185,29 @@ async def test_find_next_prepare_slug_db_skips_draft_todos(todos_db: TodosDb) ->
 
 
 @pytest.mark.asyncio
+async def test_find_next_prepare_slug_db_skips_lifecycle_draft_rows(todos_db: TodosDb) -> None:
+    """Lifecycle draft rows must bypass prepare even when kind is not explicitly draft."""
+    await todos_db.add_to_roadmap("draft-item")
+    await todos_db.write_state(
+        "draft-item",
+        {"kind": "todo", "schema_version": 2, "phase": "pending", "lifecycle_phase": "draft"},
+    )
+
+    result = await _find_next_prepare_slug_db(todos_db)
+
+    assert result is None
+
+
+@pytest.mark.asyncio
 async def test_find_next_prepare_slug_db_returns_non_draft_when_draft_present(todos_db: TodosDb) -> None:
     """When a draft and a regular todo both exist, only the regular one is returned."""
     await todos_db.add_to_roadmap("draft-item")
     await todos_db.write_state("draft-item", {"kind": "draft", "schema_version": 1, "phase": "pending"})
     await todos_db.add_to_roadmap("real-item")
-    await todos_db.write_state("real-item", {"kind": "todo", "schema_version": 1, "phase": "pending"})
+    await todos_db.write_state(
+        "real-item",
+        {"kind": "todo", "schema_version": 2, "phase": "pending", "lifecycle_phase": "input_assessment"},
+    )
 
     result = await _find_next_prepare_slug_db(todos_db)
 

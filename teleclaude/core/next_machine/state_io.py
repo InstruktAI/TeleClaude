@@ -9,7 +9,6 @@ core.py (circular-import guard).
 from __future__ import annotations
 
 import hashlib as _hl
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -19,7 +18,6 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    FinalizeState,
     StateValue,
     default_state,
 )
@@ -35,6 +33,7 @@ from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
     get_ref_commit,
     get_remote_branch_head,
+    has_build_commits_beyond_main,
     has_uncommitted_changes,
     run_git_command,
 )
@@ -43,9 +42,6 @@ from teleclaude.core.next_machine.lifecycle import (
     apply_authoritative_signal,
     normalize_mark_phase,
     phase_is_complete,
-)
-from teleclaude.core.next_machine.phase_derivation import (
-    _has_build_commits_beyond_main,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_mutation import (
@@ -154,70 +150,18 @@ _BUILD_VERDICT_PHASE = "build_review"
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
 
-# ---------------------------------------------------------------------------
-# Schema migrator registry
-# ---------------------------------------------------------------------------
-
-# Migrators translate legacy persisted state to the current v1 shape. Empty by
-# default: when a stale schema_version is encountered and no migrator is
-# registered, ``read_phase_state`` wipes the row and writes a fresh
-# ``TodoState.defaults()`` so the next-machine loop derives phase from the
-# remaining primitives (artifacts, git commits, DOR stamps).
-_SCHEMA_MIGRATORS: dict[int, Callable[[dict[str, StateValue]], dict[str, StateValue]]] = {}
-
-
-# ---------------------------------------------------------------------------
-# State read/write
-# ---------------------------------------------------------------------------
-
-
-def _normalize_finalize_state(raw: object) -> FinalizeState:
-    finalize: FinalizeState = {"status": "pending"}
-    if not isinstance(raw, dict):
-        return finalize
-
-    status = raw.get("status")
-    if isinstance(status, str) and status in {"pending", "ready", "handed_off"}:
-        finalize["status"] = status
-
-    for key in ("branch", "sha", "ready_at", "handed_off_at"):
-        value = raw.get(key)
-        if isinstance(value, str) and value.strip():
-            finalize[key] = value.strip()
-    return finalize
-
-
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
 
-    Returns default state if no state exists in the database. Schema v1 blobs
-    are returned as-is. Any other ``schema_version`` is routed through the
-    migrator registry; if no migrator matches, the row is reset to a fresh
-    v1 default and rewritten. Artifacts and roadmap rows are untouched.
+    Returns default state if no state exists in the database. Existing rows are
+    upcycled in memory by the ``TodosDb`` read path and are never rewritten as
+    a side-effect of reading.
     """
     db = _get_todos_db_sync(cwd)
     raw = db.read_state_sync(slug)
     if raw is None:
         return default_state()
-
-    version_raw = raw.get("schema_version")
-    version = version_raw if isinstance(version_raw, int) else 0
-
-    if version == 1:
-        if "finalize" in raw:
-            raw["finalize"] = _normalize_finalize_state(raw.get("finalize"))  # type: ignore[assignment]
-        return raw
-
-    migrator = _SCHEMA_MIGRATORS.get(version)
-    if migrator is not None:
-        migrated = migrator(raw)
-        db.write_state_sync(slug, migrated)
-        return migrated
-
-    logger.warning("schema_reset slug=%s from_version=%s", slug, version)
-    fresh = TodoState.defaults().model_dump()
-    db.write_state_sync(slug, fresh)
-    return fresh
+    return raw
 
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
@@ -253,7 +197,7 @@ def _has_artifact_digest(model: TodoState, key: str) -> bool:
 
 
 def _validate_prepare_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
-    if target in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
+    if target in (LifecyclePhase.DRAFT, LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         return None
     if target == LifecyclePhase.REQUIREMENTS_REVIEW and not _has_artifact_digest(model, "input"):
         return "Cannot set requirements_review: requirements have not been produced"
@@ -287,7 +231,7 @@ def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, workt
         if (
             not model.build_completed_at
             and worktree_cwd is not None
-            and not _has_build_commits_beyond_main(worktree_cwd)
+            and not has_build_commits_beyond_main(worktree_cwd)
         ):
             return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
         return None
@@ -312,6 +256,7 @@ def _validate_mark_phase_target(
     worktree_cwd: str | None,
 ) -> str | None:
     if target == LifecyclePhase.PREPARED or target in (
+        LifecyclePhase.DRAFT,
         LifecyclePhase.INPUT_ASSESSMENT,
         LifecyclePhase.TRIANGULATION,
         LifecyclePhase.REQUIREMENTS_REVIEW,
@@ -538,7 +483,7 @@ def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
 
 
 def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Stamp all primitives required for ``derive_prepare_phase`` to return PREPARED.
+    """Stamp all authoritative state required to make a todo `prepared`.
 
     Fast-track path used by ``telec todo mark-ready``, ``telec todo from-main``, and
     prepped ``telec todo dump`` to short-circuit the full prepare lifecycle. Validates
@@ -547,8 +492,8 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     function generate the quality-checklist artifact when missing, stamp DOR pass,
     the current git HEAD as the grounding baseline, the prepare review verdicts
     (requirements is stamped ``skipped`` for prepped todos — there is no
-    requirements artifact to review), and the authoritative ``prepare_phase =
-    "prepared"`` commitment. Validation failures raise and no partial state is
+    requirements artifact to review), and the canonical `lifecycle_phase =
+    "prepared"` commitment. Validation failures raise and no partial state is
     written, so callers see the error and the todo stays in its prior phase.
 
     Args:
@@ -642,8 +587,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         writer.state.artifacts.input.digest = input_digest
         writer.grounding.input_digest = input_digest
     writer.state.lifecycle_phase = "prepared"
-    writer.state.prepare_phase = ""
-    writer.state.work_phase = ""
     if kind not in ("prepped", "bug"):
         writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, "requirements")
         writer.state.artifacts.requirements.produced_at = now_iso
@@ -823,7 +766,6 @@ __all__ = [
     "_file_sha256",
     "_get_todos_db_sync",
     "_is_review_round_limit_reached",
-    "_normalize_finalize_state",
     "_project_root_from_cwd",
     "_review_scope_note",
     "apply_prepared_state",

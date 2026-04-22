@@ -118,7 +118,9 @@ async def test_initialize_skips_auto_import_when_db_already_has_todo_data(tmp_pa
     await db.initialize()
     try:
         await db.add_to_roadmap("existing")
-        await db.write_state("existing", {"phase": "pending", "schema_version": 1})
+        await db.write_state(
+            "existing", {"phase": "pending", "schema_version": 1, "lifecycle_phase": "input_assessment"}
+        )
     finally:
         await db.close()
 

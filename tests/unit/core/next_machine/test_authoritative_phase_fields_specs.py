@@ -11,7 +11,6 @@ import pytest
 
 from teleclaude.cli.telec.handlers import todo as todo_handler
 from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, WorkPhase
-from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase, derive_work_phase
 from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
@@ -39,8 +38,7 @@ def test_todo_state_has_canonical_lifecycle_phase_default() -> None:
     state = TodoState.defaults()
 
     assert state.lifecycle_phase == PreparePhase.INPUT_ASSESSMENT.value
-    assert state.prepare_phase == ""
-    assert state.work_phase == ""
+    assert state.schema_version == 2
 
 
 def test_item_phase_remains_independent_of_lifecycle_phase() -> None:
@@ -52,7 +50,7 @@ def test_item_phase_remains_independent_of_lifecycle_phase() -> None:
     assert state.lifecycle_phase == PreparePhase.PREPARED.value
 
 
-def test_todo_state_strips_legacy_display_only_fields_on_validation() -> None:
+def test_todo_state_strips_legacy_current_field_on_validation() -> None:
     raw = TodoState.defaults().model_dump(exclude_none=True)
     raw["current"] = PreparePhase.PREPARED.value
     raw["integration_phase"] = "candidate_delivered"
@@ -61,21 +59,8 @@ def test_todo_state_strips_legacy_display_only_fields_on_validation() -> None:
     dumped = validated.model_dump(exclude_none=True)
 
     assert "current" not in dumped
-    assert "integration_phase" not in dumped
+    assert dumped["integration_phase"] == "candidate_delivered"
     assert dumped["lifecycle_phase"] == PreparePhase.INPUT_ASSESSMENT.value
-
-
-@pytest.mark.asyncio
-async def test_derive_prepare_phase_reads_canonical_lifecycle_phase() -> None:
-    result = await derive_prepare_phase({"lifecycle_phase": PreparePhase.PLAN_REVIEW.value}, MagicMock(), "slug")
-
-    assert result == PreparePhase.PLAN_REVIEW
-
-
-def test_derive_work_phase_reads_canonical_lifecycle_phase() -> None:
-    result = derive_work_phase({"lifecycle_phase": WorkPhase.REVIEW_APPROVED.value}, "/tmp/worktree", "slug")
-
-    assert result == WorkPhase.REVIEW_APPROVED
 
 
 def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
@@ -99,7 +84,7 @@ def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
         apply_prepared_state("/tmp/cwd", "slug")
 
     assert captured_state.get("lifecycle_phase") == PreparePhase.PREPARED.value
-    assert captured_state.get("prepare_phase") == ""
+    assert "prepare_phase" not in captured_state
 
 
 def test_mark_phase_cli_writes_lifecycle_phase_for_prepare_target() -> None:

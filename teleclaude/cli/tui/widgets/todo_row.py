@@ -19,14 +19,13 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecy
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
 
-_PHASE_PREFIX_PREPARE = "P"
+_PHASE_PREFIX_LIFECYCLE = "P"
 _PHASE_PREFIX_INTEGRATION = "I"
 
-_PREPARE_LABEL_DISCOVERY = "discovery"
-_PREPARE_LABEL_REQUIREMENTS = "requirements"
-_PREPARE_LABEL_PLANNING = "planning"
-_PREPARE_LABEL_READY = "ready"
-_PREPARE_LABEL_BLOCKED = "blocked"
+_LIFECYCLE_LABEL_DISCOVERY = "discovery"
+_LIFECYCLE_LABEL_REQUIREMENTS = "requirements"
+_LIFECYCLE_LABEL_PLANNING = "planning"
+_LIFECYCLE_LABEL_READY = "ready"
 
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
@@ -43,18 +42,19 @@ _TODO_STATUS_APPROVED = "approved"
 _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
 
-_PREPARE_PHASE_LABELS: dict[LifecyclePhase, str] = {
-    LifecyclePhase.INPUT_ASSESSMENT: _PREPARE_LABEL_DISCOVERY,
-    LifecyclePhase.TRIANGULATION: _PREPARE_LABEL_DISCOVERY,
-    LifecyclePhase.REQUIREMENTS_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
-    LifecyclePhase.TEST_SPEC_BUILD: _PREPARE_LABEL_REQUIREMENTS,
-    LifecyclePhase.TEST_SPEC_REVIEW: _PREPARE_LABEL_REQUIREMENTS,
-    LifecyclePhase.PLAN_DRAFTING: _PREPARE_LABEL_PLANNING,
-    LifecyclePhase.PLAN_REVIEW: _PREPARE_LABEL_PLANNING,
-    LifecyclePhase.GATE: _PREPARE_LABEL_PLANNING,
-    LifecyclePhase.GROUNDING_CHECK: _PREPARE_LABEL_PLANNING,
-    LifecyclePhase.RE_GROUNDING: _PREPARE_LABEL_PLANNING,
-    LifecyclePhase.PREPARED: _PREPARE_LABEL_READY,
+_LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
+    LifecyclePhase.DRAFT: "draft",
+    LifecyclePhase.INPUT_ASSESSMENT: _LIFECYCLE_LABEL_DISCOVERY,
+    LifecyclePhase.TRIANGULATION: _LIFECYCLE_LABEL_DISCOVERY,
+    LifecyclePhase.REQUIREMENTS_REVIEW: _LIFECYCLE_LABEL_REQUIREMENTS,
+    LifecyclePhase.TEST_SPEC_BUILD: _LIFECYCLE_LABEL_REQUIREMENTS,
+    LifecyclePhase.TEST_SPEC_REVIEW: _LIFECYCLE_LABEL_REQUIREMENTS,
+    LifecyclePhase.PLAN_DRAFTING: _LIFECYCLE_LABEL_PLANNING,
+    LifecyclePhase.PLAN_REVIEW: _LIFECYCLE_LABEL_PLANNING,
+    LifecyclePhase.GATE: _LIFECYCLE_LABEL_PLANNING,
+    LifecyclePhase.GROUNDING_CHECK: _LIFECYCLE_LABEL_PLANNING,
+    LifecyclePhase.RE_GROUNDING: _LIFECYCLE_LABEL_PLANNING,
+    LifecyclePhase.PREPARED: _LIFECYCLE_LABEL_READY,
 }
 
 _FINALIZE_LABEL_READY = "ready"
@@ -84,18 +84,18 @@ _INTEGRATION_DELIVERED_PHASES: frozenset[str] = frozenset(
 
 
 def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
-    """Return the prepare-lane lifecycle column tuple for a todo, if any."""
+    """Return the canonical lifecycle column tuple for a todo, if any."""
     lifecycle_phase = coerce_lifecycle_phase(phase)
     if lifecycle_phase is None:
         return None
-    value = _PREPARE_PHASE_LABELS.get(lifecycle_phase)
+    value = _LIFECYCLE_PHASE_LABELS.get(lifecycle_phase)
     if not value:
         return None
-    if lifecycle_phase == LifecyclePhase.PREPARED:
+    if lifecycle_phase in {LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED}:
         color = _ok_color()
     else:
         color = _gold_color()
-    return _PHASE_PREFIX_PREPARE, value, color
+    return _PHASE_PREFIX_LIFECYCLE, value, color
 
 
 def integration_phase_label(phase: str | None, finalize_status: str | None) -> tuple[str, str, str] | None:
@@ -223,7 +223,7 @@ class TodoRow(TelecMixin, Widget):
         maxes: dict[str, int] = {"P": 0, "I": 0, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
         for t in todos:
             if t.status == TodoStatus.ICEBOX:
-                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_PREPARE}:icebox"))
+                maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
             p_result = lifecycle_phase_label(t.lifecycle_phase)
             if p_result is not None:
@@ -292,7 +292,7 @@ class TodoRow(TelecMixin, Widget):
         return self._col_widths.get("_max", 0)
 
     def _build_columns(self) -> Text:
-        """Build aligned property columns. Phase-aware: P | I take priority over B/R/F/D."""
+        """Build aligned property columns. Prepare rows use P, work rows use B/R/F/D."""
         target = self._total_col_width()
 
         # Holders show no phase columns — their status block derives from children
@@ -305,7 +305,7 @@ class TodoRow(TelecMixin, Widget):
             result.append_text(self._build_col("", "", self._col_widths.get("DOR", 0), Style()))
             result.append_text(
                 self._build_col(
-                    _PHASE_PREFIX_PREPARE,
+                    _PHASE_PREFIX_LIFECYCLE,
                     "icebox",
                     self._col_widths.get("P", 0),
                     Style(color=_icebox_color(), bold=True),
@@ -318,15 +318,34 @@ class TodoRow(TelecMixin, Widget):
         gold = _gold_color()
         w = self._col_widths
 
-        # DOR column (shown alongside P; also shown in work phase)
+        # DOR column (shown alongside P in prepare; also shown in work phase)
         dor = self.todo.dor_score
         dor_color = ok if dor is not None and dor >= DOR_READY_THRESHOLD else gold
         dor_text = self._build_col("DOR", str(dor) if dor is not None else "", w.get("DOR", 0), Style(color=dor_color))
 
         # Phase detection: top-to-bottom, first match wins.
 
-        # 1. Active prepare phase
-        p_result = lifecycle_phase_label(self.todo.lifecycle_phase)
+        bs = self.todo.build_status
+        rs = self.todo.review_status
+
+        lifecycle_phase = coerce_lifecycle_phase(self.todo.lifecycle_phase)
+        is_prepare_lane = lifecycle_phase is not None and lifecycle_phase in {
+            LifecyclePhase.DRAFT,
+            LifecyclePhase.INPUT_ASSESSMENT,
+            LifecyclePhase.TRIANGULATION,
+            LifecyclePhase.REQUIREMENTS_REVIEW,
+            LifecyclePhase.TEST_SPEC_BUILD,
+            LifecyclePhase.TEST_SPEC_REVIEW,
+            LifecyclePhase.PLAN_DRAFTING,
+            LifecyclePhase.PLAN_REVIEW,
+            LifecyclePhase.GATE,
+            LifecyclePhase.GROUNDING_CHECK,
+            LifecyclePhase.RE_GROUNDING,
+            LifecyclePhase.PREPARED,
+        }
+
+        # 1. Active prepare lifecycle phase
+        p_result = lifecycle_phase_label(self.todo.lifecycle_phase) if is_prepare_lane else None
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(dor_text)
@@ -342,7 +361,6 @@ class TodoRow(TelecMixin, Widget):
             return _pad(result, target)
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
-        bs = self.todo.build_status
         if bs is not None and bs != _TODO_STATUS_PENDING:
             result.append_text(dor_text)
 
@@ -353,7 +371,6 @@ class TodoRow(TelecMixin, Widget):
                 )
             )
 
-            rs = self.todo.review_status
             r_val = rs if rs and rs != _TODO_STATUS_PENDING else ""
             result.append_text(
                 self._build_col(

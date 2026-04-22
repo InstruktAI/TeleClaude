@@ -14,6 +14,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.core.todos_db._base import _generate_id
 from teleclaude.core.todos_db._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
 from teleclaude.core.todos_db._rows import RoadmapRow
+from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
 
 
 def _roadmap_row(model: TodoRoadmap) -> RoadmapRow:
@@ -254,7 +255,7 @@ class TodosDbRoadmapMixin:
         delivered_at: str | None = None,
         session: SqlAsyncSession | None = None,
     ) -> bool:
-        """Mark a slug as delivered and advance todo_state.current to 'delivered'."""
+        """Mark a slug as delivered and persist delivered coarse item state."""
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
@@ -273,10 +274,8 @@ class TodosDbRoadmapMixin:
             state_model = await db_session.get(TodoStateModel, entry.id)
             if state_model is not None:
                 state = json.loads(state_model.state)
-                state["current"] = "delivered"
                 state["phase"] = "delivered"
-                state["integration_phase"] = "candidate_delivered"
-                state_model.state = json.dumps(state)
+                state_model.state = json.dumps(canonicalize_state_for_storage(state))
                 state_model.updated_at = now
                 db_session.add(state_model)
 
@@ -461,10 +460,8 @@ class TodosDbRoadmapMixin:
             state_model = session.get(TodoStateModel, entry.id)
             if state_model is not None:
                 state = json.loads(state_model.state)
-                state["current"] = "delivered"
                 state["phase"] = "delivered"
-                state["integration_phase"] = "candidate_delivered"
-                state_model.state = json.dumps(state)
+                state_model.state = json.dumps(canonicalize_state_for_storage(state))
                 state_model.updated_at = now
                 session.add(state_model)
 

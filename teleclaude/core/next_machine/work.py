@@ -23,7 +23,7 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
@@ -111,8 +111,8 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if ensure_error is not None:
         return ensure_error
 
-    # Merge origin/main into the worktree once before the loop so the phase
-    # derivation sees a baseline consistent with integrated main.
+    # Merge origin/main into the worktree once before the loop so the worktree
+    # baseline stays consistent with integrated main.
     merge_started = perf_counter()
     head_before_merge = await asyncio.to_thread(get_head_commit, worktree_cwd)
     merge_err = await asyncio.to_thread(_merge_origin_main_into_worktree, worktree_cwd, resolved_slug)
@@ -127,7 +127,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     if current_phase == ItemPhase.PENDING.value:
         await set_item_phase_db(todos_db, resolved_slug, ItemPhase.IN_PROGRESS.value)
 
-    # Dispatch loop — each iteration re-derives phase from primitives and dispatches.
+    # Dispatch loop — each iteration reads the authoritative lifecycle pointer and dispatches.
     for _iter in range(_WORK_LOOP_LIMIT):
         state = await todos_db.read_state(resolved_slug)
         if state is None:
@@ -138,7 +138,7 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
 
         writer = StateWriter(state)
-        current_phase = coerce_lifecycle_phase(writer.state.lifecycle_phase) or LifecyclePhase.BUILD_STARTED
+        current_phase = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_work({resolved_slug})")
         if current_phase == LifecyclePhase.PREPARED:
             phase = WorkPhase.BUILD_STARTED
         else:

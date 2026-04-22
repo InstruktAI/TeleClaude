@@ -48,7 +48,7 @@ def test_build_started_accepts_prepared_state() -> None:
 
 
 def test_build_complete_rejected_without_commits() -> None:
-    with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=False):
+    with patch(f"{_STATE_IO}.has_build_commits_beyond_main", return_value=False):
         result = validate_mark_phase_preconditions(_prepared_state(), "build_complete", "/some/worktree")
 
     assert result is not None
@@ -56,7 +56,7 @@ def test_build_complete_rejected_without_commits() -> None:
 
 
 def test_build_complete_accepted_with_commits() -> None:
-    with patch(f"{_STATE_IO}._has_build_commits_beyond_main", return_value=True):
+    with patch(f"{_STATE_IO}.has_build_commits_beyond_main", return_value=True):
         result = validate_mark_phase_preconditions(_prepared_state(), "build_complete", "/some/worktree")
 
     assert result is None

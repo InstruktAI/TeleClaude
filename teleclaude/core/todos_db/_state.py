@@ -13,6 +13,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 from teleclaude.core.next_machine._types import StateValue
 
 from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
+from ._upcycle import canonicalize_state_for_storage, upcycle_state_dict
 
 
 class TodosDbStateMixin:
@@ -40,7 +41,7 @@ class TodosDbStateMixin:
             state_model = await session.get(TodoStateModel, row_id)
             if state_model is None:
                 return None
-            return cast(dict[str, StateValue], json.loads(state_model.state))
+            return upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state)))
 
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
@@ -57,6 +58,7 @@ class TodosDbStateMixin:
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
+            payload = canonicalize_state_for_storage(state)
             row_id = await self._resolve_active_row_id(db_session, slug)
             if row_id is None:
                 msg = f"write_state: no active/icebox roadmap entry for slug {slug!r}"
@@ -68,13 +70,13 @@ class TodosDbStateMixin:
                 state_model = TodoStateModel(
                     id=row_id,
                     slug=slug,
-                    state=json.dumps(state, default=str),
+                    state=json.dumps(payload, default=str),
                     created_at=now,
                     updated_at=now,
                 )
             else:
                 state_model.slug = slug
-                state_model.state = json.dumps(state, default=str)
+                state_model.state = json.dumps(payload, default=str)
                 state_model.updated_at = now
             db_session.add(state_model)
             if owns_session:
@@ -110,7 +112,7 @@ class TodosDbStateMixin:
             state_json = result.one_or_none()
             if state_json is None:
                 return None
-            return cast(dict[str, StateValue], json.loads(str(state_json)))
+            return upcycle_state_dict(cast(dict[str, StateValue], json.loads(str(state_json))))
 
     async def delete_state(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Delete state for a slug."""
@@ -167,10 +169,11 @@ class TodosDbStateMixin:
             state_model = session.get(TodoStateModel, str(row_id))
             if state_model is None:
                 return None
-            return cast(dict[str, StateValue], json.loads(state_model.state))
+            return upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state)))
 
     def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
         """Sync version of write_state for use from worker threads."""
+        payload = canonicalize_state_for_storage(state)
         with self._sync_session() as session:  # type: ignore[attr-defined]
             row_id = session.exec(
                 select(TodoRoadmap.id)
@@ -188,13 +191,13 @@ class TodosDbStateMixin:
                 state_model = TodoStateModel(
                     id=str(row_id),
                     slug=slug,
-                    state=json.dumps(state, default=str),
+                    state=json.dumps(payload, default=str),
                     created_at=now,
                     updated_at=now,
                 )
             else:
                 state_model.slug = slug
-                state_model.state = json.dumps(state, default=str)
+                state_model.state = json.dumps(payload, default=str)
                 state_model.updated_at = now
             session.add(state_model)
             session.commit()

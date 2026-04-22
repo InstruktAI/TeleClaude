@@ -176,7 +176,7 @@ CHECKPOINT_MESSAGE = (
 CHECKPOINT_RESULT_SNIPPET_MAX_CHARS = 500
 # Threshold for wide blast radius observation
 CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3
-TUI_RELOAD_PROCESS_PATTERN = r".venv/bin/telec$"
+TUI_RELOAD_PROCESS_PATTERN = r"\.venv/bin/telec$|teleclaude\.cli\.telec($| )"
 TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`"
 
 

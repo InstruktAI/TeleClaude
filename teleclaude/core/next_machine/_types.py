@@ -77,12 +77,7 @@ class PreparePhase(str, Enum):
 
 
 class WorkPhase(str, Enum):
-    """Derived work lifecycle phases.
-
-    ``work_phase`` is the authoritative stored sub-phase when present.
-    Derivation falls back to primitives (stamped verdicts, git commits, gate
-    runs) when the stored field is unset.
-    """
+    """Canonical work-lane lifecycle phases."""
 
     BUILD_STARTED = "build_started"
     BUILD_COMPLETE = "build_complete"

@@ -346,6 +346,7 @@ class TestTodoRoutes:
             state = await database.read_state("my-draft")
             assert state is not None
             assert state["kind"] == "draft"
+            assert state["lifecycle_phase"] == "draft"
         finally:
             await database.close()
 

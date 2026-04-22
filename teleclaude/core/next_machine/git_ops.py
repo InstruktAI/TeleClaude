@@ -59,6 +59,17 @@ def get_remote_branch_head(cwd: str, branch: str) -> str:
     return parts[0] if parts else ""
 
 
+def has_build_commits_beyond_main(worktree_cwd: str) -> bool:
+    """Return True when the worktree branch has commits ahead of main."""
+    try:
+        repo = Repo(worktree_cwd)
+        base = repo.git.merge_base("HEAD", "main").strip()
+        log_output = repo.git.log("--oneline", f"{base}..HEAD")
+        return bool(log_output.strip())
+    except (GitCommandError, OSError):
+        return False
+
+
 def run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
     """Run a git command and return (returncode, stdout, stderr)."""
     try:

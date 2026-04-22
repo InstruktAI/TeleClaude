@@ -361,8 +361,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
     Kind variants (see TodoDumpRequest for the full contract):
       - None (default): writes an "input" artifact; enters the normal prepare lifecycle.
       - "bug": writes a "bug" artifact; stamps DOR/grounding/verdicts via
-        apply_prepared_state so derive_prepare_phase resolves to PREPARED immediately.
-      - "draft": writes an "input" artifact with kind="draft"; bypasses lifecycle.
+        apply_prepared_state so the canonical lifecycle is immediately `prepared`.
+      - "draft": writes an "input" artifact with kind="draft" and lifecycle_phase="draft"; bypasses lifecycle.
       - "prepped": writes the content as an "implementation-plan" artifact; stamps
         all prepare primitives so the todo is immediately ready for build.
     """
@@ -378,6 +378,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         state = default_state()
         if request.kind in ("bug", "draft", "prepped"):
             state["kind"] = request.kind
+        if request.kind == "draft":
+            state["lifecycle_phase"] = LifecyclePhase.DRAFT.value
 
         async with todos_db._session() as session:  # pylint: disable=protected-access
             async with session.begin():
@@ -401,8 +403,8 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             await _sync_artifact_digest_state(todos_db, slug, "input")
 
         if request.kind in ("prepped", "bug"):
-            # Stamp DOR, grounding baseline, plan_review=approve, and
-            # requirements_review=skipped so derive_prepare_phase resolves to PREPARED.
+            # Stamp DOR, grounding baseline, and review approvals so the
+            # canonical lifecycle is immediately `prepared`.
             apply_prepared_state(effective_cwd, slug)
             todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
 

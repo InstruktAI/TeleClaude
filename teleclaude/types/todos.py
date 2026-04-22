@@ -1,4 +1,4 @@
-"""Pydantic models for Todo state management (schema v1)."""
+"""Pydantic models for Todo state management (schema v2)."""
 
 from __future__ import annotations
 
@@ -7,6 +7,27 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from teleclaude.types.state_value import StateValue
+
+LifecyclePhaseValue = Literal[
+    "draft",
+    "input_assessment",
+    "triangulation",
+    "requirements_review",
+    "test_spec_build",
+    "test_spec_review",
+    "plan_drafting",
+    "plan_review",
+    "gate",
+    "grounding_check",
+    "re_grounding",
+    "prepared",
+    "build_started",
+    "build_complete",
+    "review_changes_requested",
+    "review_approved",
+    "finalize_ready",
+    "handed_off",
+]
 
 
 class DorActions(BaseModel):
@@ -168,21 +189,24 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (v1 schema).
+    """Canonical state for a TeleClaude work item (schema v2).
 
-    ``lifecycle_phase`` is the canonical software-development lifecycle step.
-    ``phase`` remains the coarse pending/in_progress/done item status used by
-    roadmap selection. ``prepare_phase`` and ``work_phase`` are retained only
-    for legacy row compatibility and should remain empty in the current model.
+    ``lifecycle_phase`` is the only authoritative software-development phase
+    pointer. ``phase`` remains the coarse pending/in_progress/done item status
+    used by roadmap selection.
+
+    ``prepare_phase`` and ``work_phase`` remain as transient compatibility
+    fields so older code paths can still validate during the migration window,
+    but they are excluded from persistence and must not be used as authority.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     phase: str = "pending"
-    lifecycle_phase: str = "input_assessment"
-    prepare_phase: str = ""
-    work_phase: str = ""
+    lifecycle_phase: LifecyclePhaseValue = "input_assessment"
+    prepare_phase: str = Field(default="", exclude=True)
+    work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
     build_completed_at: str = ""
     kind: str = "todo"  # "todo" | "bug" | "draft" | "prepped"
@@ -197,6 +221,7 @@ class TodoState(BaseModel):
     build_review: BuildReviewState = Field(default_factory=BuildReviewState)
     artifacts: ArtifactsState = Field(default_factory=ArtifactsState)
     creative: dict[str, StateValue] | None = None
+    integration_phase: str | None = None
     audit: AuditState = Field(default_factory=AuditState)
     events: list[Event] = Field(default_factory=list)
 
@@ -205,16 +230,14 @@ class TodoState(BaseModel):
     def _strip_legacy_display_fields(cls, data: object) -> object:
         """Drop legacy display-only fields before strict schema validation.
 
-        Older todos.db rows may still carry ``current`` and
-        ``integration_phase`` from the pre-authoritative-subphase model. They
-        are derived/display concerns now, not part of the canonical mutation
-        schema, so validation strips them and a subsequent write removes them
+        Older todos.db rows may still carry ``current`` from the pre-canonical
+        lifecycle model. Validation strips it so a subsequent write removes it
         from persistence.
         """
         if not isinstance(data, dict):
             return data
 
-        legacy_keys = {"current", "integration_phase"}
+        legacy_keys = {"current"}
         if not legacy_keys.intersection(data):
             return data
 
@@ -225,5 +248,5 @@ class TodoState(BaseModel):
 
     @classmethod
     def defaults(cls) -> TodoState:
-        """Return a fresh v1 TodoState used by schema reset and scaffolding."""
+        """Return a fresh v2 TodoState used by schema reset and scaffolding."""
         return cls()

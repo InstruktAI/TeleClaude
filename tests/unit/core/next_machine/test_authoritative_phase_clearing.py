@@ -39,7 +39,7 @@ def test_normalize_mark_phase_clears_downstream_stamps_but_keeps_artifact_histor
 
     normalize_mark_phase(state, LifecyclePhase.TEST_SPEC_BUILD)
 
-    assert state.lifecycle_phase == LifecyclePhase.TEST_SPEC_BUILD.value
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.TEST_SPEC_BUILD
     assert state.artifacts.requirements.digest == "req-digest"
     assert state.artifacts.requirements.produced_at == "2026-01-01T00:00:00+00:00"
     assert state.artifacts.test_specs.digest == "spec-digest"
@@ -56,14 +56,10 @@ def test_normalize_mark_phase_clears_downstream_stamps_but_keeps_artifact_histor
     assert state.build_start_base_sha == ""
 
 
-def test_normalize_mark_phase_clears_legacy_overrides_but_keeps_canonical_phase() -> None:
-    """mark-phase normalization rewrites the canonical phase and empties legacy override fields."""
+def test_normalize_mark_phase_keeps_canonical_phase_without_reintroducing_legacy_overrides() -> None:
+    """mark-phase normalization rewrites only the canonical phase."""
     state = TodoState.defaults()
-    state.prepare_phase = "requirements_review"
-    state.work_phase = "build_started"
 
     normalize_mark_phase(state, LifecyclePhase.PLAN_REVIEW)
 
-    assert state.lifecycle_phase == LifecyclePhase.PLAN_REVIEW.value
-    assert state.prepare_phase == ""
-    assert state.work_phase == ""
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.PLAN_REVIEW

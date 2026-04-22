@@ -11,8 +11,9 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 
 logger = get_logger(__name__)
 
@@ -93,7 +94,7 @@ def assemble_roadmap_from_db(
             state_query_total_dt += time.perf_counter() - state_query_started_at
 
             todo_build_started_at = time.perf_counter()
-            state = json.loads(state_row[0]) if state_row else {}
+            state = upcycle_state_dict(json.loads(state_row[0]) if state_row else {})
 
             # Check artifact existence from DB (by id)
             artifact_query_started_at = time.perf_counter()
@@ -113,20 +114,23 @@ def assemble_roadmap_from_db(
             ).fetchall()
             artifact_query_total_dt += time.perf_counter() - artifact_query_started_at
 
-            # --- Derive display values from v1 state primitives ---
+            # --- Derive display values from canonical lifecycle state ---
 
-            # Draft todos skip lifecycle derivation — they're parked ideas.
             is_draft = state.get("kind") == "draft"
 
             dor_raw = state.get("dor")
-            dor_score = dor_raw.get("score", 0) if isinstance(dor_raw, dict) else 0
+            dor_score_raw = dor_raw.get("score") if isinstance(dor_raw, dict) else None
+            dor_score = dor_score_raw if isinstance(dor_score_raw, int) and dor_score_raw > 0 else None
 
             finalize_raw = state.get("finalize")
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
-            finalize_status = finalize.get("status") or None
+            finalize_status = _non_empty_str(finalize.get("status"))
 
-            lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-            current_value = (lifecycle or LifecyclePhase.INPUT_ASSESSMENT).value
+            lifecycle = require_lifecycle_phase(
+                state.get("lifecycle_phase"),
+                context=f"assemble_roadmap_from_db({slug})",
+            )
+            current_value = lifecycle.value
 
             # Build status: derived from the canonical lifecycle pointer.
             build_status: str | None = None
@@ -152,7 +156,7 @@ def assemble_roadmap_from_db(
 
             # Lifecycle display phase: read directly from the canonical lifecycle pointer.
             lifecycle_phase: str | None = None
-            if not is_draft and not is_delivered:
+            if not is_delivered:
                 lifecycle_phase = current_value
 
             integration_phase = _non_empty_str(state.get("integration_phase"))
@@ -178,7 +182,7 @@ def assemble_roadmap_from_db(
                     has_impl_plan=has_plan_row is not None,
                     build_status=build_status,
                     review_status=review_status,
-                    dor_score=dor_score if dor_score else None,
+                    dor_score=dor_score,
                     after=deps_map.get(slug, []),
                     group=row[3],
                     delivered_at=row[6],

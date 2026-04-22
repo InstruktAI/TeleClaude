@@ -409,9 +409,8 @@ def create_from_main_skeleton(
         _art_conn.close()
 
     # --- 5i. Set state for review dispatch (before cleaning main — atomic) ---
-    # apply_prepared_state stamps DOR, grounding baseline, and prepare review
-    # verdicts so derive_prepare_phase resolves to PREPARED. The build handoff
-    # commit above means derive_work_phase resolves to BUILD_COMPLETE naturally.
+    # apply_prepared_state stamps the canonical prepare authority directly so
+    # the todo enters the prepared lifecycle phase before handoff.
     set_item_phase(worktree_cwd, slug, "in_progress")
     apply_prepared_state(worktree_cwd, slug)
 

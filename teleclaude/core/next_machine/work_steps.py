@@ -29,7 +29,12 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance, get_head_commit, has_uncommitted_changes
+from teleclaude.core.next_machine.git_ops import (
+    compose_agent_guidance,
+    get_head_commit,
+    has_build_commits_beyond_main,
+    has_uncommitted_changes,
+)
 from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
@@ -38,7 +43,6 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
     format_uncommitted_changes,
 )
-from teleclaude.core.next_machine.phase_derivation import _has_build_commits_beyond_main
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -125,7 +129,7 @@ async def _work_step_build_started(
     command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
-        has_commits = await asyncio.to_thread(_has_build_commits_beyond_main, worktree_cwd)
+        has_commits = await asyncio.to_thread(has_build_commits_beyond_main, worktree_cwd)
         if not has_commits:
             return False, (
                 f"BUILDER ACTIVE: {slug}\n\n"
