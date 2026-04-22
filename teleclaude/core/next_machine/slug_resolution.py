@@ -13,7 +13,6 @@ from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-from teleclaude.core.next_machine.phase_derivation import is_prepared
 from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state
 
 
@@ -96,14 +95,14 @@ async def _get_item_phase_db(
 
 
 async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
-    """Check if the derived prepare phase has reached PREPARED — ready for work dispatch."""
+    """Check if the canonical lifecycle pointer is ready for work dispatch."""
     state = await todos_db.read_state(slug)
     if state is None:
         return False
     lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-    if lifecycle is not None:
-        return lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
-    return await is_prepared(state, todos_db, slug)
+    if lifecycle is None:
+        return False
+    return lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
 
 
 async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:

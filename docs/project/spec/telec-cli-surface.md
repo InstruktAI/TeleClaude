@@ -124,6 +124,9 @@ subcommands:
           - slug: 'string'
         flags:
           --phase: 'Phase value matching a canonical lifecycle phase enum member.'
+        notes:
+          - 'Validates only the target phase prerequisites, then sets the lifecycle pointer to that phase.'
+          - 'Preserves artifacts, but clears downstream authoritative stamps so old approvals do not reactivate future phases.'
       validate:
         args:
           - slug: 'string (optional)'
@@ -141,6 +144,22 @@ subcommands:
           - slug: 'string'
         flags:
           --project-root: 'Project root (default: cwd).'
+      stamp:
+        description: 'Record an authoritative lifecycle signal.'
+        args:
+          - slug: 'string'
+        flags:
+          --verdict: 'approve | changes_requested | needs_work | needs_decision'
+          --phase: 'Review phase for --verdict: requirements_review | test_spec_review | plan_review | build_review'
+          --dor-score: 'DOR score (integer). Evidence only unless paired with a status.'
+          --dor-status: 'pass | needs_work | needs_decision'
+          --requirements-ready: 'Complete discovery/requirements authoring and advance to requirements_review.'
+          --grounding-invalidated: 'Invalidate grounding and route to re_grounding.'
+          --specs-built: 'Complete test-spec authoring and advance to test_spec_review.'
+          --plan-ready: 'Complete plan authoring and advance to plan_review.'
+          --build-started: 'Start work from prepared and move to build_started.'
+          --build-complete: 'Complete implementation work and move to build_complete.'
+          --finalize-ready: 'Mark the reviewed worktree ready for finalize handoff.'
   roadmap:
     description: 'View and manage the work item roadmap.'
     subcommands:

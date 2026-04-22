@@ -10,7 +10,7 @@ type: 'design'
 
 ## Purpose
 
-The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. It now shares the same canonical `lifecycle_phase` field as Prepare; workers write evidence and the machine advances the stored phase.
+The Work state machine routes implementation through four sub-phases: **Build → Review → Fix → Finalize**. It shares the same canonical `lifecycle_phase` field as Prepare, but it does not advance that pointer on its own. Natural progression happens only when the current phase receives an authoritative stamp.
 
 **Entry point:** `telec todo work [slug]`
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
@@ -90,7 +90,7 @@ build_review:
 - **Reviewer reuse**: when review is already in flight for a slug, the state machine reuses the live reviewer session instead of dispatching a second reviewer.
 - **Verdict reconciliation**: `review-findings` is authoritative only for the currently dispatched review head (`review_dispatch_head`). Stale findings from an older round must not short-circuit a fresh re-review.
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
-- **Stale approval guard**: if new commits exist between `review_baseline_commit` and current HEAD, the machine resets `review=pending` to force a fresh review.
+- **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
 - **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready`; the Work machine performs the actual `finalize_ready -> handed_off` transition.
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
@@ -115,10 +115,10 @@ stateDiagram-v2
     Preconditions --> Fix: review = changes_requested
     Preconditions --> Finalize: review = approved
 
-    Build --> Review: build gates pass
+    Build --> Review: `build_complete`
     Review --> Fix: verdict = REQUEST CHANGES
     Review --> Finalize: verdict = APPROVE
-    Fix --> Review: fixes committed
+    Fix --> Review: `build_complete`
 
     state Finalize {
         [*] --> CheckDeferrals
@@ -196,7 +196,7 @@ sequenceDiagram
     B->>B: Satisfy test specs, implement tasks, commit per task
     B->>B: Check all tasks [x], run scoped build gates, repo-wide lint/test when explicitly requested
     B-->>O: BUILD COMPLETE: slug
-    O->>O: telec todo work slug (re-derives BUILD_COMPLETE from gates)
+    O->>B: wait for `telec todo stamp slug --build-complete`
     O->>O: telec sessions end builder-session
 
     O->>SM: telec todo work slug

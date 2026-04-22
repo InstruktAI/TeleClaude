@@ -19,7 +19,25 @@ from teleclaude.api.auth import CallerIdentity
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.types.state_value import StateValue
+
+
+class _ArtifactSnapshot(TypedDict, total=False):
+    digest: str
+    produced_at: str
+
+
+class _ArtifactsSnapshot(TypedDict, total=False):
+    requirements: _ArtifactSnapshot
+
+
+class _TodoStateSnapshot(TypedDict, total=False):
+    lifecycle_phase: str
+    artifacts: _ArtifactsSnapshot
+
+
+def _requirements_artifact(state: _TodoStateSnapshot) -> _ArtifactSnapshot:
+    artifacts = state.get("artifacts", {})
+    return artifacts.get("requirements", {})
 
 
 async def async_begin() -> AsyncIterator[None]:
@@ -186,41 +204,78 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_write_artifact_does_not_auto_progress_phase(self, tmp_path: Path) -> None:
+        """Artifact writes preserve content only; lifecycle authority stays on stamps."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.write_artifact(
+                    slug="my-slug",
+                    name="requirements",
+                    content="draft requirements",
+                    cwd="/repo",
+                    updated_by="tester",
+                )
+
+            state = await database.read_state("my-slug")
+            assert response.status == "ok"
+            assert state is not None
+            snapshot = cast(_TodoStateSnapshot, state)
+            assert snapshot["lifecycle_phase"] == "input_assessment"
+            requirements = _requirements_artifact(snapshot)
+            assert requirements.get("digest", "")
+            assert requirements.get("produced_at", "") == ""
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_requirements_ready_advances_to_requirements_review(self, tmp_path: Path) -> None:
+        """The requirements_ready stamp is the authoritative completion signal for discovery."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "triangulation"})
+            await database.write_artifact("my-slug", "requirements", "ready requirements")
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="requirements_ready",
+                    value="",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+
+            state = await database.read_state("my-slug")
+            assert response.status == "ok"
+            assert state is not None
+            snapshot = cast(_TodoStateSnapshot, state)
+            assert snapshot["lifecycle_phase"] == "requirements_review"
+            requirements = _requirements_artifact(snapshot)
+            assert requirements.get("produced_at", "")
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_mark_phase_writes_lifecycle_phase_and_returns_updated_state(self) -> None:
         """mark-phase writes the canonical lifecycle phase and returns updated state."""
-        captured: dict[str, StateValue] = {}
-
-        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
-            captured["state"] = dict(state)
-
-        prepared_state: dict[str, StateValue] = {
-            "requirements_review": {"verdict": "approve"},
-            "artifacts": {
-                "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
-                "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
-                "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
-            },
-            "test_spec_review": {"verdict": "approve"},
-            "plan_review": {"verdict": "approve"},
-            "dor": {"score": 8, "status": "pass"},
-            "grounding": {"valid": True},
-            "lifecycle_phase": "prepared",
-            "kind": "bug",
-        }
-
-        with (
-            patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
-            patch("teleclaude.api.todo_routes.read_phase_state", return_value=prepared_state),
-        ):
+        with patch(
+            "teleclaude.api.todo_routes.mark_phase_state",
+            return_value={"lifecycle_phase": PreparePhase.PREPARED.value, "kind": "bug"},
+        ) as mock_mark:
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
                 phase=PreparePhase.PREPARED.value,
                 cwd="/repo",
             )
 
-        persisted = captured.get("state", {})
-        assert isinstance(persisted, dict)
-        assert persisted.get("lifecycle_phase") == PreparePhase.PREPARED.value
+        mock_mark.assert_called_once_with("/repo", "chartest-api-routes", PreparePhase.PREPARED.value)
         assert isinstance(response, dict)
         assert response.get("lifecycle_phase") == PreparePhase.PREPARED.value
         assert response.get("kind") == "bug"
@@ -229,38 +284,17 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_mark_phase_writes_work_target_when_prerequisites_hold(self) -> None:
         """Work lifecycle targets persist through the canonical lifecycle field."""
-        captured: dict[str, StateValue] = {}
-
-        def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
-            captured["state"] = dict(state)
-
-        prepared_state: dict[str, StateValue] = {
-            "requirements_review": {"verdict": "approve"},
-            "artifacts": {
-                "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
-                "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
-                "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
-            },
-            "test_spec_review": {"verdict": "approve"},
-            "plan_review": {"verdict": "approve"},
-            "dor": {"score": 8, "status": "pass"},
-            "grounding": {"valid": True},
-            "lifecycle_phase": "prepared",
-        }
-
-        with (
-            patch("teleclaude.api.todo_routes.write_phase_state", _fake_write),
-            patch("teleclaude.api.todo_routes.read_phase_state", return_value=prepared_state),
-        ):
+        with patch(
+            "teleclaude.api.todo_routes.mark_phase_state",
+            return_value={"lifecycle_phase": WorkPhase.BUILD_STARTED.value},
+        ) as mock_mark:
             response = await todo_routes.mark_phase(
                 slug="chartest-api-routes",
                 phase=WorkPhase.BUILD_STARTED.value,
                 cwd="/repo",
             )
 
-        persisted = captured.get("state", {})
-        assert isinstance(persisted, dict)
-        assert persisted.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
+        mock_mark.assert_called_once_with("/repo", "chartest-api-routes", WorkPhase.BUILD_STARTED.value)
         assert isinstance(response, dict)
         assert response.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
 

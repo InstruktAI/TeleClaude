@@ -19,7 +19,7 @@ type: 'design'
 
 The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phase B: Build/Review/Fix, Phase C: Integrate) without maintaining internal state.
 
-1. **Statelessness**: It derives all work status from project artifacts:
+1. **Canonical phase pointer**: It reads the persisted `lifecycle_phase` pointer and routes from that state:
    - `roadmap (todos.db)` (item discovery)
    - `requirements.md` and `implementation-plan.md` (preparation check)
    - `todo state (todos.db)` (build/review phase tracking)
@@ -63,12 +63,13 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- One authoritative `lifecycle_phase` stored in todos.db; only write-time transition logic derives from primitives
+- One authoritative `lifecycle_phase` stored in todos.db; only `mark-phase` validation and `telec todo stamp` may change it
 - Dependency resolution via set_dependencies tool
 
 ## Invariants
 
-- **Canonical Lifecycle State**: Current phase is read from stored `lifecycle_phase`; derivation happens only during transition evaluation.
+- **Canonical Lifecycle State**: Current phase is read from stored `lifecycle_phase`.
+- **Stamp-Owned Progression**: `telec todo stamp` is the only natural forward-progression authority. The machine dispatches the current phase; it does not skip ahead or loop through future phases.
 - **Artifact Immutability**: Machine never modifies artifacts directly; delegates to workers.
 - **Dependency Blocking**: Cannot claim item until all dependencies complete.
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.

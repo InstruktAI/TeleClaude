@@ -40,6 +40,8 @@ from teleclaude.core.next_machine.git_ops import (
 )
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
+    apply_authoritative_signal,
+    normalize_mark_phase,
     phase_is_complete,
 )
 from teleclaude.core.next_machine.phase_derivation import (
@@ -79,11 +81,10 @@ def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
         conn.close()
 
 
-def _record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
-    """Record artifact production metadata in state."""
+def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: bool) -> None:
+    """Refresh artifact digest in state and optionally mark it as produced."""
     key = artifact_name_to_state_key(artifact_name)
     digest = _artifact_digest(cwd, slug, artifact_name)
-    now = datetime.now(UTC).isoformat()
 
     state = read_phase_state(cwd, slug)
     artifacts = state.get("artifacts", {})
@@ -93,16 +94,23 @@ def _record_artifact_produced(cwd: str, slug: str, artifact_name: str) -> None:
     if not isinstance(entry, dict):
         entry = {}
     entry["digest"] = digest
-    entry["produced_at"] = now
+    if produced:
+        entry["produced_at"] = datetime.now(UTC).isoformat()
     entry["stale"] = False
     artifacts[key] = entry
     state["artifacts"] = artifacts
     write_phase_state(cwd, slug, state)
 
-    _emit_prepare_event(
-        "domain.software-development.prepare.artifact_produced",
-        {"slug": slug, "artifact": artifact_name, "digest": digest},
-    )
+    if produced:
+        _emit_prepare_event(
+            "domain.software-development.prepare.artifact_produced",
+            {"slug": slug, "artifact": artifact_name, "digest": digest},
+        )
+
+
+def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
+    """Refresh the stored digest for an artifact without stamping completion."""
+    _sync_artifact_state(cwd, slug, artifact_name, produced=False)
 
 
 def _project_root_from_cwd(cwd: str) -> str:
@@ -237,40 +245,33 @@ def _phase_complete(model: TodoState, current: LifecyclePhase, *, worktree_cwd: 
     return phase_is_complete(model, current, worktree_cwd=worktree_cwd)
 
 
+def _has_artifact_digest(model: TodoState, key: str) -> bool:
+    entry = getattr(model.artifacts, key, None)
+    if not isinstance(entry, ArtifactEntry):
+        return False
+    return bool(entry.digest)
+
+
 def _validate_prepare_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
     if target in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         return None
-    if target == LifecyclePhase.REQUIREMENTS_REVIEW and not _phase_complete(
-        model, LifecyclePhase.INPUT_ASSESSMENT, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.REQUIREMENTS_REVIEW and not _has_artifact_digest(model, "input"):
         return "Cannot set requirements_review: requirements have not been produced"
-    if target == LifecyclePhase.TEST_SPEC_BUILD and not _phase_complete(
-        model, LifecyclePhase.REQUIREMENTS_REVIEW, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.TEST_SPEC_BUILD and model.requirements_review.verdict not in ("approve", "skipped"):
         return "Cannot set test_spec_build: requirements_review is not complete"
-    if target == LifecyclePhase.TEST_SPEC_REVIEW and not _phase_complete(
-        model, LifecyclePhase.TEST_SPEC_BUILD, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.TEST_SPEC_REVIEW and not bool(model.artifacts.test_specs.produced_at):
         return "Cannot set test_spec_review: test specs have not been produced"
-    if target == LifecyclePhase.PLAN_DRAFTING and not _phase_complete(
-        model, LifecyclePhase.TEST_SPEC_REVIEW, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.PLAN_DRAFTING and model.test_spec_review.verdict not in ("approve", "skipped"):
         return "Cannot set plan_drafting: test_spec_review is not complete"
-    if target == LifecyclePhase.PLAN_REVIEW and not _phase_complete(
-        model, LifecyclePhase.PLAN_DRAFTING, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.PLAN_REVIEW and not _has_artifact_digest(model, "implementation_plan"):
         return "Cannot set plan_review: implementation plan has not been produced"
-    if target == LifecyclePhase.GATE and not _phase_complete(
-        model, LifecyclePhase.PLAN_REVIEW, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.GATE and model.plan_review.verdict not in ("approve", "skipped"):
         return "Cannot set gate: plan_review is not complete"
-    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and not _phase_complete(
-        model, LifecyclePhase.GATE, worktree_cwd=worktree_cwd
+    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and not (
+        model.dor is not None and model.dor.status == "pass"
     ):
         return f"Cannot set {target.value}: gate is not complete"
-    if target == LifecyclePhase.PREPARED and not _phase_complete(
-        model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
-    ):
+    if target == LifecyclePhase.PREPARED and not model.grounding.valid:
         return "Cannot set prepared: grounding_check is not complete"
     return None
 
@@ -283,7 +284,11 @@ def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, workt
             return "Cannot set build_started: prepared prerequisites are not satisfied"
         return None
     if target == LifecyclePhase.BUILD_COMPLETE:
-        if worktree_cwd is not None and not _has_build_commits_beyond_main(worktree_cwd):
+        if (
+            not model.build_completed_at
+            and worktree_cwd is not None
+            and not _has_build_commits_beyond_main(worktree_cwd)
+        ):
             return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
         return None
     if target == LifecyclePhase.REVIEW_CHANGES_REQUESTED and model.build_review.verdict != "changes_requested":
@@ -331,6 +336,21 @@ def validate_work_phase_preconditions(
     return validate_mark_phase_preconditions(state, phase, worktree_cwd)
 
 
+def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
+    """Validate and persist an authoritative lifecycle phase override."""
+    raw_state = dict(read_phase_state(cwd, slug))
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
+    wt = worktree_cwd if Path(worktree_cwd).exists() else None
+    error = validate_mark_phase_preconditions(raw_state, phase, wt)
+    if error:
+        raise ValueError(error)
+    writer = StateWriter(raw_state)
+    normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
+    payload = writer.to_dict()
+    write_phase_state(cwd, slug, payload)
+    return payload
+
+
 # ---------------------------------------------------------------------------
 # Stamp operations
 # ---------------------------------------------------------------------------
@@ -376,6 +396,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
             head = get_head_commit(worktree_path)
             if head:
                 build_review.baseline_commit = head
+        apply_authoritative_signal(writer.state, "verdict", phase=phase)
         return writer.commit_sync(db, slug)
 
     if phase not in _PREPARE_VERDICT_PHASES:
@@ -390,6 +411,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     ReviewManager(writer).stamp_verdict(phase, verdict)
+    apply_authoritative_signal(writer.state, "verdict", phase=phase)
     return writer.commit_sync(db, slug)
 
 
@@ -447,6 +469,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
         ready_at=now,
         handed_off_at="",
     )
+    apply_authoritative_signal(writer.state, "finalize_ready")
     return writer.commit_sync(db, slug)
 
 
@@ -616,13 +639,16 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     GroundingManager(writer).refresh(current_sha=current_sha)
     if input_digest:
+        writer.state.artifacts.input.digest = input_digest
         writer.grounding.input_digest = input_digest
     writer.state.lifecycle_phase = "prepared"
     writer.state.prepare_phase = ""
     writer.state.work_phase = ""
     if kind not in ("prepped", "bug"):
+        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, "requirements")
         writer.state.artifacts.requirements.produced_at = now_iso
     if kind != "bug":
+        writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, "implementation-plan")
         writer.state.artifacts.implementation_plan.produced_at = now_iso
 
     return writer.commit_sync(db, slug)
@@ -777,7 +803,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
 
     artifact_name = _PREPARE_ARTIFACT_NAMES.get(artifact_key)
     if artifact_name is not None:
-        _record_artifact_produced(cwd, slug, artifact_name)
+        _sync_artifact_state(cwd, slug, artifact_name, produced=True)
         return read_phase_state(cwd, slug)
 
     db = _get_todos_db_sync(cwd)
@@ -804,12 +830,14 @@ __all__ = [
     "has_pending_deferrals",
     "is_bug_todo",
     "is_prepped_todo",
+    "mark_phase_state",
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
     "stamp_artifact",
     "stamp_finalize_ready",
     "stamp_verdict",
+    "sync_artifact_digest",
     "validate_mark_phase_preconditions",
     "validate_work_phase_preconditions",
     "write_breakdown_state",

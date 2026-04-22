@@ -24,14 +24,13 @@ from teleclaude.core.db import Db
 from teleclaude.core.integration_bridge import emit_review_approved
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
-    DOR_READY_THRESHOLD,
     REVIEW_DIFF_NOTE,
     StateValue,
     WorkPhase,
 )
 from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, get_head_commit, has_uncommitted_changes
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -76,28 +75,6 @@ def _reviewer_idle_post_block(slug: str) -> str:
     )
 
 
-def _append_event(
-    state: dict[str, StateValue],
-    *,
-    actor: str,
-    kind: str,
-    details: dict[str, StateValue] | None = None,
-) -> None:
-    """Append a typed event to the state's audit log (best-effort)."""
-    events = state.get("events")
-    if not isinstance(events, list):
-        events = []
-        state["events"] = events
-    events.append(
-        {
-            "at": datetime.now(UTC).isoformat(),
-            "actor": actor,
-            "kind": kind,
-            "details": details or {},
-        }
-    )
-
-
 async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     """List child sessions spawned by the current orchestrator session."""
     if not session_id:
@@ -126,9 +103,8 @@ async def _work_step_build_started(
 ) -> tuple[bool, str]:
     """BUILD_STARTED: look up a live builder, otherwise dispatch a fresh one.
 
-    DOR precondition: regular todos must have ``dor.score >= DOR_READY_THRESHOLD``.
-    Bugs skip DOR. Prepped todos are expected to have their DOR stamped by the
-    prepare machine; if it is missing we treat that as a contract violation.
+    DOR precondition: regular todos must have ``dor.status == "pass"``.
+    Bugs skip DOR.
     """
     _ = todos_db
 
@@ -138,15 +114,11 @@ async def _work_step_build_started(
     if kind != "bug":
         dor_raw = state.get("dor")
         dor = dor_raw if isinstance(dor_raw, dict) else {}
-        score_raw = dor.get("score", 0)
-        score = score_raw if isinstance(score_raw, int) else 0
-        if score < DOR_READY_THRESHOLD:
+        status = dor.get("status", "")
+        if status != "pass":
             return False, format_error(
                 "NOT_PREPARED",
-                (
-                    f"{slug} has DOR score {score} < {DOR_READY_THRESHOLD}. "
-                    f"Run telec todo prepare {slug} before entering work."
-                ),
+                (f"{slug} has DOR status {status!r}, not 'pass'. Run telec todo prepare {slug} before entering work."),
                 next_call=f"telec todo prepare {slug}",
             )
 
@@ -158,12 +130,18 @@ async def _work_step_build_started(
             return False, (
                 f"BUILDER ACTIVE: {slug}\n\n"
                 f"Builder session {builder_id} has no commits beyond main yet. "
-                f"Wait for its next idle event, then call telec todo work {slug}."
+                f"Wait for it to stamp `telec todo stamp {slug} --build-complete`, then call "
+                f"telec todo work {slug}."
             )
         gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
         if not gates_passed:
             return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
-        return True, ""
+        return False, (
+            f"BUILDER ACTIVE: {slug}\n\n"
+            f"Builder session {builder_id} has commits and passing gates. "
+            f"Lifecycle stays at build_started until the builder stamps "
+            f"`telec todo stamp {slug} --build-complete`."
+        )
 
     try:
         guidance = await compose_agent_guidance(db)
@@ -177,6 +155,11 @@ async def _work_step_build_started(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
+            note=(
+                f"Start implementation by stamping `telec todo stamp {slug} --build-started` once work begins. "
+                f"When the build is complete and ready for review, stamp "
+                f"`telec todo stamp {slug} --build-complete`."
+            ),
             next_call=f"telec todo work {slug}",
             post_block=_builder_idle_post_block(slug),
         )
@@ -297,10 +280,8 @@ async def _work_step_review_changes_requested(
 ) -> tuple[bool, str]:
     """REVIEW_CHANGES_REQUESTED: relay findings to the live builder, or loop if fixed.
 
-    If the builder has committed fixes (HEAD advanced beyond the review baseline),
-    clear the verdict so the next iteration re-derives to BUILD_COMPLETE and
-    dispatches a re-review. Otherwise relay the findings to the existing builder
-    session and wait for FIX COMPLETE.
+    The lifecycle remains on ``review_changes_requested`` until the builder
+    explicitly stamps ``build_complete`` after addressing the findings.
     """
     _ = cwd
     build_review_raw = state.get("build_review")
@@ -310,23 +291,12 @@ async def _work_step_review_changes_requested(
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
 
     if baseline and head_sha and head_sha != baseline:
-        # Builder has committed fixes — clear the verdict and bump the round.
-        # Keep baseline_commit pointing at the commit the reviewer last reviewed
-        # so the re-review dispatch can scope diff to baseline..HEAD.
-        writer = StateWriter(state)
-        review = writer.state.build_review
-        review.verdict = ""
-        review.reviewed_at = ""
-        review.dispatch_head = ""
-        review.round = review.round + 1
-        _append_event(
-            state,
-            actor="work_state_machine",
-            kind="review_round_advanced",
-            details={"slug": slug, "round": review.round, "baseline": baseline},
+        return False, (
+            f"FIXES DETECTED: {slug}\n\n"
+            f"New commits exist beyond review baseline {baseline}. "
+            f"Wait for the builder to stamp `telec todo stamp {slug} --build-complete` "
+            f"before re-entering review."
         )
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""  # loop — re-derive phase
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
@@ -354,7 +324,8 @@ async def _work_step_review_changes_requested(
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
         f"indicate a stated requirement's success criteria are not satisfied in the "
         f"delivery; fix the narrowing or the weak verification, do not argue severity. "
-        f"Report FIX COMPLETE when every non-Suggestion finding is resolved. "
+        f"When every non-Suggestion finding is resolved, stamp "
+        f"`telec todo stamp {slug} --build-complete`. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )
     escaped = message.replace('"', '\\"')
@@ -463,7 +434,7 @@ async def _work_step_finalize_ready(
     finalize = writer.state.finalize
     finalize.status = "handed_off"
     finalize.handed_off_at = datetime.now(UTC).isoformat()
-    writer.state.lifecycle_phase = LifecyclePhase.HANDED_OFF.value
+    apply_authoritative_signal(writer.state, "finalize_handed_off")
     await _commit_writer(writer, todos_db, slug, state)
     return True, ""
 

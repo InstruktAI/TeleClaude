@@ -1,10 +1,7 @@
-"""Work stage — Phase B state machine for deterministic builder work.
+"""Work stage — Phase B dispatcher.
 
-Loop shaped like :func:`teleclaude.core.next_machine.prepare.next_prepare`:
-each iteration advances the canonical ``lifecycle_phase`` from persisted
-evidence and routes through :func:`_work_dispatch`.
-
-No imports from core.py (circular-import guard).
+Reads the canonical ``lifecycle_phase`` from persisted state and dispatches the
+current work step. It never derives or advances lifecycle state on its own.
 """
 
 from __future__ import annotations
@@ -26,9 +23,8 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
 )
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, advance_until_blocked, coerce_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
-from teleclaude.core.next_machine.phase_derivation import derive_work_phase
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
     resolve_canonical_project_root,
@@ -86,10 +82,9 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:
     """Phase B state machine for deterministic builder work.
 
-    Reads durable state from ``todos.db``, derives the current work phase via
-    :func:`derive_work_phase`, executes the corresponding step via
-    :func:`_work_dispatch`, and loops until a step returns an instruction or
-    the loop limit is reached.
+    Reads durable state from ``todos.db``, dispatches the current stored work
+    phase via :func:`_work_dispatch`, and loops only when a handler performs an
+    explicit state mutation that still requires another local dispatch.
 
     Args:
         db: Database instance
@@ -143,18 +138,18 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
             )
 
         writer = StateWriter(state)
-        if "lifecycle_phase" not in state:
-            legacy_phase = derive_work_phase(state, worktree_cwd, resolved_slug)
-            writer.state.lifecycle_phase = legacy_phase.value
-        current_phase = coerce_lifecycle_phase(writer.state.lifecycle_phase)
+        current_phase = coerce_lifecycle_phase(writer.state.lifecycle_phase) or LifecyclePhase.BUILD_STARTED
         if current_phase == LifecyclePhase.PREPARED:
-            writer.state.lifecycle_phase = LifecyclePhase.BUILD_STARTED.value
-            writer.state.build_start_base_sha = get_head_commit(worktree_cwd)
-        phase = advance_until_blocked(writer.state, worktree_cwd=worktree_cwd)
-        payload = writer.to_dict()
-        if payload != state:
-            await writer.commit(todos_db, resolved_slug)
-            state = payload
+            phase = WorkPhase.BUILD_STARTED
+        else:
+            try:
+                phase = WorkPhase(current_phase.value)
+            except ValueError:
+                return format_error(
+                    "NOT_PREPARED",
+                    f"{resolved_slug} is still in prepare phase '{current_phase.value}'. Run telec todo prepare first.",
+                    next_call=f"telec todo prepare {resolved_slug}",
+                )
         logger.info(
             "NEXT_WORK_PHASE slug=%s phase=%s iter=%d",
             resolved_slug,

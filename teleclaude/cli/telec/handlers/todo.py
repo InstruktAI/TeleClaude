@@ -6,7 +6,6 @@ import json as _json
 import shlex
 import sys
 import uuid
-from pathlib import Path
 from typing import Literal
 
 from instrukt_ai_logging import get_logger
@@ -23,14 +22,11 @@ from teleclaude.cli.tool_commands import (
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
-    read_phase_state,
-    validate_mark_phase_preconditions,
-    write_phase_state,
+    mark_phase_state,
 )
-from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
@@ -100,17 +96,11 @@ def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
             print(f"  {value}", file=sys.stderr)
         return 1
 
-    state = dict(read_phase_state(cwd, slug))
-    worktree_cwd = str(Path(cwd) / "trees" / slug)
-    wt = worktree_cwd if Path(worktree_cwd).exists() else None
-    error = validate_mark_phase_preconditions(state, phase, wt)
-    if error:
-        print(error, file=sys.stderr)
+    try:
+        mark_phase_state(cwd, slug, phase)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 1
-    writer = StateWriter(state)
-    normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
-    payload = writer.to_dict()
-    write_phase_state(cwd, slug, payload)
     print(f"Marked {slug} lifecycle_phase={phase}")
     return 0
 
@@ -621,10 +611,54 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
       --dor-score <n> [--dor-status <s>]
       --dor-status <s>
+      --requirements-ready
       --grounding-invalidated
       --specs-built
+      --plan-ready
+      --build-started
+      --build-complete
       --finalize-ready
     """
+    slug, stamp_type, value, phase = _parse_todo_stamp_args(args)
+
+    if not slug:
+        print("Usage: telec todo stamp <slug> --verdict approve --phase <phase>")
+        raise SystemExit(1)
+    if not stamp_type:
+        print(
+            "Missing stamp flag (--verdict, --dor-score, --dor-status, "
+            "--requirements-ready, --grounding-invalidated, --specs-built, "
+            "--plan-ready, --build-started, --build-complete, --finalize-ready)"
+        )
+        raise SystemExit(1)
+    if stamp_type == "verdict" and not phase:
+        print("--verdict requires --phase <phase>")
+        raise SystemExit(1)
+
+    body: dict[str, str] = {
+        "stamp_type": stamp_type,
+        "value": value or "",
+        "cwd": str(resolve_invocation_cwd()),
+    }
+    if phase:
+        body["phase"] = phase
+
+    result = tool_api_request(
+        "POST",
+        f"/todos/stamp/{slug}",
+        json_body=body,
+    )
+    if isinstance(result, dict) and result.get("status") == "ok":
+        label = f"{stamp_type}={value}" if value else stamp_type
+        if phase:
+            label = f"{label} phase={phase}"
+        print(f"Stamped {label} for {slug}")
+    else:
+        print(result)
+
+
+def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:
+    """Parse ``telec todo stamp`` argv into slug, stamp type, value, and phase."""
     slug: str | None = None
     stamp_type: str | None = None
     value: str | None = None
@@ -652,9 +686,25 @@ def _handle_todo_stamp(args: list[str]) -> None:
             stamp_type = "grounding"
             value = "invalid"
             i += 1
+        elif arg == "--requirements-ready":
+            stamp_type = "requirements_ready"
+            value = ""
+            i += 1
         elif arg == "--specs-built":
             stamp_type = "specs_built"
             value = "true"
+            i += 1
+        elif arg == "--plan-ready":
+            stamp_type = "plan_ready"
+            value = ""
+            i += 1
+        elif arg == "--build-started":
+            stamp_type = "build_started"
+            value = ""
+            i += 1
+        elif arg == "--build-complete":
+            stamp_type = "build_complete"
+            value = ""
             i += 1
         elif arg == "--finalize-ready":
             stamp_type = "finalize_ready"
@@ -676,39 +726,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
             parts.append(f"status:{dor_status}")
         value = ",".join(parts)
 
-    if not slug:
-        print("Usage: telec todo stamp <slug> --verdict approve --phase <phase>")
-        raise SystemExit(1)
-    if not stamp_type:
-        print(
-            "Missing stamp flag (--verdict, --dor-score, --dor-status, "
-            "--grounding-invalidated, --specs-built, --finalize-ready)"
-        )
-        raise SystemExit(1)
-    if stamp_type == "verdict" and not phase:
-        print("--verdict requires --phase <phase>")
-        raise SystemExit(1)
-
-    body: dict[str, str] = {
-        "stamp_type": stamp_type,
-        "value": value or "",
-        "cwd": str(resolve_invocation_cwd()),
-    }
-    if phase:
-        body["phase"] = phase
-
-    result = tool_api_request(
-        "POST",
-        f"/todos/stamp/{slug}",
-        json_body=body,
-    )
-    if isinstance(result, dict) and result.get("status") == "ok":
-        label = f"{stamp_type}={value}" if value else stamp_type
-        if phase:
-            label = f"{label} phase={phase}"
-        print(f"Stamped {label} for {slug}")
-    else:
-        print(result)
+    return slug, stamp_type, value, phase
 
 
 def _handle_todo_show(args: list[str]) -> None:

@@ -29,17 +29,17 @@ def _mock_todos_db() -> AsyncMock:
 def _base_state(*, kind: str = "todo", dor_score: int = 8, lifecycle_phase: str = "build_started") -> dict:
     return {
         "kind": kind,
-        "dor": {"score": dor_score},
+        "dor": {"score": dor_score, "status": "pass"},
         "lifecycle_phase": lifecycle_phase,
     }
 
 
-# ── _work_step_build_started: advancement ────────────────────────────────────
+# ── _work_step_build_started: waiting/dispatch ──────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_build_started_advances_when_builder_exists_and_gates_pass() -> None:
-    """When builder is active, commits exist, and gates pass, loop to build_complete."""
+async def test_build_started_waits_for_explicit_build_complete_stamp_when_gates_pass() -> None:
+    """Passing gates do not advance phase until the builder stamps build_complete."""
     state = _base_state()
 
     with (
@@ -56,8 +56,8 @@ async def test_build_started_advances_when_builder_exists_and_gates_pass() -> No
             state=state,
         )
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert "build-complete" in instruction
     assert state["lifecycle_phase"] == "build_started"
 
 
@@ -129,12 +129,12 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
     assert "STEP 1 - DISPATCH" in instruction
 
 
-# ── _work_step_review_changes_requested: clearing ────────────────────────────
+# ── _work_step_review_changes_requested: waiting ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_clears_verdict_on_round_advance() -> None:
-    """When builder committed fixes (HEAD != baseline), clear the review verdict and advance the round."""
+async def test_review_changes_requested_waits_for_build_complete_stamp() -> None:
+    """Committed fixes alone do not reopen review without an explicit build_complete stamp."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
         "build_review": {
@@ -147,7 +147,6 @@ async def test_review_changes_requested_clears_verdict_on_round_advance() -> Non
 
     with (
         patch(f"{_WORK_STEPS}.get_head_commit", return_value="bbb222"),
-        patch(f"{_WORK_STEPS}._commit_writer", new=AsyncMock()) as mock_commit,
     ):
         keep_going, instruction = await _work_step_review_changes_requested(
             db=_mock_db(),
@@ -158,9 +157,5 @@ async def test_review_changes_requested_clears_verdict_on_round_advance() -> Non
             state=state,
         )
 
-    assert keep_going is True
-    assert instruction == ""
-    writer_arg = mock_commit.call_args[0][0]
-    assert writer_arg.state.build_review.verdict == ""
-    assert writer_arg.state.build_review.reviewed_at == ""
-    assert writer_arg.state.build_review.round == 1
+    assert keep_going is False
+    assert "build-complete" in instruction

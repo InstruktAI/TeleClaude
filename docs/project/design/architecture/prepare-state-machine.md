@@ -68,7 +68,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 
 - **Sequential gating**: no artifact is produced until its predecessor is reviewed and approved.
 - **Canonical phase storage**: `todo state (todos.db)` stores one authoritative `lifecycle_phase`. Reads use that field directly.
-- **Machine-owned advancement**: the machine evaluates evidence and advances `lifecycle_phase`; workers write artifacts and verdicts, not phase.
+- **Stamp-owned advancement**: `telec todo stamp` is the only natural forward-progression authority. Workers may write artifacts freely, but the pointer advances only when the current phase receives its authoritative completion signal.
 - **Review round limits**: both requirements and plan reviews are capped at `DEFAULT_MAX_REVIEW_ROUNDS` (3). Exceeding the limit transitions to `BLOCKED`.
 - **Grounding freshness**: preparation is only valid if referenced files and input digest have not changed since grounding. Stale preparation triggers re-grounding.
 - **Idempotent re-entry**: `telec todo prepare` is safe to call at any time — first call creates, subsequent calls verify and heal.
@@ -83,32 +83,32 @@ stateDiagram-v2
     [*] --> INPUT_ASSESSMENT
 
     INPUT_ASSESSMENT --> TRIANGULATION: requirements.md missing
-    INPUT_ASSESSMENT --> REQUIREMENTS_REVIEW: requirements.md exists
+    INPUT_ASSESSMENT --> REQUIREMENTS_REVIEW: `requirements_ready`
 
-    TRIANGULATION --> REQUIREMENTS_REVIEW: requirements drafted
+    TRIANGULATION --> REQUIREMENTS_REVIEW: `requirements_ready`
 
     REQUIREMENTS_REVIEW --> TEST_SPEC_BUILD: verdict = approve
     REQUIREMENTS_REVIEW --> TRIANGULATION: verdict = needs_work (re-draft)
     REQUIREMENTS_REVIEW --> BLOCKED: review rounds exceeded
 
-    TEST_SPEC_BUILD --> TEST_SPEC_REVIEW: test specs written
+    TEST_SPEC_BUILD --> TEST_SPEC_REVIEW: `specs_built`
 
     TEST_SPEC_REVIEW --> PLAN_DRAFTING: verdict = approve
     TEST_SPEC_REVIEW --> TEST_SPEC_BUILD: verdict = needs_work (re-draft)
     TEST_SPEC_REVIEW --> BLOCKED: review rounds exceeded
 
-    PLAN_DRAFTING --> PLAN_REVIEW: plan drafted
+    PLAN_DRAFTING --> PLAN_REVIEW: `plan_ready`
 
     PLAN_REVIEW --> GATE: verdict = approve
     PLAN_REVIEW --> PLAN_DRAFTING: verdict = needs_work (re-draft)
     PLAN_REVIEW --> BLOCKED: review rounds exceeded
 
-    GATE --> GROUNDING_CHECK: DOR score >= 8
+    GATE --> GROUNDING_CHECK: `dor.status=pass`
 
     GROUNDING_CHECK --> PREPARED: grounding valid
     GROUNDING_CHECK --> RE_GROUNDING: grounding stale
 
-    RE_GROUNDING --> PLAN_REVIEW: plan updated, needs fresh review
+    RE_GROUNDING --> PLAN_REVIEW: `plan_ready`
 
     PREPARED --> [*]
     BLOCKED --> [*]
@@ -116,20 +116,20 @@ stateDiagram-v2
 
 ### States reference
 
-| State                 | Description                                                   | Agent Action                               | Auto-advance                                     |
-| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------ |
-| `INPUT_ASSESSMENT`    | Evaluate input.md, check if requirements.md exists            | No                                         | Yes — advances to REQUIREMENTS_REVIEW when ready |
-| `TRIANGULATION`       | Requirements need to be written or reworked                   | Yes — dispatch `/next-prepare-discovery`   | No                                               |
-| `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict                       | Yes — dispatch `/next-review-requirements` | No                                               |
-| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec`   | No                                               |
-| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-test-spec`    | No                                               |
-| `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                               |
-| `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                               |
-| `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                               |
-| `GROUNDING_CHECK`     | Verify freshness of artifacts against current codebase        | No                                         | Yes — routes to PREPARED or RE_GROUNDING         |
-| `RE_GROUNDING`        | Referenced files changed since grounding, plan must update    | Yes — dispatch `/next-prepare-draft`       | No                                               |
-| `PREPARED`            | Terminal success — todo is ready for Phase B (Work)           | No                                         | —                                                |
-| `BLOCKED`             | Terminal failure — human intervention needed                  | No                                         | —                                                |
+| State                 | Description                                                   | Agent Action                               | Auto-advance                                  |
+| --------------------- | ------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------- |
+| `INPUT_ASSESSMENT`    | Evaluate input.md and confirm discovery is ready for review   | No                                         | No                                            |
+| `TRIANGULATION`       | Requirements need to be written or reworked                   | Yes — dispatch `/next-prepare-discovery`   | No                                            |
+| `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict                       | Yes — dispatch `/next-review-requirements` | No                                            |
+| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec`   | No                                            |
+| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-test-spec`    | No                                            |
+| `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                            |
+| `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                            |
+| `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                            |
+| `GROUNDING_CHECK`     | Verify freshness of artifacts against current codebase        | No                                         | Yes — only from authoritative grounding state |
+| `RE_GROUNDING`        | Referenced files changed since grounding, plan must update    | Yes — dispatch `/next-prepare-draft`       | No                                            |
+| `PREPARED`            | Terminal success — todo is ready for Phase B (Work)           | No                                         | —                                             |
+| `BLOCKED`             | Terminal failure — human intervention needed                  | No                                         | —                                             |
 
 ### Flow diagram
 
@@ -249,7 +249,7 @@ sequenceDiagram
     Note over O,G: Phase 3 — Test Specification
     SM-->>O: DISPATCH next-prepare-test-spec
     O->>TS: telec sessions run --command /next-prepare-test-spec --args slug
-    TS-->>O: notification (test specs written)
+    TS-->>O: notification (`telec todo stamp slug --specs-built`)
     O->>SM: telec todo prepare slug
 
     Note over O,G: Phase 4 — Test Spec Review
@@ -261,7 +261,7 @@ sequenceDiagram
     Note over O,G: Phase 5 — Plan Drafting
     SM-->>O: DISPATCH next-prepare-draft
     O->>DR: telec sessions run --command /next-prepare-draft --args slug
-    DR-->>O: notification (implementation-plan.md written)
+    DR-->>O: notification (`telec todo stamp slug --plan-ready`)
     O->>SM: telec todo prepare slug
 
     Note over O,G: Phase 6 — Plan Review
@@ -273,7 +273,7 @@ sequenceDiagram
     Note over O,G: Phase 7 — DOR Gate
     SM-->>O: DISPATCH next-prepare-gate
     O->>G: telec sessions run --command /next-prepare-gate --args slug
-    G-->>O: notification (DOR score >= 8)
+    G-->>O: notification (`telec todo stamp slug --dor-status pass`)
     O->>SM: telec todo prepare slug
 
     Note over O,G: Phase 8 — Grounding Check (mechanical)

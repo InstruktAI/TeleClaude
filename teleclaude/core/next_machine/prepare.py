@@ -1,9 +1,7 @@
-"""Prepare stage — Phase A state machine for collaborative architect work.
+"""Prepare stage — Phase A dispatcher.
 
-Each loop iteration advances the canonical ``lifecycle_phase`` from persisted
-evidence, then routes through :func:`_prepare_dispatch`.
-
-No imports from core.py (circular-import guard).
+Reads the canonical ``lifecycle_phase`` from persisted state and dispatches the
+current prepare step. It never derives or advances lifecycle state on its own.
 """
 
 from __future__ import annotations
@@ -16,17 +14,17 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT, StateValue
+from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, advance_until_blocked
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    is_work_lifecycle_phase,
+)
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
-from teleclaude.core.next_machine.phase_derivation import derive_prepare_phase
-from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
-from teleclaude.core.next_machine.prepare_helpers import _ARTIFACT_CASCADE, check_artifact_staleness_db
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.types.todos import ArtifactEntry
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -38,11 +36,7 @@ logger = get_logger(__name__)
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
-    """Find next slug needing preparation by deriving phase from primitives.
-
-    Returns the first roadmap entry whose derived prepare phase is not PREPARED
-    (i.e., still has prepare work remaining). Skips items already marked done.
-    """
+    """Find the first roadmap entry still in the prepare lane."""
     entries = await todos_db.list_roadmap()
     for entry in entries:
         slug = entry["slug"]
@@ -54,78 +48,14 @@ async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
         item_phase = state.get("phase")
         if item_phase == "done":
             continue
-        derived = await derive_prepare_phase(state, todos_db, slug)
-        if derived != _PP.PREPARED:
+        lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase")) or LifecyclePhase.INPUT_ASSESSMENT
+        if lifecycle != LifecyclePhase.PREPARED and not is_work_lifecycle_phase(lifecycle):
             return slug
     return None
 
 
-async def _apply_stale_artifact_reroute(
-    todos_db: TodosDb,
-    slug: str,
-    state: dict[str, StateValue],
-    stale_artifacts: list[str],
-) -> dict[str, StateValue]:
-    """Refresh digests for stale artifacts and invalidate downstream review verdicts.
-
-    A stale artifact means the DB-stored content diverged from the stamped
-    digest. After restamping the current digest the loop re-derives the
-    phase, but derivation still has to see a reason to re-route — otherwise
-    we'd advance through an already-approved downstream review against
-    potentially outdated content. We clear the downstream review verdicts
-    (requirements → test specs → plan) so derivation lands back on the first
-    stale review phase.
-    """
-    downstream_map = {
-        "input": ("requirements_review", "test_spec_review", "plan_review"),
-        "requirements": ("test_spec_review", "plan_review"),
-        "implementation_plan": ("plan_review",),
-    }
-    reroute_phase = {
-        "input": LifecyclePhase.REQUIREMENTS_REVIEW,
-        "requirements": LifecyclePhase.TEST_SPEC_REVIEW,
-        "implementation_plan": LifecyclePhase.PLAN_REVIEW,
-    }
-
-    writer = StateWriter(state)
-    for key, artifact_name in _ARTIFACT_CASCADE:
-        if key not in stale_artifacts:
-            continue
-        current_digest = await todos_db.artifact_digest(slug, artifact_name)
-        entry = getattr(writer.state.artifacts, key, None)
-        if isinstance(entry, ArtifactEntry) and current_digest and current_digest != entry.digest:
-            entry.digest = current_digest
-        for review_key in downstream_map.get(key, ()):
-            review = getattr(writer.state, review_key, None)
-            if review is not None and getattr(review, "verdict", "") == "approve":
-                review.verdict = ""
-                if hasattr(review, "reviewed_at"):
-                    review.reviewed_at = ""
-        writer.state.lifecycle_phase = reroute_phase[key].value
-
-    payload = await writer.commit(todos_db, slug)
-    state.clear()
-    state.update(payload)
-
-    _emit_prepare_event(
-        "domain.software-development.prepare.artifact_invalidated",
-        {"slug": slug, "stale_artifacts": stale_artifacts, "reason": "digest_mismatch"},
-    )
-    logger.info(
-        "ARTIFACT_STALENESS slug=%s stale=%s routing_to=derive",
-        slug,
-        stale_artifacts,
-    )
-    return state
-
-
 async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
-    """Phase A state machine for collaborative architect work.
-
-    Reads durable state from todos.db, derives the current prepare phase via
-    :func:`derive_prepare_phase` on every iteration, executes the next step,
-    and returns structured tool-call instructions for the orchestrator.
-    """
+    """Dispatch the current prepare lifecycle step from authoritative state."""
     # Silence unused-import warnings for the helpers re-exported here.
     _ = _commit_writer
 
@@ -182,18 +112,12 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             msg = f"Contract violation: no state record for slug {resolved_slug!r}"
             raise RuntimeError(msg)
 
-        stale_artifacts = await check_artifact_staleness_db(todos_db, resolved_slug)
-        if stale_artifacts:
-            state = await _apply_stale_artifact_reroute(todos_db, resolved_slug, state, stale_artifacts)
-
         writer = StateWriter(state)
-        if "lifecycle_phase" not in state:
-            writer.state.lifecycle_phase = (await derive_prepare_phase(state, todos_db, resolved_slug)).value
-        phase = advance_until_blocked(writer.state)
-        payload = writer.to_dict()
-        if payload != state:
-            await writer.commit(todos_db, resolved_slug)
-            state = payload
+        lifecycle = coerce_lifecycle_phase(writer.state.lifecycle_phase) or LifecyclePhase.INPUT_ASSESSMENT
+        if lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle):
+            phase = _PP.PREPARED
+        else:
+            phase = _PP(lifecycle.value)
         logger.info(
             "NEXT_PREPARE_PHASE slug=%s phase=%s iter=%d",
             resolved_slug,

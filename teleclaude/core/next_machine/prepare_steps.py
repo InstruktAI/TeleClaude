@@ -13,10 +13,10 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
-from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, DOR_READY_THRESHOLD, PreparePhase, StateValue
+from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, PreparePhase, StateValue
 from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_prepared, format_tool_call
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.runtime.scripts import (
@@ -138,7 +138,15 @@ async def _prepare_step_input_assessment(
         )
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
-        return True, ""  # loop — routes to REQUIREMENTS_REVIEW via authoritative field
+        return (
+            False,
+            (
+                f"REQUIREMENTS READY: {slug}\n\n"
+                f"Requirements artifact already exists. Stamp "
+                f"`telec todo stamp {slug} --requirements-ready` to advance to requirements_review, "
+                f"then call telec todo prepare {slug}."
+            ),
+        )
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -151,6 +159,8 @@ async def _prepare_step_input_assessment(
             note=(
                 f"Read the input via `telec todo artifacts read {slug} input` and "
                 f"produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
+                f"When the requirements are complete enough for review, stamp "
+                f"`telec todo stamp {slug} --requirements-ready`. "
                 "Work solo if the input is already concrete enough. If important intent, "
                 "constraints, or code grounding still need another perspective, run "
                 "triangulated discovery with a complementary partner."
@@ -461,7 +471,15 @@ async def _prepare_step_plan_drafting(
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
-        return True, ""  # loop — derive routes to PLAN_REVIEW
+        return (
+            False,
+            (
+                f"PLAN READY: {slug}\n\n"
+                f"Implementation plan already exists. Stamp "
+                f"`telec todo stamp {slug} --plan-ready` to advance to plan_review, "
+                f"then call telec todo prepare {slug}."
+            ),
+        )
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -474,7 +492,8 @@ async def _prepare_step_plan_drafting(
             note=(
                 f"Ground the approved requirements for {slug}. If the work is atomic, "
                 f"write the implementation plan via "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`. "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`, then stamp "
+                f"`telec todo stamp {slug} --plan-ready`. "
                 "If planning shows the parent is too large, split it into child todos and "
                 "update the holder breakdown."
             ),
@@ -616,10 +635,17 @@ async def _prepare_step_gate(
     writer.audit.gate.started_at = datetime.now(UTC).isoformat()
     dor = writer.state.dor
 
-    if dor is not None and dor.score >= DOR_READY_THRESHOLD:
+    if dor is not None and dor.status == "pass":
         writer.audit.gate.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
-        return True, ""  # loop — derive routes to GROUNDING_CHECK
+        return (
+            False,
+            (
+                f"DOR PASS RECORDED: {slug}\n\n"
+                f"Gate already has a passing DOR stamp. Re-enter with "
+                f"`telec todo prepare {slug}` after the authoritative stamp path has advanced the phase."
+            ),
+        )
 
     # Dispatch gate worker to run DOR assessment (in worktree — test specs live there)
     guidance = await compose_agent_guidance(db)
@@ -631,8 +657,9 @@ async def _prepare_step_gate(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Requirements/plan exist for {slug}, but DOR score is below threshold. "
-                f"Complete DOR assessment and set state.yaml.dor.score >= {DOR_READY_THRESHOLD}."
+                f"Requirements/plan exist for {slug}, but gate is not complete. "
+                f"Complete DOR assessment and stamp "
+                f"`telec todo stamp {slug} --dor-status pass|needs_work`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -666,12 +693,13 @@ async def _prepare_step_grounding_check(
     if input_content:
         current_input_digest = hashlib.sha256(input_content.encode("utf-8")).hexdigest()
 
-    # First grounding: capture baseline. Derivation routes to PREPARED next.
+    # First grounding: capture baseline and advance through the authoritative grounding signal.
     if not base_sha:
         grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
+        apply_authoritative_signal(writer.state, "grounding")
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
-        return True, ""  # loop — derive routes to PREPARED
+        return True, ""
 
     # I2: git failure is fail-closed — treat as stale with no changed paths.
     if not current_sha:
@@ -716,11 +744,12 @@ async def _prepare_step_grounding_check(
             changed_paths=result.changed_paths,
         )
 
-    # Fresh — refresh baseline. Derivation routes to PREPARED next.
+    # Fresh — refresh baseline and advance through the authoritative grounding signal.
     grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
+    apply_authoritative_signal(writer.state, "grounding")
     await _commit_writer(writer, todos_db, slug, state)
     _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
-    return True, ""  # loop — derive routes to PREPARED
+    return True, ""
 
 
 async def _handle_stale_grounding(
@@ -759,10 +788,7 @@ async def _handle_stale_grounding(
         grounding_mgr.invalidate(reason=reason, changed_paths=changed_paths)
 
     # Re-grounding means the plan must be refreshed and re-reviewed.
-    writer.state.lifecycle_phase = LifecyclePhase.RE_GROUNDING.value
-    writer.state.artifacts.implementation_plan.produced_at = ""
-    writer.review("plan_review").verdict = ""
-    writer.review("plan_review").reviewed_at = ""
+    apply_authoritative_signal(writer.state, "grounding_invalidated")
     await _commit_writer(writer, todos_db, slug, state)
 
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
@@ -777,7 +803,8 @@ async def _handle_stale_grounding(
             note=(
                 f"Update the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
-                f"`telec todo artifacts write {slug} implementation-plan <content>` "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`, "
+                f"then stamp `telec todo stamp {slug} --plan-ready` "
                 f"against current codebase. {changed_note}"
             ),
             next_call=f"telec todo prepare {slug}",
@@ -807,7 +834,8 @@ async def _prepare_step_re_grounding(
             note=(
                 f"Re-ground {slug} and rewrite the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`."
+                f"`telec todo artifacts write {slug} implementation-plan <content>`, "
+                f"then stamp `telec todo stamp {slug} --plan-ready`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),

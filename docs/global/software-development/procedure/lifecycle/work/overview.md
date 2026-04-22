@@ -34,11 +34,11 @@ The state machine dispatches a builder worker via `next-build`. The builder:
 - Commits per task
 - Reports BUILD COMPLETE when done
 
-When the builder reports success, the orchestrator calls `telec todo work [slug]`
-again. The work state machine re-derives the phase from primitives (git commits,
-build gates) and dispatches the next step. If build gates fail, the orchestrator
-keeps the builder session alive, sends the gate failures back to the builder, and
-retries the same post-completion loop.
+When the builder is ready for review, it stamps
+`telec todo stamp [slug] --build-complete`. The orchestrator then calls
+`telec todo work [slug]` again. The work state machine reads the stored
+`lifecycle_phase` and dispatches the next step. Git commits and build gates are
+evidence only; they do not advance the phase on their own.
 
 ### 3. Review
 

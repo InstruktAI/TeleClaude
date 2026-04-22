@@ -11,62 +11,12 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 from teleclaude.core.todos_db import TodosDb
-from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
 
 RECENTLY_DELIVERED_HOURS = 72
-
-DOR_READY_THRESHOLD = 7
-
-
-def _derive_prepare_phase(state: dict[str, StateValue], *, has_req: bool, has_plan: bool) -> str | None:
-    """Lightweight sync prepare-phase derivation from v1 state primitives.
-
-    Mirrors phase_derivation.derive_prepare_phase but sync and uses the
-    artifact existence flag already resolved by the caller.
-    """
-    req_review_raw = state.get("requirements_review")
-    req_review = req_review_raw if isinstance(req_review_raw, dict) else {}
-    req_verdict = req_review.get("verdict", "")
-
-    if not has_req and req_verdict != "skipped":
-        return "input_assessment"
-    if req_verdict not in ("approve", "skipped"):
-        return "requirements_review"
-
-    artifacts_raw = state.get("artifacts")
-    artifacts = artifacts_raw if isinstance(artifacts_raw, dict) else {}
-    test_specs_raw = artifacts.get("test_specs")
-    test_specs = test_specs_raw if isinstance(test_specs_raw, dict) else {}
-    if not test_specs.get("produced_at"):
-        return "test_spec_build"
-
-    spec_review_raw = state.get("test_spec_review")
-    spec_review = spec_review_raw if isinstance(spec_review_raw, dict) else {}
-    if spec_review.get("verdict", "") not in ("approve", "skipped"):
-        return "test_spec_review"
-
-    plan_review_raw = state.get("plan_review")
-    plan_review = plan_review_raw if isinstance(plan_review_raw, dict) else {}
-    plan_verdict = plan_review.get("verdict", "")
-    if plan_verdict not in ("approve", "skipped"):
-        return "plan_review" if has_plan else "plan_drafting"
-
-    dor_raw = state.get("dor")
-    dor = dor_raw if isinstance(dor_raw, dict) else {}
-    score_raw = dor.get("score", 0)
-    score: int = score_raw if isinstance(score_raw, int) else 0
-    if score < DOR_READY_THRESHOLD:
-        return "gate"
-
-    grounding_raw = state.get("grounding")
-    grounding = grounding_raw if isinstance(grounding_raw, dict) else {}
-    if not grounding.get("valid"):
-        return "grounding_check"
-
-    return "prepared"
 
 
 def _non_empty_str(value: object) -> str | None:
@@ -175,37 +125,35 @@ def assemble_roadmap_from_db(
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
             finalize_status = finalize.get("status") or None
 
-            build_review_raw = state.get("build_review")
-            build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
-            verdict = build_review.get("verdict", "")
+            lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+            current_value = (lifecycle or LifecyclePhase.INPUT_ASSESSMENT).value
 
-            # Build status: derived from finalize, build_review verdict, phase
+            # Build status: derived from the canonical lifecycle pointer.
             build_status: str | None = None
             review_status: str | None = None
             state_phase = state.get("phase", "")
             is_delivered = state_phase == "delivered"
             if not is_draft and not is_delivered:
-                if finalize_status in ("ready", "handed_off"):
-                    build_status = "complete"
-                    review_status = "approved"
-                elif verdict == "approve":
-                    build_status = "complete"
-                    review_status = "approved"
-                elif verdict == "changes_requested":
-                    build_status = "complete"
-                    review_status = "changes_requested"
-                elif verdict:
+                if lifecycle == LifecyclePhase.BUILD_STARTED:
+                    build_status = "started"
+                elif lifecycle == LifecyclePhase.BUILD_COMPLETE:
                     build_status = "complete"
                     review_status = "pending"
-                elif state_phase == "in_progress":
-                    build_status = "started"
+                elif lifecycle == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
+                    build_status = "complete"
+                    review_status = "changes_requested"
+                elif lifecycle in (
+                    LifecyclePhase.REVIEW_APPROVED,
+                    LifecyclePhase.FINALIZE_READY,
+                    LifecyclePhase.HANDED_OFF,
+                ):
+                    build_status = "complete"
+                    review_status = "approved"
 
-            # Prepare phase: only shown when not yet in work phase
+            # Prepare phase: read directly from the canonical lifecycle pointer.
             prepare_phase: str | None = None
             if not is_draft and not is_delivered and not build_status:
-                prepare_phase = _derive_prepare_phase(
-                    state, has_req=has_req_row is not None, has_plan=has_plan_row is not None
-                )
+                prepare_phase = current_value
 
             integration_phase = _non_empty_str(state.get("integration_phase"))
 

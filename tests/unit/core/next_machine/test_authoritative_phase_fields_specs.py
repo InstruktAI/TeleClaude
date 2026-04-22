@@ -103,35 +103,25 @@ def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
 
 
 def test_mark_phase_cli_writes_lifecycle_phase_for_prepare_target() -> None:
-    captured_state: dict[str, StateValue] = {}
-
-    def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
-        captured_state.update(state)
-
-    with (
-        patch("teleclaude.cli.telec.handlers.todo.write_phase_state", _fake_write),
-        patch("teleclaude.cli.telec.handlers.todo.read_phase_state", return_value=_prepared_state()),
-    ):
+    with patch(
+        "teleclaude.cli.telec.handlers.todo.mark_phase_state",
+        return_value={"lifecycle_phase": PreparePhase.PREPARED.value},
+    ) as mock_mark:
         exit_code = todo_handler.handle_mark_phase(slug="slug", phase=PreparePhase.PREPARED.value, cwd="/tmp/cwd")
 
     assert exit_code == 0
-    assert captured_state.get("lifecycle_phase") == PreparePhase.PREPARED.value
+    mock_mark.assert_called_once_with("/tmp/cwd", "slug", PreparePhase.PREPARED.value)
 
 
 def test_mark_phase_cli_writes_lifecycle_phase_for_work_target() -> None:
-    captured_state: dict[str, StateValue] = {}
-
-    def _fake_write(_cwd: str, _slug: str, state: dict[str, StateValue]) -> None:
-        captured_state.update(state)
-
-    with (
-        patch("teleclaude.cli.telec.handlers.todo.write_phase_state", _fake_write),
-        patch("teleclaude.cli.telec.handlers.todo.read_phase_state", return_value=_prepared_state()),
-    ):
+    with patch(
+        "teleclaude.cli.telec.handlers.todo.mark_phase_state",
+        return_value={"lifecycle_phase": WorkPhase.BUILD_STARTED.value},
+    ) as mock_mark:
         exit_code = todo_handler.handle_mark_phase(slug="slug", phase=WorkPhase.BUILD_STARTED.value, cwd="/tmp/cwd")
 
     assert exit_code == 0
-    assert captured_state.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
+    mock_mark.assert_called_once_with("/tmp/cwd", "slug", WorkPhase.BUILD_STARTED.value)
 
 
 def test_mark_phase_cli_rejects_invalid_phase_value_with_listing(

@@ -11,8 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from datetime import UTC
-from datetime import datetime as _dt
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -43,16 +41,13 @@ from teleclaude.core.next_machine.core import (
     _PREPARE_VERDICT_VALUES,
 )
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_io import (
     apply_prepared_state,
-    read_phase_state,
-    stamp_artifact,
+    mark_phase_state,
     stamp_finalize_ready,
     stamp_verdict,
-    validate_mark_phase_preconditions,
-    write_phase_state,
 )
 from teleclaude.core.next_machine.state_mutation import (
     GroundingManager,
@@ -286,6 +281,27 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     return await get_todos_db(project_root)
 
 
+async def _sync_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
+    """Refresh only the artifact digest stored in todo state."""
+    key = {
+        "input": "input",
+        "requirements": "requirements",
+        "implementation-plan": "implementation_plan",
+    }.get(artifact_name)
+    if key is None:
+        return
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        return
+    writer = StateWriter(raw_state)
+    entry = getattr(writer.state.artifacts, key, None)
+    if entry is None:
+        return
+    entry.digest = await todos_db.artifact_digest(slug, artifact_name)
+    entry.stale = False
+    await writer.commit(todos_db, slug)
+
+
 @router.get("/artifacts/{slug}/{name}")
 async def read_artifact(
     slug: str,
@@ -313,12 +329,8 @@ async def write_artifact(
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
     await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
-    artifact_key = {
-        "requirements": "requirements",
-        "implementation-plan": "implementation_plan",
-    }.get(name)
-    if artifact_key is not None:
-        await asyncio.to_thread(stamp_artifact, effective_cwd, slug, artifact_key)
+    if name in {"input", "requirements", "implementation-plan"}:
+        await _sync_artifact_digest_state(todos_db, slug, name)
     return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
 
 
@@ -382,6 +394,11 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     await todos_db.write_artifact(slug, "input", input_content, session=session)
 
         todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
+
+        if request.kind == "prepped":
+            await _sync_artifact_digest_state(todos_db, slug, "implementation-plan")
+        elif request.kind != "bug":
+            await _sync_artifact_digest_state(todos_db, slug, "input")
 
         if request.kind in ("prepped", "bug"):
             # Stamp DOR, grounding baseline, plan_review=approve, and
@@ -529,7 +546,7 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     cwd: Annotated[str | None, Body()] = None,
     identity: CallerIdentity = Depends(clearance_todos_work),
 ) -> _StampResponse:
-    """Stamp a verdict, DOR, grounding, specs-built, or finalize-ready value.
+    """Stamp an authoritative lifecycle signal into todo state.
 
     Verdict stamps require an explicit ``phase`` body field — derivation-based
     state no longer tracks a persistent ``current`` pointer. Accepted phases
@@ -588,15 +605,41 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     if raw_state is None:
         raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
 
+    worktree_path = Path(effective_cwd) / "trees" / slug
+    worktree_cwd = str(worktree_path) if worktree_path.exists() else None
+
     try:
         writer = StateWriter(raw_state)
         if stamp_type == "grounding":
             _apply_grounding_stamp(writer, value)
+            apply_authoritative_signal(writer.state, "grounding")
         elif stamp_type == "dor":
             _apply_dor_stamp(writer, value)
+            apply_authoritative_signal(writer.state, "dor")
         elif stamp_type == "specs_built":
-            writer.state.artifacts.test_specs.produced_at = _dt.now(UTC).isoformat()
-            writer.state.artifacts.test_specs.stale = False
+            apply_authoritative_signal(writer.state, "specs_built")
+        elif stamp_type == "requirements_ready":
+            digest = await todos_db.artifact_digest(slug, "requirements")
+            if not digest:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"requirements_ready requires an existing requirements artifact for '{slug}'",
+                )
+            writer.state.artifacts.requirements.digest = digest
+            apply_authoritative_signal(writer.state, "requirements_ready")
+        elif stamp_type == "plan_ready":
+            digest = await todos_db.artifact_digest(slug, "implementation-plan")
+            if not digest:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"plan_ready requires an existing implementation-plan artifact for '{slug}'",
+                )
+            writer.state.artifacts.implementation_plan.digest = digest
+            apply_authoritative_signal(writer.state, "plan_ready")
+        elif stamp_type == "build_started":
+            apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
+        elif stamp_type == "build_complete":
+            apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
         else:
             raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
         await writer.commit(todos_db, slug)
@@ -628,17 +671,10 @@ async def mark_phase(
         )
 
     def _apply() -> dict[str, StateValue]:
-        raw_state = dict(read_phase_state(effective_cwd, slug))
-        worktree_cwd = str(Path(effective_cwd) / "trees" / slug)
-        wt = worktree_cwd if Path(worktree_cwd).exists() else None
-        error = validate_mark_phase_preconditions(raw_state, phase, wt)
-        if error:
-            raise HTTPException(status_code=400, detail=error)
-        writer = StateWriter(raw_state)
-        normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
-        payload = writer.to_dict()
-        write_phase_state(effective_cwd, slug, payload)
-        return payload
+        try:
+            return mark_phase_state(effective_cwd, slug, phase)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return await asyncio.to_thread(_apply)
 
