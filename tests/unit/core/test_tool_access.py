@@ -14,9 +14,7 @@ from teleclaude.core.tool_access import (
     get_excluded_tools,
 )
 
-# is_command_allowed is imported locally inside each function in tool_access.py,
-# so the correct patch target is the source module, not tool_access itself.
-_PATCH_IS_ALLOWED = "teleclaude.cli.telec.is_command_allowed"
+_PATCH_IS_ALLOWED = "teleclaude.core.tool_access.is_command_allowed"
 
 
 class TestFilterToolNames:
