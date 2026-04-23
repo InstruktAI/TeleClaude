@@ -176,11 +176,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
-                    "Example: telec sessions run --command /next-build --args my-slug",
                     (
                         "Use --detach for fire-and-forget dispatch: child inherits identity but caller "
                         "receives no notifications."
                     ),
+                ],
+                examples=[
+                    "telec sessions run --command /next-build --args my-slug",
+                    "telec sessions run --command /next-build --args my-slug --detach",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),

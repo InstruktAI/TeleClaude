@@ -10,80 +10,17 @@ from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef, Flag
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
 _COMMAND_DESCRIPTIONS = {name: cmd.desc for name, cmd in CLI_SURFACE.items() if not cmd.hidden}
-_BOOLEAN_FLAGS = {
-    "--all",
-    "--closed",
-    "--clear",
-    "--attach",
-    "--direct",
-    "--close-link",
-    "--baseline-only",
-    "--third-party",
-    "--validate-only",
-    "--warn-only",
-    "--invalidate-check",
-}
-_DESC_SAMPLE_RULES = (
-    (("json", "payload", "widget expression"), '\'{"key":"value"}\''),
-    (("iso8601", "iso 8601", "utc", "expiry"), "2026-01-01T00:00:00Z"),
-    (("project root", "project directory", "directory"), "/tmp/project"),
-    (("path", "file"), "/tmp/example.txt"),
-    (("agent",), "claude"),
-    (("thinking mode",), "slow"),
-    (("phase",), "build"),
-    (("status",), "degraded"),
-    (("format",), "markdown"),
-    (("reason",), '"example reason"'),
-    (("summary",), '"example summary"'),
-    (("customer",), '"Jane Doe"'),
-    (("channel",), "channel:demo:events"),
-)
-_LONG_KEY_SAMPLE_RULES = (
-    (("session",), "sess-123"),
-    (("slug",), "my-slug"),
-    (("project", "cwd", "root"), "/tmp/project"),
-    (("path", "file"), "/tmp/example.txt"),
-    (("agent",), "claude"),
-    (("mode",), "slow"),
-    (("phase",), "build"),
-    (("status",), "degraded"),
-    (("format",), "markdown"),
-    (("until", "date"), "2026-01-01T00:00:00Z"),
-    (("data",), '\'{"key":"value"}\''),
-    (("after",), "dep-a"),
-    (("before",), "target-slug"),
-    (("title",), '"Example Title"'),
-    (("description", "message", "content"), '"example"'),
-)
-_POSITIONAL_SAMPLE_RULES = (
-    (("email",), "person@example.com"),
-    (("session",), "sess-123"),
-    (("slug",), "my-slug"),
-    (("project", "cwd", "root"), "/tmp/project"),
-    (("path", "file"), "/tmp/example.txt"),
-    (("agent",), "claude"),
-    (("phase",), "build"),
-    (("status",), "complete"),
-    (("channel",), "channel:demo:events"),
-    (("json", "data"), '\'{"key":"value"}\''),
-    (("id",), "item-1"),
-    (("description", "message", "content"), '"example"'),
-)
 
 
 __all__ = [
     "_complete_flags",
     "_complete_subcmd",
-    "_example_commands",
-    "_example_positionals",
     "_flag_matches",
     "_flag_used",
     "_handle_completion",
     "_maybe_show_help",
     "_print_completion",
     "_print_flag",
-    "_sample_flag_value",
-    "_sample_positional_value",
     "_usage",
     "_usage_leaf",
     "_usage_main",
@@ -175,10 +112,9 @@ def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
     for note in notes:
         lines.append(f"  {note}")
 
-    examples = node.examples or _example_commands(path, node.args, visible)
-    if examples:
+    if node.examples:
         lines.append("\nExamples:")
-        for example in examples:
+        for example in node.examples:
             lines.append(f"  {example}")
 
     return "\n".join(lines) + "\n"
@@ -227,35 +163,6 @@ def _usage_main() -> str:
     return "\n".join(lines) + "\n"
 
 
-def _sample_positional_value(token: str) -> str:
-    """Return a practical sample value for a positional argument token."""
-    key = token.strip("<>[]").rstrip(".,").lower()
-    return _match_sample_rule(key, _POSITIONAL_SAMPLE_RULES) or "value"
-
-
-def _sample_flag_value(flag: Flag) -> str | None:
-    """Return a sample value for a flag, or None for boolean/toggle flags."""
-    if flag.long in _BOOLEAN_FLAGS:
-        return None
-
-    long_key = flag.long.lstrip("-").lower()
-    desc = flag.desc.lower()
-    desc_match = _match_sample_rule(desc, _DESC_SAMPLE_RULES)
-    if desc_match is not None:
-        return desc_match
-    long_key_match = _match_sample_rule(long_key, _LONG_KEY_SAMPLE_RULES)
-    if long_key_match is not None:
-        return long_key_match
-    return "value"
-
-
-def _match_sample_rule(text: str, rules: tuple[tuple[tuple[str, ...], str], ...]) -> str | None:
-    for needles, sample in rules:
-        if any(needle in text for needle in needles):
-            return sample
-    return None
-
-
 def _usage_main_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
     visible_flags = cmd.visible_flags
     flag_str = ""
@@ -299,40 +206,6 @@ def _format_usage_entry(
     return f"  {entry:<{col}}# {desc}"
 
 
-def _example_positionals(args_spec: str) -> list[str]:
-    """Build sample positional arguments from a usage args spec string."""
-    values: list[str] = []
-    for raw in args_spec.split():
-        token = raw.strip()
-        if not token:
-            continue
-        if token.startswith("-"):
-            continue
-        values.append(_sample_positional_value(token))
-    return values
-
-
-def _example_commands(command_parts: list[str], args_spec: str, flags: list[Flag]) -> list[str]:
-    """Generate example command lines that touch positional args and each flag."""
-    base = ["telec", *command_parts, *_example_positionals(args_spec)]
-    examples: list[str] = [" ".join(base).strip()]
-    seen: set[str] = set(examples)
-
-    for flag in flags:
-        if flag.long == "--help":
-            continue
-        value = _sample_flag_value(flag)
-        parts = [*base, flag.long]
-        if value is not None:
-            parts.append(value)
-        line = " ".join(parts).strip()
-        if line not in seen:
-            seen.add(line)
-            examples.append(line)
-
-    return examples
-
-
 def _usage_subcmd(cmd_name: str) -> str:
     """Generate detailed subcommand help. All flags shown."""
     cmd = CLI_SURFACE[cmd_name]
@@ -374,7 +247,7 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
         entry = f"telec {cmd_name}{args_str}{flag_hints}"
         lines.append(f"  {entry:<{col}}# {cmd.desc}")
         _append_flag_section(lines, "Options", visible_cmd_flags)
-        _append_examples(lines, _example_commands([cmd_name], cmd.args, visible_cmd_flags))
+        _append_examples(lines, cmd.examples or [])
 
     for entry in _iter_subcommand_entries(cmd_name, cmd, col):
         lines.append(entry)
@@ -397,7 +270,7 @@ def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef)
     lines.append("\nNotes:")
     for note in notes:
         lines.append(f"  {note}")
-    _append_examples(lines, cmd.examples or _example_commands([cmd_name], cmd.args, visible))
+    _append_examples(lines, cmd.examples or [])
 
 
 def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
@@ -456,10 +329,9 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
     for note in notes:
         lines.append(f"  {note}")
 
-    examples = sub.examples or _example_commands([cmd_name, sub_name], sub.args, visible)
-    if examples:
+    if sub.examples:
         lines.append("\nExamples:")
-        for example in examples:
+        for example in sub.examples:
             lines.append(f"  {example}")
 
     return "\n".join(lines) + "\n"
