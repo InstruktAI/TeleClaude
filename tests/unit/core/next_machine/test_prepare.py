@@ -157,20 +157,60 @@ async def test_next_prepare_raises_on_missing_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_skips_explicit_draft_slug(todos_db: TodosDb) -> None:
-    """Explicit prepare on a draft slug must bypass the prepare lifecycle."""
+async def test_next_prepare_adopts_explicit_draft_slug_into_prepare_lane(todos_db: TodosDb) -> None:
+    """Explicit prepare on a draft slug adopts the current artifact state into the prepare lane."""
     db = AsyncMock()
     await todos_db.add_to_roadmap("draft-item")
     await todos_db.write_state("draft-item", {"kind": "draft", "schema_version": 1, "phase": "pending"})
+    captured_phase = None
+
+    async def _dispatch(**kwargs):
+        nonlocal captured_phase
+        captured_phase = kwargs["phase"].value
+        return (False, "dispatch")
 
     with (
         patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.compose_agent_guidance", return_value="guidance"),
+        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),
     ):
         result = await next_prepare(db, "draft-item", "/repo")
 
-    assert result
+    persisted = await todos_db.read_state("draft-item")
+    assert result == "dispatch"
+    assert captured_phase == "input_assessment"
+    assert persisted is not None
+    assert persisted["lifecycle_phase"] == "input_assessment"
+
+
+@pytest.mark.asyncio
+async def test_next_prepare_adopts_no_input_requirements_directly_to_test_spec_build(todos_db: TodosDb) -> None:
+    """Draft handoff without input but with requirements must skip requirements_review."""
+    db = AsyncMock()
+    await todos_db.add_to_roadmap("draft-item")
+    await todos_db.write_state("draft-item", {"kind": "draft", "schema_version": 1, "phase": "pending"})
+    await todos_db.write_artifact("draft-item", "requirements", "# Requirements")
+    captured_phase = None
+
+    async def _dispatch(**kwargs):
+        nonlocal captured_phase
+        captured_phase = kwargs["phase"].value
+        return (False, "dispatch")
+
+    with (
+        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
+        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),
+    ):
+        result = await next_prepare(db, "draft-item", "/repo")
+
+    persisted = await todos_db.read_state("draft-item")
+    assert result == "dispatch"
+    assert captured_phase == "test_spec_build"
+    assert persisted is not None
+    assert persisted["lifecycle_phase"] == "test_spec_build"
 
 
 @pytest.mark.asyncio

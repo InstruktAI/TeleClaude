@@ -388,11 +388,28 @@ CLI_SURFACE: dict[str, CommandDef] = {
     "todo": CommandDef(
         desc="Manage work items",
         subcommands={
-            "co-create": CommandDef(
+            "create": CommandDef(
+                desc="Create a draft todo skeleton with no input artifact",
+                args="<slug> [--after <deps>]",
+                flags=[_H, Flag("--after", desc="Comma-separated dependency slugs")],
+                notes=[
+                    "Creates only the roadmap entry and canonical draft state.",
+                    "Use this when humans are fleshing out artifacts directly and there is no braindump input yet.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+            ),
+            "design": CommandDef(
                 desc="Run the creative state machine",
                 args="[<slug>]",
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "co-create": CommandDef(
+                desc="Deprecated alias for `telec todo design`",
+                args="[<slug>]",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                hidden=True,
             ),
             "remove": CommandDef(
                 desc="Remove a todo and its roadmap entry",

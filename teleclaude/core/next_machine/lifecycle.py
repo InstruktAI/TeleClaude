@@ -110,6 +110,15 @@ def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
 
+def _artifact_exists(model: TodoState, key: str) -> bool:
+    entry = getattr(model.artifacts, key)
+    return bool(entry.digest or entry.produced_at)
+
+
+def _has_input_artifact(model: TodoState) -> bool:
+    return _artifact_exists(model, "input")
+
+
 def _clear_prepare_review(review: ReviewVerdictState | TestSpecReviewState) -> None:
     review.verdict = ""
     review.reviewed_at = ""
@@ -245,6 +254,40 @@ def phase_is_complete(
     return False
 
 
+def adopt_prepare_handoff_phase(model: TodoState) -> LifecyclePhase:
+    """Choose the prepare pointer from existing authoritative state and artifacts.
+
+    This is only for the human handoff boundary: when a human starts the prepare
+    machine on a draft item, the machine should adopt the real state of the todo
+    instead of forcing the input-based lane.
+    """
+    if model.grounding.valid:
+        return LifecyclePhase.PREPARED
+    if model.dor is not None and model.dor.status == "pass":
+        return LifecyclePhase.GROUNDING_CHECK
+    if model.plan_review.verdict in ("approve", "skipped"):
+        return LifecyclePhase.GATE
+    if model.plan_review.verdict == "needs_work":
+        return LifecyclePhase.PLAN_DRAFTING
+    if _artifact_exists(model, "implementation_plan"):
+        return LifecyclePhase.PLAN_REVIEW
+    if model.test_spec_review.verdict in ("approve", "skipped"):
+        return LifecyclePhase.PLAN_DRAFTING
+    if model.test_spec_review.verdict == "needs_work":
+        return LifecyclePhase.TEST_SPEC_BUILD
+    if _artifact_exists(model, "test_specs"):
+        return LifecyclePhase.TEST_SPEC_REVIEW
+    if _has_input_artifact(model):
+        if model.requirements_review.verdict == "needs_work":
+            return LifecyclePhase.TRIANGULATION
+        if _artifact_exists(model, "requirements"):
+            return LifecyclePhase.REQUIREMENTS_REVIEW
+        return LifecyclePhase.INPUT_ASSESSMENT
+    if _artifact_exists(model, "requirements"):
+        return LifecyclePhase.TEST_SPEC_BUILD
+    return LifecyclePhase.INPUT_ASSESSMENT
+
+
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
     model.lifecycle_phase = target.value
     return target
@@ -255,6 +298,10 @@ def _apply_authoring_signal(model: TodoState, current: LifecyclePhase, signal: s
         _reset_after_requirements(model)
         model.artifacts.requirements.produced_at = now
         model.artifacts.requirements.stale = False
+        if not _has_input_artifact(model):
+            model.requirements_review.verdict = "skipped"
+            model.requirements_review.reviewed_at = now
+            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
         return _move_to(model, LifecyclePhase.REQUIREMENTS_REVIEW)
 
     if signal == "specs_built" and current == LifecyclePhase.TEST_SPEC_BUILD:
@@ -498,6 +545,7 @@ __all__ = [
     "PREPARE_LIFECYCLE_PHASES",
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
+    "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
     "is_prepare_lifecycle_phase",

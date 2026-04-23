@@ -14,7 +14,7 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
 from teleclaude.cli.tool_commands import (
-    handle_todo_create,
+    handle_todo_design,
     handle_todo_integrate,
     handle_todo_prepare,
     handle_todo_set_deps,
@@ -27,11 +27,13 @@ from teleclaude.core.next_machine.state_io import mark_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
-from teleclaude.todo_scaffold import create_from_main_skeleton
+from teleclaude.todo_scaffold import create_draft_skeleton, create_from_main_skeleton
 
 __all__ = [
     "_handle_todo",
     "_handle_todo_artifacts",
+    "_handle_todo_create",
+    "_handle_todo_design",
     "_handle_todo_dump",
     "_handle_todo_from_main",
     "_handle_todo_mark_phase",
@@ -142,8 +144,10 @@ def _handle_todo(args: list[str]) -> None:
         return
 
     subcommand = args[0]
-    if subcommand == "co-create":
-        handle_todo_create(args[1:])
+    if subcommand == "create":
+        _handle_todo_create(args[1:])
+    elif subcommand in ("design", "co-create"):
+        _handle_todo_design(args[1:])
     elif subcommand == "remove":
         _handle_todo_remove(args[1:])
     elif subcommand == "validate":
@@ -176,6 +180,46 @@ def _handle_todo(args: list[str]) -> None:
         print(f"Unknown todo subcommand: {subcommand}")
         print(_usage("todo"))
         raise SystemExit(1)
+
+
+def _handle_todo_create(args: list[str]) -> None:
+    """Handle telec todo create <slug> [--after <deps>]."""
+    slug: str | None = None
+    after: list[str] | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--after" and i + 1 < len(args):
+            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "create"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "create"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
+
+    try:
+        output = create_draft_skeleton(str(resolve_invocation_cwd()), slug, after=after)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(output)
+
+
+def _handle_todo_design(args: list[str]) -> None:
+    """Handle telec todo design [<slug>]."""
+    handle_todo_design(args)
 
 
 def _handle_todo_validate(args: list[str]) -> None:

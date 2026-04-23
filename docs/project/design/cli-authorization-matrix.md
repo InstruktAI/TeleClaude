@@ -93,7 +93,8 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                            |
 | ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Scaffolding a todo is work planning. Workers don't plan. Contributors can scaffold work items.                       |
+| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating an empty draft skeleton is still work planning. Contributors can scaffold work items without input.         |
+| `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                  |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
 | `telec todo validate`         | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Workers can validate their own work. Customers have no todo context.           |
 | `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members. |
@@ -197,6 +198,7 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec init`                  | Contributors, newcomers, customers          |
 | `telec sync`                  | Contributors, newcomers, customers          |
 | `telec todo create`           | Newcomers, customers                        |
+| `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo validate`         | Customers                                   |
 | `telec todo verify-artifacts` | Customers                                   |

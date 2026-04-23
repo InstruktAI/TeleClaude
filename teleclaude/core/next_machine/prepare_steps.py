@@ -128,6 +128,7 @@ async def _prepare_step_input_assessment(
     writer = StateWriter(state)
     writer.audit.input_assessment.started_at = datetime.now(UTC).isoformat()
 
+    has_input = await todos_db.artifact_exists(slug, "input")
     has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
         # Emit input_consumed event for observability (R13)
@@ -143,7 +144,8 @@ async def _prepare_step_input_assessment(
             (
                 f"REQUIREMENTS READY: {slug}\n\n"
                 f"Requirements artifact already exists. Stamp "
-                f"`telec todo stamp {slug} --requirements-ready` to advance to requirements_review, "
+                f"`telec todo stamp {slug} --requirements-ready` to advance to "
+                f"{'requirements_review' if has_input else 'test_spec_build'}, "
                 f"then call telec todo prepare {slug}."
             ),
         )
@@ -157,10 +159,14 @@ async def _prepare_step_input_assessment(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Read the input via `telec todo artifacts read {slug} input` and "
-                f"produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
-                f"When the requirements are complete enough for review, stamp "
-                f"`telec todo stamp {slug} --requirements-ready`. "
+                (
+                    f"Read the input via `telec todo artifacts read {slug} input` and "
+                    if has_input
+                    else "There is no input artifact for this todo. Start from the existing draft context and any "
+                )
+                + f"produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
+                + "When the requirements are complete enough for review, stamp "
+                + f"`telec todo stamp {slug} --requirements-ready`. "
                 "Work solo if the input is already concrete enough. If important intent, "
                 "constraints, or code grounding still need another perspective, run "
                 "triangulated discovery with a complementary partner."
@@ -184,6 +190,7 @@ async def _prepare_step_triangulation(
     writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
 
+    has_input = await todos_db.artifact_exists(slug, "input")
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -193,8 +200,13 @@ async def _prepare_step_triangulation(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Run a triangulated discovery pass for {slug}. Read the input via "
-                f"`telec todo artifacts read {slug} input`, incorporate a complementary "
+                f"Run a triangulated discovery pass for {slug}. "
+                + (
+                    f"Read the input via `telec todo artifacts read {slug} input`, "
+                    if has_input
+                    else "There is no input artifact; work from the existing draft context and artifacts, "
+                )
+                + "incorporate a complementary "
                 "perspective, and rewrite requirements via "
                 f"`telec todo artifacts write {slug} requirements <content>`."
             ),

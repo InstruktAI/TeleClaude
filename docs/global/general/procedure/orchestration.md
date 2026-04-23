@@ -29,7 +29,7 @@ This is a document-quality check, not a code review. The orchestrator does not r
 
 ### Orchestration Loop
 
-1. Invoke the state machine (`telec todo work`, `telec todo prepare`, or `telec todo create`) with an optional slug.
+1. Invoke the state machine (`telec todo work`, `telec todo prepare`, or `telec todo design`) with an optional slug.
 2. Receive the instruction block.
 3. Execute the instructions verbatim. The state machine output is a linear script — follow it top-to-bottom without branching or decision-making.
 4. When a notification arrives OR the heartbeat timer expires, invoke the state machine again.
@@ -64,7 +64,7 @@ Status semantics:
 2. Tail the session (first time: full window; subsequent tails: `--since <marker>`).
 3. Update the marker to the latest message timestamp when new messages appear.
 4. If `agent_status` is `active`, reset the heartbeat timer and continue waiting.
-5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo create` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
+5. If `agent_status` is `idle`, invoke the state machine again (`telec todo work`, `telec todo prepare`, or `telec todo design` depending on the loop). Execute the returned script verbatim — it contains any durable state transitions, session-end commands, or `sessions send` relays for this exact moment.
 6. If `agent_status` is `unknown`, continue waiting for the next event.
 7. **Suppress no-op chatter.** Do not send no-op follow-up messages (`No new input`, `No further input`, `Remain idle`, `Continue standing by`). Only send `telec sessions send` when the state machine output explicitly instructs it.
 

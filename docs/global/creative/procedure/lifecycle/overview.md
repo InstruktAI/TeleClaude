@@ -37,7 +37,7 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
 
 ## Steps
 
-1. Run `telec todo create [slug]` to derive the current creative phase.
+1. Run `telec todo design [slug]` to derive the current creative phase.
 
 2. **Design Discovery** — human and creator collaborate to produce `design-spec.md`,
    the constraint document that governs all downstream creative work. The creator
@@ -57,7 +57,7 @@ preconditions for the prepare machine: `design-spec` constrains requirements,
    Human gate: the visuals require explicit human approval before proceeding. For
    multi-agent bake-offs, the human selects the winning version.
 
-5. Repeat `telec todo create [slug]` after each worker completes or human gate resolves
+5. Repeat `telec todo design [slug]` after each worker completes or human gate resolves
    until the machine returns CREATIVE_COMPLETE.
 
 6. Proceed to `telec todo prepare [slug]` for requirements discovery.

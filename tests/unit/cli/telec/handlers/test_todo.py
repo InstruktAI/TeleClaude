@@ -8,6 +8,8 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.cli.telec.handlers.todo import (
+    _handle_todo_create,
+    _handle_todo_design,
     _handle_todo_dump,
     _handle_todo_from_main,
     _handle_todo_remove,
@@ -109,6 +111,41 @@ class TestHandleTodoDump:
         out = capsys.readouterr().out
         assert "Dumped todo: my-slug" in out
         assert "prepped" in out
+
+
+class TestHandleTodoCreate:
+    """telec todo create <slug>."""
+
+    def test_success_prints_confirmation(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
+        with patch(f"{_MODULE}.create_draft_skeleton", return_value="Todo created: my-slug") as mock_create:
+            _handle_todo_create(["my-slug"])
+
+        assert "Todo created: my-slug" in capsys.readouterr().out
+        mock_create.assert_called_once_with("/repo", "my-slug", after=None)
+
+    def test_passes_after_deps(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
+        with patch(f"{_MODULE}.create_draft_skeleton", return_value="Todo created: my-slug") as mock_create:
+            _handle_todo_create(["my-slug", "--after", "dep-a,dep-b"])
+
+        mock_create.assert_called_once_with("/repo", "my-slug", after=["dep-a", "dep-b"])
+
+    def test_missing_slug_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_create([])
+
+
+class TestHandleTodoDesign:
+    """telec todo design [<slug>]."""
+
+    def test_design_delegates_to_tool_command(self) -> None:
+        with patch(f"{_MODULE}.handle_todo_design") as mock_design:
+            _handle_todo_design(["my-slug"])
+
+        mock_design.assert_called_once_with(["my-slug"])
 
 
 class TestHandleTodoRemove:

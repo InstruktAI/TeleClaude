@@ -17,6 +17,7 @@ from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
+from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.slug_resolution import set_item_phase
 from teleclaude.core.next_machine.state_io import _get_todos_db_sync, apply_prepared_state
 from teleclaude.core.next_machine.worktrees import (
@@ -73,6 +74,53 @@ def remove_todo(project_root: Path, slug: str) -> None:
         repo.git.branch("-D", slug)
     except GitCommandError:
         pass
+
+
+def create_draft_skeleton(
+    project_root: str,
+    slug: str,
+    *,
+    after: list[str] | None = None,
+) -> str:
+    """Create a draft todo skeleton with no input artifact."""
+    validate_slug(slug)
+    slug = slug.strip()
+
+    db = _get_todos_db_sync(project_root)
+    conn = db._sync_conn()
+    try:
+        existing = conn.execute(
+            "SELECT 1 FROM roadmap WHERE slug = ? AND status != 'delivered'",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
+        if existing:
+            raise ValueError(f"Todo '{slug}' already exists")
+
+        now = datetime.now(UTC).isoformat()
+        position = conn.execute(
+            "SELECT COALESCE(MAX(position), -1) + 1 FROM roadmap",  # guard: raw-sql
+        ).fetchone()[0]
+        row_id = str(_uuid.uuid4())
+        conn.execute(
+            "INSERT INTO roadmap "  # guard: raw-sql
+            "(id, slug, position, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, 'active', ?, ?)",
+            (row_id, slug, position, now, now),
+        )
+        for dep in after or []:
+            conn.execute(
+                "INSERT INTO roadmap_deps (slug, depends_on) VALUES (?, ?)",  # guard: raw-sql
+                (slug, dep),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    state = default_state()
+    state["kind"] = "draft"
+    state["lifecycle_phase"] = "draft"
+    db.write_state_sync(slug, state)
+    return f"Todo created: {slug}"
 
 
 def _classify_porcelain_status(

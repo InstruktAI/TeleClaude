@@ -18,6 +18,7 @@ from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
+    adopt_prepare_handoff_phase,
     is_work_lifecycle_phase,
     require_lifecycle_phase,
 )
@@ -33,6 +34,29 @@ from teleclaude.core.next_machine.slug_resolution import resolve_holder_children
 from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
+
+_ADOPTION_ARTIFACTS: tuple[tuple[str, str], ...] = (
+    ("input", "input"),
+    ("requirements", "requirements"),
+    ("test_specs", "test-specs"),
+    ("implementation_plan", "implementation-plan"),
+)
+
+
+async def _hydrate_artifact_presence_for_adoption(
+    todos_db: TodosDb,
+    slug: str,
+    writer: StateWriter,
+) -> None:
+    """Load current artifact presence into state before draft handoff adoption."""
+    for state_key, artifact_name in _ADOPTION_ARTIFACTS:
+        entry = getattr(writer.state.artifacts, state_key)
+        if entry.digest:
+            continue
+        if not await todos_db.artifact_exists(slug, artifact_name):
+            continue
+        entry.digest = await todos_db.artifact_digest(slug, artifact_name)
+        entry.stale = False
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
@@ -66,7 +90,6 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     if not resolved_slug:
         resolved_slug = await _find_next_prepare_slug_db(todos_db)
 
-    # Draft todos bypass the lifecycle entirely — reject even explicit prepare calls.
     if resolved_slug:
         _draft_state = await todos_db.read_state(resolved_slug)
         _draft_lifecycle = (
@@ -75,7 +98,11 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             else None
         )
         if _draft_lifecycle == LifecyclePhase.DRAFT:
-            resolved_slug = None
+            draft_writer = StateWriter(_draft_state)
+            await _hydrate_artifact_presence_for_adoption(todos_db, resolved_slug, draft_writer)
+            adopted = adopt_prepare_handoff_phase(draft_writer.state)
+            draft_writer.state.lifecycle_phase = adopted.value
+            await draft_writer.commit(todos_db, resolved_slug)
 
     if not resolved_slug:
         guidance = await compose_agent_guidance(db)

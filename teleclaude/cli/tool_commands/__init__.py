@@ -39,6 +39,7 @@ handle_sessions_widget = _sessions.handle_sessions_widget
 handle_operations = _todo.handle_operations
 handle_operations_get = _todo.handle_operations_get
 handle_todo_create = _todo.handle_todo_create
+handle_todo_design = _todo.handle_todo_design
 handle_todo_integrate = _todo.handle_todo_integrate
 handle_todo_prepare = _todo.handle_todo_prepare
 handle_todo_set_deps = _todo.handle_todo_set_deps
@@ -69,6 +70,7 @@ __all__ = [
     "handle_sessions_unsubscribe",
     "handle_sessions_widget",
     "handle_todo_create",
+    "handle_todo_design",
     "handle_todo_integrate",
     "handle_todo_prepare",
     "handle_todo_set_deps",

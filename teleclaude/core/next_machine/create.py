@@ -42,7 +42,7 @@ def _design_discovery_required(slug: str) -> str:
         f"Read input via `telec todo artifacts read {slug} input` for context. Present reference sites,\n"
         f"collect images the human provides (save to workspace/{slug}/input/),\n"
         f"and facilitate the dialogue that produces the design-spec artifact.\n\n"
-        f"After design-spec is written, call `telec todo create {slug}` again."
+        f"After design-spec is written, call `telec todo design {slug}` again."
     )
 
 
@@ -54,7 +54,7 @@ def _design_spec_pending_confirmation(slug: str) -> str:
         f"When confirmed: update state.yaml creative.design_spec.confirmed to true,\n"
         f"set creative.design_spec.confirmed_at and confirmed_by.\n"
         f"When the human requests revisions: update design-spec.md accordingly.\n\n"
-        f"After confirmation, call `telec todo create {slug}` again."
+        f"After confirmation, call `telec todo design {slug}` again."
     )
 
 
@@ -67,7 +67,7 @@ def _art_pending_approval(slug: str, cwd: str) -> str:
         f"When approved: update state.yaml creative.art.approved to true,\n"
         f"set creative.art.approved_at and approved_by.\n"
         f"When the human requests changes: relay feedback to the artist session.\n\n"
-        f"After approval, call `telec todo create {slug}` again."
+        f"After approval, call `telec todo design {slug}` again."
     )
 
 
@@ -80,7 +80,7 @@ def _visuals_pending_approval(slug: str, cwd: str) -> str:
         f"When approved: update state.yaml creative.visuals.approved to true,\n"
         f"set creative.visuals.approved_at and approved_by.\n"
         f"When the human requests changes: relay feedback for revision.\n\n"
-        f"After approval, call `telec todo create {slug}` again."
+        f"After approval, call `telec todo design {slug}` again."
     )
 
 
@@ -132,7 +132,7 @@ def _format_creative_iteration_script(
         f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
         f"and save the new task_id.\n"
         f"Wait for the worker to idle.\n"
-        f"When the worker idles, call telec todo create {slug}."
+        f"When the worker idles, call telec todo design {slug}."
     )
 
 
@@ -214,7 +214,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
 async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhase, guidance: str) -> str:
     """Generate plain-text instruction for the orchestrator based on creative phase."""
     creative_subdir = f"workspace/{slug}"
-    post_block = f"WHEN WORKER IDLES:\nCall telec todo create {slug}. The state machine emits the next action."
+    post_block = f"WHEN WORKER IDLES:\nCall telec todo design {slug}. The state machine emits the next action."
 
     if phase == CreativePhase.DESIGN_DISCOVERY_REQUIRED:
         return _design_discovery_required(slug)
@@ -229,7 +229,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 guidance=guidance,
                 subfolder="",
                 note="Design spec confirmed. Dispatch artist to generate mood board images.",
-                next_call=f"telec todo create {slug}",
+                next_call=f"telec todo design {slug}",
                 post_block=post_block,
             )
         )
@@ -248,7 +248,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 guidance=guidance,
                 subfolder="",
                 note="Human requested art changes. Dispatch artist with feedback for revision.",
-                next_call=f"telec todo create {slug}",
+                next_call=f"telec todo design {slug}",
                 additional_context=(
                     "ITERATION: The human reviewed the art and wants changes. "
                     f"Read the feedback and revise the images in workspace/{slug}/art/."
@@ -265,7 +265,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 guidance=guidance,
                 subfolder="",
                 note="Art approved. Dispatch frontender to produce HTML+CSS visual artifacts.",
-                next_call=f"telec todo create {slug}",
+                next_call=f"telec todo design {slug}",
                 post_block=post_block,
             )
         )
@@ -283,7 +283,7 @@ async def _creative_instruction(db: Db, slug: str, cwd: str, phase: CreativePhas
                 guidance=guidance,
                 subfolder="",
                 note="Human requested visual changes. Dispatch frontender with feedback for revision.",
-                next_call=f"telec todo create {slug}",
+                next_call=f"telec todo design {slug}",
                 additional_context=(
                     "ITERATION: The human reviewed the visuals and wants changes. "
                     f"Read the feedback and revise the HTML+CSS in workspace/{slug}/html/."

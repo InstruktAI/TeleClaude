@@ -18,6 +18,7 @@ __all__ = [
     "handle_operations",
     "handle_operations_get",
     "handle_todo_create",
+    "handle_todo_design",
     "handle_todo_integrate",
     "handle_todo_prepare",
     "handle_todo_set_deps",
@@ -25,10 +26,10 @@ __all__ = [
 ]
 
 
-def handle_todo_create(args: list[str]) -> None:
+def handle_todo_design(args: list[str]) -> None:
     """Run the creative lifecycle state machine.
 
-    Usage: telec todo co-create [<slug>]
+    Usage: telec todo design [<slug>]
 
     Checks creative state for the given slug and returns instructions for
     the next action: design discovery, art generation, visual drafting,
@@ -41,11 +42,11 @@ def handle_todo_create(args: list[str]) -> None:
       <slug>    Work item slug (optional; auto-selects if omitted)
 
     Examples:
-      telec todo co-create
-      telec todo co-create my-feature
+      telec todo design
+      telec todo design my-feature
     """
     if "--help" in args or "-h" in args:
-        print(handle_todo_create.__doc__ or "")
+        print(handle_todo_design.__doc__ or "")
         return
 
     cwd = os.getcwd()
@@ -61,6 +62,11 @@ def handle_todo_create(args: list[str]) -> None:
 
     data = tool_api_call("POST", "/todos/create", json_body=body)
     print_json(data)
+
+
+def handle_todo_create(args: list[str]) -> None:
+    """Backward-compatible alias for the creative lifecycle state machine."""
+    handle_todo_design(args)
 
 
 def handle_todo_prepare(args: list[str]) -> None:
