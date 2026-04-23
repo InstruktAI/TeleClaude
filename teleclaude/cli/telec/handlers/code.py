@@ -226,7 +226,10 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "  C) FUNCTIONAL CHANGE + REVIEW:\n"
         "     Commit with human approval, then dispatch a reviewer:\n"
         "       telec code commit --approved -m '<type>(<scope>): <subject>'\n"
-        "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'",
+        "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
+        " --agent <agent>\n"
+        "     Select agent per Agent Characteristics (baseline context): Claude for architecture/policy,\n"
+        "     Codex for thoroughness/contracts, Gemini for frontend/UI.",
         file=sys.stderr,
     )
     raise SystemExit(1)
