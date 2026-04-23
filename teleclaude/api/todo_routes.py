@@ -25,6 +25,7 @@ from teleclaude.api.auth import (
     clearance_todos_prepare,
     clearance_todos_remove,
     clearance_todos_set_deps,
+    clearance_todos_stamp,
     clearance_todos_work,
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
@@ -546,7 +547,7 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     value: Annotated[str, Body()] = "",
     phase: Annotated[str | None, Body()] = None,
     cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_work),
+    identity: CallerIdentity = Depends(clearance_todos_stamp),
 ) -> _StampResponse:
     """Stamp an authoritative lifecycle signal into todo state.
 
