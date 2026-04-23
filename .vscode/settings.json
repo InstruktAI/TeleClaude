@@ -5,15 +5,22 @@
       "source.organizeImports": "explicit"
     },
     "editor.defaultFormatter": "charliermarsh.ruff",
-    "editor.formatOnSave": true,
     "editor.tabSize": 4
+  },
+  "[typescript]": {
+    "editor.codeActionsOnSave": {
+      "source.fixAll": "explicit",
+      "source.organizeImports": "explicit"
+    }
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
   },
   "ruff.importStrategy": "fromEnvironment",
   "ruff.interpreter": [ "${workspaceFolder}/.venv/bin/python" ],
   "ruff.enable": true,
   "ruff.nativeServer": "on",
   "ruff.configurationPreference": "filesystemFirst",
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "mypy-type-checker.reportingScope": "workspace",
   "mypy-type-checker.args": [ "--config-file", "pyproject.toml" ],

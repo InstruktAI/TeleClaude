@@ -24,12 +24,12 @@
       "enabled": true
     },
     "previewFeatures": true,
-    "disableAutoUpdate": false,
-    "enableAutoUpdate": true,
+    "disableAutoUpdate": true,
+    "enableAutoUpdate": false,
     "sessionRetention": {
       "warningAcknowledged": true,
       "enabled": true,
-      "maxAge": "120d"
+      "maxAge": "1460d"
     }
   },
   "experimental": {
