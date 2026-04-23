@@ -25,6 +25,7 @@ from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
 from teleclaude.todo_scaffold import create_draft_skeleton, create_from_main_skeleton
@@ -96,7 +97,7 @@ def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
 
     try:
         mark_phase_state(cwd, slug, phase)
-    except ValueError as exc:
+    except (ValueError, GitCommandError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
     print(f"Marked {slug} lifecycle_phase={phase}")
@@ -174,7 +175,7 @@ def _handle_todo_reconcile(args: list[str]) -> None:
 
     try:
         payload = reconcile_phase_state(str(resolve_invocation_cwd()), slug, stage)
-    except ValueError as exc:
+    except (ValueError, GitCommandError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
     print(f"Reconciled {slug} lifecycle_phase={payload['lifecycle_phase']}")

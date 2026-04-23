@@ -86,7 +86,7 @@ class _CommandPresentation:
     """Help-only metadata for a command."""
 
     notes: list[str] = field(default_factory=list)  # extra lines for subcommand help
-    examples: list[str] = field(default_factory=list)  # explicit examples when auto-generation is misleading
+    examples: list[str] = field(default_factory=list)  # curated examples shown in help output
     hidden: bool = False  # hide from help output and completion
     standalone: bool = False  # bare invocation has behavior (not just help text)
 

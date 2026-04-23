@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
@@ -61,6 +62,7 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.git import GitCommandError
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import BreakdownState, DorState
 
@@ -540,6 +542,15 @@ def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 
 
+def _stamp_error(exc: Exception) -> HTTPException:
+    """Map domain/infrastructure exceptions to HTTP errors for stamp endpoints."""
+    if isinstance(exc, ValueError):
+        return HTTPException(status_code=400, detail=str(exc))
+    if isinstance(exc, RuntimeError):
+        return HTTPException(status_code=409, detail=str(exc))
+    return HTTPException(status_code=500, detail=f"infrastructure error: {exc}")
+
+
 @router.post("/stamp/{slug}")
 async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals
     slug: str,
@@ -573,15 +584,15 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
             )
         try:
             await asyncio.to_thread(stamp_verdict, effective_cwd, slug, phase, value)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (ValueError, GitCommandError, sqlite3.Error) as exc:
+            raise _stamp_error(exc) from exc
         return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
 
     if stamp_type == "finalize_ready":
         try:
             state = await asyncio.to_thread(stamp_finalize_ready, effective_cwd, slug)
-        except RuntimeError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except (RuntimeError, GitCommandError, sqlite3.Error) as exc:
+            raise _stamp_error(exc) from exc
         finalize_raw = state.get("finalize")
         finalize: dict[str, StateValue] = finalize_raw if isinstance(finalize_raw, dict) else {}
         sha = str(finalize.get("sha", ""))
@@ -676,8 +687,8 @@ async def mark_phase(
     def _apply() -> dict[str, StateValue]:
         try:
             return mark_phase_state(effective_cwd, slug, phase)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except (ValueError, GitCommandError, sqlite3.Error) as exc:
+            raise _stamp_error(exc) from exc
 
     return await asyncio.to_thread(_apply)
 
