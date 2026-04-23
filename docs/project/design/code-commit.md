@@ -48,7 +48,9 @@ All other arguments pass through to `git commit`.
 
 4. **Path A/B/C on main.** Non-integrator commits on main are classified:
    - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous
-   - **Path B/C:** functional files → human gate, exit with guidance
+   - **Path B:** small functional change, human-approved → commit directly (`--approved`)
+   - **Path C:** functional change + review → commit with `--approved`, then dispatch
+     `telec sessions run --command /next-review-commits --args '<shas>'`
 
 5. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
 
@@ -108,7 +110,8 @@ may have cleaned up.
 for the agent to fix and retry.
 
 **Path B/C gate.** Functional files on main without human approval. Exit with
-guidance. The human intervenes or routes through the review pipeline.
+guidance. Path B: human approves a small commit. Path C: human approves the
+commit and the agent dispatches `/next-review-commits` with the resulting SHAs.
 
 ## See Also
 

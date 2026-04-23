@@ -199,7 +199,8 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
     """Apply Path A/B/C classification for commits on main.
 
     Path A: all staged files non-functional + commit message contains [skip ci] → proceed.
-    Path B/C: functional files or no [skip ci] → exit with human gate message.
+    Path B: small functional change, human-approved → commit directly.
+    Path C: functional change that warrants review → commit, then dispatch reviewer.
     """
     has_functional = any(_is_functional(f) for f in staged)
 
@@ -222,9 +223,10 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "     State recommendation to the human, wait for approval, then:\n"
         "       telec code commit --approved -m '<type>(<scope>): <subject>'\n"
         "\n"
-        "  C) FUNCTIONAL CHANGE OF SUBSTANCE:\n"
-        "     Route through the review pipeline:\n"
-        "       telec todo from-main --slug <name>",
+        "  C) FUNCTIONAL CHANGE + REVIEW:\n"
+        "     Commit with human approval, then dispatch a reviewer:\n"
+        "       telec code commit --approved -m '<type>(<scope>): <subject>'\n"
+        "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'",
         file=sys.stderr,
     )
     raise SystemExit(1)
