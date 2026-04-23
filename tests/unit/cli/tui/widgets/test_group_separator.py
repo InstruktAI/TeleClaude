@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from textual.geometry import Size
 
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 
@@ -22,3 +23,13 @@ def test_group_separator_default_connector_col_is_two() -> None:
 def test_group_separator_accepts_custom_connector_col() -> None:
     sep = GroupSeparator(connector_col=5)
     assert sep._connector_col == 5
+
+
+@pytest.mark.unit
+def test_group_separator_render_does_not_exceed_pane_width() -> None:
+    """Separator must not overflow past the content area — no 40-column floor."""
+    sep = GroupSeparator()
+    sep._size = Size(12, 1)  # outer=12; padding: 0 1 → content=10
+    rendered = sep.render()
+    content_area = 12 - 2  # CSS padding: 0 1 = 2 horz chars
+    assert len(rendered.plain) <= content_area

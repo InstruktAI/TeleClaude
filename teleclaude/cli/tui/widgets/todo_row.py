@@ -141,6 +141,24 @@ _GOLD_LIGHT = "color(136)"
 # Column gap between aligned properties
 _COL_GAP = 2
 
+# Horizontal padding from CSS `padding: 0 1` (1 left + 1 right)
+_WIDGET_PADDING_HORZ = 2
+
+# Fixed character overhead per row before slug and columns:
+# "  " (2) + connector "├─"/"└─" (2) + status icon (1) + space (1) = 6, plus max_depth*2 for tree lines
+_ROW_FIXED_OVERHEAD = 6
+
+
+def row_content_width(slug_width: int, max_depth: int, col_width: int) -> int:
+    """Canonical natural content width for todo rows and icebox separators.
+
+    This is the shared data-driven width before any pane-width degradation.
+    Does not include widget CSS padding — subtract _WIDGET_PADDING_HORZ for the
+    actual available rendering area.
+    """
+    return _ROW_FIXED_OVERHEAD + 2 + slug_width + max_depth * 2 + col_width
+
+
 # Icebox color (light blue)
 _ICEBOX_DARK = "color(74)"
 _ICEBOX_LIGHT = "color(31)"
@@ -416,10 +434,24 @@ class TodoRow(TelecMixin, Widget):
         # Dot padding from slug to columns (compensate for indent so columns align)
         indent_compensation = (self._max_depth - len(self._tree_lines)) * 2
         dot_count = max(1, self._slug_width - len(self.todo.slug) + 2 + indent_compensation)
+
+        # Graceful degradation: shrink dot leaders when pane is narrower than content
+        outer_w = self.outer_size.width
+        available = outer_w - _WIDGET_PADDING_HORZ if outer_w > 0 else 0
+        if outer_w > 0:
+            prefix_width = 2 + len(self._tree_lines) * 2 + 2 + 1 + 1  # "  " + tree + "├─" + icon + " "
+            col_w = self._total_col_width()
+            max_dots = max(0, available - prefix_width - len(self.todo.slug) - col_w)
+            dot_count = min(dot_count, max_dots)
+
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
         # Property columns (DOR first)
         line.append_text(self._build_columns())
+
+        # Clamp to content area — prevents column filler from overflowing a narrow pane
+        if outer_w > 0:
+            line.truncate(available)
 
         return line
 

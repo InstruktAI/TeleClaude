@@ -26,7 +26,7 @@ class GroupSeparator(TelecMixin, Static):
         self._connector_col = connector_col
 
     def render(self) -> Text:
-        width = max(self.size.width, 40)
+        width = self.size.width
         col = self._connector_col
         line = Text()
         sep_style = Style(color=CONNECTOR_COLOR)

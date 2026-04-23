@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import pytest
 from rich.text import Text
+from textual.geometry import Size
 
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.widgets.todo_row import (
     _COL_GAP,
+    _WIDGET_PADDING_HORZ,
     TodoRow,
     _gold_color,
     _ok_color,
     _pad,
     integration_phase_label,
     lifecycle_phase_label,
+    row_content_width,
 )
 from teleclaude.core.integration.state_machine import IntegrationPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -281,6 +284,69 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
 
     widths = list(rendered_widths.values())
     assert len(set(widths)) == 1, f"Row widths differ — all must be equal. Got: {rendered_widths}"
+
+
+# --- row_content_width ---
+
+
+@pytest.mark.unit
+def test_row_content_width_is_shared_formula() -> None:
+    """row_content_width exposes the canonical content width for all prep rows."""
+    # Formula: 8 fixed overhead + slug_width + max_depth * 2 + col_width
+    assert row_content_width(slug_width=0, max_depth=0, col_width=0) == 8
+    assert row_content_width(slug_width=5, max_depth=0, col_width=1) == 14
+    assert row_content_width(slug_width=10, max_depth=2, col_width=15) == 37
+
+
+@pytest.mark.unit
+def test_row_content_width_matches_render_output() -> None:
+    """row_content_width must predict the actual rendered width (no size constraint)."""
+    todo = _make_todo(slug="my-slug")
+    all_items = [todo]
+    slug_width = max(len(t.slug) for t in all_items)
+    col_widths = TodoRow.compute_col_widths(all_items)
+    col_width = col_widths.get("_max", 0)
+
+    row = TodoRow(todo=todo, slug_width=slug_width, col_widths=col_widths, max_depth=0)
+    rendered_width = len(row.render().plain)
+
+    assert rendered_width == row_content_width(slug_width=slug_width, max_depth=0, col_width=col_width)
+
+
+# --- graceful degradation ---
+
+
+@pytest.mark.unit
+def test_render_shrinks_dot_leaders_in_narrow_pane() -> None:
+    """When outer_size is narrower than the natural content width, dot leaders are reduced."""
+    todo = _make_todo(slug="short")
+    col_widths = TodoRow.compute_col_widths([todo])
+    # row_content_width(5, 0, 1) == 14; pane outer_size=15 → content_area=13
+    # prefix(6) + slug(5) + col(1) = 12; max_dots = 13 - 12 = 1 (down from 2)
+
+    row_normal = TodoRow(todo=todo, slug_width=5, col_widths=col_widths, max_depth=0)
+    normal_width = len(row_normal.render().plain)
+
+    row_narrow = TodoRow(todo=todo, slug_width=5, col_widths=col_widths, max_depth=0)
+    row_narrow._size = Size(15, 1)
+    narrow_width = len(row_narrow.render().plain)
+
+    assert narrow_width < normal_width, f"Narrow pane must reduce dot leaders: {narrow_width} >= {normal_width}"
+    assert narrow_width <= 13, f"Must fit in content area (15 - 2 = 13): got {narrow_width}"
+
+
+@pytest.mark.unit
+def test_render_eliminates_dots_when_very_narrow() -> None:
+    """When pane is so narrow dot leaders cannot fit, the rendered row fits the content area."""
+    todo = _make_todo(slug="short")
+    col_widths = TodoRow.compute_col_widths([todo])
+    # outer_size=12 → content_area=10; max_dots=max(0, 10-6-5-1)=0 (eliminated)
+    # Full row with cols (12 chars) is truncated to content_area.
+    row = TodoRow(todo=todo, slug_width=5, col_widths=col_widths, max_depth=0)
+    row._size = Size(12, 1)
+    rendered = row.render()
+    content_area = 12 - _WIDGET_PADDING_HORZ  # = 10
+    assert len(rendered.plain) <= content_area
 
 
 @pytest.mark.unit

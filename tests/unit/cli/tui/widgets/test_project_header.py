@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from textual.geometry import Size
 
 from teleclaude.api_models import ProjectDTO
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
@@ -46,3 +47,16 @@ def test_project_header_connector_col_class_constant_is_two() -> None:
 @pytest.mark.unit
 def test_project_header_pressed_message_is_defined() -> None:
     assert ProjectHeader.Pressed is not None
+
+
+@pytest.mark.unit
+def test_project_header_separator_does_not_exceed_pane_width() -> None:
+    """Separator line must not overflow past the content area — no 40-column floor."""
+    project = _make_project()
+    header = ProjectHeader(project=project)
+    header._size = Size(12, 1)  # outer=12; padding: 0 1 → content=10
+    rendered = header.render()
+    content_area = 12 - 2  # CSS padding: 0 1 = 2 horz chars
+    # The render includes a header line + separator; separator must not exceed content_area.
+    separator_line = rendered.plain.split("\n")[-1]
+    assert len(separator_line) <= content_area

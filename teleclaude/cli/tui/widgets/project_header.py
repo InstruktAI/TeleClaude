@@ -68,7 +68,7 @@ class ProjectHeader(TelecMixin, Widget):
         line.append("\n")
         # Separator line
         connector_style = Style(color=CONNECTOR_COLOR)
-        content_width = max(self.size.width, 40)
+        content_width = self.size.width
         if self.show_connector:
             line.append("\u2500" * content_width, style=connector_style)
         return line

@@ -31,5 +31,9 @@ class IceboxSeparator(TelecMixin, Static):
         # Match TodoRow tree prefix: 2-space margin + ├ + ─ for full row width
         line.append("  ", style=sep_style)
         line.append("\u251c", style=sep_style)
-        line.append("\u2500" * self._line_width, style=sep_style)
+        # Rendered prefix is 3 chars ("  " + "├"); content_area = outer_w - 2 (CSS padding: 0 1)
+        # So effective line_width = min(natural, outer_w - 5) to stay within content area.
+        outer_w = self.outer_size.width
+        line_width = min(self._line_width, max(0, outer_w - 5)) if outer_w > 0 else self._line_width
+        line.append("\u2500" * line_width, style=sep_style)
         return line

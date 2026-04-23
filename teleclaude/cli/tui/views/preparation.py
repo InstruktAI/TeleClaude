@@ -26,7 +26,7 @@ from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
-from teleclaude.cli.tui.widgets.todo_row import TodoRow
+from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
 from teleclaude.todo_artifacts import artifact_display_filename
 
 
@@ -319,8 +319,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 project_icebox = icebox_items_by_project.get(project.path, [])
                 show_icebox = project.path in self._icebox_projects and project_icebox
                 if show_icebox:
-                    # Match TodoRow total width after ├: ─(1) + square(1) + space(1) + slug + dots(2+indent) + columns
-                    sep_width = 1 + 1 + 1 + slug_width + 2 + (max_depth * 2) + col_widths.get("_max", 0)
+                    # IceboxSeparator renders "  ├" (3 chars) + line_width dashes.
+                    # Total matches the shared natural todo-row width.
+                    sep_width = row_content_width(slug_width, max_depth, col_widths.get("_max", 0)) - 3
                     widgets_to_mount.append(IceboxSeparator(line_width=sep_width))
                     for ice_item in project_icebox:
                         # Depth-0: use ├─ (GroupSeparator closes the tree)
