@@ -8,6 +8,7 @@ from teleclaude.api_models import (
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
+    OperationCompletedEventDTO,
     ProjectsInitialEventDTO,
     RefreshEventDTO,
     SessionClosedEventDTO,
@@ -44,6 +45,7 @@ type WsEvent = (
     | AgentActivityEventDTO
     | ChiptunesStateEventDTO
     | ChiptunesTrackEventDTO
+    | OperationCompletedEventDTO
 )
 
 

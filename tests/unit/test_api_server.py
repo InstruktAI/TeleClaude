@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import types
 from collections.abc import Generator
@@ -12,11 +13,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import APIRouter, WebSocket
 from fastapi.testclient import TestClient
+from pydantic import TypeAdapter
 
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api_models import TodoDTO
 from teleclaude.api_server import APIServer, verify_caller
+from teleclaude.cli.models import WsEvent
 from teleclaude.core.cache import DaemonCache
+from teleclaude.core.events import OperationCompletedContext
+from teleclaude.core.operations.service import _COMPLETION_EVENTS
 
 _ROUTE_MODULE_NAMES = (
     "teleclaude.api.agents_routes",
@@ -278,7 +283,23 @@ class TestApiServerLifecycle:
         with _api_server_harness(tmp_path, cache=old_cache) as (server, fake_modules):
             old_cache.subscribe.assert_called_once_with(server._on_cache_change)
 
-            server.cache = new_cache
+            # Patch module-level bindings in api_server so the cache setter
+            # calls the fake modules instead of the real imports.
+            with (
+                patch(
+                    "teleclaude.api_server.sessions_routes",
+                    fake_modules["teleclaude.api.sessions_routes"],
+                ),
+                patch(
+                    "teleclaude.api_server.computers_routes",
+                    fake_modules["teleclaude.api.computers_routes"],
+                ),
+                patch(
+                    "teleclaude.api_server.projects_routes",
+                    fake_modules["teleclaude.api.projects_routes"],
+                ),
+            ):
+                server.cache = new_cache
 
         old_cache.unsubscribe.assert_called_once_with(server._on_cache_change)
         new_cache.subscribe.assert_called_once_with(server._on_cache_change)
@@ -305,3 +326,82 @@ class TestApiServerLifecycle:
                 server._start_watch_task()
 
         assert server._last_watch_tick == 123.45
+
+
+class TestApiServerOperationCompletedEvents:
+    """Pins operation completion event bridging to WebSocket clients."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_operation_completed_event_broadcasts_operation_id_to_ws_clients(self, tmp_path: Path) -> None:
+        """Operation completion events are forwarded to WS clients with operation_id."""
+        with _api_server_harness(tmp_path, cache=None) as (server, _):
+            broadcasts: list[tuple[str, object]] = []
+            server._broadcast_payload = lambda event, payload, **_kw: broadcasts.append((event, payload))
+
+            context = OperationCompletedContext(operation_id="op-abc")
+            await server._handle_operation_completed_event("operation.todo_remove.completed", context)
+
+        assert len(broadcasts) == 1
+        event, payload = broadcasts[0]
+        assert event == "operation.todo_remove.completed"
+        assert isinstance(payload, dict)
+        assert payload["event"] == "operation.todo_remove.completed"
+        assert payload["operation_id"] == "op-abc"
+        assert "error" not in payload
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_handle_operation_completed_event_includes_error_field_when_operation_failed(
+        self, tmp_path: Path
+    ) -> None:
+        """Failed operation completion events carry the error field in the WS broadcast."""
+        with _api_server_harness(tmp_path, cache=None) as (server, _):
+            broadcasts: list[tuple[str, object]] = []
+            server._broadcast_payload = lambda event, payload, **_kw: broadcasts.append((event, payload))
+
+            context = OperationCompletedContext(operation_id="op-xyz", error="disk full")
+            await server._handle_operation_completed_event("operation.todo_prepare.completed", context)
+
+        assert len(broadcasts) == 1
+        event, payload = broadcasts[0]
+        assert event == "operation.todo_prepare.completed"
+        assert isinstance(payload, dict)
+        assert payload["event"] == "operation.todo_prepare.completed"
+        assert payload["operation_id"] == "op-xyz"
+        assert payload["error"] == "disk full"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_operation_completed_payload_parses_as_ws_event(self, tmp_path: Path) -> None:
+        """Outbound operation completion JSON is parseable by the client WsEvent contract."""
+        with _api_server_harness(tmp_path, cache=None) as (server, _):
+            broadcasts: list[tuple[str, object]] = []
+            server._broadcast_payload = lambda event, payload, **_kw: broadcasts.append((event, payload))
+
+            context = OperationCompletedContext(operation_id="op-wire")
+            await server._handle_operation_completed_event("operation.todo_remove.completed", context)
+
+        payload = broadcasts[0][1]
+        wire_json = json.dumps(payload)
+        parsed = TypeAdapter(WsEvent).validate_json(wire_json)
+        assert parsed.operation_id == "op-wire"
+        assert parsed.event == "operation.todo_remove.completed"
+
+    @pytest.mark.unit
+    def test_api_server_subscribes_to_all_operation_completion_events_at_init(self, tmp_path: Path) -> None:
+        """All five operation completion events are subscribed at APIServer initialization."""
+        subscribed_events: list[str] = []
+
+        def _capture(event: str, _handler: object) -> None:
+            subscribed_events.append(event)
+
+        fake_modules = {name: _make_route_module() for name in _ROUTE_MODULE_NAMES}
+        with (
+            patch.dict(sys.modules, fake_modules),
+            patch("teleclaude.api_server.event_bus.subscribe", side_effect=_capture),
+        ):
+            APIServer(client=MagicMock(adapters={}), socket_path=str(tmp_path / "api.sock"))
+
+        for event in _COMPLETION_EVENTS.values():
+            assert event in subscribed_events, f"Missing subscription for {event}"

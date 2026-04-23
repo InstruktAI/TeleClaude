@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import OperationCompletedContext
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.prepare import next_prepare
@@ -625,10 +626,8 @@ class OperationsService:
     ) -> None:
         if not completion_event:
             return
-        payload: dict[str, str] = {"operation_id": operation_id}
-        if error is not None:
-            payload["error"] = error
-        event_bus.emit(completion_event, payload)  # type: ignore[arg-type]
+        context = OperationCompletedContext(operation_id=operation_id, error=error)
+        event_bus.emit(completion_event, context)  # type: ignore[arg-type]
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {

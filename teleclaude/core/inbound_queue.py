@@ -201,7 +201,7 @@ class InboundQueueManager:
                     backoff_seconds=backoff,
                 )
                 # Wait before next iteration to avoid tight retry loops
-                await asyncio.sleep(min(backoff, 5.0))
+                await asyncio.sleep(backoff)
 
     async def expire_session(self, session_id: str) -> None:
         """Mark all pending messages for a session as expired and cancel the worker."""

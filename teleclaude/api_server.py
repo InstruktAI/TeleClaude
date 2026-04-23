@@ -48,6 +48,7 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO,
     AgentAvailabilityEventDTO,
     AgentStopActivityEventDTO,
+    OperationCompletedEventDTO,
     SessionLifecycleStatusEventDTO,
     TodoDTO,
     ToolDoneActivityEventDTO,
@@ -65,12 +66,14 @@ from teleclaude.core.events import (
     AgentActivityEvent,
     AgentAvailabilityContext,
     ErrorEventContext,
+    OperationCompletedContext,
     SessionLifecycleContext,
     SessionStatusContext,
     SessionUpdatedContext,
     TeleClaudeEvents,
 )
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionSnapshot
+from teleclaude.core.operations.service import _COMPLETION_EVENTS as _OPERATION_COMPLETION_EVENTS
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.hooks.api_routes import router as hooks_router
@@ -186,6 +189,10 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         event_bus.subscribe(TeleClaudeEvents.AGENT_AVAILABILITY, self._handle_agent_availability_event)
         event_bus.subscribe(TeleClaudeEvents.AGENT_ACTIVITY, self._handle_agent_activity_event)
         event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error_event)
+
+        # Bridge operation completion events to WebSocket clients
+        for _op_event in _OPERATION_COMPLETION_EVENTS.values():
+            event_bus.subscribe(_op_event, self._handle_operation_completed_event)
 
         # Set cache through property to trigger subscription
         self.cache = cache
@@ -389,6 +396,19 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
             },
         }
         self._broadcast_payload("error", payload)
+
+    async def _handle_operation_completed_event(
+        self,
+        event: str,
+        context: OperationCompletedContext,
+    ) -> None:
+        """Broadcast operation completion (success or failure) to WebSocket clients."""
+        dto = OperationCompletedEventDTO(
+            event=event,
+            operation_id=context.operation_id,
+            error=context.error,
+        )
+        self._broadcast_payload(event, dto.model_dump(exclude_none=True))
 
     def _setup_routes(self) -> None:
         """Set up core HTTP endpoints (middleware, health, auth, todos, WebSocket)."""

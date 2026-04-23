@@ -395,7 +395,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     input_content = f"# {slug} — Input\n\n{request.content}\n"
                     await todos_db.write_artifact(slug, "input", input_content, session=session)
 
-        todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
+        todos_db.on_committed("todo_updated")
 
         if request.kind == "prepped":
             await _sync_artifact_digest_state(todos_db, slug, "implementation-plan")
@@ -406,7 +406,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             # Stamp DOR, grounding baseline, and review approvals so the
             # canonical lifecycle is immediately `prepared`.
             apply_prepared_state(effective_cwd, slug)
-            todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
+            todos_db.on_committed("todo_updated")
 
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
@@ -452,7 +452,7 @@ async def todo_split(
 
             await parent_writer.commit(todos_db, slug, session=session)
 
-    todos_db._on_mutation("todo_updated")  # pylint: disable=protected-access
+    todos_db.on_committed("todo_updated")
 
     return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 

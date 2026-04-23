@@ -283,6 +283,15 @@ class TodosDbBase:
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
         self._on_mutation: Callable[[str], None] = lambda _event_hint: None
 
+    def on_committed(self, event_hint: str = "todo_updated") -> None:
+        """Signal that a caller-managed transaction has committed.
+
+        Use this when the caller owns the session (e.g. multi-step transactions
+        in route handlers) and needs to notify the mutation boundary after commit,
+        without accessing the protected _on_mutation attribute directly.
+        """
+        self._on_mutation(event_hint)
+
     async def initialize(self) -> None:
         """Bootstrap schema and initialize async + sync runtime access."""
         _bootstrap_todos_db(self.db_path)

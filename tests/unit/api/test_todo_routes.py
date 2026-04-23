@@ -239,7 +239,15 @@ class TestTodoRoutes:
         await database.initialize()
         try:
             await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"lifecycle_phase": "triangulation"})
+            await database.write_state(
+                "my-slug",
+                {
+                    "lifecycle_phase": "triangulation",
+                    "artifacts": {
+                        "input": {"digest": "sha256-abc", "produced_at": "2026-01-01T00:00:00+00:00"},
+                    },
+                },
+            )
             await database.write_artifact("my-slug", "requirements", "ready requirements")
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.stamp(
@@ -349,6 +357,56 @@ class TestTodoRoutes:
             assert state["lifecycle_phase"] == "draft"
         finally:
             await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_notifies_via_on_committed_after_transaction(self) -> None:
+        """todo_dump calls the public on_committed interface, not _on_mutation directly."""
+        mock_db = MagicMock()
+        session_ctx = MagicMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(begin=MagicMock(return_value=_async_ctx(None))))
+        session_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_db._session = MagicMock(return_value=session_ctx)
+        mock_db.read_state = AsyncMock(return_value=None)
+        mock_db.add_to_roadmap = AsyncMock()
+        mock_db.write_state = AsyncMock()
+        mock_db.write_artifact = AsyncMock()
+        mock_db.on_committed = MagicMock()
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            request = TodoDumpRequest(slug="my-draft", content="idea", kind="draft", cwd="/repo")
+            await todo_routes.todo_dump(request)
+
+        mock_db.on_committed.assert_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_split_notifies_via_on_committed_after_transaction(self) -> None:
+        """todo_split calls the public on_committed interface, not _on_mutation directly."""
+        mock_db = MagicMock()
+        session_ctx = MagicMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(begin=MagicMock(return_value=_async_ctx(None))))
+        session_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_db._session = MagicMock(return_value=session_ctx)
+        # First call: parent lookup returns existing state; subsequent calls return None (child doesn't exist)
+        mock_db.read_state = AsyncMock(side_effect=[{"current": "pending", "breakdown": None}, None])
+        mock_db.read_artifact = AsyncMock(return_value=None)
+        mock_db.add_to_roadmap = AsyncMock()
+        mock_db.write_state = AsyncMock()
+        mock_db.on_committed = MagicMock()
+
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.StateWriter") as mock_sw,
+        ):
+            mock_writer = MagicMock()
+            mock_writer.state = MagicMock(breakdown=None)
+            mock_writer.commit = AsyncMock()
+            mock_sw.return_value = mock_writer
+
+            await todo_routes.todo_split(slug="parent", children=["child-1"], cwd="/repo")
+
+        mock_db.on_committed.assert_called()
 
     @pytest.mark.unit
     @pytest.mark.asyncio

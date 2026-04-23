@@ -35,7 +35,7 @@ async def execute_todo_remove(db: Db, slug: str | None, cwd: str) -> str:
             await todos_db.remove_from_roadmap(slug, session=session)
             await todos_db.clean_dep_references(slug, session=session)
 
-    todos_db._on_mutation("todo_removed")
+    todos_db.on_committed("todo_removed")
 
     if not is_draft:
         await asyncio.to_thread(cleanup_delivered_slug, cwd, slug)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -185,13 +185,16 @@ async def test_set_todos_mutation_hook_applies_to_sync_get_todos_db_instance(tmp
     calls: list[str] = []
 
     def _hook(instance: TodosDb, root: str) -> None:
-        instance._on_mutation = lambda: calls.append(root)
+        instance._on_mutation = lambda event_hint: calls.append(root)
 
     set_todos_mutation_hook(_hook)
     try:
-        synced_db = _get_todos_db_sync(project_root)
-        _ensure_roadmap_sync(synced_db, "my-slug")
-        synced_db.write_state_sync("my-slug", {"current": "pending"})
+        # state_io imports _new_instance_hook at module load time — patch its
+        # stale copy so _get_todos_db_sync sees the hook we just registered.
+        with patch("teleclaude.core.next_machine.state_io._new_instance_hook", _hook):
+            synced_db = _get_todos_db_sync(project_root)
+            _ensure_roadmap_sync(synced_db, "my-slug")
+            synced_db.write_state_sync("my-slug", {"current": "pending"})
         assert calls == [project_root]
     finally:
         set_todos_mutation_hook(None)
@@ -205,6 +208,14 @@ async def test_no_callback_by_default(db: TodosDb) -> None:
     assert result is not None
 
 
+async def test_on_committed_invokes_mutation_callback(db: TodosDb) -> None:
+    """on_committed is the public API for externally-managed transactions to trigger mutation notifications."""
+    cb = MagicMock()
+    db._on_mutation = cb
+    db.on_committed("todo_removed")
+    cb.assert_called_once_with("todo_removed")
+
+
 async def test_set_todos_mutation_hook_applies_to_new_get_todos_db_instance(tmp_path: Path) -> None:
     """Hook registered via set_todos_mutation_hook is applied to instances created by get_todos_db."""
     project_root = str(tmp_path)
@@ -212,7 +223,7 @@ async def test_set_todos_mutation_hook_applies_to_new_get_todos_db_instance(tmp_
     calls: list[str] = []
 
     def _hook(instance: TodosDb, root: str) -> None:
-        instance._on_mutation = lambda: calls.append(root)
+        instance._on_mutation = lambda event_hint: calls.append(root)
 
     # Create DB and add roadmap entry BEFORE setting hook (add_to_roadmap also fires mutation)
     pre_db = await get_todos_db(project_root)

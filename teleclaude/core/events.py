@@ -24,6 +24,11 @@ EventType = Literal[
     "agent_activity",
     "error",
     "system_command",
+    "operation.todo_work.completed",
+    "operation.todo_integrate.completed",
+    "operation.todo_create.completed",
+    "operation.todo_prepare.completed",
+    "operation.todo_remove.completed",
 ]
 
 # Agent hook event types (payload event_type values from agents)
@@ -643,6 +648,14 @@ class NotificationResolvedPayload:
     notification_id: int
 
 
+@dataclass(frozen=True)
+class OperationCompletedContext:
+    """Emitted when a long-running operation reaches a terminal state (completed or failed)."""
+
+    operation_id: str
+    error: str | None = None
+
+
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
     MessageEventContext
@@ -663,4 +676,5 @@ EventContext = (
     | JobFailedPayload
     | NotificationClaimedPayload
     | NotificationResolvedPayload
+    | OperationCompletedContext
 )

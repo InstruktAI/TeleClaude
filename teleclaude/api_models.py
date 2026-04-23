@@ -588,6 +588,22 @@ type AgentActivityEventDTO = (
 )
 
 
+class OperationCompletedEventDTO(BaseModel):
+    """WebSocket event for operation completion (success or failure)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    event: Literal[
+        "operation.todo_work.completed",
+        "operation.todo_integrate.completed",
+        "operation.todo_create.completed",
+        "operation.todo_prepare.completed",
+        "operation.todo_remove.completed",
+    ]
+    operation_id: str
+    error: str | None = None
+
+
 class TTSSettingsDTO(BaseModel):
     """TTS section of settings response."""
 
