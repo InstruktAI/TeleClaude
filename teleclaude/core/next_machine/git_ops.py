@@ -66,8 +66,13 @@ def has_build_commits_beyond_main(worktree_cwd: str) -> bool:
         base = repo.git.merge_base("HEAD", "main").strip()
         log_output = repo.git.log("--oneline", f"{base}..HEAD")
         return bool(log_output.strip())
-    except (GitCommandError, OSError):
-        return False
+    except (GitCommandError, OSError) as exc:
+        logger.warning(
+            "Failed to determine whether build commits exist beyond main",
+            worktree_cwd=worktree_cwd,
+            error=str(exc),
+        )
+        raise
 
 
 def run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:

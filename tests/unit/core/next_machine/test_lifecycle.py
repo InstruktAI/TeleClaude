@@ -60,6 +60,19 @@ def test_build_complete_advances_changes_requested_back_to_build_complete() -> N
     assert state.build_completed_at
 
 
+def test_finalize_handed_off_advances_finalize_ready_to_handed_off() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.FINALIZE_READY.value
+    state.finalize.status = "ready"
+
+    next_phase = apply_authoritative_signal(state, "finalize_handed_off")
+
+    assert next_phase == LifecyclePhase.HANDED_OFF
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.HANDED_OFF
+    assert state.finalize.status == "handed_off"
+    assert state.finalize.handed_off_at
+
+
 def test_review_verdict_approve_advances_only_immediate_successor() -> None:
     state = TodoState.defaults()
     state.lifecycle_phase = LifecyclePhase.REQUIREMENTS_REVIEW.value

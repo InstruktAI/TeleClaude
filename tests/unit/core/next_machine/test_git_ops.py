@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from git.exc import GitCommandError
 
 from teleclaude.core.next_machine.git_ops import (
@@ -13,6 +14,7 @@ from teleclaude.core.next_machine.git_ops import (
     build_git_hook_env,
     compose_agent_guidance,
     get_stash_entries,
+    has_build_commits_beyond_main,
     has_uncommitted_changes,
     review_surface_overlap_files,
 )
@@ -61,6 +63,19 @@ def test_get_stash_entries_returns_empty_on_git_command_error(tmp_path: Path) ->
         entries = get_stash_entries(str(tmp_path))
 
     assert entries == []
+
+
+def test_has_build_commits_beyond_main_propagates_git_command_error() -> None:
+    repo = SimpleNamespace(
+        git=SimpleNamespace(merge_base=lambda *_args: (_ for _ in ()).throw(GitCommandError("merge-base", 1)))
+    )
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=repo):
+        with patch("teleclaude.core.next_machine.git_ops.logger.warning") as mock_warning:
+            with pytest.raises(GitCommandError):
+                has_build_commits_beyond_main("/repo")
+
+    mock_warning.assert_called_once()
 
 
 def test_has_meaningful_diff_filters_infrastructure_only_changes() -> None:

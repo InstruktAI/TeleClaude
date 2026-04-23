@@ -493,15 +493,25 @@ def apply_authoritative_signal(
     current = require_lifecycle_phase(model.lifecycle_phase, context="apply_authoritative_signal")
     now = _now_iso()
 
-    for outcome in (
-        _apply_authoring_signal(model, current, signal, now),
-        _apply_prepare_signal(model, current, signal),
-        _apply_build_signal(model, current, signal, now, worktree_cwd),
-        _apply_verdict_signal(model, current, phase),
-        _apply_finalize_signal(model, current, signal, now),
-    ):
-        if outcome is not None:
-            return outcome
+    outcome = _apply_authoring_signal(model, current, signal, now)
+    if outcome is not None:
+        return outcome
+
+    outcome = _apply_prepare_signal(model, current, signal)
+    if outcome is not None:
+        return outcome
+
+    outcome = _apply_build_signal(model, current, signal, now, worktree_cwd)
+    if outcome is not None:
+        return outcome
+
+    outcome = _apply_verdict_signal(model, current, phase)
+    if outcome is not None:
+        return outcome
+
+    outcome = _apply_finalize_signal(model, current, signal, now)
+    if outcome is not None:
+        return outcome
 
     return current
 

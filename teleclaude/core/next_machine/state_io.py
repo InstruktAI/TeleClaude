@@ -192,7 +192,8 @@ def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
             (slug,),
         ).fetchall()
     except sqlite3.Error:
-        rows = []
+        logger.warning("Failed to read artifact presence for lifecycle reconciliation", slug=slug, cwd=cwd)
+        raise
     finally:
         conn.close()
 

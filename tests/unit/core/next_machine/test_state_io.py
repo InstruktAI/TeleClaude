@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
@@ -116,6 +117,26 @@ def test_handed_off_requires_handed_off_status() -> None:
 
     assert result is not None
     assert "missing handed-off finalize state" in result
+
+
+def test_read_artifact_presence_propagates_sqlite_error(tmp_path: Path) -> None:
+    class _BrokenConn:
+        def execute(self, *_args: object, **_kwargs: object) -> object:
+            raise sqlite3.OperationalError("locked")
+
+        def close(self) -> None:
+            pass
+
+    class _BrokenDb:
+        def _sync_conn(self) -> _BrokenConn:
+            return _BrokenConn()
+
+    with (
+        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=_BrokenDb()),
+        patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"lifecycle_phase": "draft"}),
+    ):
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            reconcile_phase_state(str(tmp_path), "my-slug")
 
 
 def test_reconcile_phase_state_defaults_to_prepare_stage_and_adopts_existing_artifacts(
