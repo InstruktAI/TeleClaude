@@ -116,11 +116,15 @@ def assemble_roadmap_from_db(
 
             # --- Derive display values from canonical lifecycle state ---
 
-            is_draft = state.get("kind") == "draft"
+            kind = state.get("kind")
+            is_draft = kind == "draft"
+            is_bug = kind == "bug"
 
             dor_raw = state.get("dor")
             dor_score_raw = dor_raw.get("score") if isinstance(dor_raw, dict) else None
-            dor_score = dor_score_raw if isinstance(dor_score_raw, int) and dor_score_raw > 0 else None
+            dor_score = (
+                None if is_bug else (dor_score_raw if isinstance(dor_score_raw, int) and dor_score_raw > 0 else None)
+            )
 
             finalize_raw = state.get("finalize")
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}

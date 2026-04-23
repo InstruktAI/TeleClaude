@@ -22,10 +22,13 @@ calls it in a loop and dispatches what is requested.
 
 ## Steps
 
-### 1. Input refinement (human-driven, optional)
+### 1. Human refinement (optional)
 
-The human refines their thinking via `next-refine-input`, which rewrites
-`telec todo artifacts read {slug} input` and invalidates grounding.
+The human may edit preparation artifacts directly before handing the todo back
+to the machine. `input` is only one possible entry artifact, not a required
+one. After human edits, run `telec todo reconcile {slug}` to align the machine
+pointer with the real current prepare state before continuing with
+`telec todo prepare {slug}`.
 
 ### 2. Discovery (solo or triangulated)
 
@@ -138,10 +141,11 @@ overlap after an integration delivery.
 
 ### HITL boundary
 
-The human interacts only with `input.md` via `next-refine-input`. Once the
-state machine starts, all phases are fully autonomous. No human gates exist
-inside the machine. The only human-facing event is `prepare.blocked` when
-a decision genuinely requires human input.
+The human may edit preparation artifacts directly and then hand the todo back
+to the machine with `telec todo reconcile {slug}` followed by
+`telec todo prepare {slug}`. Once the machine is running, all normal prepare
+progression remains sequential and machine-owned. The only human-facing event
+is `prepare.blocked` when a decision genuinely requires human input.
 
 ## Recovery
 

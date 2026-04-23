@@ -72,6 +72,38 @@ async def test_roadmap_projection_uses_canonical_lifecycle_phase_for_prepare_dis
 
 
 @pytest.mark.asyncio
+async def test_roadmap_projection_hides_dor_for_bug_todos(tmp_path: Path) -> None:
+    """Bug lanes must not surface a DOR score in the roadmap projection."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("bug-item", description="Bug work")
+        await database.write_state(
+            "bug-item",
+            {
+                "schema_version": 2,
+                "kind": "bug",
+                "phase": "in_progress",
+                "lifecycle_phase": "prepared",
+                "dor": {"score": 8, "status": "pass"},
+            },
+        )
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+
+    assert len(todos) == 1
+    assert todos[0].slug == "bug-item"
+    assert todos[0].dor_score is None
+
+
+@pytest.mark.asyncio
 async def test_roadmap_projection_lazy_upcycles_legacy_v1_without_lifecycle_phase(tmp_path: Path) -> None:
     """Roadmap assembly must decode legacy v1 rows without a stored lifecycle pointer."""
     project = tmp_path / "project"

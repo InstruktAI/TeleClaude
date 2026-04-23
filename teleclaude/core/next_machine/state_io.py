@@ -9,6 +9,7 @@ core.py (circular-import guard).
 from __future__ import annotations
 
 import hashlib as _hl
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -39,9 +40,13 @@ from teleclaude.core.next_machine.git_ops import (
 )
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
+    LifecycleStage,
     apply_authoritative_signal,
+    infer_lifecycle_stage,
     normalize_mark_phase,
     phase_is_complete,
+    reconcile_lifecycle_phase,
+    require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_mutation import (
@@ -149,6 +154,13 @@ _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 _BUILD_VERDICT_PHASE = "build_review"
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
+_RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
+    "input": "input",
+    "requirements": "requirements",
+    "test_specs": "test-specs",
+    "implementation_plan": "implementation-plan",
+}
+
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
@@ -170,10 +182,40 @@ def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None
     db.write_state_sync(slug, state)
 
 
+def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
+    """Return current DB artifact presence for lifecycle validation/reconciliation."""
+    db = _get_todos_db_sync(cwd)
+    conn = db._sync_conn()
+    try:
+        rows = conn.execute(
+            "SELECT name FROM todo_artifacts WHERE slug = ?",  # guard: raw-sql
+            (slug,),
+        ).fetchall()
+    except sqlite3.Error:
+        rows = []
+    finally:
+        conn.close()
+
+    names = {str(row[0]) for row in rows}
+    return {state_key: artifact_name in names for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items()}
+
+
+def _sync_reconcile_artifacts(cwd: str, slug: str, writer: StateWriter) -> None:
+    """Refresh known artifact digests from DB and clear missing current artifact evidence."""
+    for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items():
+        entry = getattr(writer.state.artifacts, state_key)
+        digest = _artifact_digest(cwd, slug, artifact_name)
+        entry.digest = digest
+        if not digest:
+            entry.produced_at = ""
+        entry.stale = False
+
+
 def validate_mark_phase_preconditions(
     state: dict[str, StateValue],
     phase: str,
     worktree_cwd: str | None,
+    artifact_presence: dict[str, bool] | None = None,
 ) -> str | None:
     """Return an error string when the target lifecycle phase cannot become current."""
     try:
@@ -182,41 +224,72 @@ def validate_mark_phase_preconditions(
         return f"Unknown lifecycle phase: {phase}"
 
     model = TodoState.model_validate(state)
-    return _validate_mark_phase_target(model, target, worktree_cwd=worktree_cwd)
+    return _validate_mark_phase_target(
+        model,
+        target,
+        worktree_cwd=worktree_cwd,
+        artifact_presence=artifact_presence,
+    )
 
 
 def _phase_complete(model: TodoState, current: LifecyclePhase, *, worktree_cwd: str | None) -> bool:
     return phase_is_complete(model, current, worktree_cwd=worktree_cwd)
 
 
-def _has_artifact_digest(model: TodoState, key: str) -> bool:
+def _has_artifact_digest(
+    model: TodoState,
+    key: str,
+    *,
+    artifact_presence: dict[str, bool] | None = None,
+) -> bool:
+    if artifact_presence is not None and key in artifact_presence:
+        return artifact_presence[key]
     entry = getattr(model.artifacts, key, None)
     if not isinstance(entry, ArtifactEntry):
         return False
     return bool(entry.digest)
 
 
-def _validate_prepare_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
+def _validate_prepare_mark_phase(
+    model: TodoState,
+    target: LifecyclePhase,
+    *,
+    worktree_cwd: str | None,
+    artifact_presence: dict[str, bool] | None,
+) -> str | None:
     if target in (LifecyclePhase.DRAFT, LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         return None
-    if target == LifecyclePhase.REQUIREMENTS_REVIEW and not _has_artifact_digest(model, "input"):
-        return "Cannot set requirements_review: requirements have not been produced"
+    if target == LifecyclePhase.REQUIREMENTS_REVIEW:
+        missing: list[str] = []
+        if not _has_artifact_digest(model, "input", artifact_presence=artifact_presence):
+            missing.append("input artifact")
+        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
+            missing.append("requirements artifact")
+        if missing:
+            return f"Cannot mark {target.value}: missing {' and '.join(missing)}"
+        return None
     if target == LifecyclePhase.TEST_SPEC_BUILD and model.requirements_review.verdict not in ("approve", "skipped"):
-        return "Cannot set test_spec_build: requirements_review is not complete"
-    if target == LifecyclePhase.TEST_SPEC_REVIEW and not bool(model.artifacts.test_specs.produced_at):
-        return "Cannot set test_spec_review: test specs have not been produced"
+        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
+            return f"Cannot mark {target.value}: missing requirements artifact"
+        return f"Cannot mark {target.value}: missing approved requirements review"
+    if target == LifecyclePhase.TEST_SPEC_REVIEW and not _has_artifact_digest(
+        model, "test_specs", artifact_presence=artifact_presence
+    ):
+        return f"Cannot mark {target.value}: missing test specs artifact"
     if target == LifecyclePhase.PLAN_DRAFTING and model.test_spec_review.verdict not in ("approve", "skipped"):
-        return "Cannot set plan_drafting: test_spec_review is not complete"
-    if target == LifecyclePhase.PLAN_REVIEW and not _has_artifact_digest(model, "implementation_plan"):
-        return "Cannot set plan_review: implementation plan has not been produced"
+        return f"Cannot mark {target.value}: missing approved test specs review"
+    if target == LifecyclePhase.PLAN_REVIEW and not _has_artifact_digest(
+        model, "implementation_plan", artifact_presence=artifact_presence
+    ):
+        return f"Cannot mark {target.value}: missing implementation-plan artifact"
     if target == LifecyclePhase.GATE and model.plan_review.verdict not in ("approve", "skipped"):
-        return "Cannot set gate: plan_review is not complete"
+        return f"Cannot mark {target.value}: missing approved plan review"
     if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and not (
         model.dor is not None and model.dor.status == "pass"
     ):
-        return f"Cannot set {target.value}: gate is not complete"
+        return f"Cannot mark {target.value}: missing DOR pass"
     if target == LifecyclePhase.PREPARED and not model.grounding.valid:
-        return "Cannot set prepared: grounding_check is not complete"
+        return f"Cannot mark {target.value}: missing valid grounding state"
     return None
 
 
@@ -225,7 +298,7 @@ def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, workt
         if model.lifecycle_phase != LifecyclePhase.PREPARED.value and not _phase_complete(
             model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
         ):
-            return "Cannot set build_started: prepared prerequisites are not satisfied"
+            return f"Cannot mark {target.value}: missing valid grounding state"
         return None
     if target == LifecyclePhase.BUILD_COMPLETE:
         if (
@@ -233,19 +306,16 @@ def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, workt
             and worktree_cwd is not None
             and not has_build_commits_beyond_main(worktree_cwd)
         ):
-            return f"Cannot set build_complete: no commits beyond main in {worktree_cwd}"
+            return f"Cannot mark {target.value}: missing commits beyond main in {worktree_cwd}"
         return None
     if target == LifecyclePhase.REVIEW_CHANGES_REQUESTED and model.build_review.verdict != "changes_requested":
-        return (
-            "Cannot set review_changes_requested: "
-            f"build_review.verdict must be 'changes_requested', got '{model.build_review.verdict}'"
-        )
+        return f"Cannot mark {target.value}: missing build review verdict 'changes_requested'"
     if target == LifecyclePhase.REVIEW_APPROVED and model.build_review.verdict != "approve":
-        return f"Cannot set review_approved: build_review.verdict must be 'approve', got '{model.build_review.verdict}'"
+        return f"Cannot mark {target.value}: missing build review verdict 'approve'"
     if target == LifecyclePhase.FINALIZE_READY and model.finalize.status != "ready":
-        return f"Cannot set finalize_ready: finalize.status must be 'ready', got '{model.finalize.status}'"
+        return f"Cannot mark {target.value}: missing finalize ready state"
     if target == LifecyclePhase.HANDED_OFF and model.finalize.status != "handed_off":
-        return f"Cannot set handed_off: finalize.status must be 'handed_off', got '{model.finalize.status}'"
+        return f"Cannot mark {target.value}: missing handed-off finalize state"
     return None
 
 
@@ -254,6 +324,7 @@ def _validate_mark_phase_target(
     target: LifecyclePhase,
     *,
     worktree_cwd: str | None,
+    artifact_presence: dict[str, bool] | None,
 ) -> str | None:
     if target == LifecyclePhase.PREPARED or target in (
         LifecyclePhase.DRAFT,
@@ -268,7 +339,12 @@ def _validate_mark_phase_target(
         LifecyclePhase.GROUNDING_CHECK,
         LifecyclePhase.RE_GROUNDING,
     ):
-        return _validate_prepare_mark_phase(model, target, worktree_cwd=worktree_cwd)
+        return _validate_prepare_mark_phase(
+            model,
+            target,
+            worktree_cwd=worktree_cwd,
+            artifact_presence=artifact_presence,
+        )
     return _validate_work_mark_phase(model, target, worktree_cwd=worktree_cwd)
 
 
@@ -286,11 +362,45 @@ def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
     raw_state = dict(read_phase_state(cwd, slug))
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     wt = worktree_cwd if Path(worktree_cwd).exists() else None
-    error = validate_mark_phase_preconditions(raw_state, phase, wt)
+    artifact_presence = _read_artifact_presence(cwd, slug)
+    error = validate_mark_phase_preconditions(raw_state, phase, wt, artifact_presence)
     if error:
         raise ValueError(error)
     writer = StateWriter(raw_state)
     normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
+    payload = writer.to_dict()
+    write_phase_state(cwd, slug, payload)
+    return payload
+
+
+def reconcile_phase_state(cwd: str, slug: str, stage: str | None = None) -> dict[str, StateValue]:
+    """Explicitly realign the machine pointer to the best phase within one stage."""
+    raw_state = dict(read_phase_state(cwd, slug))
+    writer = StateWriter(raw_state)
+    current = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"reconcile_phase_state({slug})")
+
+    if stage is None:
+        stage_value = infer_lifecycle_stage(current)
+    else:
+        try:
+            stage_value = LifecycleStage(stage)
+        except ValueError as exc:
+            raise ValueError(f"Unknown stage: {stage}") from exc
+
+    worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
+    wt = worktree_cwd if Path(worktree_cwd).exists() else None
+    artifact_presence = _read_artifact_presence(cwd, slug)
+    _sync_reconcile_artifacts(cwd, slug, writer)
+    target = reconcile_lifecycle_phase(
+        writer.state,
+        stage_value,
+        worktree_cwd=wt,
+        artifact_presence=artifact_presence,
+    )
+    if target is None:
+        raise ValueError(f"No valid {stage_value.value} phase matches the current todo state")
+
+    writer.state.lifecycle_phase = target.value
     payload = writer.to_dict()
     write_phase_state(cwd, slug, payload)
     return payload
@@ -559,13 +669,14 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     now_iso = datetime.now(UTC).isoformat()
     writer = StateWriter(state)
-    writer.state.dor = DorState(
-        last_assessed_at=now_iso,
-        score=8,
-        status="pass",
-        schema_version=1,
-        blockers=[],
-    )
+    if kind != "bug":
+        writer.state.dor = DorState(
+            last_assessed_at=now_iso,
+            score=8,
+            status="pass",
+            schema_version=1,
+            blockers=[],
+        )
 
     review_mgr = ReviewManager(writer)
     if kind in ("prepped", "bug"):
@@ -776,6 +887,7 @@ __all__ = [
     "read_breakdown_state",
     "read_phase_state",
     "read_text_sync",
+    "reconcile_phase_state",
     "stamp_artifact",
     "stamp_finalize_ready",
     "stamp_verdict",

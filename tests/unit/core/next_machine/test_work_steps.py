@@ -129,6 +129,36 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
     assert "STEP 1 - DISPATCH" in instruction
 
 
+@pytest.mark.asyncio
+async def test_build_started_bug_skips_dor_gate_and_dispatches() -> None:
+    """Bug lanes must dispatch build work even when DOR is not pass."""
+    state = {
+        "kind": "bug",
+        "dor": {"score": 0, "status": "needs_work"},
+        "lifecycle_phase": "build_started",
+    }
+    dispatched = object()
+    blocked = object()
+
+    with (
+        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
+        patch(f"{_WORK_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_WORK_STEPS}.format_tool_call", return_value=dispatched),
+        patch(f"{_WORK_STEPS}.format_error", return_value=blocked),
+    ):
+        keep_going, instruction = await _work_step_build_started(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug="bug-slug",
+            cwd="/project",
+            worktree_cwd="/project/trees/bug-slug",
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction is dispatched
+
+
 # ── _work_step_review_changes_requested: waiting ─────────────────────────────
 
 

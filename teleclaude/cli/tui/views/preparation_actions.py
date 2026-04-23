@@ -20,6 +20,7 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -163,7 +164,7 @@ class PreparationViewActionsMixin:
             "preview_file",
             "prepare",
             "start_work",
-            "refine",
+            "reconcile",
             "freeze",
             "unfreeze",
             "move_todo_up",
@@ -176,7 +177,7 @@ class PreparationViewActionsMixin:
             "new_project",
             "prepare",
             "start_work",
-            "refine",
+            "reconcile",
             "freeze",
             "unfreeze",
             "move_todo_up",
@@ -489,18 +490,25 @@ class PreparationViewActionsMixin:
             title=f"Start Work: {slug}" if slug else "Start Work",
         )
 
-    def action_refine(self) -> None:
-        """r: open session modal prefilled with /next-refine-input [slug]."""
+    def action_reconcile(self) -> None:
+        """r: reconcile the selected todo's lifecycle phase from current state."""
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
-        computer, project_path, slug = context
-        self._open_session_modal(  # type: ignore[attr-defined]
-            computer=computer,
-            project_path=project_path,
-            default_message=self._next_command(SlashCommand.NEXT_REFINE_INPUT.value, slug),
-            title=f"Refine Input: {slug}" if slug else "Refine Input",
+        _, project_path, slug = context
+        if not slug:
+            return
+
+        try:
+            payload = reconcile_phase_state(project_path, slug)
+        except Exception as exc:
+            self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+            return
+
+        self.app.notify(  # type: ignore[attr-defined]
+            f"Reconciled {slug} lifecycle_phase={payload['lifecycle_phase']}"
         )
+        self.app._refresh_data()  # type: ignore[attr-defined]
 
     def action_freeze(self) -> None:
         """f: freeze a todo to the icebox."""

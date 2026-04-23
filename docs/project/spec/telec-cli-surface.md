@@ -127,6 +127,16 @@ subcommands:
         notes:
           - 'Validates only the target phase prerequisites, then sets the lifecycle pointer to that phase.'
           - 'Preserves artifacts, but clears downstream authoritative stamps so old approvals do not reactivate future phases.'
+      reconcile:
+        description: 'Re-evaluate current todo evidence and align lifecycle_phase within one stage.'
+        args:
+          - slug: 'string'
+        flags:
+          --stage: 'Optional stage override: prepare or work.'
+        notes:
+          - 'Infers stage from the current lifecycle phase when --stage is omitted.'
+          - 'Prepare reconciliation ignores work evidence; work reconciliation ignores prepare evidence.'
+          - 'Does not dispatch work. Run telec todo prepare or telec todo work afterward.'
       validate:
         args:
           - slug: 'string (optional)'

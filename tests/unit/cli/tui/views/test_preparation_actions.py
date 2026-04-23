@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
 import pytest
 
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
@@ -25,3 +28,44 @@ def test_next_command_returns_base_only_when_no_slug() -> None:
 def test_next_command_with_different_base_and_slug() -> None:
     result = PreparationViewActionsMixin._next_command("prepare", "feat-x")
     assert result == "/prepare feat-x"
+
+
+class _DummyPreparationView(PreparationViewActionsMixin):
+    def __init__(self, context: tuple[str, str, str | None] | None) -> None:
+        self._context = context
+        self.app = SimpleNamespace(notify=Mock(), _refresh_data=Mock())
+
+    def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
+        return self._context
+
+
+@pytest.mark.unit
+def test_action_reconcile_calls_reconcile_and_refreshes() -> None:
+    view = _DummyPreparationView(("local", "/repo", "my-slug"))
+
+    with patch(
+        "teleclaude.cli.tui.views.preparation_actions.reconcile_phase_state",
+        return_value={"lifecycle_phase": "plan_review"},
+    ) as mock_reconcile:
+        view.action_reconcile()
+
+    mock_reconcile.assert_called_once_with("/repo", "my-slug")
+    view.app.notify.assert_called_once_with("Reconciled my-slug lifecycle_phase=plan_review")
+    view.app._refresh_data.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_action_reconcile_surfaces_errors() -> None:
+    view = _DummyPreparationView(("local", "/repo", "my-slug"))
+
+    with patch(
+        "teleclaude.cli.tui.views.preparation_actions.reconcile_phase_state",
+        side_effect=ValueError("No valid prepare phase matches the current todo state"),
+    ):
+        view.action_reconcile()
+
+    view.app.notify.assert_called_once_with(
+        "No valid prepare phase matches the current todo state",
+        severity="error",
+    )
+    view.app._refresh_data.assert_not_called()

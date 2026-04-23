@@ -22,8 +22,8 @@ from teleclaude.cli.tool_commands import (
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-from teleclaude.core.next_machine.state_io import mark_phase_state
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
+from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
@@ -38,6 +38,7 @@ __all__ = [
     "_handle_todo_from_main",
     "_handle_todo_mark_phase",
     "_handle_todo_mark_ready",
+    "_handle_todo_reconcile",
     "_handle_todo_remove",
     "_handle_todo_show",
     "_handle_todo_split",
@@ -137,6 +138,48 @@ def _handle_todo_mark_phase(args: list[str]) -> None:
         raise SystemExit(exit_code)
 
 
+def _handle_todo_reconcile(args: list[str]) -> None:
+    """Handle telec todo reconcile <slug> [--stage prepare|work]."""
+    slug: str | None = None
+    stage: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--stage" and i + 1 < len(args):
+            stage = args[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print(_usage("todo", "reconcile"))
+            raise SystemExit(1)
+        else:
+            if slug is not None:
+                print("Only one slug is allowed.")
+                print(_usage("todo", "reconcile"))
+                raise SystemExit(1)
+            slug = arg
+            i += 1
+
+    if not slug:
+        print(_usage("todo", "reconcile"))
+        raise SystemExit(1)
+
+    if stage is not None and stage not in {member.value for member in LifecycleStage}:
+        print(f"Unknown stage value: {stage!r}", file=sys.stderr)
+        print("Valid stage values:", file=sys.stderr)
+        for value in sorted(member.value for member in LifecycleStage):
+            print(f"  {value}", file=sys.stderr)
+        raise SystemExit(1)
+
+    try:
+        payload = reconcile_phase_state(str(resolve_invocation_cwd()), slug, stage)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
+    print(f"Reconciled {slug} lifecycle_phase={payload['lifecycle_phase']}")
+
+
 def _handle_todo(args: list[str]) -> None:
     """Handle telec todo commands."""
     if not args:
@@ -168,6 +211,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_mark_ready(args[1:])
     elif subcommand == "mark-phase":
         _handle_todo_mark_phase(args[1:])
+    elif subcommand == "reconcile":
+        _handle_todo_reconcile(args[1:])
     elif subcommand == "from-main":
         _handle_todo_from_main(args[1:])
     elif subcommand == "artifacts":

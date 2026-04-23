@@ -66,7 +66,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("b", "new_bug", "Bug"),
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
-        Binding("r", "refine", "Refine"),
+        Binding("r", "reconcile", "Reconcile"),
         Binding("R", "remove_todo", "Remove"),
         Binding("f", "freeze", "Freeze"),
         Binding("i", "toggle_icebox", "Icebox"),

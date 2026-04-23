@@ -16,7 +16,7 @@ The software development lifecycle follows a three-stage model, each driven by i
 
 Sequential artifact production with review gates:
 
-- **Input refinement** — human refines thinking via `next-refine-input`
+- **Human refinement / handoff** — human edits preparation artifacts directly, then runs `telec todo reconcile [slug]`
 - **Discovery** — derive `requirements.md` from `input.md` (solo or triangulated)
 - **Requirements review** — validate requirements against quality standard
 - **Test specification** — write expected-failure test specs encoding behavioral requirements

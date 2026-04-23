@@ -13,10 +13,11 @@ derive or auto-advance lifecycle state on their own.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import Enum
 
-from teleclaude.core.next_machine.git_ops import get_head_commit
+from teleclaude.core.next_machine.git_ops import get_head_commit, has_build_commits_beyond_main
 from teleclaude.types.todos import ReviewVerdictState, TestSpecReviewState, TodoState
 
 
@@ -41,6 +42,13 @@ class LifecyclePhase(str, Enum):
     REVIEW_APPROVED = "review_approved"
     FINALIZE_READY = "finalize_ready"
     HANDED_OFF = "handed_off"
+
+
+class LifecycleStage(str, Enum):
+    """Stage bucket used for explicit lifecycle reconciliation."""
+
+    PREPARE = "prepare"
+    WORK = "work"
 
 
 LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
@@ -70,6 +78,8 @@ WORK_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.HANDED_OFF,
     }
 )
+
+_ArtifactPresence = Mapping[str, bool]
 
 
 def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
@@ -106,6 +116,13 @@ def is_work_lifecycle_phase(phase: LifecyclePhase) -> bool:
     return phase in WORK_LIFECYCLE_PHASES
 
 
+def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
+    """Return the stage bucket implied by the canonical lifecycle pointer."""
+    if is_prepare_lifecycle_phase(phase):
+        return LifecycleStage.PREPARE
+    return LifecycleStage.WORK
+
+
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat()
 
@@ -115,8 +132,19 @@ def _artifact_exists(model: TodoState, key: str) -> bool:
     return bool(entry.digest or entry.produced_at)
 
 
-def _has_input_artifact(model: TodoState) -> bool:
-    return _artifact_exists(model, "input")
+def _artifact_present(
+    model: TodoState,
+    key: str,
+    *,
+    artifact_presence: _ArtifactPresence | None = None,
+) -> bool:
+    if artifact_presence is not None and key in artifact_presence:
+        return artifact_presence[key]
+    return _artifact_exists(model, key)
+
+
+def _has_input_artifact(model: TodoState, *, artifact_presence: _ArtifactPresence | None = None) -> bool:
+    return _artifact_present(model, "input", artifact_presence=artifact_presence)
 
 
 def _clear_prepare_review(review: ReviewVerdictState | TestSpecReviewState) -> None:
@@ -254,7 +282,11 @@ def phase_is_complete(
     return False
 
 
-def adopt_prepare_handoff_phase(model: TodoState) -> LifecyclePhase:
+def adopt_prepare_handoff_phase(
+    model: TodoState,
+    *,
+    artifact_presence: _ArtifactPresence | None = None,
+) -> LifecyclePhase:
     """Choose the prepare pointer from existing authoritative state and artifacts.
 
     This is only for the human handoff boundary: when a human starts the prepare
@@ -263,29 +295,61 @@ def adopt_prepare_handoff_phase(model: TodoState) -> LifecyclePhase:
     """
     if model.grounding.valid:
         return LifecyclePhase.PREPARED
+    if model.grounding.invalidated_at or model.grounding.invalidation_reason:
+        return LifecyclePhase.RE_GROUNDING
     if model.dor is not None and model.dor.status == "pass":
         return LifecyclePhase.GROUNDING_CHECK
     if model.plan_review.verdict in ("approve", "skipped"):
         return LifecyclePhase.GATE
     if model.plan_review.verdict == "needs_work":
         return LifecyclePhase.PLAN_DRAFTING
-    if _artifact_exists(model, "implementation_plan"):
+    if _artifact_present(model, "implementation_plan", artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_REVIEW
     if model.test_spec_review.verdict in ("approve", "skipped"):
         return LifecyclePhase.PLAN_DRAFTING
     if model.test_spec_review.verdict == "needs_work":
         return LifecyclePhase.TEST_SPEC_BUILD
-    if _artifact_exists(model, "test_specs"):
+    if _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
         return LifecyclePhase.TEST_SPEC_REVIEW
-    if _has_input_artifact(model):
+    if _has_input_artifact(model, artifact_presence=artifact_presence):
         if model.requirements_review.verdict == "needs_work":
             return LifecyclePhase.TRIANGULATION
-        if _artifact_exists(model, "requirements"):
+        if _artifact_present(model, "requirements", artifact_presence=artifact_presence):
             return LifecyclePhase.REQUIREMENTS_REVIEW
         return LifecyclePhase.INPUT_ASSESSMENT
-    if _artifact_exists(model, "requirements"):
+    if _artifact_present(model, "requirements", artifact_presence=artifact_presence):
         return LifecyclePhase.TEST_SPEC_BUILD
     return LifecyclePhase.INPUT_ASSESSMENT
+
+
+def reconcile_lifecycle_phase(
+    model: TodoState,
+    stage: LifecycleStage,
+    *,
+    worktree_cwd: str | None = None,
+    artifact_presence: _ArtifactPresence | None = None,
+) -> LifecyclePhase | None:
+    """Return the best-matching phase for an explicit stage-scoped reconciliation."""
+    if stage == LifecycleStage.PREPARE:
+        return adopt_prepare_handoff_phase(model, artifact_presence=artifact_presence)
+
+    if model.finalize.status == "handed_off":
+        return LifecyclePhase.HANDED_OFF
+    if model.finalize.status == "ready":
+        return LifecyclePhase.FINALIZE_READY
+    if model.build_review.verdict == "approve":
+        return LifecyclePhase.REVIEW_APPROVED
+    if model.build_review.verdict == "changes_requested":
+        return LifecyclePhase.REVIEW_CHANGES_REQUESTED
+    if model.build_completed_at:
+        return LifecyclePhase.BUILD_COMPLETE
+    if worktree_cwd and has_build_commits_beyond_main(worktree_cwd):
+        return LifecyclePhase.BUILD_COMPLETE
+    if model.lifecycle_phase == LifecyclePhase.BUILD_STARTED.value:
+        return LifecyclePhase.BUILD_STARTED
+    if model.lifecycle_phase == LifecyclePhase.PREPARED.value or model.grounding.valid:
+        return LifecyclePhase.BUILD_STARTED
+    return None
 
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
@@ -545,13 +609,16 @@ __all__ = [
     "PREPARE_LIFECYCLE_PHASES",
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
+    "LifecycleStage",
     "adopt_prepare_handoff_phase",
     "apply_authoritative_signal",
     "coerce_lifecycle_phase",
+    "infer_lifecycle_stage",
     "is_prepare_lifecycle_phase",
     "is_work_lifecycle_phase",
     "lifecycle_phase_index",
     "normalize_mark_phase",
     "phase_is_complete",
+    "reconcile_lifecycle_phase",
     "require_lifecycle_phase",
 ]

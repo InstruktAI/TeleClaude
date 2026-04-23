@@ -468,6 +468,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "reconcile": CommandDef(
+                desc="Re-evaluate current todo evidence and align lifecycle_phase within one stage",
+                args="<slug> [--stage <prepare|work>]",
+                flags=[_H, Flag("--stage", desc="Optional stage override; defaults from current lifecycle_phase")],
+                notes=[
+                    "Uses the current lifecycle phase's stage implicitly unless --stage is provided.",
+                    "Stage-bounded: prepare reconciliation ignores work evidence, and work reconciliation ignores prepare evidence.",
+                    "Does not dispatch work; run telec todo prepare/work afterward.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "set-deps": CommandDef(
                 desc="Set dependencies for a work item in the roadmap",
                 args="<slug> [--after <slugs>]",
