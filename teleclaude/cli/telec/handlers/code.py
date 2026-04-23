@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
 from teleclaude.cli.telec.help import _usage
+from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
-from teleclaude.paths import BIN_DIR
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
@@ -141,7 +140,7 @@ def _commit_under_lock(
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock."""
     # Detect foreign staged files (outside session scope)
-    pre_staged = _get_staged_files()
+    pre_staged = _get_staged_files(project_root)
     scoped_files = _resolve_scoped_files(project_root)
     if pre_staged:
         scoped_set = set(scoped_files)
@@ -161,20 +160,20 @@ def _commit_under_lock(
 
     # Session-scope resolution → stage files
     if scoped_files:
-        _stage_files(scoped_files)
+        _stage_files(scoped_files, project_root)
 
-    staged = _get_staged_files()
+    staged = _get_staged_files(project_root)
     if not staged:
         print("Nothing staged for commit.", file=sys.stderr)
         raise SystemExit(1)
 
-    _check_partial_staging()
+    _check_partial_staging(project_root)
 
     # Path A/B/C classification on main
     commit_args = ["-m", message] if message else []
     commit_args.extend(git_args)
 
-    current_branch = _current_branch()
+    current_branch = _current_branch(project_root)
     if current_branch == "main" and system_role != "integrator" and not approved:
         _classify_main_commit(commit_args, staged)
 
@@ -187,10 +186,13 @@ def _commit_under_lock(
     lint_runner = LintRunner(project_root=project_root)
     lint_runner.run(files=staged)
 
-    # Commit via real git binary (bypasses wrapper redirect)
-    real_git = _real_git_binary()
-    result = subprocess.run([real_git, "commit"] + commit_args)
-    raise SystemExit(result.returncode)
+    # Commit via gitpython (uses real binary, bypasses wrapper)
+    repo = Repo(str(project_root))
+    try:
+        repo.git.commit(*commit_args)
+    except GitCommandError as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
 
 
 def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
@@ -237,18 +239,6 @@ def _is_functional(filepath: str) -> bool:
     return ext in _FUNCTIONAL_EXTENSIONS
 
 
-def _real_git_binary() -> str:
-    """Resolve the real git binary, bypassing the wrapper."""
-    wrapper_dir = str(BIN_DIR)
-    for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if entry == wrapper_dir:
-            continue
-        candidate = os.path.join(entry, "git")
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    raise FileNotFoundError("real git binary not found in PATH")
-
-
 def _resolve_scoped_files(project_root: str | Path) -> list[str]:
     """Resolve session-scoped files for staging."""
     try:
@@ -257,41 +247,24 @@ def _resolve_scoped_files(project_root: str | Path) -> list[str]:
         return []
 
 
-def _stage_files(files: list[str]) -> None:
+def _stage_files(files: list[str], project_root: Path) -> None:
     """Stage files via git add."""
-    subprocess.run(["git", "add", "--"] + files, check=True)
+    repo = Repo(str(project_root))
+    repo.git.add("--", *files)
 
 
-def _get_staged_files() -> list[str]:
+def _get_staged_files(project_root: Path) -> list[str]:
     """Return list of staged file paths."""
-    result = subprocess.run(
-        ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-        capture_output=True,
-        text=True,
-    )
-    return [f.strip() for f in result.stdout.strip().splitlines() if f.strip()]
+    repo = Repo(str(project_root))
+    output: str = repo.git.diff("--cached", "--name-only", "--diff-filter=ACM")
+    return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 
-def _check_partial_staging() -> None:
+def _check_partial_staging(project_root: Path) -> None:
     """Block commits with partially staged files."""
-    staged = set(
-        subprocess.run(
-            ["git", "diff", "--cached", "--name-only"],
-            capture_output=True,
-            text=True,
-        )
-        .stdout.strip()
-        .splitlines()
-    )
-    unstaged = set(
-        subprocess.run(
-            ["git", "diff", "--name-only"],
-            capture_output=True,
-            text=True,
-        )
-        .stdout.strip()
-        .splitlines()
-    )
+    repo = Repo(str(project_root))
+    staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
+    unstaged = set(repo.git.diff("--name-only").strip().splitlines())
     overlap = staged & unstaged
     if overlap:
         print("ERROR: partially staged files detected.", file=sys.stderr)
@@ -302,13 +275,8 @@ def _check_partial_staging() -> None:
         raise SystemExit(1)
 
 
-def _current_branch() -> str | None:
-    """Return the current git branch name, or None if detection fails."""
-    result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip() or None
+def _current_branch(project_root: Path) -> str:
+    """Return the current git branch name."""
+    repo = Repo(str(project_root))
+    branch: str = repo.git.rev_parse("--abbrev-ref", "HEAD")
+    return branch.strip()
