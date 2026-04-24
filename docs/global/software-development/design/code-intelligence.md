@@ -96,6 +96,9 @@ Examples:
 Lifecycle steps use code intelligence as a supporting input wherever structural
 truth changes the quality of judgment:
 
+This section is the high-level summary only. See the SDLC integration design
+for the detailed consumption model.
+
 - prepare can consume it when shaping scope, impact, and execution planning
 - work can consume it during build and review
 - integration can consume it when reasoning about overlap, sequencing, and
