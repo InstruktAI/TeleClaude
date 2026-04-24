@@ -230,7 +230,9 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "       telec sessions send <reviewer-session-id> 'review commits <sha1,sha2,...>'\n"
         "     Otherwise dispatch a fresh one:\n"
         "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
-        " --agent <agent>",
+        " --agent <agent>\n"
+        "\n"
+        "Explain which classification applies and why.",
         file=sys.stderr,
     )
     raise SystemExit(1)

@@ -38,7 +38,6 @@ __all__ = [
     "_handle_todo_dump",
     "_handle_todo_from_main",
     "_handle_todo_mark_phase",
-    "_handle_todo_mark_ready",
     "_handle_todo_reconcile",
     "_handle_todo_remove",
     "_handle_todo_show",
@@ -47,34 +46,6 @@ __all__ = [
     "_handle_todo_validate",
     "handle_mark_phase",
 ]
-
-
-def _handle_todo_mark_ready(args: list[str]) -> None:
-    """Handle telec todo mark-ready <slug> [<slug> ...].
-
-    Fast-track one or more TODOs to work-ready state by delegating to mark-phase
-    with ``prepared``.
-    """
-    if not args:
-        print("Usage: telec todo mark-ready <slug> [<slug> ...]")
-        raise SystemExit(1)
-
-    slugs = [a for a in args if not a.startswith("-")]
-    if not slugs:
-        print("Missing required argument: <slug>")
-        raise SystemExit(1)
-
-    cwd = str(resolve_invocation_cwd())
-    failed = 0
-    for slug in slugs:
-        rc = handle_mark_phase(slug, "prepared", cwd)
-        if rc == 0:
-            print(f"✓ {slug} fast-tracked to work-ready (prepared)")
-        else:
-            failed += 1
-
-    if failed:
-        raise SystemExit(1)
 
 
 def handle_mark_phase(slug: str, phase: str, cwd: str) -> int:
@@ -208,8 +179,6 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_dump(args[1:])
     elif subcommand == "split":
         _handle_todo_split(args[1:])
-    elif subcommand == "mark-ready":
-        _handle_todo_mark_ready(args[1:])
     elif subcommand == "mark-phase":
         _handle_todo_mark_phase(args[1:])
     elif subcommand == "reconcile":

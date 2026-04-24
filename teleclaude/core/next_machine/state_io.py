@@ -596,12 +596,13 @@ def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
 def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Stamp all authoritative state required to make a todo `prepared`.
 
-    Fast-track path used by ``telec todo mark-ready``, ``telec todo from-main``, and
-    prepped ``telec todo dump`` to short-circuit the full prepare lifecycle. Validates
-    that requirements and implementation-plan artifacts exist and that a git HEAD is
-    reachable BEFORE any state is persisted. Only after validation succeeds does the
-    function generate the quality-checklist artifact when missing, stamp DOR pass,
-    the current git HEAD as the grounding baseline, the prepare review verdicts
+    Fast-track path used by ``telec todo mark-phase --phase prepared``,
+    ``telec todo from-main``, and prepped ``telec todo dump`` to short-circuit
+    the full prepare lifecycle. Validates that requirements and
+    implementation-plan artifacts exist and that a git HEAD is reachable BEFORE
+    any state is persisted. Only after validation succeeds does the function
+    generate the quality-checklist artifact when missing, stamp DOR pass, the
+    current git HEAD as the grounding baseline, the prepare review verdicts
     (requirements is stamped ``skipped`` for prepped todos — there is no
     requirements artifact to review), and the canonical `lifecycle_phase =
     "prepared"` commitment. Validation failures raise and no partial state is

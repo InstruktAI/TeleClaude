@@ -449,25 +449,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_INTG, human=_HR_MEMBER),
             ),
-            "mark-ready": CommandDef(
-                desc="Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare lifecycle",
-                args="<slug> [<slug> ...]",
-                flags=[_H],
-                notes=[
-                    "Requires requirements and implementation-plan artifacts to already exist with content.",
-                    "Sets lifecycle_phase=prepared, DOR pass, grounding=valid, reviews=approved, "
-                    "generates quality-checklist.",
-                    "Use for straightforward work items that don't need the full prepare ceremony.",
-                    "Accepts multiple slugs to fast-track a batch in one call.",
-                ],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
-            ),
             "mark-phase": CommandDef(
                 desc="Operator override: write the authoritative lifecycle_phase field",
                 args="<slug> --phase <value>",
                 flags=[_H, Flag("--phase", desc="Phase value matching the canonical lifecycle phase enum")],
                 notes=[
                     "Validates the target step's prerequisites, then persists lifecycle_phase. Recovery/testing only."
+                    " Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state."
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
