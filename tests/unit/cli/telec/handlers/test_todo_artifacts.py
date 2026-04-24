@@ -76,6 +76,12 @@ class TestHandleTodoStamp:
         assert body["value"] == "approve"
         assert body["phase"] == "requirements_review"
 
+    def test_removed_automation_flag_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_stamp(["my-slug", "--requirements-ready"])
+
+        assert "Removed automation-only stamp flag" in capsys.readouterr().out
+
 
 class TestHandleMarkPhase:
     """telec todo mark-phase <slug> --phase <value>."""

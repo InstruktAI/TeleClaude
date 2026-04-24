@@ -566,9 +566,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Stamp a verdict, DOR result, or readiness marker into todo state",
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--dor-score <n>]"
-                    " [--dor-status <s>] [--requirements-ready]"
-                    " [--grounding-invalidated] [--specs-built] [--plan-ready]"
-                    " [--build-started] [--build-complete] [--finalize-ready]"
+                    " [--dor-status <s>] [--grounding-invalidated]"
+                    " [--specs-built] [--finalize-ready]"
                 ),
                 flags=[
                     _H,
@@ -582,19 +581,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     Flag("--dor-score", desc="DOR score (integer)"),
                     Flag("--dor-status", desc="pass | needs_work | needs_decision"),
-                    Flag("--requirements-ready", desc="Mark requirements authoring complete"),
                     Flag("--grounding-invalidated", desc="Mark grounding as invalid"),
                     Flag("--specs-built", desc="Mark test specifications as delivered"),
-                    Flag("--plan-ready", desc="Mark plan authoring complete"),
-                    Flag("--build-started", desc="Mark implementation work started"),
-                    Flag("--build-complete", desc="Mark implementation work complete and ready for review"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
                 examples=[
-                    "telec todo stamp my-slug --requirements-ready",
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
-                    "telec todo stamp my-slug --build-complete",
                     "telec todo stamp my-slug --finalize-ready",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),

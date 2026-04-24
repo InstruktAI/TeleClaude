@@ -134,18 +134,16 @@ async def _work_step_build_started(
             return False, (
                 f"BUILDER ACTIVE: {slug}\n\n"
                 f"Builder session {builder_id} has no commits beyond main yet. "
-                f"Wait for it to stamp `telec todo stamp {slug} --build-complete`, then call "
+                f"Wait for it to commit the work, then call "
                 f"telec todo work {slug}."
             )
         gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
         if not gates_passed:
             return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
-        return False, (
-            f"BUILDER ACTIVE: {slug}\n\n"
-            f"Builder session {builder_id} has commits and passing gates. "
-            f"Lifecycle stays at build_started until the builder stamps "
-            f"`telec todo stamp {slug} --build-complete`."
-        )
+        writer = StateWriter(state)
+        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
 
     try:
         guidance = await compose_agent_guidance(db)
@@ -160,9 +158,8 @@ async def _work_step_build_started(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Start implementation by stamping `telec todo stamp {slug} --build-started` once work begins. "
-                f"When the build is complete and ready for review, stamp "
-                f"`telec todo stamp {slug} --build-complete`."
+                f"Start implementation now. When the build is committed and ready for review, "
+                f"call `telec todo work {slug}` so the machine can verify gates and continue."
             ),
             next_call=f"telec todo work {slug}",
             post_block=_builder_idle_post_block(slug),
@@ -285,7 +282,7 @@ async def _work_step_review_changes_requested(
     """REVIEW_CHANGES_REQUESTED: relay findings to the live builder, or loop if fixed.
 
     The lifecycle remains on ``review_changes_requested`` until the builder
-    explicitly stamps ``build_complete`` after addressing the findings.
+    commits fixes that pass the build gates.
     """
     _ = cwd
     build_review_raw = state.get("build_review")
@@ -295,12 +292,13 @@ async def _work_step_review_changes_requested(
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
 
     if baseline and head_sha and head_sha != baseline:
-        return False, (
-            f"FIXES DETECTED: {slug}\n\n"
-            f"New commits exist beyond review baseline {baseline}. "
-            f"Wait for the builder to stamp `telec todo stamp {slug} --build-complete` "
-            f"before re-entering review."
-        )
+        gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
+        if not gates_passed:
+            return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
+        writer = StateWriter(state)
+        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
@@ -328,8 +326,8 @@ async def _work_step_review_changes_requested(
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
         f"indicate a stated requirement's success criteria are not satisfied in the "
         f"delivery; fix the narrowing or the weak verification, do not argue severity. "
-        f"When every non-Suggestion finding is resolved, stamp "
-        f"`telec todo stamp {slug} --build-complete`. "
+        f"When every non-Suggestion finding is resolved, commit the fixes and call "
+        f"`telec todo work {slug}`. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )
     escaped = message.replace('"', '\\"')

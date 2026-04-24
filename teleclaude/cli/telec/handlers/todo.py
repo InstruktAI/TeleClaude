@@ -665,14 +665,21 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
       --dor-score <n> [--dor-status <s>]
       --dor-status <s>
-      --requirements-ready
       --grounding-invalidated
       --specs-built
-      --plan-ready
-      --build-started
-      --build-complete
       --finalize-ready
     """
+    removed_flags = {
+        "--requirements-ready",
+        "--plan-ready",
+        "--build-started",
+        "--build-complete",
+    }
+    for arg in args:
+        if arg in removed_flags:
+            print(f"Removed automation-only stamp flag: {arg}")
+            raise SystemExit(1)
+
     slug, stamp_type, value, phase = _parse_todo_stamp_args(args)
 
     if not slug:
@@ -681,8 +688,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --dor-score, --dor-status, "
-            "--requirements-ready, --grounding-invalidated, --specs-built, "
-            "--plan-ready, --build-started, --build-complete, --finalize-ready)"
+            "--grounding-invalidated, --specs-built, --finalize-ready)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -740,25 +746,9 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             stamp_type = "grounding"
             value = "invalid"
             i += 1
-        elif arg == "--requirements-ready":
-            stamp_type = "requirements_ready"
-            value = ""
-            i += 1
         elif arg == "--specs-built":
             stamp_type = "specs_built"
             value = "true"
-            i += 1
-        elif arg == "--plan-ready":
-            stamp_type = "plan_ready"
-            value = ""
-            i += 1
-        elif arg == "--build-started":
-            stamp_type = "build_started"
-            value = ""
-            i += 1
-        elif arg == "--build-complete":
-            stamp_type = "build_complete"
-            value = ""
             i += 1
         elif arg == "--finalize-ready":
             stamp_type = "finalize_ready"

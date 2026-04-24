@@ -131,6 +131,10 @@ async def _prepare_step_input_assessment(
     has_input = await todos_db.artifact_exists(slug, "input")
     has_requirements = await todos_db.artifact_exists(slug, "requirements")
     if has_requirements:
+        digest = await todos_db.artifact_digest(slug, "requirements")
+        if digest:
+            writer.state.artifacts.requirements.digest = digest
+        apply_authoritative_signal(writer.state, "requirements_ready")
         # Emit input_consumed event for observability (R13)
         input_digest = await todos_db.artifact_digest(slug, "input")
         _emit_prepare_event(
@@ -139,16 +143,7 @@ async def _prepare_step_input_assessment(
         )
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
-        return (
-            False,
-            (
-                f"REQUIREMENTS READY: {slug}\n\n"
-                f"Requirements artifact already exists. Stamp "
-                f"`telec todo stamp {slug} --requirements-ready` to advance to "
-                f"{'requirements_review' if has_input else 'test_spec_build'}, "
-                f"then call telec todo prepare {slug}."
-            ),
-        )
+        return True, ""
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -165,8 +160,8 @@ async def _prepare_step_input_assessment(
                     else "There is no input artifact for this todo. Start from the existing draft context and any "
                 )
                 + f"produce requirements via `telec todo artifacts write {slug} requirements <content>`. "
-                + "When the requirements are complete enough for review, stamp "
-                + f"`telec todo stamp {slug} --requirements-ready`. "
+                + "When the requirements are complete enough for review, call "
+                + f"`telec todo prepare {slug}` so the machine can continue from the written artifact. "
                 "Work solo if the input is already concrete enough. If important intent, "
                 "constraints, or code grounding still need another perspective, run "
                 "triangulated discovery with a complementary partner."
@@ -191,6 +186,16 @@ async def _prepare_step_triangulation(
     await _commit_writer(writer, todos_db, slug, state)
 
     has_input = await todos_db.artifact_exists(slug, "input")
+    has_requirements = await todos_db.artifact_exists(slug, "requirements")
+    if has_requirements:
+        digest = await todos_db.artifact_digest(slug, "requirements")
+        if digest:
+            writer.state.artifacts.requirements.digest = digest
+        apply_authoritative_signal(writer.state, "requirements_ready")
+        writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -347,9 +352,8 @@ async def _prepare_step_test_spec_build(
     """TEST_SPEC_BUILD: dispatch spec builder.
 
     Derivation routes past this phase when ``artifacts.test_specs.produced_at``
-    is stamped. The step itself only dispatches the builder — the builder
-    stamps ``produced_at`` via the stamp API when the specs land, and the
-    next loop iteration advances to TEST_SPEC_REVIEW.
+    is observed. The step itself only dispatches the builder; the next loop
+    iteration advances once the machine can observe the resulting specs work.
     """
     writer = StateWriter(state)
     writer.audit.test_spec_build.started_at = datetime.now(UTC).isoformat()
@@ -366,8 +370,8 @@ async def _prepare_step_test_spec_build(
             note=(
                 f"Read requirements via `telec todo artifacts read {slug} requirements` and write "
                 f"xfail-marked pytest test specs in the worktree. Each test should capture a "
-                f"requirement as a failing test. Commit the specs to the worktree branch, then stamp "
-                f"`telec todo stamp {slug} --specs-built` so the state machine advances to TEST_SPEC_REVIEW."
+                f"requirement as a failing test. Commit the specs to the worktree branch, then call "
+                f"`telec todo prepare {slug}` so the machine can continue from the resulting work."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -480,18 +484,14 @@ async def _prepare_step_plan_drafting(
 
     has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
     if has_plan:
+        digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        if digest:
+            writer.state.artifacts.implementation_plan.digest = digest
+        apply_authoritative_signal(writer.state, "plan_ready")
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
-        return (
-            False,
-            (
-                f"PLAN READY: {slug}\n\n"
-                f"Implementation plan already exists. Stamp "
-                f"`telec todo stamp {slug} --plan-ready` to advance to plan_review, "
-                f"then call telec todo prepare {slug}."
-            ),
-        )
+        return True, ""
 
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
@@ -504,8 +504,8 @@ async def _prepare_step_plan_drafting(
             note=(
                 f"Ground the approved requirements for {slug}. If the work is atomic, "
                 f"write the implementation plan via "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`, then stamp "
-                f"`telec todo stamp {slug} --plan-ready`. "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`, then call "
+                f"`telec todo prepare {slug}` so the machine can continue from the written plan. "
                 "If planning shows the parent is too large, split it into child todos and "
                 "update the holder breakdown."
             ),
@@ -816,8 +816,8 @@ async def _handle_stale_grounding(
                 f"Update the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
                 f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then stamp `telec todo stamp {slug} --plan-ready` "
-                f"against current codebase. {changed_note}"
+                f"then call `telec todo prepare {slug}` so the machine can continue "
+                f"from the updated plan against current codebase. {changed_note}"
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -835,6 +835,16 @@ async def _prepare_step_re_grounding(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """RE_GROUNDING: refresh the plan against current truth before re-review."""
+    has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
+    if has_plan:
+        writer = StateWriter(state)
+        digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        if digest:
+            writer.state.artifacts.implementation_plan.digest = digest
+        apply_authoritative_signal(writer.state, "plan_ready")
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
     guidance = await compose_agent_guidance(db)
     return False, format_tool_call(
         ToolCallRequest(
@@ -847,7 +857,7 @@ async def _prepare_step_re_grounding(
                 f"Re-ground {slug} and rewrite the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
                 f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then stamp `telec todo stamp {slug} --plan-ready`."
+                f"then call `telec todo prepare {slug}` so the machine can continue from the updated plan."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),

@@ -38,8 +38,8 @@ def _base_state(*, kind: str = "todo", dor_score: int = 8, lifecycle_phase: str 
 
 
 @pytest.mark.asyncio
-async def test_build_started_waits_for_explicit_build_complete_stamp_when_gates_pass() -> None:
-    """Passing gates do not advance phase until the builder stamps build_complete."""
+async def test_build_started_auto_advances_when_commits_and_gates_pass() -> None:
+    """Passing gates auto-advance to build_complete without an exposed stamp."""
     state = _base_state()
 
     with (
@@ -56,9 +56,8 @@ async def test_build_started_waits_for_explicit_build_complete_stamp_when_gates_
             state=state,
         )
 
-    assert keep_going is False
-    assert "build-complete" in instruction
-    assert state["lifecycle_phase"] == "build_started"
+    assert keep_going is True
+    assert instruction == ""
 
 
 @pytest.mark.asyncio
@@ -163,8 +162,8 @@ async def test_build_started_bug_skips_dor_gate_and_dispatches() -> None:
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_waits_for_build_complete_stamp() -> None:
-    """Committed fixes alone do not reopen review without an explicit build_complete stamp."""
+async def test_review_changes_requested_auto_advances_when_fixes_pass_gates() -> None:
+    """Committed fixes reopen review once gates pass; no exposed build-complete stamp remains."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
         "build_review": {
@@ -177,6 +176,7 @@ async def test_review_changes_requested_waits_for_build_complete_stamp() -> None
 
     with (
         patch(f"{_WORK_STEPS}.get_head_commit", return_value="bbb222"),
+        patch(f"{_WORK_STEPS}.run_build_gates", return_value=(True, "GATE PASSED")),
     ):
         keep_going, instruction = await _work_step_review_changes_requested(
             db=_mock_db(),
@@ -187,5 +187,5 @@ async def test_review_changes_requested_waits_for_build_complete_stamp() -> None
             state=state,
         )
 
-    assert keep_going is False
-    assert "build-complete" in instruction
+    assert keep_going is True
+    assert instruction == ""

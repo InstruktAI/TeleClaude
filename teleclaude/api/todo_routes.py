@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import re
 import sqlite3
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -624,9 +623,6 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
     if raw_state is None:
         raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
 
-    worktree_path = Path(effective_cwd) / "trees" / slug
-    worktree_cwd = str(worktree_path) if worktree_path.exists() else None
-
     try:
         writer = StateWriter(raw_state)
         if stamp_type == "grounding":
@@ -637,28 +633,6 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
             apply_authoritative_signal(writer.state, "dor")
         elif stamp_type == "specs_built":
             apply_authoritative_signal(writer.state, "specs_built")
-        elif stamp_type == "requirements_ready":
-            digest = await todos_db.artifact_digest(slug, "requirements")
-            if not digest:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"requirements_ready requires an existing requirements artifact for '{slug}'",
-                )
-            writer.state.artifacts.requirements.digest = digest
-            apply_authoritative_signal(writer.state, "requirements_ready")
-        elif stamp_type == "plan_ready":
-            digest = await todos_db.artifact_digest(slug, "implementation-plan")
-            if not digest:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"plan_ready requires an existing implementation-plan artifact for '{slug}'",
-                )
-            writer.state.artifacts.implementation_plan.digest = digest
-            apply_authoritative_signal(writer.state, "plan_ready")
-        elif stamp_type == "build_started":
-            apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
-        elif stamp_type == "build_complete":
-            apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
         else:
             raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
         await writer.commit(todos_db, slug)
