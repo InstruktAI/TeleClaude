@@ -56,13 +56,13 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 - `todos.db` state — updated with grounding metadata and DOR verdict
 - `prepare.*` lifecycle events at each phase transition
 
-| Artifact                 | Created by                                                     | Reviewed by                                         |
-| ------------------------ | -------------------------------------------------------------- | --------------------------------------------------- |
-| `input.md`               | Human (direct artifact editing or legacy `/next-refine-input`) | —                                                   |
-| `requirements.md`        | Discovery worker (`/next-prepare-discovery`)                   | Requirements reviewer (`/next-review-requirements`) |
-| Test spec files          | Test spec worker (`/next-prepare-test-spec`)                   | Test spec reviewer (`/next-review-test-spec`)       |
-| `implementation-plan.md` | Draft worker (`/next-prepare-draft`)                           | Plan reviewer (`/next-review-plan`)                 |
-| `dor-report.md`          | Gate worker (`/next-prepare-gate`)                             | —                                                   |
+| Artifact                 | Created by                                                      | Reviewed by                                         |
+| ------------------------ | --------------------------------------------------------------- | --------------------------------------------------- |
+| `input.md`               | Human (brain dump via `telec todo dump`; frozen after creation) | —                                                   |
+| `requirements.md`        | Discovery worker (`/next-prepare-discovery`)                    | Requirements reviewer (`/next-review-requirements`) |
+| Test spec files          | Test spec worker (`/next-prepare-test-spec`)                    | Test spec reviewer (`/next-review-test-spec`)       |
+| `implementation-plan.md` | Draft worker (`/next-prepare-draft`)                            | Plan reviewer (`/next-review-plan`)                 |
+| `dor-report.md`          | Gate worker (`/next-prepare-gate`)                              | —                                                   |
 
 ## Invariants
 

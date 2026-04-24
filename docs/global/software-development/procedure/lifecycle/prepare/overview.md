@@ -105,8 +105,8 @@ After dispatching a worker:
 
 The human may edit preparation artifacts directly, then explicitly hand the
 todo back to the machine with `telec todo reconcile [slug]` before resuming
-`telec todo prepare [slug]`. `next-refine-input` is an input-only compatibility
-path, not the primary human prepare flow. Once the state machine starts, all
+`telec todo prepare [slug]`. Input is frozen after creation — all evolution
+of thinking happens through requirements during discovery. Once the state machine starts, all
 phases are fully autonomous. No human gates exist inside the machine. The only
 human-facing event is `prepare.blocked` when a decision genuinely requires
 human input.
