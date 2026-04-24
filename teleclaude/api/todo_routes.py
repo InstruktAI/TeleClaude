@@ -331,10 +331,10 @@ async def write_artifact(
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
-    if name == "input" and await todos_db.artifact_exists(slug, "input"):
+    if name == "input" and await todos_db.artifact_exists(slug, "requirements"):
         raise HTTPException(
             status_code=409,
-            detail=f"input artifact for '{slug}' is frozen — it cannot be overwritten after creation",
+            detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
     await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
     if name in {"input", "requirements", "implementation-plan"}:
