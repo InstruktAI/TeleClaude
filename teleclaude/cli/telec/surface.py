@@ -454,8 +454,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> --phase <value>",
                 flags=[_H, Flag("--phase", desc="Phase value matching the canonical lifecycle phase enum")],
                 notes=[
-                    "Validates the target step's prerequisites, then persists lifecycle_phase. Recovery/testing only."
-                    " Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state."
+                    "Validates the target step's prerequisites, then persists lifecycle_phase. "
+                    "Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state."
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
