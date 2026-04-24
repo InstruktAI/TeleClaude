@@ -90,3 +90,8 @@ How rigor is preserved:
 - teams optimize for local readiness instead of system absorbability
 - late concurrency conflicts invalidate already-reviewed work
 - mainline instability is caused by delivery order rather than isolated code quality
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md —
+  operational steps for executing the integration phase

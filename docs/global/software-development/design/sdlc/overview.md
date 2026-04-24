@@ -43,9 +43,9 @@ The lifecycle is designed for autonomy without losing rigor.
 
 - Downstream work derives from upstream artifact authority instead of
   re-inventing it.
-- `requirements` and `test_specs` stay in the same hot scope so acceptance does
+- `requirements` and `test-specs` stay in the same hot scope so acceptance does
   not drift from intent.
-- `implementation-plan` derives from both `requirements` and `test_specs`.
+- `implementation-plan` derives from both `requirements` and `test-specs`.
 - Automation computes what can be computed so human and AI judgment can focus on
   interpretation, trade-offs, and decisions.
 - Structural context is an SDLC input where available; it does not replace
@@ -64,7 +64,7 @@ Prepare turns a problem impulse into aligned build artifacts.
 Produces:
 
 - `requirements`
-- `test_specs`
+- `test-specs`
 - `implementation-plan`
 
 Rigor is preserved by:
@@ -110,24 +110,24 @@ The lifecycle uses two stable lenses:
 - `A`: intent, scope, meaning, outcome fidelity
 - `B`: rigor, precision, structure, execution realism
 
-Default fit:
-
-- `A` = Claude
-- `B` = Codex
-
-The lens is authoritative. The vendor/model mapping is only the default fit.
+The lens is authoritative. The current default mapping is `A` = Claude,
+`B` = Codex — but the lenses define the roles, not the vendors.
 
 Lead/support by artifact or step:
 
-| Lifecycle element     | Lead                                              | Support                                           |
-| --------------------- | ------------------------------------------------- | ------------------------------------------------- |
-| `requirements`        | `A`                                               | `B`                                               |
-| `test_specs`          | `A`                                               | `B`                                               |
-| `implementation-plan` | `B`                                               | `A`                                               |
-| `build`               | `B`                                               | `A`                                               |
-| `review`              | `A`                                               | `B`                                               |
-| `fix`                 | `B`                                               | `A`                                               |
-| `integration`         | system-outcome lens + sequencing lens both active | system-outcome lens + sequencing lens both active |
+| Lifecycle element     | Lead | Support |
+| --------------------- | ---- | ------- |
+| `requirements`        | `A`  | `B`     |
+| `test-specs`          | `A`  | `B`     |
+| `implementation-plan` | `B`  | `A`     |
+| `build`               | `B`  | `A`     |
+| `review`              | `A`  | `B`     |
+| `fix`                 | `B`  | `A`     |
+
+Integration does not follow the lead/support split. Both lenses are active
+simultaneously: `A` guards whether landing preserves intended system behavior,
+`B` guards whether the sequencing and cutover are mechanically safe. Neither
+leads — the integration decision requires both perspectives at once.
 
 ### Shared rigor model
 
@@ -154,9 +154,9 @@ These are continuous pressures across the lifecycle, not isolated later phases:
 
 ## Failure modes
 
-- `test_specs` drift from `requirements` because they are written cold or too
+- `test-specs` drift from `requirements` because they are written cold or too
   late.
-- `implementation-plan` drifts from `requirements` and `test_specs` because it
+- `implementation-plan` drifts from `requirements` and `test-specs` because it
   is treated as an independent reinterpretation.
 - Builders consume only one artifact and lose the full authority chain.
 - Review checks only local correctness and ignores intent or acceptance.
@@ -164,3 +164,8 @@ These are continuous pressures across the lifecycle, not isolated later phases:
   system convergence.
 - Structural context is unavailable or ignored, causing grep-driven planning,
   duplicated paths, zombie code, and hidden impact.
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md —
+  operational steps and state machine commands for executing this lifecycle

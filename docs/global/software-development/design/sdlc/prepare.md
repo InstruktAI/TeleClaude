@@ -30,13 +30,13 @@ Prepare exists to turn a problem impulse into build-ready truth.
 **Outputs**
 
 - `requirements`
-- `test_specs`
+- `test-specs`
 - `implementation-plan`
 
 ## Invariants
 
-- `requirements` and `test_specs` remain in the same hot scope.
-- `implementation-plan` is derived from both `requirements` and `test_specs`.
+- `requirements` and `test-specs` remain in the same hot scope.
+- `implementation-plan` is derived from both `requirements` and `test-specs`.
 - Each artifact is only considered ready when the supporting lens has challenged
   it and accepted it.
 - Prepare must not hand downstream work a cold reinterpretation of upstream
@@ -81,7 +81,7 @@ How rigor is preserved:
 
 Goal:
 
-- turn `requirements` and `test_specs` into a buildable execution map
+- turn `requirements` and `test-specs` into a buildable execution map
 
 Lead/support:
 
@@ -99,3 +99,8 @@ How rigor is preserved:
 - specs become implementation-shaped rather than intent-shaped
 - the plan is written from one upstream artifact and drifts from the other
 - support becomes passive instead of actively challenging the artifact
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md —
+  operational steps for executing the prepare phase

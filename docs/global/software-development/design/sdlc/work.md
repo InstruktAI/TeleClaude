@@ -22,7 +22,7 @@ build-review-fix loops.
 **Inputs**
 
 - `requirements`
-- `test_specs`
+- `test-specs`
 - `implementation-plan`
 - computed supporting context and evidence where automation can provide it
 
@@ -95,3 +95,8 @@ How rigor is preserved:
 - builders optimize only for passing specs or only for checking off plan tasks
 - review checks local correctness but misses intent drift
 - fixes become narrow patches that introduce new misalignment or churn
+
+## See Also
+
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/work/overview.md —
+  operational steps for executing the work phase
