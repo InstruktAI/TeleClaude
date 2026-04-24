@@ -59,7 +59,7 @@ Lead/support:
 
 How rigor is preserved:
 
-- execution is constrained by `requirements + test_specs + implementation-plan`
+- execution is constrained by `requirements + test-specs + implementation-plan`
 - `A` prevents drift away from intended outcome and user value
 
 Automation supplies:

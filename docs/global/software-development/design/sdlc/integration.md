@@ -72,6 +72,8 @@ Human/AI touchpoint:
 Goal:
 
 - understand overlap, dependency, ordering sensitivity, and system risk
+- recognize that multiple valid local changes can still conflict in landing
+  order, shared surfaces, or timing against the mainline
 
 How rigor is preserved:
 
@@ -88,11 +90,6 @@ Human/AI touchpoint:
 - AI can surface compatibility and ordering concerns
 - humans enter when overlap creates product, organizational, or release-level
   trade-offs
-
-Why this exists:
-
-- multiple valid local changes can still conflict in landing order, shared
-  surfaces, or timing against the mainline
 
 ### Sequencing and cutover
 
