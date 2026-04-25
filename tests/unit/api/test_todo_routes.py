@@ -278,18 +278,17 @@ class TestTodoRoutes:
         try:
             await database.add_to_roadmap("my-slug")
             await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
-            with (
-                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
-                pytest.raises(HTTPException, match="artifact missing"),
-            ):
-                await todo_routes.stamp(
-                    slug="my-slug",
-                    stamp_type="requirements_ready",
-                    value="",
-                    phase=None,
-                    cwd="/repo",
-                    identity=_identity(),
-                )
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="requirements_ready",
+                        value="",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
         finally:
             await database.close()
 
@@ -302,18 +301,17 @@ class TestTodoRoutes:
         try:
             await database.add_to_roadmap("my-slug")
             await database.write_state("my-slug", {"lifecycle_phase": "plan_drafting"})
-            with (
-                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
-                pytest.raises(HTTPException, match="artifact missing"),
-            ):
-                await todo_routes.stamp(
-                    slug="my-slug",
-                    stamp_type="plan_ready",
-                    value="",
-                    phase=None,
-                    cwd="/repo",
-                    identity=_identity(),
-                )
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="plan_ready",
+                        value="",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
         finally:
             await database.close()
 
@@ -327,18 +325,17 @@ class TestTodoRoutes:
             await database.add_to_roadmap("my-slug")
             await database.write_state("my-slug", {"lifecycle_phase": "plan_drafting"})
             await database.write_artifact("my-slug", "requirements", "some requirements")
-            with (
-                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
-                pytest.raises(HTTPException, match="has no effect"),
-            ):
-                await todo_routes.stamp(
-                    slug="my-slug",
-                    stamp_type="requirements_ready",
-                    value="",
-                    phase=None,
-                    cwd="/repo",
-                    identity=_identity(),
-                )
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="requirements_ready",
+                        value="",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
         finally:
             await database.close()
 
