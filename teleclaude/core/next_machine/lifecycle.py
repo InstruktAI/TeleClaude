@@ -28,6 +28,7 @@ class LifecyclePhase(str, Enum):
     INPUT_ASSESSMENT = "input_assessment"
     TRIANGULATION = "triangulation"
     REQUIREMENTS_REVIEW = "requirements_review"
+    REQUIREMENTS_HUMAN_APPROVAL = "requirements_human_approval"
     TEST_SPEC_BUILD = "test_spec_build"
     TEST_SPEC_REVIEW = "test_spec_review"
     PLAN_DRAFTING = "plan_drafting"
@@ -58,6 +59,7 @@ PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.INPUT_ASSESSMENT,
         LifecyclePhase.TRIANGULATION,
         LifecyclePhase.REQUIREMENTS_REVIEW,
+        LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL,
         LifecyclePhase.TEST_SPEC_BUILD,
         LifecyclePhase.TEST_SPEC_REVIEW,
         LifecyclePhase.PLAN_DRAFTING,
@@ -184,6 +186,7 @@ def _reset_grounding(model: TodoState) -> None:
 
 def _reset_after_requirements(model: TodoState) -> None:
     _clear_prepare_review(model.requirements_review)
+    model.artifacts.requirements.approved = False
     model.artifacts.test_specs.produced_at = ""
     _clear_prepare_review(model.test_spec_review)
     model.artifacts.implementation_plan.produced_at = ""
@@ -251,6 +254,8 @@ def phase_is_complete(
         return bool(model.artifacts.requirements.produced_at) or model.requirements_review.verdict == "skipped"
     if phase == LifecyclePhase.REQUIREMENTS_REVIEW:
         return model.requirements_review.verdict in ("approve", "skipped")
+    if phase == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
+        return model.artifacts.requirements.approved
     if phase == LifecyclePhase.TEST_SPEC_BUILD:
         return bool(model.artifacts.test_specs.produced_at)
     if phase == LifecyclePhase.TEST_SPEC_REVIEW:
@@ -297,10 +302,10 @@ def adopt_prepare_handoff_phase(
         return LifecyclePhase.PREPARED
     if model.grounding.invalidated_at or model.grounding.invalidation_reason:
         return LifecyclePhase.RE_GROUNDING
+    if model.plan_review.verdict in ("approve", "skipped"):
+        return LifecyclePhase.GROUNDING_CHECK
     if model.dor is not None and model.dor.status == "pass":
         return LifecyclePhase.GROUNDING_CHECK
-    if model.plan_review.verdict in ("approve", "skipped"):
-        return LifecyclePhase.GATE
     if model.plan_review.verdict == "needs_work":
         return LifecyclePhase.PLAN_DRAFTING
     if _artifact_present(model, "implementation_plan", artifact_presence=artifact_presence):
@@ -314,6 +319,10 @@ def adopt_prepare_handoff_phase(
     if _has_input_artifact(model, artifact_presence=artifact_presence):
         if model.requirements_review.verdict == "needs_work":
             return LifecyclePhase.TRIANGULATION
+        if model.requirements_review.verdict == "approve" and not model.artifacts.requirements.approved:
+            return LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
+        if model.artifacts.requirements.approved:
+            return LifecyclePhase.TEST_SPEC_BUILD
         if _artifact_present(model, "requirements", artifact_presence=artifact_presence):
             return LifecyclePhase.REQUIREMENTS_REVIEW
         return LifecyclePhase.INPUT_ASSESSMENT
@@ -354,6 +363,8 @@ def reconcile_lifecycle_phase(
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
     model.lifecycle_phase = target.value
+    if target == LifecyclePhase.PREPARED:
+        model.prepare_pair = None
     return target
 
 
@@ -428,27 +439,30 @@ def _apply_build_signal(
 def _apply_verdict_signal(model: TodoState, current: LifecyclePhase, phase: str | None) -> LifecyclePhase | None:
     if phase == "requirements_review" and current == LifecyclePhase.REQUIREMENTS_REVIEW:
         if model.requirements_review.verdict in ("approve", "skipped"):
+            if model.requirements_review.verdict == "approve":
+                return _move_to(model, LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL)
             return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
         if model.requirements_review.verdict == "needs_work":
-            _reset_after_requirements(model)
-            model.artifacts.requirements.produced_at = ""
-            return _move_to(model, LifecyclePhase.TRIANGULATION)
+            return current
+        return current
+
+    if phase == "requirements_human_approval" and current == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
+        if model.artifacts.requirements.approved:
+            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
         return current
 
     if phase == "test_spec_review" and current == LifecyclePhase.TEST_SPEC_REVIEW:
         if model.test_spec_review.verdict in ("approve", "skipped"):
             return _move_to(model, LifecyclePhase.PLAN_DRAFTING)
         if model.test_spec_review.verdict == "needs_work":
-            _reset_after_test_specs(model)
-            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
+            return current
         return current
 
     if phase == "plan_review" and current == LifecyclePhase.PLAN_REVIEW:
         if model.plan_review.verdict in ("approve", "skipped"):
-            return _move_to(model, LifecyclePhase.GATE)
+            return _move_to(model, LifecyclePhase.GROUNDING_CHECK)
         if model.plan_review.verdict == "needs_work":
-            _reset_after_plan(model)
-            return _move_to(model, LifecyclePhase.PLAN_DRAFTING)
+            return current
         return current
 
     if phase == "build_review" and current == LifecyclePhase.BUILD_COMPLETE:
@@ -518,6 +532,7 @@ def apply_authoritative_signal(
 
 def _normalize_prepare_mark_phase(model: TodoState, target: LifecyclePhase) -> None:
     if target == LifecyclePhase.DRAFT:
+        model.prepare_pair = None
         model.artifacts.requirements.produced_at = ""
         _reset_after_requirements(model)
         return
@@ -527,6 +542,20 @@ def _normalize_prepare_mark_phase(model: TodoState, target: LifecyclePhase) -> N
         return
     if target == LifecyclePhase.REQUIREMENTS_REVIEW:
         _clear_prepare_review(model.requirements_review)
+        model.artifacts.requirements.approved = False
+        model.artifacts.test_specs.produced_at = ""
+        _clear_prepare_review(model.test_spec_review)
+        model.artifacts.implementation_plan.produced_at = ""
+        _clear_prepare_review(model.plan_review)
+        _reset_dor(model)
+        _reset_grounding(model)
+        _clear_build_review(model)
+        _reset_finalize(model)
+        model.build_start_base_sha = ""
+        model.build_completed_at = ""
+        return
+    if target == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
+        model.artifacts.requirements.approved = False
         model.artifacts.test_specs.produced_at = ""
         _clear_prepare_review(model.test_spec_review)
         model.artifacts.implementation_plan.produced_at = ""
@@ -574,6 +603,7 @@ def _normalize_prepare_mark_phase(model: TodoState, target: LifecyclePhase) -> N
         _reset_after_plan(model)
         return
     if target == LifecyclePhase.PREPARED:
+        model.prepare_pair = None
         _clear_build_review(model)
         _reset_finalize(model)
         model.build_start_base_sha = ""

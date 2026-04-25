@@ -147,7 +147,13 @@ def _get_todos_db_sync(cwd: str) -> TodosDb:
 # ---------------------------------------------------------------------------
 
 # Valid prepare sub-phases that accept verdicts
-_PREPARE_VERDICT_PHASES = ("requirements_review", "test_spec_review", "plan_review")
+_REQUIREMENTS_HUMAN_APPROVAL_PHASE = "requirements_human_approval"
+_PREPARE_VERDICT_PHASES = (
+    "requirements_review",
+    _REQUIREMENTS_HUMAN_APPROVAL_PHASE,
+    "test_spec_review",
+    "plan_review",
+)
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
 
 # Build-review verdict phase and allowed values
@@ -269,10 +275,22 @@ def _validate_prepare_mark_phase(
         if missing:
             return f"Cannot mark {target.value}: missing {' and '.join(missing)}"
         return None
+    if target == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
+        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
+            return f"Cannot mark {target.value}: missing requirements artifact"
+        if model.requirements_review.verdict != "approve":
+            return f"Cannot mark {target.value}: missing approved requirements review"
+        return None
     if target == LifecyclePhase.TEST_SPEC_BUILD and model.requirements_review.verdict not in ("approve", "skipped"):
         if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
             return f"Cannot mark {target.value}: missing requirements artifact"
         return f"Cannot mark {target.value}: missing approved requirements review"
+    if (
+        target == LifecyclePhase.TEST_SPEC_BUILD
+        and model.requirements_review.verdict == "approve"
+        and not model.artifacts.requirements.approved
+    ):
+        return f"Cannot mark {target.value}: missing human requirements approval"
     if target == LifecyclePhase.TEST_SPEC_REVIEW and not _has_artifact_digest(
         model, "test_specs", artifact_presence=artifact_presence
     ):
@@ -285,10 +303,11 @@ def _validate_prepare_mark_phase(
         return f"Cannot mark {target.value}: missing implementation-plan artifact"
     if target == LifecyclePhase.GATE and model.plan_review.verdict not in ("approve", "skipped"):
         return f"Cannot mark {target.value}: missing approved plan review"
-    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and not (
-        model.dor is not None and model.dor.status == "pass"
+    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and model.plan_review.verdict not in (
+        "approve",
+        "skipped",
     ):
-        return f"Cannot mark {target.value}: missing DOR pass"
+        return f"Cannot mark {target.value}: missing approved plan review"
     if target == LifecyclePhase.PREPARED and not model.grounding.valid:
         return f"Cannot mark {target.value}: missing valid grounding state"
     return None
@@ -332,6 +351,7 @@ def _validate_mark_phase_target(
         LifecyclePhase.INPUT_ASSESSMENT,
         LifecyclePhase.TRIANGULATION,
         LifecyclePhase.REQUIREMENTS_REVIEW,
+        LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL,
         LifecyclePhase.TEST_SPEC_BUILD,
         LifecyclePhase.TEST_SPEC_REVIEW,
         LifecyclePhase.PLAN_DRAFTING,
@@ -466,6 +486,10 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     db = _get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
+    if phase == _REQUIREMENTS_HUMAN_APPROVAL_PHASE:
+        writer.state.artifacts.requirements.approved = verdict == "approve"
+        apply_authoritative_signal(writer.state, "verdict", phase=phase)
+        return writer.commit_sync(db, slug)
     ReviewManager(writer).stamp_verdict(phase, verdict)
     apply_authoritative_signal(writer.state, "verdict", phase=phase)
     return writer.commit_sync(db, slug)

@@ -81,11 +81,11 @@ def test_review_verdict_approve_advances_only_immediate_successor() -> None:
 
     next_phase = apply_authoritative_signal(state, "verdict", phase="requirements_review")
 
-    assert next_phase == LifecyclePhase.TEST_SPEC_BUILD
-    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.TEST_SPEC_BUILD
+    assert next_phase == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
 
 
-def test_review_needs_work_regresses_to_authoring_phase() -> None:
+def test_review_needs_work_stays_in_review_phase_for_fix_forward() -> None:
     state = TodoState.defaults()
     state.lifecycle_phase = LifecyclePhase.PLAN_REVIEW.value
     state.plan_review.verdict = "needs_work"
@@ -94,9 +94,9 @@ def test_review_needs_work_regresses_to_authoring_phase() -> None:
 
     next_phase = apply_authoritative_signal(state, "verdict", phase="plan_review")
 
-    assert next_phase == LifecyclePhase.PLAN_DRAFTING
-    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.PLAN_DRAFTING
-    assert state.artifacts.implementation_plan.produced_at == ""
+    assert next_phase == LifecyclePhase.PLAN_REVIEW
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.PLAN_REVIEW
+    assert state.artifacts.implementation_plan.produced_at == "2026-01-01T00:00:00+00:00"
 
 
 def test_adopt_prepare_handoff_phase_skips_requirements_review_without_input() -> None:

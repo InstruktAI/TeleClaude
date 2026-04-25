@@ -1,649 +1,848 @@
+"""Specs for the pair-based prepare lifecycle model.
+
 # guard: no-companion
-# pyright: reportAttributeAccessIssue=false, reportCallIssue=false
-# mypy: disable-error-code="comparison-overlap"
-"""Test specs (xfail) for prepare-lifecycle-pair-model.
-
-Pair-based discovery, turn-based writer/reviewer artifact production,
-REQUIREMENTS_HUMAN_APPROVAL state, and dissolved gate.
-
-All tests are marked xfail — they document the behavioral contract and fail
-cleanly before implementation. Remove ``pytestmark`` xfail once all tests
-pass after implementation.
 """
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 
+from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine._types import PreparePhase
-from teleclaude.core.next_machine.lifecycle import (
-    LifecyclePhase,
-    apply_authoritative_signal,
-    normalize_mark_phase,
-    phase_is_complete,
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, normalize_mark_phase
+from teleclaude.core.next_machine.output_formatting import (
+    ConvergenceAssessmentScript,
+    HumanApprovalScript,
+    PairFormationScript,
+    PairTurnScript,
+    format_convergence_assessment_script,
+    format_human_approval_script,
+    format_pair_formation_script,
+    format_pair_turn_script,
 )
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
-from teleclaude.types.todos import TodoState
-
-pytestmark = [
-    pytest.mark.unit,
-    pytest.mark.timeout(10),
-    pytest.mark.xfail(reason="spec: awaiting prepare-lifecycle-pair-model implementation"),
-]
+from teleclaude.core.next_machine.state_io import stamp_verdict
+from teleclaude.core.next_machine.worktrees import EnsureWorktreeResult
+from teleclaude.core.todos_db import TodosDb
+from teleclaude.types.state_value import StateValue
+from teleclaude.types.todos import PreparePair, PreparePairSlot, TodoState
 
 
-# ---------------------------------------------------------------------------
-# R1: Pair identity in TodoState
-# ---------------------------------------------------------------------------
+def _pair_state() -> TodoState:
+    state = TodoState.defaults()
+    state.prepare_pair = PreparePair(
+        slot_a=PreparePairSlot(session_id="session-a", agent="claude", lens="A"),
+        slot_b=PreparePairSlot(session_id="session-b", agent="codex", lens="B"),
+    )
+    return state
 
 
-class TestPairIdentity:
-    """Pair slots must exist, persist across phases, survive rewinds, and clear at PREPARED."""
-
-    def test_todo_state_has_prepare_pair_with_two_typed_slots(self) -> None:
-        state = TodoState.defaults()
-
-        pair = state.prepare_pair
-        assert pair is not None
-        assert hasattr(pair, "slot_a")
-        assert hasattr(pair, "slot_b")
-        # Empty before formation
-        assert pair.slot_a is None
-        assert pair.slot_b is None
-
-    def test_prepare_pair_persists_across_input_assessment_through_plan_review(self) -> None:
-        state = TodoState.defaults()
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-
-        # Simulate advancing through phases — pair must survive
-        for phase_value in [
-            "input_assessment",
-            "triangulation",
-            "requirements_review",
-            "requirements_human_approval",
-            "test_spec_build",
-            "test_spec_review",
-            "plan_drafting",
-            "plan_review",
-        ]:
-            state.lifecycle_phase = phase_value
-            assert state.prepare_pair.slot_a.session_id == "sess-a"
-            assert state.prepare_pair.slot_b.session_id == "sess-b"
-
-    def test_prepare_pair_survives_mark_phase_rewind(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = LifecyclePhase.PLAN_REVIEW.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-
-        normalize_mark_phase(state, LifecyclePhase.TRIANGULATION)
-
-        assert state.prepare_pair.slot_a.session_id == "sess-a"
-        assert state.prepare_pair.slot_b.session_id == "sess-b"
-
-    def test_prepare_pair_cleared_at_prepared(self) -> None:
-        state = TodoState.defaults()
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b")
-        state.lifecycle_phase = LifecyclePhase.GROUNDING_CHECK.value
-        state.grounding.valid = True
-
-        apply_authoritative_signal(state, "grounding")
-
-        assert state.lifecycle_phase == LifecyclePhase.PREPARED.value
-        assert state.prepare_pair.slot_a is None
-        assert state.prepare_pair.slot_b is None
+def _pair_state_dict() -> dict[str, StateValue]:
+    return cast(dict[str, StateValue], _pair_state().model_dump(exclude_none=True))
 
 
-# ---------------------------------------------------------------------------
-# R2: Pair formation at first dispatch
-# ---------------------------------------------------------------------------
+async def _stored_pair_state(todos_db: TodosDb, slug: str, phase: PreparePhase) -> dict[str, StateValue]:
+    await todos_db.add_to_roadmap(slug)
+    state = _pair_state_dict()
+    state["phase"] = "in_progress"
+    state["lifecycle_phase"] = phase.value
+    await todos_db.write_state(slug, state)
+    stored = await todos_db.read_state(slug)
+    assert stored is not None
+    return stored
 
 
-class TestPairFormation:
-    """First dispatch must create both workers, keep them unlinked during intake."""
+def _session(
+    session_id: str,
+    *,
+    subdir: str = "trees/convergence",
+    title: str = "/next-prepare-discovery convergence",
+    agent_stop_at: datetime | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        session_id=session_id,
+        subdir=subdir,
+        title=title,
+        last_activity=agent_stop_at,
+        last_message_sent_at=agent_stop_at,
+        last_agent_stop_at=agent_stop_at,
+    )
 
-    @pytest.mark.asyncio
-    async def test_input_assessment_no_pair_emits_dual_dispatch_and_link(self) -> None:
 
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.INPUT_ASSESSMENT.value
-        raw_state = state.model_dump(exclude_none=True)
+def _spy_worktree_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
+    calls: list[tuple[str, str]] = []
 
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
+    async def _spy(project_root: str, slug: str) -> EnsureWorktreeResult:
+        calls.append((project_root, slug))
+        return EnsureWorktreeResult(created=False, prepared=False, prep_reason="test-spy")
 
-        _keep_going, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.INPUT_ASSESSMENT,
-            state=raw_state,
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.prepare_steps.ensure_worktree_with_policy_async",
+        _spy,
+    )
+    return calls
+
+
+def test_todo_state_has_prepare_pair_with_two_typed_slots() -> None:
+    state = _pair_state()
+
+    round_tripped = TodoState.model_validate(state.model_dump(exclude_none=True))
+
+    assert round_tripped.prepare_pair is not None
+    assert round_tripped.prepare_pair.slot_a is not None
+    assert round_tripped.prepare_pair.slot_a.session_id == "session-a"
+    assert round_tripped.prepare_pair.slot_a.agent == "claude"
+    assert round_tripped.prepare_pair.slot_a.lens == "A"
+    assert round_tripped.prepare_pair.slot_b is not None
+    assert round_tripped.prepare_pair.slot_b.session_id == "session-b"
+    assert round_tripped.prepare_pair.slot_b.agent == "codex"
+    assert round_tripped.prepare_pair.slot_b.lens == "B"
+
+
+def test_prepare_pair_persists_across_input_assessment_through_plan_review() -> None:
+    state = _pair_state()
+
+    normalize_mark_phase(state, LifecyclePhase.PLAN_REVIEW)
+
+    assert state.prepare_pair is not None
+    assert state.prepare_pair.slot_a is not None
+    assert state.prepare_pair.slot_a.session_id == "session-a"
+    assert state.prepare_pair.slot_b is not None
+    assert state.prepare_pair.slot_b.session_id == "session-b"
+
+
+def test_prepare_pair_survives_mark_phase_rewind() -> None:
+    state = _pair_state()
+    state.lifecycle_phase = LifecyclePhase.PLAN_REVIEW.value
+
+    normalize_mark_phase(state, LifecyclePhase.TRIANGULATION)
+
+    assert state.prepare_pair is not None
+    assert state.prepare_pair.slot_a is not None
+    assert state.prepare_pair.slot_a.session_id == "session-a"
+    assert state.prepare_pair.slot_b is not None
+    assert state.prepare_pair.slot_b.session_id == "session-b"
+
+
+def test_prepare_pair_cleared_at_prepared() -> None:
+    state = _pair_state()
+    state.lifecycle_phase = LifecyclePhase.GROUNDING_CHECK.value
+    state.grounding.valid = True
+
+    apply_authoritative_signal(state, "grounding")
+    round_tripped = TodoState.model_validate(state.model_dump(exclude_none=True))
+
+    assert LifecyclePhase(round_tripped.lifecycle_phase) is LifecyclePhase.PREPARED
+    assert round_tripped.prepare_pair is None
+
+
+def test_requirements_review_approve_advances_to_human_approval() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.REQUIREMENTS_REVIEW.value
+    state.requirements_review.verdict = "approve"
+
+    next_phase = apply_authoritative_signal(state, "verdict", phase="requirements_review")
+
+    assert next_phase is LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
+
+
+@pytest.mark.asyncio
+async def test_human_approval_pauses_and_returns_approval_instruction(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("human-approval")
+    await todos_db.write_state(
+        "human-approval",
+        {
+            "schema_version": 2,
+            "phase": "in_progress",
+            "lifecycle_phase": "requirements_human_approval",
+        },
+    )
+    state = await todos_db.read_state("human-approval")
+    assert state is not None
+
+    should_continue, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="human-approval",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_HUMAN_APPROVAL,
+        state=state,
+    )
+
+    assert should_continue is False
+    assert "requirements" in instruction
+    assert "human" in instruction.lower()
+    assert "telec todo stamp human-approval --verdict approve --phase requirements_human_approval" in instruction
+
+
+@pytest.mark.asyncio
+async def test_human_approval_survives_restart(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("human-approval-restart")
+    await todos_db.write_state(
+        "human-approval-restart",
+        {
+            "schema_version": 2,
+            "phase": "in_progress",
+            "lifecycle_phase": "requirements_human_approval",
+        },
+    )
+    first_state = await todos_db.read_state("human-approval-restart")
+    second_state = await todos_db.read_state("human-approval-restart")
+    assert first_state is not None
+    assert second_state is not None
+
+    _, first_instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="human-approval-restart",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_HUMAN_APPROVAL,
+        state=first_state,
+    )
+    _, second_instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="human-approval-restart",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_HUMAN_APPROVAL,
+        state=second_state,
+    )
+
+    assert second_instruction == first_instruction
+
+
+@pytest.mark.asyncio
+async def test_human_approval_stamp_advances_to_test_spec_build(tmp_path: Path) -> None:
+    db_path = tmp_path / ".teleclaude" / "todos.db"
+    db_path.parent.mkdir()
+    db = TodosDb(str(db_path))
+    await db.initialize()
+    await db.add_to_roadmap("human-approved")
+    await db.write_state(
+        "human-approved",
+        {
+            "schema_version": 2,
+            "phase": "in_progress",
+            "lifecycle_phase": "requirements_human_approval",
+            "requirements_review": {"verdict": "approve"},
+            "artifacts": {"requirements": {"digest": "digest", "produced_at": "now"}},
+        },
+    )
+
+    stamp_verdict(str(tmp_path), "human-approved", "requirements_human_approval", "approve")
+    state = await db.read_state("human-approved")
+
+    assert state is not None
+    assert state["lifecycle_phase"] == LifecyclePhase.TEST_SPEC_BUILD.value
+    artifacts = state["artifacts"]
+    assert isinstance(artifacts, dict)
+    requirements = artifacts["requirements"]
+    assert isinstance(requirements, dict)
+    assert requirements["approved"] is True
+
+
+@pytest.mark.asyncio
+async def test_input_assessment_no_pair_emits_dual_dispatch_and_link(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("pair-dispatch")
+    await todos_db.write_state(
+        "pair-dispatch",
+        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"},
+    )
+    state = await todos_db.read_state("pair-dispatch")
+    assert state is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = [_session("session-a", subdir="trees/pair-existing")]
+
+    should_continue, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="pair-dispatch",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    assert should_continue is False
+    assert instruction.count("telec sessions run") == 2
+    assert '--agent "claude"' in instruction
+    assert '--agent "codex"' in instruction
+    assert "telec sessions send <A_id> --direct" in instruction
+
+
+@pytest.mark.asyncio
+async def test_input_assessment_no_worktree(monkeypatch: pytest.MonkeyPatch, todos_db: TodosDb) -> None:
+    calls = _spy_worktree_calls(monkeypatch)
+    await todos_db.add_to_roadmap("input-no-worktree")
+    await todos_db.write_state(
+        "input-no-worktree",
+        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"},
+    )
+    state = await todos_db.read_state("input-no-worktree")
+    assert state is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="input-no-worktree",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_input_assessment_existing_pair_targets_stored_a(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("pair-existing")
+    await todos_db.write_state("pair-existing", _pair_state_dict())
+    state = await todos_db.read_state("pair-existing")
+    assert state is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = [_session("session-a", subdir="trees/pair-existing")]
+
+    should_continue, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="pair-existing",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    assert should_continue is False
+    assert "telec sessions send session-a" in instruction
+    assert "telec sessions run" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_pair_formation_uses_configurable_lens_agent_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+    todos_db: TodosDb,
+) -> None:
+    monkeypatch.setenv("TELECLAUDE_PREPARE_PAIR_A_AGENT", "gemini")
+    monkeypatch.setenv("TELECLAUDE_PREPARE_PAIR_B_AGENT", "claude")
+    await todos_db.add_to_roadmap("pair-config")
+    await todos_db.write_state(
+        "pair-config",
+        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"},
+    )
+    state = await todos_db.read_state("pair-config")
+    assert state is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="pair-config",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    assert '--agent "gemini"' in instruction
+    assert '--agent "claude"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_workers_not_linked_during_intake(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("pair-independent")
+    await todos_db.write_state(
+        "pair-independent",
+        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"},
+    )
+    state = await todos_db.read_state("pair-independent")
+    assert state is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="pair-independent",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    run_lines = [line for line in instruction.splitlines() if line.startswith("telec sessions run")]
+    assert len(run_lines) == 2
+    assert all("--direct" not in line for line in run_lines)
+
+
+@pytest.mark.asyncio
+async def test_writer_messaged_reviewer_not_during_write_phase(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "writer-only", PreparePhase.TEST_SPEC_BUILD)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="writer-only",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+    assert "session-b" in instruction
+    assert "telec sessions send session-b" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_reviewer_messaged_only_after_writer_agent_stop(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "writer-stop", PreparePhase.PLAN_DRAFTING)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="writer-stop",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_DRAFTING,
+        state=state,
+    )
+
+    assert "agent_stop" in instruction
+    assert "telec sessions send session-b" in instruction
+    assert "telec sessions send session-a" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_needs_work_relays_findings_to_writer_fix_forward(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "requirements-fix", PreparePhase.REQUIREMENTS_REVIEW)
+    state["requirements_review"] = {
+        "verdict": "needs_work",
+        "reviewed_at": "2026-04-25T00:00:00+00:00",
+        "findings_count": 1,
+        "rounds": 0,
+        "baseline_commit": "",
+        "findings": [{"id": "R1", "severity": "Important", "summary": "gap", "status": "open"}],
+    }
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="requirements-fix",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_REVIEW,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+    assert "/next-prepare-discovery" not in instruction
+    persisted = await todos_db.read_state("requirements-fix")
+    assert persisted is not None
+    assert persisted["lifecycle_phase"] == PreparePhase.REQUIREMENTS_REVIEW.value
+
+
+def test_no_back_to_discovery_on_needs_work() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.REQUIREMENTS_REVIEW.value
+    state.requirements_review.verdict = "needs_work"
+
+    next_phase = apply_authoritative_signal(state, "verdict", phase="requirements_review")
+
+    assert next_phase is LifecyclePhase.REQUIREMENTS_REVIEW
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.REQUIREMENTS_REVIEW
+
+
+def test_plan_review_approve_advances_to_grounding_not_gate() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.PLAN_REVIEW.value
+    state.plan_review.verdict = "approve"
+
+    next_phase = apply_authoritative_signal(state, "verdict", phase="plan_review")
+
+    assert next_phase is LifecyclePhase.GROUNDING_CHECK
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.GROUNDING_CHECK
+
+
+@pytest.mark.asyncio
+async def test_triangulation_targets_writer_a(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "triangulation-writer", PreparePhase.TRIANGULATION)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="triangulation-writer",
+        cwd="/repo",
+        phase=PreparePhase.TRIANGULATION,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+
+
+@pytest.mark.asyncio
+async def test_triangulation_no_worktree(monkeypatch: pytest.MonkeyPatch, todos_db: TodosDb) -> None:
+    calls = _spy_worktree_calls(monkeypatch)
+    state = await _stored_pair_state(todos_db, "triangulation-no-worktree", PreparePhase.TRIANGULATION)
+
+    await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="triangulation-no-worktree",
+        cwd="/repo",
+        phase=PreparePhase.TRIANGULATION,
+        state=state,
+    )
+
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_requirements_review_targets_reviewer_b(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "requirements-reviewer", PreparePhase.REQUIREMENTS_REVIEW)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="requirements-reviewer",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_REVIEW,
+        state=state,
+    )
+
+    assert "telec sessions send session-b" in instruction
+    assert "telec sessions run" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_test_spec_build_targets_writer_a(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "spec-writer", PreparePhase.TEST_SPEC_BUILD)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="spec-writer",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+
+
+@pytest.mark.asyncio
+async def test_test_spec_build_ensures_worktree(monkeypatch: pytest.MonkeyPatch, todos_db: TodosDb) -> None:
+    calls = _spy_worktree_calls(monkeypatch)
+    state = await _stored_pair_state(todos_db, "spec-worktree", PreparePhase.TEST_SPEC_BUILD)
+    db = AsyncMock()
+    db.list_sessions.return_value = [_session("session-a", subdir="trees/spec-worktree")]
+
+    await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="spec-worktree",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=state,
+    )
+
+    assert calls == [("/repo", "spec-worktree")]
+
+
+@pytest.mark.asyncio
+async def test_test_spec_review_targets_reviewer_b(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "spec-reviewer", PreparePhase.TEST_SPEC_REVIEW)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="spec-reviewer",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_REVIEW,
+        state=state,
+    )
+
+    assert "telec sessions send session-b" in instruction
+    assert "telec sessions run" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_drafting_targets_writer_b_role_flip(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "plan-writer", PreparePhase.PLAN_DRAFTING)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="plan-writer",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_DRAFTING,
+        state=state,
+    )
+
+    assert "telec sessions send session-b" in instruction
+    assert "telec sessions send session-a" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_review_targets_reviewer_a_role_flip(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "plan-reviewer", PreparePhase.PLAN_REVIEW)
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="plan-reviewer",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_REVIEW,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+    assert "telec sessions run" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_convergence_instruction_emitted_after_discovery(todos_db: TodosDb) -> None:
+    stopped_at = datetime(2026, 4, 25, tzinfo=UTC)
+    state = await _stored_pair_state(todos_db, "convergence", PreparePhase.INPUT_ASSESSMENT)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", agent_stop_at=stopped_at),
+        _session("session-b", agent_stop_at=stopped_at),
+    ]
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="convergence",
+        cwd="/repo",
+        phase=PreparePhase.INPUT_ASSESSMENT,
+        state=state,
+    )
+
+    assert "CONVERGENCE ASSESSMENT" in instruction
+    assert "telec sessions tail session-a" in instruction
+    assert "telec sessions tail session-b" in instruction
+    assert "telec sessions send session-a" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_continuation_targets_stored_pair_before_generic_lookup(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "stored-first", PreparePhase.TEST_SPEC_BUILD)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", subdir="trees/stored-first", title="/next-build-specs stored-first"),
+        _session("generic-spec-worker", subdir="trees/stored-first", title="/next-build-specs stored-first"),
+    ]
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="stored-first",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=state,
+    )
+
+    assert "telec sessions send session-a" in instruction
+    assert "generic-spec-worker" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_revive_attempted_before_fresh_dispatch(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "revive-writer", PreparePhase.TEST_SPEC_BUILD)
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="revive-writer",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=state,
+    )
+
+    assert instruction.index("telec sessions revive session-a") < instruction.index("telec sessions run")
+
+
+@pytest.mark.asyncio
+async def test_fresh_replacement_updates_pair_slot(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "replace-writer", PreparePhase.PLAN_DRAFTING)
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="replace-writer",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_DRAFTING,
+        state=state,
+    )
+
+    assert "update prepare_pair slot B" in instruction
+
+
+@pytest.mark.asyncio
+async def test_dead_reviewer_falls_back_to_fresh_dispatch(todos_db: TodosDb) -> None:
+    state = await _stored_pair_state(todos_db, "dead-reviewer", PreparePhase.REQUIREMENTS_REVIEW)
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="dead-reviewer",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_REVIEW,
+        state=state,
+    )
+
+    assert "telec sessions revive session-b" in instruction
+    assert 'telec sessions run --command "/next-review-requirements"' in instruction
+
+
+@pytest.mark.asyncio
+async def test_no_gate_worker_dispatched(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("gate-dissolved")
+    await todos_db.write_state(
+        "gate-dissolved",
+        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "gate"},
+    )
+    state = await todos_db.read_state("gate-dissolved")
+    assert state is not None
+
+    should_continue, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="gate-dissolved",
+        cwd="/repo",
+        phase=PreparePhase.GATE,
+        state=state,
+    )
+
+    assert should_continue is True
+    assert "/next-prepare-gate" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_grounding_check_mechanical_no_pair_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+    todos_db: TodosDb,
+) -> None:
+    def _run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
+        return (0, "head\n", "")
+
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.run_git_command", _run_git_command)
+    state = await _stored_pair_state(todos_db, "grounding-fresh", PreparePhase.GROUNDING_CHECK)
+
+    should_continue, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="grounding-fresh",
+        cwd="/repo",
+        phase=PreparePhase.GROUNDING_CHECK,
+        state=state,
+    )
+
+    assert should_continue is True
+    assert instruction == ""
+    persisted = await todos_db.read_state("grounding-fresh")
+    assert persisted is not None
+    assert persisted["lifecycle_phase"] == PreparePhase.PREPARED.value
+
+
+@pytest.mark.asyncio
+async def test_stale_grounding_targets_plan_writer_b(
+    monkeypatch: pytest.MonkeyPatch,
+    todos_db: TodosDb,
+) -> None:
+    def _run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
+        if args[0] == "diff":
+            return (0, "teleclaude/core/example.py\n", "")
+        return (0, "head\n", "")
+
+    monkeypatch.setattr("teleclaude.core.next_machine.prepare_steps.run_git_command", _run_git_command)
+    state = await _stored_pair_state(todos_db, "grounding-stale", PreparePhase.GROUNDING_CHECK)
+    state["grounding"] = {
+        "valid": True,
+        "base_sha": "base",
+        "input_digest": "",
+        "referenced_paths": ["teleclaude/core/example.py"],
+    }
+    await todos_db.write_state("grounding-stale", state)
+    stored = await todos_db.read_state("grounding-stale")
+    assert stored is not None
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", subdir="trees/grounding-stale"),
+        _session("session-b", subdir="trees/grounding-stale"),
+    ]
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="grounding-stale",
+        cwd="/repo",
+        phase=PreparePhase.GROUNDING_CHECK,
+        state=stored,
+    )
+
+    assert "PAIR WRITE TURN" in instruction
+    assert "telec sessions send session-b" in instruction
+    assert "session-a" in instruction
+    assert "telec sessions run" not in instruction
+
+
+def test_pair_formation_script_formats_dual_dispatch_and_link() -> None:
+    instruction = format_pair_formation_script(
+        PairFormationScript(
+            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
+            args="format-pair",
+            project="/repo",
+            subfolder="trees/format-pair",
+            agent_a="claude",
+            agent_b="codex",
+            slug="format-pair",
         )
+    )
 
-        assert not _keep_going
-        # Must emit TWO session dispatches (one for each worker)
-        assert instruction.count("telec sessions run") == 2
-        # Must emit link instruction
-        assert "--direct" in instruction
+    assert instruction.count("telec sessions run") == 2
+    assert "telec sessions send <A_id> --direct" in instruction
+    assert "Store the prepare pair identity" in instruction
 
-    def test_pair_formation_uses_configurable_lens_agent_mapping(self) -> None:
-        state = TodoState.defaults()
-        state.prepare_pair.slot_a = MagicMock(agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(agent="codex", lens="B")
 
-        assert state.prepare_pair.slot_a.lens == "A"
-        assert state.prepare_pair.slot_b.lens == "B"
-        # Agent is the current default, not hardcoded identity
-        assert state.prepare_pair.slot_a.agent == "claude"
-        assert state.prepare_pair.slot_b.agent == "codex"
+def test_convergence_assessment_script_formats_tail_checks() -> None:
+    instruction = format_convergence_assessment_script(
+        ConvergenceAssessmentScript(slug="format-converge", slot_a="session-a", slot_b="session-b")
+    )
 
-    @pytest.mark.asyncio
-    async def test_input_assessment_existing_pair_targets_stored_a(self) -> None:
+    assert "CONVERGENCE ASSESSMENT" in instruction
+    assert "telec sessions tail session-a" in instruction
+    assert "telec sessions tail session-b" in instruction
 
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.INPUT_ASSESSMENT.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
 
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        _keep_going, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.INPUT_ASSESSMENT,
-            state=raw_state,
+def test_pair_turn_script_uses_send_for_review_not_run() -> None:
+    instruction = format_pair_turn_script(
+        PairTurnScript(
+            slug="format-review",
+            turn="review",
+            session_id="session-b",
+            message="Review now.",
+            next_step="telec todo prepare format-review",
         )
+    )
 
-        assert not _keep_going
-        # Must target stored A session, not dispatch fresh
-        assert "sess-a" in instruction
-        assert instruction.count("telec sessions run") == 0
+    assert "PAIR REVIEW TURN" in instruction
+    assert 'telec sessions send session-b "Review now."' in instruction
+    assert "telec sessions run" not in instruction
 
-    @pytest.mark.asyncio
-    async def test_workers_not_linked_during_intake(self) -> None:
 
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.INPUT_ASSESSMENT.value
-        raw_state = state.model_dump(exclude_none=True)
+def test_human_approval_script_formats_stamp_instruction() -> None:
+    instruction = format_human_approval_script(HumanApprovalScript(slug="format-human"))
 
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.INPUT_ASSESSMENT,
-            state=raw_state,
-        )
-
-        # The link (--direct) must come AFTER both agent_stop signals,
-        # not in the same dispatch block
-        lines = instruction.split("\n")
-        dispatch_lines = [line for line in lines if "telec sessions run" in line]
-        link_lines = [line for line in lines if "--direct" in line]
-        assert len(dispatch_lines) == 2
-        assert len(link_lines) == 1
-        # Link instruction must reference waiting for agent_stop
-        assert "agent_stop" in instruction.lower() or "wait" in instruction.lower()
-
-
-# ---------------------------------------------------------------------------
-# R4: REQUIREMENTS_HUMAN_APPROVAL state
-# ---------------------------------------------------------------------------
-
-
-class TestRequirementsHumanApproval:
-    """Machine pauses for human approval after pair review of requirements."""
-
-    def test_requirements_review_approve_advances_to_human_approval(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = LifecyclePhase.REQUIREMENTS_REVIEW.value
-        state.requirements_review.verdict = "approve"
-        state.requirements_review.reviewed_at = "2026-01-01T00:00:00+00:00"
-        state.artifacts.input.digest = "input-hash"
-
-        result = apply_authoritative_signal(state, "verdict", phase="requirements_review")
-
-        human_approval = LifecyclePhase("requirements_human_approval")
-        assert LifecyclePhase(state.lifecycle_phase) is human_approval
-        assert result is human_approval
-
-    def test_human_approval_pauses_and_returns_approval_instruction(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = "requirements_human_approval"
-
-        # The machine must not auto-advance from this state
-
-        assert not phase_is_complete(state, LifecyclePhase("requirements_human_approval"))
-
-    def test_human_approval_survives_restart(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = "requirements_human_approval"
-
-        # Re-reading state and checking phase must still return human_approval
-        assert state.lifecycle_phase == "requirements_human_approval"
-
-    def test_human_approval_stamp_advances_to_test_spec_build(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = "requirements_human_approval"
-
-        result = apply_authoritative_signal(state, "requirements_human_approved")
-
-        assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.TEST_SPEC_BUILD
-        assert result is LifecyclePhase.TEST_SPEC_BUILD
-
-
-# ---------------------------------------------------------------------------
-# R3: Turn-based protocol
-# ---------------------------------------------------------------------------
-
-
-class TestTurnBasedProtocol:
-    """Writer is messaged, reviewer observes passively via direct link."""
-
-    @pytest.mark.asyncio
-    async def test_writer_messaged_reviewer_not_during_write_phase(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.TEST_SPEC_BUILD.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.TEST_SPEC_BUILD,
-            state=raw_state,
-        )
-
-        # Writer (A) must be targeted
-        assert "sess-a" in instruction
-        # Reviewer (B) must NOT be messaged in this instruction
-        assert "sess-b" not in instruction or "wait" in instruction.lower()
-
-    @pytest.mark.asyncio
-    async def test_reviewer_messaged_only_after_writer_agent_stop(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.TEST_SPEC_REVIEW.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        state.artifacts.test_specs.produced_at = ""
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.TEST_SPEC_REVIEW,
-            state=raw_state,
-        )
-
-        # Reviewer (B) must be targeted for review
-        assert "sess-b" in instruction
-        # Must use sessions send, not sessions run
-        assert "telec sessions send" in instruction
-
-    @pytest.mark.asyncio
-    async def test_needs_work_relays_findings_to_writer_fix_forward(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.REQUIREMENTS_REVIEW.value
-        state.requirements_review.verdict = "needs_work"
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.REQUIREMENTS_REVIEW,
-            state=raw_state,
-        )
-
-        # Must relay to writer (A) for fix-forward
-        assert "sess-a" in instruction
-
-    def test_no_back_to_discovery_on_needs_work(self) -> None:
-        """Fix-forward: needs_work on requirements does not revert to discovery."""
-        state = TodoState.defaults()
-        state.lifecycle_phase = LifecyclePhase.REQUIREMENTS_REVIEW.value
-        state.requirements_review.verdict = "needs_work"
-        state.artifacts.input.digest = "input-hash"
-
-        result = apply_authoritative_signal(state, "verdict", phase="requirements_review")
-
-        # Must go to TRIANGULATION (re-write), not back to INPUT_ASSESSMENT (re-discover)
-        assert result is LifecyclePhase.TRIANGULATION
-
-
-# ---------------------------------------------------------------------------
-# R3: Writer/reviewer routing per phase
-# ---------------------------------------------------------------------------
-
-
-class TestWriterReviewerRouting:
-    """Correct pair member targeted per phase, with role flip at plan."""
-
-    @pytest.mark.asyncio
-    async def _dispatch_for_phase(
-        self,
-        phase: PreparePhase,
-        pair_a_id: str = "sess-a",
-        pair_b_id: str = "sess-b",
-    ) -> str:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = phase.value
-        state.prepare_pair.slot_a = MagicMock(session_id=pair_a_id, agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id=pair_b_id, agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=phase,
-            state=raw_state,
-        )
-        return instruction
-
-    @pytest.mark.asyncio
-    async def test_triangulation_targets_writer_a(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.TRIANGULATION)
-        assert "sess-a" in instruction
-
-    @pytest.mark.asyncio
-    async def test_requirements_review_targets_reviewer_b(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.REQUIREMENTS_REVIEW)
-        assert "sess-b" in instruction
-
-    @pytest.mark.asyncio
-    async def test_test_spec_build_targets_writer_a(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.TEST_SPEC_BUILD)
-        assert "sess-a" in instruction
-
-    @pytest.mark.asyncio
-    async def test_test_spec_review_targets_reviewer_b(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.TEST_SPEC_REVIEW)
-        assert "sess-b" in instruction
-
-    @pytest.mark.asyncio
-    async def test_plan_drafting_targets_writer_b_role_flip(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.PLAN_DRAFTING)
-        assert "sess-b" in instruction
-
-    @pytest.mark.asyncio
-    async def test_plan_review_targets_reviewer_a_role_flip(self) -> None:
-        instruction = await self._dispatch_for_phase(PreparePhase.PLAN_REVIEW)
-        assert "sess-a" in instruction
-
-
-# ---------------------------------------------------------------------------
-# R5: Convergence assessment
-# ---------------------------------------------------------------------------
-
-
-class TestConvergence:
-    """Orchestrator receives convergence assessment instruction after discovery."""
-
-    @pytest.mark.asyncio
-    async def test_convergence_instruction_emitted_after_discovery(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.INPUT_ASSESSMENT.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=True)
-        todos_db.artifact_digest = AsyncMock(return_value="digest")
-
-        _keep_going, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.INPUT_ASSESSMENT,
-            state=raw_state,
-        )
-
-        # When requirements exist, should emit writer/reviewer assignment
-        # not a fresh discovery dispatch
-        assert "write" in instruction.lower() or "review" in instruction.lower()
-
-
-# ---------------------------------------------------------------------------
-# R6: Pair continuation and recovery
-# ---------------------------------------------------------------------------
-
-
-class TestPairContinuation:
-    """Stored pair members targeted before generic lookup."""
-
-    @pytest.mark.asyncio
-    async def test_continuation_targets_stored_pair_before_generic_lookup(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.PLAN_DRAFTING.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.PLAN_DRAFTING,
-            state=raw_state,
-        )
-
-        # Must target stored B (writer for plan), not generic dispatch
-        assert "sess-b" in instruction
-
-    @pytest.mark.asyncio
-    async def test_dead_reviewer_falls_back_to_fresh_dispatch(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.REQUIREMENTS_REVIEW.value
-        # Pair exists but reviewer session is dead (not findable)
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="dead-sess", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        db.list_sessions = AsyncMock(return_value=[])  # no live sessions
-        todos_db = AsyncMock()
-
-        _, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.REQUIREMENTS_REVIEW,
-            state=raw_state,
-        )
-
-        # Must fall back to fresh dispatch when pair member is dead
-        assert "telec sessions run" in instruction or "next-review-requirements" in instruction
-
-
-# ---------------------------------------------------------------------------
-# R7: Worktree deferred to TEST_SPEC_BUILD
-# ---------------------------------------------------------------------------
-
-
-class TestWorktreeDeferred:
-    """Requirements-only work runs without worktree. Worktree ensured at specs."""
-
-    @pytest.mark.asyncio
-    async def test_input_assessment_no_worktree(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.INPUT_ASSESSMENT.value
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        with patch("teleclaude.core.next_machine.prepare_steps.ensure_worktree_with_policy_async") as mock_worktree:
-            await _prepare_dispatch(
-                db=db,
-                todos_db=todos_db,
-                slug="test-slug",
-                cwd="/repo",
-                phase=PreparePhase.INPUT_ASSESSMENT,
-                state=raw_state,
-            )
-            mock_worktree.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_test_spec_build_ensures_worktree(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.TEST_SPEC_BUILD.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a", agent="claude", lens="A")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b", agent="codex", lens="B")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.artifact_exists = AsyncMock(return_value=False)
-
-        with patch("teleclaude.core.next_machine.prepare_steps.ensure_worktree_with_policy_async") as mock_worktree:
-            await _prepare_dispatch(
-                db=db,
-                todos_db=todos_db,
-                slug="test-slug",
-                cwd="/repo",
-                phase=PreparePhase.TEST_SPEC_BUILD,
-                state=raw_state,
-            )
-            mock_worktree.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
-# R8: Gate dissolved
-# ---------------------------------------------------------------------------
-
-
-class TestGateDissolved:
-    """Plan review approve goes directly to grounding, no gate dispatch."""
-
-    def test_plan_review_approve_advances_to_grounding_not_gate(self) -> None:
-        state = TodoState.defaults()
-        state.lifecycle_phase = LifecyclePhase.PLAN_REVIEW.value
-        state.plan_review.verdict = "approve"
-        state.plan_review.reviewed_at = "2026-01-01T00:00:00+00:00"
-
-        result = apply_authoritative_signal(state, "verdict", phase="plan_review")
-
-        # Must skip GATE and go directly to GROUNDING_CHECK
-        assert result is LifecyclePhase.GROUNDING_CHECK
-        assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.GROUNDING_CHECK
-
-    @pytest.mark.asyncio
-    async def test_no_gate_worker_dispatched(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.GATE.value
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-
-        _keep_going, instruction = await _prepare_dispatch(
-            db=db,
-            todos_db=todos_db,
-            slug="test-slug",
-            cwd="/repo",
-            phase=PreparePhase.GATE,
-            state=raw_state,
-        )
-
-        # Gate must auto-advance or be a no-op, not dispatch a worker
-        assert "next-prepare-gate" not in instruction
-
-
-# ---------------------------------------------------------------------------
-# R9: Grounding remains mechanical
-# ---------------------------------------------------------------------------
-
-
-class TestGroundingMechanical:
-    """Grounding check uses no pair dispatch. Stale update targets plan writer."""
-
-    @pytest.mark.asyncio
-    async def test_grounding_check_mechanical_no_pair_dispatch(self) -> None:
-
-        state = TodoState.defaults()
-        state.lifecycle_phase = PreparePhase.GROUNDING_CHECK.value
-        state.prepare_pair.slot_a = MagicMock(session_id="sess-a")
-        state.prepare_pair.slot_b = MagicMock(session_id="sess-b")
-        raw_state = state.model_dump(exclude_none=True)
-
-        db = AsyncMock()
-        todos_db = AsyncMock()
-        todos_db.read_artifact_sync = MagicMock(return_value=None)
-
-        with patch(
-            "teleclaude.core.next_machine.prepare_steps.run_git_command",
-            return_value=(0, "abc123", ""),
-        ):
-            keep_going, instruction = await _prepare_dispatch(
-                db=db,
-                todos_db=todos_db,
-                slug="test-slug",
-                cwd="/repo",
-                phase=PreparePhase.GROUNDING_CHECK,
-                state=raw_state,
-            )
-
-        # Grounding is mechanical — must not target pair members for the check itself
-        # (stale update is different — that dispatches the plan writer)
-        if not keep_going:
-            # If stale, must target plan writer (B), not generic dispatch
-            assert "sess-b" in instruction or "next-prepare-draft" in instruction
+    assert "REQUIREMENTS HUMAN APPROVAL" in instruction
+    assert "telec todo artifacts read format-human requirements" in instruction
+    assert "telec todo stamp format-human --verdict approve --phase requirements_human_approval" in instruction
