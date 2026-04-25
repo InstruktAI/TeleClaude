@@ -53,6 +53,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+_artifact_changed_since_state = prepare_step_support.artifact_changed_since_state
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
@@ -72,6 +73,21 @@ async def _prepare_step_input_assessment(
     writer.audit.input_assessment.started_at = datetime.now(UTC).isoformat()
 
     if writer.state.artifacts.requirements.produced_at:
+        writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
+    new_digest = await _artifact_changed_since_state(
+        todos_db, slug, "requirements", writer.state.artifacts.requirements.digest
+    )
+    if new_digest:
+        writer.state.artifacts.requirements.digest = new_digest
+        apply_authoritative_signal(writer.state, "requirements_ready")
+        input_digest = await todos_db.artifact_digest(slug, "input")
+        _emit_prepare_event(
+            "domain.software-development.prepare.input_consumed",
+            {"slug": slug, "phase": "input_assessment", "digest": input_digest},
+        )
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
@@ -131,6 +147,16 @@ async def _prepare_step_triangulation(
     await _commit_writer(writer, todos_db, slug, state)
 
     if writer.state.artifacts.requirements.produced_at:
+        writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
+    new_req_digest = await _artifact_changed_since_state(
+        todos_db, slug, "requirements", writer.state.artifacts.requirements.digest
+    )
+    if new_req_digest:
+        writer.state.artifacts.requirements.digest = new_req_digest
+        apply_authoritative_signal(writer.state, "requirements_ready")
         writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
@@ -437,16 +463,10 @@ async def _prepare_step_test_spec_review(
         rounds = spec_review.rounds + 1
         spec_review.rounds = rounds
         spec_review.verdict = ""
-        # Block after exceeding max review rounds to prevent infinite cycles
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
             return False, format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
-        # Clear produced_at so derivation routes back to TEST_SPEC_BUILD on the next
-        # iteration. The builder will re-stamp it when the revised specs land.
         writer.state.artifacts.test_specs.produced_at = ""
-        # Count open findings for relay message (test_spec_review has no typed findings list,
-        # but the relay mechanic still carries a counter so the worker knows how many items
-        # to resolve from spec-review-findings.md).
         open_count = 0
         audit.completed_at = now
         audit.verdict = "needs_work"
@@ -537,6 +557,17 @@ async def _prepare_step_plan_drafting(
     if writer.state.artifacts.implementation_plan.produced_at:
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
+    new_plan_digest = await _artifact_changed_since_state(
+        todos_db, slug, "implementation-plan", writer.state.artifacts.implementation_plan.digest
+    )
+    if new_plan_digest:
+        writer.state.artifacts.implementation_plan.digest = new_plan_digest
+        apply_authoritative_signal(writer.state, "plan_ready")
+        writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(writer, todos_db, slug, state)
+        _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""
 
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
@@ -837,12 +868,8 @@ async def _handle_stale_grounding(
     if current_sha:
         grounding_mgr.refresh(current_sha=current_sha)
     else:
-        # Git failed — mark stale but leave base_sha alone so we re-check
-        # once the repo recovers. The plan_review reset below still forces
-        # forward motion on the derivation side.
         grounding_mgr.invalidate(reason=reason, changed_paths=changed_paths)
 
-    # Re-grounding means the plan must be refreshed and re-reviewed.
     apply_authoritative_signal(writer.state, "grounding_invalidated")
     await _commit_writer(writer, todos_db, slug, state)
 
@@ -897,6 +924,15 @@ async def _prepare_step_re_grounding(
     """RE_GROUNDING: refresh the plan against current truth before re-review."""
     writer = StateWriter(state)
     if writer.state.artifacts.implementation_plan.produced_at:
+        await _commit_writer(writer, todos_db, slug, state)
+        return True, ""
+
+    new_plan_digest = await _artifact_changed_since_state(
+        todos_db, slug, "implementation-plan", writer.state.artifacts.implementation_plan.digest
+    )
+    if new_plan_digest:
+        writer.state.artifacts.implementation_plan.digest = new_plan_digest
+        apply_authoritative_signal(writer.state, "plan_ready")
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
 
