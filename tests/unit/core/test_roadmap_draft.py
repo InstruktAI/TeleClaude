@@ -145,6 +145,69 @@ async def test_roadmap_projection_lazy_upcycles_legacy_v1_without_lifecycle_phas
 
 
 @pytest.mark.asyncio
+async def test_roadmap_normalizes_legacy_active_integration_phase_to_started(tmp_path: Path) -> None:
+    """Active slugs with old 12-phase mirror values must normalize to 'started'."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("active-item", description="In integration")
+        await database.write_state(
+            "active-item",
+            {
+                "schema_version": 2,
+                "phase": "in_progress",
+                "lifecycle_phase": "handed_off",
+                "integration_phase": "delivery_bookkeeping",
+            },
+        )
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+
+    assert len(todos) == 1
+    assert todos[0].slug == "active-item"
+    assert todos[0].integration_phase == "started"
+
+
+@pytest.mark.asyncio
+async def test_roadmap_normalizes_delivered_stale_integration_phase_to_delivered(tmp_path: Path) -> None:
+    """Delivered slugs with any stale integration_phase must normalize to 'delivered'."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("delivered-item", description="Done")
+        await database.write_state(
+            "delivered-item",
+            {
+                "schema_version": 2,
+                "phase": "in_progress",
+                "lifecycle_phase": "handed_off",
+                "integration_phase": "delivery_bookkeeping",
+            },
+        )
+        await database.deliver("delivered-item", commit="abc123")
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_delivered=True)
+
+    delivered = [t for t in todos if t.slug == "delivered-item"]
+    assert len(delivered) == 1
+    assert delivered[0].integration_phase == "delivered"
+
+
+@pytest.mark.asyncio
 async def test_roadmap_projection_defaults_missing_state_row_to_input_assessment(tmp_path: Path) -> None:
     """Roadmap assembly must tolerate roadmap entries that have no todo_state row yet."""
     project = tmp_path / "project"
