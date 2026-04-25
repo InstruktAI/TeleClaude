@@ -1,3 +1,10 @@
+---
+description: Claude Code Sub-Agents
+id: third-party/claude-code/sub-agents
+scope: project
+type: third-party
+---
+
 # Claude Code Sub-Agents
 
 ## Overview

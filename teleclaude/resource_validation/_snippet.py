@@ -34,6 +34,8 @@ from teleclaude.snippet_validation import (
 )
 
 _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
+_THIRD_PARTY_TYPE = "third-party"
+_THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +211,9 @@ def _validate_activation_trigger(path: Path, meta: Mapping[str, object], *, snip
 
 def validate_snippet(path: Path, content: str, project_root: Path, *, domains: set[str]) -> None:
     """Validate a single doc snippet. Collects validation findings via ``_error``."""
+    if _is_third_party_doc(path, project_root):
+        validate_third_party_doc(path, content, project_root)
+        return
     if (path.name == "index.md" and "baseline" in path.parts) or (
         path.name.startswith("baseline") and path.name.endswith(".md") and path.parent.name in ("global", "project")
     ):
@@ -500,6 +505,25 @@ def _validate_snippet_sections(  # pylint: disable=too-many-locals,too-many-bran
 # ---------------------------------------------------------------------------
 
 
+def _is_third_party_doc(path: Path, project_root: Path) -> bool:
+    try:
+        rel = path.resolve().relative_to(project_root.resolve())
+    except (OSError, ValueError):
+        return False
+    return len(rel.parts) >= 3 and rel.parts[0] == "docs" and rel.parts[1] == _THIRD_PARTY_TYPE
+
+
+def _expected_third_party_id(path: Path, project_root: Path) -> str | None:
+    if path.name in _THIRD_PARTY_INDEX_NAMES:
+        return None
+    try:
+        rel = path.resolve().relative_to((project_root / "docs" / _THIRD_PARTY_TYPE).resolve())
+    except (OSError, ValueError):
+        return None
+    rel_no_suffix = rel.with_suffix("")
+    return f"{_THIRD_PARTY_TYPE}/{rel_no_suffix.as_posix()}"
+
+
 def _extract_sources_section(lines: list[str]) -> list[str]:
     in_sources = False
     sources: list[str] = []
@@ -530,33 +554,80 @@ def _extract_markdown_link_url(value: str) -> str | None:
     return m.group(2) if m else None
 
 
+def _validate_third_party_frontmatter(path: Path, meta: Mapping[str, object], project_root: Path) -> None:
+    for field in ("id", "type", "scope", "description"):
+        if not isinstance(meta.get(field), str) or not meta.get(field):
+            _error("snippet_missing_frontmatter_field", path=str(path), field=field)
+
+    expected_id = _expected_third_party_id(path, project_root)
+    raw_id = meta.get("id")
+    if expected_id and isinstance(raw_id, str) and raw_id != expected_id:
+        _error("third_party_id_path_mismatch", path=str(path), expected_id=expected_id, snippet_id=raw_id)
+
+    raw_type = meta.get("type")
+    if isinstance(raw_type, str) and raw_type != _THIRD_PARTY_TYPE:
+        _error("third_party_invalid_type", path=str(path), value=raw_type)
+
+    raw_scope = meta.get("scope")
+    if isinstance(raw_scope, str) and raw_scope not in {"project", "global"}:
+        _error("third_party_invalid_scope", path=str(path), value=raw_scope)
+
+
+def _validate_third_party_sources(path: Path, lines: list[str]) -> None:
+    sources = _extract_sources_section(lines)
+    for source in sources:
+        if _is_context7_id(source):
+            continue
+        url = source
+        md_url = _extract_markdown_link_url(source)
+        if md_url:
+            url = md_url
+        if _is_web_url(url):
+            continue
+        _error("third_party_source_invalid", path=str(path), source=source)
+
+
+def validate_third_party_doc(path: Path, content: str, project_root: Path) -> None:
+    """Validate one third-party doc snippet."""
+    if path.name in _THIRD_PARTY_INDEX_NAMES:
+        return
+    if content.lstrip().startswith("---"):
+        try:
+            post = frontmatter.loads(content)
+            meta: Mapping[str, object] = post.metadata or {}
+            body = post.content
+        except Exception:  # pylint: disable=broad-exception-caught
+            meta = {}
+            body = content
+    else:
+        meta = {}
+        body = content
+
+    lines = body.splitlines()
+    first_non_empty = next((line for line in lines if line.strip()), "")
+    if not _H1_LINE.match(first_non_empty):
+        _error("snippet_missing_h1", path=str(path))
+    if not any(_H2_LINE.match(line) for line in lines):
+        _error("snippet_missing_h2", path=str(path))
+
+    _validate_third_party_frontmatter(path, meta, project_root)
+    _validate_third_party_sources(path, lines)
+
+
 def validate_third_party_docs(project_root: Path) -> None:
-    """Validate third-party doc sources exist and URLs are reachable."""
+    """Validate third-party doc frontmatter and sources."""
     third_party_root = project_root / "docs" / "third-party"
     if not third_party_root.exists():
         return
     for path in sorted(third_party_root.rglob("*.md")):
-        if path.name == "index.md":
+        if path.name in _THIRD_PARTY_INDEX_NAMES:
             continue
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
             _error("third_party_read_failed", path=str(path), error=str(exc))
             continue
-        lines = text.splitlines()
-        sources = _extract_sources_section(lines)
-        if not sources:
-            continue
-        for source in sources:
-            if _is_context7_id(source):
-                continue
-            url = source
-            md_url = _extract_markdown_link_url(source)
-            if md_url:
-                url = md_url
-            if _is_web_url(url):
-                continue
-            _error("third_party_source_invalid", path=str(path), source=source)
+        validate_third_party_doc(path, text, project_root)
 
 
 # ---------------------------------------------------------------------------

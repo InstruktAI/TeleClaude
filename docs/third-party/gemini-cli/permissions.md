@@ -1,3 +1,10 @@
+---
+description: Gemini CLI Permissions — Spec
+id: third-party/gemini-cli/permissions
+scope: project
+type: third-party
+---
+
 # Gemini CLI Permissions — Spec
 
 ## Purpose

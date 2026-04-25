@@ -1,3 +1,10 @@
+---
+description: Gemini CLI Commands
+id: third-party/gemini-cli/commands
+scope: project
+type: third-party
+---
+
 # Gemini CLI Commands
 
 ## Overview

@@ -1,3 +1,10 @@
+---
+description: WhatsApp Webhooks
+id: third-party/whatsapp/webhooks
+scope: project
+type: third-party
+---
+
 # WhatsApp Webhooks
 
 ## Purpose

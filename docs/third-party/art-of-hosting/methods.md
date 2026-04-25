@@ -1,3 +1,10 @@
+---
+description: Art of Hosting — Core Methods
+id: third-party/art-of-hosting/methods
+scope: project
+type: third-party
+---
+
 # Art of Hosting — Core Methods
 
 ## What it is

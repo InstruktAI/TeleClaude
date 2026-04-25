@@ -1,3 +1,10 @@
+---
+description: Art of Hosting — Harvesting
+id: third-party/art-of-hosting/harvesting
+scope: project
+type: third-party
+---
+
 # Art of Hosting — Harvesting
 
 ## What it is

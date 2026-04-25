@@ -1,8 +1,9 @@
 ---
-id: software-development/spec/json-schema-to-typescript-evaluation
-type: spec
+description: Evaluation of json-schema-to-typescript npm tool against Pydantic v2
+  schema patterns. Concluded not used — pure Python generator chosen instead.
+id: third-party/json-schema-to-typescript/overview
 scope: project
-description: Evaluation of json-schema-to-typescript npm tool against Pydantic v2 schema patterns. Concluded not used — pure Python generator chosen instead.
+type: third-party
 ---
 
 # json-schema-to-typescript — Overview

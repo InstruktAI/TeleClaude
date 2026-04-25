@@ -37,6 +37,7 @@ MARKDOWN_DIRS = [
 
 # Root-level markdown files to validate
 ROOT_MARKDOWN_FILES = ["README.md", "AGENTS.md"]
+THIRD_PARTY_TYPE = "third-party"
 
 
 def _validate_mermaid_diagrams(file_path: Path, content: str) -> list[str]:
@@ -102,6 +103,24 @@ def _find_line_number(content: str, block: str) -> int:
         return 0
 
 
+def _is_third_party_doc(file_path: Path) -> bool:
+    try:
+        rel = file_path.resolve().relative_to(REPO_ROOT.resolve())
+    except ValueError:
+        return False
+    return len(rel.parts) >= 3 and rel.parts[0] == "docs" and rel.parts[1] == THIRD_PARTY_TYPE
+
+
+def _expected_third_party_id(file_path: Path) -> str | None:
+    try:
+        rel = file_path.resolve().relative_to((REPO_ROOT / "docs" / THIRD_PARTY_TYPE).resolve())
+    except ValueError:
+        return None
+    if rel.name == "index.md":
+        return None
+    return f"{THIRD_PARTY_TYPE}/{rel.with_suffix('').as_posix()}"
+
+
 def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, domains: set[str]) -> list[str]:
     """Validate frontmatter completeness and correctness.
 
@@ -118,19 +137,26 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
             errors.append(f"{file_path}: Missing or invalid '{field}' in frontmatter")
 
     # Validate type against taxonomy
-    valid_types = list(TAXONOMY_TYPES)
+    is_third_party = _is_third_party_doc(file_path)
+    valid_types = [THIRD_PARTY_TYPE] if is_third_party else list(TAXONOMY_TYPES)
     snippet_type = metadata.get("type")
     if isinstance(snippet_type, str) and snippet_type not in valid_types:
         errors.append(f"{file_path}: Invalid type '{snippet_type}'. Must be one of: {', '.join(valid_types)}")
 
     # Validate scope
-    valid_scopes = ["global", "domain", "project"]
+    valid_scopes = ["global", "project"] if is_third_party else ["global", "domain", "project"]
     scope = metadata.get("scope")
     if isinstance(scope, str) and scope not in valid_scopes:
         errors.append(f"{file_path}: Invalid scope '{scope}'. Must be one of: {', '.join(valid_scopes)}")
 
     snippet_id = metadata.get("id")
     if isinstance(snippet_id, str):
+        if is_third_party:
+            expected_id = _expected_third_party_id(file_path)
+            if expected_id and snippet_id != expected_id:
+                errors.append(f"{file_path}: Snippet id '{snippet_id}' does not match path '{expected_id}'")
+            return errors
+
         parsed_id, id_error = validate_snippet_id_format(snippet_id, domains=domains)
         if id_error:
             errors.append(f"{file_path}: Invalid snippet id '{snippet_id}' ({id_error})")

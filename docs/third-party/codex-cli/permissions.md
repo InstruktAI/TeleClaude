@@ -1,8 +1,15 @@
+---
+description: Codex CLI Permissions — Spec
+id: third-party/codex-cli/permissions
+scope: project
+type: third-party
+---
+
 # Codex CLI Permissions — Spec
 
 ## Purpose
 
-Define the security configuration for the Codex CLI (`gpt-5.4`). This tool uses a "profile" system to manage the balance between autonomy (approvals) and safety (sandboxing).
+Define the security configuration for the Codex CLI (`gpt-5.5`). This tool uses a "profile" system to manage the balance between autonomy (approvals) and safety (sandboxing).
 
 ## Configuration File
 

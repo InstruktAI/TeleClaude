@@ -1,3 +1,10 @@
+---
+description: A2A Protocol Overview
+id: third-party/a2a-protocol/overview
+scope: project
+type: third-party
+---
+
 # A2A Protocol Overview
 
 ## What it is

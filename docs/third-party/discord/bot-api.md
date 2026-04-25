@@ -1,3 +1,10 @@
+---
+description: Discord Bot API - Help Desk Integration
+id: third-party/discord/bot-api
+scope: project
+type: third-party
+---
+
 # Discord Bot API - Help Desk Integration
 
 ## Purpose

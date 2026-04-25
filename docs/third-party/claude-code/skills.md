@@ -1,3 +1,10 @@
+---
+description: Claude Code Skills
+id: third-party/claude-code/skills
+scope: project
+type: third-party
+---
+
 # Claude Code Skills
 
 ## Overview

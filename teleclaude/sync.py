@@ -20,7 +20,6 @@ from teleclaude.resource_validation import (
     validate_all_artifacts,
     validate_all_snippets,
     validate_jobs_config,
-    validate_third_party_docs,
 )
 
 
@@ -41,20 +40,13 @@ def sync(
 
     # Phase 1: Validate
     validate_all_snippets(project_root)
-    validate_third_party_docs(project_root)
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
     findings = get_errors()
     if findings:
         _print_findings(findings, quiet=warn_only)
-        errors.extend(
-            (
-                f"{finding['code']}: {finding['path']} "
-                f"(ref={finding.get('ref', '')} expected={finding.get('expected', '')})"
-            )
-            for finding in findings
-        )
+        errors.extend(_format_finding(finding) for finding in findings)
 
     if errors:
         for error in errors:
@@ -149,6 +141,14 @@ def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[
         reason = finding.get("reason", "")
         grouped.setdefault(code, {}).setdefault(reason, []).append(path)
     return grouped
+
+
+def _format_finding(finding: dict[str, str]) -> str:
+    """Format one validation finding without dropping diagnostic fields."""
+    extras = ", ".join(f"{key}={value}" for key, value in finding.items() if key not in {"code", "path"})
+    if extras:
+        return f"{finding['code']}: {finding['path']} ({extras})"
+    return f"{finding['code']}: {finding['path']}"
 
 
 def _print_findings(findings: list[dict[str, str]], *, quiet: bool) -> None:

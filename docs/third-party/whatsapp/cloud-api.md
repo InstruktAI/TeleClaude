@@ -1,3 +1,10 @@
+---
+description: WhatsApp Business Cloud API
+id: third-party/whatsapp/cloud-api
+scope: project
+type: third-party
+---
+
 # WhatsApp Business Cloud API
 
 ## Purpose

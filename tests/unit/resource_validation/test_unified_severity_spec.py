@@ -130,7 +130,19 @@ class TestThirdPartyValidationUsesErrors:
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
         doc_path.write_text(
-            "# Guide\n\n## Sources\n- not-a-url\n- /context7/library\n- https://example.com\n",
+            (
+                "---\n"
+                "id: third-party/guide\n"
+                "type: third-party\n"
+                "scope: project\n"
+                "description: Guide\n"
+                "---\n"
+                "# Guide\n\n"
+                "## Sources\n"
+                "- not-a-url\n"
+                "- /context7/library\n"
+                "- https://example.com\n"
+            ),
             encoding="utf-8",
         )
 

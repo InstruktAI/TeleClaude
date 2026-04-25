@@ -1,3 +1,10 @@
+---
+description: Art of Hosting — Overview
+id: third-party/art-of-hosting/overview
+scope: project
+type: third-party
+---
+
 # Art of Hosting — Overview
 
 ## What it is

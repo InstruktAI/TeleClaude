@@ -50,6 +50,7 @@ from teleclaude.resource_validation._snippet import (
     resolve_ref_path,
     validate_all_snippets,
     validate_snippet,
+    validate_third_party_doc,
     validate_third_party_docs,
 )
 from teleclaude.types.todos import TodoState
@@ -91,6 +92,7 @@ __all__ = [
     "validate_artifact_refs_exist",
     "validate_jobs_config",
     "validate_snippet",
+    "validate_third_party_doc",
     "validate_third_party_docs",
     "validate_todo",
 ]

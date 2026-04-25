@@ -1,3 +1,10 @@
+---
+description: A2A API Methods
+id: third-party/a2a-protocol/api-methods
+scope: project
+type: third-party
+---
+
 # A2A API Methods
 
 ## What it is

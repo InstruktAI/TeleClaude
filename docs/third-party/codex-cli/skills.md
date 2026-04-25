@@ -1,3 +1,10 @@
+---
+description: Codex CLI Skills
+id: third-party/codex-cli/skills
+scope: project
+type: third-party
+---
+
 # Codex CLI Skills
 
 ## Overview

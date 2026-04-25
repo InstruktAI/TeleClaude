@@ -1,3 +1,10 @@
+---
+description: Gemini CLI Hooks
+id: third-party/gemini-cli/hooks
+scope: project
+type: third-party
+---
+
 # Gemini CLI Hooks
 
 ## Overview

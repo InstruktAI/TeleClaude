@@ -1,3 +1,10 @@
+---
+description: Gemini CLI Skills
+id: third-party/gemini-cli/skills
+scope: project
+type: third-party
+---
+
 # Gemini CLI Skills
 
 ## Overview

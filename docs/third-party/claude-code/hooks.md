@@ -1,3 +1,10 @@
+---
+description: Claude Code Hooks
+id: third-party/claude-code/hooks
+scope: project
+type: third-party
+---
+
 # Claude Code Hooks
 
 ## Overview

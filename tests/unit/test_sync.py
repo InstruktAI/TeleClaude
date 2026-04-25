@@ -97,6 +97,36 @@ class TestGroupFindings:
             }
         }
 
+    def test_format_finding_includes_all_extra_fields(self) -> None:
+        formatted = sync._format_finding(
+            {
+                "code": "snippet_missing_frontmatter_field",
+                "path": "docs/third-party/tool.md",
+                "field": "id",
+            }
+        )
+
+        assert formatted == "snippet_missing_frontmatter_field: docs/third-party/tool.md (field=id)"
+
+
+class TestSyncValidation:
+    def test_validate_only_fails_with_all_invalid_third_party_docs(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        docs_root = tmp_path / "docs" / "third-party"
+        docs_root.mkdir(parents=True)
+        (docs_root / "one.md").write_text("# One\n\n## Sources\n- https://example.com\n", encoding="utf-8")
+        (docs_root / "two.md").write_text("# Two\n\n## Sources\n- https://example.com\n", encoding="utf-8")
+
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _: None)
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
+
+        assert sync.sync(tmp_path, validate_only=True) is False
+        out = capsys.readouterr().out
+        assert str(docs_root / "one.md") in out
+        assert str(docs_root / "two.md") in out
+
 
 class TestSyncBootstrapOrdering:
     def test_build_all_indexes_called_before_run_distribute(

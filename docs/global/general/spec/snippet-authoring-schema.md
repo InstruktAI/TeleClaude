@@ -26,13 +26,15 @@ Frontmatter (optional):
 - `visibility` — access classification: `public` or `internal`. Defaults to `internal` when omitted. Admin callers see all snippets; non-admin callers see only `public` snippets.
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 
+Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
+
 Document structure:
 
 - H1 title with type suffix (e.g., `# Session Lifecycle — Design`).
 - `## Required reads` — immediately after H1, with inline `@` references for hard dependencies. These are expanded (inlined) at build time.
 - Required H2 sections per taxonomy (see table below).
 - Additional structure inside valid sections is allowed. Use subordinate headings such as `###` when they improve clarity; schema validation constrains the required H2 section names, not the internal organization within them.
-- `## Sources` — required for third-party docs, with web links or Context7 snippet IDs.
+- `## Sources` — third-party docs may include web links or Context7 snippet IDs when authoritative references are available.
 - `## See Also` — optional soft references (not inlined at build time).
 
 ### Required H2 sections per taxonomy
@@ -65,7 +67,9 @@ Global snippets are distributed to `~/.teleclaude/docs/` and available to all pr
 ## Allowed values
 
 - `type`: principle, concept, policy, procedure, design, spec (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
+- Third-party `type`: third-party.
 - `scope`: global, domain, project.
+- Third-party `scope`: global, project.
 - `visibility`: public, internal. Default: `internal`.
 
 ## Known caveats

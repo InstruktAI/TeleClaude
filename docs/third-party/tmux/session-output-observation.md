@@ -1,3 +1,10 @@
+---
+description: tmux Session Output Observation
+id: third-party/tmux/session-output-observation
+scope: project
+type: third-party
+---
+
 # tmux Session Output Observation
 
 ## Purpose

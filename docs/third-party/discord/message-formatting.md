@@ -1,3 +1,10 @@
+---
+description: Discord Message Formatting
+id: third-party/discord/message-formatting
+scope: project
+type: third-party
+---
+
 # Discord Message Formatting
 
 ## Purpose

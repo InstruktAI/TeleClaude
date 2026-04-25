@@ -95,12 +95,76 @@ class TestSeeAlsoValidation:
 
 
 class TestThirdPartyValidation:
+    def test_accepts_valid_third_party_frontmatter(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
+        doc_path = tmp_path / "docs" / "third-party" / "library" / "guide.md"
+        doc_path.parent.mkdir(parents=True)
+        doc_path.write_text(
+            (
+                "---\n"
+                "id: third-party/library/guide\n"
+                "type: third-party\n"
+                "scope: project\n"
+                "description: Library guide\n"
+                "---\n"
+                "# Library Guide\n\n"
+                "## Sources\n"
+                "- https://example.com\n"
+            ),
+            encoding="utf-8",
+        )
+
+        _snippet.validate_snippet(
+            doc_path,
+            doc_path.read_text(encoding="utf-8"),
+            tmp_path,
+            domains={"software-development"},
+        )
+
+        assert resource_models.get_errors() == []
+
+    def test_reports_all_missing_third_party_frontmatter_fields(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
+        doc_path = tmp_path / "docs" / "third-party" / "guide.md"
+        doc_path.parent.mkdir(parents=True)
+        doc_path.write_text("# Guide\n\n## Sources\n- https://example.com\n", encoding="utf-8")
+
+        _snippet.validate_snippet(
+            doc_path,
+            doc_path.read_text(encoding="utf-8"),
+            tmp_path,
+            domains={"software-development"},
+        )
+
+        assert [
+            (error["code"], error.get("field"))
+            for error in resource_models.get_errors()
+            if error["code"] == "snippet_missing_frontmatter_field"
+        ] == [
+            ("snippet_missing_frontmatter_field", "id"),
+            ("snippet_missing_frontmatter_field", "type"),
+            ("snippet_missing_frontmatter_field", "scope"),
+            ("snippet_missing_frontmatter_field", "description"),
+        ]
+
     def test_reports_non_url_source_entries_as_errors(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
         doc_path.write_text(
-            "# Guide\n\n## Sources\n- not-a-url\n- /context7/library\n- https://example.com\n",
+            (
+                "---\n"
+                "id: third-party/guide\n"
+                "type: third-party\n"
+                "scope: project\n"
+                "description: Guide\n"
+                "---\n"
+                "# Guide\n\n"
+                "## Sources\n"
+                "- not-a-url\n"
+                "- /context7/library\n"
+                "- https://example.com\n"
+            ),
             encoding="utf-8",
         )
 

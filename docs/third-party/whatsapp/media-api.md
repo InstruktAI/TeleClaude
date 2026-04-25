@@ -1,3 +1,10 @@
+---
+description: WhatsApp Media API
+id: third-party/whatsapp/media-api
+scope: project
+type: third-party
+---
+
 # WhatsApp Media API
 
 ## Purpose

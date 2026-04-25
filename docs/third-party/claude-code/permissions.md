@@ -1,3 +1,10 @@
+---
+description: Claude Code Permissions — Spec
+id: third-party/claude-code/permissions
+scope: project
+type: third-party
+---
+
 # Claude Code Permissions — Spec
 
 ## Purpose

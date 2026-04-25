@@ -1,3 +1,10 @@
+---
+description: Claude Code Commands
+id: third-party/claude-code/commands
+scope: project
+type: third-party
+---
+
 # Claude Code Commands
 
 ## Overview
