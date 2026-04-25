@@ -48,27 +48,6 @@ async def commit_writer(
     state.update(payload)
 
 
-async def artifact_changed_since_state(
-    todos_db: TodosDb,
-    slug: str,
-    artifact_name: str,
-    state_digest: str,
-) -> str | None:
-    """Return the new DB digest when a worker produced new artifact content.
-
-    Compares the current DB digest against the state digest (hydrated by
-    mark-phase or set by a prior lifecycle pass). Returns the new digest when
-    the artifact is new or changed, None when the artifact is absent or
-    unchanged (stale from a previous pass).
-    """
-    if not await todos_db.artifact_exists(slug, artifact_name):
-        return None
-    db_digest = await todos_db.artifact_digest(slug, artifact_name)
-    if db_digest and (not state_digest or db_digest != state_digest):
-        return db_digest
-    return None
-
-
 async def prepare_step_prepared(db: Db, slug: str) -> tuple[bool, str]:
     """PREPARED: terminal success state. Emits cleanup for all live slug sessions + self-end."""
     live_sessions = await find_all_live_sessions_for_slug(db, slug)

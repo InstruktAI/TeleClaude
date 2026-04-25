@@ -61,16 +61,13 @@ def _base_state(
 
 
 @pytest.mark.asyncio
-async def test_input_assessment_dispatches_when_digest_matches_db() -> None:
-    """After mark-phase rewind, state digest is hydrated from DB. When it matches
-    the DB digest, the artifact is stale — dispatch discovery instead of advancing."""
+async def test_input_assessment_dispatches_when_produced_at_empty() -> None:
+    """After mark-phase rewind, produced_at is cleared. The handler must dispatch
+    discovery even when artifacts exist in the DB — produced_at is the sole gate."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="req-digest")
     todos_db.write_state = AsyncMock()
 
-    # State digest matches DB digest — mark-phase hydration scenario
     state = _base_state(requirements_digest="req-digest", input_digest="input-digest")
 
     with (
@@ -86,53 +83,12 @@ async def test_input_assessment_dispatches_when_digest_matches_db() -> None:
 
 
 @pytest.mark.asyncio
-async def test_input_assessment_advances_when_db_digest_differs_from_state() -> None:
-    """When a worker writes new requirements (digest differs from state), the handler
-    detects the change and advances — the normal re-entry flow."""
+async def test_input_assessment_advances_when_produced_at_set() -> None:
+    """When produced_at is set (by a requirements_ready stamp), the handler applies
+    the authoritative signal and advances."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="new-digest")
-    todos_db.write_state = AsyncMock()
-
-    # State has old digest, DB has new — worker wrote new content
-    state = _base_state(requirements_digest="old-digest", input_digest="input-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_input_assessment(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-@pytest.mark.asyncio
-async def test_input_assessment_advances_when_state_digest_empty() -> None:
-    """When state has no prior digest (fresh todo), any DB artifact is new — advance."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="req-digest")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(requirements_digest="", input_digest="input-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_input_assessment(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-@pytest.mark.asyncio
-async def test_input_assessment_advances_when_produced_at_is_set() -> None:
-    """INPUT_ASSESSMENT advances when requirements.produced_at is set — the phase was
-    completed in this lifecycle pass (normal stamp-driven flow)."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="input-digest")
     todos_db.write_state = AsyncMock()
 
     state = _base_state(
@@ -141,7 +97,10 @@ async def test_input_assessment_advances_when_produced_at_is_set() -> None:
         input_digest="input-digest",
     )
 
-    with patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock):
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+    ):
         keep_going, _ = await _prepare_step_input_assessment(db, todos_db, "my-slug", "/repo", state)
 
     assert keep_going is True
@@ -151,19 +110,17 @@ async def test_input_assessment_advances_when_produced_at_is_set() -> None:
 
 
 @pytest.mark.asyncio
-async def test_triangulation_dispatches_when_digest_matches_db() -> None:
-    """TRIANGULATION must dispatch discovery when state digest matches DB digest."""
+async def test_triangulation_dispatches_when_produced_at_empty() -> None:
+    """TRIANGULATION dispatches discovery when produced_at is empty."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="req-digest")
+    todos_db.artifact_exists = AsyncMock(return_value=False)
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="triangulation", requirements_digest="req-digest")
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
         patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
@@ -174,15 +131,17 @@ async def test_triangulation_dispatches_when_digest_matches_db() -> None:
 
 
 @pytest.mark.asyncio
-async def test_triangulation_advances_when_db_digest_differs() -> None:
-    """TRIANGULATION advances when worker wrote new requirements (digest changed)."""
+async def test_triangulation_advances_when_produced_at_set() -> None:
+    """TRIANGULATION advances when produced_at is set (stamp received)."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="new-digest")
     todos_db.write_state = AsyncMock()
 
-    state = _base_state(lifecycle_phase="triangulation", requirements_digest="old-digest")
+    state = _base_state(
+        lifecycle_phase="triangulation",
+        requirements_produced_at="2026-01-01T00:00:00+00:00",
+        requirements_digest="req-digest",
+    )
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
@@ -197,19 +156,16 @@ async def test_triangulation_advances_when_db_digest_differs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_drafting_dispatches_when_digest_matches_db() -> None:
-    """PLAN_DRAFTING must dispatch drafter when state digest matches DB digest."""
+async def test_plan_drafting_dispatches_when_produced_at_empty() -> None:
+    """PLAN_DRAFTING dispatches drafter when produced_at is empty."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="plan-digest")
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
         patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
@@ -220,15 +176,17 @@ async def test_plan_drafting_dispatches_when_digest_matches_db() -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_drafting_advances_when_db_digest_differs() -> None:
-    """PLAN_DRAFTING advances when worker wrote new plan (digest changed)."""
+async def test_plan_drafting_advances_when_produced_at_set() -> None:
+    """PLAN_DRAFTING advances when produced_at is set (stamp received)."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="new-plan-digest")
     todos_db.write_state = AsyncMock()
 
-    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="old-plan-digest")
+    state = _base_state(
+        lifecycle_phase="plan_drafting",
+        plan_produced_at="2026-01-01T00:00:00+00:00",
+        plan_digest="plan-digest",
+    )
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
@@ -243,12 +201,10 @@ async def test_plan_drafting_advances_when_db_digest_differs() -> None:
 
 
 @pytest.mark.asyncio
-async def test_re_grounding_dispatches_when_digest_matches_db() -> None:
-    """RE_GROUNDING must dispatch drafter when state digest matches DB digest."""
+async def test_re_grounding_dispatches_when_produced_at_empty() -> None:
+    """RE_GROUNDING dispatches drafter when produced_at is empty."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="plan-digest")
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
@@ -265,15 +221,17 @@ async def test_re_grounding_dispatches_when_digest_matches_db() -> None:
 
 
 @pytest.mark.asyncio
-async def test_re_grounding_advances_when_db_digest_differs() -> None:
-    """RE_GROUNDING advances when worker updated the plan (digest changed)."""
+async def test_re_grounding_advances_when_produced_at_set() -> None:
+    """RE_GROUNDING advances when produced_at is set (stamp received)."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=True)
-    todos_db.artifact_digest = AsyncMock(return_value="new-plan-digest")
     todos_db.write_state = AsyncMock()
 
-    state = _base_state(lifecycle_phase="re_grounding", plan_digest="old-plan-digest")
+    state = _base_state(
+        lifecycle_phase="re_grounding",
+        plan_produced_at="2026-01-01T00:00:00+00:00",
+        plan_digest="plan-digest",
+    )
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),

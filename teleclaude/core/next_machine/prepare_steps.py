@@ -53,7 +53,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_artifact_changed_since_state = prepare_step_support.artifact_changed_since_state
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
@@ -73,15 +72,6 @@ async def _prepare_step_input_assessment(
     writer.audit.input_assessment.started_at = datetime.now(UTC).isoformat()
 
     if writer.state.artifacts.requirements.produced_at:
-        writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
-
-    new_digest = await _artifact_changed_since_state(
-        todos_db, slug, "requirements", writer.state.artifacts.requirements.digest
-    )
-    if new_digest:
-        writer.state.artifacts.requirements.digest = new_digest
         apply_authoritative_signal(writer.state, "requirements_ready")
         input_digest = await todos_db.artifact_digest(slug, "input")
         _emit_prepare_event(
@@ -101,8 +91,8 @@ async def _prepare_step_input_assessment(
             )
         message = (
             f"Continue pair-based discovery for {slug}. "
-            f"Write requirements via `telec todo artifacts write {slug} requirements <content>` "
-            f"when the pair has converged."
+            f"Write requirements via `telec todo artifacts write {slug} requirements <content>`, "
+            f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -147,15 +137,6 @@ async def _prepare_step_triangulation(
     await _commit_writer(writer, todos_db, slug, state)
 
     if writer.state.artifacts.requirements.produced_at:
-        writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
-
-    new_req_digest = await _artifact_changed_since_state(
-        todos_db, slug, "requirements", writer.state.artifacts.requirements.digest
-    )
-    if new_req_digest:
-        writer.state.artifacts.requirements.digest = new_req_digest
         apply_authoritative_signal(writer.state, "requirements_ready")
         writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
@@ -167,7 +148,8 @@ async def _prepare_step_triangulation(
         writer_slot, reviewer_slot = pair_slots
         message = (
             f"Write requirements for {slug} from the converged pair discovery. "
-            f"Use `telec todo artifacts write {slug} requirements <content>` when complete."
+            f"Use `telec todo artifacts write {slug} requirements <content>`, "
+            f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -198,8 +180,9 @@ async def _prepare_step_triangulation(
                     else "There is no input artifact; work from the existing draft context and artifacts, "
                 )
                 + "incorporate a complementary "
-                "perspective, and rewrite requirements via "
-                f"`telec todo artifacts write {slug} requirements <content>`."
+                "perspective, rewrite requirements via "
+                f"`telec todo artifacts write {slug} requirements <content>`, "
+                f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -555,15 +538,6 @@ async def _prepare_step_plan_drafting(
     writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
 
     if writer.state.artifacts.implementation_plan.produced_at:
-        writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
-
-    new_plan_digest = await _artifact_changed_since_state(
-        todos_db, slug, "implementation-plan", writer.state.artifacts.implementation_plan.digest
-    )
-    if new_plan_digest:
-        writer.state.artifacts.implementation_plan.digest = new_plan_digest
         apply_authoritative_signal(writer.state, "plan_ready")
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
@@ -576,7 +550,8 @@ async def _prepare_step_plan_drafting(
         await _commit_writer(writer, todos_db, slug, state)
         message = (
             f"Draft the implementation plan for {slug}. "
-            f"Write it via `telec todo artifacts write {slug} implementation-plan <content>`."
+            f"Write it via `telec todo artifacts write {slug} implementation-plan <content>`, "
+            f"then stamp via `telec todo stamp {slug} --stamp-type plan_ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -602,8 +577,8 @@ async def _prepare_step_plan_drafting(
             note=(
                 f"Ground the approved requirements for {slug}. If the work is atomic, "
                 f"write the implementation plan via "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`, then call "
-                f"`telec todo prepare {slug}` so the machine can continue from the written plan. "
+                f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
+                f"stamp via `telec todo stamp {slug} --stamp-type plan_ready`. "
                 "If planning shows the parent is too large, split it into child todos and "
                 "update the holder breakdown."
             ),
@@ -876,9 +851,8 @@ async def _handle_stale_grounding(
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
     note = (
         f"Update the implementation plan via `telec todo artifacts read {slug} implementation-plan` + "
-        f"`telec todo artifacts write {slug} implementation-plan <content>`, then call "
-        f"`telec todo prepare {slug}` so the machine can continue from the updated plan "
-        f"against current codebase. {changed_note}"
+        f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
+        f"stamp via `telec todo stamp {slug} --stamp-type plan_ready`. {changed_note}"
     )
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
     if pair_slots is not None:
@@ -924,14 +898,6 @@ async def _prepare_step_re_grounding(
     """RE_GROUNDING: refresh the plan against current truth before re-review."""
     writer = StateWriter(state)
     if writer.state.artifacts.implementation_plan.produced_at:
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
-
-    new_plan_digest = await _artifact_changed_since_state(
-        todos_db, slug, "implementation-plan", writer.state.artifacts.implementation_plan.digest
-    )
-    if new_plan_digest:
-        writer.state.artifacts.implementation_plan.digest = new_plan_digest
         apply_authoritative_signal(writer.state, "plan_ready")
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
@@ -948,7 +914,7 @@ async def _prepare_step_re_grounding(
                 f"Re-ground {slug} and rewrite the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
                 f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then call `telec todo prepare {slug}` so the machine can continue from the updated plan."
+                f"then stamp via `telec todo stamp {slug} --stamp-type plan_ready`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),

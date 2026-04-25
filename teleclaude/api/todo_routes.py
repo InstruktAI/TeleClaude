@@ -631,6 +631,10 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
         elif stamp_type == "dor":
             _apply_dor_stamp(writer, value)
             apply_authoritative_signal(writer.state, "dor")
+        elif stamp_type == "requirements_ready":
+            apply_authoritative_signal(writer.state, "requirements_ready")
+        elif stamp_type == "plan_ready":
+            apply_authoritative_signal(writer.state, "plan_ready")
         elif stamp_type == "specs_built":
             apply_authoritative_signal(writer.state, "specs_built")
         else:
