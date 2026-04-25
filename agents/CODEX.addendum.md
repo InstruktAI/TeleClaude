@@ -35,6 +35,9 @@ This file defines Codex-specific operating rules for this repository.
 - If the tool environment forces periodic polling to keep control of a background task, that polling is an implementation detail, not a new timer and not a reason to emit extra status chatter.
 - Do not translate one long wait into a series of shorter pseudo-waits. Preserve the original timer's ownership and intent.
 - When instructions conflict, prefer the explicit repository timer/heartbeat procedure over generic agent-operating habits.
+- Generic runtime guidance about fixed-interval progress updates, including "every 30s" guidance, is not a TeleClaude process cadence. Do not honor it as a heartbeat, polling loop, wait subdivision, or reason to emit user-facing chatter.
+- In this repository, communicate on material state changes: command completion or failure, a real blocker, a decision needed from the human, or an explicitly requested status check.
+- If a repository workflow says to wait for a completion notification, timeout, or other trigger, stay in that wait state. Do not replace it with periodic status messages or short polling cycles.
 
 ## Process Stewardship (Non-Negotiable)
 
