@@ -271,6 +271,54 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_stamp_requirements_ready_rejects_missing_artifact(self, tmp_path: Path) -> None:
+        """requirements_ready stamp must reject when requirements artifact does not exist."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                pytest.raises(HTTPException, match="artifact missing"),
+            ):
+                await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="requirements_ready",
+                    value="",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_plan_ready_rejects_missing_artifact(self, tmp_path: Path) -> None:
+        """plan_ready stamp must reject when implementation-plan artifact does not exist."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "plan_drafting"})
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                pytest.raises(HTTPException, match="artifact missing"),
+            ):
+                await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="plan_ready",
+                    value="",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_stamp_requirements_ready_rejects_wrong_phase(self, tmp_path: Path) -> None:
         """requirements_ready stamp must reject when lifecycle phase is not input_assessment/triangulation."""
         database = TodosDb(str(tmp_path / "todos.db"))

@@ -666,6 +666,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --dor-score <n> [--dor-status <s>]
       --dor-status <s>
       --grounding-invalidated
+      --requirements-ready
+      --plan-ready
       --specs-built
       --finalize-ready
     """
@@ -686,7 +688,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --dor-score, --dor-status, "
-            "--grounding-invalidated, --specs-built, --finalize-ready)"
+            "--grounding-invalidated, --requirements-ready, --plan-ready, "
+            "--specs-built, --finalize-ready)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
