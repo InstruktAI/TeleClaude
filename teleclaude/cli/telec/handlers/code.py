@@ -231,6 +231,9 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "     Otherwise dispatch a fresh one:\n"
         "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
         " --agent <agent>\n"
+        "     BLOCKING: Do not proceed, end sessions, or report completion until the\n"
+        "     reviewer stamps a verdict. If REQUEST CHANGES, fix and re-submit to the\n"
+        "     same reviewer. Only an APPROVE verdict closes the review gate.\n"
         "\n"
         "Explain which classification applies and why.",
         file=sys.stderr,
