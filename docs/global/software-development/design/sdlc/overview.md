@@ -59,7 +59,8 @@ The lifecycle is designed for autonomy without losing rigor.
 
 ### Prepare
 
-Prepare turns a problem impulse into aligned build artifacts.
+Prepare turns a problem impulse into aligned build artifacts through a
+persistent pair of workers.
 
 Produces:
 
@@ -69,10 +70,12 @@ Produces:
 
 Rigor is preserved by:
 
+- pair-based discovery that surfaces hidden assumptions before writing
 - converging requirements before downstream work
+- human approval of requirements before specs begin
 - keeping specs close to requirements while context is hot
 - deriving the plan from both requirements and specs
-- using lead/support counter-pressure during artifact authoring
+- turn-based writer/reviewer accountability for each artifact
 
 ### Work
 
@@ -111,23 +114,27 @@ The lifecycle uses two stable lenses:
 - `B`: rigor, precision, structure, execution realism
 
 The lens is authoritative. The current default mapping is `A` = Claude,
-`B` = Codex — but the lenses define the roles, not the vendors.
+`B` = Codex — but the lenses define who the workers ARE, not the vendors.
 
-Lead/support by artifact or step:
+During discovery, there are no roles — both lenses explore freely. Roles
+(writer, reviewer) are assigned only when an artifact needs to be produced.
 
-| Lifecycle element     | Lead | Support |
-| --------------------- | ---- | ------- |
-| `requirements`        | `A`  | `B`     |
-| `test-specs`          | `A`  | `B`     |
-| `implementation-plan` | `B`  | `A`     |
-| `build`               | `B`  | `A`     |
-| `review`              | `A`  | `B`     |
-| `fix`                 | `B`  | `A`     |
+Writer/reviewer by artifact or step:
 
-Integration does not follow the lead/support split. Both lenses are active
+| Lifecycle element     | Writer | Reviewer | Mode       |
+| --------------------- | ------ | -------- | ---------- |
+| `discovery`           | —      | —        | pair-based |
+| `requirements`        | `A`    | `B`      | turn-based |
+| `test-specs`          | `A`    | `B`      | turn-based |
+| `implementation-plan` | `B`    | `A`      | turn-based |
+| `build`               | `B`    | —        | turn-based |
+| `review`              | —      | `A`      | turn-based |
+| `fix`                 | `B`    | —        | turn-based |
+
+Integration does not follow the writer/reviewer split. Both lenses are active
 simultaneously: `A` guards whether landing preserves intended system behavior,
 `B` guards whether the sequencing and cutover are mechanically safe. Neither
-leads — the integration decision requires both perspectives at once.
+writes alone — the integration decision requires both perspectives at once.
 
 ### Shared rigor model
 
@@ -135,7 +142,8 @@ The lifecycle preserves rigor by combining:
 
 - explicit artifact authority
 - explicit review and approval boundaries
-- lead/support counter-pressure from opposing lenses
+- pair-based discovery that surfaces what one perspective would miss
+- turn-based production with review from the other lens
 - aggressive supporting automation that computes facts for judgment
 
 ### Persistent quality focus points

@@ -3,7 +3,7 @@ id: 'software-development/design/sdlc/prepare'
 type: 'design'
 domain: 'software-development'
 scope: 'global'
-description: 'Prepare phase design: artifact production, role focus, and rigor boundaries for requirements, test specs, and implementation plans.'
+description: 'Prepare phase design: pair-based discovery, turn-based artifact production, and human approval boundaries.'
 ---
 
 # Prepare — Design
@@ -17,15 +17,19 @@ description: 'Prepare phase design: artifact production, role focus, and rigor b
 Define how the prepare phase produces the aligned artifacts that downstream work
 must consume.
 
-Prepare exists to turn a problem impulse into build-ready truth.
+Prepare exists to turn a problem impulse into build-ready truth. It does this
+through a persistent pair of workers who explore the problem together and then
+produce artifacts in turns.
 
 ## Inputs/Outputs
 
 **Inputs**
 
-- human-provided input and framing
-- explicit structural or codebase context where available
-- existing lifecycle state and artifacts
+- whatever the todo carries: a brain dump (`input`), existing `requirements`,
+  or any other starting state — all treated as input to the process
+- the codebase (ground truth)
+- the roadmap (signal about project direction and adjacent work)
+- applicable documentation and domain context
 
 **Outputs**
 
@@ -37,146 +41,88 @@ Prepare exists to turn a problem impulse into build-ready truth.
 
 - `requirements` and `test-specs` remain in the same hot scope.
 - `implementation-plan` is derived from both `requirements` and `test-specs`.
-- Each artifact is only considered ready when the supporting lens has challenged
-  it and accepted it.
+- Each artifact is only considered ready when the other pair member has reviewed
+  and accepted it.
+- The human approves requirements before downstream work begins.
 - Prepare must not hand downstream work a cold reinterpretation of upstream
   truth.
-- Humans may enter directly at the input or requirements boundary, but prepare
-  must always converge to explicit artifacts before work begins.
 - Automation supplies supporting facts for judgment; it does not decide scope,
   trade-offs, or design quality on its own.
 
 ## Primary flows
 
-### Human touchpoints
+### The pair
 
-Prepare begins from a human problem impulse.
+Prepare is done by a persistent pair of two workers. They stay together across
+the full prepare flow.
 
-Typical patterns:
+Each worker naturally brings a different lens:
 
-- the human provides minimal `input`, then AI develops the prepare artifacts
-- the human co-drives requirements directly with AI, effectively skipping a
-  separate low-fidelity input handoff
+- `A`: intent, scope, meaning, outcome fidelity
+- `B`: rigor, precision, structure, execution realism
 
-In both cases, rigor comes from converging to explicit artifacts rather than
-from preserving the original shape of the handoff.
+The lenses describe who they ARE, not a role they are assigned. During
+discovery, there are no roles — both explore freely through their natural
+perspective. Roles (writer, reviewer) are assigned only when it is time to
+produce an artifact.
 
-### Requirements
+### Discovery (pair-based)
 
-Goal:
+Both workers explore the problem together. No roles, no assignments. They read
+the input, check the codebase, check the roadmap, surface hidden assumptions,
+challenge each other's thinking, and converge on understanding.
 
-- capture the real problem, intended outcome, constraints, and scope
+This is how humans work: they discuss first. The quality comes from two
+perspectives seeing what one would miss.
 
-Lead/support:
+Discovery is the only pair-based step. It produces shared understanding, not an
+artifact. The artifact comes after.
 
-- `A` leads
-- `B` supports
+### Artifact production (turn-based)
 
-How rigor is preserved:
+After discovery, artifacts are produced in turns: one writes, the other reviews.
 
-- `A` keeps intent and meaning honest
-- `B` pressure-tests ambiguity, contradiction, and feasibility
+The writer records what was discussed and agreed on. The reviewer checks whether
+the recording is complete and accurate. The review is lightweight because the
+reviewer was present during discovery — it is confirmation, not cold evaluation.
 
-Automation supplies:
+| Artifact              | Writer | Reviewer | What is checked                                     |
+| --------------------- | ------ | -------- | --------------------------------------------------- |
+| `requirements`        | `A`    | `B`      | Did the writer capture the full discussed intent?   |
+| `test-specs`          | `A`    | `B`      | Do the specs cover what was agreed on?              |
+| `implementation-plan` | `B`    | `A`      | Is the execution plan faithful to intent and specs? |
 
-- structural context where available
-- codebase facts, dependency facts, and other mechanically derivable support
+### Human approval
 
-Human/AI touchpoint:
+The human approves requirements before downstream work begins. This is explicit
+and non-optional.
 
-- humans may directly shape requirements here
-- AI carries most drafting and refinement work once the handoff is explicit
+After the pair writes and reviews requirements, the human reads them. The human
+may talk directly to the writer to add or correct things. When the human is
+satisfied, the orchestrator stamps approval and the machine continues.
 
-Exit condition:
+The human is part of the loop, not an afterthought.
 
-- the requirements artifact is concrete enough that downstream acceptance can be
-  specified without relying on implicit memory or conversational residue
+### Gate (pair self-assessment)
 
-### Test specs
-
-Goal:
-
-- turn intent into explicit acceptance boundaries, coverage, edge cases,
-  invariants, and failure behavior
-
-Lead/support:
-
-- `A` leads
-- `B` supports
-
-How rigor is preserved:
-
-- specs stay close to requirements while context is hot
-- `B` pressure-tests precision, completeness, and edge coverage
-
-Automation supplies:
-
-- structural and test-adjacency context where available
-- supporting evidence about touched boundaries, known contracts, and existing
-  test surfaces
-
-Human/AI touchpoint:
-
-- AI does most of the specification work
-- humans enter when acceptance itself requires judgment, clarification, or
-  reprioritization
-
-Exit condition:
-
-- the acceptance boundary is explicit enough that implementation cannot honestly
-  claim success by satisfying only a narrow or convenient subset of intent
-
-### Implementation plan
-
-Goal:
-
-- turn `requirements` and `test-specs` into a buildable execution map
-
-Lead/support:
-
-- `B` leads
-- `A` supports
-
-How rigor is preserved:
-
-- `B` drives sequencing, decomposition, and dependency realism
-- `A` checks that execution still serves the intended outcome and value
-
-Automation supplies:
-
-- supporting structural context
-- impact and dependency evidence where available
-- freshness and scope inputs that can be computed mechanically
-
-Human/AI touchpoint:
-
-- AI does most plan decomposition and sequencing
-- humans enter when sequencing, trade-offs, or risk acceptance need explicit
-  judgment
-
-Exit condition:
-
-- the plan is buildable, realistic, and still faithful to both requirements and
-  test specs
-
-### Prepare emphasis matrix
-
-| Artifact              | Main question                                     | Lead | Support | Rigor mechanism                                                        |
-| --------------------- | ------------------------------------------------- | ---- | ------- | ---------------------------------------------------------------------- |
-| `requirements`        | What problem are we truly solving?                | `A`  | `B`     | intent is challenged for ambiguity, contradiction, and feasibility     |
-| `test-specs`          | What must be true before we can call this solved? | `A`  | `B`     | acceptance stays hot to intent and is pressure-tested for completeness |
-| `implementation-plan` | How do we realize that truth in a buildable way?  | `B`  | `A`     | execution structure is challenged for fidelity to intended outcome     |
+After all artifacts are produced and reviewed, the pair checks their own work
+against Definition of Ready. This is self-assessment — the pair evaluates
+whether what they produced is actually ready to build. It is not an external
+audit by a third party.
 
 ## Failure modes
 
-- requirements stay vague and shift silently downstream
+- requirements stay vague because discovery was shallow or cut short
+- the writer misses something from the discussion and the reviewer does not
+  catch it
 - specs become implementation-shaped rather than intent-shaped
-- the plan is written from one upstream artifact and drifts from the other
-- support becomes passive instead of actively challenging the artifact
+- the plan drifts from requirements and specs because it was written without
+  the full upstream context
+- human approval is skipped or treated as a rubber stamp
 - automation is mistaken for judgment and allowed to set scope or accept weak
   reasoning on its own
 
 ## See Also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md —
-  operational steps for executing the prepare phase
+  the actual process steps for executing prepare

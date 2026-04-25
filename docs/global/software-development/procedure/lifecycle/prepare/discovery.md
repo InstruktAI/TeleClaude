@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/discovery'
 type: 'procedure'
 domain: 'software-development'
 scope: 'global'
-description: 'Requirements discovery phase for next-prepare. Produces requirements from input using solo or triangulated discovery.'
+description: 'Pair-based discovery phase. Both workers explore the problem together and converge before requirements are written.'
 ---
 
 # Prepare Discovery — Procedure
@@ -16,143 +16,121 @@ description: 'Requirements discovery phase for next-prepare. Produces requiremen
 
 ## Goal
 
-Derive `requirements.md` from `input.md`, codebase grounding, and applicable
-documentation. Discovery may run either:
+You are part of a pair. Both of you received the same input and are linked via
+direct conversation. Your job is to explore the problem together — surface
+hidden assumptions, check against reality, resolve unknowns, and converge on
+what the requirements should be.
 
-- **solo** when one architect already has enough grounding to write trustworthy
-  requirements, or
-- **triangulated** when the input still carries substantial ambiguity, hidden
-  assumptions, or unresolved architectural tension.
+Discovery is pair-based. There are no roles during discovery. Both workers
+contribute freely through their natural perspective. You discuss, challenge
+each other, and converge. After convergence, the orchestrator assigns a writer
+to record the agreed requirements.
 
-This phase produces requirements only. Implementation planning and todo breakdown
-belong to the later draft phase.
+This phase produces shared understanding. The writer records that understanding
+as `requirements.md` after the pair converges.
 
 ## Preconditions
 
-1. `telec todo artifacts read {slug} input` exists with human thinking to derive from.
-2. The discovery worker knows its own agent type and can select a complementary
-   partner if triangulation is needed.
+1. The todo carries input — a brain dump, existing requirements, or any
+   starting state. All are treated as input to the pair's exploration.
+2. You are linked to your pair partner via direct conversation.
 3. `todos.db` roadmap is readable.
 4. Slug is active (not icebox, not delivered).
 
 ## Steps
 
-### 1. Read and ground
+### 1. Read and ground — together
 
-Read:
+Both workers read the same material:
 
-- `telec todo artifacts read {slug} input`
+- `telec todo artifacts read {slug} input` (or whatever starting artifacts exist)
 - any existing `telec todo artifacts read {slug} requirements-review-findings`
-- `todos.db` roadmap
-- the relevant code paths and adjacent patterns
+- `todos.db` roadmap — for signal about project direction and adjacent work
+- the relevant code paths and adjacent patterns (ground truth)
 - local docs needed to understand the domain constraints
 
 Apply the domain-context loading rule from the preparation artifact quality
-policy: identify which specs the input touches and load them before writing
-requirements. Domain specs are the ground truth — grounding, leakage detection,
-and review-awareness cannot be evaluated without them.
+policy: identify which specs the input touches and load them before discussing.
 
 ### 1b. Fix mode (when dispatched with "FIX MODE")
 
-When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
-fresh derivation:
+When the dispatch note starts with "FIX MODE", this is a targeted revision, not
+a fresh exploration:
 
 - Read the existing `telec todo artifacts read {slug} requirements` alongside the review findings.
-- Apply targeted fixes to address each finding. Preserve all unflagged content.
-- Do not re-derive from scratch — the existing requirements were already grounded.
-- Skip strategy selection (step 2) and triangulation (step 3); proceed directly to
-  the quality standard check (step 4) and write the updated requirements (step 5).
+- Discuss the findings together. Apply targeted fixes. Preserve unflagged content.
+- Skip fresh exploration. Proceed directly to the quality check (step 4) and
+  write (step 5).
 
-### 1c. Resolve unknowns
+### 2. Explore and surface
 
-Scan `input.md` for questions — anything that asks "how does X work?", "does X
-support Y?", "what happens when Z?" These are unknowns. They may be about
-third-party tools, internal APIs, runtime behavior, architectural constraints,
-or anything else the input doesn't already answer.
+This is the core of discovery. Both workers explore the problem through their
+natural lens. There are no assigned roles — both contribute freely.
 
-**Discovery owns resolving all unknowns, not deferring them.** A requirement
-that contains an unanswered question is defective — it pushes the unknown to the
-builder, who will discover it at build time when the cost of rework is highest.
+What you are looking for:
+
+- **Hidden assumptions** — things the input takes for granted that may not hold.
+  The human who wrote the input has context you don't — but they also have blind
+  spots. Surface what they didn't say.
+- **Hidden implications** — what does this change actually touch? What breaks?
+  What else needs to change? Check the codebase.
+- **Unknowns** — questions the input raises but doesn't answer. These must be
+  resolved during discovery, not deferred to the builder.
+- **Scope boundaries** — what is in, what is out, and why. Check against the
+  roadmap for adjacent work that overlaps or depends on this.
+- **Feasibility** — does the proposed approach actually work given the current
+  codebase and constraints?
+
+Discuss these via direct conversation. Challenge each other. One of you sees
+things the other doesn't — that is the whole point of having two perspectives.
+
+### 2b. Resolve unknowns
+
+**Discovery owns resolving all unknowns.** A requirement that contains an
+unanswered question is defective — it pushes the unknown to the builder.
 
 Resolve each unknown using the appropriate method:
 
-1. **Codebase investigation**: read the actual source, trace the call chain,
-   verify behavior from code. Most internal unknowns resolve here.
+1. **Codebase investigation**: read the source, trace the call chain, verify
+   behavior from code.
 2. **Existing documentation**: check consolidated docs (`telec docs index`,
-   `telec docs index --third-party`). If a doc already covers the question,
-   load it and extract the answer.
-3. **Third-party research**: when the unknown is about external tools or
-   libraries not yet documented, execute the third-party research procedure —
-   search authoritative sources, fetch, extract facts, and index findings.
-4. **Empirical testing**: when docs don't cover the question (flag
-   combinations, runtime behavior, edge cases), run the test and record the
-   findings. Document what was tested, what was observed, and what the
-   implications are for the requirements.
-5. **Blocker**: if an unknown cannot be resolved by any of the above, it is a
-   preparation blocker — write it to `dor-report.md` as a `needs_decision`
-   item. Do not convert it into a build-phase task. Unanswered unknowns are
-   preparation blockers, not build tasks.
+   `telec docs index --third-party`).
+3. **Third-party research**: for external tools not yet documented, execute the
+   third-party research procedure.
+4. **Empirical testing**: when docs don't cover it, run the test and record
+   findings.
+5. **Blocker**: if unresolvable, write it to `dor-report.md` as
+   `needs_decision`. Do not convert it into a build task.
 
-Only after all unknowns are resolved (or explicitly blocked) should the worker
-proceed to writing requirements. Requirements must reference findings, not
-restate questions.
+### 3. Converge
 
-### 2. Choose discovery strategy
-
-Decide how requirements should be produced:
-
-- Use **solo discovery** when the input is concrete enough that one grounded
-  architect can derive trustworthy requirements without burning extra cycles.
-- Use **triangulated discovery** when a second perspective is still needed to
-  expose hidden assumptions, missing constraints, or unresolved tensions.
-
-If triangulation is needed, the discovery worker spawns the complementary agent
-and converges with it before writing requirements.
-
-### 3. Triangulate only when needed
-
-When triangulation is chosen:
-
-- split research between codebase grounding and domain/intent grounding
-- compare findings directly
-- resolve tensions before writing requirements
+Discovery ends when both workers agree on what the requirements should be.
+Convergence is not a formal vote — it is the natural end of the discussion
+when both perspectives have been heard and tensions are resolved.
 
 Use DOR gates 1-3 as the convergence bar: intent/success, scope/size, and
 verification must all be satisfiable before discovery is done.
 
 ### 4. Requirements quality standard
 
-The converged `requirements.md` must satisfy all rules from the preparation
-artifact quality policy. In particular:
+The requirements the pair converged on must satisfy the preparation artifact
+quality policy:
 
-- **Completeness**: every intent expressed in `input.md` is captured as a
-  concrete requirement or explicitly deferred with justification.
-- **Testability**: each requirement has a verification path (test, observable
-  behavior, or measurable outcome). "Works correctly" is not testable.
-- **Grounding**: verify against the domain specs loaded in step 1, not against
-  general knowledge. Requirements that reference non-existent APIs, wrong schema
-  fields, or incorrect conventions are defective.
-- **Review-awareness**: apply the DoD-driven review-awareness rule from the
-  preparation artifact quality policy. Walk each DoD section and verify that the
-  requirements reflect the implications.
-- **No implementation leakage**: apply the implementation leakage rule from the
-  preparation artifact quality policy. Use the concrete signals and discriminator
-  test to identify leakage.
-- **Inferences marked**: anything inferred from codebase or docs rather than
-  explicitly stated in `input.md` is marked `[inferred]`. The human can
-  correct inferences without searching for them.
-- **Unknowns resolved**: every question from `input.md` is answered with
-  findings, not restated as a requirement. A requirement that says "empirical
-  testing required", "research needed to determine X", or "to be confirmed
-  during build" is a defect — it means discovery deferred its own job to the
-  builder. DOR gates 4 (approach known) and 5 (research complete) are enforced
-  here, not at the gate phase.
+- **Completeness**: every intent from the input is captured or explicitly
+  deferred.
+- **Testability**: each requirement has a verification path.
+- **Grounding**: verified against actual domain specs, not general knowledge.
+- **Review-awareness**: DoD implications are reflected.
+- **No implementation leakage**: requirements say what and why, not how.
+- **Inferences marked**: anything inferred (not stated in the input) is marked
+  `[inferred]`.
+- **Unknowns resolved**: all questions answered with findings.
 
 ### 5. Write requirements
 
-Write `requirements.md`:
+After the pair converges, the assigned writer records `requirements.md`:
 
-- Grounded in the discovery findings.
+- Grounded in the discovery findings and the pair's discussion.
 - Structured per the quality standard above.
 - Inferences marked explicitly.
 
@@ -162,35 +140,38 @@ Update `todos.db` state:
 grounding:
   valid: true
   base_sha: '<current HEAD>'
-  input_digest: '<hash of input.md>'
+  input_digest: '<hash of input>'
   last_grounded_at: '<now ISO8601>'
   invalidation_reason: null
 ```
 
-### 6. Enforce boundaries
+### 6. Review
+
+The other pair member reviews what the writer recorded: did they capture
+everything the pair discussed? Is anything missing or misrepresented?
+
+If gaps are found, the writer corrects. When both agree the recording is
+accurate, requirements are ready for human approval.
+
+### 7. Enforce boundaries
 
 - Do not split the todo here. Discovery owns requirements, not execution
   decomposition.
 - Do not write `implementation-plan.md` here.
-- If you believe the work may be too large, express that in the requirements so
-  the draft phase can make the grounded split/no-split decision.
-
-### 7. Cleanup
-
-If triangulation was used, end the partner session when convergence is done.
+- If the work may be too large, express that in the requirements so the draft
+  phase can make the grounded split decision.
 
 ## Outputs
 
-1. `telec todo artifacts read {slug} requirements` — grounded, review-aware requirements.
+1. `requirements.md` — grounded, review-aware, pair-agreed requirements.
 2. `todos.db` state — grounding metadata updated.
-3. Third-party doc snippets indexed (when research was executed in step 1c).
-4. Partner session ended after convergence when triangulation was used.
+3. Third-party doc snippets indexed (when research was needed).
 
 ## Recovery
 
-1. If a triangulation partner fails to start, continue solo and note the missing
-   second perspective in `dor-report.md` if it materially reduces confidence.
-2. If convergence stalls, continue solo with explicit `[inferred]` markers where
-   needed rather than leaving requirements half-formed.
-3. If discovery still cannot ground a major architectural decision, write the
-   blocker clearly to `dor-report.md`.
+1. If the pair partner fails to start, continue solo and note the missing
+   second perspective in `dor-report.md`.
+2. If convergence stalls, continue with explicit `[inferred]` markers rather
+   than leaving requirements half-formed.
+3. If a major architectural decision cannot be grounded, write the blocker to
+   `dor-report.md`.

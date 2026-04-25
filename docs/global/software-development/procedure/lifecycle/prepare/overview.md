@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/overview'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Prepare stage overview. Orchestrator loop driving the prepare state machine through discovery, review, drafting, gate, and grounding phases.'
+description: 'Prepare stage overview. Orchestrator drives the pair through discovery, artifact production, human approval, gate, and grounding.'
 ---
 
 # Prepare Overview — Procedure
@@ -18,14 +18,11 @@ description: 'Prepare stage overview. Orchestrator loop driving the prepare stat
 ## Goal
 
 Drive the prepare state machine by calling `telec todo prepare [slug]` in a loop.
-Each call returns an instruction block. Execute it, then call again. Repeat until
-the machine returns a terminal state (PREPARED or a blocker).
+The machine dispatches a persistent pair of workers who explore the problem
+together and then produce artifacts in turns. The orchestrator dispatches what
+the machine requests and supervises the pair.
 
-The state machine determines what happens. The orchestrator dispatches what is requested.
-The orchestrator never makes routing decisions — the machine owns sequencing.
-
-Produce reviewed, approved, and grounded preparation artifacts for a todo through
-sequential phases, each producing one artifact that is reviewed before the next begins.
+Produce reviewed, human-approved, and grounded preparation artifacts for a todo.
 
 ## Preconditions
 
@@ -40,116 +37,132 @@ Call `telec todo prepare [slug]`. Read the returned instruction block.
 
 ### 2. Execute the instruction
 
-The state machine returns a linear script for the current state. The orchestrator executes it verbatim and then calls `telec todo prepare [slug]` again. Each phase follows the same loop: the state machine dispatches a worker when needed, relays review findings to the existing worker when a review returns `needs_work`, or emits cleanup commands on a successful terminal. The orchestrator never decides session lifecycle or branches on verdict — the state machine owns both.
+The state machine returns a linear script for the current state. The
+orchestrator executes it verbatim and then calls `telec todo prepare [slug]`
+again. The orchestrator never makes routing decisions — the machine owns
+sequencing.
 
-Phases the state machine drives through:
+### The prepare flow
 
-- **Input assessment / requirements discovery** — dispatches `next-prepare-discovery` when `requirements.md` is missing.
-- **Requirements review** — dispatches `next-review-requirements`; on `needs_work` relays findings to the live discovery worker via `telec sessions send`; on `approve` ends the phase workers.
-- **Test specification build** — dispatches `next-build-specs` when xfail specs are missing.
-- **Test spec review** — dispatches `next-review-specs`; on `needs_work` relays findings to the live spec builder; on `approve` ends the phase workers.
-- **Plan drafting** — dispatches `next-prepare-draft` when `implementation-plan.md` is missing.
-- **Plan review** — dispatches `next-review-plan`; on `needs_work` relays findings to the live draft worker; on `approve` ends the phase workers.
+#### Discovery (pair-based)
 
-#### GATE REQUIRED
+The machine dispatches both workers and links them via
+`telec sessions send <session> --direct`. Both workers receive the same input —
+whatever the todo carries (brain dump, existing requirements, any starting
+state). Both read the codebase, the roadmap, and applicable docs.
 
-All artifacts exist and are approved. The state machine requests a DOR gate
-assessment. Dispatch `next-prepare-gate` to a worker session.
+They explore the problem together through direct conversation. No roles are
+assigned during discovery. Both contribute freely through their natural lens.
+They surface hidden assumptions, check against reality, challenge each other's
+thinking, and converge on understanding.
 
-The gate worker validates the full artifact set, stamps a verdict, and goes
-idle. The orchestrator reads the verdict and acts on the **status**, not the
-score:
+Discovery ends when the pair has converged. The machine then assigns a writer.
 
-- **`pass`** → call `telec todo prepare [slug]` again (expects PREPARED or
-  GROUNDING CHECK).
-- **`needs_work`** → the gate listed exact blockers. Dispatch a fixer to the
-  appropriate phase (discovery if research is missing, draft if the plan is
-  defective, test-spec if specs have bugs). After the fixer completes, re-run
-  the gate. **The orchestrator never overrides `needs_work` to `pass`.** The
-  score is informational — only the status determines the next action.
-- **`needs_decision`** → escalate to the human. Report the blockers and stop.
+#### Requirements (turn-based)
 
-#### GROUNDING CHECK
+`A` writes `requirements.md` — recording what the pair discussed and agreed on.
+`B` reviews: did the writer capture everything? Is anything missing or
+misrepresented?
 
-All artifacts exist and are approved. The machine checks freshness:
+If the review finds gaps (`needs_work`), the writer corrects. When the pair
+agrees the requirements are complete, they are ready for human approval.
 
-- If `grounding.valid` is true and digests match: returns PREPARED.
-- If stale: returns RE_GROUNDING REQUIRED with the diff of what changed.
+#### Human approval of requirements
 
-#### RE_GROUNDING REQUIRED
+The human reads the requirements. The human may talk directly to the pair
+(the writer) to add or correct things. When the human is satisfied, the
+orchestrator stamps requirements as approved.
 
-The plan references files or policies that have changed since last grounding.
-Dispatch `next-prepare-draft` with the diff to update the plan. After update, the
-plan re-enters review.
+**Human approval is explicit and non-optional.** The machine does not proceed
+to test specs until the human has approved requirements.
 
-Call `telec todo prepare [slug]` again.
+#### Test specs (turn-based)
+
+`A` writes test specifications (expected-failure-marked). `B` reviews.
+Specs stay close to the just-approved requirements while context is hot.
+
+#### Implementation plan (turn-based)
+
+`B` writes the implementation plan. `A` reviews.
+The plan is derived from both requirements and test specs.
+
+#### Gate (pair self-assessment)
+
+The pair checks their own complete artifact set against Definition of Ready.
+This is self-assessment — the pair evaluates whether what they produced is
+ready to build.
+
+- **`pass`** → the machine continues to grounding check.
+- **`needs_work`** → the pair identified gaps. The machine routes back to fix
+  the deficient artifact.
+- **`needs_decision`** → escalate to the human.
+
+#### Grounding check
+
+The machine checks whether referenced files have changed since the artifacts
+were last grounded.
+
+- If fresh: PREPARED.
+- If stale: the plan must be updated against the current codebase and
+  re-reviewed.
 
 #### PREPARED
 
-Terminal success state. The state machine emits the cleanup script: `telec sessions end <id>` for each live worker tied to the slug, then `telec sessions end self` for the orchestrator. Execute verbatim.
+Terminal success. The machine emits cleanup for all live sessions tied to the
+slug. Execute verbatim.
 
 #### BLOCKER
 
-The machine encountered a condition it cannot resolve (missing input, human decision needed, review rounds exhausted). The state machine emits a blocker report that lists live session IDs for human inspection. No end commands are emitted — sessions stay alive as signal for the human.
+The machine cannot proceed (human decision needed, review rounds exhausted).
+Sessions stay alive as signal for the human.
 
 ### 3. Supervision
 
-After dispatching a worker:
+After dispatching workers:
 
 1. Set a heartbeat timer.
-2. Wait for the worker notification.
-3. On notification: call `telec todo prepare [slug]` again to advance. The state machine reads the latest state and emits the next action.
-4. If the worker stalls (heartbeat fires with no progress), open a direct conversation to resolve. If still stuck after two iterations, record blockers and stop.
+2. Wait for worker notifications.
+3. On notification: call `telec todo prepare [slug]` again to advance.
+4. If a worker stalls (heartbeat fires with no progress), open a direct
+   conversation to resolve. If still stuck after two iterations, record
+   blockers and stop.
 
-### HITL boundary
+### Human touchpoints
 
-The human may edit preparation artifacts directly, then explicitly hand the
-todo back to the machine with `telec todo reconcile [slug]` before resuming
-`telec todo prepare [slug]`. Input is frozen after creation — all evolution
-of thinking happens through requirements during discovery. Once the state machine starts, all
-phases are fully autonomous. No human gates exist inside the machine. The only
-human-facing event is `prepare.blocked` when a decision genuinely requires
-human input.
+- The human may edit preparation artifacts directly at any time, then hand the
+  todo back to the machine with `telec todo reconcile [slug]`.
+- The human approves requirements before test specs begin.
+- The human may be escalated to when the machine or pair encounters a blocker
+  requiring judgment.
 
 ### Events
 
-The state machine emits events at each phase transition for automation,
-notifications, and auditing. The human does not interact with these — they
-are consumed by automation (invalidation checks, notifications).
-
-| Phase transition       | Event                           |
-| ---------------------- | ------------------------------- |
-| Input refined          | `prepare.input_refined`         |
-| Discovery dispatched   | `prepare.discovery_started`     |
-| Requirements written   | `prepare.requirements_drafted`  |
-| Requirements approved  | `prepare.requirements_approved` |
-| Test specs written     | `prepare.test_specs_drafted`    |
-| Test specs approved    | `prepare.test_specs_approved`   |
-| Plan written           | `prepare.plan_drafted`          |
-| Plan approved          | `prepare.plan_approved`         |
-| Grounding invalidated  | `prepare.grounding_invalidated` |
-| Re-grounding completed | `prepare.regrounded`            |
-| Preparation complete   | `prepare.completed`             |
-| Preparation blocked    | `prepare.blocked`               |
-
-The `grounding_invalidated` event is also emitted by automation outside the
-state machine — when `telec todo prepare --invalidate-check` detects file path
-overlap after an integration delivery.
+| Phase transition            | Event                           |
+| --------------------------- | ------------------------------- |
+| Discovery dispatched        | `prepare.discovery_started`     |
+| Requirements written        | `prepare.requirements_drafted`  |
+| Requirements human-approved | `prepare.requirements_approved` |
+| Test specs written          | `prepare.test_specs_drafted`    |
+| Test specs reviewed         | `prepare.test_specs_approved`   |
+| Plan written                | `prepare.plan_drafted`          |
+| Plan reviewed               | `prepare.plan_approved`         |
+| Grounding invalidated       | `prepare.grounding_invalidated` |
+| Re-grounding completed      | `prepare.regrounded`            |
+| Preparation complete        | `prepare.completed`             |
+| Preparation blocked         | `prepare.blocked`               |
 
 ## Outputs
 
-1. Preparation artifacts produced through the state machine phases:
-   `requirements.md`, test specification files (expected-failure-marked),
-   `implementation-plan.md`.
-2. Each artifact reviewed and approved before the next phase begins.
-3. Grounding metadata in `todo state (todos.db)` for staleness detection.
-4. State machine-driven session cleanup on the PREPARED terminal.
+1. `requirements.md` — human-approved.
+2. Test specification files (expected-failure-marked).
+3. `implementation-plan.md`.
+4. Grounding metadata in `todos.db` state.
+5. Session cleanup on PREPARED terminal.
 
 ## Recovery
 
 1. If a worker session fails, read the error and retry once. On second failure,
    record the blocker and stop.
 2. If the state machine returns an unexpected instruction, log it and stop.
-   Do not improvise — the machine owns sequencing.
 3. If direct conversation with a worker stalls, write blockers to `dor-report.md`
-   and proceed to cleanup.
+   and stop.
