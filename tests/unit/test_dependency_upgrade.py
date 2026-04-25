@@ -9,6 +9,7 @@ validation, and job orchestration.
 from __future__ import annotations
 
 import subprocess as subprocess_mod
+import tomllib
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -90,6 +91,54 @@ PYPROJECT_MINIMAL = """\
 name = "test"
 version = "0.1.0"
 dependencies = ["aiohttp>=3.9.0"]
+"""
+
+# Mirrors the production pyproject.toml structure: [tool.uv.sources] appears
+# before [tool.uv], and [tool.uv] already has override-dependencies.
+PYPROJECT_WITH_EXISTING_UV_TABLE = """\
+[project]
+name = "test"
+version = "0.1.0"
+dependencies = ["aiohttp>=3.9.0"]
+
+[tool.uv.sources]
+mlx-audio = { git = "https://github.com/example/mlx-audio.git", branch = "main" }
+
+[tool.uv]
+override-dependencies = [
+  "attrs<26",
+]
+"""
+
+# Has an existing constraint on the same package that will receive a new cap.
+PYPROJECT_WITH_SAME_PKG_CONSTRAINT = """\
+[project]
+name = "test"
+version = "0.1.0"
+dependencies = ["aiohttp>=3.9.0"]
+
+[tool.uv]
+override-dependencies = [
+  "aiohttp!=3.9.6",
+]
+"""
+
+# Has override-dependencies in a non-uv table that appears before [tool.uv].
+PYPROJECT_WITH_OTHER_TABLE_OVERRIDES = """\
+[project]
+name = "test"
+version = "0.1.0"
+dependencies = ["aiohttp>=3.9.0"]
+
+[tool.other]
+override-dependencies = [
+  "some-pkg<2",
+]
+
+[tool.uv]
+override-dependencies = [
+  "attrs<26",
+]
 """
 
 
@@ -244,6 +293,64 @@ class TestApplyConservativeCaps:
         aiohttp_pos = content.index('"aiohttp<4"')
         pyyaml_pos = content.index('"pyyaml<7"')
         assert aiohttp_pos < pyyaml_pos
+
+    def test_no_duplicate_uv_table_when_section_already_exists(self, tmp_path: Path) -> None:
+        """Modified pyproject must have exactly one [tool.uv] header even when it pre-existed."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(PYPROJECT_WITH_EXISTING_UV_TABLE)
+        bumps = {"aiohttp": ("3.9.5", "4.0.0")}
+        _apply_conservative_caps(pyproject, bumps)
+        content = pyproject.read_text()
+        # Structural invariant: no duplicate [tool.uv] header
+        assert content.count("[tool.uv]") == 1
+        # Must be valid TOML — duplicate keys cause a parse error
+        parsed = tomllib.loads(content)
+        overrides = parsed["tool"]["uv"]["override-dependencies"]
+        assert "aiohttp<4" in overrides
+
+    def test_existing_overrides_are_preserved_when_adding_caps(self, tmp_path: Path) -> None:
+        """Conservative caps merge with existing override-dependencies rather than replacing them."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(PYPROJECT_WITH_EXISTING_UV_TABLE)
+        bumps = {"aiohttp": ("3.9.5", "4.0.0")}
+        _apply_conservative_caps(pyproject, bumps)
+        content = pyproject.read_text()
+        parsed = tomllib.loads(content)
+        overrides = parsed["tool"]["uv"]["override-dependencies"]
+        # Both the existing cap and the new cap must be present
+        assert "attrs<26" in overrides
+        assert "aiohttp<4" in overrides
+
+    def test_same_package_existing_constraint_preserved_alongside_new_cap(self, tmp_path: Path) -> None:
+        """An existing constraint on a package receiving a new cap must survive in the merged list."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(PYPROJECT_WITH_SAME_PKG_CONSTRAINT)
+        bumps = {"aiohttp": ("3.9.5", "4.0.0")}
+        _apply_conservative_caps(pyproject, bumps)
+        parsed = tomllib.loads(pyproject.read_text())
+        overrides = parsed["tool"]["uv"]["override-dependencies"]
+        # The pre-existing exact-version exclusion must coexist with the new major cap
+        assert "aiohttp!=3.9.6" in overrides
+        assert "aiohttp<4" in overrides
+
+    def test_override_replacement_scoped_to_uv_table_only(self, tmp_path: Path) -> None:
+        """override-dependencies in other tool tables must not be rewritten."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text(PYPROJECT_WITH_OTHER_TABLE_OVERRIDES)
+        bumps = {"aiohttp": ("3.9.5", "4.0.0")}
+        _apply_conservative_caps(pyproject, bumps)
+        parsed = tomllib.loads(pyproject.read_text())
+        # [tool.other] must be entirely untouched
+        assert parsed["tool"]["other"]["override-dependencies"] == ["some-pkg<2"]
+        # [tool.uv] must contain the new cap
+        assert "aiohttp<4" in parsed["tool"]["uv"]["override-dependencies"]
+
+    def test_raises_on_malformed_pyproject(self, tmp_path: Path) -> None:
+        """A malformed pyproject.toml must propagate the parse error rather than silently dropping constraints."""
+        pyproject = tmp_path / "pyproject.toml"
+        pyproject.write_text("[invalid toml {\n")
+        with pytest.raises(tomllib.TOMLDecodeError):
+            _apply_conservative_caps(pyproject, {"aiohttp": ("3.9.5", "4.0.0")})
 
 
 # ---------------------------------------------------------------------------
