@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase overview. Sequential artifact production with review gates, driven by the prepare state machine.'
+description: 'Prepare phase overview. Pair-based discovery, turn-based artifact production, human approval, and grounding.'
 id: 'software-development/procedure/lifecycle/prepare'
 scope: 'domain'
 type: 'procedure'
@@ -9,11 +9,13 @@ type: 'procedure'
 
 ## Goal
 
-Produce reviewed, approved, and grounded preparation artifacts for a todo through
-sequential phases, each producing one artifact that is reviewed before the next begins.
+Produce reviewed, human-approved, and grounded preparation artifacts for a todo
+through a persistent pair of workers who explore the problem together and then
+produce artifacts in turns.
 
 The prepare state machine (`telec todo prepare`) owns sequencing. The orchestrator
-calls it in a loop and dispatches what is requested.
+calls it in a loop and dispatches what is requested. The detailed orchestrator
+procedure is in `prepare/overview.md`.
 
 ## Preconditions
 
@@ -22,132 +24,78 @@ calls it in a loop and dispatches what is requested.
 
 ## Steps
 
-### 1. Human refinement (optional)
+### 1. Human handoff
 
-The human may edit preparation artifacts directly before handing the todo back
-to the machine. `input` is only one possible entry artifact, not a required
-one. After human edits, run `telec todo reconcile {slug}` to align the machine
-pointer with the real current prepare state before continuing with
-`telec todo prepare {slug}`.
+The human provides a work package — a brain dump, existing requirements, or any
+starting state. The human may also edit preparation artifacts directly at any
+time and hand the todo back to the machine with `telec todo reconcile {slug}`.
 
-### 2. Discovery (solo or triangulated)
+### 2. Discovery (pair-based)
 
-When `input.md` exists and `requirements.md` is not yet approved, the state machine
-dispatches a discovery worker. The worker decides whether to run solo (when the input
-is concrete enough) or triangulated with a complementary partner (when ambiguity,
-hidden assumptions, or unresolved architectural tension remain). Either path converges
-to produce `requirements.md`.
+Both workers are dispatched with the same work package. Each independently
+reads and grounds itself (intake). After both complete intake, the orchestrator
+links them via direct conversation. They explore the problem together — no
+roles assigned. They surface hidden assumptions, check against codebase
+reality, resolve unknowns, and converge on understanding.
 
-At the `input_assessment → requirements_review` transition, the machine records
-`prepare.input_consumed` once — marking that the input has been handed off to the
-discovery worker and requirements production has started.
+### 3. Requirements (turn-based)
 
-### 3. Requirements review
+`A` writes `requirements.md` — recording what the pair discussed. `B` reviews:
+did the writer capture everything? Fix-forward if gaps are found.
 
-`requirements.md` is reviewed for completeness, testability, grounding, and
-review-awareness before advancing.
+### 4. Human approval
 
-### 4. Plan drafting (single-agent)
+The human reviews requirements. The human may talk directly to the pair to
+refine. Both workers see the human's input via the direct link. Fix-forward
+only — no going back to discovery. When satisfied, the orchestrator stamps
+approval.
 
-From approved requirements, a single agent produces `implementation-plan.md`.
-The plan is rationale-rich and review-aware — anticipating what the
-reviewer will check so the builder produces no surprises.
+### 5. Test specs (turn-based)
 
-### 5. Plan review
+`A` writes expected-failure-marked test specifications. `B` reviews.
+Specs stay close to approved requirements while context is hot.
 
-`implementation-plan.md` is reviewed against policies, Definition of Done gates,
-and review lane expectations before advancing.
+### 6. Implementation plan (turn-based)
 
-### 6. DOR gate (formal validation)
+`B` writes the implementation plan. `A` reviews.
+The plan is derived from both requirements and test specs.
 
-The complete artifact set is validated as a coherent whole. Cross-artifact fidelity,
-DOR gate compliance, and review-readiness preview. This is the only phase that
-can authorize readiness transition.
+### 7. Grounding check (mechanical)
 
-### 7. Artifact staleness cascade (idempotent)
+The machine verifies referenced file freshness. If stale, the plan writer
+updates and the reviewer re-reviews. If fresh: PREPARED.
 
-The machine tracks artifact digests in `todo state (todos.db).artifacts` for `input`, `requirements`,
-and `implementation_plan`. On every invocation, it checks:
+### 8. Split inheritance
 
-- If `input.md` changed since last recorded digest → cascade: both `requirements` and
-  `implementation_plan` are marked stale, phase reverts to discovery.
-- If `requirements.md` changed → cascade: `implementation_plan` is marked stale, phase
-  reverts to plan drafting.
-- If no changes → no staleness, phase routing proceeds normally.
-
-### 8. Grounding check (idempotent)
-
-When all artifacts exist and are approved and digests are current, the machine verifies
-referenced file freshness: referenced file paths are diffed against current main. If
-everything matches: PREPARED. If stale: re-grounding dispatches an agent to update the
-plan.
-
-This makes `telec todo prepare` safe to call at any time — first call creates,
-subsequent calls verify and heal.
-
-### 9. Split inheritance
-
-When a todo is split via `telec todo split`, children inherit the parent's highest
-approved prepare phase:
-
-- Parent `requirements_review.verdict == "approve"` → child starts at `plan_drafting`
-  with parent `requirements.md` copied and requirements verdict inherited.
-- Parent `plan_review.verdict == "approve"` → child starts at `prepared` (fully
-  ready for build) with both artifacts copied and both verdicts inherited.
-- Parent with no approvals → child starts at discovery (normal flow).
-
-Skipped phases are recorded in `todo state (todos.db).audit.<phase>` with
-`status: "skipped"` and `reason: "inherited_from_parent"`. Events `prepare.split_inherited`
-and `prepare.phase_skipped` are emitted per child.
+When a todo is split via `telec todo split`, children inherit the parent's
+highest approved prepare phase and artifacts. Skipped phases are recorded in
+audit with `reason: "inherited_from_parent"`.
 
 ## Outputs
 
-- `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved.
-- `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved.
-- `telec todo artifacts read {slug} dor-report` — gate assessment.
-- `todos.db` state — grounding metadata and DOR verdict.
-- Events emitted at each phase transition (see below).
+- `requirements.md` — pair-discovered, human-approved.
+- Test specification files (expected-failure-marked).
+- `implementation-plan.md` — review-aware, rationale-rich.
+- Grounding metadata in `todos.db` state.
+- Events emitted at each phase transition.
 
 ### Events
 
-The state machine emits events at each phase transition for automation,
-notifications, and auditing. The human does not interact with these — they
-are consumed by automation (invalidation checks, notifications).
-
-| Phase transition                       | Event                           |
-| -------------------------------------- | ------------------------------- |
-| Input refined                          | `prepare.input_refined`         |
-| Discovery dispatched                   | `prepare.discovery_started`     |
-| Input consumed (→ requirements_review) | `prepare.input_consumed`        |
-| Requirements written                   | `prepare.requirements_drafted`  |
-| Requirements approved                  | `prepare.requirements_approved` |
-| Plan written                           | `prepare.plan_drafted`          |
-| Plan approved                          | `prepare.plan_approved`         |
-| Artifact written and tracked           | `prepare.artifact_produced`     |
-| Artifact stale (cascade)               | `prepare.artifact_invalidated`  |
-| Finding recorded by reviewer           | `prepare.finding_recorded`      |
-| Finding resolved                       | `prepare.finding_resolved`      |
-| Scoped re-review dispatched            | `prepare.review_scoped`         |
-| Phase skipped via inheritance          | `prepare.phase_skipped`         |
-| Child inherits parent phase            | `prepare.split_inherited`       |
-| Grounding invalidated                  | `prepare.grounding_invalidated` |
-| Re-grounding completed                 | `prepare.regrounded`            |
-| Preparation complete                   | `prepare.completed`             |
-| Preparation blocked                    | `prepare.blocked`               |
-
-The `grounding_invalidated` event is also emitted by automation outside the
-state machine — when `telec todo prepare --invalidate-check` detects file path
-overlap after an integration delivery.
-
-### HITL boundary
-
-The human may edit preparation artifacts directly and then hand the todo back
-to the machine with `telec todo reconcile {slug}` followed by
-`telec todo prepare {slug}`. Once the machine is running, all normal prepare
-progression remains sequential and machine-owned. The only human-facing event
-is `prepare.blocked` when a decision genuinely requires human input.
+| Phase transition            | Event                           |
+| --------------------------- | ------------------------------- |
+| Discovery dispatched        | `prepare.discovery_started`     |
+| Requirements written        | `prepare.requirements_drafted`  |
+| Requirements human-approved | `prepare.requirements_approved` |
+| Test specs written          | `prepare.test_specs_drafted`    |
+| Test specs reviewed         | `prepare.test_specs_approved`   |
+| Plan written                | `prepare.plan_drafted`          |
+| Plan reviewed               | `prepare.plan_approved`         |
+| Grounding invalidated       | `prepare.grounding_invalidated` |
+| Re-grounding completed      | `prepare.regrounded`            |
+| Preparation complete        | `prepare.completed`             |
+| Preparation blocked         | `prepare.blocked`               |
 
 ## Recovery
 
 - If any phase blocks, the state machine records the blocker and stops.
-- The todo folder is the durable evidence trail for all outcomes.
+- Fix-forward only — preserve what has been done, correct from current state.
