@@ -79,8 +79,8 @@ Before considering ANY work complete, verify ALL criteria are met:
 - [ ] Breaking changes noted
 - [ ] No commented-out code
 - [ ] README and docs updated to reflect current behavior
-- [ ] CLI help text updated for new/changed subcommands (feeds agent system prompt)
-- [ ] If new configuration surface introduced (config keys, env vars, YAML sections): config wizard updated, config.sample.yml updated, teleclaude-config spec updated
+- [ ] User-facing interface documentation updated for new/changed commands
+- [ ] If new configuration surface introduced, relevant documentation and tooling updated
 
 ### 7. Commit Hygiene
 

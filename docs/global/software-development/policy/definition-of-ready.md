@@ -16,10 +16,10 @@ Gates (all required):
 
 1. **Intent & success**
    - The problem statement and intended outcome are explicit.
-   - The “what” and “why” are captured in `input.md` or `requirements.md`.
+   - The “what” and “why” are captured in requirements.
    - Success criteria are concrete and testable (not “works” or “better”).
 2. **Scope & size**
-   - The work is atomic and fits a single AI session without context exhaustion.
+   - The work is atomic and fits a single session without context exhaustion.
    - Cross-cutting changes are called out explicitly and justified.
    - If it requires multiple phases, it is split into dependent todos.
 
@@ -55,21 +55,36 @@ Gates (all required):
    - Sources are authoritative and documented in the findings.
    - If no third-party dependencies exist, this gate is automatically satisfied.
    - Triggered when the change introduces or modifies third-party tooling/integrations.
-6. **Dependencies & preconditions**
-   - Prerequisite tasks are listed and blocked via `roadmap (todos.db)` if needed.
+6. **Security awareness (when applicable)**
+   - If the change introduces or modifies API endpoints, authentication or
+     authorization boundaries, data handling, user input paths, or credential
+     management: requirements must identify security implications and the
+     implementation plan must include specific tasks to address them.
+   - If the change has no security surface, this gate is automatically satisfied.
+   - Triggered when the change touches trust boundaries or data flows.
+7. **Performance sensitivity (when applicable)**
+   - If the change touches hot paths, large dataset operations, latency-critical
+     flows, or resource-intensive operations: requirements must note the
+     performance constraints and the implementation plan must address them.
+   - If the change is not performance-sensitive, this gate is automatically
+     satisfied.
+   - Triggered when the change affects throughput, latency, or resource
+     consumption.
+8. **Dependencies & preconditions**
+   - Prerequisite tasks are listed and blocked if needed.
    - Required configs, access, and environments are known.
    - Required external systems are reachable or stubbed.
-   - If the work introduces new configuration (config keys, env vars, YAML sections), they are listed explicitly and their wizard exposure is confirmed.
-7. **Integration safety**
+9. **Integration safety**
    - The change can be merged incrementally without destabilizing main.
    - Entry/exit points are explicit; rollback or containment exists if risky.
-8. **Tooling impact (only if applicable)**
-   - If the work changes tooling or scaffolding, the relevant scaffolding procedure is updated and verified once.
-   - If tooling is unchanged, this gate is automatically satisfied.
+10. **Tooling impact (only if applicable)**
+    - If the work changes tooling or scaffolding, the relevant scaffolding
+      procedure is updated and verified once.
+    - If tooling is unchanged, this gate is automatically satisfied.
 
 Decision:
 
-- **Ready**: proceed to implementation planning and scheduling.
+- **Ready**: proceed to the work phase (build).
 - **Not Ready**: block the item until remediation is complete.
 
 Remediation playbook:
@@ -79,6 +94,8 @@ Remediation playbook:
 - Unknown approach → create a research todo or spike first.
 - Missing research → document third-party findings before planning.
 - Missing verification → define tests or observable checks.
+- Security gaps → surface implications in requirements and plan.
+- Performance gaps → note constraints in requirements and plan.
 - Tooling changes → update scaffolding procedures and validate once.
 
 ## Rationale
@@ -93,8 +110,10 @@ Remediation playbook:
 
 ## Enforcement
 
-- Architects must assess readiness before marking items ready in the roadmap.
-- Orchestrators must not dispatch build work for items that fail readiness.
+- The prepare phase produces artifacts that satisfy these gates. The pair's
+  process during prepare is the primary mechanism for ensuring readiness.
+- Orchestrators must not dispatch build work for items that haven't completed
+  prepare.
 
 ## Exceptions
 
