@@ -78,3 +78,42 @@ async def test_tui_bootstrap_only_loads_requested_pillars(monkeypatch: pytest.Mo
     assert response.requested == ["projects"]
     load_projects.assert_awaited_once()
     load_sessions.assert_not_called()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tui_bootstrap_does_not_convert_authorization_failure_to_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Authorization failures should remain request failures, not retry forever as pillar errors."""
+
+    def deny(_pillar: object, _identity: object) -> None:
+        raise HTTPException(status_code=403, detail="denied")
+
+    monkeypatch.setattr(tui_routes, "_require_pillar_clearance", deny)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await tui_routes.get_tui_bootstrap(
+            request=SimpleNamespace(headers={}),
+            pillars="projects",
+            identity=_identity(),
+        )
+
+    assert exc_info.value.status_code == 403
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_tui_bootstrap_does_not_convert_unexpected_loader_exception_to_retryable_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unexpected programming/runtime faults should fail fast."""
+    load_projects = AsyncMock(side_effect=RuntimeError("programming defect"))
+    monkeypatch.setattr(tui_routes, "_load_projects_with_todos", load_projects)
+
+    with pytest.raises(RuntimeError, match="programming defect"):
+        await tui_routes.get_tui_bootstrap(
+            request=SimpleNamespace(headers={}),
+            pillars="projects",
+            identity=_identity(),
+        )

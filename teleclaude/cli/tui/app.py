@@ -94,6 +94,7 @@ _APP_STATE_FIELDS = {
     "_reload_loop": ("_runtime_state", "reload_loop"),
     "_bootstrap_retry": ("_runtime_state", "bootstrap_retry"),
     "_bootstrap_retry_timer": ("_runtime_state", "bootstrap_retry_timer"),
+    "_bootstrap_pending_pillars": ("_runtime_state", "bootstrap_pending_pillars"),
     "_animation_engine": ("_media_state", "animation_engine"),
     "_animation_perf": ("_media_state", "animation_perf"),
     "_periodic_trigger": ("_media_state", "periodic_trigger"),
@@ -132,6 +133,7 @@ class _AppRuntimeState:
     reload_loop: asyncio.AbstractEventLoop | None = None
     bootstrap_retry: BootstrapRetryState = field(default_factory=BootstrapRetryState)
     bootstrap_retry_timer: Timer | None = None
+    bootstrap_pending_pillars: set[TuiBootstrapPillar] = field(default_factory=set)
 
 
 @dataclass
@@ -181,6 +183,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _reload_loop: asyncio.AbstractEventLoop | None
     _bootstrap_retry: BootstrapRetryState
     _bootstrap_retry_timer: Timer | None
+    _bootstrap_pending_pillars: set[TuiBootstrapPillar]
     _animation_engine: AnimationEngine
     _periodic_trigger: object | None
     _activity_trigger: object | None
@@ -488,10 +491,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
         bootstrap = await self.api.get_tui_bootstrap(requested)
         missing = failed_bootstrap_pillars(bootstrap, requested=requested)
-        if missing:
-            self._schedule_bootstrap_retry(missing)
-        else:
-            self._clear_bootstrap_retry()
+        self._reconcile_bootstrap_retry_state(requested=requested, missing=missing)
         logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
         return self._merge_bootstrap_message(bootstrap)
 
@@ -551,21 +551,63 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             ),
         )
 
+    def _reconcile_bootstrap_retry_state(
+        self,
+        *,
+        requested: list[TuiBootstrapPillar],
+        missing: list[TuiBootstrapPillar],
+    ) -> None:
+        """Update retry state after a bootstrap response."""
+        missing_set = set(missing)
+        succeeded = {pillar for pillar in requested if pillar not in missing_set}
+        self._runtime_state.bootstrap_pending_pillars.difference_update(succeeded)
+
+        if missing:
+            self._schedule_bootstrap_retry(missing)
+            return
+        if self._runtime_state.bootstrap_pending_pillars:
+            self._ensure_bootstrap_retry_timer()
+            return
+        self._clear_bootstrap_retry()
+
     def _schedule_bootstrap_retry(self, pillars: list[TuiBootstrapPillar]) -> None:
         """Retry unresolved bootstrap pillars with capped exponential backoff."""
         if not pillars:
             self._clear_bootstrap_retry()
             return
+        self._runtime_state.bootstrap_pending_pillars.update(pillars)
+        self._arm_bootstrap_retry_timer(reset_existing=True)
+
+    def _ensure_bootstrap_retry_timer(self) -> None:
+        """Ensure pending pillars still have a retry timer."""
+        self._arm_bootstrap_retry_timer(reset_existing=False)
+
+    def _arm_bootstrap_retry_timer(self, *, reset_existing: bool) -> None:
+        """Arm the pending-pillar retry timer."""
         timer = self._runtime_state.bootstrap_retry_timer
+        if timer is not None and not reset_existing:
+            return
         if timer is not None:
             timer.stop()
         delay = self._runtime_state.bootstrap_retry.consume_delay()
-        unique_pillars = list(dict.fromkeys(pillars))
-        logger.info("Scheduling TUI bootstrap retry", pillars=unique_pillars, delay_s=delay)
+        pending = self._pending_bootstrap_pillars()
+        logger.info("Scheduling TUI bootstrap retry", pillars=pending, delay_s=delay)
         self._runtime_state.bootstrap_retry_timer = self.set_timer(
             delay,
-            lambda retry_pillars=unique_pillars: self._refresh_data(retry_pillars),
+            self._retry_pending_bootstrap_pillars,
         )
+
+    def _retry_pending_bootstrap_pillars(self) -> None:
+        """Retry whichever pillars are still pending when the timer fires."""
+        self._runtime_state.bootstrap_retry_timer = None
+        pending = self._pending_bootstrap_pillars()
+        if pending:
+            self._refresh_data(pending)
+
+    def _pending_bootstrap_pillars(self) -> list[TuiBootstrapPillar]:
+        """Return pending pillars in canonical bootstrap order."""
+        pending = self._runtime_state.bootstrap_pending_pillars
+        return [pillar for pillar in BOOTSTRAP_PILLARS if pillar in pending]
 
     def _clear_bootstrap_retry(self) -> None:
         """Clear any pending bootstrap retry after success."""
@@ -573,6 +615,7 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
         if timer is not None:
             timer.stop()
         self._runtime_state.bootstrap_retry_timer = None
+        self._runtime_state.bootstrap_pending_pillars.clear()
         self._runtime_state.bootstrap_retry.reset()
 
     def _current_refresh_state(self) -> _RefreshStateSnapshot:

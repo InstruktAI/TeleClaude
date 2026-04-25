@@ -152,11 +152,13 @@ async def _load_chiptunes() -> ChiptunesStatusDTO:
 
 def _error_from_exception(pillar: TuiBootstrapPillar, error: Exception) -> TuiBootstrapErrorDTO:
     """Normalize a pillar exception into an API DTO."""
-    if isinstance(error, HTTPException):
-        message = str(error.detail)
-    else:
-        message = str(error)
+    message = str(error.detail) if isinstance(error, HTTPException) else str(error)
     return TuiBootstrapErrorDTO(pillar=pillar, message=message or type(error).__name__, retryable=True)
+
+
+def _is_retryable_pillar_error(error: HTTPException) -> bool:
+    """Return True when a route-level HTTP error represents a transient pillar failure."""
+    return error.status_code >= 500
 
 
 def _assign_result(data: TuiBootstrapDataDTO, pillar: TuiBootstrapPillar, value: object) -> TuiBootstrapDataDTO:
@@ -208,12 +210,14 @@ async def _load_pillar(
     request: Request,
     identity: CallerIdentity,
 ) -> tuple[TuiBootstrapPillar, object | Exception]:
-    """Load one pillar, converting authorization failures into pillar errors."""
+    """Load one pillar, converting expected service failures into pillar errors."""
+    _require_pillar_clearance(pillar, identity)
+    loader = _build_loader(pillar, request=request, identity=identity)
     try:
-        _require_pillar_clearance(pillar, identity)
-        loader = _build_loader(pillar, request=request, identity=identity)
         return pillar, await loader()
-    except Exception as exc:
+    except HTTPException as exc:
+        if not _is_retryable_pillar_error(exc):
+            raise
         return pillar, exc
 
 
