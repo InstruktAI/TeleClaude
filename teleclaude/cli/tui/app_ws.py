@@ -13,6 +13,7 @@ from teleclaude.api_models import (
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
+    ProjectDTO,
     ProjectsInitialEventDTO,
     ProjectWithTodosDTO,
     SessionClosedEventDTO,
@@ -77,7 +78,11 @@ class TelecAppWsMixin:
             return True
 
         if isinstance(event, ProjectsInitialEventDTO):
+            sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             prep_view = self.query_one("#preparation-view", PreparationView)  # type: ignore[attr-defined]
+            computers, _projects = self._get_sessions_view_data(sessions_view)
+            sessions = getattr(sessions_view, "_sessions", [])
+            availability = getattr(sessions_view, "_availability", {})
             projects_with_todos = [
                 ProjectWithTodosDTO(
                     computer=p.computer,
@@ -89,6 +94,20 @@ class TelecAppWsMixin:
                 for p in event.data.projects
             ]
             prep_view.update_data(projects_with_todos)
+            sessions_view.update_data(
+                computers=computers,
+                projects=[
+                    ProjectDTO(
+                        computer=project.computer,
+                        name=project.name,
+                        path=project.path,
+                        description=project.description,
+                    )
+                    for project in projects_with_todos
+                ],
+                sessions=sessions,
+                availability=availability,
+            )
             return True
 
         return False
@@ -188,7 +207,18 @@ class TelecAppWsMixin:
     def _handle_fallback_event(self, event: WsEvent) -> None:
         """Refresh app state for websocket events without explicit handlers."""
         if event.event == "computer_updated":
-            self._reload_computers()  # type: ignore[attr-defined]
+            self._refresh_data(["computers"])  # type: ignore[attr-defined]
+            return
+        if event.event in {
+            "project_updated",
+            "projects_updated",
+            "todos_updated",
+            "todo_created",
+            "todo_updated",
+            "todo_removed",
+        }:
+            self._refresh_data(["projects"])  # type: ignore[attr-defined]
+            return
         self._refresh_data()  # type: ignore[attr-defined]
 
     def _notify_session_lifecycle_status(self, event: SessionLifecycleStatusEventDTO) -> None:

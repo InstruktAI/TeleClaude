@@ -13,7 +13,7 @@ from teleclaude.cli.tui.tree import (
 
 
 @pytest.mark.unit
-def test_build_tree_adds_offline_computer_and_placeholder_project_for_orphan_sessions() -> None:
+def test_build_tree_adds_reconnecting_computer_and_placeholder_project_for_orphan_sessions() -> None:
     computers = [
         ComputerDisplayInfo(
             ComputerDTO(name="c1", status="online", user="alice", host="host", is_local=True),
@@ -31,7 +31,7 @@ def test_build_tree_adds_offline_computer_and_placeholder_project_for_orphan_ses
     assert is_project_node(placeholder_project)
 
     assert orphan_computer.data.computer.name == "c2"
-    assert orphan_computer.data.computer.status == "offline"
+    assert orphan_computer.data.computer.status == "reconnecting"
     assert orphan_computer.data.computer.is_local is False
     assert placeholder_project.data.name == ""
     assert placeholder_project.data.path == "/missing"

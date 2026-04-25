@@ -240,6 +240,52 @@ async def test_run_session_posts_to_sessions_run_with_slash_command_payload() ->
     }
 
 
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_tui_bootstrap_requests_selected_pillars_and_parses_partial_response() -> None:
+    """The TUI bootstrap client uses one aggregate request and preserves pillar errors."""
+    client = TelecAPIClient()
+    response = MagicMock()
+    response.text = json.dumps(
+        {
+            "requested": ["computers", "projects"],
+            "data": {
+                "computers": [
+                    {
+                        "name": "MozBook",
+                        "status": "online",
+                        "user": "morriz",
+                        "host": "mozbook",
+                        "is_local": True,
+                        "tmux_binary": None,
+                    }
+                ],
+            },
+            "errors": [
+                {
+                    "pillar": "projects",
+                    "message": "temporary read failure",
+                    "retryable": True,
+                }
+            ],
+        }
+    )
+
+    with patch.object(client, "_request", new=AsyncMock(return_value=response)) as request_mock:
+        result = await client.get_tui_bootstrap(["computers", "projects"])
+
+    request_mock.assert_awaited_once()
+    method, path = request_mock.await_args.args
+    request_options = request_mock.await_args.kwargs["request_options"]
+    assert method == "GET"
+    assert path == "/tui/bootstrap"
+    assert request_options.params == {"pillars": "computers,projects"}
+    assert result.complete is False
+    assert result.data.computers[0].name == "MozBook"
+    assert result.data.projects_with_todos is None
+    assert result.errors[0].pillar == "projects"
+
+
 # ---------------------------------------------------------------------------
 # TelecAPIClient.start_websocket / stop_websocket
 # ---------------------------------------------------------------------------

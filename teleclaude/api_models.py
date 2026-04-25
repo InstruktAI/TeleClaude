@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING, Literal, NotRequired, TypedDict
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 from teleclaude.session_fields import SessionDTOIdentityFields, SessionDTOTimestampFields
 
@@ -673,6 +673,62 @@ class JobDTO(BaseModel):
     schedule: str | None = None
     last_run: str | None = None
     status: str
+
+
+type TuiBootstrapPillar = Literal[
+    "computers",
+    "projects",
+    "sessions",
+    "availability",
+    "jobs",
+    "settings",
+    "chiptunes",
+]
+
+
+class TuiBootstrapErrorDTO(BaseModel):
+    """A recoverable per-pillar bootstrap failure."""
+
+    model_config = ConfigDict(frozen=True)
+
+    pillar: TuiBootstrapPillar
+    message: str
+    retryable: bool = True
+
+
+class TuiBootstrapDataDTO(BaseModel):
+    """Optional TUI bootstrap payload fields.
+
+    Missing fields mean that pillar was not requested or failed. Clients must
+    merge present fields into existing state instead of treating missing fields
+    as empty authoritative snapshots.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    computers: list[ComputerDTO] | None = None
+    projects_with_todos: list[ProjectWithTodosDTO] | None = None
+    sessions: list[SessionDTO] | None = None
+    availability: dict[str, AgentAvailabilityDTO] | None = None
+    jobs: list[JobDTO] | None = None
+    settings: SettingsDTO | None = None
+    chiptunes: ChiptunesStatusDTO | None = None
+
+
+class TuiBootstrapDTO(BaseModel):
+    """TUI aggregate bootstrap response with partial-success semantics."""
+
+    model_config = ConfigDict(frozen=True)
+
+    requested: list[TuiBootstrapPillar]
+    data: TuiBootstrapDataDTO = Field(default_factory=TuiBootstrapDataDTO)
+    errors: list[TuiBootstrapErrorDTO] = Field(default_factory=list)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def complete(self) -> bool:
+        """Return True when every requested pillar succeeded."""
+        return not self.errors
 
 
 class RunSessionRequest(BaseModel):

@@ -33,6 +33,8 @@ from teleclaude.api_models import (
     SettingsDTO,
     SettingsPatchDTO,
     TodoDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapPillar,
 )
 from teleclaude.cli.models import (
     SubscribeData,
@@ -678,6 +680,16 @@ class _TelecSessionAPI:
                 )
             )
         return result
+
+    async def get_tui_bootstrap(self, pillars: list[TuiBootstrapPillar] | None = None) -> TuiBootstrapDTO:
+        """Fetch aggregate TUI bootstrap data with partial-success semantics."""
+        params = {"pillars": ",".join(pillars)} if pillars else None
+        resp = await self._request(
+            "GET",
+            "/tui/bootstrap",
+            request_options=RequestOptions(params=params),
+        )
+        return TypeAdapter(TuiBootstrapDTO).validate_json(resp.text)
 
     async def list_todos(
         self,

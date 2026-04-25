@@ -18,7 +18,15 @@ from textual.containers import Vertical
 from textual.widgets import TabbedContent, TabPane
 from textual.widgets._tabbed_content import ContentTabs
 
-from teleclaude.api_models import ComputerDTO, ProjectDTO
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    ComputerDTO,
+    JobDTO,
+    ProjectWithTodosDTO,
+    SessionDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapPillar,
+)
 from teleclaude.cli.api_client import APIError
 from teleclaude.cli.tui import theme
 from teleclaude.cli.tui.animation_engine import AnimationEngine
@@ -26,6 +34,12 @@ from teleclaude.cli.tui.animation_observability import AnimationPerfTracker
 from teleclaude.cli.tui.app_actions import TelecAppActionsMixin
 from teleclaude.cli.tui.app_media import TelecAppMediaMixin
 from teleclaude.cli.tui.app_ws import TelecAppWsMixin
+from teleclaude.cli.tui.bootstrap import (
+    BOOTSTRAP_PILLARS,
+    BootstrapRetryState,
+    failed_bootstrap_pillars,
+    projects_from_projects_with_todos,
+)
 from teleclaude.cli.tui.messages import (
     DataRefreshed,
     DocEditRequest,
@@ -78,6 +92,8 @@ _APP_STATE_FIELDS = {
     "_tui_initiated_sessions": ("_runtime_state", "tui_initiated_sessions"),
     "_sky_width_timer": ("_runtime_state", "sky_width_timer"),
     "_reload_loop": ("_runtime_state", "reload_loop"),
+    "_bootstrap_retry": ("_runtime_state", "bootstrap_retry"),
+    "_bootstrap_retry_timer": ("_runtime_state", "bootstrap_retry_timer"),
     "_animation_engine": ("_media_state", "animation_engine"),
     "_animation_perf": ("_media_state", "animation_perf"),
     "_periodic_trigger": ("_media_state", "periodic_trigger"),
@@ -114,6 +130,8 @@ class _AppRuntimeState:
     tui_initiated_sessions: set[str] = field(default_factory=set)
     sky_width_timer: Timer | None = None
     reload_loop: asyncio.AbstractEventLoop | None = None
+    bootstrap_retry: BootstrapRetryState = field(default_factory=BootstrapRetryState)
+    bootstrap_retry_timer: Timer | None = None
 
 
 @dataclass
@@ -126,6 +144,24 @@ class _AppMediaState:
     animation_requested_mode: str = "off"
     chiptunes_state_version: int = -1
     chiptunes_reconcile_task: asyncio.Task[None] | None = None
+
+
+@dataclass(frozen=True)
+class _RefreshStateSnapshot:
+    computers: list[ComputerDTO]
+    projects_with_todos: list[ProjectWithTodosDTO]
+    sessions: list[SessionDTO]
+    availability: dict[str, AgentAvailabilityDTO]
+    jobs: list[JobDTO]
+    tts_enabled: bool
+    chiptunes_loaded: bool
+    chiptunes_playback: str
+    chiptunes_state_version: int
+    chiptunes_playing: bool
+    chiptunes_track: str
+    chiptunes_sid_path: str
+    chiptunes_pending_command_id: str
+    chiptunes_pending_action: str
 
 
 class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[str | None]):
@@ -143,6 +179,8 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
     _tui_initiated_sessions: set[str]
     _sky_width_timer: Timer | None
     _reload_loop: asyncio.AbstractEventLoop | None
+    _bootstrap_retry: BootstrapRetryState
+    _bootstrap_retry_timer: Timer | None
     _animation_engine: AnimationEngine
     _periodic_trigger: object | None
     _activity_trigger: object | None
@@ -426,60 +464,152 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             logger.exception("Computer refresh failed")
 
     @work(exclusive=True, group="refresh")
-    async def _refresh_data(self) -> None:
-        """Fetch all data and post DataRefreshed.
+    async def _refresh_data(self, pillars: list[TuiBootstrapPillar] | None = None) -> None:
+        """Fetch requested bootstrap data and post DataRefreshed.
 
-        Computers are included in the parallel gather so the first load
-        doesn't block on sequential list_computers(). After startup,
-        computer_updated WS events trigger _reload_computers() separately.
+        The daemon returns partial pillar success. This method merges present
+        fields into the mounted UI state and retries only unresolved pillars.
         """
         _r0 = _t.monotonic()
         logger.trace("[PERF] _refresh_data START t=%.3f", _r0)
+        requested = pillars or list(BOOTSTRAP_PILLARS)
         try:
-            payload = await self._build_data_refresh_message(_r0)
+            payload = await self._build_data_refresh_message(_r0, requested)
             self.post_message(payload)
         except APP_DATA_ERRORS:
             logger.exception("Data refresh failed")
+            self._schedule_bootstrap_retry(requested)
 
-    async def _build_data_refresh_message(self, start_time: float) -> DataRefreshed:
-        """Build the aggregate `DataRefreshed` message from API calls."""
-        computers, projects_with_todos, sessions, availability, jobs, settings = await asyncio.gather(
-            self.api.list_computers(),
-            self.api.list_projects_with_todos(),
-            self.api.list_sessions(),
-            self.api.get_agent_availability(),
-            self.api.list_jobs(),
-            self.api.get_settings(),
+    async def _build_data_refresh_message(
+        self,
+        start_time: float,
+        requested: list[TuiBootstrapPillar],
+    ) -> DataRefreshed:
+        """Build the aggregate `DataRefreshed` message from TUI bootstrap data."""
+        bootstrap = await self.api.get_tui_bootstrap(requested)
+        missing = failed_bootstrap_pillars(bootstrap, requested=requested)
+        if missing:
+            self._schedule_bootstrap_retry(missing)
+        else:
+            self._clear_bootstrap_retry()
+        logger.trace("[PERF] _refresh_data bootstrap done dt=%.3f", _t.monotonic() - start_time)
+        return self._merge_bootstrap_message(bootstrap)
+
+    def _merge_bootstrap_message(self, bootstrap: TuiBootstrapDTO) -> DataRefreshed:
+        """Merge successful bootstrap fields with currently mounted UI state."""
+        current = self._current_refresh_state()
+        data = bootstrap.data
+
+        computers = data.computers if data.computers is not None else current.computers
+        projects_with_todos = (
+            data.projects_with_todos if data.projects_with_todos is not None else current.projects_with_todos
         )
-        logger.trace("[PERF] _refresh_data gather done dt=%.3f", _t.monotonic() - start_time)
+        sessions = data.sessions if data.sessions is not None else current.sessions
+        availability = data.availability if data.availability is not None else current.availability
+        jobs = data.jobs if data.jobs is not None else current.jobs
+        settings = data.settings
+        chiptunes_status = data.chiptunes
+
         self._runtime_state.computers = computers
-        chiptunes_status = await self._load_chiptunes_status()
         return DataRefreshed(
             computers,
-            [
-                ProjectDTO(
-                    computer=project.computer,
-                    name=project.name,
-                    path=project.path,
-                    description=project.description,
-                )
-                for project in projects_with_todos
-            ],
+            projects_from_projects_with_todos(projects_with_todos),
             projects_with_todos,
             sessions,
             availability,
             jobs,
-            self._extract_tts_enabled(settings),
-            chiptunes_loaded=bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else False,
-            chiptunes_playback=str(getattr(chiptunes_status, "playback", "cold")) if chiptunes_status else "cold",
-            chiptunes_state_version=int(getattr(chiptunes_status, "state_version", 0)) if chiptunes_status else 0,
-            chiptunes_playing=bool(getattr(chiptunes_status, "playing", False)) if chiptunes_status else False,
-            chiptunes_track=str(getattr(chiptunes_status, "track", "")) if chiptunes_status else "",
-            chiptunes_sid_path=str(getattr(chiptunes_status, "sid_path", "")) if chiptunes_status else "",
-            chiptunes_pending_command_id=(
-                str(getattr(chiptunes_status, "pending_command_id", "")) if chiptunes_status else ""
+            self._extract_tts_enabled(settings) if settings is not None else current.tts_enabled,
+            chiptunes_loaded=(
+                bool(getattr(chiptunes_status, "loaded", False)) if chiptunes_status else current.chiptunes_loaded
             ),
-            chiptunes_pending_action=str(getattr(chiptunes_status, "pending_action", "")) if chiptunes_status else "",
+            chiptunes_playback=(
+                str(getattr(chiptunes_status, "playback", "cold")) if chiptunes_status else current.chiptunes_playback
+            ),
+            chiptunes_state_version=(
+                int(getattr(chiptunes_status, "state_version", 0))
+                if chiptunes_status
+                else current.chiptunes_state_version
+            ),
+            chiptunes_playing=(
+                bool(getattr(chiptunes_status, "playing", False)) if chiptunes_status else current.chiptunes_playing
+            ),
+            chiptunes_track=(
+                str(getattr(chiptunes_status, "track", "")) if chiptunes_status else current.chiptunes_track
+            ),
+            chiptunes_sid_path=(
+                str(getattr(chiptunes_status, "sid_path", "")) if chiptunes_status else current.chiptunes_sid_path
+            ),
+            chiptunes_pending_command_id=(
+                str(getattr(chiptunes_status, "pending_command_id", ""))
+                if chiptunes_status
+                else current.chiptunes_pending_command_id
+            ),
+            chiptunes_pending_action=(
+                str(getattr(chiptunes_status, "pending_action", ""))
+                if chiptunes_status
+                else current.chiptunes_pending_action
+            ),
+        )
+
+    def _schedule_bootstrap_retry(self, pillars: list[TuiBootstrapPillar]) -> None:
+        """Retry unresolved bootstrap pillars with capped exponential backoff."""
+        if not pillars:
+            self._clear_bootstrap_retry()
+            return
+        timer = self._runtime_state.bootstrap_retry_timer
+        if timer is not None:
+            timer.stop()
+        delay = self._runtime_state.bootstrap_retry.consume_delay()
+        unique_pillars = list(dict.fromkeys(pillars))
+        logger.info("Scheduling TUI bootstrap retry", pillars=unique_pillars, delay_s=delay)
+        self._runtime_state.bootstrap_retry_timer = self.set_timer(
+            delay,
+            lambda retry_pillars=unique_pillars: self._refresh_data(retry_pillars),
+        )
+
+    def _clear_bootstrap_retry(self) -> None:
+        """Clear any pending bootstrap retry after success."""
+        timer = self._runtime_state.bootstrap_retry_timer
+        if timer is not None:
+            timer.stop()
+        self._runtime_state.bootstrap_retry_timer = None
+        self._runtime_state.bootstrap_retry.reset()
+
+    def _current_refresh_state(self) -> _RefreshStateSnapshot:
+        """Read current mounted UI state for merge-only bootstrap updates."""
+        sessions_view = self.query_one("#sessions-view", SessionsView)
+        prep_view = self.query_one("#preparation-view", PreparationView)
+        jobs_view = self.query_one("#jobs-view", JobsView)
+        status_bar = self.query_one("#telec-footer", TelecFooter)
+
+        projects_with_todos = list(getattr(prep_view, "_projects_with_todos", []))
+        if not projects_with_todos:
+            projects_with_todos = [
+                ProjectWithTodosDTO(
+                    computer=project.computer,
+                    name=project.name,
+                    path=project.path,
+                    description=project.description,
+                    todos=[],
+                )
+                for project in getattr(sessions_view, "_projects", [])
+            ]
+
+        return _RefreshStateSnapshot(
+            computers=list(getattr(sessions_view, "_computers", self._runtime_state.computers)),
+            projects_with_todos=projects_with_todos,
+            sessions=list(getattr(sessions_view, "_sessions", [])),
+            availability=dict(getattr(sessions_view, "_availability", {})),
+            jobs=list(getattr(jobs_view, "_jobs", [])),
+            tts_enabled=bool(getattr(status_bar, "tts_enabled", False)),
+            chiptunes_loaded=bool(getattr(status_bar, "chiptunes_loaded", False)),
+            chiptunes_playback=str(getattr(status_bar, "chiptunes_playback", "cold")),
+            chiptunes_state_version=int(getattr(self, "_chiptunes_state_version", 0)),
+            chiptunes_playing=bool(getattr(status_bar, "chiptunes_playing", False)),
+            chiptunes_track=str(getattr(status_bar, "chiptunes_track", "")),
+            chiptunes_sid_path=str(getattr(status_bar, "chiptunes_sid_path", "")),
+            chiptunes_pending_command_id=str(getattr(status_bar, "chiptunes_pending_command_id", "")),
+            chiptunes_pending_action=str(getattr(status_bar, "chiptunes_pending_action", "")),
         )
 
     @staticmethod
@@ -489,14 +619,6 @@ class TelecApp(TelecAppWsMixin, TelecAppActionsMixin, TelecAppMediaMixin, App[st
             return bool(getattr(getattr(settings, "tts", None), "enabled", False))
         except (AttributeError, TypeError, ValueError):
             return False
-
-    async def _load_chiptunes_status(self) -> object | None:
-        """Best-effort fetch of the current chiptunes runtime state."""
-        try:
-            return await self.api.get_chiptunes_status()
-        except APP_DATA_ERRORS:
-            logger.debug("ChipTunes status refresh failed", exc_info=True)
-            return None
 
     def on_data_refreshed(self, message: DataRefreshed) -> None:
         """Handle refreshed data — update all views."""

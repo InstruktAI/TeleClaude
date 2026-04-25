@@ -143,6 +143,7 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /sessions/run                   | IMMEDIATE       | Create session + run slash command |
 | DELETE | /sessions/{id}                  | FIRE_AND_FORGET | Request async session close        |
 | POST   | /jobs/{name}/run                | FIRE_AND_FORGET | Run background job                 |
+| GET    | /tui/bootstrap                  | READ            | TUI partial initial state          |
 | GET    | /computers                      | READ            | List computers (cache + remote)    |
 | GET    | /projects                       | READ            | List projects (cache)              |
 | GET    | /todos                          | READ            | List todos (cache)                 |

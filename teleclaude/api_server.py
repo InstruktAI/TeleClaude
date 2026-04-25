@@ -35,6 +35,7 @@ from teleclaude.api import (
     sessions_actions_routes,
     sessions_routes,
     settings_routes,
+    tui_routes,
 )
 from teleclaude.api.auth import CallerIdentity, verify_caller
 from teleclaude.api.data_routes import router as data_router
@@ -126,6 +127,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         sessions_actions_routes.configure(client=client)
         computers_routes.configure(cache=cache)
         projects_routes.configure(cache=cache)
+        tui_routes.configure(cache=cache)
         settings_routes.configure(runtime_settings=runtime_settings)
         # chiptunes_routes are wired by the daemon after lifecycle start
         self.app.include_router(sessions_routes.router)
@@ -135,6 +137,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         self.app.include_router(agents_routes.router)
         self.app.include_router(people_routes.router)
         self.app.include_router(settings_routes.router)
+        self.app.include_router(tui_routes.router)
         self.app.include_router(chiptunes_routes.router)
         self.app.include_router(jobs_routes.router)
         self.app.include_router(notifications_routes.router)
@@ -230,6 +233,7 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
         sessions_routes.configure(cache=value)
         computers_routes.configure(cache=value)
         projects_routes.configure(cache=value)
+        tui_routes.configure(cache=value)
 
     async def _handle_session_updated_event(
         self,

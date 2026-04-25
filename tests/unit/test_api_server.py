@@ -34,6 +34,7 @@ _ROUTE_MODULE_NAMES = (
     "teleclaude.api.sessions_actions_routes",
     "teleclaude.api.sessions_routes",
     "teleclaude.api.settings_routes",
+    "teleclaude.api.tui_routes",
     "teleclaude.memory.api_routes",
     "teleclaude.mirrors.api_routes",
     "teleclaude.hooks.api_routes",

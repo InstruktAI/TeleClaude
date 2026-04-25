@@ -130,7 +130,7 @@ def build_tree(
             ComputerDisplayInfo(
                 computer=ComputerDTO(
                     name=computer_name,
-                    status="offline",
+                    status="reconnecting",
                     user=None,
                     host=None,
                     is_local=(computer_name == "local"),

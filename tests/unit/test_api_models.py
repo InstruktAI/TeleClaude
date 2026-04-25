@@ -55,6 +55,9 @@ from teleclaude.api_models import (
     ToolUseActivityEventDTO,
     TTSSettingsDTO,
     TTSSettingsPatchDTO,
+    TuiBootstrapDataDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapErrorDTO,
     UserPromptSubmitActivityEventDTO,
     VoiceInputRequest,
 )
@@ -190,6 +193,49 @@ class TestCreateSessionResponseDTO:
         )
         assert dto.status == "error"
         assert dto.error == "something went wrong"
+
+
+# ---------------------------------------------------------------------------
+# TuiBootstrapDTO
+# ---------------------------------------------------------------------------
+
+
+class TestTuiBootstrapDTO:
+    """Pins the TUI bootstrap partial-success contract."""
+
+    @pytest.mark.unit
+    def test_partial_success_preserves_successful_pillars_and_errors(self):
+        """A failed pillar is reported without clearing successful data."""
+        computer = ComputerDTO(name="MozBook", status="online", user="morriz", host="mozbook", is_local=True)
+        session = SessionDTO(
+            session_id="sess-001",
+            title="Working",
+            status="active",
+            computer="MozBook",
+            project_path="/repo/app",
+        )
+
+        dto = TuiBootstrapDTO(
+            requested=["computers", "projects", "sessions"],
+            data=TuiBootstrapDataDTO(computers=[computer], sessions=[session]),
+            errors=[TuiBootstrapErrorDTO(pillar="projects", message="transient project read failure")],
+        )
+
+        assert dto.complete is False
+        assert dto.data.computers == [computer]
+        assert dto.data.projects_with_todos is None
+        assert dto.data.sessions == [session]
+        assert dto.errors[0].pillar == "projects"
+
+    @pytest.mark.unit
+    def test_complete_is_true_when_no_errors_present(self):
+        """The complete flag is derived from the error list."""
+        dto = TuiBootstrapDTO(
+            requested=["settings"],
+            data=TuiBootstrapDataDTO(settings=SettingsDTO(tts=TTSSettingsDTO(enabled=True))),
+        )
+
+        assert dto.complete is True
 
 
 # ---------------------------------------------------------------------------

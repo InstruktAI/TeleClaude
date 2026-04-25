@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import TypedDict
 from unittest.mock import Mock
 
 import pytest
@@ -8,11 +9,25 @@ from teleclaude.api_models import (
     AgentAvailabilityDTO,
     AgentAvailabilityEventDTO,
     ChiptunesTrackEventDTO,
+    ComputerDTO,
+    ProjectDTO,
+    ProjectsInitialDataDTO,
+    ProjectsInitialEventDTO,
+    ProjectWithTodosDTO,
+    RefreshDataDTO,
+    RefreshEventDTO,
     SessionDTO,
     SessionStartedEventDTO,
 )
 from teleclaude.cli.tui import app_ws
 from teleclaude.cli.tui.messages import AgentActivity, SessionClosed, SessionStarted, SessionUpdated
+
+
+class _UpdateDataCall(TypedDict):
+    computers: list[ComputerDTO]
+    projects: list[ProjectDTO]
+    sessions: list[SessionDTO]
+    availability: dict[str, AgentAvailabilityDTO] | None
 
 
 class _PaneBridge:
@@ -32,12 +47,38 @@ class _SessionsView:
         self.activity_calls: list[tuple[str, str, str | None]] = []
         self.closed: list[str] = []
         self.updated: list[object] = []
+        self._computers: list[ComputerDTO] = []
+        self._projects: list[ProjectDTO] = []
+        self._sessions: list[SessionDTO] = []
         self._availability: dict[str, AgentAvailabilityDTO] = {}
         self.pending_applied: int = 0
         self.select_requests: list[tuple[str, bool]] = []
+        self.update_data_calls: list[_UpdateDataCall] = []
 
     def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         self._availability = availability
+
+    def update_data(
+        self,
+        *,
+        computers: list[ComputerDTO],
+        projects: list[ProjectDTO],
+        sessions: list[SessionDTO],
+        availability: dict[str, AgentAvailabilityDTO] | None = None,
+    ) -> None:
+        self._computers = computers
+        self._projects = projects
+        self._sessions = sessions
+        if availability is not None:
+            self._availability = availability
+        self.update_data_calls.append(
+            {
+                "computers": computers,
+                "projects": projects,
+                "sessions": sessions,
+                "availability": availability,
+            }
+        )
 
     def update_activity(self, session_id: str, activity_type: str, detail: str | None = None) -> None:
         self.activity_calls.append((session_id, activity_type, detail))
@@ -71,9 +112,19 @@ class _Footer:
 class _PreparationView:
     def __init__(self) -> None:
         self._availability: dict[str, AgentAvailabilityDTO] = {}
+        self.projects: list[ProjectWithTodosDTO] = []
 
     def set_availability(self, availability: dict[str, AgentAvailabilityDTO]) -> None:
         self._availability = availability
+
+    def update_data(
+        self,
+        projects: list[ProjectWithTodosDTO],
+        availability: dict[str, AgentAvailabilityDTO] | None = None,
+    ) -> None:
+        self.projects = projects
+        if availability is not None:
+            self._availability = availability
 
 
 class _WsApp(app_ws.TelecAppWsMixin):
@@ -193,6 +244,82 @@ def test_handle_ws_event_updates_live_agent_availability() -> None:
     assert footer.updated_availability[-1]["codex"].status == "unavailable"
     assert sessions_view._availability["codex"].status == "unavailable"
     assert preparation_view._availability["codex"].status == "unavailable"
+
+
+@pytest.mark.unit
+def test_projects_initial_event_updates_sessions_view_project_cache() -> None:
+    """Project snapshots from websocket must update both preparation and sessions caches."""
+    sessions_view = _SessionsView()
+    sessions_view._computers = [
+        ComputerDTO(name="MozBook", status="online", user="morriz", host="mozbook", is_local=True)
+    ]
+    sessions_view._sessions = [
+        SessionDTO(
+            session_id="sess-001",
+            title="Existing",
+            status="active",
+            computer="MozBook",
+            project_path="/repo/app",
+        )
+    ]
+    pane_bridge = _PaneBridge()
+    preparation_view = _PreparationView()
+    app = _WsApp(sessions_view, pane_bridge, preparation_view=preparation_view)
+
+    app._handle_ws_event(
+        ProjectsInitialEventDTO(
+            event="projects_initial",
+            data=ProjectsInitialDataDTO(
+                projects=[
+                    ProjectWithTodosDTO(
+                        computer="MozBook",
+                        name="app",
+                        path="/repo/app",
+                        description="Application",
+                        todos=[],
+                    )
+                ]
+            ),
+        )
+    )
+
+    assert preparation_view.projects[0].path == "/repo/app"
+    assert sessions_view.update_data_calls
+    assert sessions_view._computers[0].name == "MozBook"
+    assert sessions_view._sessions[0].session_id == "sess-001"
+    assert sessions_view._projects == [
+        ProjectDTO(computer="MozBook", name="app", path="/repo/app", description="Application")
+    ]
+    app._refresh_data.assert_not_called()
+
+
+@pytest.mark.unit
+def test_project_refresh_event_requests_only_projects_pillar() -> None:
+    """Push refreshes should not trigger a full aggregate bootstrap when one pillar changed."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_event(
+        RefreshEventDTO(
+            event="projects_updated",
+            data=RefreshDataDTO(computer="MozBook", project_path="/repo/app"),
+        )
+    )
+
+    app._refresh_data.assert_called_once_with(["projects"])
+
+
+@pytest.mark.unit
+def test_computer_refresh_event_requests_only_computers_pillar() -> None:
+    """Computer updates should retry the computer pillar without clearing session data."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_event(RefreshEventDTO(event="computer_updated", data=RefreshDataDTO(computer="MozBook")))
+
+    app._refresh_data.assert_called_once_with(["computers"])
 
 
 @pytest.mark.unit
