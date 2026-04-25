@@ -71,18 +71,7 @@ async def _prepare_step_input_assessment(
     writer = StateWriter(state)
     writer.audit.input_assessment.started_at = datetime.now(UTC).isoformat()
 
-    has_requirements = await todos_db.artifact_exists(slug, "requirements")
-    if has_requirements:
-        digest = await todos_db.artifact_digest(slug, "requirements")
-        if digest:
-            writer.state.artifacts.requirements.digest = digest
-        apply_authoritative_signal(writer.state, "requirements_ready")
-        # Emit input_consumed event for observability (R13)
-        input_digest = await todos_db.artifact_digest(slug, "input")
-        _emit_prepare_event(
-            "domain.software-development.prepare.input_consumed",
-            {"slug": slug, "phase": "input_assessment", "digest": input_digest},
-        )
+    if writer.state.artifacts.requirements.produced_at:
         writer.audit.input_assessment.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
@@ -141,17 +130,12 @@ async def _prepare_step_triangulation(
     writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
 
-    has_input = await todos_db.artifact_exists(slug, "input")
-    has_requirements = await todos_db.artifact_exists(slug, "requirements")
-    if has_requirements:
-        digest = await todos_db.artifact_digest(slug, "requirements")
-        if digest:
-            writer.state.artifacts.requirements.digest = digest
-        apply_authoritative_signal(writer.state, "requirements_ready")
+    if writer.state.artifacts.requirements.produced_at:
         writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
 
+    has_input = await todos_db.artifact_exists(slug, "input")
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TRIANGULATION, PRODUCTION_ROLES)
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
@@ -550,15 +534,9 @@ async def _prepare_step_plan_drafting(
     writer = StateWriter(state)
     writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
 
-    has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
-    if has_plan:
-        digest = await todos_db.artifact_digest(slug, "implementation-plan")
-        if digest:
-            writer.state.artifacts.implementation_plan.digest = digest
-        apply_authoritative_signal(writer.state, "plan_ready")
+    if writer.state.artifacts.implementation_plan.produced_at:
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
-        _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""
 
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
@@ -917,13 +895,8 @@ async def _prepare_step_re_grounding(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """RE_GROUNDING: refresh the plan against current truth before re-review."""
-    has_plan = await todos_db.artifact_exists(slug, "implementation-plan")
-    if has_plan:
-        writer = StateWriter(state)
-        digest = await todos_db.artifact_digest(slug, "implementation-plan")
-        if digest:
-            writer.state.artifacts.implementation_plan.digest = digest
-        apply_authoritative_signal(writer.state, "plan_ready")
+    writer = StateWriter(state)
+    if writer.state.artifacts.implementation_plan.produced_at:
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
 

@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.core.next_machine.state_io import (
+    mark_phase_state,
     reconcile_phase_state,
     validate_mark_phase_preconditions,
 )
@@ -256,6 +257,61 @@ def test_reconcile_phase_state_defaults_to_prepare_stage_and_adopts_existing_art
     written_state = mock_write.call_args.args[2]
     assert written_state["artifacts"]["input"]["digest"] == ""
     assert written_state["artifacts"]["implementation_plan"]["digest"] == "plan-digest"
+
+
+def test_mark_phase_hydrates_artifact_digests_from_db(tmp_path: Path) -> None:
+    """mark-phase must hydrate artifact digests from DB before normalizing state.
+
+    When rewinding to input_assessment on a todo that has existing artifacts in the DB,
+    the resulting state must reflect their presence via digest fields. Without hydration,
+    downstream checks like _has_input_artifact return False even when the artifact exists.
+    """
+    project_root = tmp_path
+    (project_root / ".teleclaude").mkdir()
+
+    # State with empty digests — as if they were never hydrated
+    state: dict[str, StateValue] = {
+        "schema_version": 2,
+        "phase": "pending",
+        "lifecycle_phase": "prepared",
+        "kind": "todo",
+        "artifacts": {
+            "input": {"digest": "", "produced_at": "", "stale": False, "approved": False, "confirmed": False},
+            "requirements": {
+                "digest": "",
+                "produced_at": "2026-01-01T00:00:00+00:00",
+                "stale": False,
+                "approved": True,
+                "confirmed": False,
+            },
+        },
+        "requirements_review": {"verdict": "approve"},
+        "test_spec_review": {"verdict": "approve"},
+        "plan_review": {"verdict": "approve"},
+        "dor": {"score": 8, "status": "pass"},
+        "grounding": {"valid": True},
+    }
+
+    with (
+        patch(f"{_STATE_IO}.read_phase_state", return_value=state),
+        patch(f"{_STATE_IO}.write_phase_state") as mock_write,
+        patch(
+            f"{_STATE_IO}._read_artifact_presence",
+            return_value={"input": True, "requirements": True, "test_specs": False, "implementation_plan": False},
+        ),
+        patch(
+            f"{_STATE_IO}._artifact_digest",
+            side_effect=lambda _cwd, _slug, name: {"input": "input-digest-abc", "requirements": "req-digest-xyz"}.get(
+                name, ""
+            ),
+        ),
+    ):
+        mark_phase_state(str(project_root), "my-slug", "input_assessment")
+
+    written_state = mock_write.call_args.args[2]
+    # Input digest must be hydrated from DB — this is the core of the bug
+    assert written_state["artifacts"]["input"]["digest"] == "input-digest-abc"
+    assert written_state["lifecycle_phase"] == "input_assessment"
 
 
 def test_reconcile_phase_state_reports_no_valid_work_phase(tmp_path: Path) -> None:

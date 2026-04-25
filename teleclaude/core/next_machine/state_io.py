@@ -388,6 +388,7 @@ def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
     if error:
         raise ValueError(error)
     writer = StateWriter(raw_state)
+    _sync_reconcile_artifacts(cwd, slug, writer)
     normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
     payload = writer.to_dict()
     write_phase_state(cwd, slug, payload)
