@@ -232,8 +232,10 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
         " --agent <agent>\n"
         "     BLOCKING: Do not proceed, end sessions, or report completion until the\n"
-        "     reviewer stamps a verdict. If REQUEST CHANGES, fix and re-submit to the\n"
-        "     same reviewer. Only an APPROVE verdict closes the review gate.\n"
+        "     reviewer outputs a verdict. Tail the reviewer session for the verdict.\n"
+        "     Commit reviews have no todo slug — do not instruct the reviewer to stamp.\n"
+        "     If REQUEST CHANGES, fix and re-submit to the same reviewer.\n"
+        "     Only an APPROVE verdict closes the review gate.\n"
         "\n"
         "Explain which classification applies and why.",
         file=sys.stderr,
