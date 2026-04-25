@@ -208,3 +208,25 @@ async def test_read_state_delivered_returns_none_for_active_slug(todos_db: Todos
     await todos_db.add_to_roadmap("my-slug")
     await todos_db.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
     assert await todos_db.read_state_delivered("my-slug") is None
+
+
+async def test_deliver_stamps_integration_phase_delivered(todos_db: TodosDb) -> None:
+    """deliver_sync sets integration_phase='delivered' in the state JSON."""
+    await todos_db.add_to_roadmap("my-slug")
+    await todos_db.write_state("my-slug", {"lifecycle_phase": "handed_off", "integration_phase": "started"})
+    todos_db.deliver_sync("my-slug", commit="abc123")
+    result = await todos_db.read_state_delivered("my-slug")
+    assert result is not None
+    assert result["integration_phase"] == "delivered"
+
+
+async def test_deliver_stamps_integration_phase_even_when_stale(todos_db: TodosDb) -> None:
+    """deliver_sync overwrites any stale integration_phase with 'delivered'."""
+    await todos_db.add_to_roadmap("my-slug")
+    await todos_db.write_state(
+        "my-slug", {"lifecycle_phase": "handed_off", "integration_phase": "delivery_bookkeeping"}
+    )
+    todos_db.deliver_sync("my-slug", commit="abc123")
+    result = await todos_db.read_state_delivered("my-slug")
+    assert result is not None
+    assert result["integration_phase"] == "delivered"

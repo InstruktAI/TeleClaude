@@ -12,14 +12,12 @@ from teleclaude.cli.tui.widgets.todo_row import (
     _COL_GAP,
     _WIDGET_PADDING_HORZ,
     TodoRow,
-    _gold_color,
     _ok_color,
     _pad,
     integration_phase_label,
     lifecycle_phase_label,
     row_content_width,
 )
-from teleclaude.core.integration.state_machine import IntegrationPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 
 
@@ -91,8 +89,8 @@ def test_integration_phase_label_returns_none_for_none_phase_and_no_finalize() -
 
 
 @pytest.mark.unit
-def test_integration_phase_label_started_for_candidate_dequeued() -> None:
-    result = integration_phase_label(IntegrationPhase.CANDIDATE_DEQUEUED.value, None)
+def test_integration_phase_label_started() -> None:
+    result = integration_phase_label("started", None)
     assert result is not None
     prefix, value, color = result
     assert prefix == "I"
@@ -101,8 +99,8 @@ def test_integration_phase_label_started_for_candidate_dequeued() -> None:
 
 
 @pytest.mark.unit
-def test_integration_phase_label_delivered_for_completed() -> None:
-    result = integration_phase_label(IntegrationPhase.COMPLETED.value, None)
+def test_integration_phase_label_delivered() -> None:
+    result = integration_phase_label("delivered", None)
     assert result is not None
     prefix, value, color = result
     assert prefix == "I"
@@ -111,13 +109,9 @@ def test_integration_phase_label_delivered_for_completed() -> None:
 
 
 @pytest.mark.unit
-def test_integration_phase_label_failed_for_push_rejected() -> None:
-    result = integration_phase_label(IntegrationPhase.PUSH_REJECTED.value, None)
-    assert result is not None
-    prefix, value, color = result
-    assert prefix == "I"
-    assert value == "failed"
-    assert color == _gold_color()
+def test_integration_phase_label_unknown_value_returns_none() -> None:
+    """Legacy/stale phase values produce no label — roadmap.py handles mapping."""
+    assert integration_phase_label("delivery_bookkeeping", None) is None
 
 
 @pytest.mark.unit

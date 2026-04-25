@@ -90,7 +90,6 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             "teleclaude.core.integration.step_functions._get_todos_db_sync",
             return_value=mock_db,
         ),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         ok, _msg = _step_delivery_bookkeeping(
             checkpoint=cp,
@@ -138,8 +137,7 @@ def test_repo_root_pull_failure_proceeds_to_cleanup(tmp_path: Path) -> None:
             "teleclaude.core.integration.step_functions._run_git",
             side_effect=mock_run_git,
         ),
-        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug") as mock_cleanup,
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
+        patch("teleclaude.core.integration.step_functions.cleanup_delivered_slug") as mock_cleanup,
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
         ok, _msg = _step_push_succeeded(
@@ -171,7 +169,6 @@ def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
             side_effect=mock_run_git,
         ),
         patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase") as mock_mirror,
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
         ok, _msg = _step_push_succeeded(
@@ -182,7 +179,6 @@ def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
 
     assert ok is True, "successful pull must continue to cleanup"
     assert cp.phase == IntegrationPhase.CANDIDATE_DELIVERED.value
-    mock_mirror.assert_called_with(str(tmp_path), "my-feature", IntegrationPhase.CANDIDATE_DELIVERED.value)
 
 
 def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
@@ -230,7 +226,6 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         ok, _msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
@@ -272,7 +267,6 @@ def _run_bookkeeping_with_mock(
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         ok, msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
@@ -301,7 +295,6 @@ def test_deliver_sync_exception_propagates(tmp_path: Path) -> None:
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=_base_mock_run_git),
         patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
     ):
         with pytest.raises(RuntimeError, match="DB connection lost"):
             _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
@@ -377,7 +370,6 @@ def test_anomaly_push_succeeded_pull_fails(tmp_path: Path) -> None:
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"),
-        patch("teleclaude.core.integration.step_functions._mirror_integration_phase"),
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
         _step_push_succeeded(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))

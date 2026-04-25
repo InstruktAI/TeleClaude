@@ -471,7 +471,7 @@ def _step_idle(
     checkpoint.lease_token = lease_token
     checkpoint.started_at = now
     _write_checkpoint(checkpoint_path, checkpoint)
-    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DEQUEUED.value)
+    _stamp_integration_started(cwd, key.slug)
 
     logger.info("%s slug=%s phase=CANDIDATE_DEQUEUED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
     _emit_lifecycle_event(
@@ -556,7 +556,7 @@ def _do_merge(
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
         checkpoint.error_context = {"merge_type": "clean"}
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.MERGE_CLEAN.value)
+
         _emit_lifecycle_event("integration.merge.succeeded", {"slug": key.slug, "branch": key.branch})
         logger.info("%s slug=%s phase=MERGE_CLEAN", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
@@ -567,7 +567,7 @@ def _do_merge(
         checkpoint.phase = IntegrationPhase.MERGE_CONFLICTED.value
         checkpoint.error_context = {"merge_type": "conflicted", "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.MERGE_CONFLICTED.value)
+
         _emit_lifecycle_event(
             "integration.merge.conflicted",
             {"slug": key.slug, "branch": key.branch, "conflicted_files": conflicted_files},
@@ -597,7 +597,7 @@ def _step_awaiting_commit(
         conflicted_files = _get_conflicted_files(wt)
         checkpoint.error_context = {**(checkpoint.error_context or {}), "conflicted_files": conflicted_files}
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, checkpoint.phase)
+
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
 
     # Check if HEAD advanced in integration worktree (commit happened)
@@ -607,7 +607,7 @@ def _step_awaiting_commit(
         # Commit detected — advance to COMMITTED
         checkpoint.phase = IntegrationPhase.COMMITTED.value
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.COMMITTED.value)
+
         _emit_lifecycle_event("integration.candidate.committed", {"slug": key.slug, "commit_sha": head_sha})
         logger.info("%s slug=%s phase=COMMITTED commit=%s", _NEXT_INTEGRATE_PHASE_LOG, key.slug, head_sha)
         return True, ""  # loop into COMMITTED
@@ -638,7 +638,6 @@ def _step_committed(
 
     checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
     _write_checkpoint(checkpoint_path, checkpoint)
-    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.DELIVERY_BOOKKEEPING.value)
 
     return True, ""  # loop into DELIVERY_BOOKKEEPING
 
@@ -710,7 +709,7 @@ def _step_delivery_bookkeeping(
         head_sha = _get_head_sha(wt)
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_SUCCEEDED.value)
+
         _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": head_sha or "unknown"})
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
@@ -719,7 +718,7 @@ def _step_delivery_bookkeeping(
         checkpoint.phase = IntegrationPhase.PUSH_REJECTED.value
         checkpoint.error_context = {**(checkpoint.error_context or {}), "rejection_reason": rejection}
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_REJECTED.value)
+
         _emit_lifecycle_event("integration.push.rejected", {"slug": key.slug, "rejection_reason": rejection})
         logger.info("%s slug=%s phase=PUSH_REJECTED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return False, _format_push_rejected(rejection, key.slug)
@@ -747,7 +746,7 @@ def _step_push_rejected(
         # Recovery detected
         checkpoint.phase = IntegrationPhase.PUSH_SUCCEEDED.value
         _write_checkpoint(checkpoint_path, checkpoint)
-        _mirror_integration_phase(cwd, key.slug, IntegrationPhase.PUSH_SUCCEEDED.value)
+
         _emit_lifecycle_event("integration.push.succeeded", {"slug": key.slug, "commit_sha": local_head})
         logger.info("%s slug=%s phase=PUSH_SUCCEEDED (recovered)", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
         return True, ""  # loop into PUSH_SUCCEEDED
@@ -858,7 +857,7 @@ def _do_cleanup(
     checkpoint.phase = IntegrationPhase.CANDIDATE_DELIVERED.value
     checkpoint.items_processed += 1
     _write_checkpoint(checkpoint_path, checkpoint)
-    _mirror_integration_phase(cwd, key.slug, IntegrationPhase.CANDIDATE_DELIVERED.value)
+
     logger.info("%s slug=%s phase=CANDIDATE_DELIVERED", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
     return True, ""  # loop to pop next candidate
@@ -878,22 +877,22 @@ def _try_release_lease(lease_store: IntegrationLeaseStore, session_id: str, leas
         logger.warning("Failed to release integration lease for session %s", session_id, exc_info=True)
 
 
-def _mirror_integration_phase(cwd: str, slug: str, phase: str) -> None:
-    """Write integration_phase into the todo state in todos.db.
+def _stamp_integration_started(cwd: str, slug: str) -> None:
+    """Stamp integration_phase='started' on an active slug's todo state.
 
     Best-effort: failures are logged but do not block the integration flow.
-    After delivery, read_state_sync returns None (the delivered filter is correct)
-    and deliver_sync already wrote integration_phase, so we skip silently.
+    Only called at candidate dequeue when the slug is still active.
+    The 'delivered' stamp is handled by deliver_sync.
     """
     try:
         todos_db = _get_todos_db_sync(cwd)
         state = todos_db.read_state_sync(slug)
         if state is None:
             return
-        state["integration_phase"] = phase
+        state["integration_phase"] = "started"
         todos_db.write_state_sync(slug, state)
     except Exception as exc:
-        logger.warning("_mirror_integration_phase failed for %s phase=%s: %s", slug, phase, exc)
+        logger.warning("_stamp_integration_started failed for %s: %s", slug, exc)
 
 
 __all__ = [

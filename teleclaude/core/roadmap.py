@@ -168,8 +168,10 @@ def assemble_roadmap_from_db(
             todo_status = row[5]  # active/icebox/delivered
             if is_draft:
                 todo_status = "pending"
-            elif todo_status == "delivered" and not integration_phase:
-                integration_phase = "candidate_delivered"
+            elif todo_status == "delivered":
+                # Roadmap is the authority — normalize any stale/legacy phase to "delivered"
+                if integration_phase != "delivered":
+                    integration_phase = "delivered"
             if not is_draft and todo_status == "active" and build_status:
                 todo_status = "in_progress"
             elif not is_draft and todo_status == "active" and lifecycle_phase == "prepared":

@@ -12,7 +12,6 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.core.integration.state_machine import IntegrationPhase
 from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 
@@ -29,7 +28,6 @@ _LIFECYCLE_LABEL_READY = "ready"
 
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
-_INTEGRATION_LABEL_FAILED = "failed"
 _INTEGRATION_LABEL_READY = "ready"
 _INTEGRATION_LABEL_QUEUED = "queued"
 
@@ -59,28 +57,6 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
 
 _FINALIZE_LABEL_READY = "ready"
 _FINALIZE_LABEL_QUEUED = "handed_off"
-_INTEGRATION_CLEARANCE_PHASE = "clearance_wait"
-
-_INTEGRATION_STARTED_PHASES: frozenset[str] = frozenset(
-    {
-        IntegrationPhase.CANDIDATE_DEQUEUED.value,
-        _INTEGRATION_CLEARANCE_PHASE,
-        IntegrationPhase.MERGE_CLEAN.value,
-        IntegrationPhase.MERGE_CONFLICTED.value,
-        IntegrationPhase.AWAITING_COMMIT.value,
-        IntegrationPhase.COMMITTED.value,
-        IntegrationPhase.DELIVERY_BOOKKEEPING.value,
-    }
-)
-
-_INTEGRATION_DELIVERED_PHASES: frozenset[str] = frozenset(
-    {
-        IntegrationPhase.PUSH_SUCCEEDED.value,
-        IntegrationPhase.CLEANUP.value,
-        IntegrationPhase.CANDIDATE_DELIVERED.value,
-        IntegrationPhase.COMPLETED.value,
-    }
-)
 
 
 def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
@@ -99,13 +75,16 @@ def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
 
 
 def integration_phase_label(phase: str | None, finalize_status: str | None) -> tuple[str, str, str] | None:
-    """Return the integration-phase column tuple for a todo, if any."""
-    if phase in _INTEGRATION_STARTED_PHASES:
+    """Return the integration-phase column tuple for a todo, if any.
+
+    Only two stamped values are recognized: 'started' and 'delivered'.
+    Legacy/stale values from the old 12-phase mirror are ignored — roadmap.py
+    maps them to canonical values before they reach here.
+    """
+    if phase == "started":
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
-    if phase in _INTEGRATION_DELIVERED_PHASES:
+    if phase == "delivered":
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _ok_color()
-    if phase == IntegrationPhase.PUSH_REJECTED.value:
-        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_FAILED, _gold_color()
     if not phase:
         finalize_to_label = {
             _FINALIZE_LABEL_QUEUED: _INTEGRATION_LABEL_QUEUED,
@@ -113,7 +92,6 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
         }
         label = finalize_to_label.get(finalize_status or "")
         return (_PHASE_PREFIX_INTEGRATION, label, _ok_color()) if label else None
-
     return None
 
 
@@ -289,7 +267,7 @@ class TodoRow(TelecMixin, Widget):
                 label = _TODO_STATUS_READY
             else:
                 label = _TODO_STATUS_DRAFT
-        elif self.todo.integration_phase in _INTEGRATION_STARTED_PHASES:
+        elif self.todo.integration_phase == "started":
             label = _TODO_STATUS_ACTIVE
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
         color = colors.get(label, colors[_TODO_STATUS_DRAFT])
