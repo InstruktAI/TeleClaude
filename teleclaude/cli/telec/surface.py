@@ -567,6 +567,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--dor-score <n>]"
                     " [--dor-status <s>] [--grounding-invalidated]"
+                    " [--requirements-ready] [--plan-ready]"
                     " [--specs-built] [--finalize-ready]"
                 ),
                 flags=[
@@ -582,6 +583,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--dor-score", desc="DOR score (integer)"),
                     Flag("--dor-status", desc="pass | needs_work | needs_decision"),
                     Flag("--grounding-invalidated", desc="Mark grounding as invalid"),
+                    Flag("--requirements-ready", desc="Mark requirements as produced and ready for review"),
+                    Flag("--plan-ready", desc="Mark implementation plan as produced and ready for review"),
                     Flag("--specs-built", desc="Mark test specifications as delivered"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],

@@ -512,6 +512,33 @@ async def todo_unfreeze(
     return _SlugStatusResponse(status="ok", slug=slug)
 
 
+_READINESS_ARTIFACT_KEY: dict[str, str] = {
+    "requirements": "requirements",
+    "implementation-plan": "implementation_plan",
+}
+
+
+async def _apply_readiness_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    artifact_name: str,
+    signal: str,
+) -> None:
+    """Validate artifact existence, hydrate digest, apply signal, and reject no-ops."""
+    if not await todos_db.artifact_exists(slug, artifact_name):
+        raise HTTPException(status_code=422, detail=f"cannot stamp {signal}: {artifact_name} artifact missing")
+    state_key = _READINESS_ARTIFACT_KEY.get(artifact_name)
+    if state_key:
+        digest = await todos_db.artifact_digest(slug, artifact_name)
+        if digest:
+            getattr(writer.state.artifacts, state_key).digest = digest
+    before = writer.state.lifecycle_phase
+    apply_authoritative_signal(writer.state, signal)
+    if writer.state.lifecycle_phase == before:
+        raise HTTPException(status_code=422, detail=f"{signal} has no effect at phase {before}")
+
+
 def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
     """Apply a `grounding` stamp through the typed grounding lifecycle.
 
@@ -632,23 +659,9 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
             _apply_dor_stamp(writer, value)
             apply_authoritative_signal(writer.state, "dor")
         elif stamp_type == "requirements_ready":
-            if not await todos_db.artifact_exists(slug, "requirements"):
-                raise HTTPException(
-                    status_code=422, detail="cannot stamp requirements_ready: requirements artifact missing"
-                )
-            digest = await todos_db.artifact_digest(slug, "requirements")
-            if digest:
-                writer.state.artifacts.requirements.digest = digest
-            apply_authoritative_signal(writer.state, "requirements_ready")
+            await _apply_readiness_stamp(todos_db, writer, slug, "requirements", "requirements_ready")
         elif stamp_type == "plan_ready":
-            if not await todos_db.artifact_exists(slug, "implementation-plan"):
-                raise HTTPException(
-                    status_code=422, detail="cannot stamp plan_ready: implementation-plan artifact missing"
-                )
-            digest = await todos_db.artifact_digest(slug, "implementation-plan")
-            if digest:
-                writer.state.artifacts.implementation_plan.digest = digest
-            apply_authoritative_signal(writer.state, "plan_ready")
+            await _apply_readiness_stamp(todos_db, writer, slug, "implementation-plan", "plan_ready")
         elif stamp_type == "specs_built":
             apply_authoritative_signal(writer.state, "specs_built")
         else:

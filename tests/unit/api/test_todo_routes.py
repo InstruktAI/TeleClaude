@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -46,7 +46,7 @@ async def async_begin() -> AsyncIterator[None]:
 
 
 @asynccontextmanager
-async def _async_ctx(obj: object) -> AsyncIterator[object]:
+async def _async_ctx(obj: object) -> AsyncGenerator[object]:
     """Wrap an object as an async context manager."""
     yield obj
 
@@ -266,6 +266,65 @@ class TestTodoRoutes:
             assert snapshot["lifecycle_phase"] == "requirements_review"
             requirements = _requirements_artifact(snapshot)
             assert requirements.get("produced_at", "")
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_requirements_ready_rejects_wrong_phase(self, tmp_path: Path) -> None:
+        """requirements_ready stamp must reject when lifecycle phase is not input_assessment/triangulation."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "plan_drafting"})
+            await database.write_artifact("my-slug", "requirements", "some requirements")
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                pytest.raises(HTTPException, match="has no effect"),
+            ):
+                await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="requirements_ready",
+                    value="",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_plan_ready_advances_to_plan_review(self, tmp_path: Path) -> None:
+        """plan_ready stamp advances from plan_drafting to plan_review."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state(
+                "my-slug",
+                {
+                    "lifecycle_phase": "plan_drafting",
+                    "test_spec_review": {"verdict": "approve"},
+                },
+            )
+            await database.write_artifact("my-slug", "implementation-plan", "the plan")
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="plan_ready",
+                    value="",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+
+            state = await database.read_state("my-slug")
+            assert response.status == "ok"
+            assert state is not None
+            snapshot = cast(_TodoStateSnapshot, state)
+            assert snapshot["lifecycle_phase"] == "plan_review"
         finally:
             await database.close()
 
