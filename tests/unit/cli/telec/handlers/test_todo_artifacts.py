@@ -76,9 +76,23 @@ class TestHandleTodoStamp:
         assert body["value"] == "approve"
         assert body["phase"] == "requirements_review"
 
+    def test_requirements_ready_stamp(self) -> None:
+        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
+            _handle_todo_stamp(["my-slug", "--requirements-ready"])
+
+        body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
+        assert body["stamp_type"] == "requirements_ready"
+
+    def test_plan_ready_stamp(self) -> None:
+        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
+            _handle_todo_stamp(["my-slug", "--plan-ready"])
+
+        body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
+        assert body["stamp_type"] == "plan_ready"
+
     def test_removed_automation_flag_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
         with pytest.raises(SystemExit):
-            _handle_todo_stamp(["my-slug", "--requirements-ready"])
+            _handle_todo_stamp(["my-slug", "--build-started"])
 
         assert "Removed automation-only stamp flag" in capsys.readouterr().out
 

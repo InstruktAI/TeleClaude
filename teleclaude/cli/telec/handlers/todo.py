@@ -670,8 +670,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --finalize-ready
     """
     removed_flags = {
-        "--requirements-ready",
-        "--plan-ready",
         "--build-started",
         "--build-complete",
     }
@@ -745,6 +743,14 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
         elif arg == "--grounding-invalidated":
             stamp_type = "grounding"
             value = "invalid"
+            i += 1
+        elif arg == "--requirements-ready":
+            stamp_type = "requirements_ready"
+            value = "true"
+            i += 1
+        elif arg == "--plan-ready":
+            stamp_type = "plan_ready"
+            value = "true"
             i += 1
         elif arg == "--specs-built":
             stamp_type = "specs_built"

@@ -92,7 +92,7 @@ async def _prepare_step_input_assessment(
         message = (
             f"Continue pair-based discovery for {slug}. "
             f"Write requirements via `telec todo artifacts write {slug} requirements <content>`, "
-            f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
+            f"then stamp via `telec todo stamp {slug} --requirements-ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -149,7 +149,7 @@ async def _prepare_step_triangulation(
         message = (
             f"Write requirements for {slug} from the converged pair discovery. "
             f"Use `telec todo artifacts write {slug} requirements <content>`, "
-            f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
+            f"then stamp via `telec todo stamp {slug} --requirements-ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -182,7 +182,7 @@ async def _prepare_step_triangulation(
                 + "incorporate a complementary "
                 "perspective, rewrite requirements via "
                 f"`telec todo artifacts write {slug} requirements <content>`, "
-                f"then stamp via `telec todo stamp {slug} --stamp-type requirements_ready`."
+                f"then stamp via `telec todo stamp {slug} --requirements-ready`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -551,7 +551,7 @@ async def _prepare_step_plan_drafting(
         message = (
             f"Draft the implementation plan for {slug}. "
             f"Write it via `telec todo artifacts write {slug} implementation-plan <content>`, "
-            f"then stamp via `telec todo stamp {slug} --stamp-type plan_ready`."
+            f"then stamp via `telec todo stamp {slug} --plan-ready`."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -578,7 +578,7 @@ async def _prepare_step_plan_drafting(
                 f"Ground the approved requirements for {slug}. If the work is atomic, "
                 f"write the implementation plan via "
                 f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-                f"stamp via `telec todo stamp {slug} --stamp-type plan_ready`. "
+                f"stamp via `telec todo stamp {slug} --plan-ready`. "
                 "If planning shows the parent is too large, split it into child todos and "
                 "update the holder breakdown."
             ),
@@ -852,7 +852,7 @@ async def _handle_stale_grounding(
     note = (
         f"Update the implementation plan via `telec todo artifacts read {slug} implementation-plan` + "
         f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-        f"stamp via `telec todo stamp {slug} --stamp-type plan_ready`. {changed_note}"
+        f"stamp via `telec todo stamp {slug} --plan-ready`. {changed_note}"
     )
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
     if pair_slots is not None:
@@ -914,7 +914,7 @@ async def _prepare_step_re_grounding(
                 f"Re-ground {slug} and rewrite the implementation plan via "
                 f"`telec todo artifacts read {slug} implementation-plan` + "
                 f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then stamp via `telec todo stamp {slug} --stamp-type plan_ready`."
+                f"then stamp via `telec todo stamp {slug} --plan-ready`."
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),

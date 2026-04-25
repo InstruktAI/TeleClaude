@@ -632,8 +632,22 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
             _apply_dor_stamp(writer, value)
             apply_authoritative_signal(writer.state, "dor")
         elif stamp_type == "requirements_ready":
+            if not await todos_db.artifact_exists(slug, "requirements"):
+                raise HTTPException(
+                    status_code=422, detail="cannot stamp requirements_ready: requirements artifact missing"
+                )
+            digest = await todos_db.artifact_digest(slug, "requirements")
+            if digest:
+                writer.state.artifacts.requirements.digest = digest
             apply_authoritative_signal(writer.state, "requirements_ready")
         elif stamp_type == "plan_ready":
+            if not await todos_db.artifact_exists(slug, "implementation-plan"):
+                raise HTTPException(
+                    status_code=422, detail="cannot stamp plan_ready: implementation-plan artifact missing"
+                )
+            digest = await todos_db.artifact_digest(slug, "implementation-plan")
+            if digest:
+                writer.state.artifacts.implementation_plan.digest = digest
             apply_authoritative_signal(writer.state, "plan_ready")
         elif stamp_type == "specs_built":
             apply_authoritative_signal(writer.state, "specs_built")
