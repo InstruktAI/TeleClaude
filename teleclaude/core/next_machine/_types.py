@@ -65,6 +65,7 @@ class PreparePhase(str, Enum):
     INPUT_ASSESSMENT = "input_assessment"
     TRIANGULATION = "triangulation"
     REQUIREMENTS_REVIEW = "requirements_review"
+    REQUIREMENTS_HUMAN_APPROVAL = "requirements_human_approval"
     TEST_SPEC_BUILD = "test_spec_build"
     TEST_SPEC_REVIEW = "test_spec_review"
     PLAN_DRAFTING = "plan_drafting"

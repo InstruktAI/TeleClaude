@@ -23,6 +23,8 @@ from teleclaude.types.todos import (
     AuditReviewEntry,
     AuditState,
     GroundingState,
+    PreparePair,
+    PreparePairSlot,
     ReviewFinding,
     ReviewVerdictState,
     TestSpecReviewState,
@@ -37,6 +39,7 @@ if TYPE_CHECKING:
 
 __all__ = [
     "GroundingManager",
+    "PreparePairManager",
     "ReviewManager",
     "StateMutationError",
     "StateWriter",
@@ -91,6 +94,11 @@ class StateWriter:
     def audit(self) -> AuditState:
         """Typed audit sub-state (always non-None after validation)."""
         return self._model.audit
+
+    @property
+    def prepare_pair(self) -> PreparePair | None:
+        """Durable prepare pair identity, when one has been formed."""
+        return self._model.prepare_pair
 
     def review(self, review_type: str) -> ReviewVerdictState:
         """Return a `ReviewVerdictState` sub-state by phase name.
@@ -157,6 +165,35 @@ class StateWriter:
         payload = self.to_dict()
         todos_db.write_state_sync(slug, payload)
         return payload
+
+
+class PreparePairManager:
+    """Typed owner for prepare pair identity mutations."""
+
+    def __init__(self, writer: StateWriter) -> None:
+        self._writer = writer
+
+    @property
+    def state(self) -> PreparePair | None:
+        """Return the current pair identity, if present."""
+        return self._writer.state.prepare_pair
+
+    def set_pair(self, *, slot_a: PreparePairSlot, slot_b: PreparePairSlot) -> None:
+        """Store both prepare pair members atomically."""
+        self._writer.state.prepare_pair = PreparePair(slot_a=slot_a, slot_b=slot_b)
+
+    def set_slot(self, slot: PreparePairSlot) -> None:
+        """Create or replace one prepare pair slot."""
+        pair = self._writer.state.prepare_pair or PreparePair()
+        if slot.lens == "A":
+            pair.slot_a = slot
+        else:
+            pair.slot_b = slot
+        self._writer.state.prepare_pair = pair
+
+    def clear(self) -> None:
+        """Clear prepare pair identity."""
+        self._writer.state.prepare_pair = None
 
 
 @dataclass(frozen=True, slots=True)

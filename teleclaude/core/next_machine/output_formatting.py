@@ -10,9 +10,17 @@ from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 
 __all__ = [
     "REVIEW_DIFF_NOTE",
+    "ConvergenceAssessmentScript",
+    "HumanApprovalScript",
+    "PairFormationScript",
+    "PairTurnScript",
     "ToolCallRequest",
+    "format_convergence_assessment_script",
     "format_error",
     "format_finalize_handoff_complete",
+    "format_human_approval_script",
+    "format_pair_formation_script",
+    "format_pair_turn_script",
     "format_prepared",
     "format_stash_debt",
     "format_tool_call",
@@ -36,11 +44,32 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """
 
 
+class PairFormationScript(dict[str, object]):  # guard: loose-dict - dynamic payload
+    """Structured request for first prepare-pair formation."""
+
+
+class ConvergenceAssessmentScript(dict[str, object]):  # guard: loose-dict - dynamic payload
+    """Structured request for pair discovery convergence assessment."""
+
+
+class PairTurnScript(dict[str, object]):  # guard: loose-dict - dynamic payload
+    """Structured request for a prepare-pair send turn."""
+
+
+class HumanApprovalScript(dict[str, object]):  # guard: loose-dict - dynamic payload
+    """Structured request for the human requirements approval pause."""
+
+
 def _command_text(value: object) -> str:
     """Return the slash-command literal for enum or string inputs."""
     if hasattr(value, "value"):
         return str(value.value)  # pyright: ignore[reportAttributeAccessIssue]  # guarded by hasattr
     return str(value)
+
+
+def _format_slash_command(value: object) -> str:
+    """Return a slash-prefixed command literal."""
+    return f"/{_command_text(value).lstrip('/')}"
 
 
 def _format_pre_dispatch_block(pre_dispatch: str) -> str:
@@ -73,7 +102,7 @@ def format_tool_call(request: ToolCallRequest) -> str:
     describes what to do when the worker idles. It is appended verbatim.
     """
     raw_command = _command_text(request["command"]).lstrip("/")
-    formatted_command = f"/{raw_command}"
+    formatted_command = _format_slash_command(raw_command)
     args = str(request["args"])
     project = str(request["project"])
     guidance = str(request["guidance"])
@@ -140,6 +169,119 @@ Trust the process gates (pre-commit hooks, stamp clerical checks)."""
     if note:
         result += f"\n\nNOTE: {note}"
     return result
+
+
+def format_pair_formation_script(script: PairFormationScript) -> str:
+    """Format the dual-dispatch script used to form the prepare pair."""
+    command = _format_slash_command(script["command"])
+    args = str(script["args"])
+    project = str(script["project"])
+    subfolder = str(script["subfolder"])
+    agent_a = str(script["agent_a"])
+    agent_b = str(script["agent_b"])
+    mode_a = str(script.get("mode_a", "slow"))
+    mode_b = str(script.get("mode_b", "slow"))
+    slug = str(script["slug"])
+    return f"""IMPORTANT: This output is a prepare-pair formation script. Follow it verbatim.
+
+Execute these steps in order:
+
+STEP 1 - DISPATCH INDEPENDENT INTAKE WORKERS:
+telec sessions run --command "{command}" --args "{args}" --project "{project}" --agent "{agent_a}" --mode "{mode_a}" --subfolder "{subfolder}"
+Save the returned session_id as <A_id>.
+
+telec sessions run --command "{command}" --args "{args}" --project "{project}" --agent "{agent_b}" --mode "{mode_b}" --subfolder "{subfolder}"
+Save the returned session_id as <B_id>.
+
+Do not link the workers during intake.
+
+STEP 2 - WAIT FOR BOTH INTAKES:
+Wait for both agent_stop signals. Tail each worker independently until both report idle.
+
+STEP 3 - LINK AND STORE THE PAIR:
+telec sessions send <A_id> --direct
+Store the prepare pair identity for {slug}: A=<A_id> agent={agent_a}, B=<B_id> agent={agent_b}.
+
+STEP 4 - RE-ENTER:
+telec todo prepare {slug}"""
+
+
+def format_convergence_assessment_script(script: ConvergenceAssessmentScript) -> str:
+    """Format the pair discovery convergence assessment instruction."""
+    slug = str(script["slug"])
+    slot_a = str(script["slot_a"])
+    slot_b = str(script["slot_b"])
+    return (
+        f"CONVERGENCE ASSESSMENT: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f"telec sessions tail {slot_a}\n"
+        f"telec sessions tail {slot_b}\n\n"
+        f"Assess whether both workers have converged on the requirements. "
+        f"If converged, proceed to the requirements writer turn: A writes, B observes silently, "
+        f"then B reviews after A reports agent_stop. If not converged, send concrete feedback to A."
+    )
+
+
+def _escaped_session_message(message: object) -> str:
+    """Escape a message for the literal telec sessions send command."""
+    return str(message).replace('"', '\\"')
+
+
+def format_pair_turn_script(script: PairTurnScript) -> str:
+    """Format a writer, reviewer, or continuation send to a stored pair member."""
+    slug = str(script["slug"])
+    session_id = str(script["session_id"])
+    message = _escaped_session_message(script["message"])
+    next_step = str(script["next_step"])
+    turn = str(script.get("turn", "write"))
+
+    if turn == "write":
+        reviewer_session_id = str(script["reviewer_session_id"])
+        return (
+            f"PAIR WRITE TURN: {slug}\n\n"
+            f"Execute in order:\n\n"
+            f'telec sessions send {session_id} "{message}"\n\n'
+            f"Reviewer session {reviewer_session_id} observes silently through the direct link.\n"
+            f"Wait for writer agent_stop, then call {next_step}. "
+            f"The next review phase will message the reviewer."
+        )
+
+    if turn == "review":
+        return (
+            f"PAIR REVIEW TURN: {slug}\n\n"
+            f"Execute in order:\n\n"
+            f'telec sessions send {session_id} "{message}"\n\n'
+            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+            f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+            f"and save the new task_id.\n"
+            f"When the reviewer reports idle, call {next_step}."
+        )
+
+    return (
+        f"PAIR CONTINUATION: {slug}\n\n"
+        f"Execute in order:\n\n"
+        f'telec sessions send {session_id} "{message}"\n\n'
+        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
+        f"and save the new task_id.\n"
+        f"When the worker reports idle, call {next_step}."
+    )
+
+
+def format_human_approval_script(script: HumanApprovalScript) -> str:
+    """Format the restart-safe human approval pause instruction."""
+    slug = str(script["slug"])
+    return (
+        f"REQUIREMENTS HUMAN APPROVAL: {slug}\n\n"
+        f"Present the requirements to the human:\n"
+        f"  telec todo artifacts read {slug} requirements\n\n"
+        f"If the human approves, stamp approval and re-enter prepare:\n"
+        f"  telec todo stamp {slug} --verdict approve --phase requirements_human_approval\n"
+        f"  telec todo prepare {slug}\n\n"
+        f"If the human gives feedback, relay it to the requirements writer in the stored prepare pair. "
+        f"Both pair members are directly linked, so the reviewer observes the correction. "
+        f"Keep the flow fix-forward; do not return to discovery."
+    )
 
 
 def format_error(code: str, message: str, next_call: str = "") -> str:

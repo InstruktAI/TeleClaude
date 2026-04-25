@@ -13,6 +13,7 @@ LifecyclePhaseValue = Literal[
     "input_assessment",
     "triangulation",
     "requirements_review",
+    "requirements_human_approval",
     "test_spec_build",
     "test_spec_review",
     "plan_drafting",
@@ -77,6 +78,21 @@ class GroundingState(BaseModel):
     last_grounded_at: str = ""
     invalidated_at: str = ""
     invalidation_reason: str = ""
+
+
+class PreparePairSlot(BaseModel):
+    """Durable identity for one prepare pair member."""
+
+    session_id: str
+    agent: str
+    lens: Literal["A", "B"]
+
+
+class PreparePair(BaseModel):
+    """Durable prepare pair identity stored across pair-owned phases."""
+
+    slot_a: PreparePairSlot | None = None
+    slot_b: PreparePairSlot | None = None
 
 
 class ReviewFinding(BaseModel):
@@ -215,6 +231,7 @@ class TodoState(BaseModel):
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
     grounding: GroundingState = Field(default_factory=GroundingState)
     dor: DorState | None = None
+    prepare_pair: PreparePair | None = None
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)
     plan_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
