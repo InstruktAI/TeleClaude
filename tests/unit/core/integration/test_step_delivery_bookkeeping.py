@@ -168,7 +168,7 @@ def test_repo_root_pull_success_continues_to_cleanup(tmp_path: Path) -> None:
             "teleclaude.core.integration.step_functions._run_git",
             side_effect=mock_run_git,
         ),
-        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"),
+        patch("teleclaude.core.integration.step_functions.cleanup_delivered_slug"),
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
         ok, _msg = _step_push_succeeded(
@@ -343,7 +343,7 @@ def test_anomaly_cleanup_delivered_slug_exception(tmp_path: Path) -> None:
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
         patch(
-            "teleclaude.core.next_machine.core.cleanup_delivered_slug",
+            "teleclaude.core.integration.step_functions.cleanup_delivered_slug",
             side_effect=RuntimeError("cleanup boom"),
         ),
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
@@ -369,7 +369,7 @@ def test_anomaly_push_succeeded_pull_fails(tmp_path: Path) -> None:
 
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
-        patch("teleclaude.core.next_machine.core.cleanup_delivered_slug"),
+        patch("teleclaude.core.integration.step_functions.cleanup_delivered_slug"),
         patch("teleclaude.core.integration.step_functions._emit_lifecycle_event"),
     ):
         _step_push_succeeded(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))

@@ -230,3 +230,13 @@ async def test_deliver_stamps_integration_phase_even_when_stale(todos_db: TodosD
     result = await todos_db.read_state_delivered("my-slug")
     assert result is not None
     assert result["integration_phase"] == "delivered"
+
+
+async def test_async_deliver_stamps_integration_phase_delivered(todos_db: TodosDb) -> None:
+    """Async deliver() sets integration_phase='delivered' in the state JSON."""
+    await todos_db.add_to_roadmap("my-slug")
+    await todos_db.write_state("my-slug", {"lifecycle_phase": "handed_off", "integration_phase": "started"})
+    await todos_db.deliver("my-slug", commit="abc123")
+    result = await todos_db.read_state_delivered("my-slug")
+    assert result is not None
+    assert result["integration_phase"] == "delivered"

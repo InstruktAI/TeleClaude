@@ -163,15 +163,18 @@ def assemble_roadmap_from_db(
             if not is_delivered:
                 lifecycle_phase = current_value
 
-            integration_phase = _non_empty_str(state.get("integration_phase"))
+            raw_integration_phase = _non_empty_str(state.get("integration_phase"))
+            # Normalize legacy 12-phase mirror values to the two canonical values.
+            if raw_integration_phase and raw_integration_phase not in ("started", "delivered"):
+                integration_phase: str | None = "started"
+            else:
+                integration_phase = raw_integration_phase
 
             todo_status = row[5]  # active/icebox/delivered
             if is_draft:
                 todo_status = "pending"
             elif todo_status == "delivered":
-                # Roadmap is the authority — normalize any stale/legacy phase to "delivered"
-                if integration_phase != "delivered":
-                    integration_phase = "delivered"
+                integration_phase = "delivered"
             if not is_draft and todo_status == "active" and build_status:
                 todo_status = "in_progress"
             elif not is_draft and todo_status == "active" and lifecycle_phase == "prepared":

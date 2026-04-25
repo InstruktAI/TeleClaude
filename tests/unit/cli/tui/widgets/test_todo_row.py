@@ -240,7 +240,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=True,
-        integration_phase="candidate_delivered",
+        integration_phase="delivered",
     )
     work_item = TodoItem(
         slug="work-item",
