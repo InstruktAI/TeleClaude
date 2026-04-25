@@ -458,21 +458,21 @@ AGENT_PROTOCOL: dict[str, AgentProtocolDict] = {
         },
         "model_flags": {
             "fast": (
-                "-m gpt-5.4"
+                "-m gpt-5.5"
                 " --config model_reasoning_effort='medium'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"
             ),
             "med": (
-                "-m gpt-5.4"
+                "-m gpt-5.5"
                 " --config model_reasoning_effort='high'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
                 " --config hide_agent_reasoning=false"
             ),
             "slow": (
-                "-m gpt-5.4"
+                "-m gpt-5.5"
                 " --config model_reasoning_effort='xhigh'"
                 " --config model_supports_reasoning_summaries=true"
                 " --config show_raw_agent_reasoning=true"
