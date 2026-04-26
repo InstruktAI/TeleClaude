@@ -273,7 +273,9 @@ async def test_input_assessment_no_pair_emits_dual_dispatch_and_link(todos_db: T
     assert instruction.count("telec sessions run") == 2
     assert '--agent "claude"' in instruction
     assert '--agent "codex"' in instruction
-    assert "telec sessions send <A_id> --direct" in instruction
+    # Workers are linked A↔B (not orchestrator↔A): A is told to --direct to B
+    assert "telec sessions send <A_id>" in instruction
+    assert "telec sessions send <B_id>" in instruction
 
 
 @pytest.mark.asyncio
@@ -393,8 +395,8 @@ async def test_writer_messaged_reviewer_not_during_write_phase(todos_db: TodosDb
         state=state,
     )
 
+    # Only the writer (A) is messaged during a write turn
     assert "telec sessions send session-a" in instruction
-    assert "session-b" in instruction
     assert "telec sessions send session-b" not in instruction
 
 
@@ -624,7 +626,9 @@ async def test_convergence_instruction_emitted_after_discovery(todos_db: TodosDb
     assert "CONVERGENCE ASSESSMENT" in instruction
     assert "telec sessions tail session-a" in instruction
     assert "telec sessions tail session-b" in instruction
-    assert "telec sessions send session-a" not in instruction
+    # Convergence script instructs orchestrator to tell A to close link and write
+    assert "Close your direct link" in instruction
+    assert "--close-link" in instruction
 
 
 @pytest.mark.asyncio
@@ -790,9 +794,9 @@ async def test_stale_grounding_targets_plan_writer_b(
         state=stored,
     )
 
+    # Stale grounding targets the plan writer (B), not a fresh dispatch
     assert "PAIR WRITE TURN" in instruction
     assert "telec sessions send session-b" in instruction
-    assert "session-a" in instruction
     assert "telec sessions run" not in instruction
 
 
@@ -810,7 +814,9 @@ def test_pair_formation_script_formats_dual_dispatch_and_link() -> None:
     )
 
     assert instruction.count("telec sessions run") == 2
-    assert "telec sessions send <A_id> --direct" in instruction
+    # Workers are linked A↔B: A is told to --direct to B, B waits
+    assert "telec sessions send <A_id>" in instruction
+    assert "telec sessions send <B_id>" in instruction
     assert "Store the prepare pair identity" in instruction
 
 
@@ -843,6 +849,6 @@ def test_pair_turn_script_uses_send_for_review_not_run() -> None:
 def test_human_approval_script_formats_stamp_instruction() -> None:
     instruction = format_human_approval_script(HumanApprovalScript(slug="format-human"))
 
-    assert "REQUIREMENTS HUMAN APPROVAL" in instruction
+    assert "HUMAN APPROVAL" in instruction
     assert "telec todo artifacts read format-human requirements" in instruction
     assert "telec todo stamp format-human --verdict approve --phase requirements_human_approval" in instruction

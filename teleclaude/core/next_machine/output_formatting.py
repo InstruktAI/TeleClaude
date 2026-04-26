@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
+from teleclaude.paths import COMMANDS_DIR
 
 __all__ = [
     "REVIEW_DIFF_NOTE",
@@ -15,6 +16,7 @@ __all__ = [
     "PairFormationScript",
     "PairTurnScript",
     "ToolCallRequest",
+    "format_command_loader_message",
     "format_convergence_assessment_script",
     "format_error",
     "format_finalize_handoff_complete",
@@ -198,8 +200,13 @@ Do not link the workers during intake.
 STEP 2 - WAIT FOR BOTH INTAKES:
 Wait for both agent_stop signals. Tail each worker independently until both report idle.
 
-STEP 3 - LINK AND STORE THE PAIR:
-telec sessions send <A_id> --direct
+STEP 3 - LINK THE PAIR FOR DISCOVERY:
+Send these two messages (do NOT use --direct yourself):
+
+telec sessions send <A_id> "You are now entering paired discovery with your partner (session <B_id>). Establish a direct link by running: telec sessions send <B_id> 'Starting paired discovery' --direct. Then begin exploring the problem together as described in your briefing."
+
+telec sessions send <B_id> "You are now entering paired discovery. Your partner will establish a direct connection with you shortly. Wait for their message, then begin exploring together as described in your briefing."
+
 Store the prepare pair identity for {slug}: A=<A_id> agent={agent_a}, B=<B_id> agent={agent_b}.
 
 STEP 4 - RE-ENTER:
@@ -216,9 +223,15 @@ def format_convergence_assessment_script(script: ConvergenceAssessmentScript) ->
         f"Execute in order:\n\n"
         f"telec sessions tail {slot_a}\n"
         f"telec sessions tail {slot_b}\n\n"
-        f"Assess whether both workers have converged on the requirements. "
-        f"If converged, proceed to the requirements writer turn: A writes, B observes silently, "
-        f"then B reviews after A reports agent_stop. If not converged, send concrete feedback to A."
+        f"Assess whether both workers have converged on what the requirements should contain.\n\n"
+        f"If converged, tell A to close the direct link and write requirements:\n"
+        f'  telec sessions send {slot_a} "Close your direct link by running: '
+        f"telec sessions send {slot_b} --close-link. "
+        f"Then write the agreed requirements with: "
+        f"telec todo artifacts write {slug} requirements <content>. "
+        f'When done, stamp: telec todo stamp {slug} --requirements-ready."\n\n'
+        f"Do NOT message B yet. Wait for A to go idle, then call telec todo prepare {slug}.\n\n"
+        f"If not converged, send concrete feedback to guide further discussion."
     )
 
 
@@ -236,14 +249,11 @@ def format_pair_turn_script(script: PairTurnScript) -> str:
     turn = str(script.get("turn", "write"))
 
     if turn == "write":
-        reviewer_session_id = str(script["reviewer_session_id"])
         return (
             f"PAIR WRITE TURN: {slug}\n\n"
             f"Execute in order:\n\n"
             f'telec sessions send {session_id} "{message}"\n\n'
-            f"Reviewer session {reviewer_session_id} observes silently through the direct link.\n"
-            f"Wait for writer agent_stop, then call {next_step}. "
-            f"The next review phase will message the reviewer."
+            f"Wait for writer agent_stop, then call {next_step}."
         )
 
     if turn == "review":
@@ -272,15 +282,32 @@ def format_human_approval_script(script: HumanApprovalScript) -> str:
     """Format the restart-safe human approval pause instruction."""
     slug = str(script["slug"])
     return (
-        f"REQUIREMENTS HUMAN APPROVAL: {slug}\n\n"
-        f"Present the requirements to the human:\n"
-        f"  telec todo artifacts read {slug} requirements\n\n"
+        f"HUMAN APPROVAL: {slug}\n\n"
+        f"Present the full artifact set to the human:\n"
+        f"  telec todo artifacts read {slug} requirements\n"
+        f"  telec todo artifacts read {slug} implementation-plan\n\n"
         f"If the human approves, stamp approval and re-enter prepare:\n"
         f"  telec todo stamp {slug} --verdict approve --phase requirements_human_approval\n"
         f"  telec todo prepare {slug}\n\n"
-        f"If the human gives feedback, relay it to the requirements writer in the stored prepare pair. "
-        f"Both pair members are directly linked, so the reviewer observes the correction. "
+        f"If the human gives feedback, relay it to the appropriate worker in the stored prepare pair. "
         f"Keep the flow fix-forward; do not return to discovery."
+    )
+
+
+def format_command_loader_message(command_name: str, slug: str) -> str:
+    """Format a Codex-style command loader for a pair member turn.
+
+    Produces the same instruction pattern used by ``_build_codex_loader_message``
+    in sessions_actions_routes so that existing pair sessions load the full
+    command artifact (with Required reads, role, and discipline) for their
+    next turn-based role.
+    """
+    prompt_path = COMMANDS_DIR / f"{command_name}.md"
+    return (
+        f"Read {prompt_path} and follow it exactly as the active instruction set "
+        f"for this session.\n\n"
+        f"Treat the following as provided inputs to that instruction set:\n"
+        f"{slug}"
     )
 
 

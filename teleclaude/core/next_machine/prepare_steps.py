@@ -19,6 +19,7 @@ from teleclaude.core.next_machine.output_formatting import (
     ConvergenceAssessmentScript,
     PairFormationScript,
     ToolCallRequest,
+    format_command_loader_message,
     format_convergence_assessment_script,
     format_pair_formation_script,
     format_tool_call,
@@ -90,9 +91,9 @@ async def _prepare_step_input_assessment(
                 ConvergenceAssessmentScript(slug=slug, slot_a=pair.slot_a.session_id, slot_b=pair.slot_b.session_id)
             )
         message = (
-            f"Continue pair-based discovery for {slug}. "
-            f"Write requirements via `telec todo artifacts write {slug} requirements <content>`, "
-            f"then stamp via `telec todo stamp {slug} --requirements-ready`."
+            f"Continue your paired discovery discussion for {slug}. "
+            f"Surface any remaining unknowns and converge on what the requirements should contain. "
+            f"Go idle when converged."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -147,9 +148,9 @@ async def _prepare_step_triangulation(
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
         message = (
-            f"Write requirements for {slug} from the converged pair discovery. "
-            f"Use `telec todo artifacts write {slug} requirements <content>`, "
-            f"then stamp via `telec todo stamp {slug} --requirements-ready`."
+            f"Continue your paired discovery discussion for {slug}. "
+            f"Converge on what the requirements should contain. "
+            f"Go idle when converged."
         )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
@@ -311,11 +312,7 @@ async def _prepare_step_requirements_review(
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
     if pair_slots is not None:
-        message = (
-            f"Review now. Review requirements via `telec todo artifacts read {slug} requirements` "
-            f"and stamp verdict via "
-            f"`telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`."
-        )
+        message = format_command_loader_message("next-review-requirements", slug)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -368,11 +365,7 @@ async def _prepare_step_test_spec_build(
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES)
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
-        message = (
-            f"Build xfail-marked pytest test specs for {slug}. "
-            f"Read requirements via `telec todo artifacts read {slug} requirements`, "
-            f"commit the specs, then call `telec todo stamp {slug} --specs-built`."
-        )
+        message = format_command_loader_message("next-build-specs", slug)
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -496,10 +489,7 @@ async def _prepare_step_test_spec_review(
     # No verdict yet — dispatch reviewer
     await _commit_writer(writer, todos_db, slug, state)
     if pair_slots is not None:
-        message = (
-            f"Review now. Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via "
-            f"`telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`."
-        )
+        message = format_command_loader_message("next-review-specs", slug)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -548,11 +538,7 @@ async def _prepare_step_plan_drafting(
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
         await _commit_writer(writer, todos_db, slug, state)
-        message = (
-            f"Draft the implementation plan for {slug}. "
-            f"Write it via `telec todo artifacts write {slug} implementation-plan <content>`, "
-            f"then stamp via `telec todo stamp {slug} --plan-ready`."
-        )
+        message = format_command_loader_message("next-prepare-draft", slug)
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -709,10 +695,7 @@ async def _prepare_step_plan_review(
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
     if pair_slots is not None:
-        message = (
-            f"Review now. Review the plan via `telec todo artifacts read {slug} implementation-plan` "
-            f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`."
-        )
+        message = format_command_loader_message("next-review-plan", slug)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,

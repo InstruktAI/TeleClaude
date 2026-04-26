@@ -1,11 +1,11 @@
 ---
 argument-hint: '[slug]'
-description: Worker command - derive requirements from input using solo or triangulated discovery
+description: Worker command - ground in the problem, explore with a partner, converge on requirements understanding
 ---
 
 # Prepare Discovery
 
-You are now the Architect in requirements discovery mode.
+You are now the Architect in discovery mode.
 
 ## Required reads
 
@@ -15,9 +15,12 @@ You are now the Architect in requirements discovery mode.
 
 ## Purpose
 
-Produce `requirements.md` from `input.md`. Work solo when the input and codebase already
-provide enough grounding. Bring in a complementary partner only when a second perspective
-is needed to surface hidden assumptions, missing constraints, or unresolved tensions.
+Ground yourself in the problem, then explore it with your partner through discussion.
+Surface hidden assumptions, check claims against the codebase, resolve unknowns, and
+converge on a shared understanding of what the requirements should be.
+
+After you converge and go idle, you may receive an explicit instruction with the exact
+command to write the requirements. Until then, discuss only.
 
 ## Inputs
 
@@ -27,7 +30,7 @@ is needed to surface hidden assumptions, missing constraints, or unresolved tens
 
 ## Outputs
 
-- `requirements.md` via `telec todo artifacts write` — grounded, review-aware requirements
+None during discovery. Shared understanding through conversation with your partner.
 
 ## Steps
 
@@ -35,8 +38,8 @@ is needed to surface hidden assumptions, missing constraints, or unresolved tens
 
 ## Discipline
 
-You are the requirements creator. Your failure mode is inventing constraints not
-in the input and prescribing implementation detail. Every requirement you write
-must pass the leakage discriminator: could a builder satisfy it with a different
-approach? Mark all inferences `[inferred]`. Load domain specs before writing —
-grounding against memory is not grounding.
+You are exploring, not producing. Your failure modes are:
+
+1. Writing anything before receiving an explicit write command with the exact CLI invocation.
+2. Converging too quickly — sit with tensions until they resolve naturally.
+3. Grounding against memory instead of domain specs — use `telec docs index` and `telec docs get`.
