@@ -8,6 +8,7 @@ with automatic worktree scoping.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -78,6 +79,7 @@ class TestSharedBranchScopeFailure:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """When scope resolution fails on a shared branch with a session, the command exits non-zero."""
+
         def _fail_scope(_path: Path) -> list[str]:
             raise RuntimeError("transcript unavailable")
 
@@ -394,6 +396,23 @@ class TestPythonPipelineOrder:
         assert positions["ruff_format"] < positions["pyright"], "ruff_format must run before pyright"
         assert positions["pyright"] < positions["jscpd"], "pyright must run before jscpd"
         assert positions["mypy"] < positions["jscpd"], "mypy must run before jscpd"
+
+    def test_pyright_step_uses_current_python_module_invocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pyright runs through the active Python env instead of relying on PATH."""
+        calls: list[tuple[list[str], Path, str]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: calls.append((list(cmd), cwd, step_name)),
+        )
+
+        pipeline = PythonLintPipeline(project_root=tmp_path)
+        pyright_step = next(step for step in pipeline.steps if step.name == "pyright")
+        pyright_step.run(["teleclaude/foo.py"])
+
+        assert calls == [([sys.executable, "-m", "pyright", "teleclaude/foo.py"], tmp_path, "pyright")]
 
 
 # ---------------------------------------------------------------------------
