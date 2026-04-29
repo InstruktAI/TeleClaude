@@ -12,6 +12,7 @@ from teleclaude.core import tmux_bridge
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.models import Session
+from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
@@ -64,13 +65,7 @@ async def _revive_headless_and_send(
     voice = await db.get_voice(session.session_id)
     env_vars = get_voice_env_vars(voice) if voice else {}
 
-    created = await tmux_bridge.ensure_tmux_session(
-        name=tmux_name,
-        working_dir=working_dir,
-        session_id=session.session_id,
-        env_vars=env_vars,
-    )
-    if not created:
+    if not await ensure_tmux_with_identity(session, tmux_name, working_dir, env_vars):
         logger.warning("Failed to create tmux session for headless session %s", session.session_id)
         return False
 

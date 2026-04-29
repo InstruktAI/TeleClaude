@@ -12,7 +12,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, TMP_SESSIONS_DIR
-from teleclaude.session_identity import write_session_identity_to
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -76,7 +75,6 @@ def _prepare_session_tmp_dir(session_id: str) -> Path:
         session_tmp.chmod(0o700)
     except OSError:
         pass
-    write_session_identity_to(directory=session_tmp, session_id=session_id)
     return session_tmp
 
 

@@ -16,7 +16,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.agent_readiness import wait_for_agent_ready
-from teleclaude.core.db import db, resolve_session_principal
+from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -29,58 +29,13 @@ from teleclaude.core.events import (
     TeleClaudeEvents,
 )
 from teleclaude.core.models import MessageMetadata, Session, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
-from teleclaude.session_identity import write_session_identity_to
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
-
-
-async def ensure_tmux_with_identity(
-    session: Session,
-    tmux_name: str,
-    working_dir: str,
-    env_vars: dict[str, str],
-) -> bool:
-    """Create tmux session and write full identity file.
-
-    Shared by bootstrap (new sessions) and adoption (headless → tmux).
-    Returns True on success, False on failure.
-    """
-    created = await tmux_bridge.ensure_tmux_session(
-        name=tmux_name,
-        working_dir=working_dir,
-        session_id=session.session_id,
-        env_vars=env_vars,
-    )
-    if not created:
-        logger.error("Failed to create tmux session for %s", session.session_id)
-        return False
-
-    session_tmp = tmux_bridge.get_session_tmpdir(session.session_id)
-    if not session_tmp:
-        logger.error("No session TMPDIR for %s — cannot write identity", session.session_id)
-        return False
-
-    # Resolve principal and token for system sessions
-    principal, _role = resolve_session_principal(session)
-    session_token: str | None = None
-    if principal.startswith("system:"):
-        session_token = await db.issue_session_token(session.session_id, principal, _role)
-
-    system_role = session.system_role.strip().lower() if session.system_role else None
-
-    write_session_identity_to(
-        directory=session_tmp,
-        session_id=session.session_id,
-        session_token=session_token,
-        system_role=system_role,
-        human_role=session.human_role,
-    )
-    return True
-
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
