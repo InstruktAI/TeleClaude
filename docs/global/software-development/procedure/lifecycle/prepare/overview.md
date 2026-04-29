@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/overview'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Prepare stage overview. Orchestrator drives the pair through discovery, artifact production, human approval, gate, and grounding.'
+description: 'Prepare stage overview. Orchestrator drives the pair through discovery, turn-based artifact production, human approval, and grounding.'
 ---
 
 # Prepare Overview — Procedure
@@ -26,8 +26,8 @@ Produce reviewed, human-approved, and grounded preparation artifacts for a todo.
 
 ## Preconditions
 
-1. `todos.db` roadmap exists and is readable.
-2. Target slug is active (not icebox, not delivered) when slug is provided.
+1. Target slug is active (not icebox, not delivered) when slug is provided.
+2. `telec roadmap list` confirms the slug is in the roadmap.
 
 ## Steps
 
@@ -57,9 +57,9 @@ sequenceDiagram
     H->>O: todo with input (brain dump, existing artifacts, any starting state)
 
     rect rgb(240, 248, 255)
-    Note over O,B: 1. DISPATCH — both workers receive the work package
-    O->>A: telec sessions run (work package)
-    O->>B: telec sessions run (work package)
+    Note over O,B: 1. DISPATCH — both workers receive the briefing package
+    O->>A: telec sessions run /next-prepare-discovery
+    O->>B: telec sessions run /next-prepare-discovery
     end
 
     rect rgb(245, 245, 220)
@@ -73,9 +73,10 @@ sequenceDiagram
     end
 
     rect rgb(230, 255, 230)
-    Note over O,B: 3. LINK — orchestrator connects the pair
-    O->>A: telec sessions send A --direct (links A↔B)
-    Note over A,B: Direct conversation established
+    Note over O,B: 3. LINK — orchestrator tells A to link with B
+    O->>A: "Establish direct link with B: telec sessions send <B> --direct"
+    O->>B: "Your partner will connect with you. Wait for their message."
+    Note over A,B: A↔B direct link established (orchestrator is NOT in the link)
     end
 
     rect rgb(255, 240, 245)
@@ -85,50 +86,39 @@ sequenceDiagram
     A<<->>B: resolve unknowns, converge on understanding
     A-->>O: agent_stop
     B-->>O: agent_stop
-    Note over O: Read tails of both → assess convergence
+    Note over O: Tail both → assess convergence
     end
 
     rect rgb(240, 240, 255)
-    Note over O,B: 5. REQUIREMENTS — turn-based (write then review)
-    O->>A: "Write requirements based on your discussion."
-    Note over B: B is not messaged — observes via direct link
-    A->>A: writes requirements.md
+    Note over O,B: 5. REQUIREMENTS — turn-based (direct link closed)
+    O->>A: "Close direct link. Write requirements with telec todo artifacts write..."
+    A->>A: closes link, writes requirements.md, stamps
     A-->>O: agent_stop
-    O->>B: "A has written requirements. Review: did A capture everything?"
-    B->>B: reviews for completeness and accuracy
+    O->>B: "Read next-review-requirements.md and follow it exactly..."
+    B->>B: reviews requirements
     alt needs_work
         B-->>O: needs_work (findings)
-        O->>A: "Fix forward: [findings]"
-        A->>A: fixes requirements
+        O->>A: fix-forward findings
         A-->>O: agent_stop
         O->>B: "Review again."
-        B->>B: re-reviews
     end
     B-->>O: approve
     end
 
     rect rgb(255, 255, 220)
-    Note over H,B: 6. HUMAN INTERJECTION — fix-forward refinement
-    O-->>H: "Requirements ready for your review."
-    H->>A: feedback, corrections (pair still in direct mode)
-    Note over A,B: Both see human input via direct link, can contribute
-    A->>A: updates requirements per human feedback
-    Note over O: Orchestrator tails conversation
-    O-->>H: "Stamp approved?"
-    H-->>O: approved
-    O->>O: stamps requirements approved
+    Note over H,B: 6. HUMAN APPROVAL — after full pipeline
+    Note over O: Human approval occurs after ALL turns complete (specs + plan)
     end
 
     rect rgb(240, 240, 255)
-    Note over O,B: 7. TEST SPECS — turn-based (write then review)
-    O->>A: "Write test specifications."
-    Note over B: B observes via direct link, does not respond
-    A->>A: writes xfail specs from approved requirements
+    Note over O,B: 7. TEST SPECS — turn-based
+    O->>A: "Read next-build-specs.md and follow it exactly..."
+    A->>A: writes xfail specs, commits, stamps
     A-->>O: agent_stop
-    O->>B: "Review specs."
+    O->>B: "Read next-review-specs.md and follow it exactly..."
     alt needs_work
         B-->>O: needs_work
-        O->>A: "Fix forward: [findings]"
+        O->>A: fix-forward findings
         A-->>O: agent_stop
         O->>B: "Review again."
     end
@@ -137,14 +127,13 @@ sequenceDiagram
 
     rect rgb(240, 240, 255)
     Note over O,B: 8. IMPLEMENTATION PLAN — turn-based (roles flip)
-    O->>B: "Write implementation plan."
-    Note over A: A observes via direct link, does not respond
-    B->>B: writes plan from requirements + specs
+    O->>B: "Read next-prepare-draft.md and follow it exactly..."
+    B->>B: writes plan, stamps
     B-->>O: agent_stop
-    O->>A: "Review plan."
+    O->>A: "Read next-review-plan.md and follow it exactly..."
     alt needs_work
         A-->>O: needs_work
-        O->>B: "Fix forward: [findings]"
+        O->>B: fix-forward findings
         B-->>O: agent_stop
         O->>A: "Review again."
     end
@@ -162,64 +151,63 @@ sequenceDiagram
     end
     end
 
-    O-->>H: PREPARED — ready for build
+    O-->>H: PREPARED — full artifact set ready for your review
+    H-->>O: approved (or feedback → fix-forward)
     O->>A: telec sessions end
     O->>B: telec sessions end
 ```
 
 #### Step details
 
-**1. Dispatch** — The orchestrator dispatches both workers with the same work
-package. Each worker receives the todo's input (whatever it carries — brain
-dump, existing requirements, any starting state). The workers are NOT linked
-at this point.
+**1. Dispatch** — The orchestrator dispatches both workers with the same
+briefing package (`/next-prepare-discovery`). Each worker receives the todo's
+input. The workers are NOT linked at this point.
 
 **2. Independent intake** — Each worker reads and grounds itself independently:
-the input, the codebase (ground truth), the roadmap (project direction), and
-applicable domain docs. Each forms their own understanding before any
-discussion. This independence is critical — it preserves the value of having
-two perspectives. If they are linked during intake, one's confusion becomes
-the other's confusion. The orchestrator knows intake is done when both workers
-emit `agent_stop` (the standard notification for session idle).
+the input, the codebase (ground truth), the roadmap (`telec roadmap list`),
+and applicable domain docs. Each forms their own understanding before any
+discussion. This independence preserves the value of two perspectives. The
+orchestrator knows intake is done when both workers emit `agent_stop`.
 
 **3. Link** — After both workers have stopped (intake complete), the
-orchestrator links them via `telec sessions send <A> --direct`. From this
-point, turn-complete outputs are cross-shared automatically.
+orchestrator tells A to establish a direct link with B by sending:
+`telec sessions send <B_id> 'Starting paired discovery' --direct`. The
+orchestrator tells B to wait for the connection. The orchestrator is NOT
+part of the direct link — it stays outside.
 
-**4. Discovery** — Pair-based. No roles. Both explore the problem through their
-natural lens. They discuss, challenge each other, surface hidden assumptions,
-check against codebase reality, resolve unknowns, and converge. When both
-workers go idle, the orchestrator reads both tails and assesses: have they
-converged? If yes, proceed to role assignment.
+**4. Discovery** — Pair-based. No roles. Both explore the problem through
+their natural lens. They discuss, challenge each other, surface hidden
+assumptions, check against codebase reality, resolve unknowns, and converge.
+When both workers go idle, the orchestrator reads both tails and assesses:
+have they converged?
 
-**5. Requirements** — Turn-based. The orchestrator messages only the writer
-(`A`): "Write requirements based on your discussion." The reviewer (`B`) is
-NOT messaged during the write phase — B passively observes A's work via the
-direct link. When A goes idle (requirements written), the orchestrator messages
-B: "Review — did the writer capture everything you discussed?" If B finds
-gaps (`needs_work`), the orchestrator relays findings to A for fix-forward
-correction, then B reviews again. No going back to discovery.
+**5. Requirements** — Turn-based. The direct link is closed. The orchestrator
+tells A: "Close your direct link. Write the agreed requirements with
+`telec todo artifacts write {slug} requirements <content>`. When done, stamp
+`telec todo stamp {slug} --requirements-ready`." A writes and goes idle.
+The orchestrator then tells B to review by loading the review command:
+"Read `~/.teleclaude/commands/next-review-requirements.md` and follow it
+exactly..." If B finds gaps (`needs_work`), the orchestrator relays findings
+to A for fix-forward, then B reviews again.
 
-**6. Human interjection** — This is not a phase. The pair's direct link remains
-open. The human reads the requirements and talks directly to the writer. Both
-workers see the human's input via the direct link, so both can contribute. The
-writer updates requirements per the human's feedback. The orchestrator tails
-the conversation and proposes stamping approved when the human seems satisfied.
-Fix-forward only — there is no rejection, only refinement.
+**6. Human approval** — After the full pipeline completes (specs + plan +
+reviews), the orchestrator presents the full artifact set to the human. The
+human reviews at their own pace and may interject at any point by messaging
+a worker directly. Fix-forward only — no return to discovery.
 
-**7. Test specs** — Turn-based. Same protocol: orchestrator messages only `A`
-(writer). `B` observes silently via direct link. When A is done, orchestrator
-messages B to review. Fix-forward loop if needed. Specs stay close to the
-just-approved requirements while context is hot.
+**7. Test specs** — Turn-based. Orchestrator tells A to load the spec-building
+command (`next-build-specs`). A writes xfail specs and stamps. Orchestrator
+then tells B to load the spec-review command (`next-review-specs`).
+Fix-forward loop if needed.
 
-**8. Implementation plan** — Turn-based, roles flip. Orchestrator messages `B`
-(writer — rigor lens drives execution planning). `A` observes silently via
-direct link. When B is done, orchestrator messages A to review. Fix-forward
-loop if needed.
+**8. Implementation plan** — Turn-based, roles flip. Orchestrator tells B
+to load the plan-drafting command (`next-prepare-draft`). B writes the plan
+and stamps. Orchestrator then tells A to load the plan-review command
+(`next-review-plan`). Fix-forward loop if needed.
 
 **9. Grounding check** — Mechanical freshness check. If referenced files
-changed since grounding, the plan writer (B) updates the plan, and the
-reviewer (A) re-reviews.
+changed since grounding, the plan writer (B) updates, the reviewer (A)
+re-reviews. If fresh: PREPARED.
 
 **PREPARED** — Terminal success. Cleanup all sessions.
 
@@ -229,17 +217,32 @@ reviewer (A) re-reviews.
 
 During write/review turns, the orchestrator follows a strict protocol:
 
-1. **Message only the writer.** The reviewer is not messaged during the write
-   phase. The reviewer passively sees the writer's work via the direct link
-   but produces no output.
-2. **Wait for agent_stop.** The writer goes idle when done.
-3. **Then message the reviewer.** "Review now." The reviewer produces output
-   only when explicitly asked.
+1. **Message only the active worker.** The other worker is not messaged.
+2. **Wait for agent_stop.** The active worker goes idle when done.
+3. **Then call `telec todo prepare {slug}`.** The machine emits the next action.
 4. **Fix-forward on needs_work.** Relay findings to the writer. Writer fixes.
    Writer goes idle. Reviewer reviews again. No going back to discovery.
 5. **Never message both simultaneously about the same task.** One works, the
-   other waits. The direct link provides passive visibility without triggering
-   responses.
+   other waits.
+
+#### Command loading for turn-based roles
+
+When the machine tells the orchestrator to message a pair member for a new
+role (reviewing, spec building, plan drafting), the message uses the
+command-loader pattern:
+
+> Read `~/.teleclaude/commands/next-{command}.md` and follow it exactly as
+> the active instruction set for this session. Treat the following as provided
+> inputs: {slug}
+
+This ensures the worker loads the full command artifact with its Required
+reads, role definition, and discipline — the same context it would receive
+from a fresh `telec sessions run` dispatch.
+
+The one exception: the requirements writer. After discovery, the writer
+already has all the context from the briefing package. The orchestrator
+sends only the exact CLI command to write and stamp — no command loading
+needed.
 
 ### 3. Supervision
 
@@ -248,16 +251,16 @@ After dispatching workers:
 1. Set a heartbeat timer.
 2. Wait for worker notifications.
 3. On notification: call `telec todo prepare [slug]` again to advance.
-4. If a worker stalls (heartbeat fires with no progress), open a direct
-   conversation to resolve. If still stuck after two iterations, record
-   blockers and stop.
+4. If a worker stalls (heartbeat fires with no progress), send a message
+   to check. If still stuck after two iterations, record blockers and stop.
 
 ### Human touchpoints
 
-- The human may edit preparation artifacts directly at any time, then hand the
-  todo back to the machine with `telec todo reconcile [slug]`.
-- The human approves requirements before test specs begin.
-- The human may be escalated to when the machine or pair encounters a blocker
+- The human may edit preparation artifacts directly at any time, then hand
+  the todo back to the machine with `telec todo reconcile [slug]`.
+- The human approves the full artifact set after the pipeline completes.
+- The human may interject to any worker at any time by messaging them directly.
+- The human may be escalated to when the machine encounters a blocker
   requiring judgment.
 
 ### Events
@@ -281,7 +284,7 @@ After dispatching workers:
 1. `requirements.md` — human-approved.
 2. Test specification files (expected-failure-marked).
 3. `implementation-plan.md`.
-4. Grounding metadata in `todos.db` state.
+4. Grounding metadata in todo state.
 5. Session cleanup on PREPARED terminal.
 
 ## Recovery
@@ -289,5 +292,4 @@ After dispatching workers:
 1. If a worker session fails, read the error and retry once. On second failure,
    record the blocker and stop.
 2. If the state machine returns an unexpected instruction, log it and stop.
-3. If direct conversation with a worker stalls, write blockers to `dor-report.md`
-   and stop.
+3. If a worker stalls, send a check message and assess.
