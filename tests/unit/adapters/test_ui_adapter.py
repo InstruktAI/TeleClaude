@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
@@ -391,6 +392,26 @@ class TestHandleSessionTitleChanged:
 
         assert update_channel_title.await_args_list[0].args == (session, "First")
         assert update_channel_title.await_args_list[1].args == (session, "Final")
+
+    @pytest.mark.unit
+    async def test_title_lane_handles_adapter_error(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(session_id="sess-title-error")
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch.object(
+                adapter,
+                "update_channel_title",
+                AsyncMock(side_effect=AdapterError("Session missing telegram topic_id")),
+            ) as update_channel_title,
+        ):
+            await adapter.request_title_sync(session.session_id, "Renamed")
+            task = adapter._title_sync_tasks[session.session_id]
+            await task
+
+        update_channel_title.assert_awaited_once_with(session, "Renamed")
+        assert session.session_id not in adapter._title_sync_tasks
+        assert adapter._title_last_synced.get(session.session_id) is None
 
 
 # ---------------------------------------------------------------------------

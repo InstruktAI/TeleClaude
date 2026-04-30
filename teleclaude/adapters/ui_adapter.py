@@ -18,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import BaseAdapter
+from teleclaude.adapters.base_adapter import AdapterError, BaseAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
@@ -761,7 +761,17 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
                     return
 
                 self._title_last_attempt_at[session_id] = time.monotonic()
-                if await self.update_channel_title(session, title):
+                try:
+                    title_updated = await self.update_channel_title(session, title)
+                except AdapterError as exc:
+                    logger.warning(
+                        "Title sync skipped for adapter=%s session=%s: %s",
+                        self.ADAPTER_KEY,
+                        session_id,
+                        exc,
+                    )
+                    return
+                if title_updated:
                     self._title_last_synced[session_id] = title
         finally:
             if self._title_sync_tasks.get(session_id) is current_task:

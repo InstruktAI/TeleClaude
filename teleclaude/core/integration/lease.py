@@ -6,7 +6,7 @@ import json
 import os
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -205,7 +205,7 @@ class IntegrationLeaseStore:
         return ttl_seconds
 
     @contextmanager
-    def _mutation_guard(self) -> Iterator[None]:
+    def _mutation_guard(self) -> Generator[None, None, None]:
         start = time.monotonic()
         while True:
             try:
