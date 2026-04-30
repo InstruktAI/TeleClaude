@@ -56,6 +56,7 @@ logger = get_logger(__name__)
 
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
+_derive_worktree_cwd = prepare_step_support.derive_worktree_cwd
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
 _reviewer_idle_post_block = prepare_step_support.reviewer_idle_post_block
 _worker_idle_post_block = prepare_step_support.worker_idle_post_block
@@ -737,7 +738,8 @@ async def _prepare_step_grounding_check(
     grounding_mgr = GroundingManager(writer)
     base_sha = writer.grounding.base_sha
 
-    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
+    git_cwd = _derive_worktree_cwd(cwd, slug)
+    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=git_cwd)
     current_sha = current_sha_raw.strip() if rc == 0 else ""
 
     current_input_digest = ""
@@ -772,7 +774,7 @@ async def _prepare_step_grounding_check(
     # Collect files changed between base_sha and current_sha for reference-path diffing.
     changed_files: set[str] = set()
     if current_sha != base_sha:
-        rc2, diff_output, _ = run_git_command(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
+        rc2, diff_output, _ = run_git_command(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=git_cwd)
         if rc2 == 0:
             changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
 
