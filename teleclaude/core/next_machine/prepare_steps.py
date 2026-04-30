@@ -350,15 +350,25 @@ async def _prepare_step_test_spec_build(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """TEST_SPEC_BUILD: dispatch spec builder.
+    """TEST_SPEC_BUILD: dispatch spec builder when specs are missing or stale.
 
-    Derivation routes past this phase when ``artifacts.test_specs.produced_at``
-    is observed. The step itself only dispatches the builder; the next loop
-    iteration advances once the machine can observe the resulting specs work.
+    When ``artifacts.test_specs.produced_at`` is set AND the recorded upstream
+    requirements digest still matches the current requirements digest, specs are
+    fresh — emit ``specs_built`` to advance the lifecycle without dispatching.
     """
     await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
 
     writer = StateWriter(state)
+    test_specs_entry = writer.state.artifacts.test_specs
+    if test_specs_entry.produced_at:
+        current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
+        recorded_requirements_digest = test_specs_entry.upstream_digests.get("requirements", "")
+        if recorded_requirements_digest == current_requirements_digest:
+            apply_authoritative_signal(writer.state, "specs_built")
+            writer.audit.test_spec_build.completed_at = datetime.now(UTC).isoformat()
+            await _commit_writer(writer, todos_db, slug, state)
+            return True, ""
+
     writer.audit.test_spec_build.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
 

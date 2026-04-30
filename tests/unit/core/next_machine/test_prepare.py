@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.core.next_machine.prepare import _find_next_prepare_slug_db, next_prepare
+from teleclaude.core.next_machine.prepare import (
+    _find_next_prepare_slug_db,
+    detect_unsatisfied_phase,
+    next_prepare,
+)
 from teleclaude.core.todos_db import TodosDb
 
 _PREPARE = "teleclaude.core.next_machine.prepare"
@@ -252,3 +256,123 @@ async def test_find_next_prepare_slug_db_returns_non_draft_when_draft_present(to
     result = await _find_next_prepare_slug_db(todos_db)
 
     assert result == "real-item"
+
+
+# ---------------------------------------------------------------------------
+# Phase satisfaction walk: detect the earliest phase whose digest binding is
+# stale and rewind lifecycle_phase to that phase.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_satisfaction_walk_returns_none_when_all_digests_match(todos_db: TodosDb) -> None:
+    """When every review's approved_digest matches the current artifact digest, no rewind is needed."""
+    await todos_db.add_to_roadmap("all-matched")
+    await todos_db.write_artifact("all-matched", "requirements", "# R\n")
+    await todos_db.write_artifact("all-matched", "test-specs", "# S\n")
+    await todos_db.write_artifact("all-matched", "implementation-plan", "# P\n")
+    requirements_digest = await todos_db.artifact_digest("all-matched", "requirements")
+    test_specs_digest = await todos_db.artifact_digest("all-matched", "test-specs")
+    plan_digest = await todos_db.artifact_digest("all-matched", "implementation-plan")
+    await todos_db.write_state(
+        "all-matched",
+        {
+            "schema_version": 2,
+            "lifecycle_phase": "prepared",
+            "artifacts": {
+                "requirements": {"digest": requirements_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+                "test_specs": {
+                    "digest": test_specs_digest,
+                    "produced_at": "2026-01-01T00:00:00+00:00",
+                    "upstream_digests": {"requirements": requirements_digest},
+                },
+                "implementation_plan": {
+                    "digest": plan_digest,
+                    "produced_at": "2026-01-01T00:00:00+00:00",
+                    "upstream_digests": {"requirements": requirements_digest, "test_specs": test_specs_digest},
+                },
+            },
+            "requirements_review": {"verdict": "approve", "approved_digest": requirements_digest},
+            "test_spec_review": {"verdict": "approve", "approved_digest": test_specs_digest},
+            "plan_review": {"verdict": "approve", "approved_digest": plan_digest},
+        },
+    )
+    state = await todos_db.read_state("all-matched")
+    assert state is not None
+
+    rewind_to = await detect_unsatisfied_phase(todos_db, "all-matched", state)
+
+    assert rewind_to is None
+
+
+@pytest.mark.asyncio
+async def test_satisfaction_walk_rewinds_to_requirements_review_when_requirements_digest_changed(
+    todos_db: TodosDb,
+) -> None:
+    """When requirements digest no longer matches the approved one, walk returns requirements_review."""
+    await todos_db.add_to_roadmap("req-changed")
+    await todos_db.write_artifact("req-changed", "requirements", "# R v1\n")
+    old_digest = await todos_db.artifact_digest("req-changed", "requirements")
+    await todos_db.write_artifact("req-changed", "requirements", "# R v2\n")
+    new_digest = await todos_db.artifact_digest("req-changed", "requirements")
+    assert old_digest != new_digest
+
+    await todos_db.write_state(
+        "req-changed",
+        {
+            "schema_version": 2,
+            "lifecycle_phase": "prepared",
+            "artifacts": {
+                "requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+            },
+            "requirements_review": {"verdict": "approve", "approved_digest": old_digest},
+        },
+    )
+    state = await todos_db.read_state("req-changed")
+    assert state is not None
+
+    rewind_to = await detect_unsatisfied_phase(todos_db, "req-changed", state)
+
+    assert rewind_to is not None
+    assert rewind_to.value == "requirements_review"
+
+
+@pytest.mark.asyncio
+async def test_satisfaction_walk_rewinds_to_test_spec_build_when_upstream_changed(
+    todos_db: TodosDb,
+) -> None:
+    """When requirements digest changes after specs were built, the walk rewinds to test_spec_build."""
+    await todos_db.add_to_roadmap("upstream-changed")
+    await todos_db.write_artifact("upstream-changed", "requirements", "# R\n")
+    requirements_digest = await todos_db.artifact_digest("upstream-changed", "requirements")
+    await todos_db.write_artifact("upstream-changed", "test-specs", "# S\n")
+    test_specs_digest = await todos_db.artifact_digest("upstream-changed", "test-specs")
+
+    await todos_db.write_artifact("upstream-changed", "requirements", "# R v2\n")
+    new_requirements_digest = await todos_db.artifact_digest("upstream-changed", "requirements")
+    assert new_requirements_digest != requirements_digest
+
+    await todos_db.write_state(
+        "upstream-changed",
+        {
+            "schema_version": 2,
+            "lifecycle_phase": "prepared",
+            "artifacts": {
+                "requirements": {"digest": new_requirements_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+                "test_specs": {
+                    "digest": test_specs_digest,
+                    "produced_at": "2026-01-01T00:00:00+00:00",
+                    "upstream_digests": {"requirements": requirements_digest},
+                },
+            },
+            "requirements_review": {"verdict": "approve", "approved_digest": new_requirements_digest},
+            "test_spec_review": {"verdict": "approve", "approved_digest": test_specs_digest},
+        },
+    )
+    state = await todos_db.read_state("upstream-changed")
+    assert state is not None
+
+    rewind_to = await detect_unsatisfied_phase(todos_db, "upstream-changed", state)
+
+    assert rewind_to is not None
+    assert rewind_to.value == "test_spec_build"

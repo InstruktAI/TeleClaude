@@ -26,6 +26,7 @@ from teleclaude.core.next_machine.output_formatting import ToolCallRequest, form
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -41,6 +42,92 @@ _ADOPTION_ARTIFACTS: tuple[tuple[str, str], ...] = (
     ("test_specs", "test-specs"),
     ("implementation_plan", "implementation-plan"),
 )
+
+
+# Phase satisfaction walk — ordered list of (phase, gate-check) pairs. Each gate
+# answers "is this phase still satisfied given current artifact digests?" Returns
+# False when a rewind is needed. The walk dispatches the earliest unsatisfied
+# phase, so a downstream rewind only fires once the upstream is back to satisfied.
+_SATISFACTION_ORDER: tuple[str, ...] = (
+    "requirements_review",
+    "test_spec_build",
+    "test_spec_review",
+    "plan_drafting",
+    "plan_review",
+)
+
+
+def _as_dict(value: object) -> dict[str, StateValue]:
+    """Return value if it is a dict, otherwise an empty dict."""
+    return value if isinstance(value, dict) else {}
+
+
+def _review_approved_against(state: dict[str, StateValue], review_key: str, expected_digest: str) -> bool:
+    """True when a review verdict is approve AND its approved_digest matches the expected digest."""
+    review = _as_dict(state.get(review_key))
+    if review.get("verdict") != "approve":
+        return True  # not yet reviewed — not a rewind condition
+    return review.get("approved_digest", "") == expected_digest
+
+
+def _build_phase_fresh(
+    state: dict[str, StateValue], artifact_key: str, upstream_key: str, current_digests: dict[str, str]
+) -> bool:
+    """True when a built artifact's recorded upstream digest matches the current upstream digest."""
+    artifacts = _as_dict(state.get("artifacts"))
+    entry = _as_dict(artifacts.get(artifact_key))
+    if not entry.get("produced_at"):
+        return True
+    upstream = _as_dict(entry.get("upstream_digests"))
+    return upstream.get(upstream_key, "") == current_digests.get(upstream_key, "")
+
+
+def _plan_drafting_fresh(state: dict[str, StateValue], current_digests: dict[str, str]) -> bool:
+    """True when the plan's recorded upstream digests match current requirements and test_specs."""
+    artifacts = _as_dict(state.get("artifacts"))
+    plan = _as_dict(artifacts.get("implementation_plan"))
+    if not plan.get("produced_at"):
+        return True
+    upstream = _as_dict(plan.get("upstream_digests"))
+    if upstream.get("requirements", "") != current_digests.get("requirements", ""):
+        return False
+    current_specs_digest = current_digests.get("test_specs", "")
+    if current_specs_digest and upstream.get("test_specs", "") != current_specs_digest:
+        return False
+    return True
+
+
+def _phase_satisfied(phase: str, state: dict[str, StateValue], current_digests: dict[str, str]) -> bool:
+    """Return True when the given phase's stamped state matches current artifact digests."""
+    if phase == "requirements_review":
+        return _review_approved_against(state, "requirements_review", current_digests.get("requirements", ""))
+    if phase == "test_spec_build":
+        return _build_phase_fresh(state, "test_specs", "requirements", current_digests)
+    if phase == "test_spec_review":
+        return _review_approved_against(state, "test_spec_review", current_digests.get("test_specs", ""))
+    if phase == "plan_drafting":
+        return _plan_drafting_fresh(state, current_digests)
+    if phase == "plan_review":
+        return _review_approved_against(state, "plan_review", current_digests.get("implementation_plan", ""))
+    return True
+
+
+async def detect_unsatisfied_phase(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> LifecyclePhase | None:
+    """Walk the prepare phases and return the earliest unsatisfied phase, or None.
+
+    A phase is unsatisfied when its stamped digest binding does not match the
+    current artifact content digest. The earliest unsatisfied phase is where the
+    machine should rewind to; everything downstream re-validates from there.
+    """
+    current_digests = {
+        "requirements": await todos_db.artifact_digest(slug, "requirements"),
+        "test_specs": await todos_db.artifact_digest(slug, "test-specs"),
+        "implementation_plan": await todos_db.artifact_digest(slug, "implementation-plan"),
+    }
+    for phase in _SATISFACTION_ORDER:
+        if not _phase_satisfied(phase, state, current_digests):
+            return LifecyclePhase(phase)
+    return None
 
 
 async def _hydrate_artifact_presence_for_adoption(
@@ -145,6 +232,26 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
             raise RuntimeError(msg)
 
         writer = StateWriter(state)
+        # Digest-driven rewind: if any phase's stamped digest no longer matches
+        # the current artifact content, walk back to the earliest unsatisfied
+        # phase. This makes the machine self-healing when the human edits an
+        # artifact after approval.
+        rewind_to = await detect_unsatisfied_phase(todos_db, resolved_slug, state)
+        if rewind_to is not None and rewind_to.value != writer.state.lifecycle_phase:
+            logger.info(
+                "NEXT_PREPARE_REWIND slug=%s from=%s to=%s",
+                resolved_slug,
+                writer.state.lifecycle_phase,
+                rewind_to.value,
+            )
+            writer.state.lifecycle_phase = rewind_to.value
+            await writer.commit(todos_db, resolved_slug)
+            state = await todos_db.read_state(resolved_slug)
+            if state is None:
+                msg = f"Contract violation: state disappeared after rewind for slug {resolved_slug!r}"
+                raise RuntimeError(msg)
+            writer = StateWriter(state)
+
         lifecycle = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_prepare({resolved_slug})")
         if lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle):
             phase = _PP.PREPARED
