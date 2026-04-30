@@ -361,6 +361,35 @@ async def list_artifacts(
     return _ArtifactListResponse(slug=slug, artifacts=names)
 
 
+class _ArtifactDiffResponse(BaseModel):
+    """Response from artifact diff."""
+
+    model_config = ConfigDict(frozen=True)
+    slug: str
+    name: str
+    old_digest: str
+    new_digest: str
+    diff: str
+
+
+@router.get("/artifacts/{slug}/{name}/diff")
+async def diff_artifact(
+    slug: str,
+    name: str,
+    old: str,
+    new: str,
+    cwd: str | None = None,
+) -> _ArtifactDiffResponse:
+    """Return a unified diff between two artifact versions identified by digest."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    try:
+        diff = await todos_db.artifacts_diff(slug, name, old, new)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _ArtifactDiffResponse(slug=slug, name=name, old_digest=old, new_digest=new, diff=diff)
+
+
 @router.post("/dump")
 async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
     """Create a todo: state + artifact + roadmap entry in todos.db.

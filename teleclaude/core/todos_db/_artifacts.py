@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -256,6 +257,42 @@ class TodosDbArtifactsMixin:
     async def list_artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.artifact_versions(slug, name, limit=limit)
+
+    async def artifacts_diff(self, slug: str, name: str, old_digest: str, new_digest: str) -> str:
+        """Return a unified diff between two artifact versions identified by digest.
+
+        Returns an empty string when both digests refer to the same content.
+        Raises ``ValueError`` when either digest does not match a stored version.
+        """
+        if old_digest == new_digest:
+            return ""
+
+        async with self._session() as session:  # type: ignore[attr-defined]
+            row_id = await self._resolve_artifact_id(slug, session)
+            result = await session.exec(
+                select(TodoArtifactVersion)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.name == name)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.digest.in_([old_digest, new_digest]))
+            )
+            by_digest = {version.digest: version.content for version in result.all()}
+
+        if old_digest not in by_digest:
+            msg = f"no version with digest {old_digest!r} for artifact {name!r} of slug {slug!r}"
+            raise ValueError(msg)
+        if new_digest not in by_digest:
+            msg = f"no version with digest {new_digest!r} for artifact {name!r} of slug {slug!r}"
+            raise ValueError(msg)
+
+        old_lines = by_digest[old_digest].splitlines(keepends=True)
+        new_lines = by_digest[new_digest].splitlines(keepends=True)
+        diff_lines = difflib.unified_diff(
+            old_lines,
+            new_lines,
+            fromfile=f"{name}@{old_digest[:12]}",
+            tofile=f"{name}@{new_digest[:12]}",
+        )
+        return "".join(diff_lines)
 
     async def delete_artifacts(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Delete all artifacts and version history for a slug.

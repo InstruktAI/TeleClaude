@@ -565,9 +565,9 @@ def _handle_todo_from_main(args: list[str]) -> None:
 
 
 def _handle_todo_artifacts(args: list[str]) -> None:
-    """Handle telec todo artifacts {list|read|write} <slug> [<name>] [<content>]."""
+    """Handle telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]."""
     if not args:
-        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [<content>]")
+        print("Usage: telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]")
         raise SystemExit(1)
 
     subcommand = args[0]
@@ -579,9 +579,11 @@ def _handle_todo_artifacts(args: list[str]) -> None:
         _handle_artifacts_read(sub_args)
     elif subcommand == "write":
         _handle_artifacts_write(sub_args)
+    elif subcommand == "diff":
+        _handle_artifacts_diff(sub_args)
     else:
         print(f"Unknown artifacts subcommand: {subcommand}")
-        print("Usage: telec todo artifacts {list|read|write} <slug> [<name>] [<content>]")
+        print("Usage: telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]")
         raise SystemExit(1)
 
 
@@ -616,6 +618,25 @@ def _handle_artifacts_read(args: list[str]) -> None:
         print(result.get("content", ""))
     else:
         print(result)
+
+
+def _handle_artifacts_diff(args: list[str]) -> None:
+    """Handle telec todo artifacts diff <slug> <name> <old-digest> <new-digest>."""
+    if len(args) < 4:
+        print("Usage: telec todo artifacts diff <slug> <name> <old-digest> <new-digest>")
+        raise SystemExit(1)
+
+    slug, name, old_digest, new_digest = args[0], args[1], args[2], args[3]
+    result = tool_api_request(
+        "GET",
+        f"/todos/artifacts/{slug}/{name}/diff",
+        params={"old": old_digest, "new": new_digest},
+    )
+    if isinstance(result, dict):
+        print(result.get("diff", ""))
+    else:
+        print(result)
+        raise SystemExit(1)
 
 
 def _handle_artifacts_write(args: list[str]) -> None:

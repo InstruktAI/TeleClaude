@@ -553,6 +553,20 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
+                    "diff": CommandDef(
+                        desc="Show a unified diff between two artifact versions",
+                        args="<slug> <name> <old-digest> <new-digest>",
+                        flags=[_H],
+                        notes=[
+                            "Looks up both versions by digest in the artifact version history "
+                            "and prints a unified diff between them.",
+                            "Used by the prepare loop to show reviewers what changed since the last approved digest.",
+                        ],
+                        examples=[
+                            "telec todo artifacts diff my-slug requirements abc123 def456",
+                        ],
+                        auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+                    ),
                 },
             ),
             "show": CommandDef(

@@ -78,6 +78,49 @@ async def test_write_artifact_creates_version_history(todos_db: TodosDb) -> None
     assert versions[1]["content"] == "v1"
 
 
+async def test_artifacts_diff_returns_unified_diff_between_two_versions(
+    todos_db: TodosDb,
+) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, "requirements", "line one\nline two\n")
+    digest_v1 = await todos_db.artifact_digest(_SLUG, "requirements")
+    await todos_db.write_artifact(_SLUG, "requirements", "line one\nline TWO\n")
+    digest_v2 = await todos_db.artifact_digest(_SLUG, "requirements")
+
+    diff = await todos_db.artifacts_diff(_SLUG, "requirements", digest_v1, digest_v2)
+
+    assert "-line two" in diff
+    assert "+line TWO" in diff
+
+
+async def test_artifacts_diff_returns_empty_when_digests_match(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, "requirements", "same content\n")
+    digest = await todos_db.artifact_digest(_SLUG, "requirements")
+
+    diff = await todos_db.artifacts_diff(_SLUG, "requirements", digest, digest)
+
+    assert diff == ""
+
+
+async def test_artifacts_diff_raises_for_unknown_old_digest(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, "requirements", "content\n")
+    new_digest = await todos_db.artifact_digest(_SLUG, "requirements")
+
+    with pytest.raises(ValueError, match=r"no version with digest"):
+        await todos_db.artifacts_diff(_SLUG, "requirements", "deadbeef" * 8, new_digest)
+
+
+async def test_artifacts_diff_raises_for_unknown_new_digest(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, "requirements", "content\n")
+    old_digest = await todos_db.artifact_digest(_SLUG, "requirements")
+
+    with pytest.raises(ValueError, match=r"no version with digest"):
+        await todos_db.artifacts_diff(_SLUG, "requirements", old_digest, "deadbeef" * 8)
+
+
 async def test_delete_artifacts_removes_all_for_slug(todos_db: TodosDb) -> None:
     await _ensure_roadmap_entry(todos_db)
     await todos_db.write_artifact(_SLUG, "input", "a")

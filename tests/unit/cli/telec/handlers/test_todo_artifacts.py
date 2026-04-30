@@ -60,6 +60,27 @@ class TestHandleTodoArtifactsWrite:
         assert body["content"] == "inline-content"
 
 
+class TestHandleTodoArtifactsDiff:
+    """telec todo artifacts diff <slug> <name> <old-digest> <new-digest>."""
+
+    def test_missing_args_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123"])
+
+    def test_prints_diff_from_api(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with patch(f"{_MODULE}.tool_api_request", return_value={"diff": "@@ -1 +1 @@\n-old\n+new\n"}):
+            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123", "def456"])
+
+        assert "+new" in capsys.readouterr().out
+
+    def test_passes_digests_as_query_params(self) -> None:
+        with patch(f"{_MODULE}.tool_api_request", return_value={"diff": ""}) as mock_api:
+            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123", "def456"])
+
+        kwargs = mock_api.call_args.kwargs
+        assert kwargs.get("params") == {"old": "abc123", "new": "def456"}
+
+
 class TestHandleTodoStamp:
     """telec todo stamp <slug> --verdict approve."""
 
