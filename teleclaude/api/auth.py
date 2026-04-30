@@ -342,6 +342,7 @@ clearance_todos_integrate = require_clearance("telec todo integrate")
 clearance_todos_remove = require_clearance("telec todo remove")
 clearance_todos_stamp = require_clearance("telec todo stamp")
 clearance_todos_set_deps = require_clearance("telec todo set-deps")
+clearance_todos_artifacts_diff = require_clearance("telec todo artifacts diff")
 clearance_operations_get = require_clearance("telec operations get")
 clearance_agents_status = require_clearance("telec agents status")
 clearance_agents_availability = require_clearance("telec agents availability")
@@ -376,6 +377,7 @@ __all__ = [
     "clearance_sessions_unsubscribe",
     "clearance_sessions_voice",
     "clearance_sessions_widget",
+    "clearance_todos_artifacts_diff",
     "clearance_todos_create",
     "clearance_todos_integrate",
     "clearance_todos_prepare",

@@ -630,7 +630,7 @@ def _handle_artifacts_diff(args: list[str]) -> None:
     result = tool_api_request(
         "GET",
         f"/todos/artifacts/{slug}/{name}/diff",
-        params={"old": old_digest, "new": new_digest},
+        params={"old": old_digest, "new": new_digest, "cwd": str(resolve_invocation_cwd())},
     )
     if isinstance(result, dict):
         print(result.get("diff", ""))

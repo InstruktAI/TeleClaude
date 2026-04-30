@@ -261,19 +261,19 @@ class TodosDbArtifactsMixin:
     async def artifacts_diff(self, slug: str, name: str, old_digest: str, new_digest: str) -> str:
         """Return a unified diff between two artifact versions identified by digest.
 
-        Returns an empty string when both digests refer to the same content.
-        Raises ``ValueError`` when either digest does not match a stored version.
+        Returns an empty string when both digests refer to the same content. Raises
+        ``ValueError`` when either digest does not match a stored version — even
+        when both digests are identical, the digest must still exist for the
+        artifact, otherwise the caller is asking about a version we never had.
         """
-        if old_digest == new_digest:
-            return ""
-
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            target_digests = list({old_digest, new_digest})
             result = await session.exec(
                 select(TodoArtifactVersion)
                 .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
                 .where(TODO_ARTIFACT_VERSION_TABLE.c.name == name)
-                .where(TODO_ARTIFACT_VERSION_TABLE.c.digest.in_([old_digest, new_digest]))
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.digest.in_(target_digests))
             )
             by_digest = {version.digest: version.content for version in result.all()}
 
@@ -283,6 +283,9 @@ class TodosDbArtifactsMixin:
         if new_digest not in by_digest:
             msg = f"no version with digest {new_digest!r} for artifact {name!r} of slug {slug!r}"
             raise ValueError(msg)
+
+        if old_digest == new_digest:
+            return ""
 
         old_lines = by_digest[old_digest].splitlines(keepends=True)
         new_lines = by_digest[new_digest].splitlines(keepends=True)

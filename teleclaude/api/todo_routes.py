@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict
 
 from teleclaude.api.auth import (
     CallerIdentity,
+    clearance_todos_artifacts_diff,
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
@@ -378,6 +379,7 @@ async def diff_artifact(
     old: str,
     new: str,
     cwd: str | None = None,
+    _identity: CallerIdentity = Depends(clearance_todos_artifacts_diff),
 ) -> _ArtifactDiffResponse:
     """Return a unified diff between two artifact versions identified by digest."""
     effective_cwd = cwd or _default_cwd()

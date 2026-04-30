@@ -78,7 +78,10 @@ class TestHandleTodoArtifactsDiff:
             _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123", "def456"])
 
         kwargs = mock_api.call_args.kwargs
-        assert kwargs.get("params") == {"old": "abc123", "new": "def456"}
+        params = kwargs.get("params", {})
+        assert params.get("old") == "abc123"
+        assert params.get("new") == "def456"
+        assert "cwd" in params
 
 
 class TestHandleTodoStamp:

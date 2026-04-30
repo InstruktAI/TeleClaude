@@ -103,6 +103,17 @@ async def test_artifacts_diff_returns_empty_when_digests_match(todos_db: TodosDb
     assert diff == ""
 
 
+async def test_artifacts_diff_raises_when_both_digests_match_unknown_value(
+    todos_db: TodosDb,
+) -> None:
+    """Identical-but-unknown digests must raise; the empty-diff short-circuit must not hide invalid input."""
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, "requirements", "content\n")
+
+    with pytest.raises(ValueError, match=r"no version with digest"):
+        await todos_db.artifacts_diff(_SLUG, "requirements", "deadbeef" * 8, "deadbeef" * 8)
+
+
 async def test_artifacts_diff_raises_for_unknown_old_digest(todos_db: TodosDb) -> None:
     await _ensure_roadmap_entry(todos_db)
     await todos_db.write_artifact(_SLUG, "requirements", "content\n")
