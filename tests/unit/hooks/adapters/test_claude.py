@@ -43,12 +43,7 @@ class TestClaudeAdapter:
         }
 
     @pytest.mark.unit
-    def test_additional_context_wraps_context_for_session_start(self) -> None:
+    def test_additional_context_returns_plain_text(self) -> None:
         adapter = ClaudeAdapter()
 
-        assert json.loads(adapter.format_additional_context("SessionStart", "remember this")) == {
-            "hookSpecificOutput": {
-                "hookEventName": "SessionStart",
-                "additionalContext": "remember this",
-            }
-        }
+        assert adapter.format_additional_context("SessionStart", "remember this") == "remember this"

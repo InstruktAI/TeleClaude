@@ -7,10 +7,10 @@ import json
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.base import normalize_common_payload, parse_stdin_hook_input
+from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
 
 
-class ClaudeAdapter:
+class ClaudeAdapter(HookAdapter):
     """Hook adapter for Claude Code CLI."""
 
     agent_name: str = "claude"
@@ -30,12 +30,6 @@ class ClaudeAdapter:
         return json.dumps({"decision": "block", "reason": reason})
 
     def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Serialize Claude's stdout additional-context payload."""
-        return json.dumps(
-            {
-                "hookSpecificOutput": {
-                    "hookEventName": hook_event_name,
-                    "additionalContext": context,
-                }
-            }
-        )
+        """Return plain text for Claude Code stdout context injection."""
+        del hook_event_name
+        return context

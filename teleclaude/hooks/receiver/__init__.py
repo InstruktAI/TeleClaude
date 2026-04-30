@@ -28,7 +28,7 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters import get_adapter
-from teleclaude.hooks.adapters._stdin import read_stdin_payload
+from teleclaude.hooks.adapters.base import read_stdin_payload
 from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
