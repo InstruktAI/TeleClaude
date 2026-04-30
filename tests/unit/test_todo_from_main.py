@@ -9,8 +9,7 @@ from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db import TodosDb, get_todos_db_sync
 from teleclaude.session_scoping import ScopedPathsResult
 from teleclaude.todo_scaffold import NoSessionTouchedFiles, _collect_session_touched_files, create_from_main_skeleton
 
@@ -125,7 +124,7 @@ class TestCreateFromMainSkeleton:
         assert "telec sessions run" not in output
 
         # Verify todo artifacts were written to DB
-        db = _get_todos_db_sync(str(worktree_path))
+        db = get_todos_db_sync(str(worktree_path))
         requirements = db.read_artifact_sync("test-slug", "requirements") or ""
         implementation_plan = db.read_artifact_sync("test-slug", "implementation-plan") or ""
         quality_checklist = db.read_artifact_sync("test-slug", "quality-checklist") or ""
@@ -265,7 +264,7 @@ class TestCreateFromMainSkeleton:
         ):
             create_from_main_skeleton(str(project), "no-desc")
 
-        db = _get_todos_db_sync(str(worktree_path))
+        db = get_todos_db_sync(str(worktree_path))
         req_content = db.read_artifact_sync("no-desc", "requirements") or ""
         assert "See diff for details." in req_content
 
