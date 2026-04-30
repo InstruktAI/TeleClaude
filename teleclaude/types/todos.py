@@ -115,6 +115,7 @@ class ReviewVerdictState(BaseModel):
     findings_count: int = 0
     rounds: int = 0
     baseline_commit: str = ""
+    approved_digest: str = ""
     findings: list[ReviewFinding] = Field(default_factory=list)
 
 
@@ -125,6 +126,7 @@ class TestSpecReviewState(BaseModel):
     reviewed_at: str = ""
     findings_count: int = 0
     rounds: int = 0
+    approved_digest: str = ""
 
 
 class BuildReviewState(BaseModel):
@@ -159,6 +161,7 @@ class ArtifactEntry(BaseModel):
     stale: bool = False
     approved: bool = False
     confirmed: bool = False
+    upstream_digests: dict[str, str] = Field(default_factory=dict)
 
 
 class ArtifactsState(BaseModel):

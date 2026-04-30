@@ -167,6 +167,23 @@ _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
     "implementation_plan": "implementation-plan",
 }
 
+# Maps a review phase name to the artifact state key it gates.
+# Used by stamp_verdict to bind approved_digest and by the satisfaction walk
+# to compare review approval against current artifact content.
+_REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
+    "requirements_review": "requirements",
+    "test_spec_review": "test_specs",
+    "plan_review": "implementation_plan",
+}
+
+# For each artifact that is built from upstream artifacts, lists the upstream
+# state keys whose digests must be captured at stamp time. Used by stamp_artifact
+# to bind upstream_digests so the satisfaction walk can detect upstream changes.
+_ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
+    "test_specs": ("requirements",),
+    "implementation_plan": ("requirements", "test_specs"),
+}
+
 
 def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
@@ -492,6 +509,12 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         apply_authoritative_signal(writer.state, "verdict", phase=phase)
         return writer.commit_sync(db, slug)
     ReviewManager(writer).stamp_verdict(phase, verdict)
+    if verdict == "approve":
+        artifact_key = _REVIEW_TO_ARTIFACT_KEY.get(phase)
+        if artifact_key is not None:
+            artifact_entry = getattr(writer.state.artifacts, artifact_key)
+            review = writer.verdict_target(phase)
+            review.approved_digest = artifact_entry.digest
     apply_authoritative_signal(writer.state, "verdict", phase=phase)
     return writer.commit_sync(db, slug)
 
@@ -885,6 +908,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     artifact_name = _PREPARE_ARTIFACT_NAMES.get(artifact_key)
     if artifact_name is not None:
         _sync_artifact_state(cwd, slug, artifact_name, produced=True)
+        _capture_upstream_digests(cwd, slug, artifact_key)
         return read_phase_state(cwd, slug)
 
     db = _get_todos_db_sync(cwd)
@@ -895,7 +919,37 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
         raise ValueError(f"unknown artifact phase '{artifact_key}'")
     entry.produced_at = datetime.now(UTC).isoformat()
     entry.stale = False
+    if artifact_key == "test_specs":
+        # Sync digest from the test-specs DB artifact when one exists. Workers may
+        # write a manifest of spec files to the test-specs artifact; the digest
+        # then gates test_spec_review approval. When no manifest is written, the
+        # digest stays empty and review approval binds to no specific content.
+        specs_digest = _artifact_digest(cwd, slug, "test-specs")
+        if specs_digest:
+            entry.digest = specs_digest
+    upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())
+    if upstream_keys:
+        entry.upstream_digests = {
+            upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
+        }
     return writer.commit_sync(db, slug)
+
+
+def _capture_upstream_digests(cwd: str, slug: str, artifact_key: str) -> None:
+    """Record current upstream digests on a freshly stamped artifact entry."""
+    upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())
+    if not upstream_keys:
+        return
+    db = _get_todos_db_sync(cwd)
+    state = read_phase_state(cwd, slug)
+    writer = StateWriter(state)
+    entry = getattr(writer.state.artifacts, artifact_key, None)
+    if not isinstance(entry, ArtifactEntry):
+        return
+    entry.upstream_digests = {
+        upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
+    }
+    writer.commit_sync(db, slug)
 
 
 __all__ = [
