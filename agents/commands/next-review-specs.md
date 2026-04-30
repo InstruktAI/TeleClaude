@@ -65,7 +65,4 @@ weak. Produce the mapping; incomplete mapping = incomplete review.
 When this dispatch comes after a digest mismatch (the message includes a
 `telec todo artifacts diff` command with old and new digests), the spec content
 changed since your last approval. Run the diff command to see what changed and
-re-validate the per-criterion mapping against the new content. You do not need
-to invalidate the implementation plan — the state machine auto-detects upstream
-changes and re-dispatches the plan drafter when the test_specs digest moves.
-Use `telec todo mark-phase` only as an anomaly escape hatch.
+re-validate the per-criterion mapping against the new content.

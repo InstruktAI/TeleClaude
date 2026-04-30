@@ -45,6 +45,4 @@ or invent architectural decisions. If something is missing, mark `needs_work`.
 When this dispatch comes after a digest mismatch (the message includes a
 `telec todo artifacts diff` command with old and new digests), the plan changed
 since your last approval. Run the diff command to see what changed and
-re-validate against the requirements and specs. The state machine auto-detects
-upstream changes and re-dispatches the plan drafter when requirements or specs
-move. Use `telec todo mark-phase` only as an anomaly escape hatch.
+re-validate against the requirements and specs.

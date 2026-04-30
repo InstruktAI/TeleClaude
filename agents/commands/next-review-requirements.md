@@ -47,8 +47,4 @@ When this dispatch comes after a digest mismatch (the message includes a
 `telec todo artifacts diff` command with old and new digests), the requirements
 were edited since your last approval. Run the diff command to see exactly what
 changed, then judge whether the new wording still meets the quality standard.
-Approve if cosmetic; flag findings if substantive. You do not need to invalidate
-downstream artifacts — the state machine auto-detects upstream changes and
-re-dispatches the spec builder when the requirements digest moves. Use
-`telec todo mark-phase` only as an anomaly escape hatch (e.g. starting over
-from spec build because the work changed shape) — not as a routine tool.
+Approve if cosmetic; flag findings if substantive.
