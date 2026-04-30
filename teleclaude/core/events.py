@@ -11,80 +11,80 @@ from typing import Literal, Union, cast
 
 # Event bus carries internal events (not user commands).
 EventType = Literal[
-    "session_started",
-    "session_closed",
-    "session_close_requested",
-    "session_updated",
-    "session_title_changed",
-    "session_status",
-    "agent_availability",
-    "agent_ready",
-    "agent_readiness_timeout",
-    "agent_event",
     "agent_activity",
+    "agent_availability",
+    "agent_event",
+    "agent_readiness_timeout",
+    "agent_ready",
     "error",
-    "system_command",
-    "operation.todo_work.completed",
-    "operation.todo_integrate.completed",
     "operation.todo_create.completed",
+    "operation.todo_integrate.completed",
     "operation.todo_prepare.completed",
     "operation.todo_remove.completed",
+    "operation.todo_work.completed",
+    "session_close_requested",
+    "session_closed",
+    "session_started",
+    "session_status",
+    "session_title_changed",
+    "session_updated",
+    "system_command",
 ]
 
 # Agent hook event types (payload event_type values from agents)
 AgentHookEventType = Literal[
-    "session_start",
-    "user_prompt_submit",
-    "tool_use",
-    "tool_done",
+    "after_tool",
     "agent_stop",
-    "session_end",
-    "error",
-    "checkpoint_seen",
-    "native_metadata_update",
-    "native_session_refresh",
     "before_agent",
     "before_model",
     "before_tool_selection",
     "before_tool",
-    "after_tool",
+    "checkpoint_seen",
+    "error",
+    "native_metadata_update",
+    "native_session_refresh",
+    "post_tool_use_failure",
+    "post_tool_use",
+    "pre_compact",
     "pre_compress",
     "pre_tool_use",
-    "post_tool_use",
-    "post_tool_use_failure",
+    "session_end",
+    "session_start",
     "subagent_start",
     "subagent_stop",
-    "pre_compact",
+    "tool_done",
+    "tool_use",
+    "user_prompt_submit",
 ]
 
 
 class AgentHookEvents:
     """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
 
-    AGENT_SESSION_START: AgentHookEventType = "session_start"
-    USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
-    TOOL_DONE: AgentHookEventType = "tool_done"
-    AGENT_STOP: AgentHookEventType = "agent_stop"
-    AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_ERROR: AgentHookEventType = "error"
+    AGENT_SESSION_END: AgentHookEventType = "session_end"
+    AGENT_SESSION_START: AgentHookEventType = "session_start"
+    AGENT_STOP: AgentHookEventType = "agent_stop"
     CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
     NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
     NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
+    TOOL_DONE: AgentHookEventType = "tool_done"
+    TOOL_USE: AgentHookEventType = "tool_use"
+    USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
 
     # Additional hook events (captured for future-proofing, no active handlers yet)
+    AFTER_TOOL: AgentHookEventType = "after_tool"
     BEFORE_AGENT: AgentHookEventType = "before_agent"
     BEFORE_MODEL: AgentHookEventType = "before_model"
-    TOOL_USE: AgentHookEventType = "tool_use"
     BEFORE_TOOL_SELECTION: AgentHookEventType = "before_tool_selection"
     BEFORE_TOOL: AgentHookEventType = "before_tool"
-    AFTER_TOOL: AgentHookEventType = "after_tool"
+    POST_TOOL_USE_FAILURE: AgentHookEventType = "post_tool_use_failure"
+    POST_TOOL_USE: AgentHookEventType = "post_tool_use"
+    PRE_COMPACT: AgentHookEventType = "pre_compact"
     PRE_COMPRESS: AgentHookEventType = "pre_compress"
     PRE_TOOL_USE: AgentHookEventType = "pre_tool_use"
-    POST_TOOL_USE: AgentHookEventType = "post_tool_use"
-    POST_TOOL_USE_FAILURE: AgentHookEventType = "post_tool_use_failure"
     SUBAGENT_START: AgentHookEventType = "subagent_start"
     SUBAGENT_STOP: AgentHookEventType = "subagent_stop"
-    PRE_COMPACT: AgentHookEventType = "pre_compact"
 
     # Internal handlers currently only use:
     # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
@@ -99,74 +99,74 @@ class AgentHookEvents:
         {
             "claude": MappingProxyType(
                 {
-                    "SessionStart": AGENT_SESSION_START,
-                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
-                    "PreToolUse": TOOL_USE,
                     "PostToolUse": TOOL_DONE,
                     "PostToolUseFailure": TOOL_DONE,
+                    "PreCompact": PRE_COMPACT,
+                    "PreToolUse": TOOL_USE,
+                    "SessionEnd": AGENT_SESSION_END,
+                    "SessionStart": AGENT_SESSION_START,
+                    "Stop": AGENT_STOP,
                     "SubagentStart": TOOL_DONE,
                     "SubagentStop": TOOL_DONE,
-                    "Stop": AGENT_STOP,
-                    "PreCompact": PRE_COMPACT,
-                    "SessionEnd": AGENT_SESSION_END,
+                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
                 }
             ),
             "gemini": MappingProxyType(
                 {
-                    "SessionStart": AGENT_SESSION_START,
-                    "BeforeAgent": USER_PROMPT_SUBMIT,
                     "AfterAgent": AGENT_STOP,
-                    "BeforeModel": BEFORE_MODEL,
                     "AfterModel": TOOL_USE,
-                    "BeforeToolSelection": BEFORE_TOOL_SELECTION,
-                    "BeforeTool": BEFORE_TOOL,
                     "AfterTool": TOOL_DONE,
+                    "BeforeAgent": USER_PROMPT_SUBMIT,
+                    "BeforeModel": BEFORE_MODEL,
+                    "BeforeTool": BEFORE_TOOL,
+                    "BeforeToolSelection": BEFORE_TOOL_SELECTION,
                     "PreCompress": PRE_COMPRESS,
                     "SessionEnd": AGENT_SESSION_END,
+                    "SessionStart": AGENT_SESSION_START,
                 }
             ),
             "codex": MappingProxyType(
                 {
                     "SessionStart": AGENT_SESSION_START,
-                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
                     "Stop": AGENT_STOP,
+                    "UserPromptSubmit": USER_PROMPT_SUBMIT,
                 }
             ),
         }
     )
 
     ALL: set[AgentHookEventType] = {
-        AGENT_SESSION_START,
-        USER_PROMPT_SUBMIT,
-        TOOL_DONE,
-        AGENT_STOP,
-        AGENT_SESSION_END,
+        AFTER_TOOL,
         AGENT_ERROR,
+        AGENT_SESSION_END,
+        AGENT_SESSION_START,
+        AGENT_STOP,
+        BEFORE_AGENT,
+        BEFORE_MODEL,
+        BEFORE_TOOL_SELECTION,
+        BEFORE_TOOL,
         CHECKPOINT_SEEN,
         NATIVE_METADATA_UPDATE,
         NATIVE_SESSION_REFRESH,
-        BEFORE_AGENT,
-        BEFORE_MODEL,
-        TOOL_USE,
-        BEFORE_TOOL_SELECTION,
-        BEFORE_TOOL,
-        AFTER_TOOL,
+        POST_TOOL_USE_FAILURE,
+        POST_TOOL_USE,
+        PRE_COMPACT,
         PRE_COMPRESS,
         PRE_TOOL_USE,
-        POST_TOOL_USE,
-        POST_TOOL_USE_FAILURE,
         SUBAGENT_START,
         SUBAGENT_STOP,
-        PRE_COMPACT,
+        TOOL_DONE,
+        TOOL_USE,
+        USER_PROMPT_SUBMIT,
     }
     RECEIVER_HANDLED: frozenset[AgentHookEventType] = frozenset(
         {
+            AGENT_ERROR,
             AGENT_SESSION_START,
-            USER_PROMPT_SUBMIT,
+            AGENT_STOP,
             TOOL_DONE,
             TOOL_USE,
-            AGENT_STOP,
-            AGENT_ERROR,
+            USER_PROMPT_SUBMIT,
         }
     )
 
@@ -658,23 +658,23 @@ class OperationCompletedContext:
 
 # Union of all event context types (for adapter_client handler signatures)
 EventContext = (
-    MessageEventContext
-    | SessionLifecycleContext
-    | SystemCommandContext
-    | AgentEventContext
-    | ErrorEventContext
-    | SessionUpdatedContext
-    | SessionTitleChangedContext
-    | SessionStatusContext
+    AgentActivityEvent
     | AgentAvailabilityContext
-    | AgentActivityEvent
+    | AgentEventContext
     | AgentRestartDispatchedPayload
-    | SessionCloseCompletedPayload
-    | SessionEscalatedPayload
-    | JobStartedPayload
+    | ErrorEventContext
     | JobCompletedPayload
     | JobFailedPayload
+    | JobStartedPayload
+    | MessageEventContext
     | NotificationClaimedPayload
     | NotificationResolvedPayload
     | OperationCompletedContext
+    | SessionCloseCompletedPayload
+    | SessionEscalatedPayload
+    | SessionLifecycleContext
+    | SessionStatusContext
+    | SessionTitleChangedContext
+    | SessionUpdatedContext
+    | SystemCommandContext
 )
