@@ -1,4 +1,7 @@
-"""Unit tests for mark-phase validation helpers."""
+"""Unit tests for mark-phase validation helpers.
+
+Patches state_io.get_todos_db_sync (consumer-module local).
+"""
 
 from __future__ import annotations
 
@@ -133,7 +136,7 @@ def test_read_artifact_presence_propagates_sqlite_error(tmp_path: Path) -> None:
             return _BrokenConn()
 
     with (
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=_BrokenDb()),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=_BrokenDb()),
         patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"lifecycle_phase": "draft"}),
     ):
         with pytest.raises(sqlite3.OperationalError, match="locked"):

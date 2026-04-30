@@ -2,8 +2,8 @@
 """Tests for state-driven candidate scanner and verifier.
 
 The integration state machine scans todo state from todos.db to find
-finalize-ready candidates. Tests mock _get_todos_db_sync to inject a
-test-scoped TodosDb instance.
+finalize-ready candidates. Tests mock get_todos_db_sync (via the
+step_functions module local) to inject a test-scoped TodosDb instance.
 """
 
 from __future__ import annotations
@@ -79,7 +79,7 @@ def test_scan_finds_finalize_ready_candidate(_mock: object, tmp_path: Path, todo
         "my-slug",
         {"status": "ready", "branch": "my-slug", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
     )
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 1
     assert result[0].key.slug == "my-slug"
@@ -89,7 +89,7 @@ def test_scan_finds_finalize_ready_candidate(_mock: object, tmp_path: Path, todo
 def test_scan_skips_pending(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "pending").mkdir(parents=True)
     _seed(todos_db, "pending", {"status": "pending"})
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
@@ -102,7 +102,7 @@ def test_scan_accepts_handed_off(_mock: object, tmp_path: Path, todos_db: TodosD
         "handed",
         {"status": "handed_off", "branch": "handed", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
     )
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 1
 
@@ -111,7 +111,7 @@ def test_scan_accepts_handed_off(_mock: object, tmp_path: Path, todos_db: TodosD
 def test_scan_skips_already_integrated(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "old").mkdir(parents=True)
     _seed(todos_db, "old", {"status": "ready", "branch": "old", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"})
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
@@ -120,20 +120,20 @@ def test_scan_skips_already_integrated(_mock: object, tmp_path: Path, todos_db: 
 def test_scan_skips_missing_remote(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "gone").mkdir(parents=True)
     _seed(todos_db, "gone", {"status": "ready", "branch": "gone", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"})
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
 
 def test_scan_no_trees_dir(tmp_path: Path, todos_db: TodosDb) -> None:
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
 
 def test_scan_excludes_integration(tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "_integration").mkdir(parents=True)
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
@@ -144,7 +144,7 @@ def test_scan_skips_missing_sha(_mock: object, tmp_path: Path, todos_db: TodosDb
     _seed(
         todos_db, "no-sha", {"status": "ready", "branch": "no-sha", "sha": "", "ready_at": "2026-03-01T00:00:00+00:00"}
     )
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert result == []
 
@@ -154,7 +154,7 @@ def test_scan_excludes_slug(_mock: object, tmp_path: Path, todos_db: TodosDb) ->
     for slug in ("keep", "skip"):
         (tmp_path / "trees" / slug).mkdir(parents=True)
         _seed(todos_db, slug, {"status": "ready", "branch": slug, "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"})
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path), exclude_slug="skip")
     assert len(result) == 1
     assert result[0].key.slug == "keep"
@@ -173,7 +173,7 @@ def test_verify_ready(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
         "v-slug",
         {"status": "ready", "branch": "v-slug", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
     )
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _verify_slug_ready(str(tmp_path), "v-slug")
     assert result is not None
     assert result.key.slug == "v-slug"
@@ -187,13 +187,13 @@ def test_verify_handed_off(_mock: object, tmp_path: Path, todos_db: TodosDb) -> 
         "h-slug",
         {"status": "handed_off", "branch": "h-slug", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
     )
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _verify_slug_ready(str(tmp_path), "h-slug")
     assert result is not None
 
 
 def test_verify_missing_worktree(tmp_path: Path, todos_db: TodosDb) -> None:
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _verify_slug_ready(str(tmp_path), "missing")
     assert result is None
 
@@ -201,6 +201,6 @@ def test_verify_missing_worktree(tmp_path: Path, todos_db: TodosDb) -> None:
 def test_verify_pending(tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "pend").mkdir(parents=True)
     _seed(todos_db, "pend", {"status": "pending"})
-    with patch(f"{_STEP}._get_todos_db_sync", return_value=todos_db):
+    with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _verify_slug_ready(str(tmp_path), "pend")
     assert result is None

@@ -1,4 +1,7 @@
-"""Characterization tests for teleclaude.core.integration.step_functions."""
+"""Characterization tests for teleclaude.core.integration.step_functions.
+
+Patches step_functions.get_todos_db_sync (consumer-module local).
+"""
 
 from __future__ import annotations
 
@@ -30,14 +33,12 @@ def _mock_todos_db(delivered_slugs: set[str]) -> MagicMock:
 
 
 def test_sweep_stale_artifacts_returns_empty_when_no_delivered_slugs(tmp_path: Path) -> None:
-    with patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=_mock_todos_db(set())):
+    with patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=_mock_todos_db(set())):
         assert _sweep_stale_artifacts(str(tmp_path)) == []
 
 
 def test_sweep_stale_artifacts_returns_empty_when_no_trees_dir(tmp_path: Path) -> None:
-    with patch(
-        "teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=_mock_todos_db({"slug-1"})
-    ):
+    with patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=_mock_todos_db({"slug-1"})):
         assert _sweep_stale_artifacts(str(tmp_path)) == []
 
 
@@ -50,7 +51,7 @@ def test_sweep_stale_artifacts_cleans_up_delivered_slugs(tmp_path: Path) -> None
 
     with (
         patch(
-            "teleclaude.core.integration.step_functions._get_todos_db_sync",
+            "teleclaude.core.integration.step_functions.get_todos_db_sync",
             return_value=_mock_todos_db({"slug-1", "slug-2"}),
         ),
         patch("teleclaude.core.integration.step_functions.cleanup_delivered_slug") as mock_cleanup,

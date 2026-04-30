@@ -1,4 +1,7 @@
-"""Characterization tests for teleclaude.hooks.checkpoint._evidence."""
+"""Characterization tests for teleclaude.hooks.checkpoint._evidence.
+
+Patches _evidence.get_todos_db_sync (consumer-module local).
+"""
 
 from __future__ import annotations
 
@@ -117,7 +120,7 @@ class TestEditHygieneAndSlugAlignment:
             "teleclaude/hooks/inbound.py",
             "tests/unit/hooks/test_inbound.py",
         }
-        with patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=mock_db):
+        with patch("teleclaude.hooks.checkpoint._evidence.get_todos_db_sync", return_value=mock_db):
             assert len(_check_slug_alignment(["docs/guide.md"], context)) == 1
             assert not _check_slug_alignment(["tests/unit/hooks/test_inbound.py"], context)
 

@@ -1,5 +1,8 @@
-"""Characterization tests for teleclaude.resource_validation package helpers."""
 # guard: no-companion
+"""Characterization tests for teleclaude.resource_validation package helpers.
+
+Patches resource_validation.get_todos_db_sync (consumer-module local).
+"""
 
 from __future__ import annotations
 
@@ -39,7 +42,7 @@ def test_validate_all_todos_enumerates_active_slugs_from_db(monkeypatch: pytest.
     mock_db = MagicMock()
     mock_db._sync_conn.return_value = conn
 
-    with patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=mock_db):
+    with patch("teleclaude.resource_validation.get_todos_db_sync", return_value=mock_db):
         errors = resource_validation.validate_all_todos(tmp_path)
 
     assert not errors

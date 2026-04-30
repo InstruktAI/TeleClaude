@@ -1,6 +1,8 @@
 # guard: no-companion
 """Tests for delivery bookkeeping in the integration state machine.
 
+Patches step_functions.get_todos_db_sync (consumer-module local).
+
 Covers:
 1. Original regression: bookkeeping runs in integration worktree (not repo root)
 2. Repo root pull failure returns structured REPO ROOT SYNC BLOCKED instruction
@@ -87,7 +89,7 @@ def test_bookkeeping_runs_in_integration_worktree_not_repo_root(tmp_path: Path) 
             side_effect=mock_run_git,
         ),
         patch(
-            "teleclaude.core.integration.step_functions._get_todos_db_sync",
+            "teleclaude.core.integration.step_functions.get_todos_db_sync",
             return_value=mock_db,
         ),
     ):
@@ -225,7 +227,7 @@ def test_bug_slug_reaches_deliver_to_delivered(tmp_path: Path) -> None:
 
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
-        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
+        patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=mock_db),
     ):
         ok, _msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
@@ -266,7 +268,7 @@ def _run_bookkeeping_with_mock(
 
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=mock_run_git),
-        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
+        patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=mock_db),
     ):
         ok, msg = _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))
 
@@ -294,7 +296,7 @@ def test_deliver_sync_exception_propagates(tmp_path: Path) -> None:
 
     with (
         patch("teleclaude.core.integration.step_functions._run_git", side_effect=_base_mock_run_git),
-        patch("teleclaude.core.integration.step_functions._get_todos_db_sync", return_value=mock_db),
+        patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=mock_db),
     ):
         with pytest.raises(RuntimeError, match="DB connection lost"):
             _step_delivery_bookkeeping(checkpoint=cp, checkpoint_path=cp_path, cwd=str(tmp_path))

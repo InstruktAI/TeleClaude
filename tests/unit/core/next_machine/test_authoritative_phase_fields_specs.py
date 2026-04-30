@@ -1,6 +1,7 @@
+# guard: no-companion
 """Canonical lifecycle phase contract tests.
 
-# guard: no-companion
+Patches state_io.get_todos_db_sync (consumer-module local).
 """
 
 from __future__ import annotations
@@ -76,7 +77,7 @@ def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
     db_stub._sync_conn.return_value = conn_stub  # pyright: ignore[reportPrivateUsage]
 
     with (
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=db_stub),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=db_stub),
         patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"kind": "bug"}),
         patch("teleclaude.core.next_machine.state_io._has_artifact_content", return_value=True),
         patch("teleclaude.core.next_machine.state_io.run_git_command", return_value=(0, "abc1234\n", "")),

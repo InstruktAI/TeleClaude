@@ -153,12 +153,12 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
     conn.commit()
     conn.close()
 
-    # Mock _get_todos_db_sync to return a DB pointing at our test DB
+    # Mock get_todos_db_sync via the consumer-module local name
     mock_db = MagicMock()
     mock_db._sync_conn.return_value = sqlite3.connect(str(db_path))
 
     monkeypatch.setattr(
-        "teleclaude.core.next_machine.state_io._get_todos_db_sync",
+        "teleclaude.cli.telec.handlers.bugs.get_todos_db_sync",
         lambda _cwd: mock_db,
     )
 
