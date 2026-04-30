@@ -286,12 +286,19 @@ MSG
 fi
 
 if [ "$_subcmd" = "commit" ]; then
-    cat >&2 <<'MSG'
+    if [ "${TELECLAUDE_COMMIT_APPROVED:-}" = "1" ]; then
+        :  # explicit human approval — pass through
+    else
+        cat >&2 <<'MSG'
 ERROR: Use 'telec code commit -m "<message>"' instead of 'git commit'.
 
 telec code commit handles session scoping, staging, formatting, and linting.
+
+To bypass (human-approved, one-shot):
+  TELECLAUDE_COMMIT_APPROVED=1 git commit -m "<message>"
 MSG
-    exit 1
+        exit 1
+    fi
 fi
 
 if [ "$_subcmd" = "push" ]; then
