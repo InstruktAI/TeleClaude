@@ -19,7 +19,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import SlashCommand
-from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD
 from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
 if TYPE_CHECKING:

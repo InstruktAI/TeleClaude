@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 

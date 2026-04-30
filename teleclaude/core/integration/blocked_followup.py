@@ -14,7 +14,7 @@ from typing import Literal, TypedDict, cast
 from teleclaude.core.integration.events import IntegrationBlockedPayload
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine._types import default_state
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
+from teleclaude.core.todos_db import get_todos_db_sync
 
 FollowUpStatus = Literal["open", "resolved"]
 
@@ -181,7 +181,7 @@ class BlockedFollowUpStore:
 
     def _ensure_follow_up_todo(self, link: BlockedFollowUpLink) -> None:
         project_root = str(self._todos_root.parent)
-        db = _get_todos_db_sync(project_root)
+        db = get_todos_db_sync(project_root)
         slug = link.follow_up_slug
 
         if not db.resolve_id_sync(slug):

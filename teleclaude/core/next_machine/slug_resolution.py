@@ -13,7 +13,8 @@ from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync, read_phase_state, write_phase_state
+from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
+from teleclaude.core.todos_db import get_todos_db_sync
 
 
 async def resolve_slug_async(
@@ -204,7 +205,7 @@ def resolve_canonical_project_root(cwd: str) -> str:
 
 def get_item_phase(cwd: str, slug: str) -> str:
     """Sync legacy: resolve item phase using todos.db-backed state."""
-    todos_db = _get_todos_db_sync(cwd)
+    todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.delivered_slugs_sync()
     is_delivered = slug in delivered
     is_in_roadmap = todos_db.resolve_id_sync(slug) is not None

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -30,8 +31,8 @@ def test_stamp_verdict_updates_requirements_review(seeded_db: TodosDb) -> None:
     cwd = str(db_path.parent.parent)
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         state = stamp_verdict(cwd, "slug-a", "requirements_review", "approve")
 
@@ -46,8 +47,8 @@ def test_stamp_verdict_updates_build_review(seeded_db: TodosDb) -> None:
     cwd = str(db_path.parent.parent)
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         state = stamp_verdict(cwd, "slug-b", "build_review", "changes_requested")
 
@@ -64,8 +65,8 @@ def test_stamp_verdict_approve_records_approved_digest_for_requirements(seeded_d
     seeded_db.write_artifact_sync("slug-a", "requirements", "# Requirements v1\n")
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         state = stamp_verdict(cwd, "slug-a", "requirements_review", "approve")
@@ -91,8 +92,8 @@ def test_stamp_verdict_approve_records_approved_digest_for_test_specs(seeded_db:
     seeded_db.write_artifact_sync("slug-a", "test-specs", "# Specs v1\n")
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         stamp_artifact(cwd, "slug-a", "test_specs")
@@ -119,8 +120,8 @@ def test_stamp_verdict_approve_records_approved_digest_for_plan(seeded_db: Todos
     seeded_db.write_artifact_sync("slug-a", "implementation-plan", "# Plan v1\n")
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         stamp_artifact(cwd, "slug-a", "test_specs")
@@ -146,8 +147,8 @@ def test_stamp_verdict_needs_work_does_not_set_approved_digest(seeded_db: TodosD
     seeded_db.write_artifact_sync("slug-a", "requirements", "# Requirements\n")
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         state = stamp_verdict(cwd, "slug-a", "requirements_review", "needs_work")
@@ -163,8 +164,8 @@ def test_stamp_verdict_rejects_unknown_phase(seeded_db: TodosDb) -> None:
     cwd = str(db_path.parent.parent)
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
         pytest.raises(ValueError, match="invalid review phase"),
     ):
         stamp_verdict(cwd, "slug-c", "invalid_phase", "approve")

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 import asyncio
 import json
 
-from teleclaude.core.next_machine.core import cleanup_delivered_slug
+from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.services.work import get_work_service
 
 __all__ = [

@@ -12,7 +12,7 @@ from teleclaude.constants import (
     CHECKPOINT_TEST_ERROR_MESSAGE,
     FileCategory,
 )
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
     _extract_apply_patch_paths,
@@ -399,7 +399,7 @@ def _check_slug_alignment(
     if not context.working_slug:
         return observations
 
-    db = _get_todos_db_sync(context.project_path)
+    db = get_todos_db_sync(context.project_path)
     plan_text = db.read_artifact_sync(context.working_slug, "implementation-plan")
     if not plan_text:
         return observations

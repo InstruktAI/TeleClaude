@@ -12,7 +12,6 @@ import hashlib as _hl
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
@@ -54,12 +53,9 @@ from teleclaude.core.next_machine.state_mutation import (
     ReviewManager,
     StateWriter,
 )
-from teleclaude.core.todos_db import TodosDb, _new_instance_hook
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_main_repo_root
 from teleclaude.types.todos import ArtifactEntry, BreakdownState, DorState, FinalizeModel, TodoState
-
-if TYPE_CHECKING:
-    from teleclaude.core.todos_db import TodosDb
 
 logger = get_logger(__name__)
 
@@ -70,7 +66,7 @@ logger = get_logger(__name__)
 
 def _artifact_digest(cwd: str, slug: str, artifact_name: str) -> str:
     """Read artifact digest from todos.db."""
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     conn = db._sync_conn()
     try:
         row = conn.execute(
@@ -111,34 +107,6 @@ def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: b
 def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
     """Refresh the stored digest for an artifact without stamping completion."""
     _sync_artifact_state(cwd, slug, artifact_name, produced=False)
-
-
-def _project_root_from_cwd(cwd: str) -> str:
-    """Resolve project root from a path that may be inside a worktree."""
-    return str(resolve_main_repo_root(cwd))
-
-
-_db_cache: dict[str, TodosDb] = {}
-
-
-def _get_todos_db_sync(cwd: str) -> TodosDb:
-    """Return a cached TodosDb for the project owning *cwd*.
-
-    Schema already exists (daemon creates it at startup). Skips initialize_sync
-    after first call to avoid repeated DDL write locks on the database.
-    """
-    project_root = _project_root_from_cwd(cwd)
-    cached = _db_cache.get(project_root)
-    if cached is not None:
-        return cached
-
-    db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
-    db = TodosDb(db_path)
-    db.initialize_sync()
-    if _new_instance_hook is not None:
-        _new_instance_hook(db, project_root)
-    _db_cache[project_root] = db
-    return db
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +159,7 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     upcycled in memory by the ``TodosDb`` read path and are never rewritten as
     a side-effect of reading.
     """
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     raw = db.read_state_sync(slug)
     if raw is None:
         return default_state()
@@ -200,13 +168,13 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
 def write_phase_state(cwd: str, slug: str, state: dict[str, StateValue]) -> None:
     """Write state to todos.db."""
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     db.write_state_sync(slug, state)
 
 
 def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
     """Return current DB artifact presence for lifecycle validation/reconciliation."""
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     conn = db._sync_conn()
     try:
         rows = conn.execute(
@@ -476,14 +444,14 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
             raise ValueError(
                 f"invalid build_review verdict '{verdict}': must be one of {', '.join(_BUILD_VERDICT_VALUES)}"
             )
-        db = _get_todos_db_sync(cwd)
+        db = get_todos_db_sync(cwd)
         state = read_phase_state(cwd, slug)
         writer = StateWriter(state)
         build_review = writer.state.build_review
         build_review.verdict = verdict
         build_review.reviewed_at = datetime.now(UTC).isoformat()
         if not build_review.baseline_commit:
-            project_root = _project_root_from_cwd(cwd)
+            project_root = str(resolve_main_repo_root(cwd))
             worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
             head = get_head_commit(worktree_path)
             if head:
@@ -499,7 +467,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     if verdict not in _PREPARE_VERDICT_VALUES:
         raise ValueError(f"invalid verdict '{verdict}': must be one of {', '.join(_PREPARE_VERDICT_VALUES)}")
 
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     if phase == _REQUIREMENTS_HUMAN_APPROVAL_PHASE:
@@ -537,7 +505,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     Raises:
         RuntimeError: when any validation step fails.
     """
-    project_root = _project_root_from_cwd(cwd)
+    project_root = str(resolve_main_repo_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     if not worktree_path.exists():
         raise RuntimeError(f"finalize_ready: worktree not found at {worktree_path}")
@@ -560,7 +528,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
             f"does not match local branch ({branch_head!r}) — push first"
         )
 
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
@@ -623,7 +591,7 @@ Ownership:
 
 def _has_artifact_content(cwd: str, slug: str, artifact_name: str) -> bool:
     """Return True when the DB artifact has non-trivial content beyond whitespace/headings."""
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
         row = conn.execute(
@@ -665,8 +633,8 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         ValueError: when a required artifact is missing or git HEAD cannot be read.
     """
     # pylint: disable=too-many-locals,too-many-statements
-    project_root = _project_root_from_cwd(cwd)
-    db = _get_todos_db_sync(cwd)
+    project_root = str(resolve_main_repo_root(cwd))
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")
 
@@ -828,7 +796,7 @@ def write_breakdown_state(cwd: str, slug: str, assessed: bool, todos: list[str])
         assessed: Whether breakdown assessment has been performed
         todos: List of todo slugs created from split (empty if no breakdown)
     """
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     writer.state.breakdown = BreakdownState(assessed=assessed, todos=list(todos))
@@ -849,7 +817,7 @@ def has_pending_deferrals(cwd: str, slug: str) -> bool:
     if state.get("deferrals_processed") is True:
         return False
 
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     conn = db._sync_conn()  # pylint: disable=protected-access
     try:
         row = conn.execute(
@@ -909,7 +877,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
         _capture_upstream_digests(cwd, slug, artifact_key)
         return read_phase_state(cwd, slug)
 
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     entry = getattr(writer.state.artifacts, artifact_key, None)
@@ -937,7 +905,7 @@ def _capture_upstream_digests(cwd: str, slug: str, artifact_key: str) -> None:
     upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())
     if not upstream_keys:
         return
-    db = _get_todos_db_sync(cwd)
+    db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
     entry = getattr(writer.state.artifacts, artifact_key, None)
@@ -953,9 +921,7 @@ __all__ = [
     "_BUILD_VERDICT_PHASE",
     "_BUILD_VERDICT_VALUES",
     "_file_sha256",
-    "_get_todos_db_sync",
     "_is_review_round_limit_reached",
-    "_project_root_from_cwd",
     "_review_scope_note",
     "apply_prepared_state",
     "has_pending_deferrals",

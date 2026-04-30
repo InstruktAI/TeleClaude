@@ -19,13 +19,14 @@ from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import discover_codex_transcript_path, discover_current_codex_transcript_path
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.slug_resolution import set_item_phase
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync, apply_prepared_state
+from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.worktrees import (
     _create_or_attach_worktree,
     _decide_worktree_prep,
     _prepare_worktree,
     _write_worktree_prep_state,
 )
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, Repo
 from teleclaude.hooks.receiver._session import _create_sync_engine
 from teleclaude.session_identity import get_session_id as _get_session_id
@@ -86,7 +87,7 @@ def create_draft_skeleton(
     validate_slug(slug)
     slug = slug.strip()
 
-    db = _get_todos_db_sync(project_root)
+    db = get_todos_db_sync(project_root)
     conn = db._sync_conn()
     try:
         existing = conn.execute(
@@ -408,7 +409,7 @@ def create_from_main_skeleton(
     # --- 5g. Ensure roadmap entry exists (write_state requires slug→UUID resolution) ---
     worktree_cwd = str(worktree_path)
 
-    _from_main_db = _get_todos_db_sync(worktree_cwd)
+    _from_main_db = get_todos_db_sync(worktree_cwd)
     _from_main_conn = _from_main_db._sync_conn()
     try:
         _existing = _from_main_conn.execute(
@@ -431,7 +432,7 @@ def create_from_main_skeleton(
         _from_main_conn.close()
 
     # --- 5h. Write DB artifacts (apply_prepared_state validates their existence) ---
-    _art_db = _get_todos_db_sync(worktree_cwd)
+    _art_db = get_todos_db_sync(worktree_cwd)
     _art_conn = _art_db._sync_conn()
     try:
         _art_id_row = _art_conn.execute(

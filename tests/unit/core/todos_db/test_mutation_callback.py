@@ -10,12 +10,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
-from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, set_todos_mutation_hook
+from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, get_todos_db_sync, set_todos_mutation_hook
 
 pytestmark = pytest.mark.asyncio
 
@@ -180,24 +179,26 @@ async def test_move_in_roadmap_fires_mutation_callback(db: TodosDb) -> None:
 
 
 async def test_set_todos_mutation_hook_applies_to_sync_get_todos_db_instance(tmp_path: Path) -> None:
-    """Hook registered via set_todos_mutation_hook is applied to sync instances from state_io._get_todos_db_sync."""
+    """Hook registered via set_todos_mutation_hook fires for instances created via get_todos_db_sync."""
     project_root = str(tmp_path)
     calls: list[str] = []
 
     def _hook(instance: TodosDb, root: str) -> None:
         instance._on_mutation = lambda event_hint: calls.append(root)
 
+    # Drop any cached instance for this root so the hook fires on a fresh creation
+    db_path = str(tmp_path / ".teleclaude" / "todos.db")
+    _instances.pop(db_path, None)
+
     set_todos_mutation_hook(_hook)
     try:
-        # state_io imports _new_instance_hook at module load time — patch its
-        # stale copy so _get_todos_db_sync sees the hook we just registered.
-        with patch("teleclaude.core.next_machine.state_io._new_instance_hook", _hook):
-            synced_db = _get_todos_db_sync(project_root)
-            _ensure_roadmap_sync(synced_db, "my-slug")
-            synced_db.write_state_sync("my-slug", {"current": "pending"})
+        synced_db = get_todos_db_sync(project_root)
+        _ensure_roadmap_sync(synced_db, "my-slug")
+        synced_db.write_state_sync("my-slug", {"current": "pending"})
         assert calls == [project_root]
     finally:
         set_todos_mutation_hook(None)
+        _instances.pop(db_path, None)
 
 
 async def test_no_callback_by_default(db: TodosDb) -> None:

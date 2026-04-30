@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -39,8 +40,8 @@ def test_stamp_test_specs_records_requirements_upstream_digest(seeded_db: TodosD
     requirements_digest = _digest(requirements_content)
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         state = stamp_artifact(cwd, "slug-a", "test_specs")
@@ -71,8 +72,8 @@ def test_stamp_implementation_plan_records_both_upstream_digests(seeded_db: Todo
     test_specs_digest = _digest(test_specs_content)
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
         stamp_artifact(cwd, "slug-a", "test_specs")
@@ -96,8 +97,8 @@ def test_stamp_requirements_does_not_record_upstream_digests(seeded_db: TodosDb)
     seeded_db.write_artifact_sync("slug-b", "requirements", "# Requirements\n")
 
     with (
-        patch("teleclaude.core.next_machine.state_io._project_root_from_cwd", return_value=cwd),
-        patch("teleclaude.core.next_machine.state_io._get_todos_db_sync", return_value=seeded_db),
+        patch("teleclaude.core.next_machine.state_io.resolve_main_repo_root", return_value=Path(cwd)),
+        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         state = stamp_artifact(cwd, "slug-b", "requirements")
 

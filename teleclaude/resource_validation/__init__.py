@@ -19,7 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -565,7 +565,7 @@ def validate_jobs_config(project_root: Path) -> list[str]:
 
 def validate_todo(slug: str, project_root: Path) -> list[str]:
     """Validate a todo's state and artifacts in todos.db."""
-    db = _get_todos_db_sync(str(project_root))
+    db = get_todos_db_sync(str(project_root))
     errors: list[str] = []
 
     # 1. State must exist and validate against schema
@@ -592,7 +592,7 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
 
 def validate_all_todos(project_root: Path) -> list[str]:
     """Enumerate and validate all active todos from todos.db."""
-    db = _get_todos_db_sync(str(project_root))
+    db = get_todos_db_sync(str(project_root))
     conn = db._sync_conn()
     try:
         rows = conn.execute(

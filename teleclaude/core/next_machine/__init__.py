@@ -1,10 +1,11 @@
-"""Next-machine package with shared core and stage-specific state machines."""
+"""Next-machine package with shared core and stage-specific state machines.
 
-# pyright: reportUnusedImport=false
-
-from teleclaude.core.next_machine.core import *  # noqa: F403
-from teleclaude.core.next_machine.create import next_create as next_create
-from teleclaude.core.next_machine.prepare import next_prepare as next_prepare
-from teleclaude.core.next_machine.worktrees import _prepare_worktree
-
-__all__ = ["_prepare_worktree", "next_create", "next_prepare"]
+This package intentionally has an empty __init__: callers must import from the
+specific submodule that owns the symbol they need (e.g.
+``teleclaude.core.next_machine.delivery``,
+``teleclaude.core.next_machine.prepare_events``,
+``teleclaude.core.next_machine._types``). Eager re-exports here would force
+every consumer — including lightweight callers like the hook receiver — to
+load the entire state-machine surface and would create circular imports
+through ``todos_db``.
+"""

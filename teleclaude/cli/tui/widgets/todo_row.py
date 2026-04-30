@@ -12,7 +12,7 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.core.next_machine.core import DOR_READY_THRESHOLD
+from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)

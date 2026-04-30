@@ -28,11 +28,10 @@ from teleclaude.core.integration.formatters import (
 )
 from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
-from teleclaude.core.next_machine.core import cleanup_delivered_slug
-from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
-from teleclaude.project_root import resolve_main_repo_root
 
 logger = get_logger(__name__)
 
@@ -42,20 +41,6 @@ _tls = threading.local()
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
-
-
-def _get_todos_db_sync(cwd: str) -> Any:
-    """Resolve a TodosDb instance synchronously for the given project root.
-
-    Uses sync initialization — no event loop needed. The sync methods
-    (read_state_sync, write_state_sync, deliver_sync) create their own
-    sqlite3 connections per call.
-    """
-    project_root = resolve_main_repo_root(cwd)
-    db_path = str(project_root / ".teleclaude" / "todos.db")
-    db = TodosDb(db_path)
-    db.initialize_sync()
-    return db
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +111,7 @@ def _get_branch_log(cwd: str, branch: str, *, base_ref: str = "main") -> str:
 def _read_artifact_safe(cwd: str, slug: str, name: str) -> str:
     """Read a todo artifact from todos.db, returning empty string on failure."""
     try:
-        db = _get_todos_db_sync(cwd)
+        db = get_todos_db_sync(cwd)
         return str(db.read_artifact_sync(slug, name))
     except Exception:
         logger.debug("_read_artifact_safe failed for %s/%s", slug, name, exc_info=True)
@@ -274,7 +259,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
     Returns candidates sorted by ``(ready_at, slug)`` for stable FIFO ordering.
     """
-    todos_db = _get_todos_db_sync(cwd)
+    todos_db = get_todos_db_sync(cwd)
 
     trees_dir = Path(cwd) / WORKTREE_DIR
     if not trees_dir.is_dir():
@@ -305,9 +290,12 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
         if status not in ("ready", "handed_off"):
             continue
 
-        branch = finalize.get("branch", slug)
-        sha = finalize.get("sha", "")
-        ready_at = finalize.get("ready_at", "")
+        branch_raw = finalize.get("branch", slug)
+        sha_raw = finalize.get("sha", "")
+        ready_at_raw = finalize.get("ready_at", "")
+        if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
+            continue
+        branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
         if not sha or not ready_at:
             continue
 
@@ -342,7 +330,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
         return None
 
     try:
-        todos_db = _get_todos_db_sync(cwd)
+        todos_db = get_todos_db_sync(cwd)
         state = todos_db.read_state_sync(slug)
         if state is None:
             return None
@@ -358,9 +346,12 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
     if status not in ("ready", "handed_off"):
         return None
 
-    branch = finalize.get("branch", slug)
-    sha = finalize.get("sha", "")
-    ready_at = finalize.get("ready_at", "")
+    branch_raw = finalize.get("branch", slug)
+    sha_raw = finalize.get("sha", "")
+    ready_at_raw = finalize.get("ready_at", "")
+    if not isinstance(branch_raw, str) or not isinstance(sha_raw, str) or not isinstance(ready_at_raw, str):
+        return None
+    branch, sha, ready_at = branch_raw, sha_raw, ready_at_raw
     if not sha or not ready_at:
         return None
 
@@ -386,7 +377,7 @@ def _sweep_stale_artifacts(cwd: str) -> list[str]:
     Returns list of swept slug names. Each step is idempotent — safe to
     call on every IDLE entry without risk of double-cleanup.
     """
-    todos_db = _get_todos_db_sync(cwd)
+    todos_db = get_todos_db_sync(cwd)
     conn = todos_db._sync_conn()
     try:
         rows = conn.execute(
@@ -664,7 +655,7 @@ def _step_delivery_bookkeeping(
     # --- Delivery bookkeeping via todos.db ---
     warnings = checkpoint.warnings if checkpoint.warnings is not None else []
 
-    todos_db = _get_todos_db_sync(cwd)
+    todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
     if not delivered:
         return False, _format_error(
@@ -673,7 +664,7 @@ def _step_delivery_bookkeeping(
         )
 
     # --- Clean dependency references in DB ---
-    todos_db = _get_todos_db_sync(cwd)
+    todos_db = get_todos_db_sync(cwd)
     conn = todos_db._sync_conn()
     try:
         conn.execute("DELETE FROM roadmap_deps WHERE depends_on = ?", (key.slug,))  # guard: raw-sql
@@ -885,7 +876,7 @@ def _stamp_integration_started(cwd: str, slug: str) -> None:
     The 'delivered' stamp is handled by deliver_sync.
     """
     try:
-        todos_db = _get_todos_db_sync(cwd)
+        todos_db = get_todos_db_sync(cwd)
         state = todos_db.read_state_sync(slug)
         if state is None:
             return

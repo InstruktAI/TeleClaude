@@ -10,7 +10,7 @@ from typing import cast
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.core.next_machine._types import StateValue
+from teleclaude.types.state_value import StateValue
 
 from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
 from ._upcycle import canonicalize_state_for_storage, upcycle_state_dict

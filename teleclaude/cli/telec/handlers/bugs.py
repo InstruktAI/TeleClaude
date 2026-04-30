@@ -11,7 +11,7 @@ from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
-from teleclaude.core.next_machine.state_io import _get_todos_db_sync
+from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
@@ -222,7 +222,7 @@ def _handle_bugs_list(args: list[str]) -> None:
             print(_usage("bugs", "list"))
             raise SystemExit(1)
 
-    db = _get_todos_db_sync(str(project_root))
+    db = get_todos_db_sync(str(project_root))
     conn = db._sync_conn()
     try:
         rows = conn.execute(

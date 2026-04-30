@@ -12,7 +12,7 @@ import uuid
 
 from teleclaude.cli.tool_client import print_json, tool_api_call
 from teleclaude.cli.tool_commands._receipt import poll_operation
-from teleclaude.core.next_machine.core import invalidate_stale_preparations
+from teleclaude.core.next_machine.prepare_events import invalidate_stale_preparations
 
 __all__ = [
     "handle_operations",

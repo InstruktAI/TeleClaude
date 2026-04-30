@@ -15,71 +15,24 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from enum import Enum
 
 from teleclaude.core.next_machine.git_ops import get_head_commit, has_build_commits_beyond_main
+from teleclaude.types.lifecycle import (
+    LIFECYCLE_PHASE_ORDER,
+    PREPARE_LIFECYCLE_PHASES,
+    WORK_LIFECYCLE_PHASES,
+    LifecyclePhase,
+    LifecycleStage,
+)
 from teleclaude.types.todos import ReviewVerdictState, TestSpecReviewState, TodoState
 
-
-class LifecyclePhase(str, Enum):
-    """Ordered software-development lifecycle phases."""
-
-    DRAFT = "draft"
-    INPUT_ASSESSMENT = "input_assessment"
-    TRIANGULATION = "triangulation"
-    REQUIREMENTS_REVIEW = "requirements_review"
-    REQUIREMENTS_HUMAN_APPROVAL = "requirements_human_approval"
-    TEST_SPEC_BUILD = "test_spec_build"
-    TEST_SPEC_REVIEW = "test_spec_review"
-    PLAN_DRAFTING = "plan_drafting"
-    PLAN_REVIEW = "plan_review"
-    GATE = "gate"
-    GROUNDING_CHECK = "grounding_check"
-    RE_GROUNDING = "re_grounding"
-    PREPARED = "prepared"
-    BUILD_STARTED = "build_started"
-    BUILD_COMPLETE = "build_complete"
-    REVIEW_CHANGES_REQUESTED = "review_changes_requested"
-    REVIEW_APPROVED = "review_approved"
-    FINALIZE_READY = "finalize_ready"
-    HANDED_OFF = "handed_off"
-
-
-class LifecycleStage(str, Enum):
-    """Stage bucket used for explicit lifecycle reconciliation."""
-
-    PREPARE = "prepare"
-    WORK = "work"
-
-
-LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
-PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
-    {
-        LifecyclePhase.DRAFT,
-        LifecyclePhase.INPUT_ASSESSMENT,
-        LifecyclePhase.TRIANGULATION,
-        LifecyclePhase.REQUIREMENTS_REVIEW,
-        LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL,
-        LifecyclePhase.TEST_SPEC_BUILD,
-        LifecyclePhase.TEST_SPEC_REVIEW,
-        LifecyclePhase.PLAN_DRAFTING,
-        LifecyclePhase.PLAN_REVIEW,
-        LifecyclePhase.GATE,
-        LifecyclePhase.GROUNDING_CHECK,
-        LifecyclePhase.RE_GROUNDING,
-        LifecyclePhase.PREPARED,
-    }
-)
-WORK_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
-    {
-        LifecyclePhase.BUILD_STARTED,
-        LifecyclePhase.BUILD_COMPLETE,
-        LifecyclePhase.REVIEW_CHANGES_REQUESTED,
-        LifecyclePhase.REVIEW_APPROVED,
-        LifecyclePhase.FINALIZE_READY,
-        LifecyclePhase.HANDED_OFF,
-    }
-)
+__all__ = [
+    "LIFECYCLE_PHASE_ORDER",
+    "PREPARE_LIFECYCLE_PHASES",
+    "WORK_LIFECYCLE_PHASES",
+    "LifecyclePhase",
+    "LifecycleStage",
+]
 
 _ArtifactPresence = Mapping[str, bool]
 

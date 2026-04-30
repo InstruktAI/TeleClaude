@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from teleclaude.project_root import resolve_main_repo_root
+
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
 from ._roadmap import TodosDbRoadmapMixin
@@ -23,10 +25,9 @@ class TodosDb(
 
 _instances: dict[str, TodosDb] = {}
 
-# Optional hook called whenever get_todos_db or _get_todos_db_sync creates a new
-# instance. The hook receives (instance, project_root) and is responsible for
-# setting instance._on_mutation to a callable that invalidates the daemon cache.
-# Defaults to None (no-op in CLI and test contexts).
+# Hook called whenever get_todos_db or get_todos_db_sync creates a new instance.
+# The daemon registers a hook that wires instance._on_mutation to its cache
+# refresh. None in CLI and test contexts.
 _new_instance_hook: Callable[[TodosDb, str], None] | None = None
 
 
@@ -55,4 +56,24 @@ async def get_todos_db(project_root: str) -> TodosDb:
     return _instances[db_path]
 
 
-__all__ = ["ArtifactVersionRow", "RoadmapRow", "TodosDb", "get_todos_db", "set_todos_mutation_hook"]
+def get_todos_db_sync(project_root_or_cwd: str) -> TodosDb:
+    """Sync sibling of get_todos_db: resolve project root, return cached TodosDb."""
+    project_root = str(resolve_main_repo_root(project_root_or_cwd))
+    db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
+    if db_path not in _instances:
+        instance = TodosDb(db_path)
+        instance.initialize_sync()
+        if _new_instance_hook is not None:
+            _new_instance_hook(instance, project_root)
+        _instances[db_path] = instance
+    return _instances[db_path]
+
+
+__all__ = [
+    "ArtifactVersionRow",
+    "RoadmapRow",
+    "TodosDb",
+    "get_todos_db",
+    "get_todos_db_sync",
+    "set_todos_mutation_hook",
+]

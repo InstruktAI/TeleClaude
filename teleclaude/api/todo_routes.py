@@ -36,16 +36,14 @@ from teleclaude.core.next_machine._types import (
     WorkPhase,
     default_state,
 )
-from teleclaude.core.next_machine.core import (
-    _BUILD_VERDICT_PHASE,
-    _BUILD_VERDICT_VALUES,
-    _PREPARE_VERDICT_PHASES,
-    _PREPARE_VERDICT_VALUES,
-)
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_io import (
+    _BUILD_VERDICT_PHASE,
+    _BUILD_VERDICT_VALUES,
+    _PREPARE_VERDICT_PHASES,
+    _PREPARE_VERDICT_VALUES,
     apply_prepared_state,
     mark_phase_state,
     stamp_finalize_ready,
