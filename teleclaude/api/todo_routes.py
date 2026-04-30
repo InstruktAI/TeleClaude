@@ -300,7 +300,6 @@ async def _sync_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_nam
     if entry is None:
         return
     entry.digest = await todos_db.artifact_digest(slug, artifact_name)
-    entry.stale = False
     await writer.commit(todos_db, slug)
 
 

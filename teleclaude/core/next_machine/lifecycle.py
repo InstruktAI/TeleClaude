@@ -372,7 +372,6 @@ def _apply_authoring_signal(model: TodoState, current: LifecyclePhase, signal: s
     if signal == "requirements_ready" and current in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
         _reset_after_requirements(model)
         model.artifacts.requirements.produced_at = now
-        model.artifacts.requirements.stale = False
         if not _has_input_artifact(model):
             model.requirements_review.verdict = "skipped"
             model.requirements_review.reviewed_at = now
@@ -382,13 +381,11 @@ def _apply_authoring_signal(model: TodoState, current: LifecyclePhase, signal: s
     if signal == "specs_built" and current == LifecyclePhase.TEST_SPEC_BUILD:
         _reset_after_test_specs(model)
         model.artifacts.test_specs.produced_at = now
-        model.artifacts.test_specs.stale = False
         return _move_to(model, LifecyclePhase.TEST_SPEC_REVIEW)
 
     if signal == "plan_ready" and current in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.RE_GROUNDING):
         _reset_after_plan(model)
         model.artifacts.implementation_plan.produced_at = now
-        model.artifacts.implementation_plan.stale = False
         return _move_to(model, LifecyclePhase.PLAN_REVIEW)
 
     return None

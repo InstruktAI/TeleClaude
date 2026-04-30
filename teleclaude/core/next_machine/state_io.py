@@ -97,7 +97,6 @@ def _sync_artifact_state(cwd: str, slug: str, artifact_name: str, *, produced: b
     entry["digest"] = digest
     if produced:
         entry["produced_at"] = datetime.now(UTC).isoformat()
-    entry["stale"] = False
     artifacts[key] = entry
     state["artifacts"] = artifacts
     write_phase_state(cwd, slug, state)
@@ -232,7 +231,6 @@ def _sync_reconcile_artifacts(cwd: str, slug: str, writer: StateWriter) -> None:
         entry.digest = digest
         if not digest:
             entry.produced_at = ""
-        entry.stale = False
 
 
 def validate_mark_phase_preconditions(
@@ -918,7 +916,6 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     if not isinstance(entry, ArtifactEntry):
         raise ValueError(f"unknown artifact phase '{artifact_key}'")
     entry.produced_at = datetime.now(UTC).isoformat()
-    entry.stale = False
     if artifact_key == "test_specs":
         # Sync digest from the test-specs DB artifact when one exists. Workers may
         # write a manifest of spec files to the test-specs artifact; the digest

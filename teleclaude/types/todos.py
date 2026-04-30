@@ -156,9 +156,10 @@ class Event(BaseModel):
 class ArtifactEntry(BaseModel):
     """Lifecycle stamp for a single artifact."""
 
+    model_config = ConfigDict(extra="ignore")
+
     digest: str = ""
     produced_at: str = ""
-    stale: bool = False
     approved: bool = False
     confirmed: bool = False
     upstream_digests: dict[str, str] = Field(default_factory=dict)

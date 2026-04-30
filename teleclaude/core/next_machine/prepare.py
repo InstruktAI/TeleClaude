@@ -143,7 +143,6 @@ async def _hydrate_artifact_presence_for_adoption(
         if not await todos_db.artifact_exists(slug, artifact_name):
             continue
         entry.digest = await todos_db.artifact_digest(slug, artifact_name)
-        entry.stale = False
 
 
 async def _find_next_prepare_slug_db(todos_db: TodosDb) -> str | None:
