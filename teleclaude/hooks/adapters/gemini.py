@@ -7,10 +7,10 @@ import json
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.base import normalize_common_payload, parse_stdin_hook_input
+from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
 
 
-class GeminiAdapter:
+class GeminiAdapter(HookAdapter):
     """Hook adapter for Gemini CLI."""
 
     agent_name: str = "gemini"

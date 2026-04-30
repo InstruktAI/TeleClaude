@@ -7,10 +7,10 @@ import json
 
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
-from teleclaude.hooks.adapters.base import normalize_common_payload, parse_stdin_hook_input
+from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
 
 
-class CodexAdapter:
+class CodexAdapter(HookAdapter):
     """Hook adapter for Codex."""
 
     agent_name: str = "codex"
