@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.core.next_machine.prepare_grounding_steps import prepare_step_re_grounding as _prepare_step_re_grounding
 from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_input_assessment,
     _prepare_step_plan_drafting,
-    _prepare_step_re_grounding,
     _prepare_step_triangulation,
 )
 

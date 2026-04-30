@@ -401,6 +401,114 @@ async def test_writer_messaged_reviewer_not_during_write_phase(todos_db: TodosDb
 
 
 @pytest.mark.asyncio
+async def test_requirements_review_dispatch_includes_diff_command_when_digest_changed(
+    todos_db: TodosDb,
+) -> None:
+    """When requirements_review is dispatched after a digest change, the message includes the diff command."""
+    await todos_db.add_to_roadmap("digest-changed")
+    await todos_db.write_artifact("digest-changed", "requirements", "# v1\n")
+    old_digest = await todos_db.artifact_digest("digest-changed", "requirements")
+    await todos_db.write_artifact("digest-changed", "requirements", "# v2\n")
+    new_digest = await todos_db.artifact_digest("digest-changed", "requirements")
+
+    state = _pair_state_dict()
+    state["phase"] = "in_progress"
+    state["lifecycle_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
+    # Reviewer previously approved at old_digest; verdict is empty so dispatch fires.
+    state["requirements_review"] = {"verdict": "", "approved_digest": old_digest}
+    state["artifacts"] = {
+        "requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+    }
+    await todos_db.write_state("digest-changed", state)
+    stored = await todos_db.read_state("digest-changed")
+    assert stored is not None
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="digest-changed",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_REVIEW,
+        state=stored,
+    )
+
+    assert f"telec todo artifacts diff digest-changed requirements {old_digest} {new_digest}" in instruction
+
+
+@pytest.mark.asyncio
+async def test_requirements_review_approve_clears_when_digest_no_longer_matches(
+    todos_db: TodosDb,
+) -> None:
+    """A stale approve verdict (digest mismatch) is cleared and reviewer is re-dispatched."""
+    await todos_db.add_to_roadmap("stale-approve")
+    await todos_db.write_artifact("stale-approve", "requirements", "# v1\n")
+    old_digest = await todos_db.artifact_digest("stale-approve", "requirements")
+    await todos_db.write_artifact("stale-approve", "requirements", "# v2\n")
+    new_digest = await todos_db.artifact_digest("stale-approve", "requirements")
+
+    state = _pair_state_dict()
+    state["phase"] = "in_progress"
+    state["lifecycle_phase"] = PreparePhase.REQUIREMENTS_REVIEW.value
+    # Approve verdict bound to the old digest
+    state["requirements_review"] = {"verdict": "approve", "approved_digest": old_digest}
+    state["artifacts"] = {
+        "requirements": {"digest": old_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+    }
+    await todos_db.write_state("stale-approve", state)
+    stored = await todos_db.read_state("stale-approve")
+    assert stored is not None
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="stale-approve",
+        cwd="/repo",
+        phase=PreparePhase.REQUIREMENTS_REVIEW,
+        state=stored,
+    )
+
+    # Should not return APPROVED — should dispatch reviewer with diff context
+    assert "REQUIREMENTS REVIEW APPROVED" not in instruction
+    assert f"telec todo artifacts diff stale-approve requirements {old_digest} {new_digest}" in instruction
+
+
+@pytest.mark.asyncio
+async def test_test_spec_build_dispatch_includes_upstream_diff_command(todos_db: TodosDb) -> None:
+    """When test_spec_build is dispatched after upstream change, the message includes the requirements diff command."""
+    await todos_db.add_to_roadmap("upstream-build")
+    await todos_db.write_artifact("upstream-build", "requirements", "# req v1\n")
+    old_req_digest = await todos_db.artifact_digest("upstream-build", "requirements")
+    await todos_db.write_artifact("upstream-build", "requirements", "# req v2\n")
+    new_req_digest = await todos_db.artifact_digest("upstream-build", "requirements")
+
+    state = _pair_state_dict()
+    state["phase"] = "in_progress"
+    state["lifecycle_phase"] = PreparePhase.TEST_SPEC_BUILD.value
+    # Specs were built against old requirements
+    state["artifacts"] = {
+        "requirements": {"digest": new_req_digest, "produced_at": "2026-01-01T00:00:00+00:00"},
+        "test_specs": {
+            "produced_at": "2026-01-01T00:00:00+00:00",
+            "upstream_digests": {"requirements": old_req_digest},
+        },
+    }
+    await todos_db.write_state("upstream-build", state)
+    stored = await todos_db.read_state("upstream-build")
+    assert stored is not None
+
+    _, instruction = await _prepare_dispatch(
+        db=AsyncMock(),
+        todos_db=todos_db,
+        slug="upstream-build",
+        cwd="/repo",
+        phase=PreparePhase.TEST_SPEC_BUILD,
+        state=stored,
+    )
+
+    assert f"telec todo artifacts diff upstream-build requirements {old_req_digest} {new_req_digest}" in instruction
+
+
+@pytest.mark.asyncio
 async def test_reviewer_messaged_only_after_writer_agent_stop(todos_db: TodosDb) -> None:
     state = await _stored_pair_state(todos_db, "writer-stop", PreparePhase.PLAN_DRAFTING)
 

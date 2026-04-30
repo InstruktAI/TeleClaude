@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -24,7 +23,16 @@ from teleclaude.core.next_machine.output_formatting import (
     format_pair_formation_script,
     format_tool_call,
 )
+from teleclaude.core.next_machine.prepare_diff_dispatch import (
+    append_diff_section,
+    build_upstream_diff_pairs,
+    review_digest_pair,
+)
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
+from teleclaude.core.next_machine.prepare_grounding_steps import (
+    prepare_step_grounding_check,
+    prepare_step_re_grounding,
+)
 from teleclaude.core.next_machine.prepare_pair import (
     PRODUCTION_ROLES,
     REVIEW_ROLES,
@@ -45,7 +53,7 @@ from teleclaude.core.next_machine.runtime.scripts import (
 from teleclaude.core.next_machine.runtime.sessions import (
     find_live_session_for_slug as _find_live_session_for_slug,
 )
-from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
 
 if TYPE_CHECKING:
@@ -223,13 +231,22 @@ async def _prepare_step_requirements_review(
         reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
-        audit.completed_at = now
-        audit.verdict = "approve"
+        # Digest-bound approval: the verdict only stands while the artifact's
+        # current digest matches the digest the reviewer approved. When they
+        # diverge, fall through to dispatch a re-review.
+        current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
+        if review.approved_digest == current_requirements_digest:
+            audit.completed_at = now
+            audit.verdict = "approve"
+            await _commit_writer(writer, todos_db, slug, state)
+            _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
+            if pair_slots is not None:
+                return False, f"REQUIREMENTS REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
+            return False, format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
+        # Stale approval — clear verdict to re-trigger reviewer dispatch below.
+        review.verdict = ""
+        verdict = ""
         await _commit_writer(writer, todos_db, slug, state)
-        _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
-        if pair_slots is not None:
-            return False, f"REQUIREMENTS REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-        return False, format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
@@ -311,8 +328,10 @@ async def _prepare_step_requirements_review(
         review.baseline_commit = head_sha.strip()
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
+    current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
+    diff_pairs = review_digest_pair("requirements", "requirements", review.approved_digest, current_requirements_digest)
     if pair_slots is not None:
-        message = format_command_loader_message("next-review-requirements", slug)
+        message = append_diff_section(format_command_loader_message("next-review-requirements", slug), slug, diff_pairs)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -332,10 +351,14 @@ async def _prepare_step_requirements_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Review requirements via `telec todo artifacts read {slug} requirements` "
-                f"and stamp verdict via "
-                f"`telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`."
+            note=append_diff_section(
+                (
+                    f"Review requirements via `telec todo artifacts read {slug} requirements` "
+                    f"and stamp verdict via "
+                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`."
+                ),
+                slug,
+                diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_reviewer_idle_post_block(slug),
@@ -372,10 +395,17 @@ async def _prepare_step_test_spec_build(
     writer.audit.test_spec_build.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
 
+    build_diff_pairs = await build_upstream_diff_pairs(
+        todos_db,
+        slug,
+        dict(test_specs_entry.upstream_digests),
+        (("requirements", "requirements", "requirements"),),
+    )
+
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES)
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
-        message = format_command_loader_message("next-build-specs", slug)
+        message = append_diff_section(format_command_loader_message("next-build-specs", slug), slug, build_diff_pairs)
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -437,13 +467,22 @@ async def _prepare_step_test_spec_review(
         reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
-        audit.completed_at = now
-        audit.verdict = "approve"
+        # Digest-bound approval: only stands while specs digest matches the
+        # one the reviewer approved. When test_specs has no DB-backed digest
+        # (no manifest), verdict alone gates approval.
+        current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
+        if not current_specs_digest or spec_review.approved_digest == current_specs_digest:
+            audit.completed_at = now
+            audit.verdict = "approve"
+            await _commit_writer(writer, todos_db, slug, state)
+            _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
+            if pair_slots is not None:
+                return False, f"TEST SPEC REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
+            return False, format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
+        # Stale approval — clear verdict to re-trigger reviewer dispatch below.
+        spec_review.verdict = ""
+        verdict = ""
         await _commit_writer(writer, todos_db, slug, state)
-        _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
-        if pair_slots is not None:
-            return False, f"TEST SPEC REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-        return False, format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
 
     if verdict == "needs_work":
         rounds = spec_review.rounds + 1
@@ -498,8 +537,10 @@ async def _prepare_step_test_spec_review(
 
     # No verdict yet — dispatch reviewer
     await _commit_writer(writer, todos_db, slug, state)
+    current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
+    spec_diff_pairs = review_digest_pair("test_specs", "test-specs", spec_review.approved_digest, current_specs_digest)
     if pair_slots is not None:
-        message = format_command_loader_message("next-review-specs", slug)
+        message = append_diff_section(format_command_loader_message("next-review-specs", slug), slug, spec_diff_pairs)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -519,7 +560,14 @@ async def _prepare_step_test_spec_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`.",
+            note=append_diff_section(
+                (
+                    f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via "
+                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`."
+                ),
+                slug,
+                spec_diff_pairs,
+            ),
             next_call=f"telec todo prepare {slug}",
             post_block=_reviewer_idle_post_block(slug),
         )
@@ -533,11 +581,22 @@ async def _prepare_step_plan_drafting(
     cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """PLAN_DRAFTING: implementation-plan.md needed."""
+    """PLAN_DRAFTING: implementation-plan.md needed when missing or upstream stale."""
     writer = StateWriter(state)
     writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
 
-    if writer.state.artifacts.implementation_plan.produced_at:
+    plan_entry = writer.state.artifacts.implementation_plan
+    plan_diff_pairs = await build_upstream_diff_pairs(
+        todos_db,
+        slug,
+        dict(plan_entry.upstream_digests),
+        (
+            ("requirements", "requirements", "requirements"),
+            ("test_specs", "test_specs", "test-specs"),
+        ),
+    )
+
+    if plan_entry.produced_at and not plan_diff_pairs:
         apply_authoritative_signal(writer.state, "plan_ready")
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)
@@ -548,7 +607,7 @@ async def _prepare_step_plan_drafting(
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
         await _commit_writer(writer, todos_db, slug, state)
-        message = format_command_loader_message("next-prepare-draft", slug)
+        message = append_diff_section(format_command_loader_message("next-prepare-draft", slug), slug, plan_diff_pairs)
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -616,13 +675,21 @@ async def _prepare_step_plan_review(
         reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
-        audit.completed_at = now
-        audit.verdict = "approve"
+        # Digest-bound approval: only stands while plan digest matches the
+        # one the reviewer approved.
+        current_plan_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        if review.approved_digest == current_plan_digest:
+            audit.completed_at = now
+            audit.verdict = "approve"
+            await _commit_writer(writer, todos_db, slug, state)
+            _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
+            if pair_slots is not None:
+                return False, f"PLAN REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
+            return False, format_review_approved_script(slug, reviewer_id, worker_id, "plan")
+        # Stale approval — clear verdict to re-trigger reviewer dispatch below.
+        review.verdict = ""
+        verdict = ""
         await _commit_writer(writer, todos_db, slug, state)
-        _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
-        if pair_slots is not None:
-            return False, f"PLAN REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-        return False, format_review_approved_script(slug, reviewer_id, worker_id, "plan")
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
@@ -704,8 +771,12 @@ async def _prepare_step_plan_review(
         review.baseline_commit = head_sha.strip()
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
+    current_plan_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+    plan_diff_pairs = review_digest_pair(
+        "implementation_plan", "implementation-plan", review.approved_digest, current_plan_digest
+    )
     if pair_slots is not None:
-        message = format_command_loader_message("next-review-plan", slug)
+        message = append_diff_section(format_command_loader_message("next-review-plan", slug), slug, plan_diff_pairs)
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -725,192 +796,17 @@ async def _prepare_step_plan_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Review the plan via `telec todo artifacts read {slug} implementation-plan` "
-                f"and stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`."
+            note=append_diff_section(
+                (
+                    f"Review the plan via `telec todo artifacts read {slug} implementation-plan` "
+                    f"and stamp verdict via "
+                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`."
+                ),
+                slug,
+                plan_diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_reviewer_idle_post_block(slug),
-        )
-    )
-
-
-async def _prepare_step_grounding_check(
-    db: Db,
-    todos_db: TodosDb,
-    slug: str,
-    cwd: str,
-    state: dict[str, StateValue],
-) -> tuple[bool, str]:
-    """GROUNDING_CHECK: mechanical freshness check + stale re-anchor."""
-    writer = StateWriter(state)
-    grounding_mgr = GroundingManager(writer)
-    base_sha = writer.grounding.base_sha
-
-    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=cwd)
-    current_sha = current_sha_raw.strip() if rc == 0 else ""
-
-    current_input_digest = ""
-    input_content = todos_db.read_artifact_sync(slug, "input")
-    if input_content:
-        current_input_digest = hashlib.sha256(input_content.encode("utf-8")).hexdigest()
-
-    # First grounding: capture baseline and advance through the authoritative grounding signal.
-    if not base_sha:
-        grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
-        apply_authoritative_signal(writer.state, "grounding")
-        await _commit_writer(writer, todos_db, slug, state)
-        _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
-        return True, ""
-
-    # I2: git failure is fail-closed — treat as stale with no changed paths.
-    if not current_sha:
-        logger.warning("GROUNDING_CHECK: git rev-parse HEAD failed for %s, treating as stale", slug)
-        return await _handle_stale_grounding(
-            db=db,
-            todos_db=todos_db,
-            slug=slug,
-            cwd=cwd,
-            state=state,
-            writer=writer,
-            grounding_mgr=grounding_mgr,
-            current_sha=current_sha,
-            reason="files_changed",
-            changed_paths=[],
-        )
-
-    # Collect files changed between base_sha and current_sha for reference-path diffing.
-    changed_files: set[str] = set()
-    if current_sha != base_sha:
-        rc2, diff_output, _ = run_git_command(["diff", "--name-only", f"{base_sha}..{current_sha}"], cwd=cwd)
-        if rc2 == 0:
-            changed_files = {line.strip() for line in diff_output.splitlines() if line.strip()}
-
-    result = grounding_mgr.check(
-        current_sha=current_sha,
-        current_input_digest=current_input_digest,
-        changed_files=changed_files,
-    )
-
-    if result.is_stale:
-        return await _handle_stale_grounding(
-            db=db,
-            todos_db=todos_db,
-            slug=slug,
-            cwd=cwd,
-            state=state,
-            writer=writer,
-            grounding_mgr=grounding_mgr,
-            current_sha=current_sha,
-            reason=result.reason,
-            changed_paths=result.changed_paths,
-        )
-
-    # Fresh — refresh baseline and advance through the authoritative grounding signal.
-    grounding_mgr.capture_fresh(current_sha=current_sha, current_input_digest=current_input_digest)
-    apply_authoritative_signal(writer.state, "grounding")
-    await _commit_writer(writer, todos_db, slug, state)
-    _emit_prepare_event("domain.software-development.prepare.completed", {"slug": slug})
-    return True, ""
-
-
-async def _handle_stale_grounding(
-    *,
-    db: Db,
-    todos_db: TodosDb,
-    slug: str,
-    cwd: str,
-    state: dict[str, StateValue],
-    writer: StateWriter,
-    grounding_mgr: GroundingManager,
-    current_sha: str,
-    reason: str,
-    changed_paths: list[str],
-) -> tuple[bool, str]:
-    """Re-anchor grounding and dispatch a plan update against changed files."""
-    _emit_prepare_event(
-        "domain.software-development.prepare.grounding_invalidated",
-        {"slug": slug, "reason": reason, "changed_paths": changed_paths},
-    )
-
-    if current_sha:
-        grounding_mgr.refresh(current_sha=current_sha)
-    else:
-        grounding_mgr.invalidate(reason=reason, changed_paths=changed_paths)
-
-    apply_authoritative_signal(writer.state, "grounding_invalidated")
-    await _commit_writer(writer, todos_db, slug, state)
-
-    changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
-    note = (
-        f"Update the implementation plan via `telec todo artifacts read {slug} implementation-plan` + "
-        f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-        f"stamp via `telec todo stamp {slug} --plan-ready`. {changed_note}"
-    )
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
-    if pair_slots is not None:
-        writer_slot, reviewer_slot = pair_slots
-        instruction = await format_pair_write_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=writer_slot,
-            reviewer_slot=reviewer_slot,
-            command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=note,
-            next_step=f"telec todo prepare {slug}",
-        )
-        _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
-        return False, instruction
-
-    guidance = await compose_agent_guidance(db)
-    instruction = format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=note,
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
-    )
-    _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
-    return False, instruction
-
-
-async def _prepare_step_re_grounding(
-    db: Db,
-    todos_db: TodosDb,
-    slug: str,
-    cwd: str,
-    state: dict[str, StateValue],
-) -> tuple[bool, str]:
-    """RE_GROUNDING: refresh the plan against current truth before re-review."""
-    writer = StateWriter(state)
-    if writer.state.artifacts.implementation_plan.produced_at:
-        apply_authoritative_signal(writer.state, "plan_ready")
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
-
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Re-ground {slug} and rewrite the implementation plan via "
-                f"`telec todo artifacts read {slug} implementation-plan` + "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then stamp via `telec todo stamp {slug} --plan-ready`."
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
         )
     )
 
@@ -947,9 +843,9 @@ async def _prepare_dispatch(
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
     if phase == PreparePhase.GROUNDING_CHECK:
-        return await _prepare_step_grounding_check(db, todos_db, slug, cwd, state)
+        return await prepare_step_grounding_check(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.RE_GROUNDING:
-        return await _prepare_step_re_grounding(db, todos_db, slug, cwd, state)
+        return await prepare_step_re_grounding(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.PREPARED:
         return await _prepare_step_prepared(db, slug)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
