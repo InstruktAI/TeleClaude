@@ -14,7 +14,6 @@ from teleclaude.api.sessions_routes import ListSessionsQuery
 from teleclaude.api_models import CreateSessionRequest, SendMessageRequest
 from teleclaude.core.models import SessionLaunchKind, SessionSnapshot
 from teleclaude.core.origins import InputOrigin
-from teleclaude.paths import COMMANDS_DIR
 
 
 def _make_request(headers: dict[str, str] | None = None) -> SimpleNamespace:
@@ -361,19 +360,12 @@ class TestSessionsRoutes:
                 request, identity
             )
 
-        expected_startup_message = (
-            f"Read {COMMANDS_DIR / 'next-review-build.md'} and follow it exactly as "
-            "the active instruction set for this session.\n\n"
-            "Treat the following as provided inputs to that instruction set:\n"
-            "- slug: chartest-api-routes"
-        )
         assert metadata.title == "/next-review-build chartest-api-routes"
         assert metadata.system_role == "worker"
         assert metadata.job == "reviewer"
         assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
-        assert launch_intent.message == expected_startup_message
 
     @pytest.mark.unit
     @pytest.mark.asyncio

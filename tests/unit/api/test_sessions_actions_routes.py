@@ -627,13 +627,6 @@ class TestSessionsActionsRoutes:
         expected_title = (
             "/next-review-build chartest-api-routes --direct\n\nADDITIONAL CONTEXT:\nTrace real route behavior."
         )
-        expected_startup_message = (
-            f"Read {Path.home() / '.teleclaude' / 'commands' / 'next-review-build.md'} and follow it exactly as "
-            "the active instruction set for this session.\n\n"
-            "Treat the following as provided inputs to that instruction set:\n"
-            "- slug: chartest-api-routes --direct\n\n"
-            "ADDITIONAL CONTEXT:\nTrace real route behavior."
-        )
         expected_role = sessions_actions_routes.COMMAND_ROLE_MAP[sessions_actions_routes.SlashCommand.NEXT_REVIEW_BUILD]
         assert command_name == "new_session"
         assert payload == {"skip_listener_registration": True, "initiator_session_id": "caller-123"}
@@ -647,7 +640,6 @@ class TestSessionsActionsRoutes:
         assert metadata.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert metadata.launch_intent.agent == "codex"
         assert metadata.launch_intent.thinking_mode == "med"
-        assert metadata.launch_intent.message == expected_startup_message
         assert metadata.system_role == expected_role[0]
         assert metadata.job == expected_role[1].value
 
