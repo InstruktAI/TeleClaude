@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.core.next_machine.prepare_grounding_steps import (
+    prepare_step_grounding_check as _prepare_step_grounding_check,
+)
 from teleclaude.core.next_machine.prepare_grounding_steps import prepare_step_re_grounding as _prepare_step_re_grounding
 from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_input_assessment,
@@ -16,6 +20,7 @@ from teleclaude.core.next_machine.prepare_steps import (
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 _STEPS = "teleclaude.core.next_machine.prepare_steps"
+_GROUNDING = "teleclaude.core.next_machine.prepare_grounding_steps"
 
 
 def _base_state(
@@ -240,3 +245,141 @@ async def test_re_grounding_advances_when_produced_at_set() -> None:
         keep_going, _ = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
 
     assert keep_going is True
+
+
+# --- GROUNDING_CHECK: worktree-scoped baseline ---
+
+
+def _make_worktree_layout(tmp_path: Path, slug: str) -> tuple[str, str]:
+    """Create a fake parent-root + worktree directory pair under *tmp_path*.
+
+    Returns ``(parent_root, worktree_path)`` so tests can assert which one the
+    grounding step uses for its git baseline.
+    """
+    parent_root = tmp_path / "repo"
+    worktree_path = parent_root / "trees" / slug
+    worktree_path.mkdir(parents=True)
+    return str(parent_root), str(worktree_path)
+
+
+@pytest.mark.asyncio
+async def test_grounding_check_captures_worktree_head_when_worktree_exists(tmp_path: Path) -> None:
+    """First grounding for a slug with a worktree must anchor to the worktree HEAD.
+
+    Anchoring to the parent-root HEAD lets unrelated deliveries on main bump
+    the baseline, which then trips the freshness check on later iterations and
+    re-enters the plan-drafting loop. The grounding baseline must scope to the
+    todo's worktree so progress on this todo is decoupled from main.
+    """
+    parent_root, worktree_path = _make_worktree_layout(tmp_path, "my-slug")
+
+    captured_cwds: list[str] = []
+
+    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
+        captured_cwds.append(cwd)
+        if cwd == worktree_path:
+            return 0, "worktree-head\n", ""
+        return 0, "parent-head\n", ""
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.write_state = AsyncMock()
+    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
+
+    state = _base_state(lifecycle_phase="grounding_check")
+
+    with (
+        patch(f"{_GROUNDING}._emit_prepare_event"),
+        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
+    ):
+        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
+
+    assert keep_going is True
+    assert worktree_path in captured_cwds, (
+        f"grounding_check ran git only against {captured_cwds!r}; expected the worktree path"
+    )
+    assert state["grounding"]["base_sha"] == "worktree-head"
+
+
+@pytest.mark.asyncio
+async def test_grounding_check_stays_fresh_when_only_parent_head_advances(tmp_path: Path) -> None:
+    """A delivery on main must not invalidate a todo whose worktree is unchanged.
+
+    Reproduces the production loop: after plan_review approves and base_sha is
+    captured, an unrelated delivery bumps parent-root HEAD. On the next
+    grounding_check the baseline must still match the worktree HEAD, otherwise
+    the step invalidates grounding and re_grounding clears plan_review.verdict
+    via the grounding_invalidated signal.
+    """
+    parent_root, worktree_path = _make_worktree_layout(tmp_path, "my-slug")
+
+    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
+        if cwd == worktree_path:
+            return 0, "worktree-head\n", ""
+        # Parent root advanced because some other todo was delivered.
+        return 0, "parent-head-advanced\n", ""
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.write_state = AsyncMock()
+    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
+
+    state = _base_state(lifecycle_phase="grounding_check")
+    state["grounding"] = {
+        "valid": True,
+        "base_sha": "worktree-head",
+        "input_digest": "",
+        "referenced_paths": [],
+        "last_grounded_at": "",
+        "invalidated_at": "",
+        "invalidation_reason": "",
+        "changed_paths": [],
+    }
+    state["plan_review"] = {
+        "verdict": "approve",
+        "reviewed_at": "2026-01-01T00:00:00+00:00",
+        "findings_count": 0,
+        "rounds": 0,
+        "baseline_commit": "",
+        "approved_digest": "plan-digest",
+    }
+
+    with (
+        patch(f"{_GROUNDING}._emit_prepare_event"),
+        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
+    ):
+        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
+
+    assert keep_going is True
+    assert state["grounding"]["valid"] is True
+    assert state["plan_review"]["verdict"] == "approve"
+
+
+@pytest.mark.asyncio
+async def test_grounding_check_falls_back_to_parent_root_when_no_worktree(tmp_path: Path) -> None:
+    """Without a worktree, grounding_check uses the parent root (current contract)."""
+    parent_root = str(tmp_path / "repo")
+    Path(parent_root).mkdir()
+
+    captured_cwds: list[str] = []
+
+    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
+        captured_cwds.append(cwd)
+        return 0, "parent-head\n", ""
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.write_state = AsyncMock()
+    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
+
+    state = _base_state(lifecycle_phase="grounding_check")
+
+    with (
+        patch(f"{_GROUNDING}._emit_prepare_event"),
+        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
+    ):
+        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
+
+    assert keep_going is True
+    assert captured_cwds == [parent_root]
+    assert state["grounding"]["base_sha"] == "parent-head"
