@@ -176,7 +176,7 @@ class _MypyStep:
         py = python_files(targets)
         if not py:
             return
-        cmd = ["mypy", *py]
+        cmd = [sys.executable, "-m", "mypy", *py]
         _run_tool(cmd, self._project_root, self.name)
 
 

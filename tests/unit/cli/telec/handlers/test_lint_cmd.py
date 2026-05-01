@@ -414,6 +414,23 @@ class TestPythonPipelineOrder:
 
         assert calls == [([sys.executable, "-m", "pyright", "teleclaude/foo.py"], tmp_path, "pyright")]
 
+    def test_mypy_step_uses_current_python_module_invocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mypy runs through the active Python env instead of relying on PATH."""
+        calls: list[tuple[list[str], Path, str]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: calls.append((list(cmd), cwd, step_name)),
+        )
+
+        pipeline = PythonLintPipeline(project_root=tmp_path)
+        mypy_step = next(step for step in pipeline.steps if step.name == "mypy")
+        mypy_step.run(["teleclaude/foo.py"])
+
+        assert calls == [([sys.executable, "-m", "mypy", "teleclaude/foo.py"], tmp_path, "mypy")]
+
 
 # ---------------------------------------------------------------------------
 # TypeScript lint pipeline
