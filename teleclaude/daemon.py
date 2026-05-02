@@ -661,7 +661,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
             )
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
-            logger.info("Periodic cleanup task started (72h session lifecycle)")
+            logger.info("Periodic cleanup task started (closed sessions purged after 7d, inbound queue trimmed at 72h)")
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
             self.poller_watch_task = asyncio.create_task(

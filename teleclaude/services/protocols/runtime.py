@@ -1,7 +1,10 @@
 """Runtime domain protocols — reader/writer contracts for session state and operations.
 
 These protocols define the service interface for the runtime schema pillar.
-Runtime sessions are ephemeral (72h lifecycle). The ledger holds permanent history.
+Runtime sessions are ephemeral: open sessions are never auto-closed; closed
+sessions are purged 7 days after ``closed_at`` (see
+``maintenance_service._cleanup_inactive_sessions``). The ledger holds the
+permanent history.
 """
 
 from __future__ import annotations

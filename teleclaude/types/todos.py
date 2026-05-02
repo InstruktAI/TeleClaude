@@ -81,9 +81,16 @@ class GroundingState(BaseModel):
 
 
 class PreparePairSlot(BaseModel):
-    """Durable identity for one prepare pair member."""
+    """Durable identity for one prepare pair member.
+
+    Stores both the TC ``session_id`` (used for tail/send while the row exists)
+    and ``native_session_id`` + ``agent`` (used for ``telec sessions revive``
+    after the TC row is purged — closed sessions are removed after the 7-day
+    retention window in ``maintenance_service._cleanup_inactive_sessions``).
+    """
 
     session_id: str
+    native_session_id: str = ""
     agent: str
     lens: Literal["A", "B"]
 

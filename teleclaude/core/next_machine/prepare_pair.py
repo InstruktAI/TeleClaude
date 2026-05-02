@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, cast
 
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
 from teleclaude.core.next_machine.output_formatting import (
+    ORCHESTRATOR_IDLE_INVARIANT,
     HumanApprovalScript,
     PairTurnScript,
     format_human_approval_script,
@@ -107,22 +108,50 @@ def format_pair_recovery_script(
     *,
     slug: str,
     slot: PreparePairSlot,
+    surviving_slot: PreparePairSlot,
     command: str,
     project: str,
     subfolder: str,
     message: str,
 ) -> str:
-    """Format revive-first recovery for a dead prepare pair member."""
+    """Format revive-first recovery for a dead prepare pair member.
+
+    Revival ladder:
+      1. ``telec sessions revive <tc_session_id>`` — works while the TC row exists.
+      2. ``telec sessions revive <native_session_id> --agent <agent>`` — works
+         even after the TC row is purged (closed > 7 days), as long as the
+         agent's own transcript files survive on disk.
+      3. Dispatch a fresh replacement via ``telec sessions run`` and atomically
+         re-register the pair with ``telec todo stamp ... --agent-a --agent-b``.
+
+    Both slots are passed through to the stamp command as inline literals so
+    the orchestrator never has to look up the surviving slot.
+    """
     escaped = message.replace('"', '\\"')
+    if slot.lens == "A":
+        stamp_args = f"--agent-a <new_id> --agent-b {surviving_slot.session_id}"
+    else:
+        stamp_args = f"--agent-a {surviving_slot.session_id} --agent-b <new_id>"
+    native_fallback = (
+        f"telec sessions revive {slot.native_session_id} --agent {slot.agent}\n"
+        if slot.native_session_id
+        else "(no native_session_id stored — slot predates the durability fix; skip native revival)\n"
+    )
     return (
         f"PAIR MEMBER RECOVERY: {slug}\n\n"
+        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
         f"Execute in order:\n\n"
         f"telec sessions revive {slot.session_id}\n"
         f'If revive succeeds, send: telec sessions send {slot.session_id} "{escaped}"\n\n'
-        f"If revive fails, dispatch a replacement:\n"
+        f"If TC revive fails (row purged), try native revival:\n"
+        f"{native_fallback}"
+        f"\n"
+        f"If native revival also fails, dispatch a fresh replacement:\n"
         f'telec sessions run --command "{command}" --args "{slug}" --project "{project}" '
         f'--agent "{slot.agent}" --mode "slow" --subfolder "{subfolder}"\n'
-        f"Save the returned session_id and update prepare_pair slot {slot.lens} to that new session_id.\n"
+        f"Save the returned session_id as <new_id>.\n\n"
+        f"After dispatch succeeds, atomically re-register the pair:\n"
+        f"telec todo stamp {slug} {stamp_args}\n"
         f"Then call telec todo prepare {slug}."
     )
 
@@ -144,6 +173,7 @@ async def format_pair_write_or_recovery_script(
         return format_pair_recovery_script(
             slug=slug,
             slot=writer_slot,
+            surviving_slot=reviewer_slot,
             command=command,
             project=project,
             subfolder=subfolder,
@@ -162,6 +192,7 @@ async def format_pair_review_or_recovery_script(
     *,
     db: object,
     slug: str,
+    writer_slot: PreparePairSlot,
     reviewer_slot: PreparePairSlot,
     command: str,
     project: str,
@@ -174,6 +205,7 @@ async def format_pair_review_or_recovery_script(
         return format_pair_recovery_script(
             slug=slug,
             slot=reviewer_slot,
+            surviving_slot=writer_slot,
             command=command,
             project=project,
             subfolder=subfolder,

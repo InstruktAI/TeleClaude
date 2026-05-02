@@ -79,6 +79,12 @@ sequenceDiagram
     Note over A,B: A↔B direct link established (orchestrator is NOT in the link)
     end
 
+    rect rgb(255, 250, 230)
+    Note over O: 3b. REGISTER PAIR — orchestrator stamps pair identity into todo state
+    O->>O: telec todo stamp <slug> --agent-a <A_id> --agent-b <B_id>
+    Note over O: API resolves agent + native_session_id from each session record<br/>and atomically writes both slots — durable across the 7-day TC purge window.
+    end
+
     rect rgb(255, 240, 245)
     Note over A,B: 4. DISCOVERY — pair-based, no roles
     A<<->>B: discuss, challenge, surface assumptions
@@ -174,6 +180,16 @@ orchestrator tells A to establish a direct link with B by sending:
 `telec sessions send <B_id> 'Starting paired discovery' --direct`. The
 orchestrator tells B to wait for the connection. The orchestrator is NOT
 part of the direct link — it stays outside.
+
+**3b. Register pair identity** — The orchestrator stamps both slots into todo
+state with `telec todo stamp {slug} --agent-a <A_id> --agent-b <B_id>`. The
+API resolves `active_agent` and `native_session_id` for each session and
+writes both slots atomically. Without this step the state machine cannot see
+the pair and the formation script would re-emit on every re-entry. The stored
+`native_session_id` keeps the slot revivable past the 7-day TC session purge
+window — the agent's own transcript files survive even after the TC row is
+gone, and `telec sessions revive <native_session_id> --agent <agent>` can
+resurrect the slot from those files.
 
 **4. Discovery** — Pair-based. No roles. Both explore the problem through
 their natural lens. They discuss, challenge each other, surface hidden

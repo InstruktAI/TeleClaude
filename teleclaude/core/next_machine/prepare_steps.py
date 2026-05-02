@@ -335,6 +335,7 @@ async def _prepare_step_requirements_review(
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
+            writer_slot=pair_slots[0],
             reviewer_slot=pair_slots[1],
             command=f"/{SlashCommand.NEXT_REVIEW_REQUIREMENTS.value}",
             project=_derive_project_root(cwd, slug),
@@ -544,6 +545,7 @@ async def _prepare_step_test_spec_review(
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
+            writer_slot=pair_slots[0],
             reviewer_slot=pair_slots[1],
             command=f"/{SlashCommand.NEXT_REVIEW_SPECS.value}",
             project=_derive_project_root(cwd, slug),
@@ -780,6 +782,7 @@ async def _prepare_step_plan_review(
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
+            writer_slot=pair_slots[0],
             reviewer_slot=pair_slots[1],
             command=f"/{SlashCommand.NEXT_REVIEW_PLAN.value}",
             project=_derive_project_root(cwd, slug),

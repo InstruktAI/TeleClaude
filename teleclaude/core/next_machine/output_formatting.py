@@ -10,6 +10,7 @@ from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.paths import COMMANDS_DIR
 
 __all__ = [
+    "ORCHESTRATOR_IDLE_INVARIANT",
     "REVIEW_DIFF_NOTE",
     "ConvergenceAssessmentScript",
     "HumanApprovalScript",
@@ -28,6 +29,13 @@ __all__ = [
     "format_tool_call",
     "format_uncommitted_changes",
 ]
+
+
+ORCHESTRATOR_IDLE_INVARIANT = (
+    "INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) "
+    "while a worker referenced in this script is still active. "
+    "Always wait for the named worker(s) to emit agent_stop first."
+)
 
 
 class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
@@ -115,6 +123,8 @@ def format_tool_call(request: ToolCallRequest) -> str:
 
     result = f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
+{ORCHESTRATOR_IDLE_INVARIANT}
+
 Execute these steps in order (FOLLOW TO THE LETTER!):
 
 {pre_dispatch_block}STEP 1 - DISPATCH:
@@ -186,6 +196,8 @@ def format_pair_formation_script(script: PairFormationScript) -> str:
     slug = str(script["slug"])
     return f"""IMPORTANT: This output is a prepare-pair formation script. Follow it verbatim.
 
+{ORCHESTRATOR_IDLE_INVARIANT}
+
 Execute these steps in order:
 
 STEP 1 - DISPATCH INDEPENDENT INTAKE WORKERS:
@@ -207,9 +219,15 @@ telec sessions send <A_id> "You are now entering paired discovery with your part
 
 telec sessions send <B_id> "You are now entering paired discovery. Your partner will establish a direct connection with you shortly. Wait for their message, then begin exploring together as described in your briefing."
 
-Store the prepare pair identity for {slug}: A=<A_id> agent={agent_a}, B=<B_id> agent={agent_b}.
+STEP 4 - REGISTER PAIR IDENTITY:
+telec todo stamp {slug} --agent-a <A_id> --agent-b <B_id>
 
-STEP 4 - RE-ENTER:
+The stamp resolves agent and native_session_id from each session record and atomically writes both slots into todo state. Without this step the state machine cannot see the pair on the next re-entry.
+
+STEP 5 - WAIT FOR DISCOVERY IDLENESS:
+After A links the pair (Step 3) the workers begin paired discussion. Wait for BOTH <A_id> AND <B_id> to emit agent_stop after their conversation converges. Do not call the next state-machine step while either is still active.
+
+STEP 6 - RE-ENTER:
 telec todo prepare {slug}"""
 
 
@@ -220,6 +238,7 @@ def format_convergence_assessment_script(script: ConvergenceAssessmentScript) ->
     slot_b = str(script["slot_b"])
     return (
         f"CONVERGENCE ASSESSMENT: {slug}\n\n"
+        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
         f"Execute in order:\n\n"
         f"telec sessions tail {slot_a}\n"
         f"telec sessions tail {slot_b}\n\n"
@@ -251,6 +270,7 @@ def format_pair_turn_script(script: PairTurnScript) -> str:
     if turn == "write":
         return (
             f"PAIR WRITE TURN: {slug}\n\n"
+            f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
             f"Execute in order:\n\n"
             f'telec sessions send {session_id} "{message}"\n\n'
             f"Wait for writer agent_stop, then call {next_step}."
@@ -259,6 +279,7 @@ def format_pair_turn_script(script: PairTurnScript) -> str:
     if turn == "review":
         return (
             f"PAIR REVIEW TURN: {slug}\n\n"
+            f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
             f"Execute in order:\n\n"
             f'telec sessions send {session_id} "{message}"\n\n'
             f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
@@ -269,6 +290,7 @@ def format_pair_turn_script(script: PairTurnScript) -> str:
 
     return (
         f"PAIR CONTINUATION: {slug}\n\n"
+        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
         f"Execute in order:\n\n"
         f'telec sessions send {session_id} "{message}"\n\n'
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
@@ -283,6 +305,7 @@ def format_human_approval_script(script: HumanApprovalScript) -> str:
     slug = str(script["slug"])
     return (
         f"HUMAN APPROVAL: {slug}\n\n"
+        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
         f"Present the full artifact set to the human:\n"
         f"  telec todo artifacts read {slug} requirements\n"
         f"  telec todo artifacts read {slug} implementation-plan\n\n"

@@ -583,6 +583,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     " [--dor-status <s>] [--grounding-invalidated]"
                     " [--requirements-ready] [--plan-ready]"
                     " [--specs-built] [--finalize-ready]"
+                    " [--agent-a <session_id> --agent-b <session_id>]"
                 ),
                 flags=[
                     _H,
@@ -601,11 +602,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--plan-ready", desc="Mark implementation plan as produced and ready for review"),
                     Flag("--specs-built", desc="Mark test specifications as delivered"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
+                    Flag("--agent-a", desc="Prepare pair slot A session_id (atomic with --agent-b)"),
+                    Flag("--agent-b", desc="Prepare pair slot B session_id (atomic with --agent-a)"),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
+                    "telec todo stamp my-slug --agent-a <A_id> --agent-b <B_id>",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

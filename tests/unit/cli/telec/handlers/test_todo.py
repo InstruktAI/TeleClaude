@@ -15,6 +15,7 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_reconcile,
     _handle_todo_remove,
     _handle_todo_split,
+    _handle_todo_stamp,
 )
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
@@ -264,3 +265,31 @@ class TestHandleTodoFromMain:
         assert "--project" in captured.err
         assert str(tmp_path) in captured.err
         assert "--detach" in captured.err
+
+
+class TestHandleTodoStampPreparePair:
+    """telec todo stamp <slug> --agent-a <id> --agent-b <id>."""
+
+    def test_atomic_pair_stamp_posts_compound_value(self) -> None:
+        """Both flags together produce a single prepare_pair stamp with comma-joined value."""
+        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
+            _handle_todo_stamp(["my-slug", "--agent-a", "sid-a", "--agent-b", "sid-b"])
+
+        assert mock_api.called
+        body = mock_api.call_args.kwargs.get("json_body") or mock_api.call_args.args[2]
+        assert body["stamp_type"] == "prepare_pair"
+        assert body["value"] == "slot_a:sid-a,slot_b:sid-b"
+
+    def test_only_agent_a_exits_with_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Single-flag stamps are not supported — both --agent-a and --agent-b are required."""
+        with pytest.raises(SystemExit):
+            _handle_todo_stamp(["my-slug", "--agent-a", "sid-a"])
+
+        assert "must be provided together" in capsys.readouterr().out
+
+    def test_only_agent_b_exits_with_error(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Single-flag stamps are not supported — both --agent-a and --agent-b are required."""
+        with pytest.raises(SystemExit):
+            _handle_todo_stamp(["my-slug", "--agent-b", "sid-b"])
+
+        assert "must be provided together" in capsys.readouterr().out

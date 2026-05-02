@@ -691,6 +691,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --plan-ready
       --specs-built
       --finalize-ready
+      --agent-a <session_id> --agent-b <session_id>  (atomic, both required)
     """
     removed_flags = {
         "--build-started",
@@ -710,7 +711,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print(
             "Missing stamp flag (--verdict, --dor-score, --dor-status, "
             "--grounding-invalidated, --requirements-ready, --plan-ready, "
-            "--specs-built, --finalize-ready)"
+            "--specs-built, --finalize-ready, --agent-a/--agent-b)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -747,6 +748,8 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
     phase: str | None = None
     dor_score: str | None = None
     dor_status: str | None = None
+    pair_a: str | None = None
+    pair_b: str | None = None
 
     i = 0
     while i < len(args):
@@ -763,6 +766,12 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 2
         elif arg == "--dor-status" and i + 1 < len(args):
             dor_status = args[i + 1]
+            i += 2
+        elif arg == "--agent-a" and i + 1 < len(args):
+            pair_a = args[i + 1]
+            i += 2
+        elif arg == "--agent-b" and i + 1 < len(args):
+            pair_b = args[i + 1]
             i += 2
         elif arg == "--grounding-invalidated":
             stamp_type = "grounding"
@@ -799,6 +808,15 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
         if dor_status is not None:
             parts.append(f"status:{dor_status}")
         value = ",".join(parts)
+
+    # Build atomic prepare_pair stamp from --agent-a + --agent-b. Single-slot
+    # stamps are not supported — both must be provided together.
+    if pair_a is not None or pair_b is not None:
+        if pair_a is None or pair_b is None:
+            print("--agent-a and --agent-b must be provided together")
+            raise SystemExit(1)
+        stamp_type = "prepare_pair"
+        value = f"slot_a:{pair_a},slot_b:{pair_b}"
 
     return slug, stamp_type, value, phase
 

@@ -794,7 +794,12 @@ async def test_fresh_replacement_updates_pair_slot(todos_db: TodosDb) -> None:
         state=state,
     )
 
-    assert "update prepare_pair slot B" in instruction
+    # After dispatching the replacement, the orchestrator must atomically re-register
+    # the pair via the stamp surface so state.prepare_pair sees the new session_id
+    # alongside the surviving one. PLAN_DRAFTING uses the (B, A) writer/reviewer
+    # role pair, so when the writer (B) is dead the surviving slot is A (session-a).
+    assert "telec todo stamp replace-writer" in instruction
+    assert "--agent-a session-a --agent-b <new_id>" in instruction
 
 
 @pytest.mark.asyncio
@@ -925,7 +930,14 @@ def test_pair_formation_script_formats_dual_dispatch_and_link() -> None:
     # Workers are linked A↔B: A is told to --direct to B, B waits
     assert "telec sessions send <A_id>" in instruction
     assert "telec sessions send <B_id>" in instruction
-    assert "Store the prepare pair identity" in instruction
+    # The formation script registers the pair via stamp so the state machine
+    # can see it on next re-entry. Without this step the formation script
+    # would loop forever.
+    assert "telec todo stamp format-pair --agent-a <A_id> --agent-b <B_id>" in instruction
+    # Universal idle invariant prevents premature re-entry into the state machine
+    assert "INVARIANT" in instruction
+    # Discovery idleness clause must come before the re-enter step
+    assert "Wait for BOTH <A_id> AND <B_id>" in instruction
 
 
 def test_convergence_assessment_script_formats_tail_checks() -> None:

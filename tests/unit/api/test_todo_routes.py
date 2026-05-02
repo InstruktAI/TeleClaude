@@ -528,3 +528,179 @@ class TestTodoRoutes:
         assert isinstance(detail, str)
         assert PreparePhase.PREPARED.value in detail
         assert WorkPhase.BUILD_STARTED.value in detail
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_prepare_pair_resolves_agent_and_native_from_session(self, tmp_path: Path) -> None:
+        """prepare_pair stamp resolves agent + native_session_id from session records and persists all four slot fields."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+
+            session_a = SimpleNamespace(active_agent="claude", native_session_id="native-a-uuid")
+            session_b = SimpleNamespace(active_agent="codex", native_session_id="native-b-uuid")
+
+            async def fake_get_session(session_id: str) -> object:
+                return {"sid-a": session_a, "sid-b": session_b}.get(session_id)
+
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.api.todo_routes.db.get_session", side_effect=fake_get_session),
+            ):
+                response = await todo_routes.stamp(
+                    slug="my-slug",
+                    stamp_type="prepare_pair",
+                    value="slot_a:sid-a,slot_b:sid-b",
+                    phase=None,
+                    cwd="/repo",
+                    identity=_identity(),
+                )
+
+            assert response.status == "ok"
+            state = await database.read_state("my-slug")
+            assert state is not None
+            pair = state.get("prepare_pair")
+            assert isinstance(pair, dict)
+            slot_a = pair.get("slot_a", {})
+            slot_b = pair.get("slot_b", {})
+            assert isinstance(slot_a, dict) and isinstance(slot_b, dict)
+            assert slot_a == {
+                "lens": "A",
+                "session_id": "sid-a",
+                "native_session_id": "native-a-uuid",
+                "agent": "claude",
+            }
+            assert slot_b == {
+                "lens": "B",
+                "session_id": "sid-b",
+                "native_session_id": "native-b-uuid",
+                "agent": "codex",
+            }
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_prepare_pair_rejects_unknown_session(self, tmp_path: Path) -> None:
+        """prepare_pair stamp returns 422 when a session_id is not found in the sessions table."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+
+            async def fake_get_session(_session_id: str) -> object:
+                return None
+
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.api.todo_routes.db.get_session", side_effect=fake_get_session),
+            ):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="prepare_pair",
+                        value="slot_a:sid-a,slot_b:sid-b",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
+                assert "unknown session" in str(exc_info.value.detail)
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_prepare_pair_rejects_session_without_native_id(self, tmp_path: Path) -> None:
+        """Slot would not survive TC purge — reject when native_session_id is missing."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+
+            session_a = SimpleNamespace(active_agent="claude", native_session_id="native-a")
+            session_b = SimpleNamespace(active_agent="codex", native_session_id=None)
+
+            async def fake_get_session(session_id: str) -> object:
+                return {"sid-a": session_a, "sid-b": session_b}.get(session_id)
+
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.api.todo_routes.db.get_session", side_effect=fake_get_session),
+            ):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="prepare_pair",
+                        value="slot_a:sid-a,slot_b:sid-b",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
+                assert "native_session_id" in str(exc_info.value.detail)
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_prepare_pair_rejects_session_without_active_agent(self, tmp_path: Path) -> None:
+        """Slot agent must be resolvable — reject when active_agent is missing."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+
+            session_a = SimpleNamespace(active_agent=None, native_session_id="native-a")
+            session_b = SimpleNamespace(active_agent="codex", native_session_id="native-b")
+
+            async def fake_get_session(session_id: str) -> object:
+                return {"sid-a": session_a, "sid-b": session_b}.get(session_id)
+
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.api.todo_routes.db.get_session", side_effect=fake_get_session),
+            ):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="prepare_pair",
+                        value="slot_a:sid-a,slot_b:sid-b",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
+                assert "active_agent" in str(exc_info.value.detail)
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_stamp_prepare_pair_rejects_incomplete_value(self, tmp_path: Path) -> None:
+        """Compound value must contain both slot_a and slot_b — reject when one is missing."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                with pytest.raises(HTTPException) as exc_info:
+                    await todo_routes.stamp(
+                        slug="my-slug",
+                        stamp_type="prepare_pair",
+                        value="slot_a:sid-a",
+                        phase=None,
+                        cwd="/repo",
+                        identity=_identity(),
+                    )
+                assert exc_info.value.status_code == 422
+                assert "slot_a and slot_b" in str(exc_info.value.detail)
+        finally:
+            await database.close()

@@ -31,6 +31,7 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
+from teleclaude.core.db import db
 from teleclaude.core.next_machine._types import (
     PreparePhase,
     WorkPhase,
@@ -51,6 +52,7 @@ from teleclaude.core.next_machine.state_io import (
 )
 from teleclaude.core.next_machine.state_mutation import (
     GroundingManager,
+    PreparePairManager,
     StateMutationError,
     StateWriter,
 )
@@ -62,7 +64,7 @@ from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.git import GitCommandError
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import BreakdownState, DorState
+from teleclaude.types.todos import BreakdownState, DorState, PreparePairSlot
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -598,6 +600,67 @@ def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
     writer.state.dor = dor_model
 
 
+def _parse_prepare_pair_value(value: str) -> tuple[str, str]:
+    """Parse a ``slot_a:<id>,slot_b:<id>`` compound stamp value.
+
+    Mirrors the comma-separated, colon-keyed shape used by the DOR stamp
+    (``score:8,status:pass``) so the orchestrator-facing flag pair
+    ``--agent-a/--agent-b`` round-trips through the same value channel.
+    """
+    parts: dict[str, str] = {}
+    for chunk in value.split(","):
+        k, _, v = chunk.partition(":")
+        parts[k.strip()] = v.strip()
+    return parts.get("slot_a", ""), parts.get("slot_b", "")
+
+
+async def _apply_prepare_pair_stamp(writer: StateWriter, value: str) -> None:
+    """Resolve durable identity from session records and atomically register both pair slots.
+
+    Persists ``(lens, session_id, native_session_id, agent)`` so the slot
+    remains revivable after the TC session row is purged (closed sessions
+    are removed after the 7-day retention window in
+    ``maintenance_service._cleanup_inactive_sessions``). ``native_session_id``
+    plus ``agent`` allow ``telec sessions revive`` to resurrect the slot from
+    the agent's own transcript files even after the TC row is gone.
+    """
+    sid_a, sid_b = _parse_prepare_pair_value(value)
+    if not sid_a or not sid_b:
+        raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
+
+    session_a = await db.get_session(sid_a)
+    if session_a is None:
+        raise StateMutationError(f"unknown session for slot_a: {sid_a}")
+    session_b = await db.get_session(sid_b)
+    if session_b is None:
+        raise StateMutationError(f"unknown session for slot_b: {sid_b}")
+
+    for lens, session_id, session in (("A", sid_a, session_a), ("B", sid_b, session_b)):
+        if not session.active_agent:
+            raise StateMutationError(
+                f"session {session_id} for slot_{lens.lower()} has no active_agent — cannot resolve pair agent"
+            )
+        if not session.native_session_id:
+            raise StateMutationError(
+                f"session {session_id} for slot_{lens.lower()} has no native_session_id — slot would not survive TC purge"
+            )
+
+    PreparePairManager(writer).set_pair(
+        slot_a=PreparePairSlot(
+            lens="A",
+            session_id=sid_a,
+            native_session_id=session_a.native_session_id,
+            agent=session_a.active_agent,
+        ),
+        slot_b=PreparePairSlot(
+            lens="B",
+            session_id=sid_b,
+            native_session_id=session_b.native_session_id,
+            agent=session_b.active_agent,
+        ),
+    )
+
+
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 
 
@@ -692,6 +755,8 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
             await _apply_readiness_stamp(todos_db, writer, slug, "implementation-plan", "plan_ready")
         elif stamp_type == "specs_built":
             apply_authoritative_signal(writer.state, "specs_built")
+        elif stamp_type == "prepare_pair":
+            await _apply_prepare_pair_stamp(writer, value)
         else:
             raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
         await writer.commit(todos_db, slug)
