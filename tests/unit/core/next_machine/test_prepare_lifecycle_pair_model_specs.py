@@ -803,6 +803,83 @@ async def test_fresh_replacement_updates_pair_slot(todos_db: TodosDb) -> None:
 
 
 @pytest.mark.asyncio
+async def test_native_revive_branch_carries_new_id_forward(todos_db: TodosDb) -> None:
+    """When a slot stores native_session_id, recovery must instruct the orchestrator
+    to revive natively, save the NEW TC id the API mints, send the pending message
+    to it, and atomically re-stamp the pair with that new id. Without this, the
+    stored slot stays stale and the next prepare re-entry loops back into recovery.
+    """
+    await todos_db.add_to_roadmap("native-revive")
+    state_obj = TodoState.defaults()
+    state_obj.prepare_pair = PreparePair(
+        slot_a=PreparePairSlot(
+            session_id="session-a",
+            native_session_id="native-a-uuid",
+            agent="claude",
+            lens="A",
+        ),
+        slot_b=PreparePairSlot(
+            session_id="session-b",
+            native_session_id="native-b-uuid",
+            agent="codex",
+            lens="B",
+        ),
+    )
+    state_obj.lifecycle_phase = PreparePhase.PLAN_DRAFTING.value
+    state_dict = cast(dict[str, StateValue], state_obj.model_dump(exclude_none=True))
+    state_dict["phase"] = "in_progress"
+    await todos_db.write_state("native-revive", state_dict)
+    stored = await todos_db.read_state("native-revive")
+    assert stored is not None
+
+    db = AsyncMock()
+    db.list_sessions.return_value = []  # writer (B) is dead
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="native-revive",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_DRAFTING,
+        state=stored,
+    )
+
+    # Native revive branch must be present and correctly wired:
+    assert "telec sessions revive native-b-uuid --agent codex" in instruction
+    # The API mints a fresh TC id — orchestrator must save it and use it forward:
+    assert "Save the returned session_id as <new_id>" in instruction
+    # Pending message must be sent to the NEW id, not the old (stale) one:
+    assert "telec sessions send <new_id>" in instruction
+    # And the pair must be re-stamped atomically with the surviving + new id:
+    assert "telec todo stamp native-revive" in instruction
+    assert "--agent-a session-a --agent-b <new_id>" in instruction
+
+
+@pytest.mark.asyncio
+async def test_legacy_slot_without_native_session_id_skips_native_revive(todos_db: TodosDb) -> None:
+    """Slots created before the durability fix have no native_session_id. The
+    recovery script must surface that explicitly and skip straight to fresh dispatch.
+    """
+    state = await _stored_pair_state(todos_db, "legacy-slot", PreparePhase.PLAN_DRAFTING)
+    db = AsyncMock()
+    db.list_sessions.return_value = []
+
+    _, instruction = await _prepare_dispatch(
+        db=db,
+        todos_db=todos_db,
+        slug="legacy-slot",
+        cwd="/repo",
+        phase=PreparePhase.PLAN_DRAFTING,
+        state=state,
+    )
+
+    assert "no native_session_id stored" in instruction
+    assert "skip native revival" in instruction
+    # Fresh dispatch path is still emitted so recovery is possible:
+    assert "telec sessions run --command" in instruction
+
+
+@pytest.mark.asyncio
 async def test_dead_reviewer_falls_back_to_fresh_dispatch(todos_db: TodosDb) -> None:
     state = await _stored_pair_state(todos_db, "dead-reviewer", PreparePhase.REQUIREMENTS_REVIEW)
     db = AsyncMock()

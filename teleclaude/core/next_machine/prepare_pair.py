@@ -117,12 +117,17 @@ def format_pair_recovery_script(
     """Format revive-first recovery for a dead prepare pair member.
 
     Revival ladder:
-      1. ``telec sessions revive <tc_session_id>`` — works while the TC row exists.
+      1. ``telec sessions revive <tc_session_id>`` — works while the TC row
+         exists. Returns the SAME session_id, so no re-stamp is needed; the
+         pending message is sent directly to the existing slot.
       2. ``telec sessions revive <native_session_id> --agent <agent>`` — works
          even after the TC row is purged (closed > 7 days), as long as the
-         agent's own transcript files survive on disk.
-      3. Dispatch a fresh replacement via ``telec sessions run`` and atomically
-         re-register the pair with ``telec todo stamp ... --agent-a --agent-b``.
+         agent's own transcript files survive. The API mints a NEW TC
+         session_id (``sessions_actions_routes.py:166``), so the orchestrator
+         must save the returned id, send the pending message to it, and
+         atomically re-stamp the pair.
+      3. Dispatch a fresh replacement via ``telec sessions run`` — same
+         post-conditions as native revive: new id, send message, re-stamp.
 
     Both slots are passed through to the stamp command as inline literals so
     the orchestrator never has to look up the surviving slot.
@@ -132,27 +137,36 @@ def format_pair_recovery_script(
         stamp_args = f"--agent-a <new_id> --agent-b {surviving_slot.session_id}"
     else:
         stamp_args = f"--agent-a {surviving_slot.session_id} --agent-b <new_id>"
-    native_fallback = (
+    native_revive_block = (
+        f"If TC revive fails (row purged), try native revival:\n"
         f"telec sessions revive {slot.native_session_id} --agent {slot.agent}\n"
+        f"Save the returned session_id as <new_id> (the API mints a fresh TC id).\n"
         if slot.native_session_id
-        else "(no native_session_id stored — slot predates the durability fix; skip native revival)\n"
+        else (
+            "(no native_session_id stored — slot predates the durability fix; "
+            "skip native revival and go straight to fresh dispatch)\n"
+        )
     )
     return (
         f"PAIR MEMBER RECOVERY: {slug}\n\n"
         f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
         f"Execute in order:\n\n"
+        f"OPTION 1 — TC revive (slot id intact):\n"
         f"telec sessions revive {slot.session_id}\n"
-        f'If revive succeeds, send: telec sessions send {slot.session_id} "{escaped}"\n\n'
-        f"If TC revive fails (row purged), try native revival:\n"
-        f"{native_fallback}"
+        f"If revive succeeds (same TC session_id returned), send the pending message and skip the stamp:\n"
+        f'  telec sessions send {slot.session_id} "{escaped}"\n'
+        f"  Then call telec todo prepare {slug}. STOP HERE.\n\n"
+        f"OPTION 2 — native revive (TC row purged, native transcript survives):\n"
+        f"{native_revive_block}"
         f"\n"
-        f"If native revival also fails, dispatch a fresh replacement:\n"
+        f"OPTION 3 — fresh dispatch (native revive also failed):\n"
         f'telec sessions run --command "{command}" --args "{slug}" --project "{project}" '
         f'--agent "{slot.agent}" --mode "slow" --subfolder "{subfolder}"\n'
         f"Save the returned session_id as <new_id>.\n\n"
-        f"After dispatch succeeds, atomically re-register the pair:\n"
-        f"telec todo stamp {slug} {stamp_args}\n"
-        f"Then call telec todo prepare {slug}."
+        f"For OPTION 2 or 3, after the new <new_id> is in hand:\n"
+        f'  telec sessions send <new_id> "{escaped}"\n'
+        f"  telec todo stamp {slug} {stamp_args}\n"
+        f"  Then call telec todo prepare {slug}."
     )
 
 
