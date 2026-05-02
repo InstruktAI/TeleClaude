@@ -7,11 +7,13 @@ with automatic worktree scoping and companion file mapping.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from subprocess import CompletedProcess
 
 import pytest
 
-from teleclaude.quality.test_runner import TestRunner, map_source_to_companion, resolve_test_targets
+from teleclaude.quality.test_runner import TestRunner, map_source_to_companion, resolve_test_targets, run_pytest
 
 # ---------------------------------------------------------------------------
 # R2.1 — Companion file mapping convention
@@ -157,6 +159,23 @@ class TestNonWorktreeFullSuite:
 
 class TestExitBehavior:
     """The test command exits non-zero when any test fails."""
+
+    def test_pytest_uses_current_python_module_invocation(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Pytest runs through the active Python env instead of relying on PATH."""
+        calls: list[tuple[list[str], str | None, bool]] = []
+
+        def _capture_run(cmd: list[str], cwd: str | None = None, check: bool = False) -> CompletedProcess[str]:
+            calls.append((list(cmd), cwd, check))
+            return CompletedProcess(args=cmd, returncode=0)
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.run", _capture_run)
+
+        exit_code = run_pytest(["tests/unit", "-q"], cwd=tmp_path)
+
+        assert exit_code == 0
+        assert calls == [([sys.executable, "-m", "pytest", "tests/unit", "-q"], str(tmp_path), False)]
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""
