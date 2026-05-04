@@ -32,6 +32,11 @@ __all__ = [
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
     "LifecycleStage",
+    "derive_build_status",
+    "derive_review_status",
+    "is_in_prepare_lane",
+    "is_ready_for_work",
+    "is_settled_ok_phase",
 ]
 
 _ArtifactPresence = Mapping[str, bool]
@@ -76,6 +81,112 @@ def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
     if is_prepare_lifecycle_phase(phase):
         return LifecycleStage.PREPARE
     return LifecycleStage.WORK
+
+
+# ── High-level state predicates and projections ─────────────────────────────
+# Callers operating on the raw `lifecycle_phase` string from persisted state or
+# DTOs should use these helpers rather than reading individual fields. They are
+# the single source of truth for "is this slug ready for X?" questions.
+
+
+def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
+    """Authoritative gate for entering or resuming the work lane.
+
+    Bugs always pass — they have a separate lifecycle. Regular todos require
+    ``lifecycle_phase`` at-or-beyond ``PREPARED``: this single check subsumes
+    requirements approval, plan approval, and grounding validity, all of which
+    are preconditions for advancing to ``PREPARED``.
+
+    Returns ``(ready, reason)``. ``reason`` is empty on success; non-empty
+    reasons are stable diagnostic strings safe for log emission and error
+    propagation.
+    """
+    if kind == "bug":
+        return True, ""
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return False, f"unknown lifecycle_phase {lifecycle_phase!r}"
+    if lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED):
+        return False, f"lifecycle_phase {phase.value!r} is before 'prepared'"
+    return True, ""
+
+
+def is_in_prepare_lane(lifecycle_phase: str | None) -> bool:
+    """At-or-before ``PREPARED`` (the prepare lane plus its terminal pointer).
+
+    Distinct from ``is_prepare_lifecycle_phase``: that predicate checks set
+    membership in ``PREPARE_LIFECYCLE_PHASES`` and operates on enums; this one
+    accepts the raw stored string and uses ordinal comparison so additions to
+    the prepare lane are picked up automatically.
+    """
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return False
+    return lifecycle_phase_index(phase) <= lifecycle_phase_index(LifecyclePhase.PREPARED)
+
+
+def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:
+    """Phase represents a settled positive state used for "ok" rendering.
+
+    Currently ``PREPARED`` and ``REVIEW_APPROVED`` — the two phases where
+    pending work has visibly converged but the next stage hasn't started.
+    """
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED)
+
+
+def derive_build_status(
+    lifecycle_phase: str | None,
+    *,
+    is_draft: bool,
+    is_delivered: bool,
+) -> str | None:
+    """Project canonical lifecycle pointer to the legacy build_status display string.
+
+    Returns ``None`` when no build-status label applies (drafts, delivered,
+    or pre-build phases).
+    """
+    if is_draft or is_delivered:
+        return None
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return None
+    if phase == LifecyclePhase.BUILD_STARTED:
+        return "started"
+    if phase in (
+        LifecyclePhase.BUILD_COMPLETE,
+        LifecyclePhase.REVIEW_CHANGES_REQUESTED,
+        LifecyclePhase.REVIEW_APPROVED,
+        LifecyclePhase.FINALIZE_READY,
+        LifecyclePhase.HANDED_OFF,
+    ):
+        return "complete"
+    return None
+
+
+def derive_review_status(
+    lifecycle_phase: str | None,
+    *,
+    is_draft: bool,
+    is_delivered: bool,
+) -> str | None:
+    """Project canonical lifecycle pointer to the legacy review_status display string."""
+    if is_draft or is_delivered:
+        return None
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return None
+    if phase == LifecyclePhase.BUILD_COMPLETE:
+        return "pending"
+    if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
+        return "changes_requested"
+    if phase in (
+        LifecyclePhase.REVIEW_APPROVED,
+        LifecyclePhase.FINALIZE_READY,
+        LifecyclePhase.HANDED_OFF,
+    ):
+        return "approved"
+    return None
 
 
 def _now_iso() -> str:

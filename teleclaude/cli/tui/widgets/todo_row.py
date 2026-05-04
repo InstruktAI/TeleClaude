@@ -12,7 +12,12 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, lifecycle_phase_index
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    is_in_prepare_lane,
+    is_settled_ok_phase,
+)
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -66,10 +71,7 @@ def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
     value = _LIFECYCLE_PHASE_LABELS.get(lifecycle_phase)
     if not value:
         return None
-    if lifecycle_phase in {LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED}:
-        color = _ok_color()
-    else:
-        color = _gold_color()
+    color = _ok_color() if is_settled_ok_phase(phase) else _gold_color()
     return _PHASE_PREFIX_LIFECYCLE, value, color
 
 
@@ -314,13 +316,10 @@ class TodoRow(TelecMixin, Widget):
         bs = self.todo.build_status
         rs = self.todo.review_status
 
-        lifecycle_phase = coerce_lifecycle_phase(self.todo.lifecycle_phase)
-        is_prepare_lane = lifecycle_phase is not None and lifecycle_phase_index(
-            lifecycle_phase
-        ) <= lifecycle_phase_index(LifecyclePhase.PREPARED)
-
         # 1. Active prepare lifecycle phase
-        p_result = lifecycle_phase_label(self.todo.lifecycle_phase) if is_prepare_lane else None
+        p_result = (
+            lifecycle_phase_label(self.todo.lifecycle_phase) if is_in_prepare_lane(self.todo.lifecycle_phase) else None
+        )
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))

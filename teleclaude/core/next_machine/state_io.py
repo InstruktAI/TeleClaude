@@ -222,10 +222,6 @@ def validate_mark_phase_preconditions(
     )
 
 
-def _phase_complete(model: TodoState, current: LifecyclePhase, *, worktree_cwd: str | None) -> bool:
-    return phase_is_complete(model, current, worktree_cwd=worktree_cwd)
-
-
 def _has_artifact_digest(
     model: TodoState,
     key: str,
@@ -298,7 +294,7 @@ def _validate_prepare_mark_phase(
 
 def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
     if target == LifecyclePhase.BUILD_STARTED:
-        if model.lifecycle_phase != LifecyclePhase.PREPARED.value and not _phase_complete(
+        if model.lifecycle_phase != LifecyclePhase.PREPARED.value and not phase_is_complete(
             model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
         ):
             return f"Cannot mark {target.value}: missing valid grounding state"

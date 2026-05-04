@@ -35,7 +35,7 @@ from teleclaude.core.next_machine.git_ops import (
     has_build_commits_beyond_main,
     has_uncommitted_changes,
 )
-from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
+from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal, is_ready_for_work
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -107,24 +107,23 @@ async def _work_step_build_started(
 ) -> tuple[bool, str]:
     """BUILD_STARTED: look up a live builder, otherwise dispatch a fresh one.
 
-    DOR precondition: regular todos must have ``dor.status == "pass"``.
-    Bugs skip DOR.
+    Readiness gate is delegated to ``is_ready_for_work`` — the canonical
+    helper checks ``lifecycle_phase`` (which already encodes requirements
+    approval, plan approval, and grounding validity).
     """
     _ = todos_db
 
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else "todo"
-
-    if kind != "bug":
-        dor_raw = state.get("dor")
-        dor = dor_raw if isinstance(dor_raw, dict) else {}
-        status = dor.get("status", "")
-        if status != "pass":
-            return False, format_error(
-                "NOT_PREPARED",
-                (f"{slug} has DOR status {status!r}, not 'pass'. Run telec todo prepare {slug} before entering work."),
-                next_call=f"telec todo prepare {slug}",
-            )
+    lifecycle_phase_raw = state.get("lifecycle_phase")
+    lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
+    ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)
+    if not ready:
+        return False, format_error(
+            "NOT_PREPARED",
+            f"{slug} is not ready for work: {reason}. Run telec todo prepare {slug} before entering work.",
+            next_call=f"telec todo prepare {slug}",
+        )
 
     command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")

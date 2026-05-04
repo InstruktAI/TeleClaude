@@ -19,6 +19,7 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
+from teleclaude.core.next_machine.lifecycle import is_ready_for_work
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
@@ -580,12 +581,13 @@ def validate_todo(slug: str, project_root: Path) -> list[str]:
         errors.append(f"{slug}: state schema violation: {exc}")
         return errors
 
-    # 2. Required artifacts for Ready state
-    if state.dor and state.dor.score >= 8:
+    # 2. Required artifacts when ready for work
+    ready, _ = is_ready_for_work(kind=state.kind, lifecycle_phase=state.lifecycle_phase)
+    if ready:
         if not db.read_artifact_sync(slug, "requirements"):
-            errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing requirements artifact")
+            errors.append(f"{slug}: marked as Ready but missing requirements artifact")
         if not db.read_artifact_sync(slug, "implementation-plan"):
-            errors.append(f"{slug}: marked as Ready (score {state.dor.score}) but missing implementation-plan artifact")
+            errors.append(f"{slug}: marked as Ready but missing implementation-plan artifact")
 
     return errors
 

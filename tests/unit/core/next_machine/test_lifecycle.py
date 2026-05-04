@@ -8,6 +8,11 @@ from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     adopt_prepare_handoff_phase,
     apply_authoritative_signal,
+    derive_build_status,
+    derive_review_status,
+    is_in_prepare_lane,
+    is_ready_for_work,
+    is_settled_ok_phase,
 )
 from teleclaude.types.todos import TodoState
 
@@ -107,3 +112,144 @@ def test_adopt_prepare_handoff_phase_skips_requirements_review_without_input() -
     adopted = adopt_prepare_handoff_phase(state)
 
     assert adopted == LifecyclePhase.TEST_SPEC_BUILD
+
+
+# ── High-level predicates and projections ───────────────────────────────────
+# These five helpers consolidate readiness/lane/projection logic that was
+# previously duplicated across the work state machine, slug resolution, the
+# TUI, the roadmap projection, and resource validation.
+
+
+class TestIsReadyForWork:
+    def test_bug_is_always_ready(self) -> None:
+        ready, reason = is_ready_for_work(kind="bug", lifecycle_phase=None)
+        assert ready
+        assert reason == ""
+
+    def test_bug_ready_even_with_pre_prepared_phase(self) -> None:
+        ready, _ = is_ready_for_work(kind="bug", lifecycle_phase="grounding_check")
+        assert ready
+
+    def test_pre_prepared_todo_blocked(self) -> None:
+        ready, reason = is_ready_for_work(kind="todo", lifecycle_phase="grounding_check")
+        assert not ready
+        assert "before 'prepared'" in reason
+
+    def test_prepared_todo_ready(self) -> None:
+        ready, reason = is_ready_for_work(kind="todo", lifecycle_phase="prepared")
+        assert ready
+        assert reason == ""
+
+    @pytest.mark.parametrize(
+        "phase",
+        ["build_started", "build_complete", "review_approved", "finalize_ready", "handed_off"],
+    )
+    def test_at_or_beyond_prepared_ready(self, phase: str) -> None:
+        """Resume mid-build/mid-review must succeed."""
+        ready, _ = is_ready_for_work(kind="todo", lifecycle_phase=phase)
+        assert ready
+
+    def test_unknown_phase_blocked(self) -> None:
+        ready, reason = is_ready_for_work(kind="todo", lifecycle_phase="not_a_real_phase")
+        assert not ready
+        assert "unknown lifecycle_phase" in reason
+
+    def test_none_phase_blocked(self) -> None:
+        ready, reason = is_ready_for_work(kind="todo", lifecycle_phase=None)
+        assert not ready
+        assert "unknown lifecycle_phase" in reason
+
+
+class TestIsInPrepareLane:
+    @pytest.mark.parametrize(
+        "phase",
+        [
+            "draft",
+            "input_assessment",
+            "triangulation",
+            "requirements_review",
+            "test_spec_build",
+            "test_spec_review",
+            "plan_drafting",
+            "plan_review",
+            "gate",
+            "grounding_check",
+            "re_grounding",
+            "prepared",
+        ],
+    )
+    def test_all_prepare_lane_phases_match(self, phase: str) -> None:
+        assert is_in_prepare_lane(phase)
+
+    @pytest.mark.parametrize(
+        "phase",
+        ["build_started", "build_complete", "review_approved", "finalize_ready", "handed_off"],
+    )
+    def test_post_prepared_phases_excluded(self, phase: str) -> None:
+        assert not is_in_prepare_lane(phase)
+
+    def test_none_returns_false(self) -> None:
+        assert not is_in_prepare_lane(None)
+
+    def test_unknown_returns_false(self) -> None:
+        assert not is_in_prepare_lane("not_a_real_phase")
+
+
+class TestIsSettledOkPhase:
+    @pytest.mark.parametrize("phase", ["prepared", "review_approved"])
+    def test_settled_ok(self, phase: str) -> None:
+        assert is_settled_ok_phase(phase)
+
+    @pytest.mark.parametrize(
+        "phase",
+        ["build_started", "build_complete", "review_changes_requested", "draft", "input_assessment"],
+    )
+    def test_other_phases_not_settled(self, phase: str) -> None:
+        assert not is_settled_ok_phase(phase)
+
+    def test_none_not_settled(self) -> None:
+        assert not is_settled_ok_phase(None)
+
+
+class TestDeriveBuildStatus:
+    def test_draft_returns_none(self) -> None:
+        assert derive_build_status("build_started", is_draft=True, is_delivered=False) is None
+
+    def test_delivered_returns_none(self) -> None:
+        assert derive_build_status("build_complete", is_draft=False, is_delivered=True) is None
+
+    def test_pre_build_returns_none(self) -> None:
+        assert derive_build_status("prepared", is_draft=False, is_delivered=False) is None
+
+    def test_build_started_returns_started(self) -> None:
+        assert derive_build_status("build_started", is_draft=False, is_delivered=False) == "started"
+
+    @pytest.mark.parametrize(
+        "phase",
+        ["build_complete", "review_changes_requested", "review_approved", "finalize_ready", "handed_off"],
+    )
+    def test_post_build_returns_complete(self, phase: str) -> None:
+        assert derive_build_status(phase, is_draft=False, is_delivered=False) == "complete"
+
+
+class TestDeriveReviewStatus:
+    def test_draft_returns_none(self) -> None:
+        assert derive_review_status("build_complete", is_draft=True, is_delivered=False) is None
+
+    def test_delivered_returns_none(self) -> None:
+        assert derive_review_status("review_approved", is_draft=False, is_delivered=True) is None
+
+    def test_pre_review_returns_none(self) -> None:
+        assert derive_review_status("build_started", is_draft=False, is_delivered=False) is None
+
+    def test_build_complete_returns_pending(self) -> None:
+        assert derive_review_status("build_complete", is_draft=False, is_delivered=False) == "pending"
+
+    def test_changes_requested(self) -> None:
+        assert (
+            derive_review_status("review_changes_requested", is_draft=False, is_delivered=False) == "changes_requested"
+        )
+
+    @pytest.mark.parametrize("phase", ["review_approved", "finalize_ready", "handed_off"])
+    def test_approved_phases(self, phase: str) -> None:
+        assert derive_review_status(phase, is_draft=False, is_delivered=False) == "approved"

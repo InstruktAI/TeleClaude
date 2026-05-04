@@ -11,7 +11,12 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import (
+    derive_build_status,
+    derive_review_status,
+    is_ready_for_work,
+    require_lifecycle_phase,
+)
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._upcycle import upcycle_state_dict
 
@@ -129,32 +134,14 @@ def assemble_roadmap_from_db(
             )
             current_value = lifecycle.value
 
-            # Build status: derived from the canonical lifecycle pointer.
-            build_status: str | None = None
-            review_status: str | None = None
             state_phase = state.get("phase", "")
             is_delivered = state_phase == "delivered"
-            if not is_draft and not is_delivered:
-                if lifecycle == LifecyclePhase.BUILD_STARTED:
-                    build_status = "started"
-                elif lifecycle == LifecyclePhase.BUILD_COMPLETE:
-                    build_status = "complete"
-                    review_status = "pending"
-                elif lifecycle == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
-                    build_status = "complete"
-                    review_status = "changes_requested"
-                elif lifecycle in (
-                    LifecyclePhase.REVIEW_APPROVED,
-                    LifecyclePhase.FINALIZE_READY,
-                    LifecyclePhase.HANDED_OFF,
-                ):
-                    build_status = "complete"
-                    review_status = "approved"
 
-            # Lifecycle display phase: read directly from the canonical lifecycle pointer.
-            lifecycle_phase: str | None = None
-            if not is_delivered:
-                lifecycle_phase = current_value
+            # Build/review status and lifecycle display phase derive from the
+            # canonical lifecycle pointer via shared lifecycle helpers.
+            build_status = derive_build_status(current_value, is_draft=is_draft, is_delivered=is_delivered)
+            review_status = derive_review_status(current_value, is_draft=is_draft, is_delivered=is_delivered)
+            lifecycle_phase = None if is_delivered else current_value
 
             raw_integration_phase = _non_empty_str(state.get("integration_phase"))
             # Normalize legacy 12-phase mirror values to the two canonical values.
@@ -168,9 +155,13 @@ def assemble_roadmap_from_db(
                 todo_status = "pending"
             elif todo_status == "delivered":
                 integration_phase = "delivered"
+            ready, _ = is_ready_for_work(
+                kind=kind if isinstance(kind, str) else "todo",
+                lifecycle_phase=lifecycle_phase,
+            )
             if not is_draft and todo_status == "active" and build_status:
                 todo_status = "in_progress"
-            elif not is_draft and todo_status == "active" and lifecycle_phase == "prepared":
+            elif not is_draft and todo_status == "active" and ready:
                 todo_status = "ready"
             elif not is_draft and todo_status == "active" and lifecycle_phase:
                 todo_status = "in_progress"

@@ -19,7 +19,7 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import SlashCommand
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, lifecycle_phase_index
+from teleclaude.core.next_machine.lifecycle import is_ready_for_work
 from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
 if TYPE_CHECKING:
@@ -474,15 +474,14 @@ class PreparationViewActionsMixin:
                 return
             file_names = {name.lower() for name in todo_row.todo.files}
             is_bug = "bug" in file_names or "bug.md" in file_names
-            if not is_bug:
-                raw_phase = todo_row.todo.lifecycle_phase
-                phase = coerce_lifecycle_phase(raw_phase)
-                if phase is None or lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED):
-                    self.app.notify(
-                        f"Todo is not ready to start work (phase: {raw_phase or 'unknown'})",
-                        severity="warning",
-                    )  # type: ignore[attr-defined]
-                    return
+            kind = "bug" if is_bug else "todo"
+            ready, reason = is_ready_for_work(kind=kind, lifecycle_phase=todo_row.todo.lifecycle_phase)
+            if not ready:
+                self.app.notify(
+                    f"Todo is not ready to start work: {reason}",
+                    severity="warning",
+                )  # type: ignore[attr-defined]
+                return
 
         self._open_session_modal(  # type: ignore[attr-defined]
             computer=computer,

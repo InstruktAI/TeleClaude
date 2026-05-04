@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, is_work_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import is_ready_for_work
 from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
@@ -96,14 +96,16 @@ async def _get_item_phase_db(
 
 
 async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
-    """Check if the canonical lifecycle pointer is ready for work dispatch."""
+    """DB-backed wrapper around the canonical readiness gate."""
     state = await todos_db.read_state(slug)
     if state is None:
         return False
-    lifecycle = coerce_lifecycle_phase(state.get("lifecycle_phase"))
-    if lifecycle is None:
-        return False
-    return lifecycle == LifecyclePhase.PREPARED or is_work_lifecycle_phase(lifecycle)
+    kind_raw = state.get("kind")
+    kind = kind_raw if isinstance(kind_raw, str) else "todo"
+    lifecycle_phase_raw = state.get("lifecycle_phase")
+    lifecycle_phase = lifecycle_phase_raw if isinstance(lifecycle_phase_raw, str) else None
+    ready, _ = is_ready_for_work(kind=kind, lifecycle_phase=lifecycle_phase)
+    return ready
 
 
 async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
