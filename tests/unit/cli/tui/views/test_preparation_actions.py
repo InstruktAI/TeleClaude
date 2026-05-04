@@ -34,9 +34,17 @@ class _DummyPreparationView(PreparationViewActionsMixin):
     def __init__(self, context: tuple[str, str, str | None] | None) -> None:
         self._context = context
         self.app = SimpleNamespace(notify=Mock(), _refresh_data=Mock())
+        self._todo_row = None
+        self.opened_modal: dict[str, str] | None = None
 
     def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
         return self._context
+
+    def _resolve_todo_for_cursor(self):
+        return self._todo_row
+
+    def _open_session_modal(self, **kwargs):
+        self.opened_modal = kwargs
 
 
 @pytest.mark.unit
@@ -69,3 +77,43 @@ def test_action_reconcile_surfaces_errors() -> None:
         severity="error",
     )
     view.app._refresh_data.assert_not_called()
+
+
+@pytest.mark.unit
+def test_action_start_work_opens_modal_for_prepared_todo() -> None:
+    view = _DummyPreparationView(("local", "/repo", "my-slug"))
+    view._todo_row = SimpleNamespace(
+        todo=SimpleNamespace(
+            files=["implementation-plan"],
+            lifecycle_phase="prepared",
+        )
+    )
+
+    view.action_start_work()
+
+    assert view.opened_modal == {
+        "computer": "local",
+        "project_path": "/repo",
+        "default_message": "/next-work my-slug",
+        "title": "Start Work: my-slug",
+    }
+    view.app.notify.assert_not_called()
+
+
+@pytest.mark.unit
+def test_action_start_work_blocks_non_prepared_todo() -> None:
+    view = _DummyPreparationView(("local", "/repo", "my-slug"))
+    view._todo_row = SimpleNamespace(
+        todo=SimpleNamespace(
+            files=["implementation-plan"],
+            lifecycle_phase="grounding_check",
+        )
+    )
+
+    view.action_start_work()
+
+    view.app.notify.assert_called_once_with(
+        "Todo is not ready to start work (phase: grounding_check)",
+        severity="warning",
+    )
+    assert view.opened_modal is None

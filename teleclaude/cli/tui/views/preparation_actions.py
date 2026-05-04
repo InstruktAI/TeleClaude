@@ -19,7 +19,6 @@ from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import SlashCommand
-from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD
 from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
 if TYPE_CHECKING:
@@ -461,7 +460,7 @@ class PreparationViewActionsMixin:
     def action_start_work(self) -> None:
         """s: open session modal prefilled with /next-work [slug].
 
-        Gated on DOR readiness when a specific todo is selected.
+        Gated on canonical lifecycle readiness when a specific todo is selected.
         """
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
@@ -475,10 +474,10 @@ class PreparationViewActionsMixin:
             file_names = {name.lower() for name in todo_row.todo.files}
             is_bug = "bug" in file_names or "bug.md" in file_names
             if not is_bug:
-                dor = todo_row.todo.dor_score
-                if dor is None or dor < DOR_READY_THRESHOLD:
+                phase = (todo_row.todo.lifecycle_phase or "").strip().lower()
+                if phase != "prepared":
                     self.app.notify(
-                        f"DOR score too low ({dor or 0}/{DOR_READY_THRESHOLD})",
+                        f"Todo is not ready to start work (phase: {phase or 'unknown'})",
                         severity="warning",
                     )  # type: ignore[attr-defined]
                     return
