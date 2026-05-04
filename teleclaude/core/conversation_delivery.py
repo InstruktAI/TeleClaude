@@ -19,7 +19,12 @@ from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import get_active_links_for_session, get_peer_members
+from teleclaude.core.session_listeners import (
+    ConversationLink,
+    ConversationLinkMember,
+    get_active_links_for_session,
+    get_peer_members,
+)
 from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.types.commands import ProcessMessageCommand
@@ -243,10 +248,22 @@ async def _replay_pending_bundle(
     """
     bounded = [s for s in all_segments if s.timestamp is None or s.timestamp <= pending_dt]
     if not bounded:
-        # Transcript pruning edge case: the original range is gone. Treat as
-        # delivered to unblock progress; the receiver may have already accepted
-        # the bundle when this peer's pending_through_ts was first written.
-        return True
+        # Transcript pruning edge case: the planned range is no longer
+        # reachable from the source transcript. We CANNOT advance the cursor
+        # past the pending bound without a durable handoff — that would mean
+        # the pre-write happened, no send actually occurred, and the content
+        # is now unreachable. Stay stuck (do not promote) and log loudly so
+        # the operator can intervene.
+        logger.error(
+            "Conversation delivery replay cannot reconstruct bounded bundle "
+            "(transcript pruned past pending bound): source=%s peer=%s link=%s "
+            "pending=%s — leaving pending in place; manual intervention required.",
+            source_session.session_id,
+            target_session_id,
+            link_id,
+            pending_dt.isoformat(),
+        )
+        return False
     try:
         handed_off, _ = await _deliver_bundle(
             source_session=source_session,
@@ -274,8 +291,8 @@ async def _replay_pending_bundle(
 async def _deliver_for_peer(
     *,
     source_session: Session,
-    link: object,
-    peer: object,
+    link: ConversationLink,
+    peer: ConversationLinkMember,
     agent_name: AgentName,
     source_computer: str | None,
     client: AdapterClient,
@@ -286,9 +303,9 @@ async def _deliver_for_peer(
     Returns the number of bundles handed off durably (0 or 1 in the no-pending
     case; up to 2 when crash recovery and a fresh bundle both succeed).
     """
-    link_id: str = link.link_id  # type: ignore[attr-defined]
-    target_session_id: str = peer.session_id  # type: ignore[attr-defined]
-    peer_computer: str | None = peer.computer_name  # type: ignore[attr-defined]
+    link_id = link.link_id
+    target_session_id = peer.session_id
+    peer_computer = peer.computer_name
     source_session_id = source_session.session_id
 
     persisted = await db.get_conversation_delivery_state(

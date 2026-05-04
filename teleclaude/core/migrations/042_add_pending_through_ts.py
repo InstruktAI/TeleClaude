@@ -17,12 +17,17 @@ async def up(db: aiosqlite.Connection) -> None:
     startup reconciliation can promote it to ``delivered_through_ts`` and skip
     redelivery of that exact range.
     """
-    await db.executescript(
-        """
-        ALTER TABLE conversation_delivery_state
-            ADD COLUMN pending_through_ts TEXT;
-        """
-    )
+    # Idempotent: skip if the column already exists. SQLite has no
+    # ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` syntax, so we inspect
+    # ``pragma_table_info`` first. This matters because ``schema.sql``
+    # creates fresh databases with the column already present, while
+    # upgraded databases need this migration to add it.
+    cursor = await db.execute("PRAGMA table_info(conversation_delivery_state);")
+    rows = await cursor.fetchall()
+    await cursor.close()
+    column_names = {row[1] for row in rows}
+    if "pending_through_ts" not in column_names:
+        await db.execute("ALTER TABLE conversation_delivery_state ADD COLUMN pending_through_ts TEXT;")
     await db.commit()
 
 

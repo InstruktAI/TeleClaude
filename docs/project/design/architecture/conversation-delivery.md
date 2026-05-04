@@ -74,14 +74,17 @@ This system is separate from one-shot session listeners. It owns peer conversati
    the window cancels the pending timer and starts a new one.
 3. When the window expires, conversation delivery loads all active links for
    the source session.
-4. For each peer, it loads the directional cursor (and promotes any orphaned
-   `pending_through_ts` to `delivered_through_ts` first — see crash recovery).
-5. It projects visible transcript segments since
+4. For each peer, it loads the directional cursor.
+5. **Crash recovery first:** if `pending_through_ts > delivered_through_ts`, the
+   bounded-replay path runs (see Startup reconciliation step 4). Only after the
+   replay handoff is durable does processing continue with new segments past
+   the pending bound.
+6. It projects visible transcript segments since
    `max(last_conversation_injected_at, delivered_through_ts)`.
-6. If any segments exist, it persists `pending_through_ts = latest_segment_ts`
+7. If any segments exist, it persists `pending_through_ts = latest_segment_ts`
    BEFORE sending, then formats all segments into ONE bundled message and
    submits a single `ProcessMessageCommand` to the peer.
-7. On successful handoff, an atomic upsert advances
+8. On successful handoff, an atomic upsert advances
    `delivered_through_ts = latest_segment_ts` and clears `pending_through_ts`.
 
 ### 3. Startup reconciliation

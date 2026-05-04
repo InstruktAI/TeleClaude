@@ -428,6 +428,57 @@ async def test_deliver_pending_conversation_updates_replays_bounded_bundle_on_cr
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_does_not_advance_when_transcript_pruned_past_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If the transcript no longer contains the bounded range (pruning between
+    pre-pending write and the recovery attempt), the cursor must NOT advance.
+    Faking durable handoff under that condition is silent data loss; staying
+    stuck is the correct behavior, surfaced via an error log."""
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
+    persisted = SimpleNamespace(
+        delivered_through_ts=None,
+        pending_through_ts=pending_iso,
+    )
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=persisted),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    # Empty transcript past the cursor — the bounded range is unreachable.
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(return_value=[]),
+    )
+
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    assert delivered == 0
+    command_service.process_message.assert_not_awaited()
+    db.upsert_conversation_delivery_state.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_deliver_pending_conversation_updates_does_not_advance_when_replay_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
