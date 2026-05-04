@@ -310,6 +310,7 @@ class ConversationDeliveryStateRow(SQLModel, table=True):
     source_session_id: str = Field(primary_key=True)
     target_session_id: str = Field(primary_key=True)
     delivered_through_ts: str | None = None
+    pending_through_ts: str | None = None
     updated_at: str
 
 

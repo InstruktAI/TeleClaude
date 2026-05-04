@@ -10,6 +10,13 @@ from sqlmodel import select
 from .. import db_models
 
 
+class _Unset:
+    """Sentinel: ``pending_through_ts`` argument was omitted (leave value alone)."""
+
+
+_UNSET = _Unset()
+
+
 class DbConversationDeliveryMixin:
     """Directional delivery cursor helpers for conversation links."""
 
@@ -35,9 +42,17 @@ class DbConversationDeliveryMixin:
         link_id: str,
         source_session_id: str,
         target_session_id: str,
-        delivered_through_ts: str | None,
+        delivered_through_ts: str | None = None,
+        pending_through_ts: str | None | _Unset = _UNSET,
     ) -> None:
-        """Persist the directional cursor after a durable handoff."""
+        """Persist the directional cursor and/or in-flight pending bound.
+
+        ``pending_through_ts`` semantics:
+        - omitted (sentinel ``_UNSET``): leave the existing pending value alone.
+        - explicit ``None``: clear the pending bound (atomic with delivered advance).
+        - explicit timestamp: record this bound BEFORE a bundle send, so startup
+          reconciliation can promote it on crash recovery without re-sending.
+        """
         now = datetime.now(UTC).isoformat()
         async with self._session() as db_session:
             existing = await db_session.get(
@@ -50,15 +65,19 @@ class DbConversationDeliveryMixin:
             )
             if existing is not None:
                 existing.delivered_through_ts = delivered_through_ts
+                if not isinstance(pending_through_ts, _Unset):
+                    existing.pending_through_ts = pending_through_ts
                 existing.updated_at = now
                 db_session.add(existing)
             else:
+                pending_value = None if isinstance(pending_through_ts, _Unset) else pending_through_ts
                 db_session.add(
                     db_models.ConversationDeliveryStateRow(
                         link_id=link_id,
                         source_session_id=source_session_id,
                         target_session_id=target_session_id,
                         delivered_through_ts=delivered_through_ts,
+                        pending_through_ts=pending_value,
                         updated_at=now,
                     )
                 )

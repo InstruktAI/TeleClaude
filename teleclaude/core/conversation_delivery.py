@@ -249,6 +249,29 @@ async def deliver_pending_conversation_updates(
                 source_session_id=source_session_id,
                 target_session_id=peer.session_id,
             )
+            # Crash recovery: if a bundle was sent but cursor wasn't advanced,
+            # promote pending_through_ts to delivered_through_ts. This skips
+            # re-sending the already-handed-off range and prevents duplicate
+            # bundle delivery (the receiver's queue dedupe key would change if
+            # new transcript segments expanded the range on replay).
+            if persisted is not None and persisted.pending_through_ts:
+                pending_dt = parse_iso_datetime(persisted.pending_through_ts)
+                delivered_dt = (
+                    parse_iso_datetime(persisted.delivered_through_ts) if persisted.delivered_through_ts else None
+                )
+                if pending_dt is not None and (delivered_dt is None or pending_dt > delivered_dt):
+                    await db.upsert_conversation_delivery_state(
+                        link_id=link.link_id,
+                        source_session_id=source_session_id,
+                        target_session_id=peer.session_id,
+                        delivered_through_ts=pending_dt.isoformat(),
+                        pending_through_ts=None,
+                    )
+                    persisted = await db.get_conversation_delivery_state(
+                        link_id=link.link_id,
+                        source_session_id=source_session_id,
+                        target_session_id=peer.session_id,
+                    )
             cursor_dt = (
                 parse_iso_datetime(persisted.delivered_through_ts)
                 if persisted and persisted.delivered_through_ts
@@ -267,8 +290,25 @@ async def deliver_pending_conversation_updates(
                 continue
 
             target_computer = _target_computer_name(peer.computer_name)
+            latest_ts: datetime | None = None
+            for seg in segments:
+                if seg.timestamp is not None and (latest_ts is None or seg.timestamp > latest_ts):
+                    latest_ts = seg.timestamp
+            persisted_delivered = persisted.delivered_through_ts if persisted else None
+            # Pre-write the planned upper bound BEFORE sending so startup
+            # reconciliation can promote it on crash-after-handoff. Skip when
+            # latest_ts is None (segments without timestamps cannot anchor a
+            # crash-recovery promotion).
+            if latest_ts is not None:
+                await db.upsert_conversation_delivery_state(
+                    link_id=link.link_id,
+                    source_session_id=source_session_id,
+                    target_session_id=peer.session_id,
+                    delivered_through_ts=persisted_delivered,
+                    pending_through_ts=latest_ts.isoformat(),
+                )
             try:
-                handed_off, latest_ts = await _deliver_bundle(
+                handed_off, sent_latest_ts = await _deliver_bundle(
                     source_session=source_session,
                     link_id=link.link_id,
                     target_session_id=peer.session_id,
@@ -291,13 +331,15 @@ async def deliver_pending_conversation_updates(
             if not handed_off:
                 continue
             delivered += 1
-            if latest_ts is None:
+            if sent_latest_ts is None:
                 continue
+            # Atomic advance: clear pending and write delivered in one upsert.
             await db.upsert_conversation_delivery_state(
                 link_id=link.link_id,
                 source_session_id=source_session_id,
                 target_session_id=peer.session_id,
-                delivered_through_ts=latest_ts.isoformat(),
+                delivered_through_ts=sent_latest_ts.isoformat(),
+                pending_through_ts=None,
             )
 
     return delivered
@@ -352,6 +394,8 @@ def schedule_debounced_delivery(
     if pending is not None and not pending.done():
         pending.cancel()
 
+    task: asyncio.Task[None]
+
     async def _run() -> None:
         try:
             await asyncio.sleep(_DEBOUNCE_WINDOW_S)
@@ -371,7 +415,12 @@ def schedule_debounced_delivery(
                 exc,
             )
         finally:
-            _pending_deliveries.pop(source_session_id, None)
+            # Race guard: a fresh signal may have replaced the registry entry
+            # while we were running. Only clear the slot if it still points to
+            # OUR task — otherwise we'd orphan the newer pending task.
+            current = _pending_deliveries.get(source_session_id)
+            if current is task:
+                _pending_deliveries.pop(source_session_id, None)
 
     task = asyncio.create_task(_run(), name=f"conversation-delivery-{source_session_id}")
     _pending_deliveries[source_session_id] = task

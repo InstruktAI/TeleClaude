@@ -103,13 +103,27 @@ async def test_deliver_pending_conversation_updates_bundles_mixed_segments_into_
     # Both segment bodies must be present
     assert "Please inspect the changed API contract." in sole_call.text
     assert "I narrowed the regression to the linked replay path." in sole_call.text
-    # Cursor advances ONCE to the latest segment timestamp, not twice
-    db.upsert_conversation_delivery_state.assert_awaited_once_with(
-        link_id="link-001",
-        source_session_id="source-001",
-        target_session_id="target-001",
-        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
-    )
+    # Two upserts per delivery: pre-pending (planned upper bound, before send),
+    # then clear-pending+advance (delivered timestamp, after send). The cursor
+    # advances ONCE per bundle (not per segment); pre-pending is the crash-
+    # recovery safety net.
+    assert db.upsert_conversation_delivery_state.await_count == 2
+    pre_call = db.upsert_conversation_delivery_state.await_args_list[0].kwargs
+    advance_call = db.upsert_conversation_delivery_state.await_args_list[1].kwargs
+    assert pre_call == {
+        "link_id": "link-001",
+        "source_session_id": "source-001",
+        "target_session_id": "target-001",
+        "delivered_through_ts": None,
+        "pending_through_ts": datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
+    }
+    assert advance_call == {
+        "link_id": "link-001",
+        "source_session_id": "source-001",
+        "target_session_id": "target-001",
+        "delivered_through_ts": datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
+        "pending_through_ts": None,
+    }
 
 
 @pytest.mark.unit
@@ -157,7 +171,14 @@ async def test_deliver_pending_conversation_updates_does_not_advance_cursor_when
     )
 
     assert delivered == 0
-    db.upsert_conversation_delivery_state.assert_not_awaited()
+    # The pre-pending write happens before the send (it's the crash-recovery
+    # safety net) so ONE upsert is expected even on failure. The "advance"
+    # upsert (with delivered_through_ts set) must NOT happen — that's the
+    # invariant: cursor stays at its previous position when send fails.
+    assert db.upsert_conversation_delivery_state.await_count == 1
+    pre_call = db.upsert_conversation_delivery_state.await_args_list[0].kwargs
+    assert pre_call["delivered_through_ts"] is None
+    assert pre_call["pending_through_ts"] == datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
 
 
 @pytest.mark.unit
@@ -292,3 +313,166 @@ async def test_schedule_debounced_delivery_separated_signals_fire_twice(
     await asyncio.sleep(0.10)
 
     assert deliver.await_count == 2
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_schedule_debounced_delivery_does_not_orphan_newer_task_when_old_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If a fresh signal arrives while an earlier delivery is still running,
+    the earlier task's completion must NOT clear the registry slot — that slot
+    now points to the newer pending task and clearing it would orphan it,
+    breaking coalescing for subsequent signals."""
+    monkeypatch.setattr("teleclaude.core.conversation_delivery._DEBOUNCE_WINDOW_S", 0.02)
+
+    deliver_start = asyncio.Event()
+    deliver_release = asyncio.Event()
+
+    async def slow_deliver(*args: object, **kwargs: object) -> int:
+        deliver_start.set()
+        await deliver_release.wait()
+        return 1
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.deliver_pending_conversation_updates", slow_deliver)
+
+    client = MagicMock()
+    schedule_debounced_delivery("source-race", client=client)
+    # Wait for the first delivery to enter its body (past the debounce sleep).
+    await asyncio.wait_for(deliver_start.wait(), timeout=1.0)
+
+    # Now schedule a fresh signal — this must register a NEW pending task
+    # (the old task is mid-delivery and will be cancelled/orphaned shortly).
+    schedule_debounced_delivery("source-race", client=client)
+    new_task = conversation_delivery._pending_deliveries.get("source-race")
+    assert new_task is not None
+    # Releasing the slow delivery lets the OLD task's finally block run. The
+    # registry slot now belongs to the NEW task — the old task's finally must
+    # NOT pop it.
+    deliver_release.set()
+    await asyncio.sleep(0.005)
+    assert conversation_delivery._pending_deliveries.get("source-race") is new_task
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_promotes_orphaned_pending_on_replay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Crash-recovery: when ``pending_through_ts > delivered_through_ts``, the
+    orphaned pending bound is promoted to delivered and the bundle is NOT
+    re-sent — the receiver already has it, and re-sending under a transport
+    dedupe key whose range expanded would duplicate the prior content."""
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    persisted = SimpleNamespace(
+        delivered_through_ts=None,
+        pending_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
+    )
+    promoted_persisted = SimpleNamespace(
+        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
+        pending_through_ts=None,
+    )
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(side_effect=[persisted, promoted_persisted]),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(return_value=[]),  # no NEW segments after the promoted cursor
+    )
+
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    assert delivered == 0
+    # No bundle re-sent
+    command_service.process_message.assert_not_awaited()
+    # Pending was promoted: a single upsert that advances delivered to the
+    # pending bound and clears pending.
+    db.upsert_conversation_delivery_state.assert_awaited_once_with(
+        link_id="link-001",
+        source_session_id="source-001",
+        target_session_id="target-001",
+        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
+        pending_through_ts=None,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_writes_pending_before_send(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pre-send pending write: the planned upper-bound must hit the DB BEFORE
+    the bundled ``process_message`` call, so a crash between send and cursor
+    advance is recoverable."""
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    write_log: list[str] = []
+
+    async def record_send(*args: object, **kwargs: object) -> None:
+        write_log.append("send")
+
+    async def record_upsert(**kwargs: object) -> None:
+        if kwargs.get("pending_through_ts") is None and kwargs.get("delivered_through_ts"):
+            write_log.append("clear-pending+advance")
+        elif kwargs.get("pending_through_ts"):
+            write_log.append("pre-pending")
+
+    command_service = SimpleNamespace(process_message=AsyncMock(side_effect=record_send))
+    client = MagicMock()
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=None),
+        upsert_conversation_delivery_state=AsyncMock(side_effect=record_upsert),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(
+            return_value=[
+                ConversationSegment(
+                    role="assistant",
+                    text="some output",
+                    timestamp=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC),
+                )
+            ]
+        ),
+    )
+
+    await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    # Strict ordering: pre-pending write, THEN send, THEN clear-pending+advance.
+    assert write_log == ["pre-pending", "send", "clear-pending+advance"]
