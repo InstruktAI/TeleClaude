@@ -55,7 +55,7 @@ This system is separate from one-shot session listeners. It owns peer conversati
   - local target: inbound message accepted by `process_message`
   - remote target: request accepted by Redis transport
 - **Crash-safe handoff via in-flight pending bound**: before sending a bundle, the planned upper-bound timestamp is persisted to `pending_through_ts`. On successful delivery, an atomic upsert advances `delivered_through_ts` and clears `pending_through_ts`. On reconciliation, an orphaned `pending_through_ts > delivered_through_ts` triggers a **bounded replay**: the same range is collected from the transcript, framed into the same bundle, and re-sent under the same transport dedupe key. The receiver dedupes if it already accepted the bundle, or processes it for the first time if the prior send did not reach the queue. Cursor advance happens only after this replay handoff succeeds — pending is never blindly promoted.
-- **Restart reconciliation**: startup runs the same replay logic against active links. After promoting any orphaned pending bound, unseen mirrored segments after that bound are recovered as a fresh bundle.
+- **Restart reconciliation**: startup runs the same replay logic against active links. The bounded-replay path runs first for any orphaned pending bound; only after its handoff is durable does the cursor advance to the bound, and the next iteration delivers segments past the bound as a fresh bundle.
 - **Deterministic dedupe key**: transport dedupe keys for a bundle derive from link identity, source/target identity, the cursor at bundle start, and the planned upper-bound. The crash-safe pending bound prevents the upper-bound from drifting on replay, so the key remains stable across restart-after-handoff.
 
 ## Primary flows

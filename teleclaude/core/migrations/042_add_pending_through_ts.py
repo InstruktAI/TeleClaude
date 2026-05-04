@@ -14,8 +14,11 @@ async def up(db: aiosqlite.Connection) -> None:
     re-send a wider bundle (with newly arrived segments) under a different
     transport dedupe key — duplicating the already-delivered content. The
     pending column records the planned upper-bound BEFORE the send, so
-    startup reconciliation can promote it to ``delivered_through_ts`` and skip
-    redelivery of that exact range.
+    startup reconciliation can perform a **bounded replay**: rebuild the same
+    range under the same dedupe key, re-send (receiver dedupes if it already
+    accepted, or processes for the first time if the prior send did not reach
+    the queue), and only after that handoff returns durably advance the cursor
+    to the pending bound. Pending is never blindly promoted.
     """
     # Idempotent: skip if the column already exists. SQLite has no
     # ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` syntax, so we inspect
