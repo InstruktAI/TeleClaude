@@ -227,7 +227,7 @@ class TestReplayGateOnMain:
     misses; on main they need explicit approval."""
 
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
-    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
     def test_blocked_on_main_without_approval(self, subcmd: str, role: str) -> None:
         code, stderr = _run([subcmd, "abc123"], role=role, branch="main")
         assert code != 0
@@ -237,6 +237,12 @@ class TestReplayGateOnMain:
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_allowed_on_main_with_approval(self, subcmd: str, role: str) -> None:
         code, _ = _run([subcmd, "abc123"], role=role, branch="main", commit_approved=True)
+        assert code == 0
+
+    @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    def test_integrator_bypasses_gate_on_main(self, subcmd: str) -> None:
+        """Integrator role merges to main without exporting TELECLAUDE_COMMIT_APPROVED."""
+        code, _ = _run([subcmd, "abc123"], role="integrator", branch="main")
         assert code == 0
 
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])

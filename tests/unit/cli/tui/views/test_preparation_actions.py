@@ -117,3 +117,20 @@ def test_action_start_work_blocks_non_prepared_todo() -> None:
     assert call_kwargs.get("severity") == "warning"
     assert "grounding_check" in call_args[0]
     assert view.opened_modal is None
+
+
+@pytest.mark.unit
+def test_action_start_work_allows_resume_during_build() -> None:
+    """Phases at-or-beyond `prepared` allow start/resume — ordinal gate, not equality."""
+    view = _DummyPreparationView(("local", "/repo", "my-slug"))
+    view._todo_row = SimpleNamespace(
+        todo=SimpleNamespace(
+            files=["implementation-plan"],
+            lifecycle_phase="build_started",
+        )
+    )
+
+    view.action_start_work()
+
+    assert view.opened_modal is not None
+    view.app.notify.assert_not_called()

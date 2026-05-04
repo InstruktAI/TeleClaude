@@ -12,7 +12,7 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase, lifecycle_phase_index
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
 _DIM = Style(dim=True)
@@ -243,7 +243,7 @@ class TodoRow(TelecMixin, Widget):
         path_prepare = sized["P"]
         path_integration = sized["P"]  # I renders in P slot
         path_work = sized["B"] + sized["R"] + sized["F"] + sized["D"]
-        sized["_max"] = max(path_prepare, path_integration, path_work, 0) + 1  # +1 trailing dot
+        sized["_max"] = max(path_prepare, path_integration, path_work) + 1  # +1 trailing dot
         return sized
 
     @property
@@ -315,20 +315,9 @@ class TodoRow(TelecMixin, Widget):
         rs = self.todo.review_status
 
         lifecycle_phase = coerce_lifecycle_phase(self.todo.lifecycle_phase)
-        is_prepare_lane = lifecycle_phase is not None and lifecycle_phase in {
-            LifecyclePhase.DRAFT,
-            LifecyclePhase.INPUT_ASSESSMENT,
-            LifecyclePhase.TRIANGULATION,
-            LifecyclePhase.REQUIREMENTS_REVIEW,
-            LifecyclePhase.TEST_SPEC_BUILD,
-            LifecyclePhase.TEST_SPEC_REVIEW,
-            LifecyclePhase.PLAN_DRAFTING,
-            LifecyclePhase.PLAN_REVIEW,
-            LifecyclePhase.GATE,
-            LifecyclePhase.GROUNDING_CHECK,
-            LifecyclePhase.RE_GROUNDING,
-            LifecyclePhase.PREPARED,
-        }
+        is_prepare_lane = lifecycle_phase is not None and lifecycle_phase_index(
+            lifecycle_phase
+        ) <= lifecycle_phase_index(LifecyclePhase.PREPARED)
 
         # 1. Active prepare lifecycle phase
         p_result = lifecycle_phase_label(self.todo.lifecycle_phase) if is_prepare_lane else None
