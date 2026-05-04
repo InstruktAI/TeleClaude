@@ -1039,12 +1039,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "changed": CommandDef(
-                desc="List session-scoped changed files",
+                desc="List changed files (session-scoped on shared branches, all dirty files in worktrees)",
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "commit": CommandDef(
-                desc="Stage session-scoped files, lint, format, and commit",
+                desc="Stage files, lint, format, and commit (session-scoped on shared branches, all dirty files in worktrees)",
                 args="[<git-commit-args>]",
                 flags=[
                     _H,

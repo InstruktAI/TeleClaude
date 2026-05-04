@@ -13,7 +13,12 @@ from teleclaude.git_lock import main_branch_lock
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.scope import get_project_languages, resolve_project_root, resolve_session_scope
+from teleclaude.quality.scope import (
+    get_project_languages,
+    is_worktree,
+    resolve_project_root,
+    resolve_session_scope,
+)
 from teleclaude.session_identity import get_system_role
 
 # Extensions and filenames that indicate functional (runtime-affecting) code.
@@ -78,9 +83,23 @@ def handle_code(args: list[str]) -> None:
 
 
 def handle_code_changed(args: list[str]) -> None:
-    """List session-scoped changed files (touched by this session and dirty in git)."""
+    """List changed files.
+
+    Shared branches show session-scoped dirty files. Worktrees are task-scoped,
+    so all dirty files belong to the task.
+    """
     _ = args
     project_root = resolve_project_root(resolve_invocation_cwd())
+    if is_worktree(project_root):
+        repo = Repo(str(project_root))
+        status = repo.git.status("--porcelain")
+        dirty = [line[3:].strip() for line in status.splitlines() if len(line) > 3]
+        if not dirty:
+            print("No uncommitted worktree changes.")
+            return
+        for f in sorted(dirty):
+            print(f)
+        return
     files = _resolve_scoped_files(project_root)
     if not files:
         print("No uncommitted session-scoped changes.")
@@ -90,15 +109,15 @@ def handle_code_changed(args: list[str]) -> None:
 
 
 def handle_code_commit(args: list[str]) -> None:
-    """Stage session-scoped files, run format + lint, then commit.
+    """Stage files, run format + lint, then commit.
 
     Flags: -m <message>. Everything else passes through to git commit.
 
     Protection model:
     1. Orchestrator restriction
     2. Main-branch lock serialization
-    3. Foreign staged file detection (retryable exit)
-    4. Session-scope resolution and staging
+    3. Shared branches: foreign staged file detection + session-scope staging
+    4. Worktrees: stage all dirty files
     5. Path A/B/C classification on main
     6. Format and lint staged files
     7. Commit via real git binary (bypassing wrapper)
@@ -139,35 +158,42 @@ def _commit_under_lock(
     approved: bool = False,
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock."""
-    # Detect foreign staged files (outside session scope)
-    pre_staged = _get_staged_files(project_root)
-    scoped_files = _resolve_scoped_files(project_root)
-    if pre_staged:
-        scoped_set = set(scoped_files)
-        foreign = [f for f in pre_staged if f not in scoped_set]
-        if foreign:
-            print(
-                "ERROR: Staged files outside your session scope detected — another agent may be mid-commit.\n",
-                file=sys.stderr,
-            )
-            for f in foreign:
-                print(f"  {f}", file=sys.stderr)
-            print(
-                "\nUnstage with: git reset HEAD -- <file>\nOr wait for the other agent to finish and retry.",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
+    repo = Repo(str(project_root))
+    worktree = is_worktree(project_root)
 
-    # Session-scope resolution → stage files
-    if scoped_files:
-        _stage_files(scoped_files, project_root)
+    if worktree:
+        repo.git.add("-A")
+    else:
+        # Detect foreign staged files (outside session scope)
+        pre_staged = _get_staged_files(project_root, include_deletions=True)
+        scoped_files = _resolve_scoped_files(project_root)
+        if pre_staged:
+            scoped_set = set(scoped_files)
+            foreign = [f for f in pre_staged if f not in scoped_set]
+            if foreign:
+                print(
+                    "ERROR: Staged files outside your session scope detected — another agent may be mid-commit.\n",
+                    file=sys.stderr,
+                )
+                for f in foreign:
+                    print(f"  {f}", file=sys.stderr)
+                print(
+                    "\nUnstage with: git reset HEAD -- <file>\nOr wait for the other agent to finish and retry.",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
 
-    staged = _get_staged_files(project_root)
-    if not staged:
+        # Session-scope resolution → stage files
+        if scoped_files:
+            _stage_files(scoped_files, project_root)
+
+    staged_for_commit = _get_staged_files(project_root, include_deletions=True)
+    if not staged_for_commit:
         print("Nothing staged for commit.", file=sys.stderr)
         raise SystemExit(1)
 
     _check_partial_staging(project_root)
+    staged = _get_staged_files(project_root)
 
     # Path A/B/C classification on main
     commit_args = ["-m", message] if message else []
@@ -187,7 +213,6 @@ def _commit_under_lock(
     lint_runner.run(files=staged)
 
     # Commit via gitpython (uses real binary, bypasses wrapper)
-    repo = Repo(str(project_root))
     try:
         repo.git.commit(*commit_args)
     except GitCommandError as exc:
@@ -266,10 +291,11 @@ def _stage_files(files: list[str], project_root: Path) -> None:
     repo.git.add("--", *files)
 
 
-def _get_staged_files(project_root: Path) -> list[str]:
+def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:
     """Return list of staged file paths."""
     repo = Repo(str(project_root))
-    output: str = repo.git.diff("--cached", "--name-only", "--diff-filter=ACM")
+    diff_filter = "ACMRD" if include_deletions else "ACMR"
+    output: str = repo.git.diff("--cached", "--name-only", f"--diff-filter={diff_filter}")
     return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 

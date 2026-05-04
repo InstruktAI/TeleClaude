@@ -35,7 +35,7 @@ description: 'Safety rules for git operations and handling uncommitted work.'
 ## Enforcement
 
 - **Git wrapper** (`~/.teleclaude/bin/git`): Blocks destructive git operations (`stash`, `checkout`, `restore`, `clean`, `reset --hard`) at the shell level. Redirects `git commit` to `telec code commit`. Push on main is integrator-only. The wrapper is installed via `telec init` and enforced via PATH prepend in tmux sessions.
-- **`telec code commit`**: The canonical commit interface for agents. Handles session scoping, staging, formatting, linting, Path A/B/C classification on main, orchestrator restriction, and main-branch lock serialization.
+- **`telec code commit`**: The canonical commit interface for agents. On shared branches it uses session scoping and foreign-staged protection. In worktrees it stages the full dirty task tree. In both cases it runs formatting, linting, orchestrator restriction, and main-branch lock serialization. Path A/B/C classification applies on main only.
 - **Pre-commit hooks**: `.pre-commit-config.yaml` checks (commitizen, ruff, pyright, docs validation) run on staged files during `git commit`. These are quality checks, not staging mechanisms.
 - Never discard or overwrite uncommitted work unless told to.
 - Do not stop, reroute, or escalate solely because unrelated files are dirty.

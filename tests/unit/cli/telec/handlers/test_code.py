@@ -9,6 +9,7 @@ import pytest
 
 from teleclaude.cli.telec.handlers.code import (
     _classify_main_commit,
+    _commit_under_lock,
     _current_branch,
     _get_staged_files,
     _stage_files,
@@ -72,7 +73,16 @@ class TestGitHelpers:
         with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
             result = _get_staged_files(tmp_path)
         assert result == ["a.py", "b.py"]
-        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACM")
+        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACMR")
+
+    @pytest.mark.unit
+    def test_get_staged_files_includes_deletions_when_requested(self, tmp_path: Path) -> None:
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = "gone.md\n"
+        with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
+            result = _get_staged_files(tmp_path, include_deletions=True)
+        assert result == ["gone.md"]
+        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACMRD")
 
     @pytest.mark.unit
     def test_get_staged_files_returns_empty_for_no_output(self, tmp_path: Path) -> None:
@@ -99,3 +109,34 @@ class TestGitHelpers:
             pytest.raises(GitCommandError),
         ):
             _current_branch(tmp_path)
+
+    @pytest.mark.unit
+    def test_commit_under_lock_on_worktree_stages_all_dirty_files(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_repo = MagicMock()
+        format_runner = MagicMock()
+        lint_runner = MagicMock()
+
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.is_worktree", lambda _root: True)
+        monkeypatch.setattr(
+            "teleclaude.cli.telec.handlers.code._get_staged_files",
+            lambda _root, include_deletions=False: ["gone.md"] if include_deletions else [],
+        )
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code._check_partial_staging", lambda _root: None)
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.get_project_languages", lambda _root: [])
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.FormatRunner", lambda **_kwargs: format_runner)
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.LintRunner", lambda **_kwargs: lint_runner)
+
+        with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
+            _commit_under_lock(
+                message="chore: cleanup",
+                git_args=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+
+        mock_repo.git.add.assert_called_once_with("-A")
+        format_runner.run.assert_called_once_with(files=[])
+        lint_runner.run.assert_called_once_with(files=[])
+        mock_repo.git.commit.assert_called_once_with("-m", "chore: cleanup")

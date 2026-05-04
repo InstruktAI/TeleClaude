@@ -336,7 +336,7 @@ subcommands:
       format:
         description: 'Run language-aware code formatter.'
       commit:
-        description: 'Stage session-scoped files, lint, format, and commit.'
+        description: 'Stage files, lint, format, and commit (session-scoped on shared branches, all dirty files in worktrees).'
         flags:
           -m: 'Commit message. Other args pass through to git commit.'
   operations:
