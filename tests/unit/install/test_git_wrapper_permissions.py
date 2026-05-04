@@ -219,6 +219,47 @@ class TestCommitRedirect:
         assert "telec code commit" in stderr
 
 
+# ── REPLAY GATE: cherry-pick / rebase / merge on main ────────────────────────
+
+
+class TestReplayGateOnMain:
+    """cherry-pick/rebase/merge produce commits via paths the commit gate
+    misses; on main they need explicit approval."""
+
+    @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_blocked_on_main_without_approval(self, subcmd: str, role: str) -> None:
+        code, stderr = _run([subcmd, "abc123"], role=role, branch="main")
+        assert code != 0
+        assert "approval gate" in stderr.lower()
+
+    @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
+    def test_allowed_on_main_with_approval(self, subcmd: str, role: str) -> None:
+        code, _ = _run([subcmd, "abc123"], role=role, branch="main", commit_approved=True)
+        assert code == 0
+
+    @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    def test_allowed_on_feature_branch_without_approval(self, subcmd: str) -> None:
+        code, _ = _run([subcmd, "abc123"], role="worker", branch="feature")
+        assert code == 0
+
+    @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    @pytest.mark.parametrize("noop_arg", ["--abort", "--skip", "--quit"])
+    def test_noop_args_allowed_on_main(self, subcmd: str, noop_arg: str) -> None:
+        code, _ = _run([subcmd, noop_arg], role="worker", branch="main")
+        assert code == 0
+
+    def test_no_commit_flag_allowed_on_main(self) -> None:
+        code, _ = _run(["cherry-pick", "--no-commit", "abc123"], role="worker", branch="main")
+        assert code == 0
+
+    def test_continue_blocked_on_main(self) -> None:
+        code, stderr = _run(["cherry-pick", "--continue"], role="worker", branch="main")
+        assert code != 0
+        assert "approval gate" in stderr.lower()
+
+
 # ── PROTECTED: push from main ─────────────────────────────────────────────────
 
 

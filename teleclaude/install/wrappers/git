@@ -9,6 +9,12 @@
 #   PROTECTED    — integrator only (stash, commit on main, push on main)
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
+# Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
+#   commit (any branch)              → use 'telec code commit' or set
+#                                      TELECLAUDE_COMMIT_APPROVED=1
+#   cherry-pick/rebase/merge on main → set TELECLAUDE_COMMIT_APPROVED=1
+#   cherry-pick/rebase/merge on other branches → pass through
+#
 # Identity source: $TMPDIR/teleclaude_identity.json (written by daemon).
 # Fields: system_role, human_role, session_id.
 #
@@ -300,6 +306,38 @@ MSG
         exit 1
     fi
 fi
+
+# Block commit-producing replays on main without explicit approval.
+# cherry-pick / rebase / merge produce commits via paths whose outer subcmd
+# is not 'commit', so the gate above doesn't see them. Without this, replays
+# can land on main bypassing telec code commit's main-branch lock and the
+# Path A/B/C approval gate.
+case "$_subcmd" in
+    cherry-pick|rebase|merge)
+        _produces_commit=1
+        for _arg in "$@"; do
+            case "$_arg" in
+                --abort|--skip|--quit|--no-commit)
+                    _produces_commit=0
+                    ;;
+            esac
+        done
+        if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_COMMIT_APPROVED:-}" != "1" ]; then
+            _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+            if [ "$_current_branch" = "main" ]; then
+                cat >&2 <<MSG
+ERROR: 'git $_subcmd' on main produces commits without going through the approval gate.
+
+This bypasses telec code commit's main-branch lock, scope checks, and Path A/B/C.
+
+To proceed (human-approved, one-shot):
+  TELECLAUDE_COMMIT_APPROVED=1 git $_subcmd <args>
+MSG
+                exit 1
+            fi
+        fi
+        ;;
+esac
 
 if [ "$_subcmd" = "push" ]; then
     _current_branch="$(_real_git "${_dir_args[@]}" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
