@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for teleclaude.core.next_machine.remove."""
 
 from __future__ import annotations

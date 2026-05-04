@@ -5,8 +5,6 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
-# guard: no-companion
-
 
 def _load_markdown_lint() -> ModuleType:
     script_path = Path(__file__).resolve().parents[3] / "tools" / "lint" / "markdown.py"

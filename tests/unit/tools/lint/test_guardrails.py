@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for the table-driven pattern scanner in tools/lint/guardrails.py.
 
 Covers the _check_source_patterns function and SOURCE_PATTERN_RULES,
@@ -30,8 +29,8 @@ _spec.loader.exec_module(_mod)
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
 _check_import_outside_toplevel_policy = _mod._check_import_outside_toplevel_policy
+_check_no_companion_markers = _mod._check_no_companion_markers
 _warn_for_loose_dicts = _mod._warn_for_loose_dicts
-_STARTUP_BOUNDARY_IMPORT_REASON = _mod._STARTUP_BOUNDARY_IMPORT_REASON
 
 # Build test fixture strings via concatenation so the guardrails scanner
 # does not match them in THIS file (tests/ is in the scan scope).
@@ -39,6 +38,7 @@ _NOQA_RAW_SQL = "# noqa" + ": raw-sql"
 _NOQA_LOOSE_DICT = "# noqa" + ": loose-dict"
 _NOQA_CUSTOM = "# noqa" + ": custom-rule"
 _LOOSE_DICT_ANNOTATION = "dict[str, " + "object]"
+_NO_COMPANION_MARKER = "# guard: " + "no-companion"
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +82,15 @@ def _run_import_outside_toplevel_policy_check(tmp_path: Path, *, selected_paths:
     """Run import-outside-toplevel policy guardrail and return failure text if any."""
     try:
         _check_import_outside_toplevel_policy(tmp_path, selected_paths)
+        return None
+    except SystemExit as e:
+        return str(e)
+
+
+def _run_no_companion_marker_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
+    """Run test-file no-companion marker guardrail and return failure text if any."""
+    try:
+        _check_no_companion_markers(tmp_path, selected_paths)
         return None
     except SystemExit as e:
         return str(e)
@@ -274,39 +283,74 @@ class TestImportOutsideTopLevelPolicy:
     """Tests for startup-boundary import-outside-toplevel enforcement."""
 
     @pytest.mark.unit
-    def test_allowlisted_file_with_reason_passes(self, tmp_path: Path) -> None:
-        """Approved startup-boundary file may use the suppression with the required reason."""
+    def test_allowlisted_file_with_suppression_passes(self, tmp_path: Path) -> None:
+        """Approved startup-boundary file may use the PLC0415 suppression."""
         _write_file(
             tmp_path,
             "teleclaude/daemon.py",
-            f"def f():\n    from pkg import thing  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+            "def f():\n    from pkg import thing  # noqa: PLC0415\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is None
 
     @pytest.mark.unit
-    def test_allowlisted_file_without_reason_fails(self, tmp_path: Path) -> None:
-        """Approved startup-boundary file must include the required same-line reason."""
+    def test_allowlisted_file_without_suppression_passes(self, tmp_path: Path) -> None:
+        """Approved startup-boundary file without PLC0415 suppression is clean."""
         _write_file(
             tmp_path,
             "teleclaude/daemon_event_platform.py",
             "def f():\n    from pkg import thing\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
-        assert result is not None
-        assert "same-line reason" in result
+        assert result is None
 
     @pytest.mark.unit
-    def test_startup_boundary_reason_outside_allowlist_fails(self, tmp_path: Path) -> None:
-        """Startup-boundary reason is rejected outside the approved files."""
+    def test_plc0415_suppression_outside_allowlist_fails(self, tmp_path: Path) -> None:
+        """PLC0415 suppression is rejected outside the approved files."""
         _write_file(
             tmp_path,
             "teleclaude/other.py",
-            f"def f():\n    from pkg import thing  # {_STARTUP_BOUNDARY_IMPORT_REASON}\n",
+            "def f():\n    from pkg import thing  # noqa: PLC0415\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is not None
         assert "only allowed" in result
+
+
+class TestNoCompanionMarkerPolicy:
+    """Tests may not self-exempt from companion mapping with inline markers."""
+
+    @pytest.mark.unit
+    def test_rejects_no_companion_marker_inside_test_file(self, tmp_path: Path) -> None:
+        """The no-companion marker is not valid in test files."""
+        _write_file(tmp_path, "tests/unit/foo/test_bar.py", f"{_NO_COMPANION_MARKER}\n")
+
+        result = _run_no_companion_marker_check(tmp_path)
+
+        assert result is not None
+        assert "test files may not use" in result
+        assert "tests/unit/foo/test_bar.py" in result
+
+    @pytest.mark.unit
+    def test_scoped_run_reports_selected_test_marker(self, tmp_path: Path) -> None:
+        """Scoped guardrail runs still reject selected test files carrying the marker."""
+        _write_file(tmp_path, "tests/unit/foo/test_bar.py", f"{_NO_COMPANION_MARKER}\n")
+        _write_file(tmp_path, "tests/unit/foo/test_baz.py", "def test_ok():\n    assert True\n")
+
+        result = _run_no_companion_marker_check(tmp_path, selected_paths={"tests/unit/foo/test_bar.py"})
+
+        assert result is not None
+        assert "tests/unit/foo/test_bar.py" in result
+        assert "tests/unit/foo/test_baz.py" not in result
+
+    @pytest.mark.unit
+    def test_marker_outside_tests_is_not_owned_by_test_marker_guard(self, tmp_path: Path) -> None:
+        """This guardrail only rejects test-file markers."""
+        _write_file(tmp_path, "teleclaude/foo.py", f"{_NO_COMPANION_MARKER}\n")
+
+        result = _run_no_companion_marker_check(tmp_path)
+
+        assert result is None
 
 
 class TestLooseDictScoping:

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Typed origin metadata flows through commands and session handler.
 
 Verifies that typed origin metadata objects (WebOriginMetadata, TerminalOriginMetadata)

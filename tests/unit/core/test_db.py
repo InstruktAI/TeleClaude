@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for teleclaude.core.db — principal resolution edge cases.
 
 Core principal resolution is tested in test__sync.py with real Session objects.

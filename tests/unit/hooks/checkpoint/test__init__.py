@@ -1,4 +1,3 @@
-# guard: no-companion
 """Characterization tests for teleclaude.hooks.checkpoint public entrypoints.
 
 This file intentionally stays narrow and focused for checkpoint coverage.

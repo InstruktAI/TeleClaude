@@ -10,6 +10,7 @@ type: 'policy'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/python/tooling.md
 
 ## Rules
 
@@ -42,6 +43,8 @@ type: 'policy'
 - Suppressions must not hide real defects (unused code, unreachable branches).
 - Keep lint configuration centralized; do not add ad hoc per-file overrides.
 - Keep lint/tooling versions pinned to project config.
+- In uv-managed Python repositories, lint and type-check tools must be invoked through `uv run <tool> ...`, not bare executable names or the runtime interpreter.
+- Test files must not carry `# guard: no-companion`; temporary orphan-test exceptions must be centralized in `[tool.test-mapping].orphan-exclude` and ratcheted down.
 
 ## Rationale
 

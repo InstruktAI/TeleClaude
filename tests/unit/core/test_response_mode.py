@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-1: Response mode declaration on commands.
 
 Every command subclass must declare its response_mode. FIRE_AND_FORGET commands
@@ -18,6 +17,30 @@ import pytest
 import teleclaude.types.commands as cmds
 from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
 
+_IMMEDIATE_COMMAND_CASES = [
+    ("CreateSessionCommand", {"project_path": "/tmp", "origin": "test"}),
+    ("GetSessionDataCommand", {"session_id": "s1"}),
+    ("ProcessMessageCommand", {"session_id": "s1", "text": "hi", "origin": "test"}),
+    ("KeysCommand", {"session_id": "s1", "key": "Enter"}),
+    ("HandleVoiceCommand", {"session_id": "s1", "file_path": "/tmp/v.ogg"}),
+    ("HandleFileCommand", {"session_id": "s1", "file_path": "/tmp/f.txt", "filename": "f.txt"}),
+    ("StartAgentCommand", {"session_id": "s1", "agent_name": "claude"}),
+    ("ResumeAgentCommand", {"session_id": "s1"}),
+    ("RunAgentCommand", {"session_id": "s1", "command": "/help", "origin": "test"}),
+]
+
+_IMMEDIATE_COMMAND_IDS = [
+    "create_session",
+    "get_session_data",
+    "process_message",
+    "keys",
+    "handle_voice",
+    "handle_file",
+    "start_agent",
+    "resume_agent",
+    "run_agent_command",
+]
+
 
 class TestImmediateCommandModes:
     """Commands whose endpoints are 'already correct' per input audit declare IMMEDIATE.
@@ -28,28 +51,8 @@ class TestImmediateCommandModes:
     @pytest.mark.unit
     @pytest.mark.parametrize(
         "command_cls_name,constructor_kwargs",
-        [
-            ("CreateSessionCommand", {"project_path": "/tmp", "origin": "test"}),
-            ("GetSessionDataCommand", {"session_id": "s1"}),
-            ("ProcessMessageCommand", {"session_id": "s1", "text": "hi", "origin": "test"}),
-            ("KeysCommand", {"session_id": "s1", "key": "Enter"}),
-            ("HandleVoiceCommand", {"session_id": "s1", "file_path": "/tmp/v.ogg"}),
-            ("HandleFileCommand", {"session_id": "s1", "file_path": "/tmp/f.txt", "filename": "f.txt"}),
-            ("StartAgentCommand", {"session_id": "s1", "agent_name": "claude"}),
-            ("ResumeAgentCommand", {"session_id": "s1"}),
-            ("RunAgentCommand", {"session_id": "s1", "command": "/help", "origin": "test"}),
-        ],
-        ids=[
-            "create_session",
-            "get_session_data",
-            "process_message",
-            "keys",
-            "handle_voice",
-            "handle_file",
-            "start_agent",
-            "resume_agent",
-            "run_agent_command",
-        ],
+        _IMMEDIATE_COMMAND_CASES,
+        ids=_IMMEDIATE_COMMAND_IDS,
     )
     def test_immediate_commands_declare_immediate_mode(
         self, command_cls_name: str, constructor_kwargs: dict[str, str]
@@ -62,28 +65,8 @@ class TestImmediateCommandModes:
     @pytest.mark.unit
     @pytest.mark.parametrize(
         "command_cls_name,constructor_kwargs",
-        [
-            ("CreateSessionCommand", {"project_path": "/tmp", "origin": "test"}),
-            ("GetSessionDataCommand", {"session_id": "s1"}),
-            ("ProcessMessageCommand", {"session_id": "s1", "text": "hi", "origin": "test"}),
-            ("KeysCommand", {"session_id": "s1", "key": "Enter"}),
-            ("HandleVoiceCommand", {"session_id": "s1", "file_path": "/tmp/v.ogg"}),
-            ("HandleFileCommand", {"session_id": "s1", "file_path": "/tmp/f.txt", "filename": "f.txt"}),
-            ("StartAgentCommand", {"session_id": "s1", "agent_name": "claude"}),
-            ("ResumeAgentCommand", {"session_id": "s1"}),
-            ("RunAgentCommand", {"session_id": "s1", "command": "/help", "origin": "test"}),
-        ],
-        ids=[
-            "create_session",
-            "get_session_data",
-            "process_message",
-            "keys",
-            "handle_voice",
-            "handle_file",
-            "start_agent",
-            "resume_agent",
-            "run_agent_command",
-        ],
+        _IMMEDIATE_COMMAND_CASES,
+        ids=_IMMEDIATE_COMMAND_IDS,
     )
     def test_immediate_commands_have_no_completion_event(
         self, command_cls_name: str, constructor_kwargs: dict[str, str]

@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Test spec (xfail) for R5: todos.db SQLAlchemy migration.
 
 todos.db transitions from raw aiosqlite to the shared connection factory's

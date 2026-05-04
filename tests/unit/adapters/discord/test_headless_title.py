@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for [HEADLESS] prefix in Discord thread titles."""
 
 from __future__ import annotations

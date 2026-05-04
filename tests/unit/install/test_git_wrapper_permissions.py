@@ -1,4 +1,3 @@
-# guard: no-companion
 """Behavioral tests for the git wrapper three-tier permission model.
 
 Tests invoke the bash wrapper as a subprocess with a controlled environment

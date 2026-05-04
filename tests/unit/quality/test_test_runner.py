@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for R2: telec code test command.
 
 Behavioral contracts for the telec code test command: language-aware test execution
@@ -7,7 +6,6 @@ with automatic worktree scoping and companion file mapping.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -160,10 +158,10 @@ class TestNonWorktreeFullSuite:
 class TestExitBehavior:
     """The test command exits non-zero when any test fails."""
 
-    def test_pytest_uses_current_python_module_invocation(
+    def test_pytest_uses_uv_invocation(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Pytest runs through the active Python env instead of relying on PATH."""
+        """Pytest runs through the uv-managed project environment."""
         calls: list[tuple[list[str], str | None, bool]] = []
 
         def _capture_run(cmd: list[str], cwd: str | None = None, check: bool = False) -> CompletedProcess[str]:
@@ -175,7 +173,7 @@ class TestExitBehavior:
         exit_code = run_pytest(["tests/unit", "-q"], cwd=tmp_path)
 
         assert exit_code == 0
-        assert calls == [([sys.executable, "-m", "pytest", "tests/unit", "-q"], str(tmp_path), False)]
+        assert calls == [(["uv", "run", "pytest", "tests/unit", "-q"], str(tmp_path), False)]
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""

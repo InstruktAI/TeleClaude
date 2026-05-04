@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for delivery bookkeeping in the integration state machine.
 
 Patches step_functions.get_todos_db_sync (consumer-module local).

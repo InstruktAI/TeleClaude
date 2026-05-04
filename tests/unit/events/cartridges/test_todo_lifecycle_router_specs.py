@@ -1,4 +1,3 @@
-# guard: no-companion
 """Lifecycle-router contract tests for todo dump handling and DOR assessment.
 
 These tests pin the lifecycle-router cartridge's routing behavior: dump events

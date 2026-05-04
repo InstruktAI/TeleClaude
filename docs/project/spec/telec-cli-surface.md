@@ -326,11 +326,11 @@ subcommands:
     description: 'Code quality and commit tools.'
     subcommands:
       lint:
-        description: 'Run language-aware lint pipeline.'
+        description: 'Run language-aware lint pipeline using project-managed tool entrypoints.'
         flags:
           --step: 'Run a single pipeline step (e.g. guardrails, ruff_check).'
       test:
-        description: 'Run language-aware test suite.'
+        description: 'Run language-aware test suite using project-managed tool entrypoints.'
         flags:
           --expensive: 'Include expensive/slow tests.'
       format:

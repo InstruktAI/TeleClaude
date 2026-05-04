@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for the native session-scoping strategy."""
 
 from __future__ import annotations

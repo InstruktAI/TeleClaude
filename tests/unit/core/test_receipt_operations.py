@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-3: Receipt-backed operation handling for heavy endpoints.
 
 Todo create and todo prepare must be migrated to the receipt-backed operation pattern:

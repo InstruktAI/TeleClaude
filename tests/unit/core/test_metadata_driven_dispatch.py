@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-2: Metadata-driven command dispatch.
 
 The command dispatcher must read response_mode to determine execution behavior

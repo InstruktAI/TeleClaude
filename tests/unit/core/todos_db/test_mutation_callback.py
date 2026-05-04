@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests that TodosDb mutation methods fire the _on_mutation callback.
 
 Reproduces the bug: TUI todos pane shows stale data because no signal

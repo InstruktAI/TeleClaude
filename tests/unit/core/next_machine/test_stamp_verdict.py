@@ -1,4 +1,3 @@
-# guard: no-companion
 """Unit tests for stamp_verdict (state_io boundary)."""
 
 from __future__ import annotations

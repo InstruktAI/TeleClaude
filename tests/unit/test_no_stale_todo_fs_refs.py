@@ -1,4 +1,3 @@
-# guard: no-companion
 """Regression guard: no stale filesystem todos/{slug}/ references in markdown artifacts.
 
 Catches any re-introduction of filesystem-path-style todo references in worker-command

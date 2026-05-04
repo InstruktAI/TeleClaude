@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-4: Domain event emission for fire-and-forget mutations.
 
 Fire-and-forget mutations must emit domain events that signal completion or acceptance.
@@ -130,6 +129,7 @@ class TestSessionEscalationEventEmission:
         Must call event_bus.emit with the declared event name and a typed payload
         carrying the session_id — not a raw dict or ad-hoc string.
         """
+
         # A minimal stub that passes the isinstance(adapter, DiscordAdapter) check
         # by replacing the class itself in the module during the call.
         class _FakeDiscordAdapter:

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for R5: configurable guardrail caps.
 
 Behavioral contracts for per-project guardrail threshold configuration:

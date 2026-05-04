@@ -160,7 +160,7 @@ class _PyrightStep:
         py = python_files(targets)
         if not py:
             return
-        cmd = [sys.executable, "-m", "pyright", *py]
+        cmd = ["uv", "run", "pyright", *py]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -176,7 +176,7 @@ class _MypyStep:
         py = python_files(targets)
         if not py:
             return
-        cmd = [sys.executable, "-m", "mypy", *py]
+        cmd = ["uv", "run", "mypy", *py]
         _run_tool(cmd, self._project_root, self.name)
 
 

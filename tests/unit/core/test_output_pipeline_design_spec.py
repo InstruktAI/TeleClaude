@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Structural specs for the central transcript-driven output pipeline.
 
 These tests document the intended ownership model:

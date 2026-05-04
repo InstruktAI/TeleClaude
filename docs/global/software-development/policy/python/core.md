@@ -10,6 +10,7 @@ type: 'policy'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
+- @~/.teleclaude/docs/software-development/policy/python/tooling.md
 
 ## Rules
 
@@ -33,6 +34,7 @@ type: 'policy'
 - Keep all imports at module top level.
 - Conform to existing naming and patterns.
 - Do not shell out (`subprocess.run`, `subprocess.Popen`, `subprocess.call`, `os.system`, `os.popen`) when a Python-native solution exists. Use `pathlib` and `shutil` for filesystem operations. Use the project's git helpers (e.g. `_run_git`, `_run_git_cmd`) for git operations. Only invoke subprocesses when no Python API or project helper exists for the operation. Any subprocess call requires a comment justifying why a native approach is not viable.
+- In uv-managed repositories, invoke Python project tools through `uv run <tool> ...`; see the Python tooling policy for command boundaries.
 
 ## Rationale
 

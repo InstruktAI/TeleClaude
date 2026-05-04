@@ -7,8 +7,6 @@ from types import ModuleType
 
 import frontmatter
 
-# guard: no-companion
-
 
 def _load_script() -> ModuleType:
     script_path = Path(__file__).resolve().parents[3] / "tools" / "docs" / "update_third_party_frontmatter.py"

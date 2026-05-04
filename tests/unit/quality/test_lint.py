@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Tests for R1: telec code lint command.
 
 Behavioral contracts for the telec code lint command: language-aware lint pipeline
@@ -8,7 +6,6 @@ with automatic worktree scoping.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -248,7 +245,7 @@ class TestSharedBranchScopeSuccess:
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: None)
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: None)
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
@@ -397,10 +394,8 @@ class TestPythonPipelineOrder:
         assert positions["pyright"] < positions["jscpd"], "pyright must run before jscpd"
         assert positions["mypy"] < positions["jscpd"], "mypy must run before jscpd"
 
-    def test_pyright_step_uses_current_python_module_invocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Pyright runs through the active Python env instead of relying on PATH."""
+    def test_pyright_step_uses_uv_invocation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Pyright runs through the uv-managed project environment."""
         calls: list[tuple[list[str], Path, str]] = []
 
         monkeypatch.setattr(
@@ -412,12 +407,10 @@ class TestPythonPipelineOrder:
         pyright_step = next(step for step in pipeline.steps if step.name == "pyright")
         pyright_step.run(["teleclaude/foo.py"])
 
-        assert calls == [([sys.executable, "-m", "pyright", "teleclaude/foo.py"], tmp_path, "pyright")]
+        assert calls == [(["uv", "run", "pyright", "teleclaude/foo.py"], tmp_path, "pyright")]
 
-    def test_mypy_step_uses_current_python_module_invocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Mypy runs through the active Python env instead of relying on PATH."""
+    def test_mypy_step_uses_uv_invocation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Mypy runs through the uv-managed project environment."""
         calls: list[tuple[list[str], Path, str]] = []
 
         monkeypatch.setattr(
@@ -429,7 +422,7 @@ class TestPythonPipelineOrder:
         mypy_step = next(step for step in pipeline.steps if step.name == "mypy")
         mypy_step.run(["teleclaude/foo.py"])
 
-        assert calls == [([sys.executable, "-m", "mypy", "teleclaude/foo.py"], tmp_path, "mypy")]
+        assert calls == [(["uv", "run", "mypy", "teleclaude/foo.py"], tmp_path, "mypy")]
 
 
 # ---------------------------------------------------------------------------

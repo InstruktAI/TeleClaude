@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for R6: backward-compatible migration.
 
 Behavioral contracts for the incremental migration of TeleClaude's lint/test

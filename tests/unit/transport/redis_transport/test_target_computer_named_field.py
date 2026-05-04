@@ -1,4 +1,3 @@
-# guard: no-companion
 """Specification tests for typed actor fields and legacy actor-bag removal.
 
 R1: MessageMetadata must have typed actor fields (actor_id, actor_name,

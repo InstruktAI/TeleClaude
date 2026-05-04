@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Test specifications for scripts/distribute.py — context-preservation marker wrapping.
 
 Covers:

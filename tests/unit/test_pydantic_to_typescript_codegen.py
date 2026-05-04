@@ -1,5 +1,3 @@
-# guard: no-companion
-
 # pyright: reportMissingImports=false
 # mypy: ignore-errors
 """Test spec (xfail) for pydantic-to-typescript-codegen.

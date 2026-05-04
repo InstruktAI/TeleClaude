@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Test spec (xfail) for R4: typed query results at all boundaries.
 
 Every database query across all four databases returns typed results. No raw

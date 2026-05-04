@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for roadmap projection of draft todos."""
 
 from __future__ import annotations

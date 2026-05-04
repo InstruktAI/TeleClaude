@@ -1,4 +1,3 @@
-# guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportUnusedImport=false, reportUnusedVariable=false
 """Test specs (xfail) for config-independent-schemas.
 

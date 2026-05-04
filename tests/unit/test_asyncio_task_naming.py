@@ -1,4 +1,3 @@
-# guard: no-companion
 """Static analysis: every asyncio.create_task / loop.create_task call must carry name=.
 
 Unnamed tasks appear as generic Task-N in pressure logs, making leak diagnosis impossible.

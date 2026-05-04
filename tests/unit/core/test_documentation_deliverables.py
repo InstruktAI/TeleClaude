@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-6: Documentation deliverables.
 
 Four architecture documents must be updated to reflect the IMPLEMENTED changes:

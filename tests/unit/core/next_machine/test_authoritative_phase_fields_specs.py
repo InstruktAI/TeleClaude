@@ -1,4 +1,3 @@
-# guard: no-companion
 """Canonical lifecycle phase contract tests.
 
 Patches state_io.get_todos_db_sync (consumer-module local).

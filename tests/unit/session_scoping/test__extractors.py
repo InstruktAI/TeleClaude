@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for session-scoping native extractors."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Unit tests for stamp_artifact upstream_digests binding."""
 
 from __future__ import annotations

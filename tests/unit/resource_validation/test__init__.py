@@ -1,4 +1,3 @@
-# guard: no-companion
 """Characterization tests for teleclaude.resource_validation package helpers.
 
 Patches resource_validation.get_todos_db_sync (consumer-module local).

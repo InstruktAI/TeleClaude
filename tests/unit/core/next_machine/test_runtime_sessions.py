@@ -1,5 +1,4 @@
 """Unit tests for shared next-machine runtime session lookup."""
-# guard: no-companion
 
 from __future__ import annotations
 

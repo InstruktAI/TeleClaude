@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test spec (xfail) for work-cartridge-lifecycle-routing event schema behavior."""
 
 from __future__ import annotations

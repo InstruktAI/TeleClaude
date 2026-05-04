@@ -72,7 +72,7 @@ def run_pytest(args: list[str], cwd: Path | None = None) -> int:
     from the correct project root (critical in worktrees with a
     symlinked .venv).
     """
-    result = subprocess.run([sys.executable, "-m", "pytest", *args], cwd=str(cwd) if cwd else None, check=False)
+    result = subprocess.run(["uv", "run", "pytest", *args], cwd=str(cwd) if cwd else None, check=False)
     return result.returncode
 
 

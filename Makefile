@@ -76,21 +76,21 @@ lint:
 	@echo "✓ Lint checks passed"
 
 check-test-mapping:
-	@python tools/lint/test_mapping.py
+	@uv run python tools/lint/test_mapping.py
 
 test-unit:
 	@echo "Running unit tests..."
-	@. .venv/bin/activate && pytest tests/unit/ -v
+	@uv run pytest tests/unit/ -v
 	@echo "✓ Unit tests passed"
 
 test-e2e:
 	@echo "Running integration/e2e tests..."
-	@. .venv/bin/activate && pytest tests/integration/ -v -m "not expensive"
+	@uv run pytest tests/integration/ -v -m "not expensive"
 	@echo "✓ Integration tests passed"
 
 test-agents:
 	@echo "Running agent invocation matrix (real LLM calls)..."
-	@. .venv/bin/activate && pytest tests/integration/test_agent_invocation_matrix.py -v -m expensive -o "addopts="
+	@uv run pytest tests/integration/test_agent_invocation_matrix.py -v -m expensive -o "addopts="
 	@echo "✓ Agent matrix tests passed"
 
 test:
@@ -100,7 +100,7 @@ test:
 
 coverage:
 	@echo "Running tests with coverage..."
-	@. .venv/bin/activate && pytest --cov=teleclaude --cov-report=term-missing --cov-report=html --cov-report=xml --cov-report=json
+	@uv run pytest --cov=teleclaude --cov-report=term-missing --cov-report=html --cov-report=xml --cov-report=json
 	@echo ""
 	@echo "✓ Coverage report generated"
 	@echo "  - Terminal: see above"
@@ -110,7 +110,7 @@ coverage:
 
 coverage-html:
 	@echo "Generating HTML coverage report..."
-	@. .venv/bin/activate && pytest --cov=teleclaude --cov-report=html --cov-report=term-missing -q
+	@uv run pytest --cov=teleclaude --cov-report=html --cov-report=term-missing -q
 	@echo "✓ HTML coverage report: coverage/html/index.html"
 
 coverage-report: coverage-html

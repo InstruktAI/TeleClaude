@@ -1,4 +1,3 @@
-# guard: no-companion
 # pylint: disable=import-outside-toplevel,import-error,no-name-in-module,too-few-public-methods,use-implicit-booleaness-not-comparison
 """Test spec (xfail) for R1: shared connection factory + R7: PRAGMA consolidation.
 

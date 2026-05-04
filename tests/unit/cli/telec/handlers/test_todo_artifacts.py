@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for telec todo artifacts {list|read|write} and telec todo stamp."""
 
 from __future__ import annotations

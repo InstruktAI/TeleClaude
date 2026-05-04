@@ -1,4 +1,3 @@
-# guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportPrivateUsage=false
 
 """Test spec for R3/R4: Activatable Procedures distribution.

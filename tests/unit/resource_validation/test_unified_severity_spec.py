@@ -1,4 +1,3 @@
-# guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false, reportUnknownLambdaType=false
 
 """Test spec for R1: Unified validation severity.

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for the release changelog generator."""
 
 from __future__ import annotations

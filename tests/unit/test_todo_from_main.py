@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for teleclaude.todo_scaffold — from-main skeleton and session file collection."""
 
 from __future__ import annotations

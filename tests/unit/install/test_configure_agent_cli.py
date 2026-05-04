@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Test specifications for teleclaude.install.configure_agent_cli.
 
 Covers:

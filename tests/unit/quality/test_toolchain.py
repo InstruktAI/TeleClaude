@@ -1,4 +1,3 @@
-# guard: no-companion
 # pylint: disable=import-outside-toplevel
 """Tests for R3: language abstraction / toolchain protocol.
 
@@ -150,6 +149,7 @@ class TestExtensibility:
 
     def test_custom_toolchain_registered_and_dispatched(self, tmp_path: Path) -> None:
         """A custom toolchain registered in TOOLCHAIN_REGISTRY is reachable via get_toolchain."""
+
         class _FakeToolchain:  # pylint: disable=too-few-public-methods
             """Minimal protocol-conforming toolchain for registry dispatch test."""
 

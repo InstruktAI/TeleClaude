@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for the public session-scoping API."""
 
 from __future__ import annotations

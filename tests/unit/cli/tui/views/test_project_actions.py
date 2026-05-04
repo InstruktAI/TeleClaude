@@ -1,5 +1,4 @@
 """Tests for shared project action helpers."""
-# guard: no-companion
 
 from __future__ import annotations
 

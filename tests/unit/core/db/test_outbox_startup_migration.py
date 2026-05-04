@@ -1,4 +1,3 @@
-# guard: no-companion
 # pylint: disable=import-outside-toplevel,import-error,no-name-in-module,too-few-public-methods
 """Test spec (xfail) for R8: outbox migration on startup.
 

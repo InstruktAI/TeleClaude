@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test spec (xfail) for tools/session_scope.py.
 
 All tests are marked xfail — they document the behavioral contract and fail

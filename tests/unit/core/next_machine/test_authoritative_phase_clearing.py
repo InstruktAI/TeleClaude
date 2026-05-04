@@ -1,4 +1,3 @@
-# guard: no-companion
 """Regression tests for canonical lifecycle phase persistence."""
 
 from __future__ import annotations

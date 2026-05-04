@@ -1,4 +1,3 @@
-# guard: no-companion
 """working_slug derivation from subdir trees/{slug} pattern.
 
 The session handler derives working_slug from cmd.subdir when the subdir

@@ -1,5 +1,3 @@
-# guard: no-companion
-
 """Characterization and regression tests for scripts/distribute.py."""
 
 from __future__ import annotations

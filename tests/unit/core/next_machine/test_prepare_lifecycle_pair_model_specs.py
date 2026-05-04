@@ -1,7 +1,4 @@
-"""Specs for the pair-based prepare lifecycle model.
-
-# guard: no-companion
-"""
+"""Specs for the pair-based prepare lifecycle model."""
 
 from __future__ import annotations
 

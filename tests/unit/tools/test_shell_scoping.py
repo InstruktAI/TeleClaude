@@ -1,4 +1,3 @@
-# guard: no-companion
 """Behavioral contract tests for worktree-scoped shell commands and staged pre-commit hooks.
 
 Tests verify syntax validity, component routing, and config structure — never exact shell syntax.

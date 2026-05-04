@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for the dependency upgrade job.
 
 Behavioral contracts for lockfile parsing, version comparison,

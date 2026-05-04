@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test spec (xfail) for work-cartridge-lifecycle-routing CLI entry paths.
 
 These specs pin the dump-entry side of the lifecycle router:
@@ -17,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+from collections.abc import Callable
 from importlib import import_module
 from pathlib import Path
 from types import SimpleNamespace
@@ -105,6 +105,56 @@ def _router_type() -> type[object]:
     return module.LifecycleRouterCartridge
 
 
+def _route_bug_event_from_tool_request(
+    method: str,
+    path: str,
+    router_factory: object,
+    **kwargs: object,
+) -> tuple[dict[str, str], EventEnvelope | None]:
+    if method == "POST" and path == "/todos/dump":
+        return {"status": "ok"}, None
+    if method == "POST" and path == "/events/emit":
+        body = kwargs.get("json_body")
+        assert isinstance(body, dict)
+        event = EventEnvelope.model_validate(body)
+        router = _router_type()()
+        with (
+            patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", router_factory),
+            patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
+        ):
+            asyncio.run(router.process(event, MagicMock()))
+        return {"status": "ok"}, event
+    raise AssertionError(f"Unexpected tool API request: {method} {path}")
+
+
+def _assert_bug_chain_routes(
+    *,
+    handler: Callable[[], object],
+    expected_slug: str,
+) -> None:
+    router_launch, router_factory = _fake_api_client()
+    captured_event: EventEnvelope | None = None
+
+    def _tool_api_request(method: str, path: str, **kwargs: object) -> dict[str, str]:
+        nonlocal captured_event
+        response, event = _route_bug_event_from_tool_request(method, path, router_factory, **kwargs)
+        captured_event = event or captured_event
+        return response
+
+    with patch.object(bugs, "tool_api_request", side_effect=_tool_api_request):
+        handler()
+
+    emitted = captured_event
+    assert emitted is not None
+    assert emitted.event == "domain.software-development.planning.todo_dumped"
+    assert emitted.payload["slug"] == expected_slug
+    assert emitted.payload["kind"] == "bug"
+    assert emitted.payload["project_root"] == str(Path.cwd())
+    assert router_launch.kwargs is not None
+    assert router_launch.kwargs["command"] == "/next-work"
+    assert router_launch.kwargs["args"] == expected_slug
+
+
 def test_todo_dump_emits_default_lane_todo_dumped_event() -> None:
     with patch(f"{_TODO_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
         _handle_todo_dump(["my-slug", "my content"])
@@ -161,39 +211,10 @@ def test_bugs_create_chain_routes_through_lifecycle_router_to_next_work() -> Non
         "bugs CLI must not import TelecAPIClient — the lifecycle router owns dispatch"
     )
 
-    router_launch, router_factory = _fake_api_client()
-    captured_event: EventEnvelope | None = None
-
-    def _tool_api_request(method: str, path: str, **kwargs: object) -> dict[str, str]:
-        nonlocal captured_event
-        if method == "POST" and path == "/todos/dump":
-            return {"status": "ok"}
-        if method == "POST" and path == "/events/emit":
-            body = kwargs.get("json_body")
-            assert isinstance(body, dict)
-            event = EventEnvelope.model_validate(body)
-            captured_event = event
-            router = _router_type()()
-            with (
-                patch("teleclaude.cli.api_client.TelecAPIClient", router_factory),
-                patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
-            ):
-                asyncio.run(router.process(event, MagicMock()))
-            return {"status": "ok"}
-        raise AssertionError(f"Unexpected tool API request: {method} {path}")
-
-    with patch.object(bugs, "tool_api_request", side_effect=_tool_api_request):
-        bugs._handle_bugs_create(["sample-bug"])
-
-    emitted = captured_event
-    assert emitted is not None
-    assert emitted.event == "domain.software-development.planning.todo_dumped"
-    assert emitted.payload["slug"] == "sample-bug"
-    assert emitted.payload["kind"] == "bug"
-    assert emitted.payload["project_root"] == str(Path.cwd())
-    assert router_launch.kwargs is not None
-    assert router_launch.kwargs["command"] == "/next-work"
-    assert router_launch.kwargs["args"] == "sample-bug"
+    _assert_bug_chain_routes(
+        handler=lambda: bugs._handle_bugs_create(["sample-bug"]),
+        expected_slug="sample-bug",
+    )
 
 
 def test_bugs_report_does_not_launch_work_session_directly_from_cli() -> None:
@@ -238,39 +259,10 @@ def test_bugs_report_chain_routes_through_lifecycle_router_to_next_work() -> Non
         "bugs CLI must not import TelecAPIClient — the lifecycle router owns dispatch"
     )
 
-    router_launch, router_factory = _fake_api_client()
-    captured_event: EventEnvelope | None = None
-
-    def _tool_api_request(method: str, path: str, **kwargs: object) -> dict[str, str]:
-        nonlocal captured_event
-        if method == "POST" and path == "/todos/dump":
-            return {"status": "ok"}
-        if method == "POST" and path == "/events/emit":
-            body = kwargs.get("json_body")
-            assert isinstance(body, dict)
-            event = EventEnvelope.model_validate(body)
-            captured_event = event
-            router = _router_type()()
-            with (
-                patch("teleclaude.cli.api_client.TelecAPIClient", router_factory),
-                patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
-            ):
-                asyncio.run(router.process(event, MagicMock()))
-            return {"status": "ok"}
-        raise AssertionError(f"Unexpected tool API request: {method} {path}")
-
     with (
         patch.object(bugs, "normalize_slug", return_value="example-bug"),
-        patch.object(bugs, "tool_api_request", side_effect=_tool_api_request),
     ):
-        bugs._handle_bugs_report(["Example bug"])
-
-    emitted = captured_event
-    assert emitted is not None
-    assert emitted.event == "domain.software-development.planning.todo_dumped"
-    assert emitted.payload["slug"] == "fix-example-bug"
-    assert emitted.payload["kind"] == "bug"
-    assert emitted.payload["project_root"] == str(Path.cwd())
-    assert router_launch.kwargs is not None
-    assert router_launch.kwargs["command"] == "/next-work"
-    assert router_launch.kwargs["args"] == "fix-example-bug"
+        _assert_bug_chain_routes(
+            handler=lambda: bugs._handle_bugs_report(["Example bug"]),
+            expected_slug="fix-example-bug",
+        )

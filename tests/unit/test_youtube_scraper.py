@@ -1,4 +1,3 @@
-# guard: no-companion
 """Unit tests for YouTubeScraperJob.
 
 Tests:

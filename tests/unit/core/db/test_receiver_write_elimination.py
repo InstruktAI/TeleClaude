@@ -1,4 +1,3 @@
-# guard: no-companion
 # pylint: disable=import-outside-toplevel,import-error,no-name-in-module,too-few-public-methods,no-member
 """Test spec (xfail) for R3: receiver write elimination from teleclaude.db.
 

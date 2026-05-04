@@ -81,6 +81,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     # Test structure enforcement
     _check_module_sizes(repo_root, selected_paths)
+    _check_no_companion_markers(repo_root, selected_paths)
     _check_test_companions(repo_root, selected_paths)
 
     # Source pattern guardrails (table-driven)
@@ -345,8 +346,6 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
 
     Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
     Orphaned tests (testing deleted/renamed modules) are caught here.
-
-    Exclusions: add ``# guard: no-companion`` to the test file.
     """
     tests_root = repo_root / "tests" / "unit"
     source_root = repo_root / "teleclaude"
@@ -369,8 +368,6 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
         rel_test = test_path.relative_to(repo_root).as_posix()
         if rel_test in orphan_exclusions:
             continue
-        if _has_no_companion_marker(test_path):
-            continue
 
         expected_source = _test_to_source_path(test_path, tests_root)
         if expected_source is None:
@@ -386,10 +383,48 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
     formatted = "\n".join(f"- {t:<{max_test}} -> missing: {s}" for t, s in orphans)
     _fail(
         f"orphaned test files detected ({len(orphans)} tests without source companions).\n"
-        "Each test file must mirror a source module. If the test intentionally covers\n"
-        "cross-module behavior, add '# guard: no-companion' to the file.\n"
+        "Each test file must mirror a source module. Temporary test-side exceptions\n"
+        "must live in pyproject.toml [tool.test-mapping].orphan-exclude so they are\n"
+        "centralized and ratcheted down.\n"
         f"{formatted}\n"
     )
+
+
+def _check_no_companion_markers(repo_root: Path, selected_paths: set[str] | None = None) -> None:
+    """Reject ``# guard: no-companion`` markers in test files.
+
+    Test files do not own companion exceptions. Source-side exceptions belong on
+    source files; temporary orphan-test exceptions belong in the central
+    ratchet list.
+    """
+    tests_root = repo_root / "tests"
+    if not tests_root.exists():
+        return
+
+    if selected_paths is None:
+        candidates = sorted(tests_root.rglob("*.py"))
+    else:
+        candidates = [
+            path for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/",), suffixes=(".py",))
+        ]
+
+    violations: list[str] = []
+    for test_path in candidates:
+        try:
+            if "# guard: no-companion" not in test_path.read_text(encoding="utf-8"):
+                continue
+        except OSError:
+            continue
+        violations.append(test_path.relative_to(repo_root).as_posix())
+
+    if violations:
+        formatted = "\n".join(f"- {path}" for path in violations)
+        _fail(
+            "test files may not use '# guard: no-companion'.\n"
+            "Use the mirrored test path, or add a temporary centralized ratchet entry\n"
+            "to pyproject.toml [tool.test-mapping].orphan-exclude.\n"
+            f"{formatted}\n"
+        )
 
 
 def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
@@ -406,20 +441,6 @@ def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
     source_filename = filename.removeprefix("test_")
     parts[-1] = source_filename
     return "/".join(parts)
-
-
-def _has_no_companion_marker(test_path: Path) -> bool:
-    """Check if a test file contains a ``# guard: no-companion`` marker."""
-    try:
-        with open(test_path, encoding="utf-8") as f:
-            for line in f:
-                if "# guard: no-companion" in line:
-                    return True
-                if not line.startswith(("#", "\n", '"', "'")) and "import" not in line and "from" not in line:
-                    break
-    except OSError:
-        pass
-    return False
 
 
 def _load_orphan_exclusions(repo_root: Path) -> set[str]:

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Characterization tests for SessionRow rendering and summary hierarchy."""
 
 from __future__ import annotations

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for R4: telec init skeleton deployment.
 
 Behavioral contracts for skeleton file deployment during telec init:

@@ -1,4 +1,3 @@
-# guard: no-companion
 # pyright: reportAttributeAccessIssue=false, reportCallIssue=false
 """Test spec for R2: ``activation_trigger`` frontmatter field validation.
 

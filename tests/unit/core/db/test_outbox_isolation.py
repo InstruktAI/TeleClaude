@@ -1,4 +1,3 @@
-# guard: no-companion
 # pylint: disable=import-outside-toplevel,import-error,no-name-in-module,protected-access,too-few-public-methods
 """Test spec (xfail) for R2: outbox database isolation.
 

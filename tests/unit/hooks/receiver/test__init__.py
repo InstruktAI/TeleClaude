@@ -1,4 +1,3 @@
-# guard: no-companion
 """Focused tests for teleclaude.hooks.receiver checkpoint wiring."""
 
 from __future__ import annotations

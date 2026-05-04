@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test spec (xfail) for daemon TodoWatcher removal — R5.1, R5.2.
 
 Verifies that after migration the daemon performs no in-process filesystem

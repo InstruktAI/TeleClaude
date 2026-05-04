@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for state-driven candidate scanner and verifier.
 
 The integration state machine scans todo state from todos.db to find

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Tests for send_message behavior when topic_id is None."""
 
 from __future__ import annotations

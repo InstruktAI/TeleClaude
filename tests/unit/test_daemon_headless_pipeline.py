@@ -1,4 +1,3 @@
-# guard: no-companion
 """Specification tests for headless session creation and terminal identity cleanup."""
 
 from __future__ import annotations

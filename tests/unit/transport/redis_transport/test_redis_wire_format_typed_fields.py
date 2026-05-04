@@ -1,4 +1,3 @@
-# guard: no-companion
 """Specification tests for Redis wire-format migration to typed actor fields.
 
 After R4:

@@ -28,6 +28,11 @@ Pre-commit hooks are a separate path: they use `telec code lint --step <name>` w
 `pass_filenames: true`. Pre-commit passes staged files directly. The scoping
 logic in `LintRunner.run()` and `TestRunner.resolve_targets()` does not apply.
 
+Tool invocation is separate from file scoping. In uv-managed Python projects,
+`telec code lint` and `telec code test` resolve target files here, then invoke
+Python project tools through the uv-managed entrypoints defined by the Python
+tooling policy (`uv run pytest`, `uv run mypy`, `uv run pyright`, etc.).
+
 ## Inputs/Outputs
 
 | Input              | Source                                         |
@@ -62,6 +67,8 @@ logic in `LintRunner.run()` and `TestRunner.resolve_targets()` does not apply.
    back to repo-wide execution.
 7. **No session identity means repo-wide.** Human and CI contexts have no
    session identity. They expect full verification against source directories.
+8. **Tool environment is uv-managed.** Scoping decides what to check; uv decides
+   which Python project tool executable and dependency environment to use.
 
 ## Primary flows
 

@@ -1,4 +1,3 @@
-# guard: no-companion
 """Test specifications for FR-5: Typed command wrapping for inline mutations.
 
 Endpoints that currently perform adapter or DB mutations inline must be wrapped
