@@ -14,7 +14,7 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_messages import format_human_in_the_loop_message, format_linked_output_message
+from teleclaude.core.conversation_messages import format_bundled_conversation_message
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
@@ -137,45 +137,53 @@ async def _collect_visible_conversation_segments_since(
     return await asyncio.to_thread(_collect)
 
 
-async def _deliver_segment(
+async def _deliver_bundle(
     *,
     source_session: Session,
     link_id: str,
     target_session_id: str,
     target_computer: str,
-    segment: ConversationSegment,
+    segments: list[ConversationSegment],
     since_timestamp: datetime,
     source_computer: str | None,
     client: AdapterClient,
     command_service: CommandService,
-) -> bool:
-    """Deliver one mirrored segment and return True on durable handoff."""
+) -> tuple[bool, datetime | None]:
+    """Deliver all segments since the cursor as ONE bundled bridge message.
+
+    Returns ``(handed_off, latest_segment_timestamp)``. Latest timestamp is
+    the cursor advancement target on success — the caller writes it to
+    ``conversation_delivery_state`` only when handed_off is True. Empty
+    segments yields ``(False, None)``; callers must skip cursor advancement.
+    """
+    if not segments:
+        return False, None
+
     sender_label, sender_computer, actor_id = _sender_identity(source_session, source_computer=source_computer)
     actor_name = f"system@{sender_computer}"
     origin = (source_session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
 
-    if segment.role == "user":
-        framed_message = format_human_in_the_loop_message(
-            sender_label=sender_label,
-            sender_session_id=source_session.session_id,
-            sender_computer=sender_computer,
-            content=segment.text,
-        )
-    else:
-        framed_message = format_linked_output_message(
-            sender_label=sender_label,
-            sender_session_id=source_session.session_id,
-            sender_computer=sender_computer,
-            content=segment.text,
-        )
+    bundle_segments = [(seg.role, seg.timestamp, seg.text) for seg in segments]
+    framed_message = format_bundled_conversation_message(
+        sender_label=sender_label,
+        sender_session_id=source_session.session_id,
+        sender_computer=sender_computer,
+        segments=bundle_segments,
+    )
+
+    latest_ts: datetime | None = None
+    for seg in segments:
+        if seg.timestamp is not None and (latest_ts is None or seg.timestamp > latest_ts):
+            latest_ts = seg.timestamp
+    upper_bound = latest_ts or since_timestamp
 
     source_message_id = _delivery_key(
         link_id=link_id,
         source_session_id=source_session.session_id,
         target_session_id=target_session_id,
-        role=segment.role,
+        role="bundle",
         from_timestamp=since_timestamp,
-        to_timestamp=segment.timestamp,
+        to_timestamp=upper_bound,
     )
 
     if target_computer == config.computer.name:
@@ -190,7 +198,7 @@ async def _deliver_segment(
                 source_channel_id=link_id,
             )
         )
-        return True
+        return True, latest_ts
 
     await client.send_request(
         computer_name=target_computer,
@@ -203,7 +211,7 @@ async def _deliver_segment(
             platform_message_id=source_message_id,
         ),
     )
-    return True
+    return True, latest_ts
 
 
 async def deliver_pending_conversation_updates(
@@ -259,41 +267,38 @@ async def deliver_pending_conversation_updates(
                 continue
 
             target_computer = _target_computer_name(peer.computer_name)
-            peer_cursor = since_timestamp
-            for segment in segments:
-                try:
-                    handed_off = await _deliver_segment(
-                        source_session=source_session,
-                        link_id=link.link_id,
-                        target_session_id=peer.session_id,
-                        target_computer=target_computer,
-                        segment=segment,
-                        since_timestamp=peer_cursor,
-                        source_computer=source_computer,
-                        client=client,
-                        command_service=service,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Conversation delivery failed: source=%s peer=%s link=%s error=%s",
-                        source_session_id,
-                        peer.session_id,
-                        link.link_id,
-                        exc,
-                    )
-                    break
-                if not handed_off:
-                    break
-                delivered += 1
-                if segment.timestamp is None:
-                    continue
-                peer_cursor = segment.timestamp
-                await db.upsert_conversation_delivery_state(
+            try:
+                handed_off, latest_ts = await _deliver_bundle(
+                    source_session=source_session,
                     link_id=link.link_id,
-                    source_session_id=source_session_id,
                     target_session_id=peer.session_id,
-                    delivered_through_ts=segment.timestamp.isoformat(),
+                    target_computer=target_computer,
+                    segments=segments,
+                    since_timestamp=since_timestamp,
+                    source_computer=source_computer,
+                    client=client,
+                    command_service=service,
                 )
+            except Exception as exc:
+                logger.warning(
+                    "Conversation delivery failed: source=%s peer=%s link=%s error=%s",
+                    source_session_id,
+                    peer.session_id,
+                    link.link_id,
+                    exc,
+                )
+                continue
+            if not handed_off:
+                continue
+            delivered += 1
+            if latest_ts is None:
+                continue
+            await db.upsert_conversation_delivery_state(
+                link_id=link.link_id,
+                source_session_id=source_session_id,
+                target_session_id=peer.session_id,
+                delivered_through_ts=latest_ts.isoformat(),
+            )
 
     return delivered
 
@@ -317,3 +322,56 @@ async def reconcile_outstanding_conversation_deliveries(
             source_computer=session.computer_name,
         )
     return repaired
+
+
+# Debounce window for coalescing rapid agent_stops on the same source session
+# into a single bundled delivery. Codex emits agent_stops after each tool turn,
+# so without coalescing, a multi-turn task fans out N separate deliveries to
+# every linked peer. Reset semantics: each new agent_stop within this window
+# postpones the firing by another full window.
+_DEBOUNCE_WINDOW_S: float = 10.0
+_pending_deliveries: dict[str, asyncio.Task[None]] = {}
+
+
+def schedule_debounced_delivery(
+    source_session_id: str,
+    *,
+    client: AdapterClient,
+    command_service: CommandService | None = None,
+    source_computer: str | None = None,
+) -> None:
+    """Coalesce N rapid agent_stops on this source into one delayed delivery.
+
+    Cancels any pending timer for ``source_session_id`` and starts a fresh
+    ``_DEBOUNCE_WINDOW_S`` timer. When the timer fires, runs
+    ``deliver_pending_conversation_updates`` once. Synchronous (not a
+    coroutine) because the caller doesn't want to await — it just signals
+    that delivery should run after the window quiets.
+    """
+    pending = _pending_deliveries.pop(source_session_id, None)
+    if pending is not None and not pending.done():
+        pending.cancel()
+
+    async def _run() -> None:
+        try:
+            await asyncio.sleep(_DEBOUNCE_WINDOW_S)
+        except asyncio.CancelledError:
+            return
+        try:
+            await deliver_pending_conversation_updates(
+                source_session_id,
+                client=client,
+                command_service=command_service,
+                source_computer=source_computer,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Debounced conversation delivery failed: source=%s error=%s",
+                source_session_id,
+                exc,
+            )
+        finally:
+            _pending_deliveries.pop(source_session_id, None)
+
+    task = asyncio.create_task(_run(), name=f"conversation-delivery-{source_session_id}")
+    _pending_deliveries[source_session_id] = task

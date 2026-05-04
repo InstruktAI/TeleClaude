@@ -12,7 +12,7 @@ from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_delivery import deliver_pending_conversation_updates
+from teleclaude.core.conversation_delivery import schedule_debounced_delivery
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -514,7 +514,7 @@ class AgentCoordinator(
         fanout_output = link_output
         used_conversation_replay = False
         if session is not None and isinstance(session.last_conversation_injected_at, datetime):
-            await deliver_pending_conversation_updates(
+            schedule_debounced_delivery(
                 session_id,
                 client=self.client,
                 command_service=get_command_service(),
