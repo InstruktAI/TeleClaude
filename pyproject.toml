@@ -294,8 +294,36 @@ filterwarnings = [
 
 [tool.test-mapping]
 exclude = [
+    "teleclaude/channels/types.py",      # TypedDict/type aliases only
+    "teleclaude/cli/telec/__main__.py",  # Module entrypoint delegates to teleclaude.cli.telec.main
+    "teleclaude/core/hook_outbox_queue.py", # Queue dataclasses only; behavior lives in daemon_hook_outbox.py
     "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
+    "teleclaude/core/origins.py",        # Enum constants only; covered through API/TTS consumers
+    "teleclaude/core/protocols.py",      # Protocol contract only
+    "teleclaude/core/session_start_messages.py", # Constants-only prompt pool
+    "teleclaude/core/todos_db/_rows.py", # Typed row shapes only
+    "teleclaude/events/domains/creative_production/handlers/asset_lifecycle/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/creative_production/handlers/review_gatekeeper/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/customer_relations/handlers/escalation_handler/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/customer_relations/handlers/helpdesk_triage/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/customer_relations/handlers/satisfaction_tracker/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/marketing/handlers/campaign_budget_monitor/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/marketing/handlers/content_pipeline/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/software_development/handlers/build_notifier/handler.py", # Trivial pass-through handler
+    "teleclaude/events/domains/software_development/handlers/deploy_tracker/handler.py", # Trivial pass-through handler
+    "teleclaude/hooks/receiver/_repo_root.py", # Compatibility import shim only
     "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
+    "teleclaude/memory/types.py",        # Memory DTO/enums only
+    "teleclaude/services/protocols/context.py", # Protocol contract only
+    "teleclaude/services/protocols/events.py", # Protocol contract only
+    "teleclaude/services/protocols/identity.py", # Protocol contract only
+    "teleclaude/services/protocols/ledger.py", # Protocol contract only
+    "teleclaude/services/protocols/runtime.py", # Protocol contract only
+    "teleclaude/services/protocols/work.py", # Protocol contract only
+    "teleclaude/services/surface.py",     # Empty v2 command manifest/data declarations only
+    "teleclaude/session_scoping/_types.py", # Session-scoping dataclasses/type aliases only
+    "teleclaude/types/state_value.py",    # Recursive JSON type aliases only
+    "teleclaude/types/system.py",         # TypedDict shapes only
 ]
 # guard: ratchet-down — orphaned tests to rename/restructure; each entry needs a source companion or removal
 orphan-exclude = [
