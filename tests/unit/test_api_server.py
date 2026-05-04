@@ -157,7 +157,6 @@ class TestApiServerHttpRoutes:
                 "has_impl_plan": False,
                 "build_status": None,
                 "review_status": None,
-                "dor_score": None,
                 "deferrals_status": None,
                 "findings_count": 0,
                 "files": [],

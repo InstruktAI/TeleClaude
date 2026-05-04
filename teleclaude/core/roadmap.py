@@ -118,13 +118,6 @@ def assemble_roadmap_from_db(
 
             kind = state.get("kind")
             is_draft = kind == "draft"
-            is_bug = kind == "bug"
-
-            dor_raw = state.get("dor")
-            dor_score_raw = dor_raw.get("score") if isinstance(dor_raw, dict) else None
-            dor_score = (
-                None if is_bug else (dor_score_raw if isinstance(dor_score_raw, int) and dor_score_raw > 0 else None)
-            )
 
             finalize_raw = state.get("finalize")
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
@@ -191,7 +184,6 @@ def assemble_roadmap_from_db(
                     has_impl_plan=has_plan_row is not None,
                     build_status=build_status,
                     review_status=review_status,
-                    dor_score=dor_score,
                     after=deps_map.get(slug, []),
                     group=row[3],
                     delivered_at=row[6],

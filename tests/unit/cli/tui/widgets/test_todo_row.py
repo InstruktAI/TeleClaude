@@ -144,18 +144,17 @@ def test_compute_col_widths_returns_zero_widths_for_empty_list() -> None:
 
 
 @pytest.mark.unit
-def test_compute_col_widths_returns_non_zero_dor_width_when_dor_present() -> None:
-    todo = _make_todo()
+def test_compute_col_widths_uses_phase_column_for_prepare_lane() -> None:
     todo = TodoItem(
         slug="test",
         status=TodoStatus.PENDING,
         description=None,
         has_requirements=True,
         has_impl_plan=True,
-        dor_score=75,
+        lifecycle_phase="prepared",
     )
     widths = TodoRow.compute_col_widths([todo])
-    assert widths["DOR"] > 0
+    assert widths["P"] > 0
 
 
 @pytest.mark.unit
@@ -174,11 +173,10 @@ def test_compute_col_widths_includes_col_gap() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=True,
-        dor_score=100,
+        lifecycle_phase="prepared",
     )
     widths = TodoRow.compute_col_widths([todo])
-    # DOR:100 has 7 chars; width should be 7 + _COL_GAP
-    assert widths["DOR"] == len("DOR:100") + _COL_GAP
+    assert widths["P"] == len("P:ready") + _COL_GAP
 
 
 # --- _pad ---
@@ -208,7 +206,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
     """Every rendered row must have the same plain-text width when given shared col_widths.
 
     This covers: holder (no columns), prepare phase, integration phase, work phase (B/R),
-    and bare (no phase, no DOR). All must pad to the same total width.
+    and bare (no phase/work columns). All must pad to the same total width.
     """
     holder_child = TodoItem(
         slug="child-a",
@@ -251,7 +249,6 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         lifecycle_phase="build_complete",
         build_status="complete",
         review_status="approved",
-        dor_score=9,
     )
     bare_item = TodoItem(
         slug="bare-item",
@@ -354,7 +351,6 @@ def test_render_work_row_does_not_include_prepare_phase_column() -> None:
         lifecycle_phase="build_complete",
         build_status="complete",
         review_status="approved",
-        dor_score=9,
     )
     col_widths = TodoRow.compute_col_widths([work_item])
     row = TodoRow(todo=work_item, slug_width=len(work_item.slug), col_widths=col_widths, max_depth=0)

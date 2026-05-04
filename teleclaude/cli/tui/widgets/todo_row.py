@@ -12,7 +12,6 @@ from teleclaude.cli.tui.base import TelecMixin
 from teleclaude.cli.tui.theme import CONNECTOR_COLOR, is_dark_mode
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
-from teleclaude.core.next_machine._types import DOR_READY_THRESHOLD
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, coerce_lifecycle_phase
 
 _CONNECTOR = Style(color=CONNECTOR_COLOR)
@@ -214,9 +213,9 @@ class TodoRow(TelecMixin, Widget):
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
-        Column order: P | I | DOR | B | R | F | D
+        Column order: P | I | B | R | F | D
         """
-        maxes: dict[str, int] = {"P": 0, "I": 0, "DOR": 0, "B": 0, "R": 0, "F": 0, "D": 0}
+        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "F": 0, "D": 0}
         for t in todos:
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
@@ -229,8 +228,6 @@ class TodoRow(TelecMixin, Widget):
             if i_result is not None:
                 i_prefix, i_value, _ = i_result
                 maxes["I"] = max(maxes["I"], len(f"{i_prefix}:{i_value}"))
-            if t.dor_score is not None:
-                maxes["DOR"] = max(maxes["DOR"], len(f"DOR:{t.dor_score}"))
             bs = t.build_status
             if bs and bs != _TODO_STATUS_PENDING:
                 maxes["B"] = max(maxes["B"], len(f"B:{bs}"))
@@ -243,11 +240,10 @@ class TodoRow(TelecMixin, Widget):
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
         # Compute max rendered width across the mutually exclusive column paths
-        path_prepare = sized["DOR"] + sized["P"]
-        path_integration = sized["DOR"] + sized["P"]  # I renders in P slot
-        path_work = sized["DOR"] + sized["B"] + sized["R"] + sized["F"] + sized["D"]
-        path_dor_only = sized["DOR"]
-        sized["_max"] = max(path_prepare, path_integration, path_work, path_dor_only) + 1  # +1 trailing dot
+        path_prepare = sized["P"]
+        path_integration = sized["P"]  # I renders in P slot
+        path_work = sized["B"] + sized["R"] + sized["F"] + sized["D"]
+        sized["_max"] = max(path_prepare, path_integration, path_work, 0) + 1  # +1 trailing dot
         return sized
 
     @property
@@ -295,10 +291,9 @@ class TodoRow(TelecMixin, Widget):
         if self.todo.children_statuses:
             return _pad(Text(), target)
 
-        # Icebox items show P:icebox only — no DOR or work-phase columns
+        # Icebox items show P:icebox only — no work-phase columns
         if self.todo.status == TodoStatus.ICEBOX:
             result = Text()
-            result.append_text(self._build_col("", "", self._col_widths.get("DOR", 0), Style()))
             result.append_text(
                 self._build_col(
                     _PHASE_PREFIX_LIFECYCLE,
@@ -313,11 +308,6 @@ class TodoRow(TelecMixin, Widget):
         ok = _ok_color()
         gold = _gold_color()
         w = self._col_widths
-
-        # DOR column (shown alongside P in prepare; also shown in work phase)
-        dor = self.todo.dor_score
-        dor_color = ok if dor is not None and dor >= DOR_READY_THRESHOLD else gold
-        dor_text = self._build_col("DOR", str(dor) if dor is not None else "", w.get("DOR", 0), Style(color=dor_color))
 
         # Phase detection: top-to-bottom, first match wins.
 
@@ -344,7 +334,6 @@ class TodoRow(TelecMixin, Widget):
         p_result = lifecycle_phase_label(self.todo.lifecycle_phase) if is_prepare_lane else None
         if p_result is not None:
             p_label, p_value, p_color = p_result
-            result.append_text(dor_text)
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
             return _pad(result, target)
 
@@ -352,14 +341,11 @@ class TodoRow(TelecMixin, Widget):
         i_result = integration_phase_label(self.todo.integration_phase, self.todo.finalize_status)
         if i_result is not None:
             i_label, i_value, i_color = i_result
-            result.append_text(self._build_col("", "", w.get("DOR", 0), Style()))
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
             return _pad(result, target)
 
         # 3. Work phase (build != pending) — existing B/R/F/D path
         if bs is not None and bs != _TODO_STATUS_PENDING:
-            result.append_text(dor_text)
-
             b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
             result.append_text(
                 self._build_col(
@@ -382,8 +368,7 @@ class TodoRow(TelecMixin, Widget):
 
             return _pad(result, target)
 
-        # 4. Ready/pending state — DOR only
-        result.append_text(dor_text)
+        # 4. Ready/pending state — no phase/work columns
         return _pad(result, target)
 
     def render(self) -> Text:
@@ -424,7 +409,7 @@ class TodoRow(TelecMixin, Widget):
 
         line.append("\u00b7" * dot_count, style=Style(color=_muted_color()))
 
-        # Property columns (DOR first)
+        # Property columns
         line.append_text(self._build_columns())
 
         # Clamp to content area — prevents column filler from overflowing a narrow pane

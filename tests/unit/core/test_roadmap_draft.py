@@ -71,8 +71,8 @@ async def test_roadmap_projection_uses_canonical_lifecycle_phase_for_prepare_dis
 
 
 @pytest.mark.asyncio
-async def test_roadmap_projection_hides_dor_for_bug_todos(tmp_path: Path) -> None:
-    """Bug lanes must not surface a DOR score in the roadmap projection."""
+async def test_roadmap_projection_omits_legacy_dor_field(tmp_path: Path) -> None:
+    """Roadmap projection must not surface the legacy DOR field."""
     project = tmp_path / "project"
     project.mkdir()
     db_dir = project / ".teleclaude"
@@ -99,7 +99,7 @@ async def test_roadmap_projection_hides_dor_for_bug_todos(tmp_path: Path) -> Non
 
     assert len(todos) == 1
     assert todos[0].slug == "bug-item"
-    assert todos[0].dor_score is None
+    assert "dor_score" not in todos[0].model_dump()
 
 
 @pytest.mark.asyncio

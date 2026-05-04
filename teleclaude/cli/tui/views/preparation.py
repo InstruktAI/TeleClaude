@@ -102,7 +102,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
             (
                 t.slug,
                 t.status,
-                str(t.dor_score),
                 t.build_status or "",
                 t.review_status or "",
                 t.deferrals_status or "",
@@ -179,7 +178,6 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                     has_impl_plan=t.has_impl_plan,
                     build_status=t.build_status,
                     review_status=t.review_status,
-                    dor_score=t.dor_score,
                     deferrals_status=t.deferrals_status,
                     findings_count=t.findings_count,
                     files=t.files,
