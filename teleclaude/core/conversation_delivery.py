@@ -214,6 +214,183 @@ async def _deliver_bundle(
     return True, latest_ts
 
 
+def _max_segment_timestamp(segments: list[ConversationSegment]) -> datetime | None:
+    latest: datetime | None = None
+    for seg in segments:
+        if seg.timestamp is not None and (latest is None or seg.timestamp > latest):
+            latest = seg.timestamp
+    return latest
+
+
+async def _replay_pending_bundle(
+    *,
+    source_session: Session,
+    link_id: str,
+    target_session_id: str,
+    target_computer: str,
+    pending_dt: datetime,
+    all_segments: list[ConversationSegment],
+    since_timestamp: datetime,
+    source_computer: str | None,
+    client: AdapterClient,
+    command_service: CommandService,
+) -> bool:
+    """Re-send the bounded bundle for a peer with orphaned pending_through_ts.
+
+    Returns True iff the replay handoff completed and the cursor should advance
+    to ``pending_dt``. Returns False on send failure or unsuccessful handoff
+    (caller should NOT advance the cursor).
+    """
+    bounded = [s for s in all_segments if s.timestamp is None or s.timestamp <= pending_dt]
+    if not bounded:
+        # Transcript pruning edge case: the original range is gone. Treat as
+        # delivered to unblock progress; the receiver may have already accepted
+        # the bundle when this peer's pending_through_ts was first written.
+        return True
+    try:
+        handed_off, _ = await _deliver_bundle(
+            source_session=source_session,
+            link_id=link_id,
+            target_session_id=target_session_id,
+            target_computer=target_computer,
+            segments=bounded,
+            since_timestamp=since_timestamp,
+            source_computer=source_computer,
+            client=client,
+            command_service=command_service,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Conversation delivery replay failed: source=%s peer=%s link=%s error=%s",
+            source_session.session_id,
+            target_session_id,
+            link_id,
+            exc,
+        )
+        return False
+    return handed_off
+
+
+async def _deliver_for_peer(
+    *,
+    source_session: Session,
+    link: object,
+    peer: object,
+    agent_name: AgentName,
+    source_computer: str | None,
+    client: AdapterClient,
+    command_service: CommandService,
+) -> int:
+    """Drive replay-then-fresh delivery for a single (link, peer) pair.
+
+    Returns the number of bundles handed off durably (0 or 1 in the no-pending
+    case; up to 2 when crash recovery and a fresh bundle both succeed).
+    """
+    link_id: str = link.link_id  # type: ignore[attr-defined]
+    target_session_id: str = peer.session_id  # type: ignore[attr-defined]
+    peer_computer: str | None = peer.computer_name  # type: ignore[attr-defined]
+    source_session_id = source_session.session_id
+
+    persisted = await db.get_conversation_delivery_state(
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+    )
+    cursor_dt = (
+        parse_iso_datetime(persisted.delivered_through_ts) if persisted and persisted.delivered_through_ts else None
+    )
+    since_timestamp = _later_timestamp(source_session.last_conversation_injected_at, cursor_dt)
+    if since_timestamp is None:
+        return 0
+    if not source_session.native_log_file:
+        return 0
+
+    all_segments = await _collect_visible_conversation_segments_since(
+        source_session.native_log_file, agent_name, since_timestamp
+    )
+    target_computer = _target_computer_name(peer_computer)
+
+    pending_dt: datetime | None = None
+    if persisted is not None and persisted.pending_through_ts:
+        pending_candidate = parse_iso_datetime(persisted.pending_through_ts)
+        if pending_candidate is not None and (cursor_dt is None or pending_candidate > cursor_dt):
+            pending_dt = pending_candidate
+
+    delivered = 0
+    if pending_dt is not None:
+        if not await _replay_pending_bundle(
+            source_session=source_session,
+            link_id=link_id,
+            target_session_id=target_session_id,
+            target_computer=target_computer,
+            pending_dt=pending_dt,
+            all_segments=all_segments,
+            since_timestamp=since_timestamp,
+            source_computer=source_computer,
+            client=client,
+            command_service=command_service,
+        ):
+            return 0
+        await db.upsert_conversation_delivery_state(
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            delivered_through_ts=pending_dt.isoformat(),
+            pending_through_ts=None,
+        )
+        delivered += 1
+        fresh_segments = [s for s in all_segments if s.timestamp is not None and s.timestamp > pending_dt]
+        since_timestamp = pending_dt
+        cursor_iso: str | None = pending_dt.isoformat()
+    else:
+        fresh_segments = all_segments
+        cursor_iso = cursor_dt.isoformat() if cursor_dt else None
+
+    if not fresh_segments:
+        return delivered
+
+    latest_ts = _max_segment_timestamp(fresh_segments)
+    if latest_ts is not None:
+        await db.upsert_conversation_delivery_state(
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            delivered_through_ts=cursor_iso,
+            pending_through_ts=latest_ts.isoformat(),
+        )
+    try:
+        handed_off, sent_latest_ts = await _deliver_bundle(
+            source_session=source_session,
+            link_id=link_id,
+            target_session_id=target_session_id,
+            target_computer=target_computer,
+            segments=fresh_segments,
+            since_timestamp=since_timestamp,
+            source_computer=source_computer,
+            client=client,
+            command_service=command_service,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Conversation delivery failed: source=%s peer=%s link=%s error=%s",
+            source_session_id,
+            target_session_id,
+            link_id,
+            exc,
+        )
+        return delivered
+    if not handed_off or sent_latest_ts is None:
+        return delivered
+    await db.upsert_conversation_delivery_state(
+        link_id=link_id,
+        source_session_id=source_session_id,
+        target_session_id=target_session_id,
+        delivered_through_ts=sent_latest_ts.isoformat(),
+        pending_through_ts=None,
+    )
+    return delivered + 1
+
+
 async def deliver_pending_conversation_updates(
     source_session_id: str,
     *,
@@ -244,102 +421,14 @@ async def deliver_pending_conversation_updates(
     for link in links:
         peers = await get_peer_members(link_id=link.link_id, sender_session_id=source_session_id)
         for peer in peers:
-            persisted = await db.get_conversation_delivery_state(
-                link_id=link.link_id,
-                source_session_id=source_session_id,
-                target_session_id=peer.session_id,
-            )
-            # Crash recovery: if a bundle was sent but cursor wasn't advanced,
-            # promote pending_through_ts to delivered_through_ts. This skips
-            # re-sending the already-handed-off range and prevents duplicate
-            # bundle delivery (the receiver's queue dedupe key would change if
-            # new transcript segments expanded the range on replay).
-            if persisted is not None and persisted.pending_through_ts:
-                pending_dt = parse_iso_datetime(persisted.pending_through_ts)
-                delivered_dt = (
-                    parse_iso_datetime(persisted.delivered_through_ts) if persisted.delivered_through_ts else None
-                )
-                if pending_dt is not None and (delivered_dt is None or pending_dt > delivered_dt):
-                    await db.upsert_conversation_delivery_state(
-                        link_id=link.link_id,
-                        source_session_id=source_session_id,
-                        target_session_id=peer.session_id,
-                        delivered_through_ts=pending_dt.isoformat(),
-                        pending_through_ts=None,
-                    )
-                    persisted = await db.get_conversation_delivery_state(
-                        link_id=link.link_id,
-                        source_session_id=source_session_id,
-                        target_session_id=peer.session_id,
-                    )
-            cursor_dt = (
-                parse_iso_datetime(persisted.delivered_through_ts)
-                if persisted and persisted.delivered_through_ts
-                else None
-            )
-            since_timestamp = _later_timestamp(source_session.last_conversation_injected_at, cursor_dt)
-            if since_timestamp is None:
-                continue
-
-            segments = await _collect_visible_conversation_segments_since(
-                source_session.native_log_file,
-                agent_name,
-                since_timestamp,
-            )
-            if not segments:
-                continue
-
-            target_computer = _target_computer_name(peer.computer_name)
-            latest_ts: datetime | None = None
-            for seg in segments:
-                if seg.timestamp is not None and (latest_ts is None or seg.timestamp > latest_ts):
-                    latest_ts = seg.timestamp
-            persisted_delivered = persisted.delivered_through_ts if persisted else None
-            # Pre-write the planned upper bound BEFORE sending so startup
-            # reconciliation can promote it on crash-after-handoff. Skip when
-            # latest_ts is None (segments without timestamps cannot anchor a
-            # crash-recovery promotion).
-            if latest_ts is not None:
-                await db.upsert_conversation_delivery_state(
-                    link_id=link.link_id,
-                    source_session_id=source_session_id,
-                    target_session_id=peer.session_id,
-                    delivered_through_ts=persisted_delivered,
-                    pending_through_ts=latest_ts.isoformat(),
-                )
-            try:
-                handed_off, sent_latest_ts = await _deliver_bundle(
-                    source_session=source_session,
-                    link_id=link.link_id,
-                    target_session_id=peer.session_id,
-                    target_computer=target_computer,
-                    segments=segments,
-                    since_timestamp=since_timestamp,
-                    source_computer=source_computer,
-                    client=client,
-                    command_service=service,
-                )
-            except Exception as exc:
-                logger.warning(
-                    "Conversation delivery failed: source=%s peer=%s link=%s error=%s",
-                    source_session_id,
-                    peer.session_id,
-                    link.link_id,
-                    exc,
-                )
-                continue
-            if not handed_off:
-                continue
-            delivered += 1
-            if sent_latest_ts is None:
-                continue
-            # Atomic advance: clear pending and write delivered in one upsert.
-            await db.upsert_conversation_delivery_state(
-                link_id=link.link_id,
-                source_session_id=source_session_id,
-                target_session_id=peer.session_id,
-                delivered_through_ts=sent_latest_ts.isoformat(),
-                pending_through_ts=None,
+            delivered += await _deliver_for_peer(
+                source_session=source_session,
+                link=link,
+                peer=peer,
+                agent_name=agent_name,
+                source_computer=source_computer,
+                client=client,
+                command_service=service,
             )
 
     return delivered

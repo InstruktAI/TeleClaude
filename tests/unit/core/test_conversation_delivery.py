@@ -356,29 +356,97 @@ async def test_schedule_debounced_delivery_does_not_orphan_newer_task_when_old_f
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_deliver_pending_conversation_updates_promotes_orphaned_pending_on_replay(
+async def test_deliver_pending_conversation_updates_replays_bounded_bundle_on_crash_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Crash-recovery: when ``pending_through_ts > delivered_through_ts``, the
-    orphaned pending bound is promoted to delivered and the bundle is NOT
-    re-sent — the receiver already has it, and re-sending under a transport
-    dedupe key whose range expanded would duplicate the prior content."""
+    """Crash-recovery contract: when a previous attempt persisted
+    ``pending_through_ts`` but didn't reach the cursor-advance step, replay
+    must re-send the SAME bounded bundle (segments capped at the pending bound)
+    under the SAME dedupe key. The receiver dedupes if it already got the
+    bundle, or processes it for the first time if the prior send did NOT reach
+    the queue. Cursor advances only after this replay handoff succeeds —
+    blindly promoting pending to delivered would lose content if the prior
+    send actually failed."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
     link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock())
     client = MagicMock()
+    pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
     persisted = SimpleNamespace(
         delivered_through_ts=None,
-        pending_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
-    )
-    promoted_persisted = SimpleNamespace(
-        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
-        pending_through_ts=None,
+        pending_through_ts=pending_iso,
     )
     db = SimpleNamespace(
         get_session=AsyncMock(return_value=source),
-        get_conversation_delivery_state=AsyncMock(side_effect=[persisted, promoted_persisted]),
+        get_conversation_delivery_state=AsyncMock(return_value=persisted),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    bounded_segment = ConversationSegment(
+        role="assistant",
+        text="bundle that may or may not have reached the receiver",
+        timestamp=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(return_value=[bounded_segment]),
+    )
+
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    # Replay re-sent the bounded bundle exactly once.
+    assert command_service.process_message.await_count == 1
+    sent_command = command_service.process_message.await_args_list[0].args[0]
+    assert sent_command.text.startswith("[TeleClaude Conversation update from ")
+    assert "bundle that may or may not have reached the receiver" in sent_command.text
+    # After successful replay, cursor advances to pending bound and pending is
+    # cleared — atomically, in a single upsert.
+    db.upsert_conversation_delivery_state.assert_awaited_once_with(
+        link_id="link-001",
+        source_session_id="source-001",
+        target_session_id="target-001",
+        delivered_through_ts=pending_iso,
+        pending_through_ts=None,
+    )
+    assert delivered == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_does_not_advance_when_replay_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When the replay send raises, the cursor must NOT advance and pending
+    must remain in place, so the next reconciliation tries again. Without this
+    invariant, undelivered content could be marked delivered and lost."""
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock(side_effect=RuntimeError("network down")))
+    client = MagicMock()
+    pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
+    persisted = SimpleNamespace(
+        delivered_through_ts=None,
+        pending_through_ts=pending_iso,
+    )
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=persisted),
         upsert_conversation_delivery_state=AsyncMock(),
     )
 
@@ -393,7 +461,15 @@ async def test_deliver_pending_conversation_updates_promotes_orphaned_pending_on
     )
     monkeypatch.setattr(
         "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
-        AsyncMock(return_value=[]),  # no NEW segments after the promoted cursor
+        AsyncMock(
+            return_value=[
+                ConversationSegment(
+                    role="assistant",
+                    text="payload",
+                    timestamp=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC),
+                )
+            ]
+        ),
     )
 
     delivered = await deliver_pending_conversation_updates(
@@ -403,17 +479,9 @@ async def test_deliver_pending_conversation_updates_promotes_orphaned_pending_on
     )
 
     assert delivered == 0
-    # No bundle re-sent
-    command_service.process_message.assert_not_awaited()
-    # Pending was promoted: a single upsert that advances delivered to the
-    # pending bound and clears pending.
-    db.upsert_conversation_delivery_state.assert_awaited_once_with(
-        link_id="link-001",
-        source_session_id="source-001",
-        target_session_id="target-001",
-        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
-        pending_through_ts=None,
-    )
+    # Critical: NO upsert — pending stays at its previous value, cursor does
+    # not advance, the next reconciliation will retry.
+    db.upsert_conversation_delivery_state.assert_not_awaited()
 
 
 @pytest.mark.unit

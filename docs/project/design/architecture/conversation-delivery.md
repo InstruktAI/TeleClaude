@@ -54,7 +54,7 @@ This system is separate from one-shot session listeners. It owns peer conversati
 - **Advance after handoff**: the cursor moves only after durable handoff succeeds:
   - local target: inbound message accepted by `process_message`
   - remote target: request accepted by Redis transport
-- **Crash-safe handoff via in-flight pending bound**: before sending a bundle, the planned upper-bound timestamp is persisted to `pending_through_ts`. On successful delivery, an atomic upsert advances `delivered_through_ts` and clears `pending_through_ts`. Startup reconciliation promotes any orphaned `pending_through_ts > delivered_through_ts` to delivered (treats as already handed off) so the bundle is never re-sent under a different transport dedupe key when the source transcript has grown.
+- **Crash-safe handoff via in-flight pending bound**: before sending a bundle, the planned upper-bound timestamp is persisted to `pending_through_ts`. On successful delivery, an atomic upsert advances `delivered_through_ts` and clears `pending_through_ts`. On reconciliation, an orphaned `pending_through_ts > delivered_through_ts` triggers a **bounded replay**: the same range is collected from the transcript, framed into the same bundle, and re-sent under the same transport dedupe key. The receiver dedupes if it already accepted the bundle, or processes it for the first time if the prior send did not reach the queue. Cursor advance happens only after this replay handoff succeeds — pending is never blindly promoted.
 - **Restart reconciliation**: startup runs the same replay logic against active links. After promoting any orphaned pending bound, unseen mirrored segments after that bound are recovered as a fresh bundle.
 - **Deterministic dedupe key**: transport dedupe keys for a bundle derive from link identity, source/target identity, the cursor at bundle start, and the planned upper-bound. The crash-safe pending bound prevents the upper-bound from drifting on replay, so the key remains stable across restart-after-handoff.
 
@@ -90,27 +90,31 @@ This system is separate from one-shot session listeners. It owns peer conversati
 2. Lifecycle reconciliation scans live local sessions with a conversation anchor.
 3. For each source session, it re-runs the same delivery logic used at stop time
    (bypassing the debounce window — recovery is immediate).
-4. Per peer, if `pending_through_ts > delivered_through_ts`, the orphaned
-   pending bound is promoted to delivered (the bundle was sent but the cursor
-   write didn't complete before the crash) and `pending_through_ts` is cleared.
-5. Any mirrored segments that arrived after the promoted cursor are replayed
-   as a fresh bundle.
+4. Per peer, if `pending_through_ts > delivered_through_ts`, the bounded-replay
+   path runs first: rebuild the bundle from the transcript capped at the
+   pending bound, re-send under the SAME dedupe key (receiver dedupes if it
+   already accepted), then on success advance the cursor to the pending bound
+   and clear pending.
+5. After replay (or when no pending was set), any mirrored segments past the
+   advanced cursor are delivered as a fresh bundle.
 
 ## Failure modes
 
-- **Daemon restart after source output but before peer delivery**: no
-  `pending_through_ts` was written. Startup reconciliation replays the missing
-  visible segments from transcript truth as a fresh bundle.
-- **Daemon restart after peer delivery but before cursor advance**:
+- **Daemon restart after source output but before any send attempt**: no
+  `pending_through_ts` was written for the next bundle. Startup reconciliation
+  replays the missing visible segments from transcript truth as a fresh bundle.
+- **Daemon restart after pre-write of `pending_through_ts` but before send,
+  send-in-flight, or after send-success but before cursor advance**:
   `pending_through_ts` exists and exceeds `delivered_through_ts`. Reconciliation
-  promotes pending to delivered and skips the redelivery — the receiver already
-  has the bundle, and its transport dedupe key would not have suppressed a
-  second bundle whose range expanded with newly arrived transcript content.
-- **Remote delivery failure**: `pending_through_ts` was written before the send
-  attempt; if the send raises, the cursor stays at the previous `delivered_through_ts`
-  and the in-flight pending value is left in place. The next stop or startup
-  reconciliation will then promote it (assumes the receiver got it). For
-  always-failing remotes this is a known limitation — a future health check
-  should clear stale pending bounds.
+  performs a **bounded replay**: it rebuilds the bundle from the transcript
+  capped at the pending bound and re-sends under the SAME transport dedupe key.
+  The receiver dedupes if it already accepted the bundle, or processes it for
+  the first time if the prior send did not reach the queue. Cursor advances
+  to the pending bound only after this replay returns durably.
+- **Remote delivery failure**: when the send raises, the cursor stays at the
+  previous `delivered_through_ts` and `pending_through_ts` is left in place.
+  The next stop or startup reconciliation runs the bounded replay and tries
+  again under the same dedupe key. For always-failing remotes the bundle stays
+  pending until the link recovers — observable via the persisted pending value.
 - **No anchor present**: no conversation replay is attempted for that session.
 - **No transcript or unknown agent**: replay is skipped safely for that source session.

@@ -183,6 +183,7 @@ CREATE TABLE IF NOT EXISTS conversation_delivery_state (
     source_session_id TEXT NOT NULL,
     target_session_id TEXT NOT NULL,
     delivered_through_ts TEXT,
+    pending_through_ts TEXT,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (link_id, source_session_id, target_session_id),
     FOREIGN KEY (link_id) REFERENCES conversation_links(link_id) ON DELETE CASCADE
