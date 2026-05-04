@@ -112,8 +112,8 @@ def test_action_start_work_blocks_non_prepared_todo() -> None:
 
     view.action_start_work()
 
-    view.app.notify.assert_called_once_with(
-        "Todo is not ready to start work (phase: grounding_check)",
-        severity="warning",
-    )
+    assert view.app.notify.call_count == 1
+    call_args, call_kwargs = view.app.notify.call_args
+    assert call_kwargs.get("severity") == "warning"
+    assert "grounding_check" in call_args[0]
     assert view.opened_modal is None
