@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -233,6 +234,38 @@ class TestTodoRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_write_artifact_defaults_updated_by_when_omitted(self, tmp_path: Path) -> None:
+        """Route-level artifact writes record their command path when updated_by is omitted."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.write_artifact(
+                    slug="my-slug",
+                    name="requirements",
+                    content="draft requirements",
+                    cwd="/repo",
+                    updated_by=None,
+                )
+
+            assert response.status == "ok"
+            conn = sqlite3.connect(str(tmp_path / "todos.db"))
+            try:
+                row = conn.execute(
+                    "SELECT updated_by FROM todo_artifacts WHERE slug = ? AND name = ?",
+                    ("my-slug", "requirements"),
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None
+            assert row[0] == "api.todo.write_artifact"
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_stamp_requirements_ready_advances_to_requirements_review(self, tmp_path: Path) -> None:
         """The requirements_ready stamp is the authoritative completion signal for discovery."""
         database = TodosDb(str(tmp_path / "todos.db"))
@@ -409,6 +442,58 @@ class TestTodoRoutes:
         mock_mark.assert_called_once_with("/repo", "chartest-api-routes", WorkPhase.BUILD_STARTED.value)
         assert isinstance(response, dict)
         assert response.get("lifecycle_phase") == WorkPhase.BUILD_STARTED.value
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_mark_phase_logs_target_and_result(self, caplog: pytest.LogCaptureFixture) -> None:
+        """mark-phase emits an operator-facing provenance log with target and result."""
+        with (
+            patch(
+                "teleclaude.api.todo_routes.mark_phase_state",
+                return_value={"lifecycle_phase": PreparePhase.PREPARED.value},
+            ),
+            caplog.at_level("INFO"),
+        ):
+            await todo_routes.mark_phase(
+                slug="chartest-api-routes",
+                phase=PreparePhase.PREPARED.value,
+                cwd="/repo",
+            )
+
+        assert "todo mark-phase applied" in caplog.text
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_prepped_records_updated_by_on_plan_artifact(self, tmp_path: Path) -> None:
+        """Prepped dumps persist implementation-plan provenance on the artifact row."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            request = TodoDumpRequest(
+                slug="my-slug",
+                content="plan content",
+                kind="prepped",
+                cwd="/repo",
+            )
+            with (
+                patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
+                patch("teleclaude.api.todo_routes.apply_prepared_state", return_value={"lifecycle_phase": "prepared"}),
+            ):
+                response = await todo_routes.todo_dump(request)
+
+            assert response.status == "ok"
+            conn = sqlite3.connect(str(tmp_path / "todos.db"))
+            try:
+                row = conn.execute(
+                    "SELECT updated_by FROM todo_artifacts WHERE slug = ? AND name = ?",
+                    ("my-slug", "implementation-plan"),
+                ).fetchone()
+            finally:
+                conn.close()
+            assert row is not None
+            assert row[0] == "api.todo.dump.prepped"
+        finally:
+            await database.close()
 
     @pytest.mark.unit
     @pytest.mark.asyncio

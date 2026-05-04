@@ -7,6 +7,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 
+from instrukt_ai_logging import get_logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -14,6 +15,8 @@ from teleclaude.types.state_value import StateValue
 
 from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
 from ._upcycle import canonicalize_state_for_storage, upcycle_state_dict
+
+logger = get_logger(__name__)
 
 
 class TodosDbStateMixin:
@@ -81,6 +84,13 @@ class TodosDbStateMixin:
             db_session.add(state_model)
             if owns_session:
                 await db_session.commit()
+                logger.info(
+                    "todo state written",
+                    slug=slug,
+                    lifecycle_phase=str(payload.get("lifecycle_phase", "")),
+                    kind=str(payload.get("kind", "")),
+                    mode="async",
+                )
                 self._on_mutation("todo_updated")
         finally:
             if owns_session:
@@ -201,4 +211,11 @@ class TodosDbStateMixin:
                 state_model.updated_at = now
             session.add(state_model)
             session.commit()
+        logger.info(
+            "todo state written",
+            slug=slug,
+            lifecycle_phase=str(payload.get("lifecycle_phase", "")),
+            kind=str(payload.get("kind", "")),
+            mode="sync",
+        )
         self._on_mutation("todo_updated")

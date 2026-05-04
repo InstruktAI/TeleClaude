@@ -364,6 +364,7 @@ def validate_work_phase_preconditions(
 def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
     """Validate and persist an authoritative lifecycle phase override."""
     raw_state = dict(read_phase_state(cwd, slug))
+    prior_phase = str(raw_state.get("lifecycle_phase", ""))
     worktree_cwd = str(Path(cwd) / WORKTREE_DIR / slug)
     wt = worktree_cwd if Path(worktree_cwd).exists() else None
     artifact_presence = _read_artifact_presence(cwd, slug)
@@ -375,6 +376,14 @@ def mark_phase_state(cwd: str, slug: str, phase: str) -> dict[str, StateValue]:
     normalize_mark_phase(writer.state, LifecyclePhase(phase), worktree_cwd=wt)
     payload = writer.to_dict()
     write_phase_state(cwd, slug, payload)
+    logger.info(
+        "todo phase override persisted",
+        slug=slug,
+        prior_phase=prior_phase,
+        target_phase=phase,
+        resulting_phase=str(payload.get("lifecycle_phase", "")),
+        cwd=cwd,
+    )
     return payload
 
 
@@ -408,6 +417,14 @@ def reconcile_phase_state(cwd: str, slug: str, stage: str | None = None) -> dict
     writer.state.lifecycle_phase = target.value
     payload = writer.to_dict()
     write_phase_state(cwd, slug, payload)
+    logger.info(
+        "todo phase reconciled",
+        slug=slug,
+        requested_stage=stage_value.value,
+        prior_phase=current.value,
+        resulting_phase=target.value,
+        cwd=cwd,
+    )
     return payload
 
 
@@ -457,7 +474,16 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
             if head:
                 build_review.baseline_commit = head
         apply_authoritative_signal(writer.state, "verdict", phase=phase)
-        return writer.commit_sync(db, slug)
+        payload = writer.commit_sync(db, slug)
+        logger.info(
+            "todo verdict stamped",
+            slug=slug,
+            phase=phase,
+            verdict=verdict,
+            resulting_phase=str(payload.get("lifecycle_phase", "")),
+            cwd=cwd,
+        )
+        return payload
 
     if phase not in _PREPARE_VERDICT_PHASES:
         raise ValueError(
@@ -473,7 +499,16 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     if phase == _REQUIREMENTS_HUMAN_APPROVAL_PHASE:
         writer.state.artifacts.requirements.approved = verdict == "approve"
         apply_authoritative_signal(writer.state, "verdict", phase=phase)
-        return writer.commit_sync(db, slug)
+        payload = writer.commit_sync(db, slug)
+        logger.info(
+            "todo verdict stamped",
+            slug=slug,
+            phase=phase,
+            verdict=verdict,
+            resulting_phase=str(payload.get("lifecycle_phase", "")),
+            cwd=cwd,
+        )
+        return payload
     ReviewManager(writer).stamp_verdict(phase, verdict)
     if verdict == "approve":
         artifact_key = _REVIEW_TO_ARTIFACT_KEY.get(phase)
@@ -482,7 +517,16 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
             review = writer.verdict_target(phase)
             review.approved_digest = artifact_entry.digest
     apply_authoritative_signal(writer.state, "verdict", phase=phase)
-    return writer.commit_sync(db, slug)
+    payload = writer.commit_sync(db, slug)
+    logger.info(
+        "todo verdict stamped",
+        slug=slug,
+        phase=phase,
+        verdict=verdict,
+        resulting_phase=str(payload.get("lifecycle_phase", "")),
+        cwd=cwd,
+    )
+    return payload
 
 
 def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
@@ -721,7 +765,15 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, "implementation-plan")
         writer.state.artifacts.implementation_plan.produced_at = now_iso
 
-    return writer.commit_sync(db, slug)
+    payload = writer.commit_sync(db, slug)
+    logger.info(
+        "todo prepared fast-track applied",
+        slug=slug,
+        kind=str(kind or ""),
+        resulting_phase=str(payload.get("lifecycle_phase", "")),
+        cwd=cwd,
+    )
+    return payload
 
 
 # ---------------------------------------------------------------------------

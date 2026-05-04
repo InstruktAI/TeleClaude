@@ -7,6 +7,7 @@ import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime
 
+from instrukt_ai_logging import get_logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -19,6 +20,8 @@ from teleclaude.core.todos_db._models import (
     TodoRoadmap,
 )
 from teleclaude.core.todos_db._rows import ArtifactVersionRow
+
+logger = get_logger(__name__)
 
 
 def _sha256(content: str) -> str:
@@ -149,6 +152,14 @@ class TodosDbArtifactsMixin:
 
             if owns_session:
                 await db_session.commit()
+                logger.info(
+                    "todo artifact written",
+                    slug=slug,
+                    artifact=name,
+                    updated_by=updated_by or "",
+                    digest=digest,
+                    mode="async",
+                )
                 self._on_mutation("todo_updated")
         finally:
             if owns_session:
@@ -208,6 +219,14 @@ class TodosDbArtifactsMixin:
                 artifact.updated_at = now
             session.add(artifact)
             session.commit()
+        logger.info(
+            "todo artifact written",
+            slug=slug,
+            artifact=name,
+            updated_by=updated_by or "",
+            digest=digest,
+            mode="sync",
+        )
         self._on_mutation("todo_updated")
 
     async def artifact_digest(self, slug: str, name: str) -> str:

@@ -328,6 +328,7 @@ async def write_artifact(
     """Write (create or update) a todo artifact."""
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    effective_updated_by = updated_by or "api.todo.write_artifact"
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
     if name == "input" and await todos_db.artifact_exists(slug, "requirements"):
@@ -335,9 +336,16 @@ async def write_artifact(
             status_code=409,
             detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
-    await todos_db.write_artifact(slug, name, content, updated_by=updated_by)
+    await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
     if name in {"input", "requirements", "implementation-plan"}:
         await _sync_artifact_digest_state(todos_db, slug, name)
+    logger.info(
+        "todo artifact write route completed",
+        slug=slug,
+        artifact=name,
+        updated_by=effective_updated_by,
+        cwd=effective_cwd,
+    )
     return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
 
 
@@ -424,13 +432,31 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                 await todos_db.write_state(slug, state, session=session)
 
                 if request.kind == "bug":
-                    await todos_db.write_artifact(slug, "bug", request.content, session=session)
+                    await todos_db.write_artifact(
+                        slug,
+                        "bug",
+                        request.content,
+                        updated_by="api.todo.dump.bug",
+                        session=session,
+                    )
                 elif request.kind == "prepped":
                     plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
-                    await todos_db.write_artifact(slug, "implementation-plan", plan_content, session=session)
+                    await todos_db.write_artifact(
+                        slug,
+                        "implementation-plan",
+                        plan_content,
+                        updated_by="api.todo.dump.prepped",
+                        session=session,
+                    )
                 else:
                     input_content = f"# {slug} — Input\n\n{request.content}\n"
-                    await todos_db.write_artifact(slug, "input", input_content, session=session)
+                    await todos_db.write_artifact(
+                        slug,
+                        "input",
+                        input_content,
+                        updated_by="api.todo.dump",
+                        session=session,
+                    )
 
         todos_db.on_committed("todo_updated")
 
@@ -444,6 +470,16 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             # canonical lifecycle is immediately `prepared`.
             apply_prepared_state(effective_cwd, slug)
             todos_db.on_committed("todo_updated")
+
+        logger.info(
+            "todo dump completed",
+            slug=slug,
+            kind=request.kind or "todo",
+            cwd=effective_cwd,
+            artifact="implementation-plan"
+            if request.kind == "prepped"
+            else ("bug" if request.kind == "bug" else "input"),
+        )
 
         return _SlugStatusResponse(status="ok", slug=slug)
     except HTTPException:
@@ -485,11 +521,23 @@ async def todo_split(
                 await todos_db.add_to_roadmap(child_slug, group_slug=slug, session=session)
                 await todos_db.write_state(child_slug, default_state(), session=session)
                 if parent_input:
-                    await todos_db.write_artifact(child_slug, "input", parent_input, session=session)
+                    await todos_db.write_artifact(
+                        child_slug,
+                        "input",
+                        parent_input,
+                        updated_by="api.todo.split.clone_input",
+                        session=session,
+                    )
 
             await parent_writer.commit(todos_db, slug, session=session)
 
     todos_db.on_committed("todo_updated")
+    logger.info(
+        "todo split completed",
+        slug=slug,
+        child_count=len(children),
+        cwd=effective_cwd,
+    )
 
     return _SplitResponse(status="ok", slug=slug, children=",".join(children))
 
@@ -760,6 +808,15 @@ async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-argum
         else:
             raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
         await writer.commit(todos_db, slug)
+        logger.info(
+            "todo stamp applied",
+            slug=slug,
+            stamp_type=stamp_type,
+            value=value,
+            phase=phase or "",
+            lifecycle_phase=writer.state.lifecycle_phase,
+            caller_session_id=identity.session_id or "",
+        )
     except StateMutationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
@@ -793,7 +850,15 @@ async def mark_phase(
         except (ValueError, GitCommandError, sqlite3.Error) as exc:
             raise _stamp_error(exc) from exc
 
-    return await asyncio.to_thread(_apply)
+    payload = await asyncio.to_thread(_apply)
+    logger.info(
+        "todo mark-phase applied",
+        slug=slug,
+        target_phase=phase,
+        resulting_phase=str(payload.get("lifecycle_phase", "")),
+        cwd=effective_cwd,
+    )
+    return payload
 
 
 @router.get("/{slug}/show", response_model=None)
