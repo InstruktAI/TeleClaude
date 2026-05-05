@@ -306,17 +306,34 @@ class TestHandleTodoStampPreparePair:
 class TestHandleTodoStampEnsureProducer:
     """Lazy event-producer setup is opt-in at the CLI boundary for finalize_ready only."""
 
-    def test_finalize_ready_opts_into_lazy_producer(self) -> None:
-        """`--finalize-ready` calls ensure_event_producer before apply_todo_stamp."""
+    def test_finalize_ready_initializes_producer_before_applying_stamp(self) -> None:
+        """ensure_event_producer must run before apply_todo_stamp and the stamp must still flow through."""
+        order: list[str] = []
+
+        def _record_ensure() -> None:
+            order.append("ensure")
+
+        async def _record_apply(**_: object) -> dict[str, str]:
+            order.append("apply")
+            return {"status": "ok"}
+
         with (
-            patch(f"{_MODULE}.ensure_event_producer") as mock_ensure,
-            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})),
+            patch(f"{_MODULE}.ensure_event_producer", side_effect=_record_ensure),
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(side_effect=_record_apply)) as mock_apply,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
             _handle_todo_stamp(["my-slug", "--finalize-ready"])
 
-        mock_ensure.assert_called_once_with()
+        assert order == ["ensure", "apply"]
+        mock_apply.assert_awaited_once_with(
+            cwd="/repo",
+            slug="my-slug",
+            stamp_type="finalize_ready",
+            value="",
+            phase=None,
+            caller_session_id="sess-1",
+        )
 
     def test_build_complete_does_not_initialize_producer(self) -> None:
         """Stamps that do not emit events must not pay the Redis-connect cost."""
