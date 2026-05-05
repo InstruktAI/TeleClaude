@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import ssl
 from typing import Any
 
 from instrukt_ai_logging import get_logger
+from redis.asyncio import Redis
 
+from teleclaude.config import config
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 logger = get_logger(__name__)
 
-# Module-level singleton producer — configured by daemon on startup
+# Process-wide singleton producer. The daemon registers one eagerly at startup;
+# CLI invocations build one lazily via `ensure_event_producer` so they can publish
+# to the same Redis stream the daemon polls.
 _PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 
 
@@ -50,12 +55,45 @@ def configure_producer(producer: EventProducer) -> None:
     _PRODUCER_STATE["producer"] = producer
 
 
+def _build_producer_from_config() -> EventProducer:
+    """Construct an `EventProducer` against the configured Redis URL."""
+    redis_cfg = config.redis
+    if not redis_cfg.url:
+        raise RuntimeError("EventProducer cannot be built: config.redis.url is empty")
+    if redis_cfg.url.startswith("rediss://"):
+        client = Redis.from_url(
+            redis_cfg.url,
+            password=redis_cfg.password,
+            decode_responses=False,
+            ssl_cert_reqs=ssl.CERT_NONE,
+        )
+    else:
+        client = Redis.from_url(
+            redis_cfg.url,
+            password=redis_cfg.password,
+            decode_responses=False,
+        )
+    return EventProducer(client)
+
+
+def ensure_event_producer() -> EventProducer:
+    """Return the configured producer, building one from config if needed.
+
+    The daemon pre-registers a producer at startup that wraps its long-lived
+    transport client; lazy construction covers short-lived CLI processes that
+    publish to the same stream without owning the daemon's transport.
+    """
+    producer = _PRODUCER_STATE["producer"]
+    if producer is not None:
+        return producer
+    producer = _build_producer_from_config()
+    _PRODUCER_STATE["producer"] = producer
+    return producer
+
+
 async def emit_event(event: str, source: str, level: EventLevel, **kwargs: Any) -> str:
     """Build an envelope from explicit fields and publish it via the configured producer."""
-    producer = _PRODUCER_STATE["producer"]
-    if producer is None:
-        logger.error("emit_event called but EventProducer not configured: event=%s", event)
-        raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
+    producer = ensure_event_producer()
     domain = str(kwargs.pop("domain", ""))
     description = str(kwargs.pop("description", ""))
     payload = kwargs.pop("payload", None)
