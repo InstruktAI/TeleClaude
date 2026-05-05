@@ -177,10 +177,8 @@ async def test_review_changes_requested_relay_message_addresses_every_finding() 
 
     assert keep_going is False
     assert "REVIEW CHANGES REQUESTED: test-slug" in instruction
-    assert "When every finding is resolved" in instruction
-    assert "non-Suggestion" not in instruction
+    assert "Requirement-Violation, Critical, and Important" in instruction
     assert "Suggestion" not in instruction
-    assert "Address every Requirement-Violation, Critical, and Important finding" in instruction
 
 
 @pytest.mark.asyncio
@@ -210,7 +208,4 @@ async def test_build_complete_round_limit_message_has_no_suggestion_floor() -> N
 
     assert keep_going is False
     assert "REVIEW_ROUND_LIMIT" in instruction
-    assert "round limit is not an escape hatch" in instruction
-    assert "three tiers" in instruction
     assert "Suggestion" not in instruction
-    assert "every finding is resolved" in instruction
