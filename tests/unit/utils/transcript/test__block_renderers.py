@@ -89,6 +89,15 @@ class TestEntryProcessing:
         assert "second-line" not in lines[-1]
         assert "…`" in lines[-1]
 
+    def test_process_tool_use_block_drops_subject_when_equal_to_name(self) -> None:
+        cmd = "sed -n '1,220p' docs/project/design/code-commit.md"
+        lines: list[str] = []
+        block = {"name": cmd, "input": {"cmd": cmd}}
+
+        block_renderers._process_tool_use_block(block, "", lines)
+
+        assert lines[-1] == f"**`{cmd}`**"
+
     @pytest.mark.parametrize(
         ("collapse_tool_results", "expected_lines"),
         [

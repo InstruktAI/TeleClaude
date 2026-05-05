@@ -85,6 +85,32 @@ class TestRenderCleanAgentOutput:
         assert "Hidden" not in rendered
         assert last_entry_dt == datetime(2024, 1, 1, 12, 0, 1, tzinfo=UTC)
 
+    def test_drops_subject_when_codex_exec_command_name_equals_cmd(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cmd = "sed -n '1,220p' docs/project/design/code-commit.md"
+        entries = [
+            {
+                "timestamp": "2024-01-01T12:00:00Z",
+                "message": {"role": "user", "content": [{"type": "input_text", "text": "Prompt"}]},
+            },
+            {
+                "timestamp": "2024-01-01T12:00:01Z",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "tool_use", "name": cmd, "input": {"cmd": cmd}}],
+                },
+            },
+        ]
+        monkeypatch.setattr(transcript_rendering, "_get_entries_for_agent", lambda transcript_path, agent_name: entries)  # pyright: ignore[reportUnknownLambdaType]
+
+        rendered, _ = transcript_rendering.render_clean_agent_output("/tmp/demo.jsonl", AgentName.CODEX)
+
+        assert rendered is not None
+        assert f"**`{cmd}`**" in rendered
+        assert f"`{cmd}`: `" not in rendered
+
 
 class TestRenderAgentOutput:
     def test_includes_timestamps_tools_and_tool_results(

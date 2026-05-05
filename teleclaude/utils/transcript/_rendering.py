@@ -176,6 +176,8 @@ def _append_clean_tool_use_block(
     tool_name = str(block.get("name", "unknown"))
     tool_name_safe = tool_name.split("\n", maxsplit=1)[0].split("(")[0].split("{")[0].strip()
     subject = _extract_tool_subject(block)  # type: ignore[arg-type]
+    if subject == tool_name_safe:
+        subject = None
 
     formatted_name = f"**`{tool_name_safe}`**"
     base_len = len(tool_name_safe)

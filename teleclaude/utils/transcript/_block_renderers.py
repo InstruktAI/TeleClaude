@@ -286,6 +286,8 @@ def _process_tool_use_block(
 
     # 2. Extract subject and calculate budget
     subject = _extract_tool_subject(block)
+    if subject == tool_name_safe:
+        subject = None
 
     # Length budget: TOTAL length (prefix + name + subject decoration) <= 70.
     base_len = len(time_prefix) + len(tool_name_safe)
