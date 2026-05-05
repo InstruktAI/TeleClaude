@@ -96,18 +96,32 @@ Status semantics:
 
 ### Review Round Limit Handling (Orchestrator-Owned)
 
-When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator does not approve. The arithmetic-verdict rule from `lifecycle/work/review` applies at all round counts — round limit is not an escape hatch.
+When `telec todo work ...` returns `REVIEW_ROUND_LIMIT`, the orchestrator does not
+approve. The arithmetic-verdict rule from `lifecycle/work/review` applies at all
+round counts — round limit is not an escape hatch and there is no Suggestion-tier
+floor that lets unresolved findings pass.
 
 1. Inspect current evidence:
    - `telec todo artifacts read {slug} review-findings`
    - `todos.db` state
    - Fix commits since `review_baseline_commit`
 2. Decide and act:
-   - If any unresolved **Requirement-Violation**, **Critical**, or **Important** findings remain, keep `review=changes_requested`. Record the blocker summary in `review-closure.md`. Sessions stay alive as signal for the human. The orchestrator does not stamp approve.
-   - If only **Suggestion**-severity findings remain, mark `review=approved`. Suggestions by definition do not block delivery.
+   - If any unresolved **Requirement-Violation**, **Critical**, or **Important**
+     finding remains, keep `review=changes_requested`. Record the blocker summary
+     in `review-closure.md`. Sessions stay alive as signal for the human. The
+     orchestrator does not stamp approve under any circumstance.
+   - If every finding is resolved, mark `review=approved`. The verdict is
+     arithmetic: zero unresolved findings means APPROVE.
+   - If the loop is genuinely stuck (e.g. circular fix attempts, contradictory
+     findings, or a violation no fix can address), escalate to the human with the
+     accumulated findings and rationale. Do not invent a closure path.
 3. Record rationale in todo artifacts so the closure is auditable.
 
-The orchestrator must not rebrand Requirement-Violation or Important findings as "non-blocking" or "follow-up" to reach approve. Per the review procedure severity schema, such findings block regardless of round count. Deferral under round-limit is permitted only when the remaining findings are Suggestion.
+The orchestrator must not rebrand Requirement-Violation, Critical, or Important
+findings as "non-blocking", "follow-up", "suggestion", or any other reduced
+category to reach approve. Per the review procedure severity schema, such
+findings block regardless of round count. The schema has three tiers and every
+tier blocks the verdict — there is no fourth tier and no deferral path.
 
 - Point workers to `telec todo artifacts read {slug} requirements` or `implementation-plan.md`.
 - Reference project docs or standards.

@@ -42,6 +42,24 @@ boundaries. You may fix what exists — tighten rationale, add missing verificat
 steps, correct grounding errors. You may **never** add new tasks, change scope,
 or invent architectural decisions. If something is missing, mark `needs_work`.
 
+- Every finding must cite the specific policy, DoD line, principle, or spec it
+  violates. A finding without a citation is not a finding — drop it. See
+  `lifecycle/work/review` §6 for the required format.
+- The schema has two tiers for plan review: Critical, Important. There is no
+  fourth tier. There is no Suggestion bucket.
+
+**Forbidden reviewer moves.**
+
+- **Inventing a fourth tier.** No "Suggestion", "nit", "polish", "non-blocking",
+  or "follow-up" tier exists.
+- **Pre-existing-pattern dodge.** The reviewer evaluates the plan's resulting
+  state, not how it differs from a prior version. If the current text violates
+  a cited rule, the finding stands.
+- **Uncited findings.** If you cannot name the rule, you have an opinion, not
+  a finding. Drop it.
+- **Severity-softening to reach approve.** Words like "minor", "cosmetic", or
+  "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+
 When this dispatch comes after a digest mismatch (the message includes a
 `telec todo artifacts diff` command with old and new digests), the plan changed
 since your last approval. Run the diff command to see what changed and

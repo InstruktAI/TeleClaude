@@ -184,10 +184,11 @@ async def _work_step_build_complete(
                 f"Review rounds exceeded for {slug}: current={round_num}, "
                 f"max={DEFAULT_MAX_REVIEW_ROUNDS}. "
                 f"Per lifecycle/work/review severity schema and general/procedure/orchestration "
-                f"Review Round Limit Handling: approve is permitted only when the sole remaining "
-                f"findings are Suggestion-severity. Any unresolved Requirement-Violation, Critical, "
-                f"or Important finding keeps the review at changes_requested regardless of round "
-                f"count. Read review-findings and verify before any closure action."
+                f"Review Round Limit Handling: round limit is not an escape hatch. The schema has "
+                f"three tiers (Requirement-Violation, Critical, Important) and every tier blocks the "
+                f"verdict. Approve is permitted only when every finding is resolved. If any finding "
+                f"remains, keep review=changes_requested; if the loop is genuinely stuck, escalate "
+                f"to the human with the accumulated findings. Read review-findings and verify."
             ),
             next_call=f"telec todo artifacts read {slug} review-findings",
         )
@@ -272,7 +273,7 @@ async def _work_step_review_changes_requested(
     The lifecycle remains on ``review_changes_requested`` until the builder
     stamps ``build_complete`` after committing fixes that pass the build gates.
     """
-    _ = cwd
+    _ = cwd, todos_db
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     baseline_raw = build_review.get("baseline_commit", "")
@@ -314,7 +315,7 @@ async def _work_step_review_changes_requested(
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
         f"indicate a stated requirement's success criteria are not satisfied in the "
         f"delivery; fix the narrowing or the weak verification, do not argue severity. "
-        f"When every non-Suggestion finding is resolved, commit the fixes and run "
+        f"When every finding is resolved, commit the fixes and run "
         f"`telec todo stamp {slug} --build-complete`. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )

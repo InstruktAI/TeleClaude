@@ -136,7 +136,7 @@ Severity guidance:
 - Contract violations at boundaries → **Critical**.
 - Pattern violations that increase maintenance cost → **Important**.
 - Unnecessary complexity or duplication → **Important**.
-- Minor style inconsistencies → **Suggestion**.
+- Minor style inconsistencies that do not violate a cited policy → **drop the observation; it is not a finding**.
 
 #### Paradigm-fit assessment
 
@@ -217,7 +217,7 @@ Severity guidance:
 - Missing tests for new or changed behavior -> **Important**.
 - New or changed behavior covered only by weak tests -> **Important**.
 - A changed test that cannot answer the "what bug would this catch?" question -> **Important**.
-- Supplemental cleanup suggestions where a strong behavioral test already exists -> **Suggestion**.
+- Supplemental cleanup observations where a strong behavioral test already exists -> **drop the observation; it is not a finding**.
 
 Missing tests for new behavior are **Important** findings.
 Missing browser-smoke verification for browser-based frontend changes is an **Important** finding.
@@ -268,7 +268,7 @@ Severity guidance:
 - Types that allow invalid states to be constructed → **Important**.
 - Exposed mutable internals on shared types → **Important**.
 - Missing construction validation on boundary types → **Important**.
-- Minor encapsulation improvements → **Suggestion**.
+- Minor encapsulation improvements that do not violate a cited policy → **drop the observation; it is not a finding**.
 
 #### Comment accuracy review
 
@@ -286,7 +286,7 @@ Severity guidance:
 - Factually incorrect comments that will mislead future readers → **Important**.
 - Stale comments that describe pre-change behaviour → **Important**.
 - Commented-out code → **Important**.
-- Redundant comments that restate obvious code → **Suggestion**.
+- Redundant comments that restate obvious code → **Important** (per Comments policy: comments must earn their place; restating WHAT the code does is forbidden).
 
 #### Logging review
 
@@ -306,7 +306,7 @@ Severity guidance:
 - Sensitive data in logs → **Critical**.
 - Ad-hoc debug probes left in production code → **Important**.
 - Wrong log levels that hide errors or pollute INFO → **Important**.
-- Missing boundary logging for significant operations → **Suggestion**.
+- Missing boundary logging for significant operations → **Important** (per DoD §8 Observability: logging at key boundaries is required).
 
 #### Documentation and config surface check
 
@@ -339,7 +339,7 @@ Constraints:
 - Do not remove helpful abstractions that improve organisation.
 - Scope to recently changed code unless explicitly instructed otherwise.
 
-Simplification findings are **Suggestion** severity. They do not affect the verdict.
+Simplification findings are **Important** severity. The simplify lane only flags concrete violations of KISS, design-fundamentals (over-abstraction, dead code), or naming-clarity policy — those are real maintainability concerns and they affect the verdict. If an observation cannot be tied to one of those policies, drop it; it is not a finding.
 
 ### 5. Quality gates
 
@@ -411,6 +411,33 @@ Missing reproduction test for a bug fix is a **Critical** finding. All other rev
 
 Write the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
 
+#### Policy citation requirement
+
+Every finding must cite the specific policy, Definition of Done line, principle, or
+spec it violates. A finding without a citation is not a finding — drop it. The
+citation is the anchor that prevents reviewer judgement from drifting toward leniency:
+either the cited rule classifies the violation, or the observation does not belong
+in the report.
+
+Required format per finding:
+
+```
+Severity — Policy: <citation>
+Location: <file:line>
+Violation: <one sentence stating what the code does that the cited rule forbids>
+Fix: <one sentence stating the concrete change that brings the code into compliance>
+```
+
+A `<citation>` names a discoverable artifact: a policy snippet ID, a DoD section
+number, a principle name, or a spec section. "General code quality" is not a
+citation. "Best practices" is not a citation. If you cannot name the rule, you
+have an opinion, not a finding.
+
+The citation also defeats the pre-existing-pattern dodge. Reviewer evaluates the
+commit's resulting state, not its delta — if the code at this commit violates a
+cited rule, the finding stands regardless of whether the violation predates this
+commit. Touching a file is an enforcement opportunity.
+
 #### Severity schema
 
 Three severity tiers, highest to lowest:
@@ -425,8 +452,11 @@ Three severity tiers, highest to lowest:
   features, weakening or deleting prepare-delivered spec assertions. Code is wrong
   or adds scope that was not requested.
 - **Important**: scope gold-plating, missing tests for non-requirement behavior,
-  paradigm violations, style and maintainability concerns.
-- **Suggestion**: optional improvements. Do not affect verdict.
+  paradigm violations, policy violations, maintainability violations of cited rules.
+
+There is no fourth tier. The schema is intentionally three-deep so every cited
+violation lands on a tier that affects the verdict. Observations that cannot be
+classified into one of these tiers are not findings — drop them.
 
 #### Verdict rules
 
@@ -439,15 +469,14 @@ Verdict is arithmetic, not judgement:
   this. A requirement-gap is not an Important finding that can be rebranded.
 - If Critical or Important count > 0: verdict is `REQUEST CHANGES`.
 - If all three counts are 0: verdict is `APPROVE`.
-- Suggestion findings may remain unresolved under `APPROVE`.
 
 The reviewer must not invent categories ("non-blocking", "accepted", "deferred
-to follow-up") to reduce a count and achieve APPROVE. The reviewer must not
-classify requirement-gaps as Important or Critical to make them deferrable —
-requirement-gaps are Requirement-Violation by definition. The only way to
-reduce a count is to resolve the finding: auto-remediate it, or investigate
-and determine it is invalid with evidence. Overall delivery quality does not
-override individual finding severity.
+to follow-up", "suggestion", "nit", "polish") to reduce a count and achieve APPROVE.
+The reviewer must not classify requirement-gaps as Important or Critical to make
+them deferrable — requirement-gaps are Requirement-Violation by definition. The
+only way to reduce a count is to resolve the finding: auto-remediate it, or
+investigate and determine it is invalid with evidence. Overall delivery quality
+does not override individual finding severity.
 
 If all findings were remediated inline, record a short "Resolved During Review"
 section so the caller can trace what changed.
@@ -463,17 +492,21 @@ Report summary and verdict to the caller.
 ```
 REVIEW COMPLETE: {slug}
 
+Requirement-Violations:
+- [Issue with citation]
+
 Critical:
-- [Issue]
+- [Issue with citation]
 
 Important:
-- [Issue]
-
-Suggestions:
-- [Issue]
+- [Issue with citation]
 
 Verdict: APPROVE | REQUEST CHANGES
 ```
+
+Each entry under each tier follows the citation format from the Policy citation
+requirement above. A verdict line with no preceding tier sections (zero findings)
+must be accompanied by the "Why no issues" justification per §5 Quality gates.
 
 ## Outputs
 

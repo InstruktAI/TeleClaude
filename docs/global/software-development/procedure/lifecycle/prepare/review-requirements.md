@@ -127,11 +127,11 @@ Verdict rules:
 
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
-- Suggestion findings may remain unresolved under `approve`.
 
 If unresolved findings exist, write them to
 `telec todo artifacts read {slug} requirements-review-findings` with severity levels
-(Critical, Important, Suggestion) following the same format as code review findings.
+(Critical, Important) following the same format as code review findings, including
+the policy citation requirement defined in `lifecycle/work/review` §6.
 
 If no unresolved findings remain, remove stale `requirements-review-findings.md`
 if present.

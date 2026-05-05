@@ -36,9 +36,10 @@ Typical phase/artifact combinations:
 
 1. **Read the findings.** Load the findings artifact referenced in your dispatch
    message: `telec todo artifacts read {slug} {findings_artifact_name}`. Extract
-   Critical, Important, and Suggestion issues.
+   Requirement-Violation, Critical, and Important issues. Every finding is
+   actionable — there is no "Suggestion" tier to skip.
 
-2. **Address Critical and Important findings.** For each:
+2. **Address every finding.** For each:
    - Understand the issue and its referenced location.
    - Apply the minimal fix to the target artifact.
    - Verify via commit hooks (lint + unit tests) after each fix.
@@ -51,9 +52,9 @@ Typical phase/artifact combinations:
    timestamp (for artifact fixes). Persist via
    `telec todo artifacts write {slug} {findings_artifact_name} "<content>"`.
 
-4. **Update the verdict by arithmetic.** If any Critical or Important findings
-   remain unresolved, keep the current non-`APPROVE` verdict. If all Critical and
-   Important findings are resolved, change the verdict to `APPROVE`.
+4. **Update the verdict by arithmetic.** If any Requirement-Violation, Critical,
+   or Important findings remain unresolved, keep the current non-`APPROVE` verdict.
+   If every finding is resolved, change the verdict to `APPROVE`.
 
 5. **Commit worktree state.** Everything in the worktree belongs to the task —
    commit all files in the worktree.
@@ -68,7 +69,7 @@ Typical phase/artifact combinations:
 
 - Updated target artifact (code, `requirements`, `implementation-plan`, or test specs).
 - Updated findings artifact with a "Fixes Applied" section and a verdict reflecting
-  the remaining unresolved Critical and Important findings.
+  the remaining unresolved Requirement-Violation, Critical, and Important findings.
 
 ## Recovery
 

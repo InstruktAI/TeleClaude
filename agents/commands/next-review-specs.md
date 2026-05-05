@@ -62,6 +62,25 @@ false confidence. The per-criterion mapping is the mechanism that catches this: 
 cannot state how the named assertion distinguishes correct from broken, the assertion is
 weak. Produce the mapping; incomplete mapping = incomplete review.
 
+- Every finding must cite the specific policy, DoD line, principle, or requirement
+  criterion it violates. A finding without a citation is not a finding — drop it.
+  See `lifecycle/work/review` §6 for the required format.
+- The schema has three tiers: Requirement-Violation, Critical, Important. There
+  is no fourth tier. There is no Suggestion bucket.
+
+**Forbidden reviewer moves.**
+
+- **Inventing a fourth tier.** No "Suggestion", "nit", "polish", "non-blocking",
+  or "follow-up" tier exists.
+- **Pre-existing-pattern dodge.** The reviewer evaluates the spec suite's
+  resulting state. If the current specs violate a cited rule, the finding stands.
+- **Uncited findings.** If you cannot name the rule or criterion, you have an
+  opinion, not a finding. Drop it.
+- **Severity-softening to reach approve.** Words like "minor", "cosmetic", or
+  "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+- **Skipping the per-criterion mapping.** A criterion with no named assertion
+  is a Requirement-Violation, not an "incomplete" or "TBD" item.
+
 When this dispatch comes after a digest mismatch (the message includes a
 `telec todo artifacts diff` command with old and new digests), the spec content
 changed since your last approval. Run the diff command to see what changed and

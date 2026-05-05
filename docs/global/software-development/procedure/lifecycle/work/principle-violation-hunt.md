@@ -75,7 +75,10 @@ This is the highest-priority category. Unjustified fallbacks are **Critical** fi
 - Configurability for a single consumer.
 - Generic factories or dispatch tables where a direct call or simple conditional works.
 
-**Severity:** Suggestion for minor cases, Important for significant accidental complexity.
+**Severity:** Important. The hunt only flags premature abstractions, single-consumer
+configurability, and accidental complexity that violates KISS or YAGNI — those are
+real maintainability concerns. If the observation cannot be tied to a cited
+principle, drop it; it is not a finding.
 
 ### 7. Encapsulation
 
@@ -91,7 +94,8 @@ This is the highest-priority category. Unjustified fallbacks are **Critical** fi
 - Shared mutable state accessed by multiple callers or coroutines.
 - Mutable dataclass fields passed across module boundaries.
 
-**Severity:** Important for shared state mutation, Suggestion for local mutation.
+**Severity:** Important for shared state mutation. Local mutation that does not
+violate the immutability-preference policy is not a finding — drop the observation.
 
 ## Outputs
 
