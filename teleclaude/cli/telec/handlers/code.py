@@ -83,12 +83,13 @@ def handle_code(args: list[str]) -> None:
 
 
 def handle_code_changed(args: list[str]) -> None:
-    """List changed files.
+    """List the files telec code commit would commit if invoked now.
 
-    Three-way branch taxonomy:
-    - Worktree: single-task tree, list all dirty.
-    - main in project root: shared canonical, list session-scoped only.
-    - Other branches in project root: user-owned, list all dirty.
+    - Worktree or non-main project-root branch: every dirty file (staged or
+      unstaged) — those are the files `git add -A` or the trusted index would
+      include.
+    - main in project root: the staged set if non-empty (explicit intent
+      wins), otherwise the session transcript scope (auto-stage fallback).
     """
     _ = args
     project_root = resolve_project_root(resolve_invocation_cwd())
@@ -106,13 +107,19 @@ def handle_code_changed(args: list[str]) -> None:
             print(f)
         return
 
+    staged = _get_staged_files(project_root, include_deletions=True)
+    if staged:
+        for f in sorted(staged):
+            print(f)
+        return
+
     try:
         files = resolve_session_scope(project_root)
     except RuntimeError as exc:
         print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
     if not files:
-        print("No uncommitted session-scoped changes.")
+        print("No staged files and no session-scoped changes.")
         return
     for f in sorted(files):
         print(f)
@@ -126,7 +133,7 @@ def handle_code_commit(args: list[str]) -> None:
     Protection model:
     1. Orchestrator restriction
     2. Main-branch lock serialization
-    3. Shared branches: foreign staged file detection + session-scope staging
+    3. main: trust the index; auto-stage from transcript only if empty
     4. Worktrees: stage all dirty files
     5. Path A/B/C classification on main
     6. Format and lint staged files
@@ -169,10 +176,17 @@ def _commit_under_lock(
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
-    Three-way branch taxonomy:
-    - Worktree: single-task tree, stage all dirty.
-    - main in project root: shared canonical, strict session scope.
-    - Other branches in project root: user-owned, trust whatever is staged.
+    Staging policy:
+    - Worktree: single-task tree, stage all dirty (`git add -A`).
+    - main in project root: explicit `git add` is the authority. If anything is
+      already staged, trust it and commit. Only when the index is empty does
+      this command auto-stage from the session transcript scope.
+    - Other branches in project root: trust whatever the caller staged.
+
+    The wrapper at ~/.teleclaude/bin/git already enforces the intent layer
+    (no stash, no auto-stash, no sweep-add on main, explicit paths only). Any
+    pre-staged file got there by deliberate `git add`, so this command does
+    not re-litigate it.
     """
     repo = Repo(str(project_root))
     worktree = is_worktree(project_root)
@@ -182,25 +196,15 @@ def _commit_under_lock(
     if worktree:
         repo.git.add("-A")
     elif on_shared_main:
-        try:
-            scoped_files = resolve_session_scope(project_root)
-        except RuntimeError as exc:
-            print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
-            raise SystemExit(2) from exc
-
         pre_staged = _get_staged_files(project_root, include_deletions=True)
-        if pre_staged:
-            scoped_set = set(scoped_files)
-            foreign = [f for f in pre_staged if f not in scoped_set]
-            if foreign:
-                print("ERROR: staged files outside session scope:\n", file=sys.stderr)
-                for f in foreign:
-                    print(f"  {f}", file=sys.stderr)
-                print("\nUnstage with: git reset HEAD -- <file>", file=sys.stderr)
-                raise SystemExit(2)
-
-        if scoped_files:
-            _stage_files(scoped_files, project_root)
+        if not pre_staged:
+            try:
+                scoped_files = resolve_session_scope(project_root)
+            except RuntimeError as exc:
+                print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
+                raise SystemExit(2) from exc
+            if scoped_files:
+                _stage_files(scoped_files, project_root)
     # else: non-main branch in project root — trust whatever the caller staged.
 
     staged_for_commit = _get_staged_files(project_root, include_deletions=True)

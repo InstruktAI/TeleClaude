@@ -122,8 +122,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id> [<message>] [--direct] [--close-link]",
                 flags=[
                     _H,
-                    Flag("--session", "-s", "Session ID (compatibility form)"),
-                    Flag("--message", "-m", "Message text (compatibility form)"),
                     Flag("--direct", desc="Conversation mode: create shared direct link"),
                     Flag("--close-link", desc="Close direct link with target session (alias: --close_link)"),
                 ],
@@ -133,7 +131,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "After link creation, turn-complete outputs from linked peers are cross-shared automatically.",
                     "Only one party needs to send with --direct to establish the link.",
                     "Use --close-link to sever the direct link for all members.",
-                    "Compatibility flags (--session/--message) are accepted for scripts and older clients.",
                 ],
                 examples=[
                     'telec sessions send sess-123 "Please implement feature X"',
