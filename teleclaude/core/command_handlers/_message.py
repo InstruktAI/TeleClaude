@@ -11,7 +11,12 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
-from teleclaude.core.conversation_messages import is_conversation_bridge_message
+from teleclaude.core.conversation_messages import (
+    LinkedDirectOutputClassification,
+    classify_linked_direct_conversation_output,
+    is_conversation_bridge_message,
+    parse_linked_output_message,
+)
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
@@ -19,6 +24,7 @@ from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.inbound_queue import get_inbound_queue_manager
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
+from teleclaude.core.session_listeners import get_link, resolve_link_for_sender_target
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -70,6 +76,37 @@ async def _session_message_delivery_available(session: Session) -> bool:
     if not session.tmux_session_name:
         return False
     return await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False)
+
+
+async def _classify_direct_link_noop_output(
+    *,
+    session_id: str,
+    text: str,
+    source_channel_id: str | None,
+) -> tuple[str | None, str, LinkedDirectOutputClassification] | None:
+    """Return direct-link noop classification metadata, or None when output should pass."""
+    parsed = parse_linked_output_message(text)
+    if parsed is None:
+        return None
+
+    link_id = source_channel_id
+    if source_channel_id:
+        link = await get_link(source_channel_id)
+        if link is None or link.mode != "direct_link":
+            return None
+    else:
+        resolved = await resolve_link_for_sender_target(
+            sender_session_id=parsed.sender_session_id,
+            target_session_id=session_id,
+        )
+        if resolved is None or resolved[0].mode != "direct_link":
+            return None
+        link_id = resolved[0].link_id
+
+    classification = classify_linked_direct_conversation_output(text)
+    if classification.emit:
+        return None
+    return (link_id, parsed.sender_session_id, classification)
 
 
 async def handle_voice(
@@ -343,6 +380,26 @@ async def process_message(
         raise SessionMessageRejectedError(session_id=session_id, reason="closed")
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
+
+    noop_direct_output = await _classify_direct_link_noop_output(
+        session_id=session_id,
+        text=cmd.text,
+        source_channel_id=cmd.source_channel_id,
+    )
+    if noop_direct_output is not None:
+        link_id, source_session_id, classification = noop_direct_output
+        logger.info(
+            "Dropping linked direct output before enqueue",
+            extra={
+                "source_session_id": source_session_id,
+                "target_session_id": session_id,
+                "link_id": link_id,
+                "role": "assistant",
+                "reason": classification.reason,
+                "preview": classification.preview,
+            },
+        )
+        return
 
     await get_inbound_queue_manager().enqueue(
         session_id=session_id,

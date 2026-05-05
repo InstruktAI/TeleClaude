@@ -81,11 +81,10 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_started_bug_skips_dor_gate_and_dispatches() -> None:
-    """Bug lanes must dispatch build work even when DOR is not pass."""
+async def test_build_started_bug_skips_readiness_gate_and_dispatches() -> None:
+    """Bug lanes dispatch build work without going through is_ready_for_work."""
     state = {
         "kind": "bug",
-        "dor": {"score": 0, "status": "needs_work"},
         "lifecycle_phase": "build_started",
     }
     dispatched = object()
@@ -108,6 +107,38 @@ async def test_build_started_bug_skips_dor_gate_and_dispatches() -> None:
 
     assert keep_going is False
     assert instruction is dispatched
+
+
+@pytest.mark.asyncio
+async def test_build_started_rejects_pre_prepared_lifecycle_phase() -> None:
+    """Pre-prepared lifecycle_phase produces NOT_PREPARED at the work-step entry.
+
+    Integration coverage for the readiness gate wiring in _work_step_build_started:
+    the unit-tested is_ready_for_work helper is correct on its own, but this
+    test pins the call-site so a refactor that bypasses the helper would fail.
+    """
+    state = {
+        "kind": "todo",
+        "lifecycle_phase": "grounding_check",
+    }
+    blocked = object()
+
+    with patch(f"{_WORK_STEPS}.format_error", return_value=blocked) as format_error_mock:
+        keep_going, instruction = await _work_step_build_started(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug="test-slug",
+            cwd="/project",
+            worktree_cwd="/project/trees/test-slug",
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction is blocked
+    format_error_mock.assert_called_once()
+    args = format_error_mock.call_args
+    assert args.args[0] == "NOT_PREPARED"
+    assert "before 'prepared'" in args.args[1]
 
 
 # ── _work_step_review_changes_requested: waiting ─────────────────────────────

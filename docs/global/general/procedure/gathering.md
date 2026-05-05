@@ -137,4 +137,4 @@ The close is not a summary of the meeting. It is a gift back to the system — t
 ## See Also
 
 - ~/.teleclaude/docs/general/principle/attunement.md — The relational intelligence within each breath phase. Attunement is the micro; the gathering is the macro.
-- ~/.teleclaude/docs/general/procedure/agent-direct-conversation.md — Peer-to-peer messaging protocol used during the hold phase.
+- ~/.teleclaude/docs/general/spec/agent-shorthand.md — Phase markers and message discipline used during peer exchanges.

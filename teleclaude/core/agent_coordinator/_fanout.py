@@ -9,9 +9,13 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import LOCAL_COMPUTER, format_system_message
+from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_messages import (
+    classify_linked_direct_conversation_output,
+    format_linked_output_message,
+)
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -245,14 +249,32 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         sender = await db.get_session(sender_session_id)
         sender_label = sender.title if sender and sender.title else sender_session_id
         sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
-        framed_message = format_system_message(
-            f'Linked output from "{sender_label}" ({sender_session_id}) on {sender_computer}',
-            distilled_output,
+        framed_message = format_linked_output_message(
+            sender_label=sender_label,
+            sender_session_id=sender_session_id,
+            sender_computer=sender_computer,
+            content=distilled_output,
         )
 
         delivered = 0
         for link in links:
             peers = await get_peer_members(link_id=link.link_id, sender_session_id=sender_session_id)
+            if link.mode == "direct_link":
+                classification = classify_linked_direct_conversation_output(framed_message)
+                if not classification.emit:
+                    for peer in peers:
+                        logger.info(
+                            "Suppressed linked stop output fallback",
+                            extra={
+                                "source_session_id": sender_session_id,
+                                "target_session_id": peer.session_id,
+                                "link_id": link.link_id,
+                                "role": "assistant",
+                                "reason": classification.reason,
+                                "preview": classification.preview,
+                            },
+                        )
+                    continue
             for peer in peers:
                 target_computer = (
                     peer.computer_name
@@ -273,6 +295,7 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
                             origin=sender_origin,
                             actor_id=actor_id,
                             actor_name=actor_name,
+                            source_channel_id=link.link_id,
                         )
                         await get_command_service().process_message(cmd)
                     else:

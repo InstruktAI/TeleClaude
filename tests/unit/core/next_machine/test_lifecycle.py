@@ -159,7 +159,14 @@ class TestIsReadyForWork:
 
     @pytest.mark.parametrize(
         "phase",
-        ["build_started", "build_complete", "review_approved", "finalize_ready", "handed_off"],
+        [
+            "build_started",
+            "build_complete",
+            "review_changes_requested",
+            "review_approved",
+            "finalize_ready",
+            "handed_off",
+        ],
     )
     def test_at_or_beyond_prepared_ready(self, phase: str) -> None:
         """Resume mid-build/mid-review must succeed."""

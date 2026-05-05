@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -70,6 +71,47 @@ class TestFanoutLinkedStopOutput:
         ):
             result = await mixin._fanout_linked_stop_output("sess-001", "some output")
         assert result == 0
+
+    @pytest.mark.unit
+    async def test_direct_link_noop_output_is_suppressed(self):
+        mixin = _make_fanout()
+        sender = _make_session(session_id="sess-001", title="Sender", computer_name="peer-host")
+        peer = SimpleNamespace(session_id="sess-002", computer_name="local")
+        link = SimpleNamespace(link_id="link-001", mode="direct_link")
+        command_service = SimpleNamespace(process_message=AsyncMock())
+
+        with (
+            patch("teleclaude.core.agent_coordinator._fanout.db") as mock_db,
+            patch(
+                "teleclaude.core.agent_coordinator._fanout.get_active_links_for_session",
+                new_callable=AsyncMock,
+                return_value=[link],
+            ),
+            patch(
+                "teleclaude.core.agent_coordinator._fanout.get_peer_members",
+                new_callable=AsyncMock,
+                return_value=[peer],
+            ),
+            patch(
+                "teleclaude.core.agent_coordinator._fanout.get_command_service",
+                return_value=command_service,
+            ),
+            patch("teleclaude.core.agent_coordinator._fanout.logger") as logger,
+        ):
+            mock_db.get_session = AsyncMock(return_value=sender)
+            delivered = await mixin._fanout_linked_stop_output("sess-001", "Thanks.")
+
+        assert delivered == 0
+        command_service.process_message.assert_not_awaited()
+        extra = logger.info.call_args.kwargs["extra"]
+        assert extra == {
+            "source_session_id": "sess-001",
+            "target_session_id": "sess-002",
+            "link_id": "link-001",
+            "role": "assistant",
+            "reason": "acknowledgment_only",
+            "preview": "Thanks.",
+        }
 
 
 class TestNotifySessionListener:

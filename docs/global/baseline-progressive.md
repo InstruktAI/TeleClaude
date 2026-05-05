@@ -2,7 +2,7 @@
 @~/.teleclaude/docs/general/principle/explicit-inference.md
 @~/.teleclaude/docs/general/principle/continuity.md
 @~/.teleclaude/docs/general/principle/parallel-work.md
-@~/.teleclaude/docs/general/principle/agent-shorthand.md
+@~/.teleclaude/docs/general/principle/communication-compression.md
 @~/.teleclaude/docs/software-development/principle/failure-modes.md
 @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md

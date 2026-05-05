@@ -471,6 +471,56 @@ class TestProcessMessage:
             source_channel_id=None,
         )
 
+    @pytest.mark.unit
+    async def test_direct_link_noop_output_is_dropped_before_enqueue(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        session = make_session()
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        manager = SimpleNamespace(enqueue=AsyncMock())
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
+        monkeypatch.setattr(_message, "get_link", AsyncMock(return_value=SimpleNamespace(mode="direct_link")))
+
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text=format_system_message('Linked output from "Peer" (peer-001) on remote', "Thanks."),
+            origin="terminal",
+            source_channel_id="link-001",
+        )
+
+        await _message.process_message(cmd, SimpleNamespace(), AsyncMock())
+
+        manager.enqueue.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_direct_link_noop_output_is_dropped_without_source_channel_id(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session()
+        db = SimpleNamespace(get_session=AsyncMock(return_value=session))
+        manager = SimpleNamespace(enqueue=AsyncMock())
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
+        monkeypatch.setattr(
+            _message,
+            "resolve_link_for_sender_target",
+            AsyncMock(return_value=(SimpleNamespace(link_id="link-001", mode="direct_link"), [])),
+        )
+
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text=format_system_message('Linked output from "Peer" (peer-001) on remote', "Thanks."),
+            origin="terminal",
+        )
+
+        await _message.process_message(cmd, SimpleNamespace(), AsyncMock())
+
+        manager.enqueue.assert_not_awaited()
+
 
 class TestDeliverInboundReflectionBoundary:
     """Inbound delivery does not emit immediate reflection — projection handles it."""
