@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
 from teleclaude.quality.format import FormatRunner
 from teleclaude.quality.lint import LintRunner
-from teleclaude.quality.scope import get_project_languages, resolve_project_root
+from teleclaude.quality.scope import get_project_languages
 from teleclaude.quality.test_runner import TestRunner
 
 
@@ -19,7 +19,7 @@ def handle_lint(args: list[str]) -> None:
     """
     run_all = "--all" in args
     filtered = [a for a in args if a != "--all"]
-    project_root = resolve_project_root(resolve_invocation_cwd())
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
     runner = LintRunner(project_root=project_root)
 
     step_name, files = _parse_step_args(filtered)
@@ -67,7 +67,7 @@ def handle_test(args: list[str]) -> None:
     run_all = "--all" in args
     include_expensive = "--expensive" in args
     files = [a for a in args if a not in ("--expensive", "--all")]
-    project_root = resolve_project_root(resolve_invocation_cwd())
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
     runner = TestRunner(project_root=project_root, include_expensive=include_expensive)
     targets = runner.resolve_targets(files=files or None, run_all=run_all)
     runner.run(targets=targets)
@@ -80,7 +80,7 @@ def handle_format(args: list[str]) -> None:
     Positional args → format those specific files (pre-commit mode).
     """
     run_all = "--all" in args
-    project_root = resolve_project_root(resolve_invocation_cwd())
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
     languages = get_project_languages(project_root)
     runner = FormatRunner(project_root=project_root, languages=languages)
     files = [a for a in args if not a.startswith("-")]

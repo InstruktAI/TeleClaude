@@ -32,6 +32,16 @@ def _ensure_roadmap_sync(db: TodosDb, slug: str) -> None:
         conn.close()
 
 
+def _make_worktree(tmp_path: Path) -> tuple[Path, Path]:
+    main_root = tmp_path / "main"
+    worktree = tmp_path / "trees" / "workspace-scope-centralize"
+    gitdir = main_root / ".git" / "worktrees" / "workspace-scope-centralize"
+    gitdir.mkdir(parents=True)
+    worktree.mkdir(parents=True)
+    (worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
+    return main_root, worktree
+
+
 @pytest.fixture
 async def db(tmp_path: Path) -> AsyncIterator[TodosDb]:
     """Fresh TodosDb instance for each test."""
@@ -239,6 +249,34 @@ async def test_set_todos_mutation_hook_applies_to_new_get_todos_db_instance(tmp_
         assert calls == [project_root]
     finally:
         set_todos_mutation_hook(None)
+        _instances.pop(db_path, None)
+        if created is not None:
+            await created.close()
+
+
+async def test_get_todos_db_resolves_worktree_to_state_root(tmp_path: Path) -> None:
+    main_root, worktree = _make_worktree(tmp_path)
+    db_path = str(main_root / ".teleclaude" / "todos.db")
+    created: TodosDb | None = None
+    _instances.pop(db_path, None)
+    try:
+        created = await get_todos_db(worktree)
+        assert created.db_path == db_path
+    finally:
+        _instances.pop(db_path, None)
+        if created is not None:
+            await created.close()
+
+
+async def test_get_todos_db_sync_resolves_worktree_to_state_root(tmp_path: Path) -> None:
+    main_root, worktree = _make_worktree(tmp_path)
+    db_path = str(main_root / ".teleclaude" / "todos.db")
+    created: TodosDb | None = None
+    _instances.pop(db_path, None)
+    try:
+        created = get_todos_db_sync(worktree)
+        assert created.db_path == db_path
+    finally:
         _instances.pop(db_path, None)
         if created is not None:
             await created.close()

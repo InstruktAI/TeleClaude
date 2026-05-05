@@ -24,8 +24,8 @@ from teleclaude.core.next_machine.lifecycle import (
 )
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
-from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
 
 if TYPE_CHECKING:
@@ -169,7 +169,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     # Silence unused-import warnings for the helpers re-exported here.
     _ = _commit_writer
 
-    cwd = resolve_canonical_project_root(cwd)
+    cwd = str(resolve_state_root(cwd))
     todos_db = await get_todos_db(cwd)
 
     resolved_slug = slug

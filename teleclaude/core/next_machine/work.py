@@ -29,13 +29,13 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authori
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
-    resolve_canonical_project_root,
     resolve_slug_async,
     set_item_phase_db,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.work_steps import _work_dispatch
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
+from teleclaude.project_root import resolve_state_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -52,7 +52,7 @@ _SINGLE_FLIGHT_LOCKS: dict[tuple[str, str], asyncio.Lock] = {}
 
 async def _get_slug_single_flight_lock(cwd: str, slug: str) -> asyncio.Lock:
     """Return repo+slug lock keyed by canonical project root for strict isolation."""
-    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
+    canonical_cwd = str(await asyncio.to_thread(resolve_state_root, cwd))
     key = (canonical_cwd, slug)
     with _SINGLE_FLIGHT_GUARD:
         lock = _SINGLE_FLIGHT_LOCKS.get(key)
@@ -211,7 +211,7 @@ async def _advance_prepared_to_build_started(
 
 async def _normalize_next_work_cwd(cwd: str) -> str:
     """Normalize the requested cwd to the canonical project root."""
-    canonical_cwd = await asyncio.to_thread(resolve_canonical_project_root, cwd)
+    canonical_cwd = str(await asyncio.to_thread(resolve_state_root, cwd))
     if canonical_cwd != cwd:
         logger.debug(
             "next_work normalized cwd to canonical project root", requested_cwd=cwd, canonical_cwd=canonical_cwd

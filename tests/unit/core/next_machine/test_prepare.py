@@ -39,7 +39,7 @@ async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
     )
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo") as mock_resolve,
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo") as mock_resolve,
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
@@ -56,7 +56,7 @@ async def test_next_prepare_dispatches_no_active_work_to_prepare_draft() -> None
     todos_db = _mock_todos_db()
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}._find_next_prepare_slug_db", return_value=None),
         patch(f"{_PREPARE}.compose_agent_guidance", return_value="guidance"),
@@ -73,7 +73,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
     todos_db = _mock_todos_db()
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=["child-a", "child-b"]),
     ):
@@ -89,7 +89,7 @@ async def test_next_prepare_reads_stored_phase_and_returns_dispatch_instruction(
     todos_db = _mock_todos_db(state={"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "triangulation"})
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
@@ -130,7 +130,7 @@ async def test_next_prepare_keeps_marked_phase_even_when_later_artifacts_exist(t
         return (False, "dispatch")
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),
@@ -152,7 +152,7 @@ async def test_next_prepare_raises_on_missing_state() -> None:
     todos_db.read_state = AsyncMock(return_value=None)
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         pytest.raises(RuntimeError, match="Contract violation: no state record"),
@@ -174,7 +174,7 @@ async def test_next_prepare_adopts_explicit_draft_slug_into_prepare_lane(todos_d
         return (False, "dispatch")
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),
@@ -203,7 +203,7 @@ async def test_next_prepare_adopts_no_input_requirements_directly_to_test_spec_b
         return (False, "dispatch")
 
     with (
-        patch(f"{_PREPARE}.resolve_canonical_project_root", return_value="/repo"),
+        patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
         patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
         patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),

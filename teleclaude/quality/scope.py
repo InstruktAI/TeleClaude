@@ -1,13 +1,15 @@
 """Shared scope utilities for quality tooling.
 
-Worktree detection, session scope resolution, project root resolution,
-language detection, and path validation used by both lint and test runners.
+Workspace scope resolution, language detection, and path validation used by
+code, lint, and test commands.
 """
 
 from __future__ import annotations
 
 import logging
 import subprocess
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import yaml
@@ -36,6 +38,40 @@ _PRETTIER_EXTENSIONS = (
 )
 
 
+class WorkspaceScopeKind(Enum):
+    WORKTREE = "worktree"
+    SHARED_BRANCH = "shared_branch"
+
+
+class DirtyOp(Enum):
+    ADDED = "added"
+    MODIFIED = "modified"
+    DELETED = "deleted"
+
+
+@dataclass(frozen=True)
+class DirtyPath:
+    path: str
+    op: DirtyOp
+
+
+@dataclass(frozen=True)
+class WorkspaceScopeResolution:
+    """Resolved workspace scope.
+
+    ``dirty_paths`` is the full dirty set. ``scoped_dirty_paths`` is the
+    workspace-owned dirty subset, including deletions, for staging and index
+    checks. ``scoped_existing_paths`` excludes deletions and missing paths for
+    tools that require filesystem targets.
+    """
+
+    kind: WorkspaceScopeKind
+    has_session_identity: bool
+    dirty_paths: tuple[DirtyPath, ...]
+    scoped_dirty_paths: tuple[str, ...]
+    scoped_existing_paths: tuple[str, ...]
+
+
 def is_worktree(project_root: Path) -> bool:
     """Check if the project is in a git worktree (not the main repo).
 
@@ -62,57 +98,78 @@ def is_worktree(project_root: Path) -> bool:
         return False
 
 
-def resolve_session_scope(project_root: Path) -> list[str]:
-    """Resolve files touched by the current agent session for scoped operations.
-
-    Wraps session_identity.get_session_id and todo_scaffold._collect_session_touched_files.
-    Raises RuntimeError when no session identity exists or collection fails.
-    """
+def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeResolution:
+    """Resolve dirty workspace metadata and action-ready scoped paths."""
+    dirty_paths = _resolve_dirty_paths(project_root)
     session_id = get_session_id()
-    if not session_id:
-        raise RuntimeError("No active session identity")
+    has_session_identity = bool(session_id)
 
+    if is_worktree(project_root):
+        return WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=has_session_identity,
+            dirty_paths=dirty_paths,
+            scoped_dirty_paths=tuple(dirty.path for dirty in dirty_paths),
+            scoped_existing_paths=_existing_dirty_paths(project_root, dirty_paths),
+        )
+
+    if not session_id:
+        return WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.SHARED_BRANCH,
+            has_session_identity=False,
+            dirty_paths=dirty_paths,
+            scoped_dirty_paths=(),
+            scoped_existing_paths=(),
+        )
+
+    touched = _resolve_session_touched_paths(project_root)
+    dirty_path_set = {dirty.path for dirty in dirty_paths}
+    dirty_existing = set(_existing_dirty_paths(project_root, dirty_paths))
+    scoped_dirty = tuple(sorted(path for path in touched if path in dirty_path_set))
+    scoped = tuple(sorted(path for path in touched if path in dirty_existing))
+    return WorkspaceScopeResolution(
+        kind=WorkspaceScopeKind.SHARED_BRANCH,
+        has_session_identity=True,
+        dirty_paths=dirty_paths,
+        scoped_dirty_paths=scoped_dirty,
+        scoped_existing_paths=scoped,
+    )
+
+
+def _resolve_dirty_paths(project_root: Path) -> tuple[DirtyPath, ...]:
+    repo = Repo(str(project_root))
+    try:
+        status = repo.git.status("--porcelain", "--untracked-files=all")
+    except GitCommandError as exc:
+        raise RuntimeError(f"Failed to resolve dirty workspace paths: {exc}") from exc
+    return tuple(_parse_dirty_status_line(line) for line in status.splitlines() if len(line) > 3)
+
+
+def _parse_dirty_status_line(line: str) -> DirtyPath:
+    status_code = line[:2]
+    raw_path = line[3:].strip()
+    path = raw_path.rsplit(" -> ", maxsplit=1)[-1]
+    if "D" in status_code:
+        op = DirtyOp.DELETED
+    elif status_code == "??" or "A" in status_code:
+        op = DirtyOp.ADDED
+    else:
+        op = DirtyOp.MODIFIED
+    return DirtyPath(path=path, op=op)
+
+
+def _existing_dirty_paths(project_root: Path, dirty_paths: tuple[DirtyPath, ...]) -> tuple[str, ...]:
+    return tuple(
+        dirty.path for dirty in dirty_paths if dirty.op is not DirtyOp.DELETED and (project_root / dirty.path).exists()
+    )
+
+
+def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:
     try:
         touched: set[str] = _collect_session_touched_files(str(project_root))
     except Exception as exc:
         raise RuntimeError(f"Failed to collect session-touched files: {exc}") from exc
-
-    # Filter to files that exist on disk — session transcripts may reference
-    # example paths from docstrings that aren't real files.
-    existing = [f for f in sorted(touched) if (project_root / f).exists()]
-
-    # Intersect with git-dirty files — only include files that are actually
-    # modified or untracked. Touched files that were already committed or
-    # reverted are not actionable.
-    try:
-        repo = Repo(str(project_root))
-        status = repo.git.status("--porcelain")
-        dirty = set()
-        for line in status.splitlines():
-            if len(line) > 3:
-                dirty.add(line[3:].strip())
-        if dirty:
-            existing = [f for f in existing if f in dirty]
-    except (GitCommandError, Exception):
-        pass  # If git fails, return all existing files as fallback
-
-    return existing
-
-
-def resolve_project_root(cwd: Path) -> Path:
-    """Walk up from cwd to find the nearest project directory containing teleclaude.yml.
-
-    Hidden directories (name starts with ``'.'``) are skipped — they contain
-    system configuration, not project roots.
-    """
-    current = cwd.resolve()
-    while True:
-        if not current.name.startswith(".") and (current / "teleclaude.yml").exists():
-            return current
-        parent = current.parent
-        if parent == current:
-            raise FileNotFoundError("No teleclaude.yml found in directory hierarchy")
-        current = parent
+    return tuple(sorted(touched))
 
 
 def get_project_languages(project_root: Path) -> list[str]:
@@ -170,7 +227,7 @@ def validate_scoped_paths(paths: list[str], project_root: Path) -> list[str]:
     project_root_str = str(project_root.resolve())
     for p in paths:
         if ".." in p:
-            logger.warning("Rejected traversal path from session scope: %s", p)
+            logger.warning("Rejected traversal path from workspace scope: %s", p)
             continue
         if p.startswith("/") and not p.startswith(project_root_str):
             logger.warning("Rejected absolute path outside project root: %s", p)

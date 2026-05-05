@@ -10,11 +10,11 @@ from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, ha
 from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
-from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
 from teleclaude.quality.scope import (
-    is_worktree,
-    resolve_project_root,
-    resolve_session_scope,
+    WorkspaceScopeKind,
+    WorkspaceScopeResolution,
+    resolve_workspace_scope_resolution,
 )
 from teleclaude.session_identity import get_system_role
 
@@ -80,56 +80,38 @@ def handle_code(args: list[str]) -> None:
 
 
 def handle_code_changed(args: list[str]) -> None:
-    """List the files telec code commit would commit if invoked now.
-
-    - Worktree: every dirty file — `git add -A` will stage them all.
-    - Project root: the session transcript scope — the only source telec
-      uses for staging on the project root.
-    """
+    """List workspace-scoped changed files."""
     _ = args
-    project_root = resolve_project_root(resolve_invocation_cwd())
-    if is_worktree(project_root):
-        repo = Repo(str(project_root))
-        status = repo.git.status("--porcelain")
-        dirty = [line[3:].strip() for line in status.splitlines() if len(line) > 3]
-        if not dirty:
-            print("No uncommitted changes.")
-            return
-        for f in sorted(dirty):
-            print(f)
-        return
-
-    try:
-        files = resolve_session_scope(project_root)
-    except RuntimeError as exc:
-        print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    scope_resolution = resolve_workspace_scope_resolution(project_root)
+    files = _changed_paths(scope_resolution)
     if not files:
-        print("No session-scoped changes.")
+        print("No uncommitted workspace-scoped changes.")
         return
     for f in sorted(files):
         print(f)
 
 
 def handle_code_commit(args: list[str]) -> None:
-    """Stage the agent's session scope and commit it with a pathspec-scoped commit.
+    """Stage workspace-scoped files and commit them with a pathspec-scoped commit.
 
     Flags: -m <message>. Everything else passes through to git commit.
 
     Caller paths:
     - Outside tmux: the wrapper passes through to plain git; this command is
       not in the picture.
-    - Inside tmux, autonomous agent: this command. Staging source is the
-      transcript scope (worktree → all dirty). The final `git commit` runs
-      with an explicit pathspec so anything else in the index (concurrent
-      stage from another session, crash residue) is left untouched.
-    - Inside tmux, supervised one-off: `TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>`
-      bypasses the wrapper redirect. This command is not in the picture.
+    - Inside tmux, autonomous agent: this command. Workspace scope drives
+      staging. The final ``git commit`` runs with an explicit pathspec so
+      anything else in the index (concurrent stage from another session,
+      crash residue) is left untouched.
+    - Inside tmux, supervised one-off:
+      ``TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>`` bypasses the
+      wrapper redirect. This command is not in the picture.
 
     Safety primitives:
-    1. Orchestrator restriction (callers in role 'orchestrator' are rejected).
-    2. main-branch lock serialises all `_commit_under_lock` bodies.
-    3. Pathspec on the final `git commit` scopes the commit to exactly the
+    1. Orchestrator restriction.
+    2. main-branch lock serialises all ``_commit_under_lock`` bodies.
+    3. Pathspec on the final ``git commit`` scopes the commit to exactly the
        files telec staged.
     4. Pre-commit hook owns format + lint inside git's own atomicity.
     5. Path A/B/C classification on main for non-integrator, non-approved
@@ -152,7 +134,7 @@ def handle_code_commit(args: list[str]) -> None:
             i += 1
 
     system_role = get_system_role()
-    project_root = resolve_project_root(resolve_invocation_cwd())
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
 
     with main_branch_lock():
         _commit_under_lock(
@@ -174,31 +156,19 @@ def _commit_under_lock(
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
-    Staging policy:
-    - Worktree: single-task tree, stage all dirty (`git add -A`).
-    - Project root (any branch): stage the session transcript scope.
-
-    The pre-commit hook owns format and lint inside git's own atomicity. The
-    final `git commit` runs with an explicit pathspec so any other content in
-    the index (concurrent stage from another session, crash residue) is not
-    swept into this commit.
+    Stages the files in the workspace scope and commits with an explicit
+    pathspec. Anything else in the index (concurrent stage from another
+    session, crash residue) is left untouched. The pre-commit hook owns
+    format and lint inside git's own atomicity.
     """
-    repo = Repo(str(project_root))
-    worktree = is_worktree(project_root)
-    current_branch = _current_branch(project_root)
+    scope_resolution = resolve_workspace_scope_resolution(project_root)
+    stage_paths = _commit_stage_paths(scope_resolution)
 
-    if worktree:
-        repo.git.add("-A")
-    else:
-        try:
-            scoped_files = resolve_session_scope(project_root)
-        except RuntimeError as exc:
-            print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
-            raise SystemExit(2) from exc
-        if not scoped_files:
-            print("Nothing to commit (session scope is empty).", file=sys.stderr)
-            raise SystemExit(1)
-        _stage_files(scoped_files, project_root)
+    if stage_paths:
+        pre_staged_set = set(_get_staged_files(project_root, include_deletions=True))
+        unstaged_stage_paths = [path for path in stage_paths if path not in pre_staged_set]
+        if unstaged_stage_paths:
+            _stage_files(unstaged_stage_paths, project_root)
 
     staged_for_commit = _get_staged_files(project_root, include_deletions=True)
     if not staged_for_commit:
@@ -211,19 +181,18 @@ def _commit_under_lock(
     commit_args = ["-m", message] if message else []
     commit_args.extend(git_args)
 
+    current_branch = _current_branch(project_root)
     if current_branch == "main" and system_role != "integrator" and not approved:
-        # Classification looks at functional file extensions; deletions are
-        # handled by including the full set with `staged_for_commit`.
-        _classify_main_commit(commit_args, _get_staged_files(project_root))
+        _classify_main_commit(commit_args, staged_for_commit)
 
-    # Pathspec scopes the commit to exactly what telec staged; anything else in
-    # the index (concurrent stage from another session, crash residue) is left
-    # alone for its owner to commit or for a human to clean up. Deletions must
-    # be included so they make it into the commit.
+    # Pathspec scopes the commit to exactly what telec staged for this scope;
+    # anything else in the index is left alone for its owner to commit or for
+    # a human to clean up. Deletions must be included so they make it in.
     commit_args.extend(["--", *staged_for_commit])
 
     # Commit via gitpython (uses real binary, bypasses wrapper). The pre-commit
     # hook runs format and lint inside git's own atomicity.
+    repo = Repo(str(project_root))
     try:
         repo.git.commit(*commit_args)
     except GitCommandError as exc:
@@ -289,6 +258,18 @@ def _is_functional(filepath: str) -> bool:
         return True
     _, ext = os.path.splitext(name)
     return ext in _FUNCTIONAL_EXTENSIONS
+
+
+def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
+    if scope_resolution.kind is WorkspaceScopeKind.WORKTREE:
+        return [dirty.path for dirty in scope_resolution.dirty_paths]
+    return list(scope_resolution.scoped_dirty_paths)
+
+
+def _changed_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
+    if scope_resolution.kind is WorkspaceScopeKind.WORKTREE:
+        return [dirty.path for dirty in scope_resolution.dirty_paths]
+    return list(scope_resolution.scoped_existing_paths)
 
 
 def _stage_files(files: list[str], project_root: Path) -> None:

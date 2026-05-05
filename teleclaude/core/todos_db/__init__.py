@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 
 from ._artifacts import TodosDbArtifactsMixin
 from ._base import TodosDbBase
@@ -44,8 +44,9 @@ def set_todos_mutation_hook(hook: Callable[[TodosDb, str], None] | None) -> None
     _new_instance_hook = hook
 
 
-async def get_todos_db(project_root: str) -> TodosDb:
-    """Return a TodosDb instance for the given project root, creating if needed."""
+async def get_todos_db(project_root_or_cwd: str | Path) -> TodosDb:
+    """Return a TodosDb instance for the canonical state root, creating if needed."""
+    project_root = str(resolve_state_root(project_root_or_cwd))
     db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
     if db_path not in _instances:
         instance = TodosDb(db_path)
@@ -56,9 +57,9 @@ async def get_todos_db(project_root: str) -> TodosDb:
     return _instances[db_path]
 
 
-def get_todos_db_sync(project_root_or_cwd: str) -> TodosDb:
+def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
     """Sync sibling of get_todos_db: resolve project root, return cached TodosDb."""
-    project_root = str(resolve_main_repo_root(project_root_or_cwd))
+    project_root = str(resolve_state_root(project_root_or_cwd))
     db_path = str(Path(project_root) / ".teleclaude" / "todos.db")
     if db_path not in _instances:
         instance = TodosDb(db_path)

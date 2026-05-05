@@ -30,13 +30,13 @@ from teleclaude.config import config
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
 from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.todos import BreakdownState
 
 if TYPE_CHECKING:
@@ -243,7 +243,7 @@ async def todo_set_deps(  # pyright: ignore
 
 async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     """Resolve the todos DB for the given project cwd."""
-    project_root = resolve_canonical_project_root(cwd)
+    project_root = resolve_state_root(cwd)
     return await get_todos_db(project_root)
 
 

@@ -21,6 +21,12 @@ class _SessionDb:
     def __init__(self, sessions: Mapping[str, object]) -> None:
         self._sessions = sessions
 
+    def is_initialized(self) -> bool:
+        return True
+
+    async def initialize(self) -> None:
+        return None
+
     async def get_session(self, session_id: str) -> object | None:
         return self._sessions.get(session_id)
 
@@ -186,7 +192,7 @@ async def test_build_complete_validates_evidence_and_advances(tmp_path: Path) ->
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with (
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
-            patch(f"{_STAMPS}.resolve_main_repo_root", return_value=str(tmp_path)),
+            patch(f"{_STAMPS}.resolve_state_root", return_value=str(tmp_path)),
             patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
             patch(f"{_STAMPS}.run_build_gates", return_value=(True, "passed")),
         ):
@@ -214,7 +220,7 @@ async def test_build_complete_rejects_gate_failure(tmp_path: Path) -> None:
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with (
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
-            patch(f"{_STAMPS}.resolve_main_repo_root", return_value=str(tmp_path)),
+            patch(f"{_STAMPS}.resolve_state_root", return_value=str(tmp_path)),
             patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
             patch(f"{_STAMPS}.run_build_gates", return_value=(False, "gate failed")),
         ):

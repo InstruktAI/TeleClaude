@@ -449,11 +449,11 @@ class TestCodexMcpConfig:
         assert server["command"] == "uvx"
 
 
-class TestResolveMainRepoRoot:
-    """Tests for resolve_main_repo_root."""
+class TestResolveStateRoot:
+    """Tests for resolve_state_root."""
 
     def test_follows_worktree_gitdir_to_main_repository(self, tmp_path: Path) -> None:
-        """resolve_main_repo_root follows gitdir pointer in worktrees to find the main repo."""
+        """resolve_state_root follows gitdir pointer in worktrees to find the main repo."""
         main_repo = tmp_path / "main"
         worktree = tmp_path / "worktree"
         gitdir = main_repo / ".git" / "worktrees" / "demo"
@@ -461,6 +461,6 @@ class TestResolveMainRepoRoot:
         worktree.mkdir()
         (worktree / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
 
-        resolved = configure_agent_cli.resolve_main_repo_root(worktree)
+        resolved = configure_agent_cli.resolve_state_root(worktree)
 
         assert resolved == main_repo

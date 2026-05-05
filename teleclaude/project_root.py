@@ -1,11 +1,11 @@
-"""Canonical project-root and invocation-cwd resolution."""
+"""Canonical TeleClaude path-root resolution."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
-__all__ = ["resolve_invocation_cwd", "resolve_main_repo_root"]
+__all__ = ["resolve_invocation_cwd", "resolve_state_root", "resolve_workspace_root"]
 
 
 def resolve_invocation_cwd() -> Path:
@@ -39,13 +39,32 @@ def resolve_invocation_cwd() -> Path:
     return Path.cwd()
 
 
-def resolve_main_repo_root(start: str | Path) -> Path:
-    """Resolve the main git repository root for *start*.
+def resolve_workspace_root(start: str | Path) -> Path:
+    """Return the checkout/worktree root where commands should execute.
+
+    Walks up from ``start`` to find the nearest TeleClaude project checkout by
+    locating ``teleclaude.yml``. In todo worktrees this returns the worktree
+    root, not the main checkout.
+    """
+    current = Path(start).expanduser().resolve()
+    if current.is_file():
+        current = current.parent
+    while True:
+        if not current.name.startswith(".") and (current / "teleclaude.yml").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            raise FileNotFoundError("No teleclaude.yml found in directory hierarchy")
+        current = parent
+
+
+def resolve_state_root(start: str | Path) -> Path:
+    """Return the canonical main project root where shared state lives.
 
     Accepts a path at the repo root, inside the repo, or inside a git worktree.
     Falls back to the provided path when no git metadata can be found.
     """
-    current = Path(start).expanduser()
+    current = Path(start).expanduser().resolve()
     if current.is_file():
         current = current.parent
     original = current
