@@ -16,10 +16,11 @@ The human_role comes from DB session record or terminal email mapping.
 from __future__ import annotations
 
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from teleclaude.cli.telec import is_command_allowed
 from teleclaude.constants import (
@@ -320,13 +321,44 @@ def require_clearance(tool_name: str):  # type: ignore[no-untyped-def]
     return _check
 
 
+async def _is_self_agent_restart_request(request: Request, session_id: str, identity: CallerIdentity) -> bool:
+    """Return True when the restart request is scoped to the caller's own session."""
+    if not identity.session_id or identity.session_id != session_id:
+        return False
+    content_type = request.headers.get("content-type", "")
+    if content_type.split(";", maxsplit=1)[0].strip().lower() != "application/json":
+        return False
+    try:
+        payload: object = await request.json()
+    except ValueError:
+        return False
+    return isinstance(payload, Mapping) and payload.get("self_restart") is True
+
+
+async def clearance_sessions_agent_restart(
+    request: Request,
+    session_id: str,
+    identity: CallerIdentity = Depends(verify_caller),
+) -> CallerIdentity:
+    """Authorize session restarts, allowing any caller to restart only itself."""
+    if await _is_self_agent_restart_request(request, session_id, identity):
+        return identity
+    tool_name = "telec sessions restart"
+    if identity.system_role == ROLE_WORKER or _is_tool_denied(tool_name, identity):
+        role_desc = identity.system_role or identity.human_role or "unauthorized"
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{role_desc}' is not permitted to call {tool_name}",
+        )
+    return identity
+
+
 clearance_sessions_start = require_clearance("telec sessions start")
 clearance_sessions_list = require_clearance("telec sessions list")
 clearance_sessions_run = require_clearance("telec sessions run")
 clearance_sessions_send = require_clearance("telec sessions send")
 clearance_sessions_keys = require_clearance("telec sessions send")
 clearance_sessions_voice = require_clearance("telec sessions send")
-clearance_sessions_agent_restart = require_clearance("telec sessions run")
 clearance_sessions_revive = require_clearance("telec sessions run")
 clearance_sessions_tail = require_clearance("telec sessions tail")
 clearance_sessions_unsubscribe = require_clearance("telec sessions unsubscribe")

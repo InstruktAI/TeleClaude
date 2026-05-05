@@ -225,7 +225,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Restart an agent session ('self' to restart own session)",
                 args="<session_id>",
                 flags=[_H],
-                auth=CommandAuth(system=_SYS_ORCH, human=_HR_ADMIN),
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ADMIN),
             ),
             "result": CommandDef(
                 desc="Send a formatted result to the session's user",

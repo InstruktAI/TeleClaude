@@ -12,11 +12,13 @@ from fastapi import HTTPException
 from teleclaude.api.auth import (
     CallerIdentity,
     _is_tool_denied,
+    clearance_sessions_agent_restart,
     clearance_sessions_run,
     clearance_sessions_start,
     verify_caller,
 )
 from teleclaude.cli.telec import CommandAuth, is_command_allowed
+from teleclaude.constants import ROLE_WORKER
 from teleclaude.core import db_models
 
 # ---------------------------------------------------------------------------
@@ -51,6 +53,17 @@ def _make_token_record(
     record.principal = principal
     record.role = role
     return record
+
+
+class _JsonBodyRequest:
+    """Minimal request double for clearance checks that inspect JSON bodies."""
+
+    def __init__(self, body: object) -> None:
+        self.headers = {"content-type": "application/json"}
+        self._body = body
+
+    async def json(self) -> object:
+        return self._body
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +375,76 @@ class TestIsCommandAllowed:
     @pytest.mark.unit
     def test_escalate_allows_worker_agent(self):
         assert is_command_allowed("sessions escalate", system_role="worker", human_role=None) is True
+
+    @pytest.mark.unit
+    def test_restart_command_available_to_worker_agents(self):
+        assert is_command_allowed("sessions restart", system_role=ROLE_WORKER, human_role=None) is True
+
+
+# ---------------------------------------------------------------------------
+# Restart clearance — self restart is caller-owned, arbitrary restart is privileged
+# ---------------------------------------------------------------------------
+
+
+class TestAgentRestartClearance:
+    """Tests for argument-aware authorization on the session restart endpoint."""
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_worker_agent_can_restart_own_session(self):
+        identity = CallerIdentity(
+            session_id="sess-001",
+            system_role=ROLE_WORKER,
+            human_role=None,
+            tmux_session_name="tmux-sess-001",
+        )
+
+        result = await clearance_sessions_agent_restart(
+            _JsonBodyRequest({"self_restart": True}),
+            "sess-001",
+            identity,
+        )
+
+        assert result is identity
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_worker_agent_cannot_restart_another_session(self):
+        identity = CallerIdentity(
+            session_id="sess-001",
+            system_role=ROLE_WORKER,
+            human_role=None,
+            tmux_session_name="tmux-sess-001",
+        )
+
+        with pytest.raises(HTTPException) as exc_info:
+            await clearance_sessions_agent_restart(
+                _JsonBodyRequest({"self_restart": True}),
+                "sess-002",
+                identity,
+            )
+
+        assert exc_info.value.status_code == 403
+        assert "telec sessions restart" in str(exc_info.value.detail)
+        assert "telec sessions run" not in str(exc_info.value.detail)
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_admin_can_restart_arbitrary_session(self):
+        identity = CallerIdentity(
+            session_id="",
+            system_role=None,
+            human_role="admin",
+            tmux_session_name=None,
+        )
+
+        result = await clearance_sessions_agent_restart(
+            _JsonBodyRequest({}),
+            "sess-002",
+            identity,
+        )
+
+        assert result is identity
 
 
 # ---------------------------------------------------------------------------

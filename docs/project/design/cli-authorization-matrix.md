@@ -57,7 +57,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec sessions revive`      | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Reviving a dead session is admin infrastructure. Admin only.                                                                                                                                  |
 | `telec sessions end`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Members can end their own sessions (self-scoped enforcement at API layer). Workers, contributors, newcomers, and customers cannot.                                                            |
 | `telec sessions unsubscribe` | W    | ✅     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Workers manage their own notification subscriptions. Matches send restrictions for non-admin human roles.                                                                                     |
-| `telec sessions restart`     | W    | ❌     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Restarting sessions is admin infrastructure. Admin only.                                                                                                                                      |
+| `telec sessions restart`     | W    | ✅     | ✅   | ✅    | ❌     | ❌          | ❌       | ❌       | Workers may restart only their own session for artifact reloads; arbitrary session restart remains admin infrastructure enforced at the API layer.                                            |
 | `telec sessions result`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send results back to their orchestrator -- this is their primary output mechanism. Newcomers and customers have no reason to send results.                                            |
 | `telec sessions file`        | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers send files back to their user. Same as result.                                                                                                                                        |
 | `telec sessions widget`      | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Workers render widgets for their user. Same as result.                                                                                                                                        |
@@ -193,7 +193,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | Command                       | Should be restricted for                    |
 | ----------------------------- | ------------------------------------------- |
 | `telec sessions revive`       | Contributors, newcomers, customers          |
-| `telec sessions restart`      | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
 | `telec sessions widget`       | Newcomers, customers                        |
 | `telec init`                  | Contributors, newcomers, customers          |
