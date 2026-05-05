@@ -256,11 +256,14 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "     Otherwise dispatch a fresh one:\n"
         "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
         " --agent <agent>\n"
-        "     BLOCKING: Do not proceed, end sessions, or report completion until the\n"
-        "     reviewer outputs a verdict. Tail the reviewer session for the verdict.\n"
+        "     BLOCKING: Do not proceed, end sessions, or report completion until the reviewer completes.\n"
+        "     The completed turn must contain `REVIEW COMPLETE: commits ...` with a verdict.\n"
+        "     Do not poll. Wait for the reviewer finished-turn notification.\n"
+        "     Use the heartbeat only as the stale-notification fallback.\n"
+        "     Then tail once and inspect the terminal report.\n"
         "     Commit reviews have no todo slug — do not instruct the reviewer to stamp.\n"
-        "     If REQUEST CHANGES, fix and re-submit to the same reviewer.\n"
-        "     Only an APPROVE verdict closes the review gate.\n"
+        "     If REQUEST CHANGES or no terminal report, fix/clarify and re-submit to the same reviewer.\n"
+        "     Only `Verdict: APPROVE` closes the review gate.\n"
         "\n"
         "Explain which classification applies and why.",
         file=sys.stderr,
