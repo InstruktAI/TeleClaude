@@ -43,6 +43,7 @@ Execute the build phase for the slug and verify completion.
 ## Steps
 
 - Follow the build procedure.
+- When the build is committed and gates pass, run `telec todo stamp {slug} --build-complete`.
 - End with: `Ready for review.`
 
 ## Discipline

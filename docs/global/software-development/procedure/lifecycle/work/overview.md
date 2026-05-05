@@ -83,9 +83,9 @@ If `deferrals.md` exists, the state machine dispatches deferral resolution via
 For bug-type work items, the state machine dispatches `next-bugs-fix` instead of
 the standard build flow. The bug fixer follows systematic debugging methodology.
 
-Its post-completion bookkeeping matches the normal build path: persist the build
-completion transition first, then re-enter `telec todo work [slug]`, and loop on
-build-gate failures until they pass or a blocker remains.
+Its post-completion bookkeeping matches the normal build path: the fixer stamps
+`telec todo stamp [slug] --build-complete`, then the orchestrator re-enters
+`telec todo work [slug]`.
 
 ## Outputs
 

@@ -38,60 +38,11 @@ def _base_state(*, kind: str = "todo", dor_score: int = 8, lifecycle_phase: str 
 
 
 @pytest.mark.asyncio
-async def test_build_started_auto_advances_when_commits_and_gates_pass() -> None:
-    """Passing gates auto-advance to build_complete without an exposed stamp."""
+async def test_build_started_waits_for_builder_completion_stamp() -> None:
+    """A live builder owns the explicit build_complete stamp."""
     state = _base_state()
 
-    with (
-        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=True),
-        patch(f"{_WORK_STEPS}.run_build_gates", return_value=(True, "GATE PASSED")),
-    ):
-        keep_going, instruction = await _work_step_build_started(
-            db=_mock_db(),
-            todos_db=_mock_todos_db(),
-            slug="test-slug",
-            cwd="/project",
-            worktree_cwd="/project/trees/test-slug",
-            state=state,
-        )
-
-    assert keep_going is True
-    assert instruction == ""
-
-
-@pytest.mark.asyncio
-async def test_build_started_returns_gate_failure_when_gates_fail() -> None:
-    """When builder is dispatched and commits exist but gates fail, return gate failure output."""
-    state = _base_state()
-
-    with (
-        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=True),
-        patch(f"{_WORK_STEPS}.run_build_gates", return_value=(False, "GATE FAILED: scoped tests")),
-    ):
-        keep_going, instruction = await _work_step_build_started(
-            db=_mock_db(),
-            todos_db=_mock_todos_db(),
-            slug="test-slug",
-            cwd="/project",
-            worktree_cwd="/project/trees/test-slug",
-            state=state,
-        )
-
-    assert keep_going is False
-    assert "BUILD GATES FAILED" in instruction
-
-
-@pytest.mark.asyncio
-async def test_build_started_waits_when_builder_has_no_commits() -> None:
-    """When builder exists but hasn't committed, return wait instruction."""
-    state = _base_state()
-
-    with (
-        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")),
-        patch(f"{_WORK_STEPS}.has_build_commits_beyond_main", return_value=False),
-    ):
+    with patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="sess-123")):
         keep_going, instruction = await _work_step_build_started(
             db=_mock_db(),
             todos_db=_mock_todos_db(),
@@ -103,7 +54,7 @@ async def test_build_started_waits_when_builder_has_no_commits() -> None:
 
     assert keep_going is False
     assert "BUILDER ACTIVE" in instruction
-    assert "no commits beyond main" in instruction
+    assert "telec todo stamp test-slug --build-complete" in instruction
 
 
 @pytest.mark.asyncio
@@ -162,8 +113,8 @@ async def test_build_started_bug_skips_dor_gate_and_dispatches() -> None:
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_auto_advances_when_fixes_pass_gates() -> None:
-    """Committed fixes reopen review once gates pass; no exposed build-complete stamp remains."""
+async def test_review_changes_requested_waits_for_fix_completion_stamp_after_commits() -> None:
+    """Committed fixes are evidence only until the builder stamps completion."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
         "build_review": {
@@ -176,7 +127,7 @@ async def test_review_changes_requested_auto_advances_when_fixes_pass_gates() ->
 
     with (
         patch(f"{_WORK_STEPS}.get_head_commit", return_value="bbb222"),
-        patch(f"{_WORK_STEPS}.run_build_gates", return_value=(True, "GATE PASSED")),
+        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="builder-1")),
     ):
         keep_going, instruction = await _work_step_review_changes_requested(
             db=_mock_db(),
@@ -187,5 +138,6 @@ async def test_review_changes_requested_auto_advances_when_fixes_pass_gates() ->
             state=state,
         )
 
-    assert keep_going is True
-    assert instruction == ""
+    assert keep_going is False
+    assert "FIX WORK NOT STAMPED" in instruction
+    assert "telec todo stamp test-slug --build-complete" in instruction

@@ -2,16 +2,13 @@
 
 Exposes the next-machine state machine functions (prepare, work) and roadmap
 mutation operations as REST endpoints with dual-factor caller identity
-enforcement. Verdict, DOR, grounding, and finalize stamps flow through
-``/stamp/{slug}``. Operator phase overrides flow through
-``/mark-phase/{slug}`` and write the authoritative ``lifecycle_phase`` field.
+enforcement. Local todo stamping and operator phase overrides are CLI-local
+mutations, not API routes.
 """
 
 from __future__ import annotations
 
-import asyncio
 import re
-import sqlite3
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -26,51 +23,26 @@ from teleclaude.api.auth import (
     clearance_todos_prepare,
     clearance_todos_remove,
     clearance_todos_set_deps,
-    clearance_todos_stamp,
     clearance_todos_work,
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
-from teleclaude.core.db import db
-from teleclaude.core.next_machine._types import (
-    PreparePhase,
-    WorkPhase,
-    default_state,
-)
+from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.slug_resolution import resolve_canonical_project_root
-from teleclaude.core.next_machine.state_io import (
-    _BUILD_VERDICT_PHASE,
-    _BUILD_VERDICT_VALUES,
-    _PREPARE_VERDICT_PHASES,
-    _PREPARE_VERDICT_VALUES,
-    apply_prepared_state,
-    mark_phase_state,
-    stamp_finalize_ready,
-    stamp_verdict,
-)
-from teleclaude.core.next_machine.state_mutation import (
-    GroundingManager,
-    PreparePairManager,
-    StateMutationError,
-    StateWriter,
-)
+from teleclaude.core.next_machine.state_io import apply_prepared_state
+from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
-from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.producer import emit_event
-from teleclaude.git import GitCommandError
-from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import BreakdownState, DorState, PreparePairSlot
+from teleclaude.types.todos import BreakdownState
 
 if TYPE_CHECKING:
     from teleclaude.core.next_machine.state_mutation import StateWriter
     from teleclaude.core.todos_db import TodosDb
     from teleclaude.core.todos_db._show import ShowPayload
-    from teleclaude.types.state_value import StateValue
 
 logger = get_logger(__name__)
 
@@ -115,15 +87,6 @@ class _SplitResponse(BaseModel):
     status: str
     slug: str
     children: str
-
-
-class _StampResponse(BaseModel):
-    """Response from todo stamp."""
-
-    model_config = ConfigDict(frozen=True)
-    status: str
-    slug: str
-    stamp_type: str
 
 
 def _default_cwd() -> str:
@@ -274,7 +237,7 @@ async def todo_set_deps(  # pyright: ignore
 
 
 # ---------------------------------------------------------------------------
-# Artifact and stamp endpoints (todos.db backed)
+# Artifact endpoints (todos.db backed)
 # ---------------------------------------------------------------------------
 
 
@@ -588,277 +551,6 @@ async def todo_unfreeze(
     if not await todos_db.unfreeze(slug):
         raise HTTPException(status_code=404, detail=f"Todo '{slug}' not found in icebox")
     return _SlugStatusResponse(status="ok", slug=slug)
-
-
-_READINESS_ARTIFACT_KEY: dict[str, str] = {
-    "requirements": "requirements",
-    "implementation-plan": "implementation_plan",
-}
-
-
-async def _apply_readiness_stamp(
-    todos_db: TodosDb,
-    writer: StateWriter,
-    slug: str,
-    artifact_name: str,
-    signal: str,
-) -> None:
-    """Validate artifact existence, hydrate digest, apply signal, and reject no-ops."""
-    if not await todos_db.artifact_exists(slug, artifact_name):
-        raise HTTPException(status_code=422, detail=f"cannot stamp {signal}: {artifact_name} artifact missing")
-    state_key = _READINESS_ARTIFACT_KEY.get(artifact_name)
-    if state_key:
-        digest = await todos_db.artifact_digest(slug, artifact_name)
-        if digest:
-            getattr(writer.state.artifacts, state_key).digest = digest
-    before = writer.state.lifecycle_phase
-    apply_authoritative_signal(writer.state, signal)
-    if writer.state.lifecycle_phase == before:
-        raise HTTPException(status_code=422, detail=f"{signal} has no effect at phase {before}")
-
-
-def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
-    """Apply a `grounding` stamp through the typed grounding lifecycle.
-
-    ``value == "valid"`` clears any recorded invalidation; any other value
-    forces a stamped invalidation so downstream prepare machinery re-runs.
-    Both branches route through :class:`GroundingManager` so the stamp path
-    shares one contract with the rest of the grounding lifecycle.
-    """
-    grounding_manager = GroundingManager(writer)
-    if value == "valid":
-        grounding_manager.clear_invalidation()
-    else:
-        grounding_manager.invalidate(reason="stamped_invalid", changed_paths=[])
-
-
-def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
-    """Apply a `dor` stamp, parsing either a compound score/status or a bare status."""
-    dor_model = writer.state.dor or DorState()
-    if "," in value and ":" in value:
-        for part in value.split(","):
-            k, _, v = part.partition(":")
-            k, v = k.strip(), v.strip()
-            if k == "score":
-                dor_model.score = int(v)
-            elif k == "status":
-                dor_model.status = v
-    else:
-        dor_model.status = value
-    writer.state.dor = dor_model
-
-
-def _parse_prepare_pair_value(value: str) -> tuple[str, str]:
-    """Parse a ``slot_a:<id>,slot_b:<id>`` compound stamp value.
-
-    Mirrors the comma-separated, colon-keyed shape used by the DOR stamp
-    (``score:8,status:pass``) so the orchestrator-facing flag pair
-    ``--agent-a/--agent-b`` round-trips through the same value channel.
-    """
-    parts: dict[str, str] = {}
-    for chunk in value.split(","):
-        k, _, v = chunk.partition(":")
-        parts[k.strip()] = v.strip()
-    return parts.get("slot_a", ""), parts.get("slot_b", "")
-
-
-async def _apply_prepare_pair_stamp(writer: StateWriter, value: str) -> None:
-    """Resolve durable identity from session records and atomically register both pair slots.
-
-    Persists ``(lens, session_id, native_session_id, agent)`` so the slot
-    remains revivable after the TC session row is purged (closed sessions
-    are removed after the 7-day retention window in
-    ``maintenance_service._cleanup_inactive_sessions``). ``native_session_id``
-    plus ``agent`` allow ``telec sessions revive`` to resurrect the slot from
-    the agent's own transcript files even after the TC row is gone.
-    """
-    sid_a, sid_b = _parse_prepare_pair_value(value)
-    if not sid_a or not sid_b:
-        raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
-
-    session_a = await db.get_session(sid_a)
-    if session_a is None:
-        raise StateMutationError(f"unknown session for slot_a: {sid_a}")
-    session_b = await db.get_session(sid_b)
-    if session_b is None:
-        raise StateMutationError(f"unknown session for slot_b: {sid_b}")
-
-    for lens, session_id, session in (("A", sid_a, session_a), ("B", sid_b, session_b)):
-        if not session.active_agent:
-            raise StateMutationError(
-                f"session {session_id} for slot_{lens.lower()} has no active_agent — cannot resolve pair agent"
-            )
-        if not session.native_session_id:
-            raise StateMutationError(
-                f"session {session_id} for slot_{lens.lower()} has no native_session_id — slot would not survive TC purge"
-            )
-
-    PreparePairManager(writer).set_pair(
-        slot_a=PreparePairSlot(
-            lens="A",
-            session_id=sid_a,
-            native_session_id=session_a.native_session_id,
-            agent=session_a.active_agent,
-        ),
-        slot_b=PreparePairSlot(
-            lens="B",
-            session_id=sid_b,
-            native_session_id=session_b.native_session_id,
-            agent=session_b.active_agent,
-        ),
-    )
-
-
-_ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
-
-
-def _stamp_error(exc: Exception) -> HTTPException:
-    """Map domain/infrastructure exceptions to HTTP errors for stamp endpoints."""
-    if isinstance(exc, ValueError):
-        return HTTPException(status_code=400, detail=str(exc))
-    if isinstance(exc, RuntimeError):
-        return HTTPException(status_code=409, detail=str(exc))
-    return HTTPException(status_code=500, detail=f"infrastructure error: {exc}")
-
-
-@router.post("/stamp/{slug}")
-async def stamp(  # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-branches,too-many-locals
-    slug: str,
-    stamp_type: Annotated[str, Body()],
-    value: Annotated[str, Body()] = "",
-    phase: Annotated[str | None, Body()] = None,
-    cwd: Annotated[str | None, Body()] = None,
-    identity: CallerIdentity = Depends(clearance_todos_stamp),
-) -> _StampResponse:
-    """Stamp an authoritative lifecycle signal into todo state.
-
-    Verdict stamps require an explicit ``phase`` body field — derivation-based
-    state no longer tracks a persistent ``current`` pointer. Accepted phases
-    are the three prepare review keys and ``build_review`` for the work lane.
-    """
-    effective_cwd = cwd or _default_cwd()
-
-    if stamp_type == "verdict":
-        if not phase:
-            raise HTTPException(status_code=400, detail="verdict stamp requires explicit 'phase' body field")
-        if phase not in _ALL_VERDICT_PHASES:
-            raise HTTPException(
-                status_code=400,
-                detail=f"invalid verdict phase '{phase}': must be one of {', '.join(_ALL_VERDICT_PHASES)}",
-            )
-        allowed_values = _BUILD_VERDICT_VALUES if phase == _BUILD_VERDICT_PHASE else _PREPARE_VERDICT_VALUES
-        if value not in allowed_values:
-            raise HTTPException(
-                status_code=400,
-                detail=f"invalid verdict '{value}' for phase '{phase}': must be one of {', '.join(allowed_values)}",
-            )
-        try:
-            await asyncio.to_thread(stamp_verdict, effective_cwd, slug, phase, value)
-        except (ValueError, GitCommandError, sqlite3.Error) as exc:
-            raise _stamp_error(exc) from exc
-        return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
-
-    if stamp_type == "finalize_ready":
-        try:
-            state = await asyncio.to_thread(stamp_finalize_ready, effective_cwd, slug)
-        except (RuntimeError, GitCommandError, sqlite3.Error) as exc:
-            raise _stamp_error(exc) from exc
-        finalize_raw = state.get("finalize")
-        finalize: dict[str, StateValue] = finalize_raw if isinstance(finalize_raw, dict) else {}
-        sha = str(finalize.get("sha", ""))
-        caller_session_id = identity.session_id or ""
-        await emit_event(
-            event="domain.software-development.planning.todo_finalize_ready",
-            source=f"finalizer/{caller_session_id or 'unknown'}",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            visibility=EventVisibility.LOCAL,
-            entity=slug,
-            description=f"Finalize ready for {slug} (sha {sha[:8]})",
-            payload={
-                "slug": slug,
-                "branch": slug,
-                "sha": sha,
-                "worker_session_id": caller_session_id,
-            },
-        )
-        return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
-
-    todos_db = await _get_todos_db_from_cwd(effective_cwd)
-    raw_state = await todos_db.read_state(slug)
-    if raw_state is None:
-        raise HTTPException(status_code=404, detail=f"no state found for slug '{slug}'")
-
-    try:
-        writer = StateWriter(raw_state)
-        if stamp_type == "grounding":
-            _apply_grounding_stamp(writer, value)
-            apply_authoritative_signal(writer.state, "grounding")
-        elif stamp_type == "dor":
-            _apply_dor_stamp(writer, value)
-            apply_authoritative_signal(writer.state, "dor")
-        elif stamp_type == "requirements_ready":
-            await _apply_readiness_stamp(todos_db, writer, slug, "requirements", "requirements_ready")
-        elif stamp_type == "plan_ready":
-            await _apply_readiness_stamp(todos_db, writer, slug, "implementation-plan", "plan_ready")
-        elif stamp_type == "specs_built":
-            apply_authoritative_signal(writer.state, "specs_built")
-        elif stamp_type == "prepare_pair":
-            await _apply_prepare_pair_stamp(writer, value)
-        else:
-            raise HTTPException(status_code=400, detail=f"unknown stamp type: {stamp_type}")
-        await writer.commit(todos_db, slug)
-        logger.info(
-            "todo stamp applied",
-            slug=slug,
-            stamp_type=stamp_type,
-            value=value,
-            phase=phase or "",
-            lifecycle_phase=writer.state.lifecycle_phase,
-            caller_session_id=identity.session_id or "",
-        )
-    except StateMutationError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return _StampResponse(status="ok", slug=slug, stamp_type=stamp_type)
-
-
-@router.post("/mark-phase/{slug}", response_model=None)
-async def mark_phase(
-    slug: str,
-    phase: Annotated[str, Body()],
-    cwd: Annotated[str | None, Body()] = None,
-) -> dict[str, StateValue]:
-    """Set the canonical lifecycle phase after validating the target is reachable."""
-    effective_cwd = cwd or _default_cwd()
-    lifecycle_values = {p.value for p in LifecyclePhase}
-    if phase not in lifecycle_values:
-        prepare_values = {p.value for p in PreparePhase}
-        work_values = {p.value for p in WorkPhase}
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"unknown phase value '{phase}': "
-                f"lifecycle_phase accepts {sorted(lifecycle_values)}; "
-                f"legacy prepare_phase values {sorted(prepare_values)}; "
-                f"legacy work_phase values {sorted(work_values)}"
-            ),
-        )
-
-    def _apply() -> dict[str, StateValue]:
-        try:
-            return mark_phase_state(effective_cwd, slug, phase)
-        except (ValueError, GitCommandError, sqlite3.Error) as exc:
-            raise _stamp_error(exc) from exc
-
-    payload = await asyncio.to_thread(_apply)
-    logger.info(
-        "todo mark-phase applied",
-        slug=slug,
-        target_phase=phase,
-        resulting_phase=str(payload.get("lifecycle_phase", "")),
-        cwd=effective_cwd,
-    )
-    return payload
 
 
 @router.get("/{slug}/show", response_model=None)

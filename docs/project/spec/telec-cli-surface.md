@@ -167,8 +167,7 @@ subcommands:
           --grounding-invalidated: 'Invalidate grounding and route to re_grounding.'
           --specs-built: 'Complete test-spec authoring and advance to test_spec_review.'
           --plan-ready: 'Complete plan authoring and advance to plan_review.'
-          --build-started: 'Start work from prepared and move to build_started.'
-          --build-complete: 'Complete implementation work and move to build_complete.'
+          --build-complete: 'Worker-owned completion stamp for committed implementation work.'
           --finalize-ready: 'Mark the reviewed worktree ready for finalize handoff.'
   roadmap:
     description: 'View and manage the work item roadmap.'

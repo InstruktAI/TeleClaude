@@ -28,11 +28,9 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
-from teleclaude.core.next_machine.build_gates import format_build_gate_failure, run_build_gates
 from teleclaude.core.next_machine.git_ops import (
     compose_agent_guidance,
     get_head_commit,
-    has_build_commits_beyond_main,
     has_uncommitted_changes,
 )
 from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal, is_ready_for_work
@@ -65,7 +63,7 @@ def _builder_idle_post_block(slug: str) -> str:
     return (
         f"WHEN WORKER IDLES:\n"
         f"Call telec todo work {slug}. The state machine emits the next action "
-        f"(advance to review, relay build-gate failures, or terminal cleanup)."
+        f"after the worker has stamped `telec todo stamp {slug} --build-complete`."
     )
 
 
@@ -111,7 +109,7 @@ async def _work_step_build_started(
     helper checks ``lifecycle_phase`` (which already encodes requirements
     approval, plan approval, and grounding validity).
     """
-    _ = todos_db
+    _ = todos_db, worktree_cwd
 
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else "todo"
@@ -128,21 +126,12 @@ async def _work_step_build_started(
     command = SlashCommand.NEXT_BUGS_FIX if kind == "bug" else SlashCommand.NEXT_BUILD
     builder_id = await find_live_session_for_slug(db, slug, f"/{command.value}")
     if builder_id is not None:
-        has_commits = await asyncio.to_thread(has_build_commits_beyond_main, worktree_cwd)
-        if not has_commits:
-            return False, (
-                f"BUILDER ACTIVE: {slug}\n\n"
-                f"Builder session {builder_id} has no commits beyond main yet. "
-                f"Wait for it to commit the work, then call "
-                f"telec todo work {slug}."
-            )
-        gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
-        if not gates_passed:
-            return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
-        writer = StateWriter(state)
-        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
+        return False, (
+            f"BUILDER ACTIVE: {slug}\n\n"
+            f"Builder session {builder_id} has not stamped build completion yet. "
+            f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
+            f"then call telec todo work {slug}."
+        )
 
     try:
         guidance = await compose_agent_guidance(db)
@@ -158,7 +147,7 @@ async def _work_step_build_started(
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
                 f"Start implementation now. When the build is committed and ready for review, "
-                f"call `telec todo work {slug}` so the machine can verify gates and continue."
+                f"run `telec todo stamp {slug} --build-complete`."
             ),
             next_call=f"telec todo work {slug}",
             post_block=_builder_idle_post_block(slug),
@@ -278,10 +267,10 @@ async def _work_step_review_changes_requested(
     worktree_cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """REVIEW_CHANGES_REQUESTED: relay findings to the live builder, or loop if fixed.
+    """REVIEW_CHANGES_REQUESTED: relay findings to the live builder, or wait for its stamp.
 
     The lifecycle remains on ``review_changes_requested`` until the builder
-    commits fixes that pass the build gates.
+    stamps ``build_complete`` after committing fixes that pass the build gates.
     """
     _ = cwd
     build_review_raw = state.get("build_review")
@@ -289,15 +278,6 @@ async def _work_step_review_changes_requested(
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     head_sha = await asyncio.to_thread(get_head_commit, worktree_cwd)
-
-    if baseline and head_sha and head_sha != baseline:
-        gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
-        if not gates_passed:
-            return False, format_build_gate_failure(slug, gate_output, f"telec todo work {slug}")
-        writer = StateWriter(state)
-        apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
-        await _commit_writer(writer, todos_db, slug, state)
-        return True, ""
 
     # Fix not yet committed: relay findings to live builder.
     builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
@@ -316,6 +296,15 @@ async def _work_step_review_changes_requested(
             next_call=f"telec todo work {slug}",
         )
 
+    if baseline and head_sha and head_sha != baseline:
+        return False, (
+            f"FIX WORK NOT STAMPED: {slug}\n\n"
+            f"Builder session {builder_id} has commits after review baseline {baseline} "
+            f"at HEAD {head_sha}, but has not stamped build completion. "
+            f"Wait for it to run `telec todo stamp {slug} --build-complete`, "
+            f"then call telec todo work {slug}."
+        )
+
     message = (
         f"Review requested changes for {slug}. "
         f"Findings artifact: `review-findings`. Target: source code in the worktree. "
@@ -325,8 +314,8 @@ async def _work_step_review_changes_requested(
         f"in lifecycle/work/review. Requirement-Violation findings in particular "
         f"indicate a stated requirement's success criteria are not satisfied in the "
         f"delivery; fix the narrowing or the weak verification, do not argue severity. "
-        f"When every non-Suggestion finding is resolved, commit the fixes and call "
-        f"`telec todo work {slug}`. "
+        f"When every non-Suggestion finding is resolved, commit the fixes and run "
+        f"`telec todo stamp {slug} --build-complete`. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )
     escaped = message.replace('"', '\\"')

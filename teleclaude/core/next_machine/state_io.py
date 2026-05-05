@@ -532,8 +532,8 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     local branch ref, and remote branch ref must all resolve to the same commit.
     On success, writes a :class:`FinalizeModel` with ``status="ready"``.
 
-    The caller session identity is not stored here — it flows directly from
-    the API route's ``CallerIdentity`` into the event payload.
+    The caller session identity is not stored here — the local stamp service
+    passes it directly into the finalize-ready event payload.
 
     Args:
         cwd: Project root directory (not worktree)

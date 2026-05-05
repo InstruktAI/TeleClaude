@@ -61,6 +61,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 7. Working tree is clean: `git status`.
    - If not clean, commit all remaining files in the worktree. Everything in the worktree belongs to the task.
 8. Verify commits exist: `git log --oneline -10`.
+9. Stamp explicit build completion: `telec todo stamp {slug} --build-complete`.
 
 ## Report format
 

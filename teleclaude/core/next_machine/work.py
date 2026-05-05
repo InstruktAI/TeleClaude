@@ -1,7 +1,8 @@
 """Work stage — Phase B dispatcher.
 
 Reads the canonical ``lifecycle_phase`` from persisted state and dispatches the
-current work step. It never derives or advances lifecycle state on its own.
+current work step. The only local mutation it owns is the transparent
+``prepared`` to ``build_started`` handoff on first work entry.
 """
 
 from __future__ import annotations
@@ -20,10 +21,11 @@ from teleclaude.core.next_machine._types import (
     _WORK_LOOP_LIMIT,
     NEXT_WORK_PHASE_LOG,
     ItemPhase,
+    StateValue,
     WorkPhase,
 )
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, get_head_commit, get_stash_entries
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, require_lifecycle_phase
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
@@ -140,7 +142,16 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         writer = StateWriter(state)
         current_phase = require_lifecycle_phase(writer.state.lifecycle_phase, context=f"next_work({resolved_slug})")
         if current_phase == LifecyclePhase.PREPARED:
-            phase = WorkPhase.BUILD_STARTED
+            phase_started = perf_counter()
+            await _advance_prepared_to_build_started(todos_db, resolved_slug, state, worktree_cwd)
+            _log_next_work_phase(
+                phase_slug,
+                "prepared_handoff",
+                phase_started,
+                "run",
+                LifecyclePhase.BUILD_STARTED.value,
+            )
+            continue
         else:
             try:
                 phase = WorkPhase(current_phase.value)
@@ -184,6 +195,18 @@ async def next_work(db: Db, slug: str | None, cwd: str) -> str:
         f"{_WORK_LOOP_LIMIT} internal transitions. "
         f"Inspect state for {resolved_slug} for stuck state."
     )
+
+
+async def _advance_prepared_to_build_started(
+    todos_db: TodosDb,
+    slug: str,
+    state: dict[str, StateValue],
+    worktree_cwd: str,
+) -> None:
+    """Persist the machine-owned work entry transition."""
+    writer = StateWriter(state)
+    apply_authoritative_signal(writer.state, "build_started", worktree_cwd=worktree_cwd)
+    await writer.commit(todos_db, slug)
 
 
 async def _normalize_next_work_cwd(cwd: str) -> str:

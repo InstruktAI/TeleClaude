@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -272,13 +272,21 @@ class TestHandleTodoStampPreparePair:
 
     def test_atomic_pair_stamp_posts_compound_value(self) -> None:
         """Both flags together produce a single prepare_pair stamp with comma-joined value."""
-        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
+        with (
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
             _handle_todo_stamp(["my-slug", "--agent-a", "sid-a", "--agent-b", "sid-b"])
 
-        assert mock_api.called
-        body = mock_api.call_args.kwargs.get("json_body") or mock_api.call_args.args[2]
-        assert body["stamp_type"] == "prepare_pair"
-        assert body["value"] == "slot_a:sid-a,slot_b:sid-b"
+        mock_stamp.assert_awaited_once_with(
+            cwd="/repo",
+            slug="my-slug",
+            stamp_type="prepare_pair",
+            value="slot_a:sid-a,slot_b:sid-b",
+            phase=None,
+            caller_session_id="sess-1",
+        )
 
     def test_only_agent_a_exits_with_error(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Single-flag stamps are not supported — both --agent-a and --agent-b are required."""

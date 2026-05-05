@@ -63,13 +63,13 @@ stateDiagram-v2
 - Explicit tool calls to execute (start_session, run_agent_command) with placeholders for agent/mode
 - Human-in-the-loop guidance for preparation phase
 - Agent selection guidance block derived from machine config and runtime availability
-- One authoritative `lifecycle_phase` stored in todos.db; `telec todo stamp`, `telec todo mark-phase`, and explicit `telec todo reconcile` are the only write paths that may change it
+- One authoritative `lifecycle_phase` stored in todos.db; `telec todo stamp`, `telec todo mark-phase`, explicit `telec todo reconcile`, and the machine-owned `prepared -> build_started` work entry handoff are the only write paths that may change it
 - Dependency resolution via set_dependencies tool
 
 ## Invariants
 
 - **Canonical Lifecycle State**: Current phase is read from stored `lifecycle_phase`.
-- **Stamp-Owned Progression**: `telec todo stamp` is the only natural forward-progression authority. The machine dispatches the current phase; it does not skip ahead or loop through future phases.
+- **Stamp-Owned Progression**: `telec todo stamp` is the natural worker-completion authority. The machine dispatches the current phase and owns only transparent handoffs that can be proven locally, such as `prepared -> build_started` on first work entry.
 - **Artifact Immutability**: Machine never modifies artifacts directly; delegates to workers.
 - **Dependency Blocking**: Cannot claim item until all dependencies complete.
 - **Phase Ordering**: Phases progress sequentially; no phase skipping.

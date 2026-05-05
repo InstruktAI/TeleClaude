@@ -36,6 +36,7 @@ findings in `bug.md` for reviewer verification.
 10. Run tests: `telec code test`.
 11. Run lint: `telec code lint`.
 12. Commit all remaining files in the worktree. Everything in the worktree belongs to the task.
+13. Stamp explicit completion: `telec todo stamp {slug} --build-complete`.
 
 ## Pre-completion checklist
 

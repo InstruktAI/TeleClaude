@@ -85,7 +85,7 @@ build_review:
 ## Invariants
 
 - **Routing from canonical phase**: all routing decisions read `lifecycle_phase` from `todo state (todos.db)`.
-- **Build gates before review**: diff-scoped tests must pass before dispatching a reviewer.
+- **Build gates before review**: the worker-owned `build_complete` stamp validates diff-scoped gates before review can be dispatched.
 - **Artifact verification**: mechanical checks at phase boundaries (tasks checked, commits exist, findings substantive).
 - **Reviewer reuse**: when review is already in flight for a slug, the state machine reuses the live reviewer session instead of dispatching a second reviewer.
 - **Verdict reconciliation**: `review-findings` is authoritative only for the currently dispatched review head (`review_dispatch_head`). Stale findings from an older round must not short-circuit a fresh re-review.
@@ -298,5 +298,5 @@ sequenceDiagram
 - **Stale preparation grounding**: returns instruction to re-run prepare before building.
 - **Worker crash**: orchestrator retries once, then escalates with context.
 - **Review round limit exceeded**: returns `REVIEW_ROUND_LIMIT` for orchestrator decision — approve with documented follow-up for non-critical residual items, or escalate if unresolved critical findings remain.
-- **Build gates fail**: re-dispatches builder to fix the issue before review.
-- **State repair**: auto-repairs inconsistent state (e.g., `review=approved` + `build != complete` → repair to `build=complete`; `review=approved` with stale baseline → reset `review=pending`).
+- **Build gates fail**: the `build_complete` stamp is rejected; the builder fixes the issue before review.
+- **State repair**: reconciles from authoritative fields only; commits alone never repair to `build_complete`.

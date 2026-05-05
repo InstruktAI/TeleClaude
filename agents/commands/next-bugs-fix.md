@@ -53,6 +53,7 @@ Investigate a bug, apply a fix, and document findings in bug.md.
   description has no mandate.
 - Follow the debugging procedure for systematic root cause analysis.
 - Follow the bug fix procedure.
+- When the fix is committed and gates pass, run `telec todo stamp {slug} --build-complete`.
 - End with: `Ready for review.`
 
 ## Discipline

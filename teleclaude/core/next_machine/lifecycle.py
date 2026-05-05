@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from teleclaude.core.next_machine.git_ops import get_head_commit, has_build_commits_beyond_main
+from teleclaude.core.next_machine.git_ops import get_head_commit
 from teleclaude.types.lifecycle import (
     LIFECYCLE_PHASE_ORDER,
     PREPARE_LIFECYCLE_PHASES,
@@ -415,8 +415,6 @@ def reconcile_lifecycle_phase(
     if model.build_review.verdict == "changes_requested":
         return LifecyclePhase.REVIEW_CHANGES_REQUESTED
     if model.build_completed_at:
-        return LifecyclePhase.BUILD_COMPLETE
-    if worktree_cwd and has_build_commits_beyond_main(worktree_cwd):
         return LifecyclePhase.BUILD_COMPLETE
     if model.lifecycle_phase == LifecyclePhase.BUILD_STARTED.value:
         return LifecyclePhase.BUILD_STARTED

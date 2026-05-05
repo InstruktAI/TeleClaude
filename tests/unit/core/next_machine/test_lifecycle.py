@@ -13,7 +13,9 @@ from teleclaude.core.next_machine.lifecycle import (
     is_in_prepare_lane,
     is_ready_for_work,
     is_settled_ok_phase,
+    reconcile_lifecycle_phase,
 )
+from teleclaude.types.lifecycle import LifecycleStage
 from teleclaude.types.todos import TodoState
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
@@ -63,6 +65,21 @@ def test_build_complete_advances_changes_requested_back_to_build_complete() -> N
     assert next_phase == LifecyclePhase.BUILD_COMPLETE
     assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.BUILD_COMPLETE
     assert state.build_completed_at
+
+
+def test_work_reconcile_does_not_infer_build_complete_from_commits() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.BUILD_STARTED.value
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr("teleclaude.core.next_machine.lifecycle.get_head_commit", lambda _cwd: "head")
+        next_phase = reconcile_lifecycle_phase(
+            state,
+            LifecycleStage.WORK,
+            worktree_cwd="/repo/trees/my-slug",
+        )
+
+    assert next_phase == LifecyclePhase.BUILD_STARTED
 
 
 def test_finalize_handed_off_advances_finalize_ready_to_handed_off() -> None:

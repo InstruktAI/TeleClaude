@@ -58,7 +58,10 @@ Typical phase/artifact combinations:
 5. **Commit worktree state.** Everything in the worktree belongs to the task —
    commit all files in the worktree.
 
-6. **Report FIX COMPLETE** in your session output. Your failure mode is scope expansion —
+6. **Stamp build completion** after code-review fixes: `telec todo stamp {slug} --build-complete`.
+   For non-code prepare artifact fixes, use the verdict or artifact stamp named in the dispatch message instead.
+
+7. **Report FIX COMPLETE** in your session output. Your failure mode is scope expansion —
    address each finding precisely without improving adjacent code.
 
 ## Outputs

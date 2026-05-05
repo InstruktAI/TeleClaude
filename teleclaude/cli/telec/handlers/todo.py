@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json as _json
 import shlex
 import sys
@@ -23,11 +24,14 @@ from teleclaude.cli.tool_commands import (
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
+from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
+from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
+from teleclaude.session_identity import get_session_id
 from teleclaude.todo_scaffold import create_draft_skeleton, create_from_main_skeleton
 
 __all__ = [
@@ -690,16 +694,13 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --requirements-ready
       --plan-ready
       --specs-built
+      --build-complete
       --finalize-ready
       --agent-a <session_id> --agent-b <session_id>  (atomic, both required)
     """
-    removed_flags = {
-        "--build-started",
-        "--build-complete",
-    }
     for arg in args:
-        if arg in removed_flags:
-            print(f"Removed automation-only stamp flag: {arg}")
+        if arg == "--build-started":
+            print("--build-started is machine-owned; run telec todo work <slug> to enter build.")
             raise SystemExit(1)
 
     slug, stamp_type, value, phase = _parse_todo_stamp_args(args)
@@ -711,33 +712,32 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print(
             "Missing stamp flag (--verdict, --dor-score, --dor-status, "
             "--grounding-invalidated, --requirements-ready, --plan-ready, "
-            "--specs-built, --finalize-ready, --agent-a/--agent-b)"
+            "--specs-built, --build-complete, --finalize-ready, --agent-a/--agent-b)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
         print("--verdict requires --phase <phase>")
         raise SystemExit(1)
 
-    body: dict[str, str] = {
-        "stamp_type": stamp_type,
-        "value": value or "",
-        "cwd": str(resolve_invocation_cwd()),
-    }
-    if phase:
-        body["phase"] = phase
+    try:
+        asyncio.run(
+            apply_todo_stamp(
+                cwd=str(resolve_invocation_cwd()),
+                slug=slug,
+                stamp_type=stamp_type,
+                value=value or "",
+                phase=phase,
+                caller_session_id=get_session_id(),
+            )
+        )
+    except (PermissionError, ValueError, RuntimeError, GitCommandError, StateMutationError) as exc:
+        print(str(exc), file=sys.stderr)
+        raise SystemExit(1) from exc
 
-    result = tool_api_request(
-        "POST",
-        f"/todos/stamp/{slug}",
-        json_body=body,
-    )
-    if isinstance(result, dict) and result.get("status") == "ok":
-        label = f"{stamp_type}={value}" if value else stamp_type
-        if phase:
-            label = f"{label} phase={phase}"
-        print(f"Stamped {label} for {slug}")
-    else:
-        print(result)
+    label = f"{stamp_type}={value}" if value else stamp_type
+    if phase:
+        label = f"{label} phase={phase}"
+    print(f"Stamped {label} for {slug}")
 
 
 def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:
@@ -787,6 +787,10 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 1
         elif arg == "--specs-built":
             stamp_type = "specs_built"
+            value = "true"
+            i += 1
+        elif arg == "--build-complete":
+            stamp_type = "build_complete"
             value = "true"
             i += 1
         elif arg == "--finalize-ready":
