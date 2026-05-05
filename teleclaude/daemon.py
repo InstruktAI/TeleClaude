@@ -491,7 +491,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
         Called at daemon startup after the event loop is running. Every TodosDb
         instance created after this point (via get_todos_db or get_todos_db_sync)
-        from teleclaude.core.todos_db
+        in teleclaude.core.todos_db
         will call refresh_local_todos on the DaemonCache whenever a mutation
         (write_state, deliver, write_artifact, etc.) is committed.
         """
@@ -1026,7 +1026,7 @@ async def main() -> None:
 
 if __name__ == "__main__":
     try:
-        import uvloop
+        import uvloop  # startup boundary
 
         uvloop.run(main())
     except ImportError:

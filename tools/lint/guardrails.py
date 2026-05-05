@@ -6,8 +6,10 @@ from __future__ import annotations
 import argparse
 import ast
 import fnmatch
+import io
 import json
 import re
+import tokenize
 import tomllib
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -36,6 +38,7 @@ _STARTUP_BOUNDARY_IMPORT_ALLOWLIST = frozenset(
         "teleclaude/core/adapter_client/_client.py",
     }
 )
+_STARTUP_BOUNDARY_IMPORT_REASON = "startup boundary"
 MODULE_SIZE_EXCEPTIONS = frozenset(
     {
         "teleclaude/daemon.py",
@@ -181,6 +184,7 @@ MYPY_ALLOWED_IGNORE_ERRORS_MODULES = frozenset({"teleclaude.hooks.*"})
 
 # File size gate: max lines per module. Exceptions require explicit allowlisting.
 MODULE_MAX_LINES = 1000
+ORPHAN_EXCLUDE_MAX_ENTRIES = 64
 
 
 def _check_pyright_invariants(pyright: dict[str, object]) -> None:  # guard: loose-dict-func - JSON config is untyped
@@ -346,6 +350,8 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
 
     Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
     Orphaned tests (testing deleted/renamed modules) are caught here.
+
+    Exclusions: classify intentional orphans in [tool.test-mapping].orphan-exclude.
     """
     tests_root = repo_root / "tests" / "unit"
     source_root = repo_root / "teleclaude"
@@ -363,6 +369,15 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
             for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/unit/",), suffixes=(".py",))
             if path.name.startswith("test_")
         ]
+
+    no_companion_markers = _find_no_companion_markers(repo_root, candidates)
+    if no_companion_markers:
+        formatted_markers = "\n".join(f"- {item}" for item in no_companion_markers)
+        _fail(
+            f"retired local # guard: no-companion markers detected ({len(no_companion_markers)} markers).\n"
+            "Classify the test in pyproject.toml [tool.test-mapping].orphan-exclude instead.\n"
+            f"{formatted_markers}\n"
+        )
 
     for test_path in candidates:
         rel_test = test_path.relative_to(repo_root).as_posix()
@@ -383,9 +398,9 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
     formatted = "\n".join(f"- {t:<{max_test}} -> missing: {s}" for t, s in orphans)
     _fail(
         f"orphaned test files detected ({len(orphans)} tests without source companions).\n"
-        "Each test file must mirror a source module. Temporary test-side exceptions\n"
-        "must live in pyproject.toml [tool.test-mapping].orphan-exclude so they are\n"
-        "centralized and ratcheted down.\n"
+        "Each test file must mirror a source module. If the test intentionally covers\n"
+        "a package boundary or cross-module behavior, classify it in pyproject.toml\n"
+        "[tool.test-mapping].orphan-exclude with a precise boundary comment.\n"
         f"{formatted}\n"
     )
 
@@ -408,15 +423,7 @@ def _check_no_companion_markers(repo_root: Path, selected_paths: set[str] | None
             path for path in _iter_selected_files(repo_root, selected_paths, prefixes=("tests/",), suffixes=(".py",))
         ]
 
-    violations: list[str] = []
-    for test_path in candidates:
-        try:
-            if "# guard: no-companion" not in test_path.read_text(encoding="utf-8"):
-                continue
-        except OSError:
-            continue
-        violations.append(test_path.relative_to(repo_root).as_posix())
-
+    violations = _find_no_companion_markers(repo_root, candidates)
     if violations:
         formatted = "\n".join(f"- {path}" for path in violations)
         _fail(
@@ -443,6 +450,25 @@ def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
     return "/".join(parts)
 
 
+def _find_no_companion_markers(repo_root: Path, test_paths: Iterable[Path]) -> list[str]:
+    """Return real local no-companion marker comments in test files."""
+    matches: list[str] = []
+    for test_path in test_paths:
+        try:
+            text = test_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+            for token in tokens:
+                if token.type == tokenize.COMMENT and token.string.strip() == "# guard: no-companion":
+                    rel = test_path.relative_to(repo_root).as_posix()
+                    matches.append(f"{rel}:{token.start[0]}")
+        except tokenize.TokenError:
+            continue
+    return matches
+
+
 def _load_orphan_exclusions(repo_root: Path) -> set[str]:
     """Load orphan-exclude paths from pyproject.toml [tool.test-mapping]."""
     pyproject_path = repo_root / "pyproject.toml"
@@ -450,9 +476,19 @@ def _load_orphan_exclusions(repo_root: Path) -> set[str]:
         return set()
     with open(pyproject_path, "rb") as f:
         data = tomllib.load(f)
-    return set(
-        data.get("tool", {}).get("test-mapping", {}).get("orphan-exclude", [])  # guard: loose-dict - TOML parse result
-    )
+    entries = (
+        data.get("tool", {}).get("test-mapping", {}).get("orphan-exclude", [])
+    )  # guard: loose-dict - TOML parse result
+    if not isinstance(entries, list):
+        return set()
+    string_entries = [entry for entry in entries if isinstance(entry, str)]
+    if len(string_entries) > ORPHAN_EXCLUDE_MAX_ENTRIES:
+        _fail(
+            "pyproject.toml [tool.test-mapping].orphan-exclude has "
+            f"{len(string_entries)} entries (max: {ORPHAN_EXCLUDE_MAX_ENTRIES}). "
+            "Classify and move/delete tests before growing the central orphan list."
+        )
+    return set(string_entries)
 
 
 # ---------------------------------------------------------------------------
@@ -630,6 +666,8 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
     agents trying to add inline ``# noqa: PLC0415`` in any other file.
     """
     outside_allowlist: list[str] = []
+    missing_startup_reason: list[str] = []
+    startup_reason_outside_allowlist: list[str] = []
 
     candidates: Iterable[Path]
     if selected_paths is None:
@@ -649,8 +687,6 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
 
     for path in candidates:
         rel = path.relative_to(repo_root).as_posix()
-        if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
-            continue
         try:
             lines = path.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
@@ -662,8 +698,31 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
             stripped = line.lstrip()
             if not stripped.startswith(("from ", "import ")):
                 continue
+            is_nested_import = len(line) != len(stripped)
+            has_startup_reason = f"# {_STARTUP_BOUNDARY_IMPORT_REASON}" in line
+            if _is_type_checking_import(lines, lineno - 1):
+                continue
+            if rel in _STARTUP_BOUNDARY_IMPORT_ALLOWLIST:
+                if is_nested_import and not has_startup_reason:
+                    missing_startup_reason.append(f"{rel}:{lineno}: {line.strip()}")
+                continue
+            if has_startup_reason:
+                startup_reason_outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
             if "# noqa:" in line and "PLC0415" in line.split("# noqa:")[-1]:
                 outside_allowlist.append(f"{rel}:{lineno}: {line.strip()}")
+
+    if missing_startup_reason:
+        formatted = "\n".join(f"- {item}" for item in missing_startup_reason)
+        _fail(
+            "startup-boundary import-outside-top-level imports must include the "
+            f"same-line reason '# {_STARTUP_BOUNDARY_IMPORT_REASON}'.\n"
+            f"{formatted}"
+        )
+
+    if startup_reason_outside_allowlist:
+        formatted = "\n".join(f"- {item}" for item in startup_reason_outside_allowlist)
+        allowlist = "\n".join(f"  - {path}" for path in sorted(_STARTUP_BOUNDARY_IMPORT_ALLOWLIST))
+        _fail(f"startup-boundary import reason is only allowed in approved files:\n{allowlist}\n{formatted}")
 
     if outside_allowlist:
         formatted = "\n".join(f"- {item}" for item in outside_allowlist)
@@ -675,6 +734,24 @@ def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[s
             "Remove the noqa comment and move the import to the top of the file.\n"
             f"{formatted}"
         )
+
+
+def _is_type_checking_import(lines: Sequence[str], line_index: int) -> bool:
+    """Return True when a nested import line belongs to a TYPE_CHECKING block."""
+    line = lines[line_index]
+    stripped = line.lstrip()
+    if len(line) == len(stripped):
+        return False
+    indent = len(line) - len(stripped)
+    for previous in range(line_index - 1, -1, -1):
+        previous_line = lines[previous]
+        previous_stripped = previous_line.strip()
+        if not previous_stripped or previous_stripped.startswith("#"):
+            continue
+        previous_indent = len(previous_line) - len(previous_line.lstrip())
+        if previous_indent < indent:
+            return previous_stripped.startswith("if TYPE_CHECKING:")
+    return False
 
 
 def _warn_for_loose_dicts(repo_root: Path, selected_paths: set[str] | None = None) -> None:

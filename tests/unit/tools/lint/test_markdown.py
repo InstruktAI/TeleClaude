@@ -7,7 +7,7 @@ from types import ModuleType
 
 
 def _load_markdown_lint() -> ModuleType:
-    script_path = Path(__file__).resolve().parents[3] / "tools" / "lint" / "markdown.py"
+    script_path = Path(__file__).resolve().parents[4] / "tools" / "lint" / "markdown.py"
     spec = importlib.util.spec_from_file_location("markdown_lint", script_path)
     assert spec is not None
     assert spec.loader is not None
