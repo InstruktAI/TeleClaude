@@ -301,3 +301,43 @@ class TestHandleTodoStampPreparePair:
             _handle_todo_stamp(["my-slug", "--agent-b", "sid-b"])
 
         assert "must be provided together" in capsys.readouterr().out
+
+
+class TestHandleTodoStampEnsureProducer:
+    """Lazy event-producer setup is opt-in at the CLI boundary for finalize_ready only."""
+
+    def test_finalize_ready_opts_into_lazy_producer(self) -> None:
+        """`--finalize-ready` calls ensure_event_producer before apply_todo_stamp."""
+        with (
+            patch(f"{_MODULE}.ensure_event_producer") as mock_ensure,
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})),
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
+            _handle_todo_stamp(["my-slug", "--finalize-ready"])
+
+        mock_ensure.assert_called_once_with()
+
+    def test_build_complete_does_not_initialize_producer(self) -> None:
+        """Stamps that do not emit events must not pay the Redis-connect cost."""
+        with (
+            patch(f"{_MODULE}.ensure_event_producer") as mock_ensure,
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})),
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
+            _handle_todo_stamp(["my-slug", "--build-complete"])
+
+        mock_ensure.assert_not_called()
+
+    def test_verdict_stamp_does_not_initialize_producer(self) -> None:
+        """Verdict stamps mutate state only — no event emission, no producer needed."""
+        with (
+            patch(f"{_MODULE}.ensure_event_producer") as mock_ensure,
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})),
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
+            _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "build"])
+
+        mock_ensure.assert_not_called()
