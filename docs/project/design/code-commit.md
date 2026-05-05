@@ -3,30 +3,54 @@ id: 'project/design/code-commit'
 type: 'design'
 domain: 'software-development'
 scope: 'project'
-description: 'Design of telec code commit — the canonical agent commit command with shared-branch protections, worktree-wide staging, and quality gates.'
+description: 'Design of telec code commit — the canonical agent commit command with worktree-wide staging, transcript-driven scope on main, and pathspec-scoped commits.'
 ---
 
 # Code Commit — Design
 
 ## Purpose
 
-`telec code commit` is the canonical commit interface for agent sessions. On
-shared branches it resolves session-scoped files and protects against foreign
-staged work. In worktrees it treats the entire dirty tree as task scope and
-stages everything. It then runs formatting and linting before invoking
-`git commit`. The git wrapper redirects raw `git commit` to this command. The
-generated pre-commit hook remains the owner of formatter restaging and the
-single retry when hooks modify staged files.
+`telec code commit` is the canonical commit interface for **autonomous agent
+sessions inside tmux**. It stages the agent's session scope (transcript-touched
+files on main, or the entire dirty tree in a worktree), then runs `git commit`
+with an explicit pathspec so the commit contains exactly the files telec
+staged. The pre-commit hook owns formatting and linting inside git's own
+atomicity.
 
-The driving constraint: git ignores index changes made inside pre-commit hooks
-when the commit starts with an empty index. `telec code commit` solves that by
-staging the intended scope before `git commit`, while the pre-commit hook
-handles post-format restaging so plain `git commit` and wrapper-driven commits
-share the same mutation recovery path.
+The git wrapper at `~/.teleclaude/bin/git` redirects raw `git commit` to this
+command for tmux callers. The pre-commit hook is the single owner of formatter
+restaging and the retry when hooks modify staged files.
 
-## Inputs/Outputs
+## Caller paths
+
+There are three legitimate ways a commit happens in this repository.
+`telec code commit` is one of them; the other two bypass it on purpose.
+
+| Caller context | Command | Why telec is or isn't involved |
+|---|---|---|
+| Outside tmux (human shell) | `git commit ...` | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec. |
+| Inside tmux, autonomous agent | `telec code commit -m "..."` | Lock + transcript scope + pathspec commit. The body of this design. |
+| Inside tmux, supervised one-off | `TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>` | The wrapper's documented bypass. The human is supervising; the commit is their responsibility. Telec is not involved. |
+
+## Wrapper-enforced intent layer
+
+The git wrapper enforces the intent layer for every git invocation in a
+tmux session. `telec code commit` runs on top of these guarantees:
+
+- `git stash*` is blocked for non-integrators; `rebase.autoStash` and
+  `merge.autoStash` are forced off on every wrapper-driven git call.
+- `git add -A`, `git add --all`, and `git add .` are blocked on main for
+  non-integrators. Staging on main requires explicit file paths.
+- `git restore`, `git clean`, `git switch`, `git reset --hard|--merge|--keep`,
+  and branch-switching `git checkout` are blocked.
+- `git push` from main is integrator-only; `git merge`/`rebase`/`cherry-pick`
+  on main require integrator role or `TELECLAUDE_COMMIT_APPROVED=1`.
+
+## Inputs / Outputs
 
 **Flag:** `-m <message>` — commit message (first-class, no `--` separator needed).
+**Flag:** `--approved` — human-approved Path B commit on main; bypasses Path A/B/C
+classification only.
 
 All other arguments pass through to `git commit`.
 
@@ -34,37 +58,47 @@ All other arguments pass through to `git commit`.
 
 ## Invariants
 
-1. **Lock serialization.** `main_branch_lock()` (flock) serializes the entire
-   stage-format-lint-commit cycle. No two agents can commit concurrently.
-   The lock auto-releases on process exit or crash.
+1. **Lock serialisation.** `main_branch_lock()` (flock on
+   `GIT_MAIN_LOCK_PATH`) serialises the entire `_commit_under_lock` body.
+   No two agents can be inside their commit phase at the same time. The
+   lock auto-releases on process exit or crash.
 
-2. **Shared-branch protection.** On shared branches, before staging, check if
-   files are already staged that are outside the session scope. If found, exit
-   with code 2 (retryable) — another agent may be mid-commit with a failed
-   pre-commit hook. The agent's heartbeat retries after conditions clear.
+2. **Staging source by workspace kind.** In a worktree, telec stages every
+   dirty file (`git add -A`). On the project root (any branch), telec stages
+   the session transcript scope from `resolve_session_scope`. The transcript
+   scope is the only auto-staging input on the project root.
 
-3. **Scope depends on workspace kind.** Shared branches use session scoping.
-   Worktrees are task-scoped, so `telec code commit` stages all dirty files
-   with `git add -A`.
+3. **Pathspec on commit.** The final `git commit` runs with an explicit
+   pathspec listing every file telec staged. Anything else in the index
+   — concurrent stage from another session, crash residue from a prior
+   failed commit — is **not** included in this commit. It stays staged
+   for its owner to commit or for a human to clean up. Pathspec on commit
+   is the safety primitive; there is no separate "foreign-staged" check.
 
-4. **Path A/B/C on main.** Non-integrator commits on main are classified:
-   - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous
-   - **Path B:** small functional change, human-approved → commit directly (`--approved`)
-   - **Path C:** functional change + review → commit with `--approved`, then dispatch
-     `telec sessions run --command /next-review-commits --args '<shas>'`
+4. **Pre-commit hook owns format + lint.** Formatting and linting run
+   inside the hook, which executes inside git's own `index.lock`. Telec
+   does not run a redundant pre-flight pass; that pre-flight would operate
+   on a stale snapshot outside the atomicity primitive.
 
-5. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
+5. **Path A/B/C classification on main.** Non-integrator commits on main
+   are classified:
+   - **Path A:** all staged files non-functional + message contains
+     `[skip ci]` → autonomous.
+   - **Path B:** small functional change, human-approved → commit directly
+     (`--approved`).
+   - **Path C:** functional change + review → commit with `--approved`,
+     then dispatch
+     `telec sessions run --command /next-review-commits --args '<shas>'`.
 
-6. **Format then lint.** Formatting runs first. The pre-commit hook restages
-   formatter-modified files and retries once if needed, so raw `git commit`
-   and `telec code commit` behave the same.
+6. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
 
-7. **Wrapper redirect.** The git wrapper blocks `git commit` and directs agents
-   to `telec code commit`. The wrapper retains all other safety blocks
-   (stash, checkout, restore, clean, reset, push on main).
+7. **Wrapper redirect.** The git wrapper blocks `git commit` and directs
+   agents to `telec code commit`. The wrapper retains all other safety
+   blocks (stash, checkout, restore, clean, reset, push on main).
 
-8. **Real git bypass.** The final `git commit` call uses the real git binary
-   (bypassing the wrapper) since the wrapper would redirect back.
+8. **Real git bypass for the inner commit.** The final `git commit` call
+   uses the real git binary (via GitPython) so the wrapper's redirect
+   does not loop back into telec.
 
 ## Primary flows
 
@@ -75,44 +109,63 @@ telec code commit -m "feat(scope): subject"
   → lock acquired
   → worktree detected
   → git add -A
-  → FormatRunner.run(files=staged)
-  → LintRunner.run(files=staged)
-  → real git commit -m "feat(scope): subject"
+  → snapshot the staged set
+  → real git commit -m "feat(scope): subject" -- <staged files>
+  → pre-commit hook runs format + lint
   → lock released
 ```
 
-### Agent commit on main (Path A — non-functional)
+### Agent commit on project root
 
 ```
 telec code commit -m "chore(docs): update snippets [skip ci]"
   → lock acquired
-  → session scope + foreign-staged protection + stage
-  → Path A: no functional files + [skip ci] → proceed
-  → format + lint + commit
+  → resolve_session_scope(project_root)
+  → git add <transcript scope>
+  → snapshot the staged set
+  → Path A/B/C classification (if on main, non-integrator, not --approved)
+  → real git commit -m "..." -- <staged files>
+  → pre-commit hook runs format + lint
+  → lock released
 ```
 
-### Integration commit
+### Integrator on the integration worktree
 
-The integrator uses `telec code commit` with files already staged from the
-squash merge. The integrator role bypasses Path A/B/C classification.
+The integrator's normal home is `trees/_integration/`, which is a worktree.
+Same flow as "Agent commit (worktree)" above. The integrator role bypasses
+Path A/B/C classification (it does not apply in worktrees anyway).
+
+### Integrator's project-root sync
+
+The integrator does not run `telec code commit` against the project-root
+main. Repo-root sync after a delivery uses `git -C <project-root> ...`
+directly (pull / merge / push). If the merge is blocked by a dirty
+working tree, the integrator's heartbeat retries until the dirty file's
+owner commits via their own session.
 
 ## Failure modes
 
 **Lock contention.** Another agent holds the lock. `flock(LOCK_EX)` blocks
-until released. No timeout — the agent waits.
+until released. No timeout — the agent waits, no exit code.
 
-**Foreign staged files.** Exit code 2. Agent retries on heartbeat. By then the
-other agent's commit may have completed (clearing the index) or the human
-may have cleaned up.
+**Scope resolution failed.** When `resolve_session_scope` cannot read the
+session transcript or finds no touched files, `telec code commit` exits
+code 2 with the underlying error surfaced. The autonomous heartbeat retries.
 
-**Lint failure.** `LintRunner.run()` raises `SystemExit`. Files remain staged
+**Empty session scope.** Transcript scope is empty (the agent has not
+edited any tracked files yet). Exit code 1 — there is nothing to commit.
+
+**Pre-commit hook failure.** The hook runs format and lint. If lint fails,
+git aborts the commit and surfaces the hook output. Files remain staged
 for the agent to fix and retry.
 
-**Path B/C gate.** Functional files on main without human approval. Exit with
-guidance. Path B: human approves a small commit. Path C: human approves the
-commit and the agent dispatches `/next-review-commits` with the resulting SHAs.
+**Path B/C gate.** Functional files on main without human approval. Exit
+with guidance. Path B: human approves with `--approved`. Path C: human
+approves the commit and the agent dispatches `/next-review-commits` with
+the resulting SHAs.
 
-## See Also
+## See also
 
 - docs/global/software-development/design/session-file-scoping.md
 - docs/global/software-development/policy/version-control-safety.md
+- teleclaude/install/wrappers/git (the git wrapper itself)

@@ -115,8 +115,6 @@ class TestGitHelpers:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock_repo = MagicMock()
-        format_runner = MagicMock()
-        lint_runner = MagicMock()
 
         monkeypatch.setattr("teleclaude.cli.telec.handlers.code.is_worktree", lambda _root: True)
         monkeypatch.setattr(
@@ -124,9 +122,7 @@ class TestGitHelpers:
             lambda _root, include_deletions=False: ["gone.md"] if include_deletions else [],
         )
         monkeypatch.setattr("teleclaude.cli.telec.handlers.code._check_partial_staging", lambda _root: None)
-        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.get_project_languages", lambda _root: [])
-        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.FormatRunner", lambda **_kwargs: format_runner)
-        monkeypatch.setattr("teleclaude.cli.telec.handlers.code.LintRunner", lambda **_kwargs: lint_runner)
+        monkeypatch.setattr("teleclaude.cli.telec.handlers.code._current_branch", lambda _root: "tc/some-task")
 
         with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
             _commit_under_lock(
@@ -137,6 +133,4 @@ class TestGitHelpers:
             )
 
         mock_repo.git.add.assert_called_once_with("-A")
-        format_runner.run.assert_called_once_with(files=[])
-        lint_runner.run.assert_called_once_with(files=[])
-        mock_repo.git.commit.assert_called_once_with("-m", "chore: cleanup")
+        mock_repo.git.commit.assert_called_once_with("-m", "chore: cleanup", "--", "gone.md")

@@ -11,10 +11,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
 from teleclaude.project_root import resolve_invocation_cwd
-from teleclaude.quality.format import FormatRunner
-from teleclaude.quality.lint import LintRunner
 from teleclaude.quality.scope import (
-    get_project_languages,
     is_worktree,
     resolve_project_root,
     resolve_session_scope,
@@ -85,18 +82,13 @@ def handle_code(args: list[str]) -> None:
 def handle_code_changed(args: list[str]) -> None:
     """List the files telec code commit would commit if invoked now.
 
-    - Worktree or non-main project-root branch: every dirty file (staged or
-      unstaged) — those are the files `git add -A` or the trusted index would
-      include.
-    - main in project root: the staged set if non-empty (explicit intent
-      wins), otherwise the session transcript scope (auto-stage fallback).
+    - Worktree: every dirty file — `git add -A` will stage them all.
+    - Project root: the session transcript scope — the only source telec
+      uses for staging on the project root.
     """
     _ = args
     project_root = resolve_project_root(resolve_invocation_cwd())
-    worktree = is_worktree(project_root)
-    on_shared_main = (not worktree) and _current_branch(project_root) == "main"
-
-    if not on_shared_main:
+    if is_worktree(project_root):
         repo = Repo(str(project_root))
         status = repo.git.status("--porcelain")
         dirty = [line[3:].strip() for line in status.splitlines() if len(line) > 3]
@@ -107,44 +99,50 @@ def handle_code_changed(args: list[str]) -> None:
             print(f)
         return
 
-    staged = _get_staged_files(project_root, include_deletions=True)
-    if staged:
-        for f in sorted(staged):
-            print(f)
-        return
-
     try:
         files = resolve_session_scope(project_root)
     except RuntimeError as exc:
         print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
     if not files:
-        print("No staged files and no session-scoped changes.")
+        print("No session-scoped changes.")
         return
     for f in sorted(files):
         print(f)
 
 
 def handle_code_commit(args: list[str]) -> None:
-    """Stage files, run format + lint, then commit.
+    """Stage the agent's session scope and commit it with a pathspec-scoped commit.
 
     Flags: -m <message>. Everything else passes through to git commit.
 
-    Protection model:
-    1. Orchestrator restriction
-    2. Main-branch lock serialization
-    3. main: trust the index; auto-stage from transcript only if empty
-    4. Worktrees: stage all dirty files
-    5. Path A/B/C classification on main
-    6. Format and lint staged files
-    7. Commit via real git binary (bypassing wrapper)
+    Caller paths:
+    - Outside tmux: the wrapper passes through to plain git; this command is
+      not in the picture.
+    - Inside tmux, autonomous agent: this command. Staging source is the
+      transcript scope (worktree → all dirty). The final `git commit` runs
+      with an explicit pathspec so anything else in the index (concurrent
+      stage from another session, crash residue) is left untouched.
+    - Inside tmux, supervised one-off: `TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>`
+      bypasses the wrapper redirect. This command is not in the picture.
+
+    Safety primitives:
+    1. Orchestrator restriction (callers in role 'orchestrator' are rejected).
+    2. main-branch lock serialises all `_commit_under_lock` bodies.
+    3. Pathspec on the final `git commit` scopes the commit to exactly the
+       files telec staged.
+    4. Pre-commit hook owns format + lint inside git's own atomicity.
+    5. Path A/B/C classification on main for non-integrator, non-approved
+       commits.
     """
-    # Parse -m <message> and --approved, pass everything else through to git
+    # Parse -m <message> and --approved, pass everything else through to git.
+    # The literal "--" separator is consumed (this command appends its own
+    # pathspec separator before the staged files).
     approved = "--approved" in args
     message: str | None = None
     git_args: list[str] = []
     i = 0
-    filtered = [a for a in args if a != "--approved"]
+    filtered = [a for a in args if a not in ("--approved", "--")]
     while i < len(filtered):
         if filtered[i] == "-m" and i + 1 < len(filtered):
             message = filtered[i + 1]
@@ -178,34 +176,29 @@ def _commit_under_lock(
 
     Staging policy:
     - Worktree: single-task tree, stage all dirty (`git add -A`).
-    - main in project root: explicit `git add` is the authority. If anything is
-      already staged, trust it and commit. Only when the index is empty does
-      this command auto-stage from the session transcript scope.
-    - Other branches in project root: trust whatever the caller staged.
+    - Project root (any branch): stage the session transcript scope.
 
-    The wrapper at ~/.teleclaude/bin/git already enforces the intent layer
-    (no stash, no auto-stash, no sweep-add on main, explicit paths only). Any
-    pre-staged file got there by deliberate `git add`, so this command does
-    not re-litigate it.
+    The pre-commit hook owns format and lint inside git's own atomicity. The
+    final `git commit` runs with an explicit pathspec so any other content in
+    the index (concurrent stage from another session, crash residue) is not
+    swept into this commit.
     """
     repo = Repo(str(project_root))
     worktree = is_worktree(project_root)
     current_branch = _current_branch(project_root)
-    on_shared_main = (not worktree) and current_branch == "main"
 
     if worktree:
         repo.git.add("-A")
-    elif on_shared_main:
-        pre_staged = _get_staged_files(project_root, include_deletions=True)
-        if not pre_staged:
-            try:
-                scoped_files = resolve_session_scope(project_root)
-            except RuntimeError as exc:
-                print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
-                raise SystemExit(2) from exc
-            if scoped_files:
-                _stage_files(scoped_files, project_root)
-    # else: non-main branch in project root — trust whatever the caller staged.
+    else:
+        try:
+            scoped_files = resolve_session_scope(project_root)
+        except RuntimeError as exc:
+            print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+        if not scoped_files:
+            print("Nothing to commit (session scope is empty).", file=sys.stderr)
+            raise SystemExit(1)
+        _stage_files(scoped_files, project_root)
 
     staged_for_commit = _get_staged_files(project_root, include_deletions=True)
     if not staged_for_commit:
@@ -213,25 +206,24 @@ def _commit_under_lock(
         raise SystemExit(1)
 
     _check_partial_staging(project_root)
-    staged = _get_staged_files(project_root)
 
     # Path A/B/C classification on main
     commit_args = ["-m", message] if message else []
     commit_args.extend(git_args)
 
     if current_branch == "main" and system_role != "integrator" and not approved:
-        _classify_main_commit(commit_args, staged)
+        # Classification looks at functional file extensions; deletions are
+        # handled by including the full set with `staged_for_commit`.
+        _classify_main_commit(commit_args, _get_staged_files(project_root))
 
-    # Format staged files; the pre-commit hook owns formatter restaging/retry.
-    languages = get_project_languages(project_root)
-    runner = FormatRunner(project_root=project_root, languages=languages)
-    runner.run(files=staged)
+    # Pathspec scopes the commit to exactly what telec staged; anything else in
+    # the index (concurrent stage from another session, crash residue) is left
+    # alone for its owner to commit or for a human to clean up. Deletions must
+    # be included so they make it into the commit.
+    commit_args.extend(["--", *staged_for_commit])
 
-    # Lint staged files
-    lint_runner = LintRunner(project_root=project_root)
-    lint_runner.run(files=staged)
-
-    # Commit via gitpython (uses real binary, bypasses wrapper)
+    # Commit via gitpython (uses real binary, bypasses wrapper). The pre-commit
+    # hook runs format and lint inside git's own atomicity.
     try:
         repo.git.commit(*commit_args)
     except GitCommandError as exc:
