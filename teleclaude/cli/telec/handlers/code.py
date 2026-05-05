@@ -85,22 +85,32 @@ def handle_code(args: list[str]) -> None:
 def handle_code_changed(args: list[str]) -> None:
     """List changed files.
 
-    Shared branches show session-scoped dirty files. Worktrees are task-scoped,
-    so all dirty files belong to the task.
+    Three-way branch taxonomy:
+    - Worktree: single-task tree, list all dirty.
+    - main in project root: shared canonical, list session-scoped only.
+    - Other branches in project root: user-owned, list all dirty.
     """
     _ = args
     project_root = resolve_project_root(resolve_invocation_cwd())
-    if is_worktree(project_root):
+    worktree = is_worktree(project_root)
+    on_shared_main = (not worktree) and _current_branch(project_root) == "main"
+
+    if not on_shared_main:
         repo = Repo(str(project_root))
         status = repo.git.status("--porcelain")
         dirty = [line[3:].strip() for line in status.splitlines() if len(line) > 3]
         if not dirty:
-            print("No uncommitted worktree changes.")
+            print("No uncommitted changes.")
             return
         for f in sorted(dirty):
             print(f)
         return
-    files = _resolve_scoped_files(project_root)
+
+    try:
+        files = resolve_session_scope(project_root)
+    except RuntimeError as exc:
+        print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
     if not files:
         print("No uncommitted session-scoped changes.")
         return
@@ -157,35 +167,41 @@ def _commit_under_lock(
     system_role: str | None,
     approved: bool = False,
 ) -> None:
-    """Execute the commit sequence while holding the main-branch lock."""
+    """Execute the commit sequence while holding the main-branch lock.
+
+    Three-way branch taxonomy:
+    - Worktree: single-task tree, stage all dirty.
+    - main in project root: shared canonical, strict session scope.
+    - Other branches in project root: user-owned, trust whatever is staged.
+    """
     repo = Repo(str(project_root))
     worktree = is_worktree(project_root)
+    current_branch = _current_branch(project_root)
+    on_shared_main = (not worktree) and current_branch == "main"
 
     if worktree:
         repo.git.add("-A")
-    else:
-        # Detect foreign staged files (outside session scope)
+    elif on_shared_main:
+        try:
+            scoped_files = resolve_session_scope(project_root)
+        except RuntimeError as exc:
+            print(f"ERROR: scope resolution failed: {exc}", file=sys.stderr)
+            raise SystemExit(2) from exc
+
         pre_staged = _get_staged_files(project_root, include_deletions=True)
-        scoped_files = _resolve_scoped_files(project_root)
         if pre_staged:
             scoped_set = set(scoped_files)
             foreign = [f for f in pre_staged if f not in scoped_set]
             if foreign:
-                print(
-                    "ERROR: Staged files outside your session scope detected — another agent may be mid-commit.\n",
-                    file=sys.stderr,
-                )
+                print("ERROR: staged files outside session scope:\n", file=sys.stderr)
                 for f in foreign:
                     print(f"  {f}", file=sys.stderr)
-                print(
-                    "\nUnstage with: git reset HEAD -- <file>\nOr wait for the other agent to finish and retry.",
-                    file=sys.stderr,
-                )
+                print("\nUnstage with: git reset HEAD -- <file>", file=sys.stderr)
                 raise SystemExit(2)
 
-        # Session-scope resolution → stage files
         if scoped_files:
             _stage_files(scoped_files, project_root)
+    # else: non-main branch in project root — trust whatever the caller staged.
 
     staged_for_commit = _get_staged_files(project_root, include_deletions=True)
     if not staged_for_commit:
@@ -199,7 +215,6 @@ def _commit_under_lock(
     commit_args = ["-m", message] if message else []
     commit_args.extend(git_args)
 
-    current_branch = _current_branch(project_root)
     if current_branch == "main" and system_role != "integrator" and not approved:
         _classify_main_commit(commit_args, staged)
 
@@ -278,14 +293,6 @@ def _is_functional(filepath: str) -> bool:
         return True
     _, ext = os.path.splitext(name)
     return ext in _FUNCTIONAL_EXTENSIONS
-
-
-def _resolve_scoped_files(project_root: str | Path) -> list[str]:
-    """Resolve session-scoped files for staging."""
-    try:
-        return resolve_session_scope(Path(project_root) if isinstance(project_root, str) else project_root)
-    except RuntimeError:
-        return []
 
 
 def _stage_files(files: list[str], project_root: Path) -> None:
