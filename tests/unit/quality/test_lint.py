@@ -82,7 +82,7 @@ class TestSharedBranchScopeFailure:
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
         monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
 
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
@@ -100,7 +100,7 @@ class TestSharedBranchScopeFailure:
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
         monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             pipeline_calls.append,
@@ -214,7 +214,7 @@ class TestSharedBranchScopeSuccess:
         received_targets: list[object] = []
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: scoped_files,
@@ -574,7 +574,7 @@ class TestPathValidation:
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: malicious_files,
@@ -607,7 +607,7 @@ class TestPathValidation:
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
         monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             "teleclaude.quality.lint.resolve_session_scope",
             lambda _path: malicious_files,

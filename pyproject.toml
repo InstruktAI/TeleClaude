@@ -294,136 +294,73 @@ filterwarnings = [
 
 [tool.test-mapping]
 exclude = [
-    "teleclaude/channels/types.py",      # TypedDict/type aliases only
-    "teleclaude/cli/telec/__main__.py",  # Module entrypoint delegates to teleclaude.cli.telec.main
-    "teleclaude/core/hook_outbox_queue.py", # Queue dataclasses only; behavior lives in daemon_hook_outbox.py
     "teleclaude/core/metadata.py",       # Pure Pydantic model, no logic
-    "teleclaude/core/origins.py",        # Enum constants only; covered through API/TTS consumers
-    "teleclaude/core/protocols.py",      # Protocol contract only
-    "teleclaude/core/session_start_messages.py", # Constants-only prompt pool
-    "teleclaude/core/todos_db/_rows.py", # Typed row shapes only
-    "teleclaude/events/domains/creative_production/handlers/asset_lifecycle/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/creative_production/handlers/review_gatekeeper/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/customer_relations/handlers/escalation_handler/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/customer_relations/handlers/helpdesk_triage/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/customer_relations/handlers/satisfaction_tracker/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/marketing/handlers/campaign_budget_monitor/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/marketing/handlers/content_pipeline/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/software_development/handlers/build_notifier/handler.py", # Trivial pass-through handler
-    "teleclaude/events/domains/software_development/handlers/deploy_tracker/handler.py", # Trivial pass-through handler
-    "teleclaude/hooks/receiver/_repo_root.py", # Compatibility import shim only
     "teleclaude/logging_config.py",       # Delegates to instrukt_ai_logging
-    "teleclaude/memory/types.py",        # Memory DTO/enums only
-    "teleclaude/services/protocols/context.py", # Protocol contract only
-    "teleclaude/services/protocols/events.py", # Protocol contract only
-    "teleclaude/services/protocols/identity.py", # Protocol contract only
-    "teleclaude/services/protocols/ledger.py", # Protocol contract only
-    "teleclaude/services/protocols/runtime.py", # Protocol contract only
-    "teleclaude/services/protocols/work.py", # Protocol contract only
-    "teleclaude/services/surface.py",     # Empty v2 command manifest/data declarations only
-    "teleclaude/session_scoping/_types.py", # Session-scoping dataclasses/type aliases only
-    "teleclaude/types/state_value.py",    # Recursive JSON type aliases only
-    "teleclaude/types/system.py",         # TypedDict shapes only
 ]
-# guard: ratchet-down — orphaned tests to rename/restructure; each entry needs a source companion or removal
+# guard: ratchet-down — centrally classified tests with no honest single teleclaude/** source companion
 orphan-exclude = [
-    "tests/unit/cli/tui/test_animation_modes.py",             # Tests animation mode switching across TUI animation files
-    "tests/unit/cli/tui/test_session_row.py",                 # Tests session row rendering in TUI views
-    "tests/unit/core/integration/test_auto_enqueue.py",       # Tests auto-enqueue in state_machine.py
-    "tests/unit/core/integration/test_queue_transitions.py",  # Tests queue transitions in state_machine.py
-    "tests/unit/core/integration/test_step_delivery_bookkeeping.py", # Tests step_functions.py delivery flow
-    "tests/unit/core/integration/test_worktree_guards.py",    # Tests worktree guards in step_functions.py
-    "tests/unit/core/next_machine/test_bug_route.py",         # Tests bug routing logic in core.py
-    "tests/unit/core/next_machine/test_format_tool_call.py",  # Tests tool call formatting in core.py
-    "tests/unit/core/next_machine/test_ghost_artifact.py",    # Tests ghost artifact detection in core.py
-    "tests/unit/core/next_machine/test_prepare_staleness.py", # Tests prepare staleness in prepare.py
-    "tests/unit/core/next_machine/test_referenced_paths.py",  # Tests referenced paths in core.py
-    "tests/unit/core/next_machine/test_review_findings.py",   # Tests review findings in core.py
-    "tests/unit/core/next_machine/test_split_inheritance.py",  # Tests split inheritance in core.py
-    "tests/unit/core/next_machine/test_stale_review_guard.py", # Tests stale review detection in core.py
-    "tests/unit/core/test_agent_coordinator.py",              # Tests agent_coordinator/ package
-    "tests/unit/core/test_command_handlers.py",               # Tests command_handlers/ package
-    "tests/unit/core/test_db.py",                             # Tests core/db/ package
-    "tests/unit/events/test_new_prepare_events.py",           # Tests prepare event flow across event modules
-    "tests/unit/test_api_auth.py",                            # Tests teleclaude/api/auth.py (path mismatch)
-    "tests/unit/test_principal_inheritance.py",               # Cross-module principal inheritance behavior
-    "tests/unit/test_session_token_lifecycle.py",             # Cross-module session token lifecycle
-    "tests/unit/test_session_tokens.py",                      # Cross-module session token behavior
-    "tests/unit/test_dependency_upgrade.py",                   # Tests jobs/dependency_upgrade.py (path mismatch)
-    "tests/unit/jobs/test_session_memory_extraction.py",      # Tests jobs/session_memory_extraction.py (path mismatch)
-    "tests/unit/jobs/test_project_backup.py",                 # Tests jobs/project_backup.py (path mismatch)
-    "tests/unit/test_youtube_scraper.py",                     # Tests youtube scraper helpers
-    "tests/unit/cli/telec/test_surface_export.py",            # Tests export_surface_markdown() in surface.py
-    "tests/unit/scripts/test_release_consolidator.py",        # Tests scripts/release_consolidator.py (path mismatch)
-    "tests/unit/test_todo_from_main.py",                     # Tests create_from_main_skeleton() in todo_scaffold.py
-    "tests/unit/core/agent_coordinator/test_headless_pull.py", # Tests headless pull scheduling in _coordinator.py
-    "tests/unit/adapters/discord/test_headless_title.py",     # Tests headless title prefix in channel_ops.py
-    "tests/unit/adapters/telegram/test_send_message_topic_guard.py", # Tests topic_id guard in message_ops.py
-    "tests/unit/tools/lint/test_guardrails.py",                  # Tests tools/lint/guardrails.py (outside teleclaude/ package)
-    "tests/unit/cli/tui/test_resource_cleanup.py",             # Tests resource cleanup across app.py, app_media.py, sessions.py
-    "tests/unit/install/test_git_wrapper_permissions.py",       # Tests shell wrapper at teleclaude/install/wrappers/git
-    "tests/unit/cli/telec/handlers/test_todo_artifacts.py",
-    "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",
-    "tests/unit/cli/tui/test_app_bootstrap.py",
-    "tests/unit/cli/tui/views/test_project_actions.py",
-    "tests/unit/config/test_config_independent_schemas.py",
-    "tests/unit/core/db/test_connection_factory.py",
-    "tests/unit/core/db/test_outbox_isolation.py",
-    "tests/unit/core/db/test_outbox_startup_migration.py",
-    "tests/unit/core/db/test_receiver_write_elimination.py",
-    "tests/unit/core/db/test_typed_results.py",
-    "tests/unit/core/next_machine/test_authoritative_phase_clearing.py",
-    "tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py",
-    "tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py",
-    "tests/unit/core/next_machine/test_remove.py",
-    "tests/unit/core/next_machine/test_runtime_scripts.py",
-    "tests/unit/core/next_machine/test_runtime_sessions.py",
-    "tests/unit/core/next_machine/test_stamp_artifact.py",
-    "tests/unit/core/next_machine/test_stamp_verdict.py",
-    "tests/unit/core/test_channel_metadata_cleanup.py",
-    "tests/unit/core/test_command_wrapping.py",
-    "tests/unit/core/test_documentation_deliverables.py",
-    "tests/unit/core/test_domain_events.py",
-    "tests/unit/core/test_metadata_driven_dispatch.py",
-    "tests/unit/core/test_output_pipeline_design_spec.py",
-    "tests/unit/core/test_receipt_operations.py",
-    "tests/unit/core/test_response_mode.py",
-    "tests/unit/core/test_roadmap_draft.py",
-    "tests/unit/core/test_todo_watcher_removal.py",
-    "tests/unit/core/test_working_slug_derivation.py",
-    "tests/unit/core/todos_db/test_mutation_callback.py",
-    "tests/unit/core/todos_db/test_sqlalchemy_engine.py",
-    "tests/unit/events/cartridges/test_todo_lifecycle_router_specs.py",
-    "tests/unit/events/schemas/test_todo_dumped_kind_specs.py",
-    "tests/unit/hooks/checkpoint/test__init__.py",
-    "tests/unit/hooks/receiver/test__init__.py",
-    "tests/unit/install/test_configure_agent_cli.py",
-    "tests/unit/mirrors/test_sqlalchemy_engine.py",
-    "tests/unit/project_setup/test_skeleton.py",
-    "tests/unit/quality/test_guardrail_caps.py",
-    "tests/unit/quality/test_toolchain.py",
-    "tests/unit/resource_validation/test__init__.py",
-    "tests/unit/resource_validation/test_activation_trigger_validation_spec.py",
-    "tests/unit/resource_validation/test_unified_severity_spec.py",
-    "tests/unit/scripts/test_distribute.py",
-    "tests/unit/scripts/test_release_changelog.py",
-    "tests/unit/session_scoping/test__extractors.py",
-    "tests/unit/session_scoping/test__init__.py",
-    "tests/unit/session_scoping/test__native_strategy.py",
-    "tests/unit/test_activation_trigger_content_spec.py",
-    "tests/unit/test_activation_trigger_distribution_spec.py",
-    "tests/unit/test_asyncio_task_naming.py",
-    "tests/unit/test_daemon_headless_pipeline.py",
-    "tests/unit/test_distribute.py",
-    "tests/unit/test_no_stale_todo_fs_refs.py",
-    "tests/unit/test_pydantic_to_typescript_codegen.py",
-    "tests/unit/tools/test_markdown_lint.py",
-    "tests/unit/tools/test_migration.py",
-    "tests/unit/tools/test_session_scope.py",
-    "tests/unit/tools/test_shell_scoping.py",
-    "tests/unit/tools/test_update_third_party_frontmatter.py",
-    "tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py",
-    "tests/unit/transport/redis_transport/test_target_computer_named_field.py",
+    "tests/unit/adapters/discord/test_headless_title.py",  # Cross-module: Discord title prefix spans channel_ops.py and Session metadata.
+    "tests/unit/adapters/telegram/test_send_message_topic_guard.py",  # Cross-module: Telegram topic guard spans message_ops.py and adapter metadata.
+    "tests/unit/cli/telec/handlers/test_todo_artifacts.py",  # Deferred split: todo artifact CLI assertions share handlers/todo.py with other specs.
+    "tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py",  # Deferred split: dump event contract spans handlers/todo.py and event envelope.
+    "tests/unit/cli/telec/test_surface_export.py",  # Deferred split: surface export assertions belong with occupied cli/telec/surface.py companion.
+    "tests/unit/cli/tui/test_resource_cleanup.py",  # Cross-module: cleanup spans TelecApp, app_media state, and SessionsView resources.
+    "tests/unit/config/test_config_independent_schemas.py",  # Cross-module: config schema isolation spans loader, schema, context, and git helper.
+    "tests/unit/core/db/test_outbox_isolation.py",  # Cross-module: outbox isolation spans Db, connection_factory, hook receiver, and daemon outbox.
+    "tests/unit/core/db/test_receiver_write_elimination.py",  # Cross-module: receiver write elimination spans hook receiver, db paths, and daemon outbox.
+    "tests/unit/core/db/test_typed_results.py",  # Cross-module: typed result contract spans todos_db mixins and mirrors store.
+    "tests/unit/core/integration/test_auto_enqueue.py",  # Cross-module: integration auto-enqueue spans step_functions readiness checks and TodosDb state.
+    "tests/unit/core/integration/test_queue_transitions.py",  # Cross-module: queue transition contract spans IntegrationQueue and readiness projection keys.
+    "tests/unit/core/integration/test_step_delivery_bookkeeping.py",  # Cross-module: delivery bookkeeping spans checkpoint, readiness projection, and step_functions.
+    "tests/unit/core/integration/test_worktree_guards.py",  # Cross-module: integration worktree guard validates step_functions against worktree state.
+    "tests/unit/core/next_machine/test_authoritative_phase_clearing.py",  # Cross-module: phase clearing spans lifecycle normalization and TodoState data.
+    "tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py",  # Deferred split: authoritative phase specs span CLI todo handler, state_io, and types.
+    "tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py",  # Deferred split: prepare lifecycle specs span lifecycle, output formatting, state_io, and worktrees.
+    "tests/unit/core/next_machine/test_stamp_verdict.py",  # Cross-module: verdict stamping spans state_io persistence and TodosDb/TodoState.
+    "tests/unit/core/test_channel_metadata_cleanup.py",  # Cross-module: metadata cleanup spans session command handlers and command metadata models.
+    "tests/unit/core/test_command_wrapping.py",  # Cross-module: command wrapping spans API sessions, auth identity, command handlers, and command types.
+    "tests/unit/core/test_db.py",  # Package-boundary: core/db package public session-principal contract has no single module companion.
+    "tests/unit/core/test_documentation_deliverables.py",  # Cross-module: documentation deliverable checks span generated artifacts and repository docs.
+    "tests/unit/core/test_domain_events.py",  # Cross-module: domain event emission spans API routes, command handlers, event bus, and operations.
+    "tests/unit/core/test_metadata_driven_dispatch.py",  # Cross-module: metadata dispatch spans Redis messaging metadata and command type models.
+    "tests/unit/core/test_output_pipeline_design_spec.py",  # Cross-module: output pipeline design spans UI adapter, output poller, and polling coordinator.
+    "tests/unit/core/test_receipt_operations.py",  # Cross-module: receipt operations span todo API routes, caller identity, and operations service.
+    "tests/unit/core/test_todo_watcher_removal.py",  # Deferred decision: stale watcher-removal spec has no import owner and must be rehomed or retired.
+    "tests/unit/core/test_working_slug_derivation.py",  # Cross-module: working slug derivation spans session handlers and create-session command types.
+    "tests/unit/core/todos_db/test_mutation_callback.py",  # Cross-module: mutation callback spans state_io singleton access and TodosDb hooks.
+    "tests/unit/core/todos_db/test_sqlalchemy_engine.py",  # Package-boundary: todos_db package engine contract is exposed through package-level TodosDb.
+    "tests/unit/events/cartridges/test_todo_lifecycle_router_specs.py",  # Deferred decision: router spec imports only envelope types; ownership needs event-router split.
+    "tests/unit/events/schemas/test_todo_dumped_kind_specs.py",  # Cross-module: dumped-kind schema spans event catalog, envelope, and software-development schema registration.
+    "tests/unit/hooks/checkpoint/test__init__.py",  # Package-boundary: hooks.checkpoint public exports compose checkpoint messages across helper internals.
+    "tests/unit/hooks/receiver/test__init__.py",  # Package-boundary: hooks.receiver public entrypoints span receiver package helpers and database paths.
+    "tests/unit/install/test_git_wrapper_permissions.py",  # Mapper-gap: shell wrapper under teleclaude/install/wrappers has no Python source companion.
+    "tests/unit/jobs/test_dependency_upgrade.py",  # Mapper-gap: jobs/dependency_upgrade.py is outside current teleclaude/** mapper roots.
+    "tests/unit/jobs/test_project_backup.py",  # Mapper-gap: jobs/project_backup.py is outside current teleclaude/** mapper roots.
+    "tests/unit/jobs/test_session_memory_extraction.py",  # Mapper-gap: jobs/session_memory_extraction.py is outside current teleclaude/** mapper roots.
+    "tests/unit/jobs/test_youtube_scraper.py",  # Mapper-gap: jobs/youtube_scraper.py is outside current teleclaude/** mapper roots.
+    "tests/unit/mirrors/test_sqlalchemy_engine.py",  # Cross-module: mirror SQLAlchemy contract spans mirrors.store records and tombstone helpers.
+    "tests/unit/resource_validation/test__init__.py",  # Package-boundary: resource_validation package export contract has no single module companion.
+    "tests/unit/resource_validation/test_activation_trigger_validation_spec.py",  # Cross-module: activation trigger validation spans package models and snippet validator.
+    "tests/unit/resource_validation/test_unified_severity_spec.py",  # Cross-module: severity contract spans resource_validation and sync-facing model usage.
+    "tests/unit/scripts/test_distribute.py",  # Mapper-gap: scripts/distribute.py is outside current teleclaude/** mapper roots.
+    "tests/unit/scripts/test_release_changelog.py",  # Mapper-gap: scripts/release_changelog.py is outside current teleclaude/** mapper roots.
+    "tests/unit/scripts/test_release_consolidator.py",  # Mapper-gap: scripts/release_consolidator.py is outside current teleclaude/** mapper roots.
+    "tests/unit/session_scoping/test__extractors.py",  # Package-boundary: _extractors package dispatch spans claude, codex, and gemini extractors.
+    "tests/unit/session_scoping/test__init__.py",  # Package-boundary: session_scoping public API re-exports _api and _types contracts.
+    "tests/unit/test_asyncio_task_naming.py",  # Cross-module: asyncio task naming checks runtime task creation policy across daemon flows.
+    "tests/unit/test_daemon_headless_pipeline.py",  # Cross-module: headless daemon pipeline spans config CLI, hook outbox, docs handler, and identity.
+    "tests/unit/test_distribute.py",  # Mapper-gap: legacy importlib coverage for scripts/distribute.py remains outside mapper roots.
+    "tests/unit/test_no_stale_todo_fs_refs.py",  # Cross-module: stale todo filesystem reference guard scans repository markdown artifacts.
+    "tests/unit/test_pydantic_to_typescript_codegen.py",  # Deferred decision: unsafe move; codegen spec currently fails when run directly.
+    "tests/unit/test_todo_from_main.py",  # Deferred decision: unsafe move; from-main scaffold spec currently fails when run directly.
+    "tests/unit/tools/lint/test_guardrails.py",  # Mapper-gap: tools/lint/guardrails.py is outside current teleclaude/** mapper roots.
+    "tests/unit/tools/lint/test_markdown.py",  # Mapper-gap: tools/lint/markdown.py is outside current teleclaude/** mapper roots.
+    "tests/unit/tools/test_migration.py",  # Mapper-gap: Makefile/tool migration checks target repository tooling outside teleclaude/** roots.
+    "tests/unit/tools/test_session_scope.py",  # Mapper-gap: session scope tooling checks repository scripts outside teleclaude/** roots.
+    "tests/unit/tools/test_shell_scoping.py",  # Mapper-gap: shell scoping checks tool wrappers outside teleclaude/** roots.
+    "tests/unit/tools/test_update_third_party_frontmatter.py",  # Mapper-gap: tools/update_third_party_frontmatter.py is outside current teleclaude/** mapper roots.
+    "tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py",  # Cross-module: Redis wire format spans metadata models, snapshots, and transport.
+    "tests/unit/transport/redis_transport/test_target_computer_named_field.py",  # Cross-module: target-computer wire field spans command mapper, metadata models, and transport.
 ]
 
 [tool.coverage.run]

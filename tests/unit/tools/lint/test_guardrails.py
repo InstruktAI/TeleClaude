@@ -29,6 +29,7 @@ _spec.loader.exec_module(_mod)
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
 _check_import_outside_toplevel_policy = _mod._check_import_outside_toplevel_policy
+_check_test_companions = _mod._check_test_companions
 _check_no_companion_markers = _mod._check_no_companion_markers
 _warn_for_loose_dicts = _mod._warn_for_loose_dicts
 
@@ -85,6 +86,53 @@ def _run_import_outside_toplevel_policy_check(tmp_path: Path, *, selected_paths:
         return None
     except SystemExit as e:
         return str(e)
+
+
+def _run_test_companion_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
+    """Run test companion guardrail and return failure text if any."""
+    try:
+        _check_test_companions(tmp_path, selected_paths)
+        return None
+    except SystemExit as e:
+        return str(e)
+
+
+# ---------------------------------------------------------------------------
+# test companion guardrail tests
+# ---------------------------------------------------------------------------
+
+
+class TestCompanionGuardrail:
+    """Tests for retired local marker enforcement and central orphan ratcheting."""
+
+    @pytest.mark.unit
+    def test_local_no_companion_marker_is_rejected(self, tmp_path: Path) -> None:
+        """A real local marker is rejected instead of bypassing companion enforcement."""
+        _write_file(tmp_path, "pyproject.toml", "[tool.test-mapping]\norphan-exclude = []\n")
+        _write_file(tmp_path, "teleclaude/__init__.py", "")
+        _write_file(
+            tmp_path, "tests/unit/test_legacy.py", "# guard: no-companion\n\nfrom __future__ import annotations\n"
+        )
+
+        result = _run_test_companion_check(tmp_path)
+
+        assert result is not None
+        assert "no-companion" in result
+        assert "tests/unit/test_legacy.py" in result
+
+    @pytest.mark.unit
+    def test_orphan_exclude_cannot_exceed_cap(self, tmp_path: Path) -> None:
+        """Central orphan exclusions are capped so future changes can only ratchet down."""
+        entries = ",\n".join(f'    "tests/unit/test_legacy_{index}.py"' for index in range(65))
+        _write_file(tmp_path, "pyproject.toml", f"[tool.test-mapping]\norphan-exclude = [\n{entries},\n]\n")
+        _write_file(tmp_path, "teleclaude/__init__.py", "")
+        _write_file(tmp_path, "tests/unit/test_present.py", "from __future__ import annotations\n")
+
+        result = _run_test_companion_check(tmp_path)
+
+        assert result is not None
+        assert "orphan-exclude" in result
+        assert "65" in result
 
 
 def _run_no_companion_marker_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
@@ -284,25 +332,49 @@ class TestImportOutsideTopLevelPolicy:
 
     @pytest.mark.unit
     def test_allowlisted_file_with_suppression_passes(self, tmp_path: Path) -> None:
-        """Approved startup-boundary file may use the PLC0415 suppression."""
+        """Approved startup-boundary file may use PLC0415 when the reason is explicit."""
         _write_file(
             tmp_path,
             "teleclaude/daemon.py",
-            "def f():\n    from pkg import thing  # noqa: PLC0415\n",
+            "def f():\n    from pkg import thing  # noqa: PLC0415  # startup boundary\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is None
 
     @pytest.mark.unit
-    def test_allowlisted_file_without_suppression_passes(self, tmp_path: Path) -> None:
-        """Approved startup-boundary file without PLC0415 suppression is clean."""
+    def test_allowlisted_file_with_reason_without_suppression_passes(self, tmp_path: Path) -> None:
+        """Approved startup-boundary file without PLC0415 suppression is clean when reasoned."""
         _write_file(
             tmp_path,
             "teleclaude/daemon_event_platform.py",
-            "def f():\n    from pkg import thing\n",
+            "def f():\n    from pkg import thing  # startup boundary\n",
         )
         result = _run_import_outside_toplevel_policy_check(tmp_path)
         assert result is None
+
+    @pytest.mark.unit
+    def test_allowlisted_file_missing_startup_reason_fails(self, tmp_path: Path) -> None:
+        """Approved lazy imports must still carry the startup-boundary reason."""
+        _write_file(
+            tmp_path,
+            "teleclaude/daemon.py",
+            "def f():\n    from pkg import thing\n",
+        )
+        result = _run_import_outside_toplevel_policy_check(tmp_path)
+        assert result is not None
+        assert "startup-boundary" in result
+
+    @pytest.mark.unit
+    def test_startup_reason_outside_allowlist_fails(self, tmp_path: Path) -> None:
+        """The startup-boundary reason is reserved for the approved files."""
+        _write_file(
+            tmp_path,
+            "teleclaude/other.py",
+            "def f():\n    from pkg import thing  # startup boundary\n",
+        )
+        result = _run_import_outside_toplevel_policy_check(tmp_path)
+        assert result is not None
+        assert "approved files" in result
 
     @pytest.mark.unit
     def test_plc0415_suppression_outside_allowlist_fails(self, tmp_path: Path) -> None:
