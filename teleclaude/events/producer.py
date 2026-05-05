@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-import ssl
 from typing import Any
 
 from instrukt_ai_logging import get_logger
-from redis.asyncio import Redis
 
 from teleclaude.config import config
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
+from teleclaude.transport.redis_client import create_redis_client
 
 logger = get_logger(__name__)
 
-# Process-wide singleton producer. The daemon registers one eagerly at startup;
-# CLI invocations build one lazily via `ensure_event_producer` so they can publish
-# to the same Redis stream the daemon polls.
+# Process-wide singleton producer. The daemon registers one eagerly at startup
+# via `configure_producer`; short-lived CLI processes opt in to lazy construction
+# at their own boundary by calling `ensure_event_producer`. `emit_event` itself
+# fails fast when no producer is registered so daemon-side startup failures stay
+# visible.
 _PRODUCER_STATE: dict[str, EventProducer | None] = {"producer": None}
 
 
@@ -56,32 +57,27 @@ def configure_producer(producer: EventProducer) -> None:
 
 
 def _build_producer_from_config() -> EventProducer:
-    """Construct an `EventProducer` against the configured Redis URL."""
+    """Construct an `EventProducer` from `config.redis` via the shared client factory."""
     redis_cfg = config.redis
     if not redis_cfg.url:
         raise RuntimeError("EventProducer cannot be built: config.redis.url is empty")
-    if redis_cfg.url.startswith("rediss://"):
-        client = Redis.from_url(
-            redis_cfg.url,
-            password=redis_cfg.password,
-            decode_responses=False,
-            ssl_cert_reqs=ssl.CERT_NONE,
-        )
-    else:
-        client = Redis.from_url(
-            redis_cfg.url,
-            password=redis_cfg.password,
-            decode_responses=False,
-        )
+    client = create_redis_client(
+        redis_cfg.url,
+        password=redis_cfg.password,
+        max_connections=redis_cfg.max_connections,
+        socket_timeout=redis_cfg.socket_timeout,
+    )
     return EventProducer(client)
 
 
 def ensure_event_producer() -> EventProducer:
-    """Return the configured producer, building one from config if needed.
+    """Build and register a producer from `config.redis` when none is configured.
 
-    The daemon pre-registers a producer at startup that wraps its long-lived
-    transport client; lazy construction covers short-lived CLI processes that
-    publish to the same stream without owning the daemon's transport.
+    Intended for short-lived CLI processes that need to publish events but do
+    not own the daemon's transport. Idempotent: returns the existing producer
+    when one is already registered. Daemon code paths must not call this — the
+    daemon's startup is the sole authoritative `configure_producer` site, and
+    `emit_event` failing fast on its absence is how startup regressions surface.
     """
     producer = _PRODUCER_STATE["producer"]
     if producer is not None:
@@ -92,8 +88,11 @@ def ensure_event_producer() -> EventProducer:
 
 
 async def emit_event(event: str, source: str, level: EventLevel, **kwargs: Any) -> str:
-    """Build an envelope from explicit fields and publish it via the configured producer."""
-    producer = ensure_event_producer()
+    """Build an envelope from explicit fields and publish via the configured producer."""
+    producer = _PRODUCER_STATE["producer"]
+    if producer is None:
+        logger.error("emit_event called but EventProducer not configured: event=%s", event)
+        raise RuntimeError("EventProducer not configured. Call configure_producer() first.")
     domain = str(kwargs.pop("domain", ""))
     description = str(kwargs.pop("description", ""))
     payload = kwargs.pop("payload", None)

@@ -28,6 +28,7 @@ from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.events.envelope import EventEnvelope, EventLevel
+from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
@@ -718,6 +719,9 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if stamp_type == "verdict" and not phase:
         print("--verdict requires --phase <phase>")
         raise SystemExit(1)
+
+    if stamp_type == "finalize_ready":
+        ensure_event_producer()
 
     try:
         asyncio.run(

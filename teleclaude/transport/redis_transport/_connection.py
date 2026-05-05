@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-import ssl
 import time
 from typing import TYPE_CHECKING
 
@@ -12,9 +11,10 @@ from instrukt_ai_logging import get_logger
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
+from teleclaude.transport.redis_client import create_redis_client
+
 logger = get_logger(__name__)
 
-type _RedisKwargValue = str | int | float | bool | None | ssl.VerifyMode
 
 if TYPE_CHECKING:
     from teleclaude.core.cache import DaemonCache
@@ -170,16 +170,12 @@ class _ConnectionMixin:  # pyright: ignore[reportUnusedClass]
 
     def _create_redis_client(self) -> Redis:
         """Create a Redis client with the configured settings."""
-        kwargs: dict[str, _RedisKwargValue] = {
-            "password": self.redis_password,
-            "max_connections": self.max_connections,
-            "socket_timeout": self.socket_timeout,
-            "health_check_interval": 10,
-            "decode_responses": False,
-        }
-        if self.redis_url.startswith("rediss://"):
-            kwargs["ssl_cert_reqs"] = ssl.CERT_NONE
-        return Redis.from_url(self.redis_url, **kwargs)
+        return create_redis_client(
+            self.redis_url,
+            password=self.redis_password,
+            max_connections=self.max_connections,
+            socket_timeout=self.socket_timeout,
+        )
 
     async def _await_redis_ready(self) -> None:
         """Wait until Redis connection is ready or transport stops."""

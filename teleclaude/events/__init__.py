@@ -5,7 +5,7 @@ from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import ActionDescriptor, EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import Pipeline, PipelineContext
 from teleclaude.events.processor import EventProcessor
-from teleclaude.events.producer import EventProducer, configure_producer, emit_event
+from teleclaude.events.producer import EventProducer, configure_producer, emit_event, ensure_event_producer
 
 __all__ = [
     "ActionDescriptor",
@@ -23,4 +23,5 @@ __all__ = [
     "build_default_catalog",
     "configure_producer",
     "emit_event",
+    "ensure_event_producer",
 ]

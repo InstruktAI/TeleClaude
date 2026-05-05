@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ssl
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -10,10 +11,14 @@ import teleclaude.events.producer as _mod
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.producer import (
     EventProducer,
+    _build_producer_from_config,
     configure_producer,
     emit_event,
     ensure_event_producer,
 )
+from teleclaude.transport import redis_client as _redis_client_mod
+
+type _CapturedRedisArg = str | int | float | bool | None | ssl.VerifyMode
 
 
 def _make_redis(entry_id: str = "1234-0") -> MagicMock:
@@ -80,6 +85,119 @@ class TestConfigureProducer:
         _mod._PRODUCER_STATE["producer"] = None
 
 
+class _FakeRedisCfg:
+    def __init__(
+        self,
+        url: str,
+        password: str | None = "secret",
+        max_connections: int = 50,
+        socket_timeout: int = 30,
+    ) -> None:
+        self.url = url
+        self.password = password
+        self.max_connections = max_connections
+        self.socket_timeout = socket_timeout
+
+
+def _patch_redis_cfg(monkeypatch: pytest.MonkeyPatch, cfg: _FakeRedisCfg) -> None:
+    fake_root = MagicMock()
+    fake_root.redis = cfg
+    monkeypatch.setattr(_mod, "config", fake_root)
+
+
+class TestBuildProducerFromConfig:
+    def test_passes_url_password_and_pool_settings_to_factory(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cfg = _FakeRedisCfg(
+            url="redis://localhost:6379",
+            password="hunter2",
+            max_connections=42,
+            socket_timeout=11,
+        )
+        _patch_redis_cfg(monkeypatch, cfg)
+        sentinel = MagicMock()
+        captured: dict[str, _CapturedRedisArg] = {}
+
+        def _fake_factory(url: str, **kwargs: object) -> object:
+            captured["url"] = url
+            captured.update(kwargs)
+            return sentinel
+
+        monkeypatch.setattr(_mod, "create_redis_client", _fake_factory)
+        producer = _build_producer_from_config()
+        assert isinstance(producer, EventProducer)
+        assert producer._redis is sentinel
+        assert captured["url"] == "redis://localhost:6379"
+        assert captured["password"] == "hunter2"
+        assert captured["max_connections"] == 42
+        assert captured["socket_timeout"] == 11
+
+    def test_raises_when_redis_url_is_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _patch_redis_cfg(monkeypatch, _FakeRedisCfg(url=""))
+        with pytest.raises(RuntimeError, match=r"config\.redis\.url is empty"):
+            _build_producer_from_config()
+
+
+class TestCreateRedisClient:
+    """Tests for the shared transport-layer Redis factory."""
+
+    def test_disables_ssl_verification_for_rediss_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, _CapturedRedisArg] = {}
+
+        class _FakeRedis:
+            @staticmethod
+            def from_url(url: str, **kwargs: object) -> object:
+                captured["url"] = url
+                captured.update(kwargs)
+                return MagicMock()
+
+        monkeypatch.setattr(_redis_client_mod, "Redis", _FakeRedis)
+        _redis_client_mod.create_redis_client(
+            "rediss://example.com:6380",
+            password="pw",
+            max_connections=10,
+            socket_timeout=5,
+        )
+        assert captured["url"] == "rediss://example.com:6380"
+        assert captured["ssl_cert_reqs"] == ssl.CERT_NONE
+
+    def test_omits_ssl_cert_reqs_for_plain_redis_url(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, _CapturedRedisArg] = {}
+
+        class _FakeRedis:
+            @staticmethod
+            def from_url(url: str, **kwargs: object) -> object:
+                captured["url"] = url
+                captured.update(kwargs)
+                return MagicMock()
+
+        monkeypatch.setattr(_redis_client_mod, "Redis", _FakeRedis)
+        _redis_client_mod.create_redis_client(
+            "redis://localhost:6379",
+            password=None,
+            max_connections=10,
+            socket_timeout=5,
+        )
+        assert "ssl_cert_reqs" not in captured
+
+    def test_passes_health_check_interval_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, _CapturedRedisArg] = {}
+
+        class _FakeRedis:
+            @staticmethod
+            def from_url(url: str, **kwargs: object) -> object:
+                captured.update(kwargs)
+                return MagicMock()
+
+        monkeypatch.setattr(_redis_client_mod, "Redis", _FakeRedis)
+        _redis_client_mod.create_redis_client(
+            "redis://localhost:6379",
+            password=None,
+            max_connections=10,
+            socket_timeout=5,
+        )
+        assert captured["health_check_interval"] == 10
+
+
 class TestEnsureEventProducer:
     def test_returns_existing_producer_when_configured(self) -> None:
         redis = _make_redis()
@@ -124,21 +242,14 @@ class TestEnsureEventProducer:
 
 class TestEmitEvent:
     @pytest.mark.asyncio
-    async def test_lazily_builds_producer_when_unconfigured(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_raises_when_not_configured(self) -> None:
         _mod._PRODUCER_STATE["producer"] = None
-        redis = _make_redis("4242-0")
-        built = EventProducer(redis)
-        monkeypatch.setattr(_mod, "_build_producer_from_config", lambda: built)
-        try:
-            result = await emit_event(
+        with pytest.raises(RuntimeError, match="EventProducer not configured"):
+            await emit_event(
                 event="test.event",
                 source="svc",
                 level=EventLevel.OPERATIONAL,
             )
-            assert result == "4242-0"
-            redis.xadd.assert_called_once()
-        finally:
-            _mod._PRODUCER_STATE["producer"] = None
 
     @pytest.mark.asyncio
     async def test_emits_via_configured_producer(self) -> None:

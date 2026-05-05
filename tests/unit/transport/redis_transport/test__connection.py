@@ -13,7 +13,7 @@ from teleclaude.transport.redis_transport._transport import RedisTransport
 
 @pytest.fixture
 def transport() -> RedisTransport:
-    with patch("teleclaude.transport.redis_transport._connection.Redis"):
+    with patch("teleclaude.transport.redis_client.Redis"):
         t = RedisTransport(MagicMock())
         t.redis = AsyncMock()
         return t
@@ -129,7 +129,7 @@ class TestStop:
 class TestCreateRedisClient:
     @pytest.mark.unit
     def test_creates_client_with_url(self, transport: RedisTransport) -> None:
-        with patch("teleclaude.transport.redis_transport._connection.Redis") as mock_redis_cls:
+        with patch("teleclaude.transport.redis_client.Redis") as mock_redis_cls:
             mock_redis_cls.from_url.return_value = MagicMock()
             transport._create_redis_client()
             mock_redis_cls.from_url.assert_called_once()
@@ -138,7 +138,7 @@ class TestCreateRedisClient:
     @pytest.mark.unit
     def test_ssl_cert_reqs_set_for_rediss_url(self, transport: RedisTransport) -> None:
         transport.redis_url = "rediss://localhost:6379"
-        with patch("teleclaude.transport.redis_transport._connection.Redis") as mock_redis_cls:
+        with patch("teleclaude.transport.redis_client.Redis") as mock_redis_cls:
             mock_redis_cls.from_url.return_value = MagicMock()
             transport._create_redis_client()
             call_kwargs = mock_redis_cls.from_url.call_args[1]
