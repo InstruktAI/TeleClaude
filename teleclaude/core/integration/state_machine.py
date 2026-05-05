@@ -48,7 +48,7 @@ from teleclaude.core.integration.step_functions import (
     _step_push_succeeded,
     _tls,
 )
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 from teleclaude.session_identity import get_session_id
 
 logger = get_logger(__name__)
@@ -77,7 +77,7 @@ def _dispatch_sync(
     """Synchronous state machine loop. Returns instruction string for the agent."""
     _tls.loop = loop
 
-    resolved = str(resolve_main_repo_root(cwd))
+    resolved = str(resolve_state_root(cwd))
     if resolved != cwd:
         logger.info("Resolved cwd from worktree %s to repo root %s", cwd, resolved)
         cwd = resolved

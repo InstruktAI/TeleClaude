@@ -33,7 +33,7 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import DorState, PreparePairSlot
 
@@ -223,7 +223,7 @@ async def _apply_build_complete_stamp(
             "expected build_started or review_changes_requested"
         )
 
-    worktree_cwd = str(Path(resolve_main_repo_root(cwd)) / WORKTREE_DIR / slug)
+    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 
@@ -242,6 +242,7 @@ async def _validate_build_complete_owner(
 ) -> None:
     if not caller_session_id:
         raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
+    await _ensure_session_db_initialized(session_db)
     session = await session_db.get_session(caller_session_id)
     if session is None:
         raise PermissionError(f"build_complete stamp for {slug} requires a known TeleClaude session")
@@ -249,6 +250,11 @@ async def _validate_build_complete_owner(
         raise PermissionError(
             f"build_complete stamp for {slug} requires caller session {caller_session_id} to own working_slug={slug}"
         )
+
+
+async def _ensure_session_db_initialized(session_db: Db) -> None:
+    if not session_db.is_initialized():
+        await session_db.initialize()
 
 
 def _apply_effective_signal(writer: StateWriter, signal: str, *, worktree_cwd: str | None = None) -> None:

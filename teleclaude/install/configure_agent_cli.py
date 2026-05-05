@@ -21,7 +21,7 @@ from typing import Any
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.paths import BIN_DIR, ENV_PATH
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
@@ -508,7 +508,7 @@ def _ensure_json_mcp_servers(settings_path: Path, mcp_servers_spec: dict[str, di
 
 def configure_claude(repo_root: Path) -> None:
     """Configure Claude Code hooks."""
-    repo_root = resolve_main_repo_root(repo_root)
+    repo_root = resolve_state_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     _configure_json_agent_hooks(
         repo_root,
@@ -521,7 +521,7 @@ def configure_claude(repo_root: Path) -> None:
 
 def configure_gemini(repo_root: Path) -> None:
     """Configure Gemini CLI hooks."""
-    repo_root = resolve_main_repo_root(repo_root)
+    repo_root = resolve_state_root(repo_root)
     managed_mcp_servers = _load_managed_mcp_servers(repo_root)
     _configure_json_agent_hooks(
         repo_root,
@@ -537,7 +537,7 @@ def configure_codex(
     repo_root: Path,
 ) -> None:
     """Configure native Codex hooks and settings."""
-    repo_root = resolve_main_repo_root(repo_root)
+    repo_root = resolve_state_root(repo_root)
     receiver_script = repo_root / "teleclaude" / "hooks" / "receiver" / "__main__.py"
     if not receiver_script.exists():
         print(f"Warning: Codex receiver not found at {receiver_script}")
@@ -697,7 +697,7 @@ def install_env_symlink(repo_root: Path) -> None:
 
 def main() -> None:
     """CLI entrypoint for configuring supported agent CLIs."""
-    repo_root = resolve_main_repo_root(Path(__file__).resolve().parents[2])
+    repo_root = resolve_state_root(Path(__file__).resolve().parents[2])
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")

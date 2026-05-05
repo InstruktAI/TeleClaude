@@ -10,13 +10,30 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.project_root import resolve_workspace_root
 from teleclaude.quality.lint import (
     LintRunner,
     PythonLintPipeline,
     TypeScriptLintPipeline,
     get_project_languages,
-    resolve_project_root,
 )
+from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
+
+
+def _workspace_resolution(
+    *,
+    kind: WorkspaceScopeKind,
+    scoped_existing_paths: tuple[str, ...],
+    has_session_identity: bool = True,
+) -> WorkspaceScopeResolution:
+    return WorkspaceScopeResolution(
+        kind=kind,
+        has_session_identity=has_session_identity,
+        dirty_paths=tuple(DirtyPath(path, DirtyOp.MODIFIED) for path in scoped_existing_paths),
+        scoped_dirty_paths=scoped_existing_paths,
+        scoped_existing_paths=scoped_existing_paths,
+    )
+
 
 # ---------------------------------------------------------------------------
 # R1.1 — Project root resolution from cwd
@@ -32,13 +49,13 @@ class TestProjectRootResolution:
         sub = tmp_path / "subdir" / "nested"
         sub.mkdir(parents=True)
 
-        resolved = resolve_project_root(sub)
+        resolved = resolve_workspace_root(sub)
         assert resolved == tmp_path
 
     def test_raises_when_no_teleclaude_yml_found(self, tmp_path: Path) -> None:
         """Resolution raises an error when no teleclaude.yml is found in the hierarchy."""
         with pytest.raises((FileNotFoundError, RuntimeError, SystemExit)):
-            resolve_project_root(tmp_path)
+            resolve_workspace_root(tmp_path)
 
 
 # ---------------------------------------------------------------------------
@@ -77,12 +94,10 @@ class TestSharedBranchScopeFailure:
     ) -> None:
         """When scope resolution fails on a shared branch with a session, the command exits non-zero."""
 
-        def _fail_scope(_path: Path) -> list[str]:
+        def _fail_scope(_path: Path) -> WorkspaceScopeResolution:
             raise RuntimeError("transcript unavailable")
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.resolve_workspace_scope_resolution", _fail_scope)
 
         runner = LintRunner(project_root=tmp_path)
         with pytest.raises(SystemExit) as exc_info:
@@ -95,12 +110,10 @@ class TestSharedBranchScopeFailure:
         """Scope failure on shared branch must never silently run against all source dirs."""
         pipeline_calls: list[object] = []
 
-        def _fail_scope(_path: Path) -> list[str]:
+        def _fail_scope(_path: Path) -> WorkspaceScopeResolution:
             raise RuntimeError("transcript unavailable")
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.resolve_session_scope", _fail_scope)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
+        monkeypatch.setattr("teleclaude.quality.lint.resolve_workspace_scope_resolution", _fail_scope)
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             pipeline_calls.append,
@@ -120,15 +133,39 @@ class TestSharedBranchScopeFailure:
 
 
 class TestWorktreeContext:
-    """In a worktree, the command runs against source directories (worktree is isolated)."""
+    """In a worktree, lint targets dirty existing files from the resolver."""
 
-    def test_worktree_receives_source_dirs_not_scoped_files(
+    def test_worktree_receives_resolved_dirty_existing_paths(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """In a worktree, the pipeline receives directory targets, not session-scoped files."""
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("teleclaude/foo.py", "tests/unit/test_foo.py"),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", received_targets.append)
+
+        runner = LintRunner(project_root=tmp_path)
+        runner.run()
+
+        assert received_targets == [["teleclaude/foo.py", "tests/unit/test_foo.py"]]
+
+    def test_worktree_receives_file_targets_not_source_dirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        received_targets: list[object] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("teleclaude/foo.py",),
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
@@ -142,9 +179,7 @@ class TestWorktreeContext:
         assert targets_arg, "Pipeline received empty targets in worktree mode"
         if hasattr(targets_arg, "__iter__") and not isinstance(targets_arg, str):
             items = list(targets_arg)  # pyright: ignore[reportUnknownArgumentType]
-            assert len(items) > 0, "Pipeline received empty iterable in worktree mode"
-            for t in items:
-                assert not str(t).endswith(".py"), f"Worktree target {t!r} is a .py file — expected directory targets"
+            assert items == ["teleclaude/foo.py"]
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +196,14 @@ class TestMultiLanguageSourceDirs:
         """When languages list has multiple entries, source dirs from all registered toolchains are collected."""
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=(),
+                has_session_identity=False,
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.get_project_languages",
             lambda _path: ["python"],
@@ -182,7 +224,14 @@ class TestMultiLanguageSourceDirs:
         """Languages without a registered toolchain are skipped, not errored."""
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=(),
+                has_session_identity=False,
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.get_project_languages",
             lambda _path: ["python", "cobol"],
@@ -213,11 +262,12 @@ class TestSharedBranchScopeSuccess:
         scoped_files = ["teleclaude/foo/bar.py", "teleclaude/baz/qux.py"]
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.lint.resolve_session_scope",
-            lambda _path: scoped_files,
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=tuple(scoped_files),
+            ),
         )
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
@@ -244,8 +294,14 @@ class TestSharedBranchScopeSuccess:
         """Without session identity on shared branch, pipeline runs against source dirs."""
         received_targets: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: None)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=(),
+                has_session_identity=False,
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.run_pipeline",
             received_targets.append,
@@ -462,15 +518,18 @@ class TestMultiLanguageLintDispatch:
         python_calls: list[object] = []
         ts_step_calls: list[tuple[str, list[str]]] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("teleclaude/foo.py", "frontend/app/foo.tsx"),
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.get_project_languages",
             lambda _path: ["python", "typescript"],
         )
         monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
-
-        # Intercept _run_tool to capture TypeScript step invocations
-        original_run_tool = None
 
         def _capture_run_tool(cmd: list[str], cwd: Path, step_name: str) -> None:
             if step_name in ("eslint", "tsc"):
@@ -497,7 +556,13 @@ class TestMultiLanguageLintDispatch:
         """TypeScript lint steps (eslint, tsc) execute from the frontend_root directory as cwd."""
         cwd_captures: list[tuple[str, str]] = []
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("myfrontend/app/foo.tsx",),
+            ),
+        )
         monkeypatch.setattr(
             "teleclaude.quality.lint.get_project_languages",
             lambda _path: ["python", "typescript"],
@@ -540,7 +605,13 @@ class TestFailingStepDiagnostic:
 
     def test_failing_guardrails_step_exits_nonzero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A failing guardrails step causes the overall lint to exit non-zero."""
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: True)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("teleclaude/foo.py",),
+            ),
+        )
 
         def _step_fail(_self: object, _targets: object) -> None:
             raise SystemExit(1)
@@ -573,11 +644,12 @@ class TestPathValidation:
         """Paths containing '../' traversal sequences from session scope are rejected or stripped."""
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.lint.resolve_session_scope",
-            lambda _path: malicious_files,
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=tuple(malicious_files),
+            ),
         )
 
         pipeline_targets: list[object] = []
@@ -606,11 +678,12 @@ class TestPathValidation:
         """Absolute paths outside the project root from session scope are rejected or stripped."""
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
-        monkeypatch.setattr("teleclaude.quality.lint.is_worktree", lambda _path: False)
-        monkeypatch.setattr("teleclaude.quality.lint.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.lint.resolve_session_scope",
-            lambda _path: malicious_files,
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=tuple(malicious_files),
+            ),
         )
 
         pipeline_targets: list[object] = []

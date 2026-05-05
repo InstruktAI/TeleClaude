@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.project_root import resolve_main_repo_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -193,15 +192,6 @@ async def resolve_first_runnable_holder_child_db(
     return None, reason
 
 
-def resolve_canonical_project_root(cwd: str) -> str:
-    """Resolve canonical repository root from cwd.
-
-    Accepts either the project root or a path inside a git worktree. Falls back
-    to the provided cwd when git metadata is unavailable.
-    """
-    return str(resolve_main_repo_root(cwd))
-
-
 # ── Legacy sync functions (retained for callers not yet migrated) ────────
 
 
@@ -250,7 +240,6 @@ __all__ = [
     "_get_item_phase_db",
     "_is_ready_for_work_db",
     "get_item_phase",
-    "resolve_canonical_project_root",
     "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",
     "resolve_slug_async",

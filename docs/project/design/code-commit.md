@@ -3,24 +3,22 @@ id: 'project/design/code-commit'
 type: 'design'
 domain: 'software-development'
 scope: 'project'
-description: 'Design of telec code commit — the canonical agent commit command with shared-branch protections, worktree-wide staging, and quality gates.'
+description: 'Design of telec code commit — the canonical agent commit command with workspace scope, quality gates, and multi-agent protection.'
 ---
 
 # Code Commit — Design
 
 ## Purpose
 
-`telec code commit` is the canonical commit interface for agent sessions. On
-shared branches it resolves session-scoped files and protects against foreign
-staged work. In worktrees it treats the entire dirty tree as task scope and
-stages everything. It then runs formatting and linting before invoking
-`git commit`. The git wrapper redirects raw `git commit` to this command. The
-generated pre-commit hook remains the owner of formatter restaging and the
+`telec code commit` is the canonical commit interface for agent sessions. It
+resolves workspace-scoped files, stages them, runs formatting and linting, then
+invokes `git commit`. The git wrapper redirects raw `git commit` to this command.
+The generated pre-commit hook remains the owner of formatter restaging and the
 single retry when hooks modify staged files.
 
 The driving constraint: git ignores index changes made inside pre-commit hooks
 when the commit starts with an empty index. `telec code commit` solves that by
-staging the intended scope before `git commit`, while the pre-commit hook
+staging workspace-scoped files before `git commit`, while the pre-commit hook
 handles post-format restaging so plain `git commit` and wrapper-driven commits
 share the same mutation recovery path.
 
@@ -38,14 +36,15 @@ All other arguments pass through to `git commit`.
    stage-format-lint-commit cycle. No two agents can commit concurrently.
    The lock auto-releases on process exit or crash.
 
-2. **Shared-branch protection.** On shared branches, before staging, check if
-   files are already staged that are outside the session scope. If found, exit
-   with code 2 (retryable) — another agent may be mid-commit with a failed
-   pre-commit hook. The agent's heartbeat retries after conditions clear.
+2. **Foreign staged file detection.** Before staging, check if files are already
+   staged that are outside the resolved workspace scope. If found, exit with code 2
+   (retryable) — another agent may be mid-commit with a failed pre-commit hook.
+   The agent's heartbeat retries after conditions clear.
 
-3. **Scope depends on workspace kind.** Shared branches use session scoping.
-   Worktrees are task-scoped, so `telec code commit` stages all dirty files
-   with `git add -A`.
+3. **Workspace scoping.** `resolve_workspace_scope_resolution()` is the single
+   owner of worktree-vs-shared-branch scope. This document owns only
+   commit-specific mechanics: foreign staged checks, staging, Path A/B/C,
+   formatting, linting, and the final commit.
 
 4. **Path A/B/C on main.** Non-integrator commits on main are classified:
    - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous
@@ -73,10 +72,11 @@ All other arguments pass through to `git commit`.
 ```
 telec code commit -m "feat(scope): subject"
   → lock acquired
-  → worktree detected
-  → git add -A
-  → FormatRunner.run(files=staged)
-  → LintRunner.run(files=staged)
+  → no foreign staged files
+  → workspace scope resolves stage paths and existing quality paths
+  → git add -- <stage paths>
+  → FormatRunner.run(files=<existing quality paths>)
+  → LintRunner.run(files=<existing quality paths>)
   → real git commit -m "feat(scope): subject"
   → lock released
 ```
@@ -86,7 +86,7 @@ telec code commit -m "feat(scope): subject"
 ```
 telec code commit -m "chore(docs): update snippets [skip ci]"
   → lock acquired
-  → session scope + foreign-staged protection + stage
+  → workspace scope + stage
   → Path A: no functional files + [skip ci] → proceed
   → format + lint + commit
 ```
@@ -94,7 +94,8 @@ telec code commit -m "chore(docs): update snippets [skip ci]"
 ### Integration commit
 
 The integrator uses `telec code commit` with files already staged from the
-squash merge. The integrator role bypasses Path A/B/C classification.
+squash merge. Workspace scoping finds no additional files. The integrator role
+bypasses Path A/B/C classification.
 
 ## Failure modes
 
@@ -114,5 +115,5 @@ commit and the agent dispatches `/next-review-commits` with the resulting SHAs.
 
 ## See Also
 
-- docs/global/software-development/design/session-file-scoping.md
+- docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md

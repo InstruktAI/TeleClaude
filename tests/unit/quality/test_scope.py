@@ -6,12 +6,33 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.project_root import resolve_invocation_cwd
-from teleclaude.quality.scope import get_project_languages, resolve_project_root, validate_scoped_paths
+from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
+from teleclaude.quality import scope as scope_module
+from teleclaude.quality.scope import (
+    DirtyOp,
+    WorkspaceScopeKind,
+    get_project_languages,
+    resolve_workspace_scope_resolution,
+    validate_scoped_paths,
+)
 
 
-class TestResolveProjectRoot:
-    """resolve_project_root walks up to find teleclaude.yml."""
+class _FakeGit:
+    def __init__(self, status_output: str) -> None:
+        self._status_output = status_output
+
+    def status(self, *args: str) -> str:
+        assert args == ("--porcelain", "--untracked-files=all")
+        return self._status_output
+
+
+class _FakeRepo:
+    def __init__(self, status_output: str) -> None:
+        self.git = _FakeGit(status_output)
+
+
+class TestResolveWorkspaceRoot:
+    """resolve_workspace_root walks up to find teleclaude.yml."""
 
     def test_finds_root_with_teleclaude_yml(self, tmp_path: Path) -> None:
         """Returns the directory containing teleclaude.yml."""
@@ -19,7 +40,7 @@ class TestResolveProjectRoot:
         sub = tmp_path / "a" / "b"
         sub.mkdir(parents=True)
 
-        assert resolve_project_root(sub) == tmp_path
+        assert resolve_workspace_root(sub) == tmp_path
 
 
 class TestValidateScopedPaths:
@@ -34,6 +55,99 @@ class TestValidateScopedPaths:
         """Absolute paths outside project root are rejected."""
         result = validate_scoped_paths(["/etc/passwd", "ok.py"], tmp_path)
         assert result == ["ok.py"]
+
+
+class TestResolveWorkspaceScopeResolution:
+    """Workspace scope resolution owns dirty metadata and scoped path selection."""
+
+    def test_worktree_scope_uses_dirty_existing_paths_and_classifies_operations(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "teleclaude").mkdir()
+        (tmp_path / "teleclaude" / "changed.py").write_text("print('changed')\n", encoding="utf-8")
+        (tmp_path / "teleclaude" / "new.py").write_text("print('new')\n", encoding="utf-8")
+        status_output = "\n".join(
+            [
+                " M teleclaude/changed.py",
+                "?? teleclaude/new.py",
+                " D teleclaude/gone.py",
+            ]
+        )
+
+        monkeypatch.setattr(scope_module, "is_worktree", lambda _path: True)
+        monkeypatch.setattr(scope_module, "get_session_id", lambda: None)
+        monkeypatch.setattr(scope_module, "Repo", lambda _root: _FakeRepo(status_output))
+
+        resolution = resolve_workspace_scope_resolution(tmp_path)
+
+        assert resolution.kind is WorkspaceScopeKind.WORKTREE
+        assert resolution.has_session_identity is False
+        assert resolution.scoped_dirty_paths == (
+            "teleclaude/changed.py",
+            "teleclaude/new.py",
+            "teleclaude/gone.py",
+        )
+        assert resolution.scoped_existing_paths == ("teleclaude/changed.py", "teleclaude/new.py")
+        assert {(dirty.path, dirty.op) for dirty in resolution.dirty_paths} == {
+            ("teleclaude/changed.py", DirtyOp.MODIFIED),
+            ("teleclaude/new.py", DirtyOp.ADDED),
+            ("teleclaude/gone.py", DirtyOp.DELETED),
+        }
+
+    def test_shared_branch_with_session_scopes_to_session_touched_dirty_existing_paths(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "teleclaude").mkdir()
+        (tmp_path / "teleclaude" / "touched.py").write_text("print('touched')\n", encoding="utf-8")
+        (tmp_path / "teleclaude" / "other.py").write_text("print('other')\n", encoding="utf-8")
+        (tmp_path / "teleclaude" / "new.py").write_text("print('new')\n", encoding="utf-8")
+        status_output = "\n".join(
+            [
+                " M teleclaude/touched.py",
+                " M teleclaude/other.py",
+                "?? teleclaude/new.py",
+                " D teleclaude/gone.py",
+            ]
+        )
+
+        monkeypatch.setattr(scope_module, "is_worktree", lambda _path: False)
+        monkeypatch.setattr(scope_module, "get_session_id", lambda: "sess-123")
+        monkeypatch.setattr(
+            scope_module,
+            "_collect_session_touched_files",
+            lambda _root: {"teleclaude/touched.py", "teleclaude/new.py", "teleclaude/gone.py"},
+        )
+        monkeypatch.setattr(scope_module, "Repo", lambda _root: _FakeRepo(status_output))
+
+        resolution = resolve_workspace_scope_resolution(tmp_path)
+
+        assert resolution.kind is WorkspaceScopeKind.SHARED_BRANCH
+        assert resolution.has_session_identity is True
+        assert resolution.scoped_dirty_paths == (
+            "teleclaude/gone.py",
+            "teleclaude/new.py",
+            "teleclaude/touched.py",
+        )
+        assert resolution.scoped_existing_paths == ("teleclaude/new.py", "teleclaude/touched.py")
+
+    def test_shared_branch_without_session_keeps_dirty_metadata_but_returns_empty_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        (tmp_path / "teleclaude").mkdir()
+        (tmp_path / "teleclaude" / "changed.py").write_text("print('changed')\n", encoding="utf-8")
+        status_output = " M teleclaude/changed.py"
+
+        monkeypatch.setattr(scope_module, "is_worktree", lambda _path: False)
+        monkeypatch.setattr(scope_module, "get_session_id", lambda: None)
+        monkeypatch.setattr(scope_module, "Repo", lambda _root: _FakeRepo(status_output))
+
+        resolution = resolve_workspace_scope_resolution(tmp_path)
+
+        assert resolution.kind is WorkspaceScopeKind.SHARED_BRANCH
+        assert resolution.has_session_identity is False
+        assert resolution.dirty_paths == (scope_module.DirtyPath("teleclaude/changed.py", DirtyOp.MODIFIED),)
+        assert resolution.scoped_dirty_paths == ()
+        assert resolution.scoped_existing_paths == ()
 
 
 class TestGetProjectLanguages:
@@ -143,7 +257,7 @@ class TestResolveInvocationCwd:
         monkeypatch.chdir(main_repo)
         monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
 
-        resolved = resolve_project_root(resolve_invocation_cwd())
+        resolved = resolve_workspace_root(resolve_invocation_cwd())
         assert resolved == worktree, (
             f"Expected worktree {worktree}, got {resolved}. The wrapper-cwd hijack bypassed invocation-cwd resolution."
         )

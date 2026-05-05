@@ -326,15 +326,15 @@ class PreparationViewActionsMixin:
                 )
             )
 
-    def _resolve_project_root(self) -> str:
-        """Resolve project root from known project paths or cwd."""
+    def _current_project_path(self) -> str:
+        """Return the active project path from known rows or cwd."""
         for path in self._slug_to_project_path.values():  # type: ignore[attr-defined]
             return path
         return os.getcwd()
 
     def _create_item(self, slug: str, *, kind: str) -> None:
         """Create a todo or bug via the daemon API."""
-        project_root = self._resolve_project_root()
+        project_root = self._current_project_path()
 
         request = TodoDumpRequest(
             slug=slug,

@@ -23,7 +23,7 @@ from teleclaude.core.todos_db import TodosDb, get_todos_db
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import PipelineContext
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 
 logger = get_logger(__name__)
 
@@ -352,7 +352,7 @@ def _build_dor_report(
 
 def _find_project_root() -> Path:
     """Resolve the main repository root from cwd."""
-    return resolve_main_repo_root(Path.cwd())
+    return resolve_state_root(Path.cwd())
 
 
 class LifecycleRouterCartridge:

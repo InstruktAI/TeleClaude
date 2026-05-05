@@ -328,7 +328,7 @@ def test_is_slug_delivered_returns_true_when_in_delivered(tmp_path: Path) -> Non
     mock_db = MagicMock()
     mock_db._sync_conn.return_value = mock_conn
 
-    with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
+    with patch("teleclaude.events.cartridges.lifecycle_router.TodosDb", return_value=mock_db):
         result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
 
     assert result is True
@@ -341,7 +341,7 @@ def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None
     mock_db = MagicMock()
     mock_db._sync_conn.return_value = mock_conn
 
-    with patch("teleclaude.core.todos_db.TodosDb", return_value=mock_db):
+    with patch("teleclaude.events.cartridges.lifecycle_router.TodosDb", return_value=mock_db):
         result = _is_slug_delivered_or_frozen("frozen-slug", tmp_path)
 
     assert result is True
@@ -443,7 +443,11 @@ async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> No
         patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock) as emit_event,
-        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
+        patch(
+            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
+            new_callable=AsyncMock,
+            return_value=mock_todos_db,
+        ),
     ):
         result = await cartridge.process(event, ctx)
 
@@ -486,7 +490,11 @@ async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
         patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock),
-        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
+        patch(
+            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
+            new_callable=AsyncMock,
+            return_value=mock_todos_db,
+        ),
     ):
         result = await cartridge.process(event, ctx)
 
@@ -512,7 +520,11 @@ async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
         patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
         patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
         patch("teleclaude.events.cartridges.lifecycle_router.emit_event", emit_mock),
-        patch("teleclaude.core.todos_db.get_todos_db", new_callable=AsyncMock, return_value=mock_todos_db),
+        patch(
+            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
+            new_callable=AsyncMock,
+            return_value=mock_todos_db,
+        ),
     ):
         result = await cartridge.process(event, ctx)
 

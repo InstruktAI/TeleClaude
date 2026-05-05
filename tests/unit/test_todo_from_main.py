@@ -12,9 +12,9 @@ from teleclaude.core.todos_db import TodosDb, get_todos_db_sync
 from teleclaude.session_scoping import ScopedPathsResult
 from teleclaude.todo_scaffold import NoSessionTouchedFiles, _collect_session_touched_files, create_from_main_skeleton
 
-# Patch targets — these are lazy-imported inside create_from_main_skeleton
-_WT = "teleclaude.core.next_machine.worktrees"
-_SI = "teleclaude.core.next_machine.state_io"
+# Patch targets for symbols imported by teleclaude.todo_scaffold
+_WT = "teleclaude.todo_scaffold"
+_SI = "teleclaude.todo_scaffold"
 _COLLECT = "teleclaude.todo_scaffold._collect_session_touched_files"
 
 
@@ -73,7 +73,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(branch="feature-x")
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             pytest.raises(ValueError, match="from-main requires being on the main branch"),
         ):
             create_from_main_skeleton(str(tmp_path), "test-slug")
@@ -83,7 +83,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status="")
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             pytest.raises(ValueError, match="No uncommitted changes"),
         ):
             create_from_main_skeleton(str(tmp_path), "test-slug")
@@ -105,7 +105,7 @@ class TestCreateFromMainSkeleton:
             return worktree_repo if Path(path) == worktree_path else main_repo
 
         with (
-            patch("teleclaude.git.Repo", side_effect=_repo_factory),
+            patch("teleclaude.todo_scaffold.Repo", side_effect=_repo_factory),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -158,11 +158,14 @@ class TestCreateFromMainSkeleton:
         worktree_path = project / "trees" / "test-slug"
         worktree_path.mkdir(parents=True)
         (worktree_path / "src").mkdir(parents=True)
+        gitdir = project / ".git" / "worktrees" / "test-slug"
+        gitdir.mkdir(parents=True)
+        (worktree_path / ".git").write_text(f"gitdir: {gitdir}\n", encoding="utf-8")
 
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -171,7 +174,7 @@ class TestCreateFromMainSkeleton:
             ),
             patch(f"{_SI}.apply_prepared_state"),
             patch(
-                "teleclaude.core.next_machine.state_io.resolve_main_repo_root",
+                "teleclaude.core.next_machine.state_io.resolve_state_root",
                 return_value=Path(project),
             ),
         ):
@@ -213,7 +216,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status=" D removed.py")
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"removed.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -232,7 +235,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -252,7 +255,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -282,7 +285,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py")
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"src/app.py", "src/new.py"}),
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -306,7 +309,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, side_effect=ValueError("from-main requires an active agent session")),
             pytest.raises(ValueError, match="active agent session"),
         ):
@@ -318,7 +321,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, side_effect=ValueError("Could not determine session-touched files")),
             pytest.raises(ValueError, match="Could not determine"),
         ):
@@ -338,7 +341,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns(status=" M src/app.py\n M docs/guide.md\n?? src/new.py")
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT) as mock_collect,
             patch(f"{_WT}._create_or_attach_worktree", return_value=True),
             patch(
@@ -362,7 +365,7 @@ class TestCreateFromMainSkeleton:
         repo = _make_repo_ns()
 
         with (
-            patch("teleclaude.git.Repo", return_value=repo),
+            patch("teleclaude.todo_scaffold.Repo", return_value=repo),
             patch(_COLLECT, return_value={"completely/unrelated.py"}),
             pytest.raises(ValueError, match="No uncommitted changes to transfer"),
         ):
@@ -377,14 +380,14 @@ class TestCollectSessionTouchedFiles:
     """
 
     # Source-module patch targets for lazy imports inside _collect_session_touched_files
-    _SQL_SESSION = "sqlmodel.Session"
-    _SYNC_ENGINE = "teleclaude.hooks.receiver._session._create_sync_engine"
+    _SQL_SESSION = "teleclaude.todo_scaffold.SqlSession"
+    _SYNC_ENGINE = "teleclaude.todo_scaffold._create_sync_engine"
     _DB_MODELS = "teleclaude.core.db_models"
-    _GET_AGENT = "teleclaude.core.agents.get_default_agent"
-    _AGENT_NAME = "teleclaude.core.agents.AgentName"
-    _CURRENT_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_current_codex_transcript_path"
-    _DISCOVER_CODEX_TRANSCRIPT = "teleclaude.core.codex_transcript.discover_codex_transcript_path"
-    _RESOLVE_SCOPED_PATHS = "teleclaude.session_scoping.resolve_scoped_paths"
+    _GET_AGENT = "teleclaude.todo_scaffold.get_default_agent"
+    _AGENT_NAME = "teleclaude.todo_scaffold.AgentName"
+    _CURRENT_CODEX_TRANSCRIPT = "teleclaude.todo_scaffold.discover_current_codex_transcript_path"
+    _DISCOVER_CODEX_TRANSCRIPT = "teleclaude.todo_scaffold.discover_codex_transcript_path"
+    _RESOLVE_SCOPED_PATHS = "teleclaude.todo_scaffold.resolve_scoped_paths"
 
     def test_happy_path_returns_touched_files(self) -> None:
         """Returns set of files from the shared session-scoping API."""
@@ -660,7 +663,7 @@ def test_all_files_skips_session_scoping(tmp_path: Path) -> None:
 
     collect_mock = MagicMock()
     with (
-        patch("teleclaude.git.Repo", return_value=repo_ns),
+        patch("teleclaude.todo_scaffold.Repo", return_value=repo_ns),
         patch(_COLLECT, collect_mock),
         patch(f"{_WT}._create_or_attach_worktree", return_value=True),
         patch(

@@ -151,7 +151,7 @@ def test_stamp_test_specs_records_requirements_upstream_digest(seeded_db: TodosD
     requirements_digest = _digest(requirements_content)
 
     with (
-        patch(f"{_STATE_IO}.resolve_main_repo_root", return_value=Path(cwd)),
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
         patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
@@ -183,7 +183,7 @@ def test_stamp_implementation_plan_records_both_upstream_digests(seeded_db: Todo
     test_specs_digest = _digest(test_specs_content)
 
     with (
-        patch(f"{_STATE_IO}.resolve_main_repo_root", return_value=Path(cwd)),
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
         patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
@@ -208,7 +208,7 @@ def test_stamp_requirements_does_not_record_upstream_digests(seeded_db: TodosDb)
     seeded_db.write_artifact_sync("slug-b", "requirements", "# Requirements\n")
 
     with (
-        patch(f"{_STATE_IO}.resolve_main_repo_root", return_value=Path(cwd)),
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
         patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
     ):
         state = stamp_artifact(cwd, "slug-b", "requirements")

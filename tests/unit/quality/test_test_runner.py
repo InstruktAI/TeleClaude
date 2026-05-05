@@ -11,7 +11,24 @@ from subprocess import CompletedProcess
 
 import pytest
 
+from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 from teleclaude.quality.test_runner import TestRunner, map_source_to_companion, resolve_test_targets, run_pytest
+
+
+def _workspace_resolution(
+    *,
+    kind: WorkspaceScopeKind,
+    scoped_existing_paths: tuple[str, ...],
+    has_session_identity: bool = True,
+) -> WorkspaceScopeResolution:
+    return WorkspaceScopeResolution(
+        kind=kind,
+        has_session_identity=has_session_identity,
+        dirty_paths=tuple(DirtyPath(path, DirtyOp.MODIFIED) for path in scoped_existing_paths),
+        scoped_dirty_paths=scoped_existing_paths,
+        scoped_existing_paths=scoped_existing_paths,
+    )
+
 
 # ---------------------------------------------------------------------------
 # R2.1 — Companion file mapping convention
@@ -112,11 +129,39 @@ class TestExpensiveTestExclusion:
 
 
 class TestNonWorktreeFullSuite:
-    """Outside a worktree, the full test suite runs against configured targets."""
+    """Shared branches without session identity run configured targets."""
 
-    def test_worktree_targets_configured_dirs(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """In worktree context, targets are the project's configured test directories."""
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
+    def test_worktree_maps_resolved_dirty_existing_paths_to_companions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        companion = tmp_path / "tests" / "unit" / "foo" / "test_bar.py"
+        companion.parent.mkdir(parents=True)
+        companion.touch()
+
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("teleclaude/foo/bar.py",),
+            ),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+
+        assert targets == ["tests/unit/foo/test_bar.py"]
+
+    def test_shared_branch_without_session_targets_configured_dirs(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=(),
+                has_session_identity=False,
+            ),
+        )
 
         (tmp_path / "pyproject.toml").write_text(
             "[tool.pytest.ini_options]\ntestpaths = ['tests/unit', 'tests/integration']\n",
@@ -127,7 +172,7 @@ class TestNonWorktreeFullSuite:
         runner = TestRunner(project_root=tmp_path)
         targets = runner.resolve_targets()
 
-        assert any("tests/unit" in str(t) for t in targets), f"Worktree targets do not include 'tests/unit': {targets}"
+        assert any("tests/unit" in str(t) for t in targets), f"Targets do not include 'tests/unit': {targets}"
 
     def test_shared_branch_with_session_uses_companion_mapping(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -137,11 +182,12 @@ class TestNonWorktreeFullSuite:
         companion.parent.mkdir(parents=True)
         companion.touch()
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.test_runner.resolve_session_scope",
-            lambda _p: {"teleclaude/foo/bar.py"},
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=("teleclaude/foo/bar.py",),
+            ),
         )
 
         runner = TestRunner(project_root=tmp_path)
@@ -158,9 +204,7 @@ class TestNonWorktreeFullSuite:
 class TestExitBehavior:
     """The test command exits non-zero when any test fails."""
 
-    def test_pytest_uses_uv_invocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_pytest_uses_uv_invocation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Pytest runs through the uv-managed project environment."""
         calls: list[tuple[list[str], str | None, bool]] = []
 
@@ -177,7 +221,6 @@ class TestExitBehavior:
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
 
         def _failing_pytest_run(*_args: object, **_kwargs: object) -> int:
             return 1  # pytest exit code 1 = tests failed
@@ -191,7 +234,6 @@ class TestExitBehavior:
 
     def test_exits_zero_when_all_tests_pass(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits zero when all tests pass."""
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
 
         def _passing_pytest_run(*_args: object, **_kwargs: object) -> int:
             return 0  # pytest exit code 0 = all passed
@@ -258,10 +300,12 @@ class TestPathValidation:
         """Paths containing '../' traversal sequences from session scope are rejected or stripped."""
         malicious_files = ["../../etc/passwd", "teleclaude/../../../shadow", "../traversal.py"]
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
         monkeypatch.setattr(
-            "teleclaude.quality.test_runner.resolve_session_scope",
-            lambda _p: set(malicious_files),
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=tuple(malicious_files),
+            ),
         )
 
         runner = TestRunner(project_root=tmp_path)
@@ -279,10 +323,12 @@ class TestPathValidation:
         """Absolute paths outside the project root from session scope are rejected or stripped."""
         malicious_files = ["/etc/passwd", "/tmp/evil.py"]
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: True)
         monkeypatch.setattr(
-            "teleclaude.quality.test_runner.resolve_session_scope",
-            lambda _p: set(malicious_files),
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=tuple(malicious_files),
+            ),
         )
 
         runner = TestRunner(project_root=tmp_path)
@@ -313,11 +359,12 @@ class TestVitestScoping:
         """On shared branch with session scope of only Python files, vitest is not invoked."""
         vitest_calls: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.test_runner.resolve_session_scope",
-            lambda _p: ["teleclaude/foo.py", "tests/unit/test_foo.py"],
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=("teleclaude/foo.py", "tests/unit/test_foo.py"),
+            ),
         )
         monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args, cwd=None: 0)
         monkeypatch.setattr(
@@ -347,11 +394,12 @@ class TestVitestScoping:
         """On shared branch with session scope including TypeScript files, vitest is invoked."""
         vitest_calls: list[object] = []
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.is_worktree", lambda _p: False)
-        monkeypatch.setattr("teleclaude.session_identity.get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
-            "teleclaude.quality.test_runner.resolve_session_scope",
-            lambda _p: ["teleclaude/foo.py", "frontend/app/bar.tsx"],
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.SHARED_BRANCH,
+                scoped_existing_paths=("teleclaude/foo.py", "frontend/app/bar.tsx"),
+            ),
         )
         monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args, cwd=None: 0)
         monkeypatch.setattr(

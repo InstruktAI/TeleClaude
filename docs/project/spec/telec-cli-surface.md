@@ -167,7 +167,8 @@ subcommands:
           --grounding-invalidated: 'Invalidate grounding and route to re_grounding.'
           --specs-built: 'Complete test-spec authoring and advance to test_spec_review.'
           --plan-ready: 'Complete plan authoring and advance to plan_review.'
-          --build-complete: 'Worker-owned completion stamp for committed implementation work.'
+          --build-started: 'Start work from prepared and move to build_started.'
+          --build-complete: 'Complete implementation work and move to build_complete.'
           --finalize-ready: 'Mark the reviewed worktree ready for finalize handoff.'
   roadmap:
     description: 'View and manage the work item roadmap.'
@@ -335,7 +336,7 @@ subcommands:
       format:
         description: 'Run language-aware code formatter.'
       commit:
-        description: 'Stage files, lint, format, and commit (session-scoped on shared branches, all dirty files in worktrees).'
+        description: 'Stage workspace-scoped files, lint, format, and commit.'
         flags:
           -m: 'Commit message. Other args pass through to git commit.'
   operations:

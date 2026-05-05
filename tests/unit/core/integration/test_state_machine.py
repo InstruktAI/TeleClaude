@@ -98,9 +98,7 @@ def test_dispatch_resolves_worktree_cwd_to_repo_root(tmp_path: Path) -> None:
         return 0, "", ""
 
     with (
-        patch(
-            "teleclaude.core.integration.state_machine.resolve_main_repo_root", return_value=Path(repo_root)
-        ) as resolve,
+        patch("teleclaude.core.integration.state_machine.resolve_state_root", return_value=Path(repo_root)) as resolve,
         patch("teleclaude.core.integration.state_machine._run_git", side_effect=mock_run_git),
     ):
         _dispatch_sync(

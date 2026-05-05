@@ -582,7 +582,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "<slug> [--verdict <v> --phase <p>] [--dor-score <n>]"
                     " [--dor-status <s>] [--grounding-invalidated]"
                     " [--requirements-ready] [--plan-ready]"
-                    " [--specs-built] [--build-complete] [--finalize-ready]"
+                    " [--specs-built] [--finalize-ready]"
                     " [--agent-a <session_id> --agent-b <session_id>]"
                 ),
                 flags=[
@@ -601,7 +601,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--requirements-ready", desc="Mark requirements as produced and ready for review"),
                     Flag("--plan-ready", desc="Mark implementation plan as produced and ready for review"),
                     Flag("--specs-built", desc="Mark test specifications as delivered"),
-                    Flag("--build-complete", desc="Worker-owned completion stamp for committed build work"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                     Flag("--agent-a", desc="Prepare pair slot A session_id (atomic with --agent-b)"),
                     Flag("--agent-b", desc="Prepare pair slot B session_id (atomic with --agent-a)"),
@@ -609,7 +608,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
-                    "telec todo stamp my-slug --build-complete",
                     "telec todo stamp my-slug --finalize-ready",
                     "telec todo stamp my-slug --agent-a <A_id> --agent-b <B_id>",
                 ],
@@ -1022,7 +1020,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--step", desc="Run a single pipeline step"),
-                    Flag("--all", desc="Run against all configured sources, skip session scoping"),
+                    Flag("--all", desc="Run against all configured sources, skip workspace scoping"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
@@ -1031,22 +1029,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--expensive", desc="Include expensive/slow tests"),
-                    Flag("--all", desc="Run all tests, skip session scoping"),
+                    Flag("--all", desc="Run all tests, skip workspace scoping"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "format": CommandDef(
                 desc="Run language-aware code formatter",
-                flags=[_H, Flag("--all", desc="Format all configured sources, skip session scoping")],
+                flags=[_H, Flag("--all", desc="Format all configured sources, skip workspace scoping")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "changed": CommandDef(
-                desc="List changed files (session-scoped on shared branches, all dirty files in worktrees)",
+                desc="List workspace-scoped changed files",
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "commit": CommandDef(
-                desc="Stage files, lint, format, and commit (session-scoped on shared branches, all dirty files in worktrees)",
+                desc="Stage workspace-scoped files, lint, format, and commit",
                 args="[<git-commit-args>]",
                 flags=[
                     _H,

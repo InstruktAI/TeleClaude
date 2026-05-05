@@ -360,7 +360,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         row_idx = self._nav_items.index(todo_row)
         # File tree_lines = parent's lines + parent's own branch continuation
         file_tree_lines = list(todo_row._tree_lines) + [not todo_row.is_last]
-        project_path = todo_row.todo.project_path or self._resolve_project_root()
+        project_path = todo_row.todo.project_path or self._current_project_path()
         for i, artifact_name in enumerate(sorted_files):
             is_last = i == len(sorted_files) - 1
             file_row = TodoFileRow(

@@ -54,7 +54,7 @@ from teleclaude.core.next_machine.state_mutation import (
     StateWriter,
 )
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.project_root import resolve_main_repo_root
+from teleclaude.project_root import resolve_state_root
 from teleclaude.types.todos import ArtifactEntry, BreakdownState, DorState, FinalizeModel, TodoState
 
 logger = get_logger(__name__)
@@ -464,7 +464,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         build_review.verdict = verdict
         build_review.reviewed_at = datetime.now(UTC).isoformat()
         if not build_review.baseline_commit:
-            project_root = str(resolve_main_repo_root(cwd))
+            project_root = str(resolve_state_root(cwd))
             worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
             head = get_head_commit(worktree_path)
             if head:
@@ -545,7 +545,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     Raises:
         RuntimeError: when any validation step fails.
     """
-    project_root = str(resolve_main_repo_root(cwd))
+    project_root = str(resolve_state_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     if not worktree_path.exists():
         raise RuntimeError(f"finalize_ready: worktree not found at {worktree_path}")
@@ -673,7 +673,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         ValueError: when a required artifact is missing or git HEAD cannot be read.
     """
     # pylint: disable=too-many-locals,too-many-statements
-    project_root = str(resolve_main_repo_root(cwd))
+    project_root = str(resolve_state_root(cwd))
     db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")

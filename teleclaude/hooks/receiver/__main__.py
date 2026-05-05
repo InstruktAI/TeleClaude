@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 if __package__:
-    from ._repo_root import resolve_main_repo_root
+    from ._repo_root import resolve_state_root
 else:
     _repo_root_path = Path(__file__).with_name("_repo_root.py")
     _repo_root_spec = importlib.util.spec_from_file_location("_repo_root", _repo_root_path)
@@ -18,12 +18,12 @@ else:
         raise RuntimeError(f"Unable to load repo-root helper from {_repo_root_path}")
     _repo_root_module = importlib.util.module_from_spec(_repo_root_spec)
     _repo_root_spec.loader.exec_module(_repo_root_module)
-    resolve_main_repo_root = _repo_root_module.resolve_main_repo_root
+    resolve_state_root = _repo_root_module.resolve_state_root
 
 # Bootstrap: resolve main repo root (worktree-safe), then re-exec under the
 # project venv when needed. Agent CLIs call this hook from arbitrary directories
 # where PATH may resolve python3 to system Python (missing project deps).
-_REPO_ROOT = resolve_main_repo_root(Path(__file__).resolve().parents[3])
+_REPO_ROOT = resolve_state_root(Path(__file__).resolve().parents[3])
 _VENV_PYTHON = _REPO_ROOT / ".venv" / "bin" / "python3"
 if _VENV_PYTHON.is_file() and Path(sys.executable).resolve() != _VENV_PYTHON.resolve():
     os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), *sys.argv])
