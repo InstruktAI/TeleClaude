@@ -24,8 +24,9 @@ from teleclaude.core.next_machine.output_formatting import (
     format_tool_call,
 )
 from teleclaude.core.next_machine.prepare_diff_dispatch import (
-    append_diff_section,
+    DispatchReason,
     build_upstream_diff_pairs,
+    format_dispatch_reason,
     review_digest_pair,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
@@ -303,9 +304,13 @@ async def _prepare_step_requirements_review(
         req_diff = compute_artifact_diff(cwd, slug, "requirements", base_sha)
         folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
-        findings_note = (
-            f"Requirements need revision: {open_count} unresolved finding(s). "
-            f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
+        findings_note = format_dispatch_reason(
+            (
+                f"Requirements need revision: {open_count} unresolved finding(s). "
+                f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
+            ),
+            slug,
+            DispatchReason.FINDINGS_FIX,
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -330,8 +335,14 @@ async def _prepare_step_requirements_review(
         await _commit_writer(writer, todos_db, slug, state)
     current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
     diff_pairs = review_digest_pair("requirements", "requirements", review.approved_digest, current_requirements_digest)
+    review_reason = DispatchReason.UPSTREAM_CHANGED if diff_pairs else DispatchReason.FRESH
     if pair_slots is not None:
-        message = append_diff_section(format_command_loader_message("next-review-requirements", slug), slug, diff_pairs)
+        message = format_dispatch_reason(
+            format_command_loader_message("next-review-requirements", slug),
+            slug,
+            review_reason,
+            diff_pairs,
+        )
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -352,13 +363,14 @@ async def _prepare_step_requirements_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=append_diff_section(
+            note=format_dispatch_reason(
                 (
                     f"Review requirements via `telec todo artifacts read {slug} requirements` "
                     f"and stamp verdict via "
                     f"`telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`."
                 ),
                 slug,
+                review_reason,
                 diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
@@ -403,10 +415,22 @@ async def _prepare_step_test_spec_build(
         (("requirements", "requirements", "requirements"),),
     )
 
+    if not test_specs_entry.produced_at:
+        build_reason = DispatchReason.FRESH
+    elif not test_specs_entry.upstream_digests:
+        build_reason = DispatchReason.PROVENANCE_MISSING
+    else:
+        build_reason = DispatchReason.UPSTREAM_CHANGED
+
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES)
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
-        message = append_diff_section(format_command_loader_message("next-build-specs", slug), slug, build_diff_pairs)
+        message = format_dispatch_reason(
+            format_command_loader_message("next-build-specs", slug),
+            slug,
+            build_reason,
+            build_diff_pairs,
+        )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -428,11 +452,16 @@ async def _prepare_step_test_spec_build(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Read requirements via `telec todo artifacts read {slug} requirements` and write "
-                f"xfail-marked pytest test specs in the worktree. Each test should capture a "
-                f"requirement as a failing test. Commit the specs to the worktree branch, then call "
-                f"`telec todo prepare {slug}` so the machine can continue from the resulting work."
+            note=format_dispatch_reason(
+                (
+                    f"Read requirements via `telec todo artifacts read {slug} requirements` and write "
+                    f"xfail-marked pytest test specs in the worktree. Each test should capture a "
+                    f"requirement as a failing test. Commit the specs to the worktree branch, then call "
+                    f"`telec todo prepare {slug}` so the machine can continue from the resulting work."
+                ),
+                slug,
+                build_reason,
+                build_diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -526,10 +555,14 @@ async def _prepare_step_test_spec_review(
                 project=_derive_project_root(cwd, slug),
                 guidance=guidance,
                 subfolder=f"{WORKTREE_DIR}/{slug}",
-                note=(
-                    f"Test specs need revision (round {rounds}). "
-                    f"Read findings via `telec todo artifacts read {slug} spec-review-findings` "
-                    f"and update xfail test specs in the worktree."
+                note=format_dispatch_reason(
+                    (
+                        f"Test specs need revision (round {rounds}). "
+                        f"Read findings via `telec todo artifacts read {slug} spec-review-findings` "
+                        f"and update xfail test specs in the worktree."
+                    ),
+                    slug,
+                    DispatchReason.FINDINGS_FIX,
                 ),
                 next_call=f"telec todo prepare {slug}",
                 post_block=_worker_idle_post_block(slug),
@@ -540,8 +573,14 @@ async def _prepare_step_test_spec_review(
     await _commit_writer(writer, todos_db, slug, state)
     current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
     spec_diff_pairs = review_digest_pair("test_specs", "test-specs", spec_review.approved_digest, current_specs_digest)
+    spec_review_reason = DispatchReason.UPSTREAM_CHANGED if spec_diff_pairs else DispatchReason.FRESH
     if pair_slots is not None:
-        message = append_diff_section(format_command_loader_message("next-review-specs", slug), slug, spec_diff_pairs)
+        message = format_dispatch_reason(
+            format_command_loader_message("next-review-specs", slug),
+            slug,
+            spec_review_reason,
+            spec_diff_pairs,
+        )
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -562,12 +601,13 @@ async def _prepare_step_test_spec_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=append_diff_section(
+            note=format_dispatch_reason(
                 (
                     f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via "
                     f"`telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`."
                 ),
                 slug,
+                spec_review_reason,
                 spec_diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
@@ -605,11 +645,23 @@ async def _prepare_step_plan_drafting(
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""
 
+    if not plan_entry.produced_at:
+        plan_reason = DispatchReason.FRESH
+    elif not plan_entry.upstream_digests:
+        plan_reason = DispatchReason.PROVENANCE_MISSING
+    else:
+        plan_reason = DispatchReason.UPSTREAM_CHANGED
+
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
     if pair_slots is not None:
         writer_slot, reviewer_slot = pair_slots
         await _commit_writer(writer, todos_db, slug, state)
-        message = append_diff_section(format_command_loader_message("next-prepare-draft", slug), slug, plan_diff_pairs)
+        message = format_dispatch_reason(
+            format_command_loader_message("next-prepare-draft", slug),
+            slug,
+            plan_reason,
+            plan_diff_pairs,
+        )
         instruction = await format_pair_write_or_recovery_script(
             db=db,
             slug=slug,
@@ -631,13 +683,18 @@ async def _prepare_step_plan_drafting(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Ground the approved requirements for {slug}. If the work is atomic, "
-                f"write the implementation plan via "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-                f"stamp via `telec todo stamp {slug} --plan-ready`. "
-                "If planning shows the parent is too large, split it into child todos and "
-                "update the holder breakdown."
+            note=format_dispatch_reason(
+                (
+                    f"Ground the approved requirements for {slug}. If the work is atomic, "
+                    f"write the implementation plan via "
+                    f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
+                    f"stamp via `telec todo stamp {slug} --plan-ready`. "
+                    "If planning shows the parent is too large, split it into child todos and "
+                    "update the holder breakdown."
+                ),
+                slug,
+                plan_reason,
+                plan_diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),
@@ -748,9 +805,13 @@ async def _prepare_step_plan_review(
         plan_diff = compute_artifact_diff(cwd, slug, "implementation-plan", base_sha)
         folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
         additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
-        findings_note = (
-            f"Implementation plan needs revision: {open_count} unresolved finding(s). "
-            f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
+        findings_note = format_dispatch_reason(
+            (
+                f"Implementation plan needs revision: {open_count} unresolved finding(s). "
+                f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
+            ),
+            slug,
+            DispatchReason.FINDINGS_FIX,
         )
         guidance = await compose_agent_guidance(db)
         return False, format_tool_call(
@@ -777,8 +838,14 @@ async def _prepare_step_plan_review(
     plan_diff_pairs = review_digest_pair(
         "implementation_plan", "implementation-plan", review.approved_digest, current_plan_digest
     )
+    plan_review_reason = DispatchReason.UPSTREAM_CHANGED if plan_diff_pairs else DispatchReason.FRESH
     if pair_slots is not None:
-        message = append_diff_section(format_command_loader_message("next-review-plan", slug), slug, plan_diff_pairs)
+        message = format_dispatch_reason(
+            format_command_loader_message("next-review-plan", slug),
+            slug,
+            plan_review_reason,
+            plan_diff_pairs,
+        )
         instruction = await format_pair_review_or_recovery_script(
             db=db,
             slug=slug,
@@ -799,13 +866,14 @@ async def _prepare_step_plan_review(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=append_diff_section(
+            note=format_dispatch_reason(
                 (
                     f"Review the plan via `telec todo artifacts read {slug} implementation-plan` "
                     f"and stamp verdict via "
                     f"`telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`."
                 ),
                 slug,
+                plan_review_reason,
                 plan_diff_pairs,
             ),
             next_call=f"telec todo prepare {slug}",

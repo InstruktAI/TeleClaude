@@ -31,6 +31,10 @@ Validate `requirements.md` against the requirements quality standard and stamp t
 
 ## Steps
 
+- Read the dispatch reason from the message header (`Dispatch reason: <reason>`):
+  - **`fresh`** — first review of these requirements.
+  - **`upstream-changed`** — the requirements artifact changed since your last approval.
+    Run the `Changes since` diff command listed in the dispatch and judge the new wording.
 - Follow the review-requirements procedure.
 - Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 
@@ -60,8 +64,7 @@ is checking against air.
 - **Severity-softening to reach approve.** Words like "minor", "cosmetic", or
   "nice to have" are demotion language. Stop, re-cite, re-evaluate.
 
-When this dispatch comes after a digest mismatch (the message includes a
-`telec todo artifacts diff` command with old and new digests), the requirements
-were edited since your last approval. Run the diff command to see exactly what
-changed, then judge whether the new wording still meets the quality standard.
+The dispatch reason header is the explicit signal — `upstream-changed` means
+the requirements were edited since your last approval. The `Changes since`
+section lists the exact `telec todo artifacts diff` command to inspect.
 Approve only when no cited findings remain; flag findings when any remain.

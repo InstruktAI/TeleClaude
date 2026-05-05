@@ -22,6 +22,14 @@ that effect.
 
 ## Steps
 
+### 0. Re-entry is the base case
+
+Every prepare dispatch carries a `Dispatch reason: <reason>` header. Re-entry is
+the default — fresh production is the special case (first time only). Read the
+reason before you act. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
+`provenance-missing`. Each one prescribes a different behavior; do not assume
+fresh write.
+
 ### 1. Load domain specs before producing or modifying any artifact
 
 Identify which specs your artifact touches and read them via `telec docs get`.

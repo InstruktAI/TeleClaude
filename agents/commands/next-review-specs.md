@@ -30,6 +30,12 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
 
 ## Steps
 
+- Read the dispatch reason from the message header (`Dispatch reason: <reason>`). It tells
+  you what changed since the last review:
+  - **`fresh`** — first review of these specs.
+  - **`upstream-changed`** — the specs artifact's digest changed since you last approved.
+    Run the `Changes since` diff command listed in the dispatch and re-validate the
+    per-criterion mapping against the new content.
 - You MUST use `telec docs index | grep '{language}'` to surface language-specific required reads,
   and use `telec docs get {snippet_id}` to read them ALL before reviewing the spec suite.
 - Read `requirements.md` in full — not only the plan or the specs. Requirements are the contract
@@ -81,7 +87,6 @@ weak. Produce the mapping; incomplete mapping = incomplete review.
 - **Skipping the per-criterion mapping.** A criterion with no named assertion
   is a Requirement-Violation, not an "incomplete" or "TBD" item.
 
-When this dispatch comes after a digest mismatch (the message includes a
-`telec todo artifacts diff` command with old and new digests), the spec content
-changed since your last approval. Run the diff command to see what changed and
-re-validate the per-criterion mapping against the new content.
+The dispatch reason header is the explicit signal for this — `upstream-changed`
+means the spec content drifted since your last approval. The `Changes since`
+section lists the exact `telec todo artifacts diff` command to inspect.

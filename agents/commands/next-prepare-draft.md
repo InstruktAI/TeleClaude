@@ -33,6 +33,19 @@ todo into child work items when planning shows it is not atomic. Single-agent wo
 
 ## Steps
 
+- Read the dispatch reason from the message header (`Dispatch reason: <reason>`). Re-entry
+  is the base case — fresh production is the special case (first time only). Pick your
+  behavior from the reason:
+  - **`fresh`** — no prior plan. Produce one from approved requirements + test specs.
+  - **`findings-fix`** — read `plan-review-findings.md`, apply targeted fixes against the
+    existing plan, preserve every task not flagged by the findings.
+  - **`upstream-changed`** — run the `Changes since` diff commands listed in the dispatch.
+    Identify which plan tasks reference the changed upstream content. Update only those
+    tasks; preserve plan tasks whose grounding is unchanged.
+  - **`provenance-missing`** — the existing plan predates provenance tracking. Read it via
+    `telec todo artifacts read {slug} implementation-plan` and verify each task against
+    current `requirements.md` and `test-specs`. Update only tasks whose grounding has
+    actually drifted; do not rewrite tasks that still pin behavior correctly.
 - Follow the plan draft procedure.
 
 ## Discipline

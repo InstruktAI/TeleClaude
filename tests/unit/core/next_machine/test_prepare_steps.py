@@ -14,6 +14,7 @@ from teleclaude.core.next_machine.prepare_grounding_steps import prepare_step_re
 from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_input_assessment,
     _prepare_step_plan_drafting,
+    _prepare_step_test_spec_build,
     _prepare_step_triangulation,
 )
 
@@ -383,3 +384,106 @@ async def test_grounding_check_falls_back_to_parent_root_when_no_worktree(tmp_pa
     assert keep_going is True
     assert captured_cwds == [parent_root]
     assert state["grounding"]["base_sha"] == "parent-head"
+
+
+# --- DispatchReason: every dispatch carries an explicit reason header ---
+
+
+@pytest.mark.asyncio
+async def test_plan_drafting_dispatch_marks_fresh_when_no_prior_artifact() -> None:
+    """A first plan-drafting dispatch with no produced_at must surface ``fresh``."""
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+    todos_db.write_state = AsyncMock()
+
+    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
+    ):
+        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    assert "Dispatch reason: fresh" in instruction
+
+
+@pytest.mark.asyncio
+async def test_test_spec_build_dispatch_marks_provenance_missing_when_upstream_digests_empty() -> None:
+    """An existing test_specs artifact with empty upstream_digests is the
+    legacy state — ``provenance-missing`` tells the worker to verify alignment
+    against current requirements instead of overwriting valid prior specs.
+
+    Reachable in test_spec_build because that step compares recorded vs current
+    directly: empty recorded != non-empty current → dispatch (not auto-advance).
+    """
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="current-req")
+    todos_db.write_state = AsyncMock()
+
+    state = _base_state(lifecycle_phase="test_spec_build")
+    state["artifacts"]["test_specs"]["produced_at"] = "2026-04-25T20:46:11+00:00"
+    state["artifacts"]["test_specs"]["digest"] = "specs-digest"
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
+        patch(f"{_STEPS}.ensure_worktree_with_policy_async", new_callable=AsyncMock),
+    ):
+        keep_going, instruction = await _prepare_step_test_spec_build(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    assert "Dispatch reason: provenance-missing" in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_drafting_dispatch_marks_upstream_changed_when_recorded_digest_differs() -> None:
+    """Recorded upstream digest != current → upstream-changed."""
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="current-req")
+    todos_db.write_state = AsyncMock()
+
+    state = _base_state(
+        lifecycle_phase="plan_drafting",
+        plan_produced_at="2026-04-25T20:46:12+00:00",
+        plan_digest="plan-digest",
+    )
+    state["artifacts"]["implementation_plan"]["upstream_digests"] = {
+        "requirements": "old-req",
+        "test_specs": "old-spec",
+    }
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
+    ):
+        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    assert "Dispatch reason: upstream-changed" in instruction
+
+
+@pytest.mark.asyncio
+async def test_re_grounding_dispatch_marks_upstream_changed() -> None:
+    """RE_GROUNDING is always reached after grounding invalidation — upstream-changed."""
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.write_state = AsyncMock()
+
+    state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_GROUNDING}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_GROUNDING}._derive_project_root", return_value="/repo"),
+    ):
+        keep_going, instruction = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    assert "Dispatch reason: upstream-changed" in instruction

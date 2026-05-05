@@ -360,6 +360,161 @@ def test_reconcile_phase_state_defaults_to_prepare_stage_and_adopts_existing_art
     assert written_state["artifacts"]["implementation_plan"]["digest"] == "plan-digest"
 
 
+def _reconcile_state_with_artifacts(
+    *,
+    test_specs_upstream: dict[str, str],
+    plan_upstream: dict[str, str],
+) -> dict[str, StateValue]:
+    return {
+        "schema_version": 2,
+        "phase": "pending",
+        "lifecycle_phase": "input_assessment",
+        "kind": "draft",
+        "artifacts": {
+            "input": {"digest": "", "produced_at": "", "stale": False, "approved": False, "confirmed": False},
+            "requirements": {
+                "digest": "stale-req",
+                "produced_at": "2026-04-25T20:46:10+00:00",
+                "stale": False,
+                "approved": True,
+                "confirmed": False,
+            },
+            "test_specs": {
+                "digest": "stale-spec",
+                "produced_at": "2026-04-25T20:46:11+00:00",
+                "stale": False,
+                "approved": False,
+                "confirmed": False,
+                "upstream_digests": dict(test_specs_upstream),
+            },
+            "implementation_plan": {
+                "digest": "stale-plan",
+                "produced_at": "2026-04-25T20:46:12+00:00",
+                "stale": False,
+                "approved": False,
+                "confirmed": False,
+                "upstream_digests": dict(plan_upstream),
+            },
+        },
+        "requirements_review": {
+            "verdict": "approve",
+            "reviewed_at": "",
+            "findings_count": 0,
+            "rounds": 0,
+            "baseline_commit": "",
+            "findings": [],
+        },
+        "test_spec_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0, "rounds": 0},
+        "plan_review": {
+            "verdict": "approve",
+            "reviewed_at": "",
+            "findings_count": 0,
+            "rounds": 0,
+            "baseline_commit": "",
+            "findings": [],
+        },
+        "build_review": {"verdict": "", "reviewed_at": "", "round": 0, "baseline_commit": "", "dispatch_head": ""},
+        "grounding": {
+            "valid": False,
+            "base_sha": "",
+            "input_digest": "",
+            "referenced_paths": [],
+            "changed_paths": [],
+            "last_grounded_at": "",
+            "invalidated_at": "",
+            "invalidation_reason": "",
+        },
+        "finalize": {"status": "pending", "branch": "", "sha": "", "ready_at": "", "handed_off_at": ""},
+        "breakdown": {"assessed": False, "todos": []},
+    }
+
+
+def test_reconcile_seeds_empty_upstream_digests_from_current(tmp_path: Path) -> None:
+    """Reconcile must bootstrap empty upstream_digests from refreshed upstream digests.
+
+    A test_specs artifact with content but empty upstream_digests is the legacy
+    failure mode that triggers a silent rebuild. Reconcile is the documented
+    "bring state in line with reality" surface — it must seed provenance from
+    the refreshed upstream digests in the same pass.
+    """
+    project_root = tmp_path
+    (project_root / ".teleclaude").mkdir()
+    (project_root / "trees" / "my-slug").mkdir(parents=True)
+
+    state = _reconcile_state_with_artifacts(test_specs_upstream={}, plan_upstream={})
+
+    digest_lookup = {
+        "requirements": "current-req",
+        "test-specs": "current-spec",
+        "implementation-plan": "current-plan",
+    }
+
+    with (
+        patch(f"{_STATE_IO}.read_phase_state", return_value=state),
+        patch(f"{_STATE_IO}.write_phase_state") as mock_write,
+        patch(
+            f"{_STATE_IO}._read_artifact_presence",
+            return_value={"input": False, "requirements": True, "test_specs": True, "implementation_plan": True},
+        ),
+        patch(
+            f"{_STATE_IO}._artifact_digest",
+            side_effect=lambda _cwd, _slug, name: digest_lookup.get(name, ""),
+        ),
+    ):
+        reconcile_phase_state(str(project_root), "my-slug")
+
+    written_state = mock_write.call_args.args[2]
+    assert written_state["artifacts"]["test_specs"]["upstream_digests"] == {"requirements": "current-req"}
+    assert written_state["artifacts"]["implementation_plan"]["upstream_digests"] == {
+        "requirements": "current-req",
+        "test_specs": "current-spec",
+    }
+
+
+def test_reconcile_preserves_non_empty_upstream_digests(tmp_path: Path) -> None:
+    """Reconcile must never overwrite recorded upstream provenance.
+
+    Once an artifact has recorded upstream digests, they are the truth used
+    to detect real drift. Reconcile is bootstrap-only — it never erases that
+    signal, even when current upstream digests differ.
+    """
+    project_root = tmp_path
+    (project_root / ".teleclaude").mkdir()
+    (project_root / "trees" / "my-slug").mkdir(parents=True)
+
+    state = _reconcile_state_with_artifacts(
+        test_specs_upstream={"requirements": "recorded-req"},
+        plan_upstream={"requirements": "recorded-req", "test_specs": "recorded-spec"},
+    )
+
+    digest_lookup = {
+        "requirements": "current-req",
+        "test-specs": "current-spec",
+        "implementation-plan": "current-plan",
+    }
+
+    with (
+        patch(f"{_STATE_IO}.read_phase_state", return_value=state),
+        patch(f"{_STATE_IO}.write_phase_state") as mock_write,
+        patch(
+            f"{_STATE_IO}._read_artifact_presence",
+            return_value={"input": False, "requirements": True, "test_specs": True, "implementation_plan": True},
+        ),
+        patch(
+            f"{_STATE_IO}._artifact_digest",
+            side_effect=lambda _cwd, _slug, name: digest_lookup.get(name, ""),
+        ),
+    ):
+        reconcile_phase_state(str(project_root), "my-slug")
+
+    written_state = mock_write.call_args.args[2]
+    assert written_state["artifacts"]["test_specs"]["upstream_digests"] == {"requirements": "recorded-req"}
+    assert written_state["artifacts"]["implementation_plan"]["upstream_digests"] == {
+        "requirements": "recorded-req",
+        "test_specs": "recorded-spec",
+    }
+
+
 def test_mark_phase_hydrates_artifact_digests_from_db(tmp_path: Path) -> None:
     """mark-phase must hydrate artifact digests from DB before normalizing state.
 

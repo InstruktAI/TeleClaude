@@ -50,16 +50,31 @@ policy: identify which specs the requirements touch and load them before
 drafting begins. Domain specs are the ground truth — grounding and
 review-awareness cannot be evaluated without them.
 
-### 1b. Fix mode (when dispatched with "FIX MODE")
+### 1b. Re-entry classification (read the dispatch reason)
 
-When the dispatch note starts with "FIX MODE", this is a targeted revision, not a
-fresh draft:
+Re-entry is the base case for plan drafting — fresh production is the special
+case (first time only). Every dispatch carries a `Dispatch reason: <reason>`
+header. Pick your behavior from the reason:
 
-- Read the existing `telec todo artifacts read {slug} implementation-plan` alongside the review findings.
-- Apply targeted fixes to address each finding. Preserve all unflagged content.
-- Do not re-draft from scratch — the existing plan was already grounded and approved.
-- Skip the atomicity decision (step 2); proceed directly to updating the plan tasks
-  affected by findings, then write the updated artifacts (step 5).
+- **`fresh`** — no prior implementation plan exists. Produce one from approved
+  requirements and test specs. This is the only path that uses the full atomicity
+  decision (step 2) and full draft (step 3).
+- **`findings-fix`** — a `needs_work` verdict was issued. Read
+  `telec todo artifacts read {slug} plan-review-findings` alongside the existing
+  plan. Apply targeted fixes to address each finding. Preserve every task not
+  flagged by the findings. Skip the atomicity decision (step 2) and proceed
+  directly to step 5.
+- **`upstream-changed`** — the plan's recorded `upstream_digests` (requirements
+  and/or test_specs) drifted from current. Run the `Changes since` diff commands
+  listed in the dispatch. Identify the plan tasks whose grounding referenced the
+  changed upstream content. Update only those tasks; preserve every task whose
+  grounding is unchanged. Skip the atomicity decision and proceed to step 5.
+- **`provenance-missing`** — the plan exists but its upstream provenance is
+  empty (legacy state). Read the existing plan via
+  `telec todo artifacts read {slug} implementation-plan`. Verify each task's
+  grounding against current `requirements.md` and `test-specs`. Update only
+  tasks whose grounding has actually drifted; preserve tasks that still pin
+  the requirement correctly. Skip the atomicity decision and proceed to step 5.
 
 ### 2. Decide whether the todo is atomic
 

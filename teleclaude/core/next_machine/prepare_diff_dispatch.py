@@ -1,18 +1,43 @@
-"""Helpers that augment dispatch messages with artifact-diff commands.
+"""Helpers that augment dispatch messages with artifact-diff commands and
+explicit dispatch reasons.
 
-When a review or build is re-routed because an upstream digest changed, the
-worker needs to know what changed without the orchestrator having to read or
-forward the diff itself. These helpers compute the (label, artifact, old_digest,
-new_digest) tuples and append a `telec todo artifacts diff` command line for
-each one to the worker's dispatch message.
+Re-entry is the base case for every prepare worker. The orchestrator must tell
+the worker *why* it was dispatched so the worker can pick the right behavior
+(produce fresh, fix findings, refresh against upstream changes, or verify
+alignment when provenance is missing). These helpers are the single seam where
+that reason is injected into the dispatch message, alongside any concrete
+``telec todo artifacts diff`` commands the worker needs to inspect.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
+
+
+class DispatchReason(StrEnum):
+    """Classifies why a prepare worker was dispatched.
+
+    Workers select their behavior from this value. The orchestrator never
+    omits the reason — silence on the dispatch contract is the failure mode
+    that produces silent overwrites of valid existing artifacts.
+    """
+
+    FRESH = "fresh"
+    """No prior artifact exists; produce from scratch."""
+
+    FINDINGS_FIX = "findings-fix"
+    """A needs_work verdict requires targeted revision against findings."""
+
+    UPSTREAM_CHANGED = "upstream-changed"
+    """A recorded upstream digest does not match current; refresh incrementally."""
+
+    PROVENANCE_MISSING = "provenance-missing"
+    """An artifact exists but its upstream provenance is empty; verify alignment
+    against current upstream and update only what no longer pins behavior."""
 
 
 def append_diff_section(message: str, slug: str, diffs: list[tuple[str, str, str, str]]) -> str:
@@ -30,6 +55,25 @@ def append_diff_section(message: str, slug: str, diffs: list[tuple[str, str, str
     if not lines:
         return message
     return message + "\n\nChanges since your last review/build:\n" + "\n".join(lines)
+
+
+def format_dispatch_reason(
+    message: str,
+    slug: str,
+    reason: DispatchReason,
+    diffs: list[tuple[str, str, str, str]] | None = None,
+) -> str:
+    """Prepend an explicit dispatch-reason header to a worker message.
+
+    Workers read the reason header to pick their behavior. When ``diffs`` are
+    supplied, the existing 'Changes since' section is appended below the reason
+    so the worker has the concrete diff commands needed to inspect what changed.
+    """
+    header = f"Dispatch reason: {reason.value}"
+    body = f"{header}\n\n{message}"
+    if diffs:
+        return append_diff_section(body, slug, diffs)
+    return body
 
 
 def review_digest_pair(

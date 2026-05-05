@@ -247,14 +247,14 @@ sequenceDiagram
     O->>SM: telec todo prepare slug
 
     Note over O,G: Phase 3 — Test Specification
-    SM-->>O: DISPATCH next-prepare-test-spec
-    O->>TS: telec sessions run --command /next-prepare-test-spec --args slug
+    SM-->>O: DISPATCH next-build-specs
+    O->>TS: telec sessions run --command /next-build-specs --args slug
     TS-->>O: notification (`telec todo stamp slug --specs-built`)
     O->>SM: telec todo prepare slug
 
     Note over O,G: Phase 4 — Test Spec Review
-    SM-->>O: DISPATCH next-review-test-spec
-    O->>TSR: telec sessions run --command /next-review-test-spec --args slug
+    SM-->>O: DISPATCH next-review-specs
+    O->>TSR: telec sessions run --command /next-review-specs --args slug
     TSR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 

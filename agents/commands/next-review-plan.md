@@ -31,6 +31,11 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 
 ## Steps
 
+- Read the dispatch reason from the message header (`Dispatch reason: <reason>`):
+  - **`fresh`** — first review of this plan.
+  - **`upstream-changed`** — the plan artifact changed since your last approval.
+    Run the `Changes since` diff command listed in the dispatch and re-validate against
+    the requirements and specs.
 - Follow the review-plan procedure.
 - Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 

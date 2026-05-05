@@ -20,6 +20,7 @@ from teleclaude.core.next_machine._types import PreparePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
 from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
+from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.prepare_pair import (
     PRODUCTION_ROLES,
@@ -148,10 +149,14 @@ async def _handle_stale_grounding(
     await _commit_writer(writer, todos_db, slug, state)
 
     changed_note = f"Changed files: {', '.join(changed_paths)}" if changed_paths else "Codebase has evolved."
-    note = (
-        f"Update the implementation plan via `telec todo artifacts read {slug} implementation-plan` + "
-        f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-        f"stamp via `telec todo stamp {slug} --plan-ready`. {changed_note}"
+    note = format_dispatch_reason(
+        (
+            f"Update the implementation plan via `telec todo artifacts read {slug} implementation-plan` + "
+            f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
+            f"stamp via `telec todo stamp {slug} --plan-ready`. {changed_note}"
+        ),
+        slug,
+        DispatchReason.UPSTREAM_CHANGED,
     )
     pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
     if pair_slots is not None:
@@ -209,11 +214,15 @@ async def prepare_step_re_grounding(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Re-ground {slug} and rewrite the implementation plan via "
-                f"`telec todo artifacts read {slug} implementation-plan` + "
-                f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                f"then stamp via `telec todo stamp {slug} --plan-ready`."
+            note=format_dispatch_reason(
+                (
+                    f"Re-ground {slug} and rewrite the implementation plan via "
+                    f"`telec todo artifacts read {slug} implementation-plan` + "
+                    f"`telec todo artifacts write {slug} implementation-plan <content>`, "
+                    f"then stamp via `telec todo stamp {slug} --plan-ready`."
+                ),
+                slug,
+                DispatchReason.UPSTREAM_CHANGED,
             ),
             next_call=f"telec todo prepare {slug}",
             post_block=_worker_idle_post_block(slug),

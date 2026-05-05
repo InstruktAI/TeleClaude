@@ -192,13 +192,20 @@ def _read_artifact_presence(cwd: str, slug: str) -> dict[str, bool]:
 
 
 def _sync_reconcile_artifacts(cwd: str, slug: str, writer: StateWriter) -> None:
-    """Refresh known artifact digests from DB and clear missing current artifact evidence."""
+    """Align state-model provenance with blob reality. Bootstrap-only — never overwrites
+    recorded provenance once the production path has captured it."""
+    now = datetime.now(UTC).isoformat()
     for state_key, artifact_name in _RECONCILE_ARTIFACT_NAMES.items():
         entry = getattr(writer.state.artifacts, state_key)
-        digest = _artifact_digest(cwd, slug, artifact_name)
-        entry.digest = digest
-        if not digest:
+        entry.digest = _artifact_digest(cwd, slug, artifact_name)
+        if not entry.digest:
             entry.produced_at = ""
+            continue
+        if not entry.produced_at:
+            entry.produced_at = now
+        upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
+        if upstream_keys and not entry.upstream_digests:
+            entry.upstream_digests = {k: getattr(writer.state.artifacts, k).digest for k in upstream_keys}
 
 
 def validate_mark_phase_preconditions(
