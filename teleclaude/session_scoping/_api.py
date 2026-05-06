@@ -1,11 +1,15 @@
-"""Public API orchestration for session scoping."""
+"""Public session-scoping API.
+
+Single canonical mechanism: the per-agent transcript extractor returns
+files mutated by the agent in the requested scope. The transcript is the
+source of truth, regardless of workspace kind.
+"""
 
 from __future__ import annotations
 
 from instrukt_ai_logging import get_logger
 
-from ._git_strategy import resolve_git_worktree_paths
-from ._native_strategy import resolve_native_scoped_paths
+from ._extractors import resolve_extractor
 from ._types import ScopedPathsResult, ScopeMode
 from ._workspace import resolve_workspace
 
@@ -35,19 +39,19 @@ def resolve_scoped_paths(
         )
 
     try:
-        if workspace.kind == "git_worktree":
-            return resolve_git_worktree_paths(
-                session_id=session_id,
-                workspace_root=workspace.root or "",
-                agent_name=agent_name,
-                scope_mode=scope_mode,
-            )
-        return resolve_native_scoped_paths(
-            workspace=workspace,
-            agent_name=agent_name,
-            scope_mode=scope_mode,
+        extractor = resolve_extractor(agent_name)
+        native_paths, strategy = extractor(
             transcript_path=transcript_path,
             native_session_id=native_session_id,
+            workspace_root=workspace.root,
+            scope_mode=scope_mode,
+        )
+        return ScopedPathsResult(
+            paths=tuple(sorted(native_paths)),
+            scope_mode=scope_mode,
+            workspace_kind=workspace.kind,
+            strategy=strategy,
+            ledger_updated=False,
         )
     except Exception as exc:
         logger.warning(

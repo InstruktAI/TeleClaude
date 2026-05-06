@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-ScopeMode = Literal["turn_delta", "session_dirty", "workspace_dirty"]
+ScopeMode = Literal["turn_delta", "session_dirty"]
 WorkspaceKind = Literal["git_worktree", "git_shared", "non_git", "none"]
 
 
@@ -15,18 +15,6 @@ class ResolvedWorkspace:
 
     root: str | None
     kind: WorkspaceKind
-
-
-@dataclass(frozen=True)
-class WorkspaceScopeLedger:
-    """Durable ledger entry for one session/workspace pair."""
-
-    workspace_root: str
-    workspace_kind: WorkspaceKind
-    strategy: str
-    agent: str
-    seen_paths: tuple[str, ...]
-    last_updated: str
 
 
 @dataclass(frozen=True)

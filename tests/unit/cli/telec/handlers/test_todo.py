@@ -11,7 +11,6 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_create,
     _handle_todo_design,
     _handle_todo_dump,
-    _handle_todo_from_main,
     _handle_todo_reconcile,
     _handle_todo_remove,
     _handle_todo_split,
@@ -215,56 +214,6 @@ class TestHandleTodoSplit:
     def test_missing_children_exits(self) -> None:
         with pytest.raises(SystemExit):
             _handle_todo_split(["parent"])
-
-
-class TestHandleTodoFromMain:
-    """telec todo from-main --slug <name>."""
-
-    def test_success_emits_built_event(
-        self,
-        capsys: pytest.CaptureFixture[str],
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path,
-    ) -> None:
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch(f"{_MODULE}.create_from_main_skeleton", return_value="Todo created: my-slug"),
-            patch(f"{_MODULE}.tool_api_request") as mock_api,
-        ):
-            _handle_todo_from_main(["--slug", "my-slug"])
-
-        assert "Todo created: my-slug" in capsys.readouterr().out
-        mock_api.assert_called_once()
-        assert mock_api.call_args.args[:2] == ("POST", "/events/emit")
-        body = mock_api.call_args.kwargs["json_body"]
-        assert body["event"] == "domain.software-development.planning.todo_dumped"
-        assert body["payload"]["kind"] == "built"
-        assert body["payload"]["slug"] == "my-slug"
-        assert body["payload"]["project_root"] == str(tmp_path)
-
-    def test_emit_failure_prints_manual_recovery_command(
-        self,
-        capsys: pytest.CaptureFixture[str],
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path,
-    ) -> None:
-        monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
-        monkeypatch.chdir(tmp_path)
-
-        with (
-            patch(f"{_MODULE}.create_from_main_skeleton", return_value="Todo created: my-slug"),
-            patch(f"{_MODULE}.tool_api_request", side_effect=RuntimeError("emit failed")),
-        ):
-            _handle_todo_from_main(["--slug", "my-slug"])
-
-        captured = capsys.readouterr()
-        assert "Todo created: my-slug" in captured.out
-        assert "telec sessions run --command /next-work --args my-slug" in captured.err
-        assert "--project" in captured.err
-        assert str(tmp_path) in captured.err
-        assert "--detach" in captured.err
 
 
 class TestHandleTodoStampPreparePair:

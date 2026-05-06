@@ -41,12 +41,6 @@ Review code changes against requirements and architecture and produce a verdict.
   (`state.kind == "prepped"`) — the implementation-plan artifact is the sole spec.
   Continue with the plan artifact and diff only.
 
-- **Ad-hoc item detection:** If `requirements.md` contains the marker text `telec todo from-main`,
-  this is an ad-hoc submission (code committed directly, no formal requirements or planning).
-  Skip the scope lane and completeness checks. Run all other lanes. Note
-  "Ad-hoc review (via from-main)" in the findings header. Focus on whether the delivered
-  code adheres to project policies.
-
 - **Prepped item detection:** If the todo is prepped (no requirements artifact), the
   implementation-plan was authored as a complete spec-and-plan and the prepare phase
   was intentionally skipped. Treat the plan as the sole intent source. Skip the scope

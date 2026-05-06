@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
-import shlex
 import sys
 import uuid
 from typing import Literal
@@ -33,7 +32,7 @@ from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.resource_validation import validate_all_todos, validate_todo
 from teleclaude.session_identity import get_session_id
-from teleclaude.todo_scaffold import create_draft_skeleton, create_from_main_skeleton
+from teleclaude.todo_scaffold import create_draft_skeleton
 
 __all__ = [
     "_handle_todo",
@@ -41,7 +40,6 @@ __all__ = [
     "_handle_todo_create",
     "_handle_todo_design",
     "_handle_todo_dump",
-    "_handle_todo_from_main",
     "_handle_todo_mark_phase",
     "_handle_todo_reconcile",
     "_handle_todo_remove",
@@ -188,8 +186,6 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_mark_phase(args[1:])
     elif subcommand == "reconcile":
         _handle_todo_reconcile(args[1:])
-    elif subcommand == "from-main":
-        _handle_todo_from_main(args[1:])
     elif subcommand == "artifacts":
         _handle_todo_artifacts(args[1:])
     elif subcommand == "stamp":
@@ -497,71 +493,6 @@ def _handle_todo_remove(args: list[str]) -> None:
     else:
         print_json(status)
         raise SystemExit(1)
-
-
-def _handle_todo_from_main(args: list[str]) -> None:
-    """Handle telec todo from-main --slug <name> [--description <desc>] [--all]."""
-    slug: str | None = None
-    description: str | None = None
-    all_files = False
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--slug" and i + 1 < len(args):
-            slug = args[i + 1]
-            i += 2
-        elif arg == "--description" and i + 1 < len(args):
-            description = args[i + 1]
-            i += 2
-        elif arg == "--all":
-            all_files = True
-            i += 1
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "from-main"))
-            raise SystemExit(1)
-        else:
-            print(f"Unexpected argument: {arg}")
-            print(_usage("todo", "from-main"))
-            raise SystemExit(1)
-
-    if not slug:
-        print("Missing required flag: --slug <name>")
-        print(_usage("todo", "from-main"))
-        raise SystemExit(1)
-
-    project_root = str(resolve_invocation_cwd())
-    try:
-        output = create_from_main_skeleton(project_root, slug, description=description, all_files=all_files)
-    except (ValueError, RuntimeError) as exc:
-        print(f"Error: {exc}")
-        raise SystemExit(1) from exc
-
-    print(output)
-
-    _log = get_logger(__name__)
-    try:
-        envelope = EventEnvelope(
-            event="domain.software-development.planning.todo_dumped",
-            source="telec-cli",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            description=f"Todo scaffolded from main: {slug}",
-            payload={"slug": slug, "kind": "built", "project_root": project_root},
-        )
-        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
-    except Exception:
-        _log.warning("Todo scaffolded from main but notification emission failed: %s", slug)
-        recovery_command = (
-            "telec sessions run --command /next-work "
-            f"--args {shlex.quote(slug)} --project {shlex.quote(project_root)} --detach"
-        )
-        print(
-            "Warning: worker handoff did not start automatically. "
-            f"Run this command to continue manually:\n{recovery_command}",
-            file=sys.stderr,
-        )
 
 
 # ---------------------------------------------------------------------------

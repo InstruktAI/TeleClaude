@@ -16,7 +16,7 @@ import yaml
 
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.session_identity import get_session_id  # deferred: heavy transitive imports
-from teleclaude.todo_scaffold import _collect_session_touched_files  # deferred: heavy transitive imports
+from teleclaude.todo_scaffold import collect_session_touched_files  # deferred: heavy transitive imports
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +166,7 @@ def _existing_dirty_paths(project_root: Path, dirty_paths: tuple[DirtyPath, ...]
 
 def _resolve_session_touched_paths(project_root: Path) -> tuple[str, ...]:
     try:
-        touched: set[str] = _collect_session_touched_files(str(project_root))
+        touched: set[str] = collect_session_touched_files(str(project_root))
     except Exception as exc:
         raise RuntimeError(f"Failed to collect session-touched files: {exc}") from exc
     return tuple(sorted(touched))

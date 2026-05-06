@@ -7,7 +7,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
 STATE_DIR = TELECLAUDE_HOME / "state"
-SESSION_SCOPING_DIR = STATE_DIR / "session-scoping"
 LOGS_DIR = TELECLAUDE_HOME / "logs"
 GLOBAL_SNIPPETS_DIR = TELECLAUDE_HOME / "docs"
 BIN_DIR = TELECLAUDE_HOME / "bin"

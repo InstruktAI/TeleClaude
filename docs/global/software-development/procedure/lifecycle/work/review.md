@@ -22,8 +22,8 @@ Verify the implementation against requirements and standards, and deliver a bina
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} requirements` exists (or `bug.md` for bug fixes). For ad-hoc items created via `telec todo from-main`, requirements and implementation plan are stubs — see "Ad-hoc items" below.
-- `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix or ad-hoc item).
+- `telec todo artifacts read {slug} requirements` exists (or `bug.md` for bug fixes).
+- `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
 - `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
 - Build phase completed for the slug.
 
@@ -83,17 +83,6 @@ Before proceeding to lane details, verify every lane whose trigger condition is 
 section in `review-findings.md` — even if no issues were found. A lane section that
 says "No findings" proves the lane ran. A missing lane section means the review is
 incomplete — stop and execute the missing lane before writing the verdict.
-
-#### Ad-hoc items (from-main)
-
-Items created via `telec todo from-main` have stub requirements and implementation plans.
-For these items, the scope lane is not applicable — skip it and note "Ad-hoc
-review" in the findings header. All other lanes remain mandatory. The reviewer should focus
-on whether the delivered code meets project quality policies.
-The build handoff is already complete before review starts: `from-main` auto-commits the
-worktree handoff and emits `planning.todo_dumped` with `kind=built`, which the lifecycle
-router turns into a detached `/next-work` dispatch. Review these items as delivered ad-hoc
-work, not as manually dispatched build sessions waiting for another handoff step.
 
 ### 4. Lane detail reference
 

@@ -509,23 +509,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
-            "from-main": CommandDef(
-                desc="Create a reviewed todo from uncommitted changes on main",
-                args="--slug <name> [--description <desc>]",
-                flags=[
-                    _H,
-                    Flag("--slug", desc="Meaningful slug name for the todo"),
-                    Flag("--description", desc="Optional description of the changes"),
-                ],
-                notes=[
-                    "Transfers uncommitted changes from main into a worktree for review.",
-                    "File scoping is automatic: only files touched by the current session are transferred.",
-                    "Creates todo scaffold, sets state to build:complete, ready for review.",
-                    "After running, the worktree handoff is auto-committed and the "
-                    "lifecycle router dispatches detached /next-work.",
-                ],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
-            ),
             "artifacts": CommandDef(
                 desc="Manage todo artifacts in the database",
                 subcommands={

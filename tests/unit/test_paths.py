@@ -14,7 +14,6 @@ def test_repo_root_is_derived_from_module_location() -> None:
 def test_home_relative_paths_share_expected_bases() -> None:
     assert paths.TELECLAUDE_HOME == Path("~/.teleclaude").expanduser()
     assert paths.STATE_DIR == paths.TELECLAUDE_HOME / "state"
-    assert paths.SESSION_SCOPING_DIR == paths.STATE_DIR / "session-scoping"
     assert paths.GLOBAL_SNIPPETS_DIR == paths.TELECLAUDE_HOME / "docs"
     assert paths.TUI_STATE_PATH == paths.STATE_DIR / "tui_state.json"
     assert paths.CRON_STATE_PATH == paths.STATE_DIR / "cron_state.json"
