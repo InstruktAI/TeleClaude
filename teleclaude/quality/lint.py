@@ -200,6 +200,12 @@ class _JscpdStep:
             "strict",
             "--exitCode",
             "1",
+            # Ignore generated-artifact source/output pairs: AGENTS.master.md
+            # and AGENTS.md share content by design (the inflater copies the
+            # master into the adjacent AGENTS.md). Without this exclusion
+            # jscpd flags the duplicate and breaks the nightly upgrade.
+            "--ignore",
+            "**/*.master.md",
             *py,
         ]
         _run_tool(cmd, self._project_root, self.name)

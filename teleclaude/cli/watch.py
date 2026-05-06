@@ -7,7 +7,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from instrukt_ai_logging import InstruktAILogger, get_logger
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -55,7 +55,7 @@ class SmartWatcher(FileSystemEventHandler):
         self.spec = self._load_gitignore()
         self._sync()
 
-    def _load_gitignore(self) -> PathSpec | None:
+    def _load_gitignore(self) -> PathSpec[Any] | None:
         if not pathspec:
             logger.warning("pathspec not installed; .gitignore support disabled")
             return None
