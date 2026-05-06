@@ -1,17 +1,20 @@
 """Helpers that augment dispatch messages with artifact-diff commands and
 explicit dispatch reasons.
 
-Re-entry is the base case for prepare's artifact-production and review
-dispatches (build-specs, prepare-draft, review-requirements, review-specs,
-review-plan), and for the requirements ``needs_work`` discovery fallback.
-The orchestrator must tell the worker *why* it was dispatched so the worker
-can pick the right behavior (produce fresh, fix findings, refresh against
-upstream changes, or verify alignment when provenance is missing). These
-helpers are the single seam where that reason is injected into the dispatch
-message, alongside any concrete ``telec todo artifacts diff`` commands the
-worker needs to inspect. The initial discovery dispatch from input-assessment
-has no prior artifact and is the single dispatch that does not carry the
-header.
+Re-entry is the base case for prepare's downstream-artifact dispatches:
+build-specs, prepare-draft, review-requirements, review-specs, review-plan,
+the regrounding plan-update path, and the requirements ``needs_work``
+discovery fallback. The orchestrator must tell the worker *why* it was
+dispatched so the worker can pick the right behavior (produce fresh, fix
+findings, refresh against upstream changes, or verify alignment when
+provenance is missing). These helpers are the single seam where that reason
+is injected into the dispatch message, alongside any concrete
+``telec todo artifacts diff`` commands the worker needs to inspect.
+
+Discovery dispatches from input-assessment and triangulation do not pass
+through these helpers — those phases gate on the absence of a requirements
+artifact and produce fresh-or-converge passes whose behavior is derived from
+absent state rather than a reason header.
 """
 
 from __future__ import annotations

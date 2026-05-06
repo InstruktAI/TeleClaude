@@ -24,16 +24,19 @@ that effect.
 
 ### 0. Re-entry is the base case
 
-Every prepare dispatch that asks a worker to produce or review an artifact
-carries a `Dispatch reason: <reason>` header. Re-entry is the default —
-fresh production is the special case (first time only). Read the reason
-before you act. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
+Re-entry is the default for prepare dispatches — fresh production is the
+special case (first time only). Dispatches that ask a worker to produce or
+review a downstream artifact (build-specs, prepare-draft, review-requirements,
+review-specs, review-plan, regrounding plan-update) carry a
+`Dispatch reason: <reason>` header so the worker knows which behavior to
+pick. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
 `provenance-missing`. Each prescribes a different behavior; do not assume
-fresh write. The initial discovery dispatch from input-assessment is the
-single exception — it has no prior artifact to reconcile against and so
-does not carry the header. Subsequent discovery dispatches triggered by a
-requirements `needs_work` verdict carry `findings-fix` like any other
-re-entry.
+fresh write. The requirements-review `needs_work` fallback also dispatches
+`/next-prepare-discovery` with `findings-fix`. Discovery dispatches from
+input-assessment and triangulation do NOT carry the header — those phases
+are gated on the absence of a requirements artifact and are unconditionally
+fresh-or-converge passes; the worker derives behavior from the absence of
+prior artifacts, not from a reason header.
 
 ### 1. Load domain specs before producing or modifying any artifact
 
