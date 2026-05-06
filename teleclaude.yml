@@ -30,12 +30,6 @@ jobs:
       every: '60m'
     script: jobs/temp_reaper.py
 
-  dependency_upgrade:
-    category: system
-    when:
-      at: '03:00'
-    script: jobs/dependency_upgrade.py
-
   project_backup:
     category: system
     when:

@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "schedule:weekly",
+    ":automergeAll"
+  ],
+  "timezone": "Europe/Amsterdam",
+  "schedule": ["before 5am every weekday"],
+  "automerge": true,
+  "automergeType": "branch",
+  "automergeStrategy": "squash",
+  "platformAutomerge": true,
+  "rebaseWhen": "behind-base-branch",
+  "prHourlyLimit": 0,
+  "prConcurrentLimit": 0,
+  "branchConcurrentLimit": 0,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "automerge": true,
+    "schedule": ["before 5am on monday"]
+  },
+  "packageRules": [
+    {
+      "description": "Group all minor + patch python deps into one weekly PR",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "python deps (minor+patch)",
+      "groupSlug": "python-minor-patch"
+    },
+    {
+      "description": "Each major bump gets its own PR — easier to revert if CI red",
+      "matchUpdateTypes": ["major"],
+      "groupName": null
+    }
+  ],
+  "uv": {
+    "enabled": true
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"]
+  }
+}
