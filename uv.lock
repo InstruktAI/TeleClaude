@@ -1089,9 +1089,13 @@ wheels = [
 ]
 
 [[package]]
-name = "instrukt-ai-logger"
-version = "0.3.8"
-source = { git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.8#bd295e3eea6baf9f4edd7871477df01e029c77e3" }
+name = "instruktai-python-logger"
+version = "0.3.12"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/95/3d/e71830e43dcb29667564933c387365a770bd7b0f7699273495a336da5769/instruktai_python_logger-0.3.12.tar.gz", hash = "sha256:9534d3970909d8d2205651fb79c9a93b7ecce94821bbbda16416fefd211dc7c3", size = 15761, upload-time = "2026-05-06T18:19:45.764Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/be/65/004771b7202b0b35040825f55d659d9d634f2bcbc1a1347380ccb1f7b36b/instruktai_python_logger-0.3.12-py3-none-any.whl", hash = "sha256:136995f64fece34fb8f9fb79019464d85d436fa7c08eff5bcf33fb652852337c", size = 13401, upload-time = "2026-05-06T18:19:44.709Z" },
+]
 
 [[package]]
 name = "isodate"
@@ -2998,7 +3002,7 @@ dependencies = [
     { name = "gitpython" },
     { name = "greenlet" },
     { name = "httpx" },
-    { name = "instrukt-ai-logger" },
+    { name = "instruktai-python-logger" },
     { name = "misaki", extra = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "munch" },
@@ -3058,7 +3062,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "instrukt-ai-logger", git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.8" },
+    { name = "instruktai-python-logger", specifier = ">=0.3.12" },
     { name = "misaki", extras = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", git = "https://github.com/Blaizzy/mlx-audio.git?branch=main" },
     { name = "munch", specifier = ">=4.0.0" },
