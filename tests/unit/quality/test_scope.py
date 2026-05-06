@@ -114,7 +114,7 @@ class TestResolveWorkspaceScopeResolution:
         monkeypatch.setattr(scope_module, "get_session_id", lambda: "sess-123")
         monkeypatch.setattr(
             scope_module,
-            "_collect_session_touched_files",
+            "collect_session_touched_files",
             lambda _root: {"teleclaude/touched.py", "teleclaude/new.py", "teleclaude/gone.py"},
         )
         monkeypatch.setattr(scope_module, "Repo", lambda _root: _FakeRepo(status_output))

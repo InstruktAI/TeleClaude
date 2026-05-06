@@ -132,7 +132,7 @@ def test_test_mode_includes_touched_test_files_directly() -> None:
 
 
 def test_collection_failure_exits_3_with_stderr_diagnostic() -> None:
-    """When _collect_session_touched_files raises, exit 3 with diagnostic on stderr."""
+    """When collect_session_touched_files raises, exit 3 with diagnostic on stderr."""
     assert _SCRIPT.exists(), "tools/session_scope.py not yet implemented"
     # Behavioral contract: error path → exit code 3 (not 1 or 2), non-empty stderr.
     # Activated with an injected session ID pointing to a nonexistent session in the DB.
@@ -150,7 +150,7 @@ def test_non_valueerror_collection_failure_exits_3(monkeypatch: pytest.MonkeyPat
     mod = _import_session_scope()
     monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
     monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
-    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_runtime_error)
+    monkeypatch.setattr(mod, "collect_session_touched_files", _raise_runtime_error)
     with pytest.raises(SystemExit) as exc_info:
         mod.main()
     assert exc_info.value.code == 3
@@ -303,7 +303,7 @@ def test_main_routes_transcript_unavailable_to_fallback(
 
     monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint", "--project-root", str(tmp_path)])
     monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
-    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_transcript_unavailable)
+    monkeypatch.setattr(mod, "collect_session_touched_files", _raise_transcript_unavailable)
     monkeypatch.setattr(mod, "_fallback_worktree_status_files", lambda project_root: touched_from_fallback)
     monkeypatch.setattr(mod, "_filter_by_mode", _fake_filter)
 
@@ -333,7 +333,7 @@ def test_non_transcript_valueerror_collection_failure_exits_3(
 
     monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
     monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
-    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_value_error)
+    monkeypatch.setattr(mod, "collect_session_touched_files", _raise_value_error)
     monkeypatch.setattr(mod, "_fallback_worktree_status_files", _unexpected_fallback)
 
     with pytest.raises(SystemExit) as exc_info:
@@ -359,7 +359,7 @@ def test_no_session_touched_files_returns_empty_scope(
 
     monkeypatch.setattr(sys, "argv", ["session_scope.py", "--mode", "lint"])
     monkeypatch.setattr(mod, "get_session_id", lambda: "fake-session-id")
-    monkeypatch.setattr(mod, "_collect_session_touched_files", _raise_no_files)
+    monkeypatch.setattr(mod, "collect_session_touched_files", _raise_no_files)
     monkeypatch.setattr(mod, "_fallback_worktree_status_files", _empty_fallback)
 
     mod.main()
