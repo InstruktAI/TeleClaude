@@ -8,7 +8,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 from types import NoneType, UnionType
-from typing import Any, Literal, Union, cast, get_args, get_origin
+from typing import Any, Literal, TypeAliasType, Union, cast, get_args, get_origin
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -59,6 +59,29 @@ _LITERAL_ALIAS_VALUES: dict[str, tuple[str, ...]] = {
         "todo_removed",
     ),
 }
+
+
+def _discover_pep695_literal_aliases() -> dict[str, tuple[str, ...]]:
+    """Auto-discover ``type X = Literal[...]`` aliases declared in api_models.
+
+    PEP 695 type aliases are first-class Python objects (``TypeAliasType``)
+    distinct from the ``typing.Literal`` they wrap. ``get_origin`` on the alias
+    itself returns ``None``, so the codegen has to unwrap ``__value__`` to see
+    the underlying ``Literal``. Auto-discovery here avoids hand-maintaining the
+    alias registry every time a new ``type X = Literal[...]`` is added to
+    api_models.
+    """
+    discovered: dict[str, tuple[str, ...]] = {}
+    for name, candidate in inspect.getmembers(api_models):
+        if not isinstance(candidate, TypeAliasType):
+            continue
+        underlying = candidate.__value__
+        if get_origin(underlying) is Literal:
+            discovered[name] = tuple(str(v) for v in get_args(underlying))
+    return discovered
+
+
+_LITERAL_ALIAS_VALUES.update(_discover_pep695_literal_aliases())
 _LITERAL_ALIAS_LOOKUP: dict[frozenset[str], str] = {
     frozenset(values): alias_name for alias_name, values in _LITERAL_ALIAS_VALUES.items()
 }
@@ -292,6 +315,13 @@ def _map_annotation(
     used_literal_aliases: set[str],
 ) -> str:
     """Map a Python type annotation to a TypeScript type string."""
+    if isinstance(annotation, TypeAliasType):
+        return _map_annotation(
+            annotation.__value__,
+            model_name=model_name,
+            field_name=field_name,
+            used_literal_aliases=used_literal_aliases,
+        )
     origin = get_origin(annotation)
     mapped_type: str | None = None
     if origin in {Union, UnionType}:
