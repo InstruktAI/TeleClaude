@@ -31,83 +31,46 @@ EventType = Literal[
     "system_command",
 ]
 
-# Agent hook event types (payload event_type values from agents)
+# Internal hook event vocabulary — only events we ingest and process.
 AgentHookEventType = Literal[
-    "after_tool",
     "agent_stop",
-    "before_agent",
-    "before_model",
-    "before_tool_selection",
-    "before_tool",
     "checkpoint_seen",
     "error",
     "native_metadata_update",
     "native_session_refresh",
-    "post_tool_use_failure",
-    "post_tool_use",
-    "pre_compact",
-    "pre_compress",
-    "pre_tool_use",
-    "session_end",
     "session_start",
-    "subagent_start",
-    "subagent_stop",
-    "tool_done",
     "tool_use",
     "user_prompt_submit",
 ]
 
 
 class AgentHookEvents:
-    """Agent hook payload event types (distinct from TeleClaudeEvents commands)."""
+    """Internal hook event vocabulary and external→internal ingestion map."""
 
     AGENT_ERROR: AgentHookEventType = "error"
-    AGENT_SESSION_END: AgentHookEventType = "session_end"
     AGENT_SESSION_START: AgentHookEventType = "session_start"
     AGENT_STOP: AgentHookEventType = "agent_stop"
     CHECKPOINT_SEEN: AgentHookEventType = "checkpoint_seen"
     NATIVE_METADATA_UPDATE: AgentHookEventType = "native_metadata_update"
     NATIVE_SESSION_REFRESH: AgentHookEventType = "native_session_refresh"
-    TOOL_DONE: AgentHookEventType = "tool_done"
     TOOL_USE: AgentHookEventType = "tool_use"
     USER_PROMPT_SUBMIT: AgentHookEventType = "user_prompt_submit"
 
-    # Additional hook events (captured for future-proofing, no active handlers yet)
-    AFTER_TOOL: AgentHookEventType = "after_tool"
-    BEFORE_AGENT: AgentHookEventType = "before_agent"
-    BEFORE_MODEL: AgentHookEventType = "before_model"
-    BEFORE_TOOL_SELECTION: AgentHookEventType = "before_tool_selection"
-    BEFORE_TOOL: AgentHookEventType = "before_tool"
-    POST_TOOL_USE_FAILURE: AgentHookEventType = "post_tool_use_failure"
-    POST_TOOL_USE: AgentHookEventType = "post_tool_use"
-    PRE_COMPACT: AgentHookEventType = "pre_compact"
-    PRE_COMPRESS: AgentHookEventType = "pre_compress"
-    PRE_TOOL_USE: AgentHookEventType = "pre_tool_use"
-    SUBAGENT_START: AgentHookEventType = "subagent_start"
-    SUBAGENT_STOP: AgentHookEventType = "subagent_stop"
-
-    # Internal handlers currently only use:
-    # - AGENT_SESSION_START: Initialize headless session, anchor native IDs
-    # - USER_PROMPT_SUBMIT: Capture last user input for session history
-    # - TOOL_USE: Agent started a tool call (checkpoint timing, TUI activity)
-    # - TOOL_DONE: Tool execution completed (activity/control-plane signal)
-    # - AGENT_STOP: Trigger turn completion, poll transcript for final model response
-    # Other events are enqueued but have no active logic in the daemon yet.
-
-    # Mapping from agent-specific hook event names to TeleClaude internal event types
-    HOOK_EVENT_MAP: Mapping[str, Mapping[str, AgentHookEventType]] = MappingProxyType(
+    # External-agent hook signatures. Documents the input shape each agent CLI emits.
+    # None = signature is known to exist but is not ingested.
+    HOOK_EVENT_MAP: Mapping[str, Mapping[str, AgentHookEventType | None]] = MappingProxyType(
         {
             "claude": MappingProxyType(
                 {
-                    "PostToolUse": TOOL_DONE,
-                    "PostToolUseFailure": TOOL_DONE,
-                    "PreCompact": PRE_COMPACT,
+                    "PostToolUse": None,
+                    "PostToolUseFailure": None,
+                    "PreCompact": None,
                     "PreToolUse": TOOL_USE,
-                    "SessionEnd": AGENT_SESSION_END,
+                    "SessionEnd": None,
                     "SessionStart": AGENT_SESSION_START,
                     "Stop": AGENT_STOP,
-                    "SubagentStart": TOOL_DONE,
-                    "SubagentStop": TOOL_DONE,
+                    "SubagentStart": None,
+                    "SubagentStop": None,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,
                 }
             ),
@@ -115,13 +78,13 @@ class AgentHookEvents:
                 {
                     "AfterAgent": AGENT_STOP,
                     "AfterModel": TOOL_USE,
-                    "AfterTool": TOOL_DONE,
+                    "AfterTool": None,
                     "BeforeAgent": USER_PROMPT_SUBMIT,
-                    "BeforeModel": BEFORE_MODEL,
-                    "BeforeTool": BEFORE_TOOL,
-                    "BeforeToolSelection": BEFORE_TOOL_SELECTION,
-                    "PreCompress": PRE_COMPRESS,
-                    "SessionEnd": AGENT_SESSION_END,
+                    "BeforeModel": None,
+                    "BeforeTool": None,
+                    "BeforeToolSelection": None,
+                    "PreCompress": None,
+                    "SessionEnd": None,
                     "SessionStart": AGENT_SESSION_START,
                 }
             ),
@@ -136,26 +99,12 @@ class AgentHookEvents:
     )
 
     ALL: set[AgentHookEventType] = {
-        AFTER_TOOL,
         AGENT_ERROR,
-        AGENT_SESSION_END,
         AGENT_SESSION_START,
         AGENT_STOP,
-        BEFORE_AGENT,
-        BEFORE_MODEL,
-        BEFORE_TOOL_SELECTION,
-        BEFORE_TOOL,
         CHECKPOINT_SEEN,
         NATIVE_METADATA_UPDATE,
         NATIVE_SESSION_REFRESH,
-        POST_TOOL_USE_FAILURE,
-        POST_TOOL_USE,
-        PRE_COMPACT,
-        PRE_COMPRESS,
-        PRE_TOOL_USE,
-        SUBAGENT_START,
-        SUBAGENT_STOP,
-        TOOL_DONE,
         TOOL_USE,
         USER_PROMPT_SUBMIT,
     }
@@ -164,7 +113,6 @@ class AgentHookEvents:
             AGENT_ERROR,
             AGENT_SESSION_START,
             AGENT_STOP,
-            TOOL_DONE,
             TOOL_USE,
             USER_PROMPT_SUBMIT,
         }
@@ -224,23 +172,11 @@ class AgentStopPayload:
     source_computer: str | None = None
 
 
-@dataclass(frozen=True)
-class AgentSessionEndPayload:
-    """Internal payload for agent session_end hook.
-
-    guard: loose-dict - Agent hook data varies by agent.
-    """
-
-    session_id: str | None = None
-    raw: Mapping[str, object] = field(default_factory=dict)
-
-
 AgentEventPayload = Union[
     AgentSessionStartPayload,
     UserPromptSubmitPayload,
     AgentOutputPayload,
     AgentStopPayload,
-    AgentSessionEndPayload,
 ]
 
 
@@ -249,9 +185,7 @@ AgentEventPayload = Union[
 SUPPORTED_PAYLOAD_TYPES: set[AgentHookEventType] = {
     AgentHookEvents.AGENT_SESSION_START,
     AgentHookEvents.USER_PROMPT_SUBMIT,
-    AgentHookEvents.TOOL_DONE,
     AgentHookEvents.AGENT_STOP,
-    AgentHookEvents.AGENT_SESSION_END,
     AgentHookEvents.TOOL_USE,
 }
 
@@ -281,26 +215,12 @@ def build_agent_payload(event_type: AgentHookEventType, data: Mapping[str, objec
             source_computer=cast(str | None, data.get("source_computer")),
         )
 
-    if event_type == AgentHookEvents.TOOL_DONE:
-        return AgentOutputPayload(
-            session_id=native_id,
-            transcript_path=cast(str | None, data.get("transcript_path")),
-            source_computer=cast(str | None, data.get("source_computer")),
-            raw=frozen_raw,
-        )
-
     if event_type == AgentHookEvents.AGENT_STOP:
         return AgentStopPayload(
             session_id=native_id,
             transcript_path=cast(str | None, data.get("transcript_path")),
             prompt=cast(str | None, data.get("prompt")),
             source_computer=cast(str | None, data.get("source_computer")),
-            raw=frozen_raw,
-        )
-
-    if event_type == AgentHookEvents.AGENT_SESSION_END:
-        return AgentSessionEndPayload(
-            session_id=native_id,
             raw=frozen_raw,
         )
 
@@ -364,7 +284,7 @@ class TeleClaudeEvents:
         "agent_readiness_timeout"  # Fact: agent TUI did not reach ready prompt within timeout.
     )
     AGENT_EVENT: Literal["agent_event"] = "agent_event"  # Agent events (title change, etc.)
-    AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, tool_done, etc.)
+    AGENT_ACTIVITY: Literal["agent_activity"] = "agent_activity"  # Agent activity events (tool_use, agent_stop, etc.)
     ERROR: Literal["error"] = "error"
 
     # Intents (commands)
@@ -554,11 +474,6 @@ class ToolUseActivityEvent(BaseAgentActivityEvent):
 
 
 @dataclass(frozen=True)
-class ToolDoneActivityEvent(BaseAgentActivityEvent):
-    """Real-time tool completion activity."""
-
-
-@dataclass(frozen=True)
 class AgentStopActivityEvent(BaseAgentActivityEvent):
     """Real-time turn completion activity."""
 
@@ -566,9 +481,7 @@ class AgentStopActivityEvent(BaseAgentActivityEvent):
     message: str | None = None
 
 
-type AgentActivityEvent = (
-    UserPromptSubmitActivityEvent | ToolUseActivityEvent | ToolDoneActivityEvent | AgentStopActivityEvent
-)
+type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | AgentStopActivityEvent
 
 
 @dataclass(frozen=True)

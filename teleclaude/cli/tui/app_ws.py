@@ -351,9 +351,6 @@ class TelecAppWsMixin:
                 tool_info = f"{message.tool_name}: {preview}" if preview else message.tool_name
             sessions_view.update_activity(sid, "tool_use", tool_info)
 
-        elif hook == "tool_done":
-            sessions_view.update_activity(sid, "tool_done")
-
         elif hook == "thinking":
             sessions_view.update_activity(sid, "thinking", message.text or "")
 

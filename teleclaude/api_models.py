@@ -569,12 +569,6 @@ class ToolUseActivityEventDTO(BaseAgentActivityEventDTO):
     tool_preview: str | None = None
 
 
-class ToolDoneActivityEventDTO(BaseAgentActivityEventDTO):
-    """WebSocket event for tool completion activity."""
-
-    type: Literal["tool_done"] = "tool_done"
-
-
 class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
     """WebSocket event for agent stop activity."""
 
@@ -582,9 +576,7 @@ class AgentStopActivityEventDTO(BaseAgentActivityEventDTO):
     summary: str | None = None
 
 
-type AgentActivityEventDTO = (
-    UserPromptSubmitActivityEventDTO | ToolUseActivityEventDTO | ToolDoneActivityEventDTO | AgentStopActivityEventDTO
-)
+type AgentActivityEventDTO = UserPromptSubmitActivityEventDTO | ToolUseActivityEventDTO | AgentStopActivityEventDTO
 
 
 class OperationCompletedEventDTO(BaseModel):

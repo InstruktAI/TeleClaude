@@ -31,10 +31,6 @@ class TestConstants:
         assert HOOK_TO_CANONICAL["tool_use"] == "agent_output_update"
 
     @pytest.mark.unit
-    def test_hook_to_canonical_maps_tool_done_to_update(self):
-        assert HOOK_TO_CANONICAL["tool_done"] == "agent_output_update"
-
-    @pytest.mark.unit
     def test_hook_to_canonical_maps_agent_stop(self):
         assert HOOK_TO_CANONICAL["agent_stop"] == "agent_output_stop"
 
@@ -98,11 +94,11 @@ class TestSerializeActivityEvent:
     def test_event_preserves_hook_event_type(self):
         event = serialize_activity_event(
             session_id="sess-001",
-            hook_event_type="tool_done",
+            hook_event_type="tool_use",
             timestamp="2024-01-01T00:00:00Z",
         )
         assert event is not None
-        assert event.hook_event_type == "tool_done"
+        assert event.hook_event_type == "tool_use"
 
     @pytest.mark.unit
     def test_optional_fields_default_to_none(self):

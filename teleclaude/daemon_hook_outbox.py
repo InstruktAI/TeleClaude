@@ -72,7 +72,6 @@ HOOK_OUTBOX_STALENESS_TTL_S: float = float(os.getenv("HOOK_OUTBOX_STALENESS_TTL_
 HOOK_EVENT_STALENESS_EXEMPT: frozenset[str] = frozenset(
     {
         AgentHookEvents.AGENT_SESSION_START,
-        AgentHookEvents.AGENT_SESSION_END,
         AgentHookEvents.AGENT_STOP,
         AgentHookEvents.AGENT_ERROR,
     }
@@ -94,14 +93,13 @@ HOOK_EVENT_CLASS_CRITICAL: frozenset[str] = frozenset(
         AgentHookEvents.AGENT_SESSION_START,
         AgentHookEvents.USER_PROMPT_SUBMIT,
         AgentHookEvents.AGENT_STOP,
-        AgentHookEvents.AGENT_SESSION_END,
         AgentHookEvents.AGENT_ERROR,
         AgentHookEvents.CHECKPOINT_SEEN,
         AgentHookEvents.NATIVE_METADATA_UPDATE,
         AgentHookEvents.NATIVE_SESSION_REFRESH,
     }
 )
-HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset({AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE})
+HOOK_EVENT_CLASS_BURSTY: frozenset[str] = frozenset({AgentHookEvents.TOOL_USE})
 
 
 class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]

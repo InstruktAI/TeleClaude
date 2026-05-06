@@ -197,15 +197,6 @@ class TestHandleEvent:
         coord.handle_tool_use.assert_called_once_with(context)
 
     @pytest.mark.unit
-    async def test_dispatches_tool_done(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.event_type = AgentHookEvents.TOOL_DONE
-        coord.handle_tool_done = AsyncMock()
-        await coord.handle_event(context)
-        coord.handle_tool_done.assert_called_once_with(context)
-
-    @pytest.mark.unit
     async def test_dispatches_user_prompt_submit(self):
         coord = _make_coordinator()
         context = MagicMock()
@@ -213,15 +204,6 @@ class TestHandleEvent:
         coord.handle_user_prompt_submit = AsyncMock()
         await coord.handle_event(context)
         coord.handle_user_prompt_submit.assert_called_once_with(context)
-
-    @pytest.mark.unit
-    async def test_dispatches_session_end(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.event_type = AgentHookEvents.AGENT_SESSION_END
-        coord.handle_session_end = AsyncMock()
-        await coord.handle_event(context)
-        coord.handle_session_end.assert_called_once_with(context)
 
     @pytest.mark.unit
     async def test_unknown_event_type_dispatches_nothing(self):
@@ -233,43 +215,6 @@ class TestHandleEvent:
         await coord.handle_event(context)
         coord.handle_session_start.assert_not_called()
         coord.handle_agent_stop.assert_not_called()
-
-
-class TestHandleToolDone:
-    @pytest.mark.unit
-    async def test_emits_tool_done_activity(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.session_id = "sess-001"
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.serialize_activity_event") as mock_serial,
-            patch("teleclaude.core.agent_coordinator._coordinator.event_bus") as mock_bus,
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator.db",
-                new=MagicMock(get_session=AsyncMock(return_value=None)),
-            ),
-        ):
-            mock_canonical = MagicMock()
-            mock_canonical.canonical_type = "agent_output_update"
-            mock_canonical.message_intent = "ctrl_activity"
-            mock_canonical.delivery_scope = "CTRL"
-            mock_serial.return_value = mock_canonical
-            await coord.handle_tool_done(context)
-
-        mock_bus.emit.assert_called_once()
-        emitted_payload = mock_bus.emit.call_args[0][1]
-        assert emitted_payload.event_type == AgentHookEvents.TOOL_DONE
-
-
-class TestHandleSessionEnd:
-    @pytest.mark.unit
-    async def test_completes_without_error(self):
-        coord = _make_coordinator()
-        context = MagicMock()
-        context.session_id = "sess-001"
-        context.data = MagicMock()
-        # Should complete without raising — characterization of current behavior
-        await coord.handle_session_end(context)
 
 
 def _make_session(**kwargs: object) -> Session:

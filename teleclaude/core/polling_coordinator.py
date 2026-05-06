@@ -211,7 +211,7 @@ async def _emit_synthetic_codex_event(
     if text:
         raw["text"] = text
 
-    if event_type in (AgentHookEvents.TOOL_USE, AgentHookEvents.TOOL_DONE):
+    if event_type == AgentHookEvents.TOOL_USE:
         payload = AgentOutputPayload(raw=raw)
     else:
         return
@@ -277,11 +277,6 @@ async def _maybe_emit_codex_turn_events(
             )
             state.in_tool = True
     elif state.in_tool:
-        await _emit_synthetic_codex_event(
-            session_id,
-            AgentHookEvents.TOOL_DONE,
-            emit_agent_event,
-        )
         state.in_tool = False
 
     # Any live spinner/status marker means turn is still active.
@@ -291,18 +286,8 @@ async def _maybe_emit_codex_turn_events(
         return
 
     # Prompt visible + not responding => authoritative tool-lane end.
-    # Do NOT emit synthetic agent_stop; Codex stop is hook-authoritative.
+    # Codex stop is hook-authoritative; tool-lane state is reset for next turn.
     if prompt_visible:
-        should_finalize_tool_lane = (
-            state.turn_active or state.in_tool or ((not state.prompt_visible_last) and raw_tool_action is not None)
-        )
-        if should_finalize_tool_lane:
-            if state.in_tool:
-                await _emit_synthetic_codex_event(
-                    session_id,
-                    AgentHookEvents.TOOL_DONE,
-                    emit_agent_event,
-                )
         state.turn_active = False
         state.in_tool = False
         state.prompt_visible_last = True

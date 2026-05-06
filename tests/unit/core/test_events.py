@@ -31,10 +31,6 @@ class TestAgentHookEvents:
         assert AgentHookEvents.TOOL_USE == "tool_use"
 
     @pytest.mark.unit
-    def test_tool_done_value(self):
-        assert AgentHookEvents.TOOL_DONE == "tool_done"
-
-    @pytest.mark.unit
     def test_hook_event_map_contains_claude(self):
         assert "claude" in AgentHookEvents.HOOK_EVENT_MAP
 

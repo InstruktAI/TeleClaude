@@ -233,7 +233,6 @@ class TestInheritanceFlattening:
         subtype_names = (
             "UserPromptSubmitActivityEvent",
             "ToolUseActivityEvent",
-            "ToolDoneActivityEvent",
             "AgentStopActivityEvent",
         )
         for subtype_name in subtype_names:
@@ -250,7 +249,6 @@ class TestInheritanceFlattening:
                 r"export\s+type\s+AgentActivityEvent\s*=\s*"
                 r"UserPromptSubmitActivityEvent\s*\|\s*"
                 r"ToolUseActivityEvent\s*\|\s*"
-                r"ToolDoneActivityEvent\s*\|\s*"
                 r"AgentStopActivityEvent\s*;"
             ),
             output,

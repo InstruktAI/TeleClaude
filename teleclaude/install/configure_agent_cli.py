@@ -274,13 +274,13 @@ def _build_hook_map(
 
 
 def _filter_receiver_handled_events(
-    event_args: Mapping[str, AgentHookEventType],
+    event_args: Mapping[str, AgentHookEventType | None],
 ) -> dict[str, AgentHookEventType]:
     """Filter to event mappings that receiver forwards by contract."""
     return {
         event_name: event_arg
         for event_name, event_arg in event_args.items()
-        if event_arg in AgentHookEvents.RECEIVER_HANDLED
+        if event_arg is not None and event_arg in AgentHookEvents.RECEIVER_HANDLED
     }
 
 
@@ -296,12 +296,11 @@ def _claude_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[st
 def _gemini_hook_map(receiver_invocation: str, receiver_script: Path) -> dict[str, dict[str, Any]]:
     """Return TeleClaude hook definitions for Gemini CLI."""
     # Installer contract:
-    # - Tool lane comes only from BeforeTool/AfterTool.
+    # - Tool lane comes from BeforeTool only.
     # - AfterModel is reasoning-only and must not be mapped to tool_use.
     gemini_events = dict(AgentHookEvents.HOOK_EVENT_MAP["gemini"])
     gemini_events.pop("AfterModel", None)
     gemini_events["BeforeTool"] = AgentHookEvents.TOOL_USE
-    gemini_events["AfterTool"] = AgentHookEvents.TOOL_DONE
     return _build_hook_map(
         receiver_invocation,
         "gemini",

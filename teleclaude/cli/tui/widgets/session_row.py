@@ -224,12 +224,7 @@ class SessionRow(TelecMixin, Widget):
         has_output_highlight = self.highlight_type == "output"
         has_live_output_activity = self.activity_event == "tool_use"
         input_style = highlight_style if has_input_highlight else base_style
-        has_active_output_placeholder = self.activity_event in ("tool_done", "user_prompt_submit")
-        output_style = (
-            highlight_style
-            if (has_output_highlight or has_live_output_activity or has_active_output_placeholder)
-            else base_style
-        )
+        output_style = highlight_style if (has_output_highlight or has_live_output_activity) else base_style
 
         owner_line = self._build_owner_line(
             connector_pad=connector_pad,
@@ -257,20 +252,6 @@ class SessionRow(TelecMixin, Widget):
             line4.append("\u2502", style=connector_style)
             line4.append(f"{detail_pad}[{activity_time_str}] out: ", style=output_style)
             line4.append(truncate_text(self.activity_text, text_limit), style=output_style)
-            lines.append(line4)
-        elif self.activity_event == "tool_done":
-            activity_time_str = format_time(self.session.last_activity)
-            line4 = Text(no_wrap=True)
-            line4.append(connector_pad)
-            line4.append("\u2502", style=connector_style)
-            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
-            lines.append(line4)
-        elif self.activity_event == "user_prompt_submit":
-            activity_time_str = format_time(self.session.last_activity)
-            line4 = Text(no_wrap=True)
-            line4.append(connector_pad)
-            line4.append("\u2502", style=connector_style)
-            line4.append(f"{detail_pad}[{activity_time_str}] out: ...", style=output_style)
             lines.append(line4)
         elif self.activity_event == "thinking" and self.activity_text:
             activity_time_str = format_time(self.session.last_activity)

@@ -147,7 +147,7 @@ class IntentPayload(TypedDict, total=False):
     title: str
     focus_preview: bool
     reason: str  # Legacy field, no longer populated - use event_type in AGENT_ACTIVITY intents instead
-    event_type: str  # AgentHookEventType: "user_prompt_submit", "tool_use", "tool_done", "agent_stop"
+    event_type: str  # AgentHookEventType: "user_prompt_submit", "tool_use", "agent_stop"
     tool_name: str | None  # Tool name for tool_use events
     tool_preview: str | None  # Optional tool preview text for tool_use events
     summary: str | None  # Output summary from agent_stop events
@@ -311,12 +311,6 @@ def _handle_session_activity(state: TuiState, payload: IntentPayload) -> None:
         state.sessions.temp_output_highlights.discard(session_id)
         logger.debug("input_highlight ADDED for %s (reason=user_input)", session_id)
         return
-    if reason == "tool_done":
-        state.sessions.input_highlights.discard(session_id)
-        state.sessions.output_highlights.discard(session_id)
-        state.sessions.temp_output_highlights.add(session_id)
-        logger.debug("temp_output_highlight ADDED for %s (tool_done)", session_id)
-        return
     if reason == "agent_stopped":
         state.sessions.input_highlights.discard(session_id)
         state.sessions.temp_output_highlights.discard(session_id)
@@ -340,13 +334,6 @@ def _handle_agent_activity(state: TuiState, payload: IntentPayload) -> None:
         return
     if event_type == "tool_use":
         _handle_agent_tool_use(state, payload, session_id)
-        return
-    if event_type == "tool_done":
-        state.sessions.input_highlights.discard(session_id)
-        state.sessions.temp_output_highlights.add(session_id)
-        state.sessions.activity_timer_reset.add(session_id)
-        state.sessions.active_tool.pop(session_id, None)
-        logger.debug("input_highlight CLEARED, active_tool CLEARED for %s (event=tool_done)", session_id)
         return
     if event_type == "agent_stop":
         _handle_agent_stop(state, payload, session_id)

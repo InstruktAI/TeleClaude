@@ -21,13 +21,11 @@ from teleclaude.core.events import (
     AgentHookEvents,
     AgentHookEventType,
     AgentOutputPayload,
-    AgentSessionEndPayload,
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
     SessionStatusContext,
     TeleClaudeEvents,
-    ToolDoneActivityEvent,
     ToolUseActivityEvent,
     UserPromptSubmitActivityEvent,
     UserPromptSubmitPayload,
@@ -200,15 +198,6 @@ class AgentCoordinator(
                 message_intent=message_intent,
                 delivery_scope=delivery_scope,
             )
-        if event_type == AgentHookEvents.TOOL_DONE:
-            return ToolDoneActivityEvent(
-                session_id=session_id,
-                event_type=event_type,
-                timestamp=timestamp,
-                canonical_type=canonical_type,
-                message_intent=message_intent,
-                delivery_scope=delivery_scope,
-            )
         if event_type == AgentHookEvents.AGENT_STOP:
             return AgentStopActivityEvent(
                 session_id=session_id,
@@ -285,14 +274,10 @@ class AgentCoordinator(
             await self.handle_session_start(context)
         elif context.event_type == AgentHookEvents.AGENT_STOP:
             await self.handle_agent_stop(context)
-        elif context.event_type == AgentHookEvents.TOOL_DONE:
-            await self.handle_tool_done(context)
         elif context.event_type == AgentHookEvents.TOOL_USE:
             await self.handle_tool_use(context)
         elif context.event_type == AgentHookEvents.USER_PROMPT_SUBMIT:
             await self.handle_user_prompt_submit(context)
-        elif context.event_type == AgentHookEvents.AGENT_SESSION_END:
-            await self.handle_session_end(context)
 
     async def handle_session_start(self, context: AgentEventContext) -> None:
         """Handle session_start event - store native session details and update title if needed."""
@@ -573,19 +558,3 @@ class AgentCoordinator(
 
         # Drive headless output delivery via debounced transcript pull.
         await self._signal_headless_activity(session_id)
-
-    async def handle_tool_done(self, context: AgentEventContext) -> None:
-        """Handle tool_done event — tool execution completed, output available."""
-        session_id = context.session_id
-
-        # Emit activity event for UI updates
-        self._emit_activity_event(session_id, AgentHookEvents.TOOL_DONE)
-
-        # Drive headless output delivery via debounced transcript pull.
-        await self._signal_headless_activity(session_id)
-
-    async def handle_session_end(self, context: AgentEventContext) -> None:
-        """Handle session_end event - agent session ended."""
-        _payload = cast(AgentSessionEndPayload, context.data)
-        # No cleanup needed — adapter cadence loops handle their own state.
-        logger.info("Agent %s for session %s", AgentHookEvents.AGENT_SESSION_END, context.session_id)

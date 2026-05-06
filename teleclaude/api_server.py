@@ -52,7 +52,6 @@ from teleclaude.api_models import (
     OperationCompletedEventDTO,
     SessionLifecycleStatusEventDTO,
     TodoDTO,
-    ToolDoneActivityEventDTO,
     ToolUseActivityEventDTO,
     UserPromptSubmitActivityEventDTO,
 )
@@ -345,8 +344,6 @@ class APIServer(_WebSocketMixin):  # pyright: ignore[reportIncompatibleVariableO
                 tool_preview=getattr(context, "tool_preview", None),
                 **common,
             )
-        elif context.event_type == "tool_done":
-            dto = ToolDoneActivityEventDTO(**common)
         elif context.event_type == "agent_stop":
             dto = AgentStopActivityEventDTO(summary=getattr(context, "summary", None), **common)
         else:

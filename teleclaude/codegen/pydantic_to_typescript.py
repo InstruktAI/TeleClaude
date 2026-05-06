@@ -65,7 +65,6 @@ _LITERAL_ALIAS_LOOKUP: dict[frozenset[str], str] = {
 _AGENT_ACTIVITY_EVENT_MEMBERS: tuple[str, ...] = (
     "UserPromptSubmitActivityEvent",
     "ToolUseActivityEvent",
-    "ToolDoneActivityEvent",
     "AgentStopActivityEvent",
 )
 # Optionality overrides preserve the shape the frontend already consumes when

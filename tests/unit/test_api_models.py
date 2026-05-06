@@ -51,7 +51,6 @@ from teleclaude.api_models import (
     SettingsDTO,
     SettingsPatchDTO,
     TodoDTO,
-    ToolDoneActivityEventDTO,
     ToolUseActivityEventDTO,
     TTSSettingsDTO,
     TTSSettingsPatchDTO,
@@ -1090,7 +1089,7 @@ class TestAgentActivityEventDTO:
     @pytest.mark.unit
     def test_canonical_fields_included(self):
         """Canonical contract fields are stored when provided."""
-        dto = ToolDoneActivityEventDTO(
+        dto = ToolUseActivityEventDTO(
             session_id="s-1",
             canonical_type="agent_output_update",
             message_intent="ctrl_activity",

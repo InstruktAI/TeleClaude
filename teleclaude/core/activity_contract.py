@@ -40,7 +40,6 @@ ACTIVITY_DELIVERY_SCOPE: Literal["CTRL"] = "CTRL"
 HOOK_TO_CANONICAL: dict[str, CanonicalActivityEventType] = {
     "user_prompt_submit": "user_prompt_submit",
     "tool_use": "agent_output_update",
-    "tool_done": "agent_output_update",
     "agent_stop": "agent_output_stop",
 }
 
