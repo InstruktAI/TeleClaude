@@ -13,6 +13,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_in_prepare_lane,
     is_ready_for_work,
     is_settled_ok_phase,
+    phase_is_complete,
     reconcile_lifecycle_phase,
 )
 from teleclaude.types.lifecycle import LifecycleStage
@@ -129,6 +130,33 @@ def test_adopt_prepare_handoff_phase_skips_requirements_review_without_input() -
     adopted = adopt_prepare_handoff_phase(state)
 
     assert adopted == LifecyclePhase.TEST_SPEC_BUILD
+
+
+def test_gate_phase_completion_uses_plan_review_verdict() -> None:
+    state = TodoState.defaults()
+    state.plan_review.verdict = "approve"
+
+    assert phase_is_complete(state, LifecyclePhase.GATE)
+
+
+def test_adopt_prepare_handoff_phase_ignores_legacy_dor_status() -> None:
+    state = TodoState.defaults()
+    state.dor = TodoState.model_validate({"dor": {"score": 8, "status": "pass"}}).dor
+
+    adopted = adopt_prepare_handoff_phase(state)
+
+    assert adopted == LifecyclePhase.INPUT_ASSESSMENT
+
+
+def test_dor_signal_no_longer_advances_gate() -> None:
+    state = TodoState.defaults()
+    state.lifecycle_phase = LifecyclePhase.GATE.value
+    state.dor = TodoState.model_validate({"dor": {"score": 8, "status": "pass"}}).dor
+
+    next_phase = apply_authoritative_signal(state, "dor")
+
+    assert next_phase == LifecyclePhase.GATE
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.GATE
 
 
 # ── High-level predicates and projections ───────────────────────────────────

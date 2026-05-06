@@ -13,7 +13,6 @@ type: 'spec'
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discovery.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/readiness-gate.md
 
 ## What it is
 
@@ -24,7 +23,6 @@ The job family has three explicit variants:
 
 - `next-prepare-discovery`
 - `next-prepare-draft`
-- `next-prepare-gate`
 
 Both support two scopes:
 
@@ -71,10 +69,10 @@ Threshold constants:
 ### Phase transition
 
 For slug-targeted prepare, when both `requirements.md` and `implementation-plan.md`
-exist, item phase is `pending` in `state.json`, and `state.json.dor.status == "pass"`,
+exist, item phase is `pending` in `state.json`, and plan-review verdict is approved,
 transition phase to `ready`.
 
-Only `next-prepare-gate` may authorize this transition.
+Plan-review approval is the readiness gate; no separate gate worker.
 
 ### Ownership boundary
 
@@ -82,4 +80,4 @@ Only `next-prepare-gate` may authorize this transition.
 - The maintenance procedure owns the **how** (ordering, state transitions, skip rules, recovery).
 - `next-prepare-discovery` owns requirements only.
 - `next-prepare-draft` owns implementation planning and split/no-split execution decomposition.
-- `next-prepare-gate` owns final DOR validation only.
+- Plan-review approval is the readiness gate; no separate gate worker.

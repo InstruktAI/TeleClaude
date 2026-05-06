@@ -1,8 +1,7 @@
-"""Lifecycle-router contract tests for todo dump handling and DOR assessment.
+"""Lifecycle-router contract tests for todo dump handling.
 
 These tests pin the lifecycle-router cartridge's routing behavior: dump events
-are dispatched by ``payload.kind`` (pure function of the payload), while
-non-dump planning triggers continue to drive DOR assessment.
+are dispatched by ``payload.kind`` as a pure function of the payload.
 """
 
 from __future__ import annotations
@@ -10,7 +9,7 @@ from __future__ import annotations
 from importlib import import_module
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -112,24 +111,15 @@ def test_daemon_pipeline_registers_the_lifecycle_router_cartridge() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("event_type", _NON_DUMP_TRIGGER_EVENTS)
-async def test_non_dump_planning_events_still_run_dor_assessment(event_type: str) -> None:
-    """Every non-dump planning trigger still routes into DOR assessment.
-
-    FR6 and the subscribed-trigger constraint require the same five planning
-    trigger events to remain attached to the router, and the four non-dump
-    triggers must still drive DOR assessment after the rename. A regression
-    that drops any of ``artifact_changed``, ``todo_created``, ``todo_activated``,
-    or ``dependency_resolved`` from the assessment path must fail this spec.
-    """
+async def test_non_dump_planning_events_pass_through_without_assessment(event_type: str) -> None:
     router = _router_type()()
     event = _make_event(event_type=event_type)
     context = MagicMock()
 
-    with patch.object(router, "_assess", new=AsyncMock()) as assess_mock:
-        result = await router.process(event, context)
+    result = await router.process(event, context)
 
     assert result is event
-    assess_mock.assert_awaited_once_with("my-slug", event, context)
+    context.db.find_by_group_key.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -138,7 +128,7 @@ async def test_default_todo_lane_routes_to_next_prepare() -> None:
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(kind="todo"), MagicMock())
@@ -157,7 +147,7 @@ async def test_prepped_lane_routes_to_next_work() -> None:
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(kind="prepped"), MagicMock())
@@ -174,7 +164,7 @@ async def test_built_lane_routes_to_detached_next_work() -> None:
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(kind="built"), MagicMock())
@@ -192,7 +182,7 @@ async def test_bug_lane_routes_to_next_work_with_bug_reasoning_profile() -> None
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(kind="bug"), MagicMock())
@@ -210,7 +200,7 @@ async def test_missing_kind_degrades_to_next_prepare() -> None:
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(), MagicMock())
@@ -226,7 +216,7 @@ async def test_unknown_kind_degrades_to_next_prepare() -> None:
     captured, factory = _fake_api_client()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
         result = await router.process(_make_event(kind="unexpected-lane"), MagicMock())
@@ -259,7 +249,7 @@ async def test_dump_routing_is_a_pure_function_of_payload_kind(kind: str | None)
     state_read_mock = MagicMock()
 
     with (
-        patch("teleclaude.cli.api_client.TelecAPIClient", factory),
+        patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", factory),
         patch("teleclaude.core.todos_db.get_todos_db", new=state_read_mock),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):

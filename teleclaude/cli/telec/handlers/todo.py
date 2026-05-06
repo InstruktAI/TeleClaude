@@ -689,8 +689,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
 
     Supported flag combinations:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
-      --dor-score <n> [--dor-status <s>]
-      --dor-status <s>
       --grounding-invalidated
       --requirements-ready
       --plan-ready
@@ -711,9 +709,9 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if not stamp_type:
         print(
-            "Missing stamp flag (--verdict, --dor-score, --dor-status, "
-            "--grounding-invalidated, --requirements-ready, --plan-ready, "
-            "--specs-built, --build-complete, --finalize-ready, --agent-a/--agent-b)"
+            "Missing stamp flag (--verdict, --grounding-invalidated, "
+            "--requirements-ready, --plan-ready, --specs-built, --build-complete, "
+            "--finalize-ready, --agent-a/--agent-b)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -750,8 +748,6 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
     stamp_type: str | None = None
     value: str | None = None
     phase: str | None = None
-    dor_score: str | None = None
-    dor_status: str | None = None
     pair_a: str | None = None
     pair_b: str | None = None
 
@@ -764,12 +760,6 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 2
         elif arg == "--phase" and i + 1 < len(args):
             phase = args[i + 1]
-            i += 2
-        elif arg == "--dor-score" and i + 1 < len(args):
-            dor_score = args[i + 1]
-            i += 2
-        elif arg == "--dor-status" and i + 1 < len(args):
-            dor_status = args[i + 1]
             i += 2
         elif arg == "--agent-a" and i + 1 < len(args):
             pair_a = args[i + 1]
@@ -806,16 +796,6 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 1
         else:
             i += 1
-
-    # Build compound DOR value from --dor-score and/or --dor-status
-    if dor_score is not None or dor_status is not None:
-        stamp_type = "dor"
-        parts: list[str] = []
-        if dor_score is not None:
-            parts.append(f"score:{dor_score}")
-        if dor_status is not None:
-            parts.append(f"status:{dor_status}")
-        value = ",".join(parts)
 
     # Build atomic prepare_pair stamp from --agent-a + --agent-b. Single-slot
     # stamps are not supported — both must be provided together.

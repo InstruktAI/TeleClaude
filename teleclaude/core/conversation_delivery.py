@@ -15,9 +15,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
-    classify_linked_direct_conversation_output,
     format_bundled_conversation_message,
-    format_linked_output_message,
 )
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -370,54 +368,7 @@ async def _deliver_for_peer(
     if not fresh_segments:
         return delivered
 
-    # Pre-filter advancement target — suppressed segments still advance the
-    # cursor so they aren't re-collected on the next iteration. Mirrors the
-    # children's per-segment classifier semantics translated to bundled shape.
     latest_ts_all = _max_segment_timestamp(fresh_segments)
-
-    sent_segments = fresh_segments
-    if link.mode == "direct_link":
-        sender_label_for_filter, sender_computer_for_filter, _ = _sender_identity(
-            source_session, source_computer=source_computer
-        )
-        filtered: list[ConversationSegment] = []
-        for seg in fresh_segments:
-            if seg.role == "assistant":
-                framed = format_linked_output_message(
-                    sender_label=sender_label_for_filter,
-                    sender_session_id=source_session_id,
-                    sender_computer=sender_computer_for_filter,
-                    content=seg.text,
-                )
-                classification = classify_linked_direct_conversation_output(framed)
-                if not classification.emit:
-                    logger.info(
-                        "Suppressed linked direct output",
-                        extra={
-                            "source_session_id": source_session_id,
-                            "target_session_id": target_session_id,
-                            "link_id": link_id,
-                            "role": seg.role,
-                            "reason": classification.reason,
-                            "preview": classification.preview,
-                        },
-                    )
-                    continue
-            filtered.append(seg)
-        sent_segments = filtered
-
-    if not sent_segments:
-        # Bundle would be empty after no-op suppression — advance cursor past
-        # the suppressed segments without sending anything to the peer.
-        if latest_ts_all is not None:
-            await db.upsert_conversation_delivery_state(
-                link_id=link_id,
-                source_session_id=source_session_id,
-                target_session_id=target_session_id,
-                delivered_through_ts=latest_ts_all.isoformat(),
-                pending_through_ts=None,
-            )
-        return delivered
 
     if latest_ts_all is not None:
         await db.upsert_conversation_delivery_state(
@@ -433,7 +384,7 @@ async def _deliver_for_peer(
             link_id=link_id,
             target_session_id=target_session_id,
             target_computer=target_computer,
-            segments=sent_segments,
+            segments=fresh_segments,
             since_timestamp=since_timestamp,
             source_computer=source_computer,
             client=client,
@@ -450,8 +401,7 @@ async def _deliver_for_peer(
         return delivered
     if not handed_off or latest_ts_all is None:
         return delivered
-    # Advance cursor past ALL fresh segments (including suppressed ones) so
-    # the next iteration doesn't re-process the suppressed entries.
+    # Advance cursor past all fresh segments so the next iteration doesn't re-process them.
     await db.upsert_conversation_delivery_state(
         link_id=link_id,
         source_session_id=source_session_id,

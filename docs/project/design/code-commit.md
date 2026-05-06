@@ -20,7 +20,7 @@ The git wrapper redirects raw `git commit` to this command for tmux callers.
 The pre-commit hook is the single owner of formatter restaging and the retry
 when hooks modify staged files.
 
-## Caller paths
+**Caller paths:**
 
 There are three legitimate ways a commit happens in this repository.
 `telec code commit` is one of them; the other two bypass it on purpose.
@@ -31,7 +31,7 @@ There are three legitimate ways a commit happens in this repository.
 | Inside tmux, autonomous agent | `telec code commit -m "..."` | Lock + workspace scope + pathspec commit. The body of this design. |
 | Inside tmux, supervised one-off | `TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>` | The wrapper's documented bypass. The human is supervising; the commit is their responsibility. Telec is not involved. |
 
-## Wrapper-enforced intent layer
+**Wrapper-enforced intent layer:**
 
 The git wrapper enforces the intent layer for every git invocation in a
 tmux session. `telec code commit` runs on top of these guarantees:
@@ -160,4 +160,3 @@ the resulting SHAs.
 
 - docs/global/software-development/design/workspace-scoping.md
 - docs/global/software-development/policy/version-control-safety.md
-- teleclaude/install/wrappers/git (the git wrapper itself)

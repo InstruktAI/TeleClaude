@@ -103,7 +103,7 @@ class TestResolveOrCreateSession:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_creates_missing_whatsapp_session_via_command_service(
+    async def test_creates_missing_whatsapp_session_via_api_edge(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -113,8 +113,10 @@ class TestResolveOrCreateSession:
             get_sessions_by_origin_metadata=AsyncMock(return_value=[]),
             get_session=AsyncMock(return_value=resolved_session),
         )
-        mock_service = SimpleNamespace(
-            create_session=AsyncMock(return_value={"session_id": "session-whatsapp"}),
+        api = SimpleNamespace(
+            connect=AsyncMock(),
+            create_session=AsyncMock(return_value=SimpleNamespace(session_id="session-whatsapp")),
+            close=AsyncMock(),
         )
         monkeypatch.setattr(whatsapp_handler, "db", mock_db)
         monkeypatch.setattr(
@@ -123,21 +125,24 @@ class TestResolveOrCreateSession:
             SimpleNamespace(computer=SimpleNamespace(name="local", help_desk_dir="/help-desk")),
         )
         monkeypatch.setattr(whatsapp_handler, "get_default_agent", lambda: "claude")
-        monkeypatch.setattr(whatsapp_handler, "get_command_service", lambda: mock_service)
+        monkeypatch.setattr(whatsapp_handler, "TelecAPIClient", lambda: api)
 
         session = await whatsapp_handler._resolve_or_create_session("15551234567")
 
         assert session is resolved_session
-        mock_service.create_session.assert_awaited_once()
-        cmd = mock_service.create_session.await_args.args[0]
-        assert cmd.project_path == "/help-desk"
-        assert cmd.origin == "whatsapp"
-        assert cmd.title == "WhatsApp: 15551234567"
-        assert cmd.origin_metadata == {"phone_number": "15551234567", "platform": "whatsapp"}
-        assert cmd.launch_intent is not None
-        assert cmd.launch_intent.kind.value == "agent"
-        assert cmd.launch_intent.agent == "claude"
-        assert cmd.launch_intent.thinking_mode == "slow"
+        api.connect.assert_awaited_once()
+        api.create_session.assert_awaited_once_with(
+            computer="local",
+            project_path="/help-desk",
+            agent="claude",
+            thinking_mode="slow",
+            launch_kind="agent",
+            metadata={
+                "origin": "whatsapp",
+                "origin_metadata": {"phone_number": "15551234567", "platform": "whatsapp"},
+            },
+        )
+        api.close.assert_awaited_once()
         mock_db.get_session.assert_awaited_once_with("session-whatsapp")
 
 

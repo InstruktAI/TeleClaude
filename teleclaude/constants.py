@@ -92,7 +92,6 @@ class SlashCommand(str, Enum):
     NEXT_FINALIZE = "next-finalize"
     NEXT_PREPARE_DISCOVERY = "next-prepare-discovery"
     NEXT_PREPARE_DRAFT = "next-prepare-draft"
-    NEXT_PREPARE_GATE = "next-prepare-gate"
     NEXT_PREPARE = "next-prepare"
 
     NEXT_WORK = "next-work"
@@ -112,7 +111,6 @@ class JobRole(str, Enum):
     FINALIZER = "finalizer"
     DISCOVERER = "discoverer"
     DRAFTER = "drafter"
-    GATE_CHECKER = "gate-checker"
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"

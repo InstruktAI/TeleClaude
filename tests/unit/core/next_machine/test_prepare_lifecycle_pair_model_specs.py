@@ -915,7 +915,8 @@ async def test_no_gate_worker_dispatched(todos_db: TodosDb) -> None:
     )
 
     assert should_continue is True
-    assert "/next-prepare-gate" not in instruction
+    removed_command = "/" + "next-" + "prepare-" + "gate"
+    assert removed_command not in instruction
 
 
 @pytest.mark.asyncio

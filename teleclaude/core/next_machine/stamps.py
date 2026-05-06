@@ -35,7 +35,7 @@ from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import DorState, PreparePairSlot
+from teleclaude.types.todos import PreparePairSlot
 
 if TYPE_CHECKING:
     from teleclaude.core.db import Db
@@ -84,9 +84,6 @@ async def apply_todo_stamp(
     if stamp_type == "grounding":
         _apply_grounding_stamp(writer, value)
         apply_authoritative_signal(writer.state, "grounding")
-    elif stamp_type == "dor":
-        _apply_dor_stamp(writer, value)
-        apply_authoritative_signal(writer.state, "dor")
     elif stamp_type == "requirements_ready":
         await _apply_readiness_stamp(todos_db, writer, slug, "requirements", "requirements_ready")
     elif stamp_type == "plan_ready":
@@ -143,21 +140,6 @@ def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
         grounding_manager.clear_invalidation()
     else:
         grounding_manager.invalidate(reason="stamped_invalid", changed_paths=[])
-
-
-def _apply_dor_stamp(writer: StateWriter, value: str) -> None:
-    dor_model = writer.state.dor or DorState()
-    if "," in value and ":" in value:
-        for part in value.split(","):
-            key, _, raw_value = part.partition(":")
-            key, raw_value = key.strip(), raw_value.strip()
-            if key == "score":
-                dor_model.score = int(raw_value)
-            elif key == "status":
-                dor_model.status = raw_value
-    else:
-        dor_model.status = value
-    writer.state.dor = dor_model
 
 
 async def _apply_prepare_pair_stamp(writer: StateWriter, value: str, *, session_db: Db) -> None:

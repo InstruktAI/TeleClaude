@@ -12,10 +12,7 @@ from teleclaude.config import config
 from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
-from teleclaude.core.conversation_messages import (
-    classify_linked_direct_conversation_output,
-    format_linked_output_message,
-)
+from teleclaude.core.conversation_messages import format_linked_output_message
 from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
@@ -259,22 +256,6 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
         delivered = 0
         for link in links:
             peers = await get_peer_members(link_id=link.link_id, sender_session_id=sender_session_id)
-            if link.mode == "direct_link":
-                classification = classify_linked_direct_conversation_output(framed_message)
-                if not classification.emit:
-                    for peer in peers:
-                        logger.info(
-                            "Suppressed linked stop output fallback",
-                            extra={
-                                "source_session_id": sender_session_id,
-                                "target_session_id": peer.session_id,
-                                "link_id": link.link_id,
-                                "role": "assistant",
-                                "reason": classification.reason,
-                                "preview": classification.preview,
-                            },
-                        )
-                    continue
             for peer in peers:
                 target_computer = (
                     peer.computer_name

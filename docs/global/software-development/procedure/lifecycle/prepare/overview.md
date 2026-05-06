@@ -13,7 +13,6 @@ description: 'Prepare stage overview. Orchestrator drives the pair through disco
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discovery.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/readiness-gate.md
 
 ## Goal
 

@@ -11,15 +11,16 @@ import httpx
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.cli.api_client import TelecAPIClient
 from teleclaude.config import config
 from teleclaude.core.agents import get_default_agent
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import db
-from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind, ThinkingMode
+from teleclaude.core.models import MessageMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import get_session_output_dir
 from teleclaude.hooks.webhook_models import HookEvent
-from teleclaude.types.commands import CreateSessionCommand, HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
+from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
 logger = get_logger(__name__)
 
@@ -36,21 +37,28 @@ async def _resolve_or_create_session(phone_number: str) -> object | None:
     if sessions:
         return sessions[0]
 
-    cmd = CreateSessionCommand(
-        project_path=config.computer.help_desk_dir or "",
-        origin=InputOrigin.WHATSAPP.value,
-        origin_metadata={
-            "phone_number": phone_number,
-            "platform": "whatsapp",
-        },
-        launch_intent=SessionLaunchIntent(
-            kind=SessionLaunchKind.AGENT,
+    origin_metadata = {
+        "phone_number": phone_number,
+        "platform": "whatsapp",
+    }
+    api = TelecAPIClient()
+    await api.connect()
+    try:
+        data = await api.create_session(
+            computer=config.computer.name,
+            project_path=config.computer.help_desk_dir or "",
             agent=get_default_agent(),
-            thinking_mode=ThinkingMode.SLOW.value,
-        ),
-    )
-    data = await get_command_service().create_session(cmd)
-    session_id_raw = data.get("session_id")
+            thinking_mode="slow",
+            launch_kind="agent",
+            metadata={
+                "origin": InputOrigin.WHATSAPP.value,
+                "origin_metadata": origin_metadata,
+            },
+        )
+    finally:
+        await api.close()
+
+    session_id_raw = getattr(data, "session_id", None)
     if not session_id_raw:
         logger.error("WhatsApp session creation returned empty session_id")
         return None

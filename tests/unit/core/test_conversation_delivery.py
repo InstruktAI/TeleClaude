@@ -46,7 +46,7 @@ async def test_deliver_pending_conversation_updates_bundles_mixed_segments_into_
     """
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock())
     client = MagicMock()
     db = SimpleNamespace(
@@ -133,7 +133,7 @@ async def test_deliver_pending_conversation_updates_does_not_advance_cursor_when
 ) -> None:
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock(side_effect=RuntimeError("delivery failed")))
     client = MagicMock()
     db = SimpleNamespace(
@@ -179,79 +179,6 @@ async def test_deliver_pending_conversation_updates_does_not_advance_cursor_when
     pre_call = db.upsert_conversation_delivery_state.await_args_list[0].kwargs
     assert pre_call["delivered_through_ts"] is None
     assert pre_call["pending_through_ts"] == datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_deliver_pending_conversation_updates_suppresses_direct_link_noop_and_advances_cursor(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Direct-link mode filters no-op assistant output: cursor advances, no send.
-
-    Equivalent to the children's per-segment classifier behavior, ported to the
-    bundled-delivery shape: when every assistant segment in a bundle classifies
-    as no-op, the bundle is suppressed entirely and the cursor advances past
-    the suppressed segments so they aren't re-collected on the next iteration.
-    """
-    source = _session()
-    peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="direct_link")
-    command_service = SimpleNamespace(process_message=AsyncMock())
-    client = MagicMock()
-    logger = MagicMock()
-    db = SimpleNamespace(
-        get_session=AsyncMock(return_value=source),
-        get_conversation_delivery_state=AsyncMock(return_value=None),
-        upsert_conversation_delivery_state=AsyncMock(),
-    )
-
-    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
-    monkeypatch.setattr("teleclaude.core.conversation_delivery.logger", logger)
-    monkeypatch.setattr(
-        "teleclaude.core.conversation_delivery.get_active_links_for_session",
-        AsyncMock(return_value=[link]),
-    )
-    monkeypatch.setattr(
-        "teleclaude.core.conversation_delivery.get_peer_members",
-        AsyncMock(return_value=[peer]),
-    )
-    monkeypatch.setattr(
-        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
-        AsyncMock(
-            return_value=[
-                ConversationSegment(
-                    role="assistant",
-                    text="Thanks.",
-                    timestamp=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC),
-                )
-            ]
-        ),
-    )
-
-    delivered = await deliver_pending_conversation_updates(
-        "source-001",
-        client=client,
-        command_service=command_service,
-    )
-
-    assert delivered == 0
-    command_service.process_message.assert_not_awaited()
-    db.upsert_conversation_delivery_state.assert_awaited_once_with(
-        link_id="link-001",
-        source_session_id="source-001",
-        target_session_id="target-001",
-        delivered_through_ts=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat(),
-        pending_through_ts=None,
-    )
-    extra = logger.info.call_args.kwargs["extra"]
-    assert extra == {
-        "source_session_id": "source-001",
-        "target_session_id": "target-001",
-        "link_id": "link-001",
-        "role": "assistant",
-        "reason": "acknowledgment_only",
-        "preview": "Thanks.",
-    }
 
 
 @pytest.mark.unit
@@ -442,7 +369,7 @@ async def test_deliver_pending_conversation_updates_replays_bounded_bundle_on_cr
     send actually failed."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock())
     client = MagicMock()
     pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
@@ -510,7 +437,7 @@ async def test_deliver_pending_conversation_updates_does_not_advance_when_transc
     stuck is the correct behavior, surfaced via an error log."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock())
     client = MagicMock()
     pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
@@ -560,7 +487,7 @@ async def test_deliver_pending_conversation_updates_does_not_advance_when_replay
     invariant, undelivered content could be marked delivered and lost."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     command_service = SimpleNamespace(process_message=AsyncMock(side_effect=RuntimeError("network down")))
     client = MagicMock()
     pending_iso = datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC).isoformat()
@@ -618,7 +545,7 @@ async def test_deliver_pending_conversation_updates_writes_pending_before_send(
     advance is recoverable."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-001", mode="gathering_link")
+    link = SimpleNamespace(link_id="link-001")
     write_log: list[str] = []
 
     async def record_send(*args: object, **kwargs: object) -> None:
