@@ -7,6 +7,8 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -488,8 +490,29 @@ def handle_sessions_restart(args: list[str]) -> None:
             raise SystemExit(1)
 
     body = {"self_restart": True} if args and args[0] == "self" else None
-    data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart", json_body=body)
+    try:
+        data = tool_api_call("POST", f"/sessions/{session_id}/agent-restart", json_body=body)
+        ok = True
+    except Exception:
+        data = None
+        ok = False
+    _emit_tmux_feedback(f"Agent restarting ({session_id})..." if ok else f"Restart failed ({session_id})")
+    if not ok:
+        raise SystemExit(1)
     print_json(data)
+
+
+def _emit_tmux_feedback(message: str) -> None:
+    """Surface short status text via ``tmux display-message`` when invoked from tmux.
+
+    ``tmux run-shell`` (used by keybindings like ``bind R``) swallows stdout, so
+    the only way to give the operator visible feedback after a CLI action is to
+    write back to the tmux UI. Owning this here keeps the keybinding side a
+    one-liner and prevents shell logic from accreting in tmux.conf.
+    """
+    if not os.environ.get("TMUX"):
+        return
+    subprocess.run(["tmux", "display-message", message], check=False)
 
 
 def handle_sessions_unsubscribe(args: list[str]) -> None:
