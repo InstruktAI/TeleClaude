@@ -124,8 +124,13 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
 
     touched = _resolve_session_touched_paths(project_root)
     dirty_path_set = {dirty.path for dirty in dirty_paths}
+    deleted_paths = {dirty.path for dirty in dirty_paths if dirty.op is DirtyOp.DELETED}
     dirty_existing = set(_existing_dirty_paths(project_root, dirty_paths))
-    scoped_dirty = tuple(sorted(path for path in touched if path in dirty_path_set))
+    # Include touched paths AND any currently-pending deletions. The transcript
+    # extractor only counts Write/Edit tool calls; Bash-based `rm` would
+    # otherwise fall out of scope and silently not get staged — producing
+    # commits whose message claims deletions that never landed.
+    scoped_dirty = tuple(sorted((set(touched) & dirty_path_set) | deleted_paths))
     scoped = tuple(sorted(path for path in touched if path in dirty_existing))
     return WorkspaceScopeResolution(
         kind=WorkspaceScopeKind.SHARED_BRANCH,

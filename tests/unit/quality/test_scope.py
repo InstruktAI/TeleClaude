@@ -130,6 +130,40 @@ class TestResolveWorkspaceScopeResolution:
         )
         assert resolution.scoped_existing_paths == ("teleclaude/new.py", "teleclaude/touched.py")
 
+    def test_shared_branch_includes_pending_deletions_outside_session_touched_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Bash-based `rm` produces a dirty deletion that the transcript extractor
+        (Write/Edit only) cannot see. Without this inclusion the deletion would
+        silently fall outside scope and never get staged for commit.
+        """
+        (tmp_path / "teleclaude").mkdir()
+        (tmp_path / "teleclaude" / "kept.py").write_text("print('kept')\n", encoding="utf-8")
+        status_output = "\n".join(
+            [
+                " M teleclaude/kept.py",
+                " D teleclaude/removed_via_bash.py",
+            ]
+        )
+
+        monkeypatch.setattr(scope_module, "is_worktree", lambda _path: False)
+        monkeypatch.setattr(scope_module, "get_session_id", lambda: "sess-456")
+        monkeypatch.setattr(
+            scope_module,
+            "collect_session_touched_files",
+            lambda _root: {"teleclaude/kept.py"},
+        )
+        monkeypatch.setattr(scope_module, "Repo", lambda _root: _FakeRepo(status_output))
+
+        resolution = resolve_workspace_scope_resolution(tmp_path)
+
+        assert resolution.kind is WorkspaceScopeKind.SHARED_BRANCH
+        assert resolution.scoped_dirty_paths == (
+            "teleclaude/kept.py",
+            "teleclaude/removed_via_bash.py",
+        )
+        assert resolution.scoped_existing_paths == ("teleclaude/kept.py",)
+
     def test_shared_branch_without_session_keeps_dirty_metadata_but_returns_empty_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
