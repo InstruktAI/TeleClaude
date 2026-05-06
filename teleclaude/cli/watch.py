@@ -55,7 +55,7 @@ class SmartWatcher(FileSystemEventHandler):
         self.spec = self._load_gitignore()
         self._sync()
 
-    def _load_gitignore(self) -> PathSpec[Any] | None:
+    def _load_gitignore(self) -> PathSpec[Any] | None:  # type: ignore[type-arg]  # pyright: ignore[reportInvalidTypeArguments]
         if not pathspec:
             logger.warning("pathspec not installed; .gitignore support disabled")
             return None
