@@ -433,24 +433,6 @@ Split a todo into child items (container transition)
 - Scaffolds children, cleans parent artifacts, sets container state.
 - Children inherit parent's approved prepare phase: if requirements were approved, children start at plan_drafting; if the plan was approved, children start at prepared (ready for build).
 
-### `telec todo from-main`
-
-Create a reviewed todo from uncommitted changes on main
-
-**Usage:** `telec todo from-main --slug <name> [--description <desc>]`
-
-**Flags:**
-
-- `--slug`: Meaningful slug name for the todo
-- `--description`: Optional description of the changes
-
-**Notes:**
-
-- Transfers uncommitted changes from main into a worktree for review.
-- File scoping is automatic: only files touched by the current session are transferred.
-- Creates todo scaffold, sets state to build:complete, ready for review.
-- After running, the worktree handoff is auto-committed and the lifecycle router dispatches detached /next-work.
-
 ### `telec todo artifacts`
 
 Manage todo artifacts in the database

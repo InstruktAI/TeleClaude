@@ -352,7 +352,6 @@ orphan-exclude = [
     "tests/unit/test_distribute.py",  # Mapper-gap: legacy importlib coverage for scripts/distribute.py remains outside mapper roots.
     "tests/unit/test_no_stale_todo_fs_refs.py",  # Cross-module: stale todo filesystem reference guard scans repository markdown artifacts.
     "tests/unit/test_pydantic_to_typescript_codegen.py",  # Deferred decision: unsafe move; codegen spec currently fails when run directly.
-    "tests/unit/test_todo_from_main.py",  # Deferred decision: unsafe move; from-main scaffold spec currently fails when run directly.
     "tests/unit/tools/lint/test_guardrails.py",  # Mapper-gap: tools/lint/guardrails.py is outside current teleclaude/** mapper roots.
     "tests/unit/tools/lint/test_markdown.py",  # Mapper-gap: tools/lint/markdown.py is outside current teleclaude/** mapper roots.
     "tests/unit/tools/test_migration.py",  # Mapper-gap: Makefile/tool migration checks target repository tooling outside teleclaude/** roots.

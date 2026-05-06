@@ -22,8 +22,7 @@ from teleclaude.session_identity import get_session_id
 from teleclaude.todo_scaffold import (
     NoSessionTouchedFiles,
     TranscriptUnavailable,
-    _classify_porcelain_status,
-    _collect_session_touched_files,
+    collect_session_touched_files,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -80,8 +79,16 @@ def _fallback_worktree_status_files(project_root: Path) -> set[str]:
     except InvalidGitRepositoryError:
         return set()
     status_output = repo.git.status("--porcelain")
-    modified, untracked, deleted, added = _classify_porcelain_status(status_output)
-    return set(modified + untracked + deleted + added)
+    paths: set[str] = set()
+    for line in status_output.rstrip().splitlines():
+        if len(line) < 4:
+            continue
+        filepath = line[3:].strip()
+        if " -> " in filepath:
+            filepath = filepath.split(" -> ", 1)[1]
+        if filepath:
+            paths.add(filepath)
+    return paths
 
 
 def main() -> None:
@@ -115,7 +122,7 @@ def main() -> None:
         sys.exit(2)
 
     try:
-        touched: set[str] = _collect_session_touched_files(str(project_root))
+        touched: set[str] = collect_session_touched_files(str(project_root))
     except TranscriptUnavailable:
         # Transcript-less sessions (e.g. live agents before first turn is written) fall back to
         # the dirty worktree so scoped lint/test gates still have something to operate on.
