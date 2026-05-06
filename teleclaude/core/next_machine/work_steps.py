@@ -42,6 +42,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_uncommitted_changes,
 )
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_project_root
+from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.session_identity import get_session_id
@@ -296,6 +297,16 @@ async def _work_step_review_changes_requested(
             ),
             next_call=f"telec todo work {slug}",
         )
+    if reviewer_id is None:
+        return False, format_error(
+            "REVIEWER_NOT_ALIVE",
+            (
+                f"Review requested changes for {slug}, but no live reviewer session exists "
+                f"to initiate the direct fix conversation. The reviewer should remain alive "
+                f"across review rounds. Manual intervention required."
+            ),
+            next_call=f"telec todo work {slug}",
+        )
 
     if baseline and head_sha and head_sha != baseline:
         return False, (
@@ -319,20 +330,27 @@ async def _work_step_review_changes_requested(
         f"`telec todo stamp {slug} --build-complete`. "
         f"Read findings via: telec todo artifacts read {slug} review-findings"
     )
-    escaped = message.replace('"', '\\"')
-    reviewer_wait = (
-        f"Wait for reviewer session {reviewer_id} to report idle."
-        if reviewer_id
-        else "Wait for the builder to report FIX COMPLETE, then call the next step."
+    reviewer_message = format_reviewer_direct_fix_message(
+        fixer_session_id=builder_id,
+        task_context=message,
+        completion_clause=(
+            f"Collaborate until all findings are resolved, then persist the full review-findings artifact "
+            f"with telec todo artifacts write {slug} review-findings <content> and set the verdict "
+            f"by arithmetic: APPROVE only when unresolved Critical and Important counts are both zero. "
+            f"Report FIX COMPLETE."
+        ),
     )
+    escaped = reviewer_message.replace('"', '\\"')
     return False, (
         f"REVIEW CHANGES REQUESTED: {slug}\n\n"
         f"Execute in order:\n\n"
-        f'telec sessions send {builder_id} "{escaped}"\n\n'
+        f"Tell the reviewer to start a direct conversation with the fixer:\n"
+        f'telec sessions send {reviewer_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
         f"Start a new non-blocking heartbeat timer via "
         f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
-        f"{reviewer_wait}\n"
+        f"Wait for fixer to complete (monitor via heartbeat; do not poll continuously).\n"
+        f"Wait for reviewer session {reviewer_id} to report idle.\n"
         f"When the signal arrives, call telec todo work {slug}."
     )
 
