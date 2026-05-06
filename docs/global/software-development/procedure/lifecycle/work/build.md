@@ -45,6 +45,18 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
    - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
 5. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
+6. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
+   you to build a classifier, scorer, judge, evaluator, or auto-fixer on
+   free-text content, stop. Per `principle/intelligence-boundaries`, the
+   principle outranks the plan. Surface as a blocker and report back —
+   the plan needs to change. Do not faithfully execute a task that
+   substitutes code for the agent's judgment. Detection patterns:
+   hardcoded vocabulary tables (`_ACK_*`, `_KEYWORDS`, `_HINTS`); regex /
+   word-count thresholds making semantic decisions on free text;
+   `is_meaningful` / `should_emit` / `is_actionable` predicates on
+   natural language; auto-fixers rewriting agent artifacts to match
+   structural rubrics. The defining test: would this code be unnecessary
+   if the agent's briefing said the right thing?
 
 ## Pre-completion checklist
 

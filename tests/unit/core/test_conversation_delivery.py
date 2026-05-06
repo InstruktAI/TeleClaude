@@ -244,14 +244,14 @@ async def test_deliver_pending_conversation_updates_suppresses_direct_link_noop_
         pending_through_ts=None,
     )
     extra = logger.info.call_args.kwargs["extra"]
-    assert extra == {
-        "source_session_id": "source-001",
-        "target_session_id": "target-001",
-        "link_id": "link-001",
-        "role": "assistant",
-        "reason": "acknowledgment_only",
-        "preview": "Thanks.",
-    }
+    # Subset assertions — additive log fields (e.g. future size_bytes, latency_ms)
+    # must not break this test. Only the load-bearing diagnostic identifiers
+    # and the suppression reason are part of the contract.
+    assert extra["source_session_id"] == "source-001"
+    assert extra["target_session_id"] == "target-001"
+    assert extra["link_id"] == "link-001"
+    assert extra["role"] == "assistant"
+    assert extra["reason"] == "acknowledgment_only"
 
 
 @pytest.mark.unit

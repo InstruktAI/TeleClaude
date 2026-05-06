@@ -56,3 +56,62 @@ def test_parse_linked_output_message_extracts_sender_metadata_and_payload() -> N
     assert parsed.sender_session_id == "peer-001"
     assert parsed.sender_computer == "remote"
     assert parsed.payload == "Need review on the linked replay cursor."
+
+
+# ── Classifier branch coverage ──────────────────────────────────────────────
+# One test per decision path inside classify_linked_direct_conversation_output.
+
+
+def _frame(content: str) -> str:
+    return format_linked_output_message(
+        sender_label="Peer",
+        sender_session_id="peer-001",
+        sender_computer="remote",
+        content=content,
+    )
+
+
+@pytest.mark.unit
+def test_classify_returns_not_linked_output_for_unframed_text() -> None:
+    """Raw text without a [TeleClaude Linked output ...] wrapper is rejected upfront."""
+    classification = classify_linked_direct_conversation_output("just some raw text")
+
+    assert classification.emit is False
+    assert classification.reason == "not_linked_output"
+    assert classification.payload == ""
+
+
+@pytest.mark.unit
+def test_classify_suppresses_idle_pattern() -> None:
+    """Short payloads matching the idle/standby regex are non-actionable status."""
+    classification = classify_linked_direct_conversation_output(_frame("Idle, standing by."))
+
+    assert classification.emit is False
+    assert classification.reason == "idle_or_noop"
+
+
+@pytest.mark.unit
+def test_classify_suppresses_status_narration_pattern() -> None:
+    """Self-referential status narration is not actionable for the peer."""
+    classification = classify_linked_direct_conversation_output(_frame("Looking into it."))
+
+    assert classification.emit is False
+    assert classification.reason == "status_narration_only"
+
+
+@pytest.mark.unit
+def test_classify_suppresses_empty_payload() -> None:
+    """A wrapper with no payload body cannot drive any peer action."""
+    classification = classify_linked_direct_conversation_output(_frame(""))
+
+    assert classification.emit is False
+    assert classification.reason == "empty_payload"
+
+
+@pytest.mark.unit
+def test_classify_suppresses_non_actionable_short_text() -> None:
+    """Short payloads without a meaningful hint and no recognized pattern fall through to non_actionable."""
+    classification = classify_linked_direct_conversation_output(_frame("yes done"))
+
+    assert classification.emit is False
+    assert classification.reason == "non_actionable"

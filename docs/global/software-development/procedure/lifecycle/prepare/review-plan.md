@@ -134,6 +134,16 @@ Check the plan against:
 - **Testing policy**: are test expectations aligned with testing standards?
 - **Fallback policy**: does the plan introduce unjustified fallback paths?
   Every fallback must be justified by UX necessity.
+- **Intelligence boundaries** (per `principle/intelligence-boundaries`):
+  reject plan tasks that prescribe regex / classifier / scorer / auto-fixer
+  code on free-text content. Patterns: hardcoded vocabulary tables;
+  word-count thresholds for "is this meaningful?"; `is_*` / `should_*`
+  predicates on natural language; auto-rewriters that edit agent artifacts
+  to match structural rubrics. The defining test: would the task be
+  unnecessary if the agent's briefing said the right thing? If yes, the
+  task belongs in the briefing, not the plan. Critical — these accumulate
+  silently and corrupt the codebase faster than coupling violations
+  because every implementation looks "well-typed and narrow."
 
 Policy violations are Critical findings.
 

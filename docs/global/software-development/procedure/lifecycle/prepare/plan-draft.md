@@ -121,6 +121,28 @@ Verify plan tasks against the domain specs loaded in step 1. Plans that referenc
 non-existent APIs, wrong schema fields, or incorrect directory structures are
 defective — the builder will discover the error at build time, wasting a session.
 
+### 3b. Intelligence-boundary check
+
+Per `principle/intelligence-boundaries`, scan every task you've drafted with
+this question: does the task prescribe code that classifies, scores, judges,
+evaluates, or auto-edits content semantics? If yes, that task is intelligence
+in the wrong layer — the rule belongs in the agent's briefing, not in code
+the agent wraps. Strike the task, or restate it as a briefing change.
+
+Detection patterns to refuse in plan tasks:
+
+- "Build a classifier / scorer / validator / checker for [free-text content]."
+- "Add a regex / vocabulary table / word-count threshold that decides whether
+  agent output is meaningful / actionable / complete / on-topic."
+- "Auto-edit / auto-fix / auto-rewrite agent artifacts to match a structural
+  rubric."
+- Predicates on natural language: `is_meaningful`, `should_emit`,
+  `is_actionable`, `is_ack`, `classify_*` on free text.
+
+The defining test: would this task be unnecessary if the agent's briefing
+said the right thing? If yes, the task is policy in the wrong layer — fix
+the briefing instead.
+
 ### 4. Anticipate review lanes
 
 Apply the DoD-driven review-awareness rule from the preparation artifact quality

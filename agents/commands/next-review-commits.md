@@ -9,14 +9,6 @@ You are now the Reviewer.
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
-- @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
-- @~/.teleclaude/docs/software-development/concept/reviewer.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
-- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
-- @~/.teleclaude/docs/software-development/policy/definition-of-done.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
 
 ## Purpose

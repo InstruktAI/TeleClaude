@@ -97,6 +97,32 @@ principle, drop it; it is not a finding.
 **Severity:** Important for shared state mutation. Local mutation that does not
 violate the immutability-preference policy is not a finding — drop the observation.
 
+### 9. Intelligence in the wrong layer
+
+Per `principle/intelligence-boundaries`. Code performing classification,
+scoring, judgment, evaluation, or auto-editing of content semantics — work
+the agent layer should do.
+
+Patterns to detect:
+
+- Hardcoded vocabulary tables for content categorization (`_ACK_*`,
+  `_KEYWORDS`, `_HINTS`, `_PHRASES`).
+- Regex on free text driving semantic decisions ("is this meaningful?",
+  "is this an ack?", "is this idle chatter?").
+- Word-count thresholds for "is this important?" / "is this actionable?".
+- Predicates on natural language: `is_meaningful`, `should_emit`,
+  `is_actionable`, `is_ack`, `classify_*` on free-text payloads.
+- Auto-fixers that rewrite agent artifacts to match structural rubrics
+  (regex section-header grading then regex-driven section insertion).
+- Structural-rubric grading via regex on document headers / formatting
+  ("documents with `## Goal` and `## Acceptance` score higher").
+
+**Severity: Critical.** This pattern accumulates and corrupts the codebase
+faster than coupling violations because every implementation looks
+"well-typed and narrow." The defining test: would this code be unnecessary
+if the agent's briefing said the right thing? If yes, it's policy in the
+wrong layer.
+
 ## Outputs
 
 - Issue list per category with severity, location, principle violated, and remediation guidance.

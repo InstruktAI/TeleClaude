@@ -73,6 +73,13 @@ What you are looking for:
   roadmap for adjacent work that overlaps or depends on this.
 - **Feasibility** — does the proposed approach actually work given the current
   codebase and constraints?
+- **Intelligence boundaries** — does the proposed approach put code where
+  intelligence belongs? Per `principle/intelligence-boundaries`: any
+  classifier, scorer, judge, evaluator, or auto-fixer on free-text content
+  is suspect. If the design needs "the wire layer should detect X about
+  agent output" or "the cartridge should grade artifact Y," that is almost
+  always a briefing problem masquerading as a code problem. Surface it now —
+  the right fix is a briefing change, not a planning task.
 
 Challenge each other. One of you sees things the other doesn't — that is the
 whole point of having two perspectives.

@@ -5,6 +5,7 @@
 @~/.teleclaude/docs/general/principle/communication-compression.md
 @~/.teleclaude/docs/software-development/principle/failure-modes.md
 @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
+@~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
 @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
 @~/.teleclaude/docs/general/policy/ai-agent-security.md
 @~/.teleclaude/docs/software-development/policy/testing.md

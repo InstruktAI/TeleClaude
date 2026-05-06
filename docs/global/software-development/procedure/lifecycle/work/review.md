@@ -11,9 +11,10 @@ scope: 'domain'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/reviewer.md
+- @~/.teleclaude/docs/software-development/principle/architecture-boundary-purity.md
 - @~/.teleclaude/docs/software-development/policy/code-quality.md
-- @~/.teleclaude/docs/software-development/policy/testing.md
-- @~/.teleclaude/docs/software-development/policy/linting-requirements.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/principle-violation-hunt.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/silent-failure-audit.md
 
 ## Goal
 
@@ -59,20 +60,21 @@ Orchestrator-managed files (`todos.db` roadmap, `todos.db` state) are part of th
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
-| Lane       | Reference                                                                   | Task                                                             |
-| ---------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| scope      | § Scope verification                                                        | Verify delivery matches requirements — no gold-plating, no gaps  |
-| code       | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                 |
-| paradigm   | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency            |
-| principles | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles              |
-| security   | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage            |
-| tests      | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage |
-| errors     | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling               |
-| types      | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement         |
-| comments   | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place    |
-| logging    | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes               |
-| docs       | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README reflect changes         |
-| simplify   | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                |
+| Lane                    | Reference                                                                   | Task                                                                                  |
+| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| scope                   | § Scope verification                                                        | Verify delivery matches requirements — no gold-plating, no gaps                       |
+| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                      |
+| paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency                                 |
+| principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                   |
+| intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics  |
+| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                 |
+| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                      |
+| errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                    |
+| types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                              |
+| comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                         |
+| logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                    |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README reflect changes                              |
+| simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                     |
 
 ### Lane execution gate
 
