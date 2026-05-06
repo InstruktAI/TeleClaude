@@ -191,6 +191,7 @@ If you cannot answer those questions concretely, the test is weak and does not c
 - Reject characterization tests that pin observed behavior but provide no credible bug-catching value or mutation-sanity reasoning.
 - Reject truthy or non-specific assertions that a trivially wrong implementation could satisfy.
 - Reject redundant duplicate coverage across files when one test home is sufficient.
+- Reject `@pytest.mark.parametrize`, fixture `params=`, and equivalent table-driven patterns. The unit of testing is the code-coverage path, not the input row — most parametrize tables are N redundant runs through one path. When fixing a parametrize finding, the cleanup is **not** "split into N tests, one per row": identify the distinct paths exercised, keep one test per path with one representative input, delete every redundant run. There is no legitimate exception.
 - Allow exact-string assertions only for execution-significant tokens/contracts.
 
 Treat the following as common weak-test patterns:

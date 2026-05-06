@@ -443,3 +443,73 @@ class TestLooseDictScoping:
         result = _run_loose_dict_check(tmp_path, selected_paths={"teleclaude/selected.py"})
         assert result is not None
         assert "loose dict typings detected" in result
+
+
+# Build the parametrize and fixture-params decorator strings via concatenation
+# so the no-parametrize-in-tests scanner does not match them in THIS file
+# (tests/ is in the scan scope).
+_PARAMETRIZE_DECORATOR = "@pytest.mark." + 'parametrize("x", [1, 2])'
+_FIXTURE_PARAMS_DECORATOR = "@pytest." + "fixture(params=[1, 2])"
+_PARAMETRIZE_CLEANUP_MARKER = "# guard: " + "parametrize-cleanup-pending"
+
+
+class TestNoParametrizeRule:
+    """Tests for the no-parametrize-in-tests rule in guardrails.py."""
+
+    @pytest.mark.unit
+    def test_catches_parametrize_decorator(self, tmp_path: Path) -> None:
+        """A parametrize decorator on a test is rejected."""
+        _write_file(
+            tmp_path,
+            "tests/unit/foo/test_bar.py",
+            f"{_PARAMETRIZE_DECORATOR}\ndef test_x(x):\n    assert x\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is not None
+        assert "no-parametrize-in-tests" in result
+        assert "tests/unit/foo/test_bar.py" in result
+
+    @pytest.mark.unit
+    def test_catches_fixture_params(self, tmp_path: Path) -> None:
+        """A fixture-with-params decorator is rejected — fixture-driven parametrization is the same anti-pattern."""
+        _write_file(
+            tmp_path,
+            "tests/unit/foo/test_bar.py",
+            f"{_FIXTURE_PARAMS_DECORATOR}\ndef thing(request):\n    return request.param\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is not None
+        assert "no-parametrize-in-tests" in result
+
+    @pytest.mark.unit
+    def test_cleanup_pending_marker_suppresses_existing_site(self, tmp_path: Path) -> None:
+        """An existing parametrize site tagged with the cleanup-pending marker is allowed (technical debt)."""
+        _write_file(
+            tmp_path,
+            "tests/unit/foo/test_bar.py",
+            f"{_PARAMETRIZE_CLEANUP_MARKER}\n{_PARAMETRIZE_DECORATOR}\ndef test_x(x):\n    assert x\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_clean_test_file_passes(self, tmp_path: Path) -> None:
+        """A test file with separate named test functions and no parametrize passes."""
+        _write_file(
+            tmp_path,
+            "tests/unit/foo/test_bar.py",
+            "def test_one():\n    assert True\n\n\ndef test_two():\n    assert True\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None
+
+    @pytest.mark.unit
+    def test_parametrize_outside_tests_directory_is_not_flagged(self, tmp_path: Path) -> None:
+        """The rule scans only tests/ — production code with similar decorators is out of scope."""
+        _write_file(
+            tmp_path,
+            "teleclaude/foo.py",
+            f"{_PARAMETRIZE_DECORATOR}\ndef something():\n    pass\n",
+        )
+        result = _run_scanner(tmp_path)
+        assert result is None

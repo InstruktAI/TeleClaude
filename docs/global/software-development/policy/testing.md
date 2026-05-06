@@ -174,7 +174,7 @@ Run the smallest test scope that proves the change. Escalate only when needed.
 - Avoid running the entire suite unless explicitly required (release, CI parity, or missing hooks)
 
 - Test behavior, not implementation
-- Prefer one clear expectation per test
+- **Each test pins exactly one behavioral path.** A "case" means a code-coverage path, not an input row. Multiple inputs that flow through the same path are redundant — one representative input is enough, one test, one assertion. Only when inputs exercise meaningfully different paths do they warrant separate tests, each with a name that documents the path it pins. `@pytest.mark.parametrize`, fixture `params=`, and equivalent table-driven patterns are forbidden — they invariably package either redundant runs through one path (waste) or distinct paths smuggled under one test body (forfeits per-path names and invites branches when bodies diverge). The cleanup of an existing parametrize block is **not** "split into N tests, one per row" — it is "identify the distinct paths, keep one test per path with one representative input, delete the rest."
 - Keep tests deterministic and fast
 - Cover edge cases and error paths before happy paths
 - Test public interfaces, not private internals
@@ -207,6 +207,7 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 20. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
 21. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
 22. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
+23. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
 
 23. All tests run on every commit
 24. Tests must pass before merging to main branch

@@ -597,6 +597,23 @@ SOURCE_PATTERN_RULES: list[PatternRule] = [
         exception_marker="guard: allow-home-path",
         message=("hardcoded home path — use Path.home(), $HOME, os.path.expanduser('~'), or {{MARKER}} in templates"),
     ),
+    PatternRule(
+        name="no-parametrize-in-tests",
+        pattern=re.compile(r"@pytest\.mark\.parametrize\b|@pytest\.fixture\([^)]*\bparams\s*="),
+        scan_dirs=["tests"],
+        glob="*.py",
+        exclude_prefixes=(),
+        exception_marker="guard: parametrize-cleanup-pending",
+        message=(
+            "@pytest.mark.parametrize / fixture(params=) is forbidden — the unit of testing is the "
+            "code-coverage path, not the input row. Multiple inputs through the same path are redundant; "
+            'keep one test per path with one representative input. Cleanup is NOT "split into N tests, '
+            'one per row" — identify the distinct paths, keep one test per path, delete the rest. '
+            "See software-development/policy/testing anti-pattern #23. "
+            "Existing sites awaiting cleanup may carry a `# guard: parametrize-cleanup-pending` marker on "
+            "the line above; new code may not use that marker"
+        ),
+    ),
 ]
 
 

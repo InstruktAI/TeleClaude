@@ -158,6 +158,7 @@ class TestIdempotency:
 class TestCompleteness:
     """All BaseModel subclasses in api_models.py must have corresponding TS types."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("model_name", sorted(_API_MODEL_CLASSES.keys()))
     def test_model_has_typescript_type(self, model_name: str, generated_output: str) -> None:
         """Each API model must have a corresponding TypeScript type or interface."""
@@ -280,6 +281,7 @@ class TestInheritanceFlattening:
 class TestNamingConvention:
     """Response DTOs drop 'DTO' suffix per frontend convention (Info for data DTOs)."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         "python_name,expected_ts_name",
         [
@@ -299,6 +301,7 @@ class TestNamingConvention:
             f"{python_name} must appear as '{expected_ts_name}' in output"
         )
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("request_name", _REQUEST_TYPE_NAMES)
     def test_request_types_preserve_names(self, request_name: str, generated_output: str) -> None:
         """Request types must keep their Python names in TypeScript."""
@@ -322,6 +325,7 @@ class TestNamingConvention:
 class TestStringLiteralUnions:
     """Python Literal types must become TS string literal unions, never enum."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("model_name,field_name,expected_values", _LITERAL_FIELDS)
     def test_literal_produces_string_union(
         self, model_name: str, field_name: str, expected_values: list[str], generated_output: str
@@ -360,6 +364,7 @@ class TestStringLiteralUnions:
 class TestFieldCompletenessParity:
     """Every Python DTO field must appear in its TypeScript counterpart."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("model_name", sorted(_API_MODEL_CLASSES.keys()))
     def test_all_fields_present_in_output(self, model_name: str, generated_output: str) -> None:
         """Each field of the Python model must appear in the generated TypeScript."""

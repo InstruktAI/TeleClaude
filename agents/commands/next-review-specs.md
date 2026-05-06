@@ -56,7 +56,7 @@ Review test specifications for behavioral coverage, rigor, and alignment with re
   defers behavioral coverage to quality-checklist, integration-level, or non-automated verification.
 - Check: no prose-lock tests (asserting human-facing text).
 - Check: tests assert WHAT not HOW (behavioral, not implementation-coupled).
-- Check: parametrize tables cover boundary conditions named in requirements.
+- Check: **no `@pytest.mark.parametrize`, no fixture `params=`, no equivalent table-driven patterns**. Each test must pin exactly one code-coverage path with one representative input. Every parametrize occurrence is a Requirement-Violation finding — the fix is **not** "split into N tests, one per row" (that preserves the redundancy in a different shape); identify the distinct paths exercised, keep one test per path, delete every redundant run.
 - Write findings to `spec-review-findings.md` via `telec todo artifacts write {slug} spec-review-findings "<content>"`.
 - Stamp verdict via `telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`.
 

@@ -51,7 +51,7 @@ Write executable test specifications (expected-failure-marked tests) from approv
   it still pins the requirement.
 - Mark every test with the project's expected-failure mechanism (discover from codebase)
 - Handle missing modules gracefully per project convention
-- Use table-driven patterns for specification tables with multiple input/output cases
+- Each test pins exactly one code-coverage path with one representative input. **No `@pytest.mark.parametrize`, no fixture `params=`, no table-driven cases** — multiple inputs through the same path are redundant; only distinct paths warrant separate named tests, each name documenting the path it pins
 - Write descriptive test names and docstrings that serve as behavioral documentation
 - Commit the test suite
 - Verify: all tests are expected-failure (suite stays GREEN)
