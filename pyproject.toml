@@ -268,6 +268,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 timeout = 1
+session_timeout = 30
 addopts = [
   "-v",
   "--strict-markers",
