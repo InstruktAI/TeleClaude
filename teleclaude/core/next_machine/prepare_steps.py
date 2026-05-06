@@ -638,7 +638,7 @@ async def _prepare_step_plan_drafting(
         ),
     )
 
-    if plan_entry.produced_at and not plan_diff_pairs:
+    if plan_entry.produced_at and plan_entry.upstream_digests and not plan_diff_pairs:
         apply_authoritative_signal(writer.state, "plan_ready")
         writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
         await _commit_writer(writer, todos_db, slug, state)

@@ -24,11 +24,14 @@ that effect.
 
 ### 0. Re-entry is the base case
 
-Every prepare dispatch carries a `Dispatch reason: <reason>` header. Re-entry is
-the default — fresh production is the special case (first time only). Read the
-reason before you act. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
-`provenance-missing`. Each one prescribes a different behavior; do not assume
-fresh write.
+Artifact-production and review dispatches in prepare (build-specs, prepare-draft,
+review-requirements, review-specs, review-plan) carry a `Dispatch reason: <reason>`
+header. Re-entry is the default for these dispatches — fresh production is the
+special case (first time only). Read the reason before you act. Reasons are:
+`fresh`, `findings-fix`, `upstream-changed`, `provenance-missing`. Each prescribes
+a different behavior; do not assume fresh write. Discovery dispatches do not
+carry the header — discovery is gated on the absence of a requirements artifact
+and is always a fresh-or-revise pass keyed off review verdicts.
 
 ### 1. Load domain specs before producing or modifying any artifact
 

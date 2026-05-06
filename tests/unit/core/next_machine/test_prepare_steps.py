@@ -183,9 +183,14 @@ async def test_plan_drafting_dispatches_when_produced_at_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_drafting_advances_when_produced_at_set() -> None:
-    """PLAN_DRAFTING advances when produced_at is set (stamp received)."""
+    """PLAN_DRAFTING advances when produced_at is set, upstream_digests are
+    populated, and recorded matches current — i.e. the artifact is fresh
+    against its upstreams."""
     db = AsyncMock()
     todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(
+        side_effect=lambda _slug, name: {"requirements": "req", "test-specs": "spec"}.get(name, "")
+    )
     todos_db.write_state = AsyncMock()
 
     state = _base_state(
@@ -193,6 +198,10 @@ async def test_plan_drafting_advances_when_produced_at_set() -> None:
         plan_produced_at="2026-01-01T00:00:00+00:00",
         plan_digest="plan-digest",
     )
+    state["artifacts"]["implementation_plan"]["upstream_digests"] = {
+        "requirements": "req",
+        "test_specs": "spec",
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
@@ -408,6 +417,36 @@ async def test_plan_drafting_dispatch_marks_fresh_when_no_prior_artifact() -> No
 
     assert keep_going is False
     assert "Dispatch reason: fresh" in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_drafting_dispatch_marks_provenance_missing_when_upstream_digests_empty() -> None:
+    """An existing plan with empty upstream_digests must dispatch with
+    ``provenance-missing``. The plan-drafting auto-advance is gated on
+    non-empty upstream_digests so this dispatch path is reachable.
+    """
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="current-req")
+    todos_db.write_state = AsyncMock()
+
+    state = _base_state(
+        lifecycle_phase="plan_drafting",
+        plan_produced_at="2026-04-25T20:46:12+00:00",
+        plan_digest="plan-digest",
+    )
+    # Explicitly empty upstream_digests — the legacy provenance-missing state.
+    state["artifacts"]["implementation_plan"]["upstream_digests"] = {}
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
+    ):
+        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    assert "Dispatch reason: provenance-missing" in instruction
 
 
 @pytest.mark.asyncio

@@ -60,7 +60,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | ------------------------ | --------------------------------------------------------------- | --------------------------------------------------- |
 | `input.md`               | Human (brain dump via `telec todo dump`; frozen after creation) | —                                                   |
 | `requirements.md`        | Discovery worker (`/next-prepare-discovery`)                    | Requirements reviewer (`/next-review-requirements`) |
-| Test spec files          | Test spec worker (`/next-prepare-test-spec`)                    | Test spec reviewer (`/next-review-test-spec`)       |
+| Test spec files          | Test spec worker (`/next-build-specs`)                    | Test spec reviewer (`/next-review-specs`)       |
 | `implementation-plan.md` | Draft worker (`/next-prepare-draft`)                            | Plan reviewer (`/next-review-plan`)                 |
 | `dor-report.md`          | Gate worker (`/next-prepare-gate`)                              | —                                                   |
 
@@ -121,8 +121,8 @@ stateDiagram-v2
 | `INPUT_ASSESSMENT`    | Evaluate input.md and confirm discovery is ready for review   | No                                         | No                                            |
 | `TRIANGULATION`       | Requirements need to be written or reworked                   | Yes — dispatch `/next-prepare-discovery`   | No                                            |
 | `REQUIREMENTS_REVIEW` | Requirements exist, need review verdict                       | Yes — dispatch `/next-review-requirements` | No                                            |
-| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-prepare-test-spec`   | No                                            |
-| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-test-spec`    | No                                            |
+| `TEST_SPEC_BUILD`     | Requirements approved, test specifications need to be written | Yes — dispatch `/next-build-specs`   | No                                            |
+| `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-specs`    | No                                            |
 | `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                            |
 | `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                            |
 | `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                            |
@@ -181,9 +181,9 @@ flowchart TD
     CheckRounds1 -->|"No"| Blocked
 
     TestSpecExists{"test specs<br/>exist?"}
-    DispatchTestSpec["Dispatch<br/>next-prepare-test-spec"]
+    DispatchTestSpec["Dispatch<br/>next-build-specs"]
     TestSpecReview{"test_spec_review<br/>verdict?"}
-    DispatchTestSpecReview["Dispatch<br/>next-review-test-spec"]
+    DispatchTestSpecReview["Dispatch<br/>next-review-specs"]
     CheckRoundsTS{"Review rounds<br/>< max (3)?"}
 
     TestSpecExists -->|"No"| DispatchTestSpec
@@ -289,8 +289,8 @@ Each state dispatches a specific worker command via `telec sessions run`:
 | --------------------- | --------------------------- | ----------- | ------------- | ----------------------------------------------------- |
 | `TRIANGULATION`       | `/next-prepare-discovery`   | Architect   | `slow`        | `requirements.md`                                     |
 | `REQUIREMENTS_REVIEW` | `/next-review-requirements` | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
-| `TEST_SPEC_BUILD`     | `/next-prepare-test-spec`   | Architect   | `slow`        | Test spec files (expected-failure-marked)             |
-| `TEST_SPEC_REVIEW`    | `/next-review-test-spec`    | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
+| `TEST_SPEC_BUILD`     | `/next-build-specs`   | Architect   | `slow`        | Test spec files (expected-failure-marked)             |
+| `TEST_SPEC_REVIEW`    | `/next-review-specs`    | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
 | `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`                              |
 | `PLAN_REVIEW`         | `/next-review-plan`         | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
 | `GATE`                | `/next-prepare-gate`        | Assessor    | `slow`        | `dor-report.md`, DOR score in `todo state (todos.db)` |
