@@ -24,7 +24,6 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | [`docs/software-development/procedure/lifecycle/prepare/overview.md`](../../../software-development/procedure/lifecycle/prepare/overview.md)             | Prepare overview and orchestration loop                              |
 | [`docs/software-development/procedure/lifecycle/prepare/discovery.md`](../../../software-development/procedure/lifecycle/prepare/discovery.md)           | Discovery worker procedure                                           |
 | [`docs/software-development/procedure/lifecycle/prepare/plan-draft.md`](../../../software-development/procedure/lifecycle/prepare/plan-draft.md)         | Plan drafting worker procedure                                       |
-| [`docs/software-development/procedure/lifecycle/prepare/readiness-gate.md`](../../../software-development/procedure/lifecycle/prepare/readiness-gate.md) | DOR gate worker procedure                                            |
 
 ### Referenced doc snippets
 
@@ -33,10 +32,9 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | `software-development/procedure/lifecycle/prepare/overview`            | Prepare overview and orchestration loop  |
 | `software-development/procedure/lifecycle/prepare/discovery`           | Discovery worker                         |
 | `software-development/procedure/lifecycle/prepare/plan-draft`          | Draft worker                             |
-| `software-development/procedure/lifecycle/prepare/readiness-gate`      | DOR gate worker                          |
 | `software-development/procedure/lifecycle/prepare/review-requirements` | Requirements review                      |
 | `software-development/procedure/lifecycle/prepare/review-plan`         | Plan review                              |
-| `software-development/policy/definition-of-ready`                      | DOR gates validated by gate phase        |
+| `software-development/policy/definition-of-ready`                      | Readiness criteria validated by reviews  |
 | `software-development/policy/preparation-artifact-quality`             | Quality rules for requirements and plans |
 
 ## Inputs/Outputs
@@ -52,8 +50,7 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 - `telec todo artifacts read {slug} requirements` — triangulated, reviewed, approved requirements
 - Test specification files — expected-failure-marked tests encoding behavioral requirements
 - `telec todo artifacts read {slug} implementation-plan` — review-aware, rationale-rich, reviewed, approved plan
-- `telec todo artifacts read {slug} dor-report` — gate assessment
-- `todos.db` state — updated with grounding metadata and DOR verdict
+- `todos.db` state — updated with grounding metadata and review verdicts
 - `prepare.*` lifecycle events at each phase transition
 
 | Artifact                 | Created by                                                      | Reviewed by                                         |
@@ -62,7 +59,6 @@ The Prepare state machine transforms a human's idea (`input.md`) into a set of r
 | `requirements.md`        | Discovery worker (`/next-prepare-discovery`)                    | Requirements reviewer (`/next-review-requirements`) |
 | Test spec files          | Test spec worker (`/next-build-specs`)                    | Test spec reviewer (`/next-review-specs`)       |
 | `implementation-plan.md` | Draft worker (`/next-prepare-draft`)                            | Plan reviewer (`/next-review-plan`)                 |
-| `dor-report.md`          | Gate worker (`/next-prepare-gate`)                              | —                                                   |
 
 ## Invariants
 
@@ -103,7 +99,7 @@ stateDiagram-v2
     PLAN_REVIEW --> PLAN_DRAFTING: verdict = needs_work (re-draft)
     PLAN_REVIEW --> BLOCKED: review rounds exceeded
 
-    GATE --> GROUNDING_CHECK: `dor.status=pass`
+    GATE --> GROUNDING_CHECK: plan review approved
 
     GROUNDING_CHECK --> PREPARED: grounding valid
     GROUNDING_CHECK --> RE_GROUNDING: grounding stale
@@ -125,7 +121,7 @@ stateDiagram-v2
 | `TEST_SPEC_REVIEW`    | Test specs exist, need review verdict                         | Yes — dispatch `/next-review-specs`    | No                                            |
 | `PLAN_DRAFTING`       | Test specs approved, plan needs to be written                 | Yes — dispatch `/next-prepare-draft`       | No                                            |
 | `PLAN_REVIEW`         | Plan exists, needs review verdict                             | Yes — dispatch `/next-review-plan`         | No                                            |
-| `GATE`                | All artifacts exist and approved, run DOR validation          | Yes — dispatch `/next-prepare-gate`        | No                                            |
+| `GATE`                | All artifacts exist and plan review is approved               | No                                         | Yes — advance to grounding check              |
 | `GROUNDING_CHECK`     | Verify freshness of artifacts against current codebase        | No                                         | Yes — only from authoritative grounding state |
 | `RE_GROUNDING`        | Referenced files changed since grounding, plan must update    | Yes — dispatch `/next-prepare-draft`       | No                                            |
 | `PREPARED`            | Terminal success — todo is ready for Phase B (Work)           | No                                         | —                                             |
@@ -155,8 +151,7 @@ flowchart TD
     DispatchPlanReview["Dispatch<br/>next-review-plan"]
     CheckRounds2{"Review rounds<br/>< max (3)?"}
 
-    Gate{"DOR score<br/>>= 8?"}
-    DispatchGate["Dispatch<br/>next-prepare-gate"]
+    Gate{"Plan review<br/>approved?"}
 
     GroundingCheck{"Grounding<br/>fresh?"}
     ReGround["Dispatch<br/>next-prepare-draft<br/>(with diff)"]
@@ -208,9 +203,7 @@ flowchart TD
     CheckRounds2 -->|"Yes"| DispatchDraft
     CheckRounds2 -->|"No"| Blocked
 
-    Gate -->|"score >= 8"| GroundingCheck
-    Gate -->|"not assessed"| DispatchGate
-    DispatchGate --> Gate
+    Gate -->|"yes"| GroundingCheck
 
     GroundingCheck -->|"fresh"| Prepared
     GroundingCheck -->|"stale"| ReGround
@@ -231,52 +224,46 @@ sequenceDiagram
     participant TSR as Test Spec Reviewer
     participant DR as Draft Worker
     participant PR as Plan Reviewer
-    participant G as Gate Worker
+    participant GC as Grounding Check
 
-    Note over O,G: Phase 1 — Discovery
+    Note over O,GC: Phase 1 — Discovery
     O->>SM: telec todo prepare slug
     SM-->>O: DISPATCH next-prepare-discovery
     O->>D: telec sessions run --command /next-prepare-discovery --args slug
     D-->>O: notification (requirements.md written)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 2 — Requirements Review
+    Note over O,GC: Phase 2 — Requirements Review
     SM-->>O: DISPATCH next-review-requirements
     O->>RR: telec sessions run --command /next-review-requirements --args slug
     RR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 3 — Test Specification
+    Note over O,GC: Phase 3 — Test Specification
     SM-->>O: DISPATCH next-build-specs
     O->>TS: telec sessions run --command /next-build-specs --args slug
     TS-->>O: notification (`telec todo stamp slug --specs-built`)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 4 — Test Spec Review
+    Note over O,GC: Phase 4 — Test Spec Review
     SM-->>O: DISPATCH next-review-specs
     O->>TSR: telec sessions run --command /next-review-specs --args slug
     TSR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 5 — Plan Drafting
+    Note over O,GC: Phase 5 — Plan Drafting
     SM-->>O: DISPATCH next-prepare-draft
     O->>DR: telec sessions run --command /next-prepare-draft --args slug
     DR-->>O: notification (`telec todo stamp slug --plan-ready`)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 6 — Plan Review
+    Note over O,GC: Phase 6 — Plan Review
     SM-->>O: DISPATCH next-review-plan
     O->>PR: telec sessions run --command /next-review-plan --args slug
     PR-->>O: notification (verdict: approve)
     O->>SM: telec todo prepare slug
 
-    Note over O,G: Phase 7 — DOR Gate
-    SM-->>O: DISPATCH next-prepare-gate
-    O->>G: telec sessions run --command /next-prepare-gate --args slug
-    G-->>O: notification (`telec todo stamp slug --dor-status pass`)
-    O->>SM: telec todo prepare slug
-
-    Note over O,G: Phase 8 — Grounding Check (mechanical)
+    Note over O,GC: Phase 7 — Grounding Check (mechanical)
     SM-->>O: PREPARED
     Note over O: Todo ready for Phase B
 ```
@@ -293,7 +280,6 @@ Each state dispatches a specific worker command via `telec sessions run`:
 | `TEST_SPEC_REVIEW`    | `/next-review-specs`    | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
 | `PLAN_DRAFTING`       | `/next-prepare-draft`       | Architect   | `slow`        | `implementation-plan.md`                              |
 | `PLAN_REVIEW`         | `/next-review-plan`         | Reviewer    | `slow`        | verdict in `todo state (todos.db)`                    |
-| `GATE`                | `/next-prepare-gate`        | Assessor    | `slow`        | `dor-report.md`, DOR score in `todo state (todos.db)` |
 | `RE_GROUNDING`        | `/next-prepare-draft`       | Architect   | `slow`        | Updated `implementation-plan.md`                      |
 
 ### Grounding system

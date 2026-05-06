@@ -27,4 +27,4 @@ It must not perform final gate decisions or readiness promotion.
 - outputs per processed slug: atomic case → `implementation-plan.md`,
   grounded `todo state (todos.db)`; split case → child todos, dependency links, updated holder
   `breakdown`.
-- `phase_constraint`: must not transition item phase from `pending` to `ready`; leaves final readiness decision to `next-prepare-gate`.
+- `phase_constraint`: must not transition item phase from `pending` to `ready`; leaves final readiness decision to plan-review approval.

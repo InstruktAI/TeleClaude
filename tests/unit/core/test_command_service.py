@@ -172,7 +172,7 @@ class TestSystemCommandHandlers:
             data={"content": "**ship it**"},
         )
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.core.command_service.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             result = await service.deliver_result(cmd)
 
@@ -216,9 +216,9 @@ class TestSystemCommandHandlers:
         )
 
         with (
-            patch("teleclaude.core.db.db") as mock_db,
+            patch("teleclaude.core.command_service.db") as mock_db,
             patch(
-                "teleclaude.utils.markdown.telegramify_markdown",
+                "teleclaude.core.command_service.telegramify_markdown",
                 return_value="formatted-widget",
             ),
         ):
@@ -249,7 +249,7 @@ class TestSystemCommandHandlers:
             data={"customer_name": "Taylor", "reason": "handoff", "context_summary": ""},
         )
 
-        with patch("teleclaude.core.db.db") as mock_db:
+        with patch("teleclaude.core.command_service.db") as mock_db:
             mock_db.get_session = AsyncMock(return_value=session)
             with pytest.raises(ValueError, match="Discord adapter not available"):
                 await service.escalate_session(cmd)

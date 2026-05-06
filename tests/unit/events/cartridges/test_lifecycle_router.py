@@ -1,27 +1,18 @@
-"""Characterization tests for teleclaude.events.cartridges.lifecycle_router."""
+"""Tests for teleclaude.events.cartridges.lifecycle_router."""
 
 from __future__ import annotations
 
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from teleclaude.events.cartridges.lifecycle_router import (
-    LifecycleRouterCartridge,
-    _build_dependency_section,
-    _fill_plan_gaps,
-    _fill_requirements_gaps,
-    _is_slug_delivered_or_frozen,
-    compute_dor_score,
-    score_plan,
-    score_requirements,
-)
+from teleclaude.events.cartridges.lifecycle_router import LifecycleRouterCartridge
 from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 
 def _make_event(
-    event_type: str = "domain.software-development.planning.artifact_changed", slug: str = "my-slug"
+    event_type: str = "domain.software-development.planning.artifact_changed",
+    slug: str = "my-slug",
 ) -> EventEnvelope:
     return EventEnvelope(
         event=event_type,
@@ -33,326 +24,8 @@ def _make_event(
     )
 
 
-def _full_requirements_content() -> str:
-    return """
-# Goal
-
-Assess prepare quality for this todo.
-
-## Scope
-
-### In scope
-- score prepare artifacts
-
-### Out of scope
-- production code changes
-
-## Acceptance Criteria
-- [ ] DOR result is recorded
-
-## FR1: Score artifacts
-
-Evaluate requirements and plan quality.
-
-## FR2: Persist assessment
-
-Write artifacts and state updates.
-
-## Dependency
-
-- prior-slug
-
-## Constraints
-
-- keep the assessment deterministic
-"""
-
-
-def _full_plan_content() -> str:
-    return """
-# Phase 1
-
-## Task 1.1 (FR1)
-
-- [ ] Inspect `teleclaude/events/cartridges/prepare.py`
-- [ ] Update `tests/unit/events/cartridges/test_prepare.py`
-
-**Verification:** run `pytest tests/unit/events/cartridges/test_prepare.py`
-
-## Task 1.2 (FR2)
-
-- [ ] Update `dor-report.md`
-
-**Verification:** run `pytest tests/unit/events/cartridges/test_prepare.py -k process`
-
-## Risks
-
-- filesystem write failures
-"""
-
-
-# ── score_requirements ────────────────────────────────────────────────────────
-
-
-def test_score_requirements_empty_content_scores_zero():
-    """Empty requirements content scores 0 with all gaps present."""
-    result = score_requirements("")
-    assert result["raw"] == 0
-    assert result["max"] == 8
-    assert len(result["gaps"]) > 0
-
-
-def test_score_requirements_full_content_scores_high():
-    """Well-structured requirements content scores highly."""
-    content = """
-# Goal
-
-This is the goal.
-
-## Scope
-
-### In scope
-- thing 1
-
-### Out of scope
-- thing 2
-
-## Acceptance Criteria
-- [ ] criterion 1
-
-## FR1: Functional Requirement
-
-Description.
-
-## FR2: Functional Requirement 2
-
-Description.
-
-## Dependency
-
-- prior-todo
-
-## Constraints
-
-Must run fast.
-"""
-    result = score_requirements(content)
-    assert result["raw"] >= 6
-    assert result["max"] == 8
-
-
-def test_score_requirements_missing_goal_records_gap():
-    """Missing Goal section is captured as a gap."""
-    content = "## Acceptance Criteria\n- [ ] x\n"
-    result = score_requirements(content)
-    assert any("Goal" in g for g in result["gaps"])
-
-
-def test_score_requirements_dimensions_are_bounded():
-    """All dimension scores are non-negative and within their max."""
-    content = "# Goal\n\n## Scope\n\n## Acceptance\n- [ ] x\n"
-    result = score_requirements(content)
-    for v in result["dimensions"].values():
-        assert v >= 0
-
-
-# ── score_plan ────────────────────────────────────────────────────────────────
-
-
-def test_score_plan_empty_scores_one():
-    """Empty plan content scores 1 — consistency dimension passes with no contradictions."""
-    result = score_plan("", "")
-    assert result["raw"] == 1  # plan_requirement_consistency=1 when no contradictions
-    assert result["max"] == 8
-
-
-def test_score_plan_with_file_refs_and_tasks():
-    """Plan with file references, tasks, and paths scores higher."""
-    content = """
-# Phase 1
-
-## Task 1.1
-
-- [ ] Do `teleclaude/events/cartridges/foo.py`
-- [ ] Edit `tests/unit/events/test_foo.py`
-- [ ] Update `teleclaude/config.yaml`
-
-**Verification:** run `make test`
-
-## Risks
-
-- None identified
-"""
-    result = score_plan(content, "")
-    assert result["raw"] >= 3
-
-
-def test_score_plan_contradiction_detected():
-    """Contradiction between plan and requirements is captured."""
-    plan = "We will copy the module to a new location."
-    requirements = "We want to reuse the existing module."
-    result = score_plan(plan, requirements)
-    assert len(result["contradictions"]) >= 1
-
-
-def test_score_plan_no_contradiction_when_both_aligned():
-    """No contradiction when plan and requirements use compatible language."""
-    plan = "We will extend the module."
-    requirements = "We want to extend the existing module."
-    result = score_plan(plan, requirements)
-    assert len(result["contradictions"]) == 0
-
-
-# ── compute_dor_score ─────────────────────────────────────────────────────────
-
-
-def test_compute_dor_score_full_marks_gives_pass():
-    """Perfect scores from both dimensions give verdict='pass'."""
-    req = {"raw": 8, "max": 8, "dimensions": {}, "gaps": []}
-    plan = {"raw": 8, "max": 8, "dimensions": {}, "gaps": [], "contradictions": []}
-    score, verdict = compute_dor_score(req, plan)
-    assert score == 10
-    assert verdict == "pass"
-
-
-def test_compute_dor_score_zero_gives_one_and_needs_work():
-    """Zero raw score gives score=1 and verdict='needs_work'."""
-    req = {"raw": 0, "max": 8, "dimensions": {}, "gaps": []}
-    plan = {"raw": 0, "max": 8, "dimensions": {}, "gaps": [], "contradictions": []}
-    score, verdict = compute_dor_score(req, plan)
-    assert score == 1
-    assert verdict == "needs_work"
-
-
-def test_compute_dor_score_threshold_at_eight():
-    """Score of exactly 8 gives verdict='pass'."""
-    # 8/10 normalized: raw = x/16 such that round(1 + (x/16)*9) == 8
-    # Solve: 8 = round(1 + 9*r), r = 7/9 ≈ 0.778, x = 12.44 → try raw=12
-    req = {"raw": 6, "max": 8, "dimensions": {}, "gaps": []}
-    plan = {"raw": 6, "max": 8, "dimensions": {}, "gaps": [], "contradictions": []}
-    score, verdict = compute_dor_score(req, plan)
-    assert score >= 7
-    if score >= 8:
-        assert verdict == "pass"
-    else:
-        assert verdict == "needs_work"
-
-
-# ── _build_dependency_section ─────────────────────────────────────────────────
-
-
-def test_build_dependency_section_none_deps_returns_empty() -> None:
-    """Returns empty string when no dependencies."""
-    result = _build_dependency_section(None)
-    assert result == ""
-
-
-def test_build_dependency_section_empty_list_returns_empty() -> None:
-    """Returns empty string when dependency list is empty."""
-    result = _build_dependency_section([])
-    assert result == ""
-
-
-def test_build_dependency_section_with_deps() -> None:
-    """Returns markdown section listing dependency slugs."""
-    result = _build_dependency_section(["dep-a", "dep-b"])
-    assert "dep-a" in result
-    assert "dep-b" in result
-    assert "## Dependency" in result
-
-
-# ── _fill_requirements_gaps ──────────────────────────────────────────────────
-
-
-def test_fill_requirements_gaps_adds_constraints_placeholder() -> None:
-    """Adds a Constraints placeholder when gap is reported and section is absent."""
-    content = "# Goal\n\nSome goal.\n"
-    gaps = ["requirements: missing Constraints / Non-functional requirements section"]
-    result, edits = _fill_requirements_gaps(content, gaps, None)
-    assert "## Constraints" in result
-    assert len(edits) > 0
-
-
-def test_fill_requirements_gaps_no_change_when_no_gaps() -> None:
-    """No edits made when gaps list is empty."""
-    content = "# Goal\n\nSome goal.\n"
-    result, edits = _fill_requirements_gaps(content, [], None)
-    assert result == content
-    assert not edits
-
-
-def test_fill_requirements_gaps_adds_dependency_section() -> None:
-    """Adds dependency section when gap is reported and deps exist."""
-    content = "# Goal\n\nSome goal.\n"
-    gaps = ["requirements: missing Dependency section"]
-    result, edits = _fill_requirements_gaps(content, gaps, ["auth-module", "db-layer"])
-    assert "## Dependency" in result
-    assert "auth-module" in result
-    assert "db-layer" in result
-    assert len(edits) > 0
-
-
-# ── _fill_plan_gaps ───────────────────────────────────────────────────────────
-
-
-def test_fill_plan_gaps_adds_risks_placeholder():
-    """Adds a Risks placeholder when gap is reported and section is absent."""
-    content = "## Tasks\n\n- [ ] do something\n"
-    gaps = ["plan: missing Risks section"]
-    result, edits = _fill_plan_gaps(content, gaps)
-    assert "## Risks" in result
-    assert len(edits) > 0
-
-
-def test_fill_plan_gaps_no_change_when_no_gaps():
-    """No edits made when gaps list is empty."""
-    content = "## Tasks\n\n- [ ] do something\n"
-    result, edits = _fill_plan_gaps(content, [])
-    assert result == content
-    assert not edits
-
-
-# ── _is_slug_delivered_or_frozen ──────────────────────────────────────────────
-
-
-def test_is_slug_delivered_returns_false_when_no_delivered_file(tmp_path: Path) -> None:
-    """Returns False when delivered.yaml does not exist."""
-    result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
-    assert result is False
-
-
-def test_is_slug_delivered_returns_true_when_in_delivered(tmp_path: Path) -> None:
-    """Returns True when slug's DB roadmap status is 'delivered'."""
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchone.return_value = ("delivered",)
-    mock_db = MagicMock()
-    mock_db._sync_conn.return_value = mock_conn
-
-    with patch("teleclaude.events.cartridges.lifecycle_router.TodosDb", return_value=mock_db):
-        result = _is_slug_delivered_or_frozen("my-slug", tmp_path)
-
-    assert result is True
-
-
-def test_is_slug_frozen_returns_true_when_in_icebox_yaml(tmp_path: Path) -> None:
-    """Returns True when slug's DB roadmap status is 'icebox'."""
-    mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchone.return_value = ("icebox",)
-    mock_db = MagicMock()
-    mock_db._sync_conn.return_value = mock_conn
-
-    with patch("teleclaude.events.cartridges.lifecycle_router.TodosDb", return_value=mock_db):
-        result = _is_slug_delivered_or_frozen("frozen-slug", tmp_path)
-
-    assert result is True
-
-
-# ── LifecycleRouterCartridge.process ───────────────────────────────────
-
-
 @pytest.mark.asyncio
-async def test_non_planning_event_passes_through():
-    """Events outside _PLANNING_PREFIX pass through without assessment."""
+async def test_non_planning_event_passes_through() -> None:
     cartridge = LifecycleRouterCartridge()
     event = _make_event("system.worker.started")
     ctx = MagicMock()
@@ -363,8 +36,7 @@ async def test_non_planning_event_passes_through():
 
 
 @pytest.mark.asyncio
-async def test_planning_event_not_in_trigger_set_passes_through():
-    """Planning events not in _TRIGGER_EVENTS pass through without assessment."""
+async def test_planning_event_not_in_trigger_set_passes_through() -> None:
     cartridge = LifecycleRouterCartridge()
     event = _make_event("domain.software-development.planning.other_event")
     ctx = MagicMock()
@@ -375,8 +47,7 @@ async def test_planning_event_not_in_trigger_set_passes_through():
 
 
 @pytest.mark.asyncio
-async def test_event_without_slug_passes_through():
-    """Trigger events missing slug field pass through unchanged."""
+async def test_event_without_slug_passes_through() -> None:
     cartridge = LifecycleRouterCartridge()
     event = EventEnvelope(
         event="domain.software-development.planning.artifact_changed",
@@ -394,144 +65,14 @@ async def test_event_without_slug_passes_through():
 
 
 @pytest.mark.asyncio
-async def test_assessment_failure_does_not_propagate():
-    """Exceptions during _assess are swallowed — event is still returned."""
+async def test_non_dump_planning_trigger_passes_without_notification_work() -> None:
     cartridge = LifecycleRouterCartridge()
-    event = _make_event(slug="my-slug")
+    event = _make_event("domain.software-development.planning.artifact_changed")
     ctx = MagicMock()
 
-    with patch.object(cartridge, "_assess", side_effect=RuntimeError("boom")):
-        result = await cartridge.process(event, ctx)
+    result = await cartridge.process(event, ctx)
 
     assert result is event
-
-
-# ── LifecycleRouterCartridge._assess public behavior ───────────────────
-
-
-def _make_mock_todos_db(requirements: str = "", plan: str = "") -> AsyncMock:
-    """Return a mock todos_db wired for prepare cartridge tests."""
-    mock_db = AsyncMock()
-    mock_db.read_state.return_value = {}
-    mock_db.load_deps = AsyncMock(return_value={})
-
-    async def _read_artifact(_: str, name: str) -> str:
-        if name == "requirements":
-            return requirements
-        if name == "implementation-plan":
-            return plan
-        return ""
-
-    mock_db.read_artifact = AsyncMock(side_effect=_read_artifact)
-    return mock_db
-
-
-@pytest.mark.asyncio
-async def test_process_writes_dor_report_and_updates_state(tmp_path: Path) -> None:
-    """process() scores artifacts, writes dor-report artifact, and updates state dor section."""
-    mock_todos_db = _make_mock_todos_db(_full_requirements_content(), _full_plan_content())
-
-    ctx = MagicMock()
-    ctx.db.find_by_group_key = AsyncMock(return_value={"id": 17})
-    ctx.db.update_agent_status = AsyncMock()
-    ctx.db.resolve_notification = AsyncMock()
-
-    cartridge = LifecycleRouterCartridge()
-    event = _make_event()
-
-    with (
-        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock) as emit_event,
-        patch(
-            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
-            new_callable=AsyncMock,
-            return_value=mock_todos_db,
-        ),
-    ):
-        result = await cartridge.process(event, ctx)
-
-    assert result is event
-    write_artifact_calls = {call[0][1] for call in mock_todos_db.write_artifact.call_args_list}
-    assert "dor-report" in write_artifact_calls, "dor-report artifact must be written to DB"
-    state = mock_todos_db.write_state.call_args[0][1]
-    assert "dor" in state
-    assert state["dor"]["status"] == "pass"
-    assert state["dor"]["score"] == 10
-    assert state["dor"]["assessed_commit"] == "abc123"
-    ctx.db.update_agent_status.assert_awaited_once_with(17, "claimed", "prepare-runner")
-    ctx.db.resolve_notification.assert_awaited_once()
-    assert ctx.db.resolve_notification.await_args.args[0] == 17
-    resolve_payload = ctx.db.resolve_notification.await_args.args[1]
-    assert resolve_payload["verdict"] == "pass"
-    assert resolve_payload["score"] == 10
-    emit_event.assert_awaited_once()
-    emitted = emit_event.await_args.kwargs
-    assert emitted["event"] == "domain.software-development.planning.dor_assessed"
-    assert emitted["payload"]["slug"] == "my-slug"
-    assert emitted["payload"]["score"] == 10
-    assert emitted["payload"]["verdict"] == "pass"
-
-
-@pytest.mark.asyncio
-async def test_process_claims_and_resolves_notification(tmp_path: Path) -> None:
-    """process() claims the notification before assessment and resolves it after."""
-    mock_todos_db = _make_mock_todos_db("# Goal\n\nSome goal.\n")
-
-    ctx = MagicMock()
-    ctx.db.find_by_group_key = AsyncMock(return_value={"id": 42})
-    ctx.db.update_agent_status = AsyncMock()
-    ctx.db.resolve_notification = AsyncMock()
-
-    cartridge = LifecycleRouterCartridge()
-    event = _make_event()
-
-    with (
-        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", new_callable=AsyncMock),
-        patch(
-            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
-            new_callable=AsyncMock,
-            return_value=mock_todos_db,
-        ),
-    ):
-        result = await cartridge.process(event, ctx)
-
-    assert result is event
-    ctx.db.update_agent_status.assert_called_once_with(42, "claimed", "prepare-runner")
-    ctx.db.resolve_notification.assert_called_once()
-    assert ctx.db.resolve_notification.call_args[0][0] == 42
-
-
-@pytest.mark.asyncio
-async def test_process_emits_dor_assessed_event(tmp_path: Path) -> None:
-    """process() emits domain.software-development.planning.dor_assessed with slug and score."""
-    mock_todos_db = _make_mock_todos_db("# Goal\n\nSome goal.\n")
-
-    ctx = MagicMock()
-    ctx.db.find_by_group_key = AsyncMock(return_value=None)
-
-    cartridge = LifecycleRouterCartridge()
-    event = _make_event()
-
-    emit_mock = AsyncMock()
-    with (
-        patch("teleclaude.events.cartridges.lifecycle_router._find_project_root", return_value=tmp_path),
-        patch("teleclaude.events.cartridges.lifecycle_router._get_todo_commit", return_value="abc123"),
-        patch("teleclaude.events.cartridges.lifecycle_router.emit_event", emit_mock),
-        patch(
-            "teleclaude.events.cartridges.lifecycle_router.get_todos_db",
-            new_callable=AsyncMock,
-            return_value=mock_todos_db,
-        ),
-    ):
-        result = await cartridge.process(event, ctx)
-
-    assert result is event
-    emit_mock.assert_called_once()
-    call_kwargs = emit_mock.call_args[1]
-    assert call_kwargs["event"] == "domain.software-development.planning.dor_assessed"
-    assert call_kwargs["payload"]["slug"] == "my-slug"
-    assert "score" in call_kwargs["payload"]
-    assert "verdict" in call_kwargs["payload"]
+    ctx.db.find_by_group_key.assert_not_called()
+    ctx.db.update_agent_status.assert_not_called()
+    ctx.db.resolve_notification.assert_not_called()

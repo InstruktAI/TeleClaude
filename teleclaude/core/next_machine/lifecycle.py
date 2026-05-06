@@ -329,7 +329,7 @@ def phase_is_complete(
     if phase == LifecyclePhase.PLAN_REVIEW:
         return model.plan_review.verdict in ("approve", "skipped")
     if phase == LifecyclePhase.GATE:
-        return model.dor is not None and model.dor.status == "pass"
+        return model.plan_review.verdict in ("approve", "skipped")
     if phase == LifecyclePhase.GROUNDING_CHECK:
         return model.grounding.valid
     if phase == LifecyclePhase.RE_GROUNDING:
@@ -367,8 +367,6 @@ def adopt_prepare_handoff_phase(
     if model.grounding.invalidated_at or model.grounding.invalidation_reason:
         return LifecyclePhase.RE_GROUNDING
     if model.plan_review.verdict in ("approve", "skipped"):
-        return LifecyclePhase.GROUNDING_CHECK
-    if model.dor is not None and model.dor.status == "pass":
         return LifecyclePhase.GROUNDING_CHECK
     if model.plan_review.verdict == "needs_work":
         return LifecyclePhase.PLAN_DRAFTING
@@ -454,9 +452,6 @@ def _apply_authoring_signal(model: TodoState, current: LifecyclePhase, signal: s
 
 
 def _apply_prepare_signal(model: TodoState, current: LifecyclePhase, signal: str) -> LifecyclePhase | None:
-    if signal == "dor" and current == LifecyclePhase.GATE and model.dor is not None and model.dor.status == "pass":
-        return _move_to(model, LifecyclePhase.GROUNDING_CHECK)
-
     if signal == "grounding" and current == LifecyclePhase.GROUNDING_CHECK and model.grounding.valid:
         return _move_to(model, LifecyclePhase.PREPARED)
 

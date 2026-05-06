@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -103,24 +103,7 @@ async def test_todo_entity_with_failure_data_enriches():
     assert result is not None
     enrichment = result.payload["_enrichment"]
     assert enrichment["failure_count"] == 2
-    assert enrichment["last_dor_score"] is None
     assert enrichment["current_phase"] is None
-
-
-@pytest.mark.asyncio
-async def test_todo_entity_with_dor_score_enriches():
-    """todo entity with DOR score gets last_dor_score in enrichment."""
-    cartridge = EnrichmentCartridge()
-    event = _make_event(entity="telec://todo/my-slug")
-    db = MagicMock(spec=EventDB)
-    db.count_events_by_entity = AsyncMock(return_value=0)
-    db.get_latest_event_payload = AsyncMock(side_effect=[{"score": 8}, None])
-    ctx = _make_context(db)
-
-    result = await cartridge.process(event, ctx)
-
-    assert result is not None
-    assert result.payload["_enrichment"]["last_dor_score"] == 8
 
 
 @pytest.mark.asyncio
@@ -188,10 +171,7 @@ async def test_todo_enrichment_queries_correct_event_and_filter():
         "domain.software-development.build.completed",
         payload_filter={"success": False},
     )
-    assert db.get_latest_event_payload.call_args_list == [
-        call("telec://todo/my-slug", "dor_assessed"),
-        call("telec://todo/my-slug", "todo_activated"),
-    ]
+    db.get_latest_event_payload.assert_called_once_with("telec://todo/my-slug", "todo_activated")
 
 
 @pytest.mark.asyncio

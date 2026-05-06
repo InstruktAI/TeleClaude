@@ -33,7 +33,7 @@ type: 'policy'
    document the reason at the wrapper site and in the relevant project tooling
    policy before adding an exception.
 
-## Default Commands
+Default invocations:
 
 | Tool purpose | Default invocation   |
 | ------------ | -------------------- |

@@ -60,15 +60,13 @@ class EnrichmentCartridge:
         failure_count = await db.count_events_by_entity(
             entity_uri, "domain.software-development.build.completed", payload_filter={"success": False}
         )
-        dor_payload = await db.get_latest_event_payload(entity_uri, "dor_assessed")
         phase_payload = await db.get_latest_event_payload(entity_uri, "todo_activated")
 
-        if failure_count == 0 and dor_payload is None and phase_payload is None:
+        if failure_count == 0 and phase_payload is None:
             return None
 
         return {
             "failure_count": failure_count,
-            "last_dor_score": dor_payload.get("score") if dor_payload else None,
             "current_phase": phase_payload.get("phase") if phase_payload else None,
         }
 

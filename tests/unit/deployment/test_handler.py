@@ -8,7 +8,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import teleclaude.deployment.executor as executor
 import teleclaude.deployment.handler as handler
 from teleclaude.hooks.webhook_models import HookEvent
 
@@ -27,7 +26,7 @@ async def test_handle_deployment_event_alpha_push_publishes_fanout_and_executes_
     monkeypatch.setattr(handler, "_publish_fanout", publish_fanout)
     monkeypatch.setattr(handler, "resolve_project_config_path", lambda _root: _root / "teleclaude.yml")
     monkeypatch.setattr("teleclaude.config.loader.load_project_config", lambda _path: _project_config("alpha"))
-    monkeypatch.setattr(executor, "execute_update", execute_update)
+    monkeypatch.setattr(handler, "execute_update", execute_update)
 
     event = HookEvent.now(source="github", type="push", properties={"ref": "refs/heads/main"})
     await handler.handle_deployment_event(event)
@@ -49,7 +48,7 @@ async def test_handle_deployment_event_skips_stable_release_outside_pinned_minor
     monkeypatch.setattr(handler, "_publish_fanout", publish_fanout)
     monkeypatch.setattr(handler, "resolve_project_config_path", lambda _root: _root / "teleclaude.yml")
     monkeypatch.setattr("teleclaude.config.loader.load_project_config", lambda _path: _project_config("stable", "1.2"))
-    monkeypatch.setattr(executor, "execute_update", execute_update)
+    monkeypatch.setattr(handler, "execute_update", execute_update)
 
     event = HookEvent.now(
         source="github",
@@ -73,7 +72,7 @@ async def test_handle_deployment_event_from_fanout_executes_locally_without_repu
     monkeypatch.setattr(handler, "_publish_fanout", publish_fanout)
     monkeypatch.setattr(handler, "resolve_project_config_path", lambda _root: _root / "teleclaude.yml")
     monkeypatch.setattr("teleclaude.config.loader.load_project_config", lambda _path: _project_config("stable", "1.2"))
-    monkeypatch.setattr(executor, "execute_update", execute_update)
+    monkeypatch.setattr(handler, "execute_update", execute_update)
 
     event = HookEvent.now(
         source="deployment",

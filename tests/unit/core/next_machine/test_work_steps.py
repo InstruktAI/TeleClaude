@@ -27,10 +27,9 @@ def _mock_todos_db() -> AsyncMock:
     return db
 
 
-def _base_state(*, kind: str = "todo", dor_score: int = 8, lifecycle_phase: str = "build_started") -> dict:
+def _base_state(*, kind: str = "todo", lifecycle_phase: str = "build_started") -> dict:
     return {
         "kind": kind,
-        "dor": {"score": dor_score, "status": "pass"},
         "lifecycle_phase": lifecycle_phase,
     }
 

@@ -557,10 +557,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "stamp": CommandDef(
-                desc="Stamp a verdict, DOR result, or readiness marker into todo state",
+                desc="Stamp a verdict or readiness marker into todo state",
                 args=(
-                    "<slug> [--verdict <v> --phase <p>] [--dor-score <n>]"
-                    " [--dor-status <s>] [--grounding-invalidated]"
+                    "<slug> [--verdict <v> --phase <p>] [--grounding-invalidated]"
                     " [--requirements-ready] [--plan-ready]"
                     " [--specs-built] [--finalize-ready]"
                     " [--agent-a <session_id> --agent-b <session_id>]"
@@ -575,8 +574,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                             "(requirements_review, test_spec_review, plan_review, build_review)"
                         ),
                     ),
-                    Flag("--dor-score", desc="DOR score (integer)"),
-                    Flag("--dor-status", desc="pass | needs_work | needs_decision"),
                     Flag("--grounding-invalidated", desc="Mark grounding as invalid"),
                     Flag("--requirements-ready", desc="Mark requirements as produced and ready for review"),
                     Flag("--plan-ready", desc="Mark implementation plan as produced and ready for review"),

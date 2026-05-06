@@ -178,7 +178,6 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 | -------- | ----------- | ------------------------------------------------ | ------------------ |
 | Prepare  | Architect   | `/next-prepare-discovery`, `/next-prepare-draft` | `slow`             |
 | Prepare  | Reviewer    | `/next-review-requirements`, `/next-review-plan` | `slow`             |
-| Prepare  | Assessor    | `/next-prepare-gate`                             | `slow`             |
 | Build    | Builder     | `/next-build` (or `/next-bugs-fix`)              | `med`              |
 | Review   | Reviewer    | `/next-review-build`                             | `slow` (mandatory) |
 | Fix      | Fixer       | `/next-fix-review`                               | `med`              |
