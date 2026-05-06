@@ -7,7 +7,7 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from instrukt_ai_logging import InstruktAILogger, get_logger
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
@@ -35,7 +35,7 @@ class _ObserverProtocol(Protocol):
     def join(self) -> None: ...
 
 
-logger: InstruktAILogger = get_logger(__name__)
+logger: InstruktAILogger = get_logger("teleclaude.cli.watch")
 
 
 class SmartWatcher(FileSystemEventHandler):
@@ -55,7 +55,7 @@ class SmartWatcher(FileSystemEventHandler):
         self.spec = self._load_gitignore()
         self._sync()
 
-    def _load_gitignore(self) -> PathSpec[Any] | None:
+    def _load_gitignore(self) -> PathSpec | None:
         if not pathspec:
             logger.warning("pathspec not installed; .gitignore support disabled")
             return None
@@ -212,7 +212,7 @@ class MultiProjectWatcher:
             logger.info("Watching %s for changes", added)
 
     def run(self) -> None:
-        setup_logging()
+        setup_logging(source="docs-watch")
         logger.info("Starting global docs watcher (manifest=%s)", self._manifest_path)
         self.refresh_roots()
         self._observer.start()

@@ -1090,8 +1090,8 @@ wheels = [
 
 [[package]]
 name = "instrukt-ai-logger"
-version = "0.3.5"
-source = { git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.5#2c8335c06e243bc46d55918f6bc9675ac80b3b85" }
+version = "0.3.8"
+source = { git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.8#bd295e3eea6baf9f4edd7871477df01e029c77e3" }
 
 [[package]]
 name = "isodate"
@@ -3058,7 +3058,7 @@ requires-dist = [
     { name = "gitpython", specifier = ">=3.1.0" },
     { name = "greenlet", specifier = ">=3.3.0" },
     { name = "httpx", specifier = ">=0.28.0" },
-    { name = "instrukt-ai-logger", git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.5" },
+    { name = "instrukt-ai-logger", git = "https://github.com/InstruktAI/python-logger.git?rev=v0.3.8" },
     { name = "misaki", extras = ["en"], marker = "platform_machine == 'arm64' and sys_platform == 'darwin'" },
     { name = "mlx-audio", marker = "platform_machine == 'arm64' and sys_platform == 'darwin'", git = "https://github.com/Blaizzy/mlx-audio.git?branch=main" },
     { name = "munch", specifier = ">=4.0.0" },

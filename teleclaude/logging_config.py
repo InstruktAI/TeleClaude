@@ -20,16 +20,25 @@ from instrukt_ai_logging import configure_logging
 _SIBLING_PACKAGES = ("teleclaude.events",)
 
 
-def setup_logging(level: str | None = None) -> None:
+def setup_logging(level: str | None = None, *, source: str | None = None) -> None:
     """Configure TeleClaude logging.
 
     Args:
         level: Optional override for `TELECLAUDE_LOG_LEVEL`.
+        source: Logical identity of the producing process within the teleclaude
+            app. Default writes to `teleclaude.log` (the daemon). Sibling
+            processes pass their own bare stem (e.g. `source="docs-watch"`,
+            `source="cron"`) so each writes to its own `<source>.log` file
+            under `/var/log/instrukt-ai/teleclaude/`. The `instrukt-ai-logs`
+            CLI merges across all files.
     """
     if level:
         os.environ["TELECLAUDE_LOG_LEVEL"] = level
 
-    configure_logging("teleclaude")
+    if source is not None:
+        configure_logging("teleclaude", source=source)
+    else:
+        configure_logging("teleclaude")
 
     # teleclaude.events is a separate top-level package — configure_logging only
     # sets the "teleclaude" logger to INFO. Without this, teleclaude.events.*
