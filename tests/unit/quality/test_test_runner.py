@@ -205,19 +205,29 @@ class TestExitBehavior:
     """The test command exits non-zero when any test fails."""
 
     def test_pytest_uses_uv_invocation(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Pytest runs through the uv-managed project environment."""
-        calls: list[tuple[list[str], str | None, bool]] = []
+        """Pytest runs through the uv-managed project environment as a session leader."""
+        popen_calls: list[tuple[list[str], str | None, bool]] = []
 
-        def _capture_run(cmd: list[str], cwd: str | None = None, check: bool = False) -> CompletedProcess[str]:
-            calls.append((list(cmd), cwd, check))
-            return CompletedProcess(args=cmd, returncode=0)
+        class _FakeProc:
+            pid = 12345
 
-        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.run", _capture_run)
+            def wait(self, timeout: int | None = None) -> int:
+                return 0
+
+        def _capture_popen(cmd: list[str], **kwargs: object) -> _FakeProc:
+            popen_calls.append((list(cmd), kwargs.get("cwd"), kwargs.get("start_new_session", False)))
+            return _FakeProc()
+
+        def _stub_run(*_args: object, **_kwargs: object) -> CompletedProcess[str]:
+            return CompletedProcess(args=[], returncode=0)
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.Popen", _capture_popen)
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.run", _stub_run)
 
         exit_code = run_pytest(["tests/unit", "-q"], cwd=tmp_path)
 
         assert exit_code == 0
-        assert calls == [(["uv", "run", "pytest", "tests/unit", "-q"], str(tmp_path), False)]
+        assert popen_calls == [(["uv", "run", "pytest", "tests/unit", "-q"], str(tmp_path), True)]
 
     def test_exits_nonzero_when_pytest_reports_failure(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """TestRunner exits non-zero when the underlying pytest invocation returns failure."""
