@@ -40,7 +40,7 @@ flowchart TB
 
 - Domain events:
   - Session lifecycle: SESSION_STARTED, SESSION_UPDATED, SESSION_CLOSED
-  - Agent activity: AGENT_ACTIVITY (subtypes: tool_use, tool_done, agent_stop, user_prompt_submit)
+  - Agent activity: AGENT_ACTIVITY (subtypes: tool_use, agent_stop, user_prompt_submit)
   - Infrastructure: COMPUTER_UPDATED
   - Project/todo changes: PROJECTS_UPDATED, TODOS_UPDATED, TODO_CREATED, TODO_UPDATED, TODO_REMOVED
 - Local data sources: SQLite sessions table, command handlers, project registry, computer registry
@@ -153,7 +153,7 @@ Cache changes are pushed to WS clients as typed events. The API server normalize
 | `session_started`  | SessionStartedEventDTO  | New session created                                                    |
 | `session_updated`  | SessionUpdatedEventDTO  | Session fields changed (status, title, etc.)                           |
 | `session_closed`   | SessionClosedEventDTO   | Session ended                                                          |
-| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (tool_use, tool_done, agent_stop, user_prompt_submit) |
+| `agent_activity`   | AgentActivityEventDTO   | Agent hook event (tool_use, agent_stop, user_prompt_submit) |
 | `computer_updated` | RefreshEventDTO         | Computer online/offline/stats change                                   |
 | `project_updated`  | RefreshEventDTO         | Single project changed                                                 |
 | `projects_updated` | RefreshEventDTO         | Project list changed on a computer                                     |

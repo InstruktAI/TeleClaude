@@ -3,7 +3,7 @@
  * Do not edit by hand.
  */
 
-export type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | ToolDoneActivityEvent | AgentStopActivityEvent;
+export type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | AgentStopActivityEvent;
 export type AgentName = "claude" | "gemini" | "codex";
 export type AgentStatus = "available" | "unavailable" | "degraded";
 export type ErrorSeverity = "warning" | "error" | "critical";
@@ -410,10 +410,6 @@ export interface TodoInfo {
   prepare_phase?: string | null;
   integration_phase?: string | null;
   finalize_status?: string | null;
-}
-
-export interface ToolDoneActivityEvent extends BaseAgentActivityEvent {
-  type: "tool_done";
 }
 
 export interface ToolUseActivityEvent extends BaseAgentActivityEvent {

@@ -93,9 +93,9 @@ describe('ActivityTracker', () => {
       )
       const tracker = createActivityTracker()
       tracker.handleEvent(
-        makeActivityEvent({ session_id: 'sess-1', type: 'tool_done' }),
+        makeActivityEvent({ session_id: 'sess-1', type: 'tool_use' }),
       )
-      expect(tracker.getActivityType('sess-1')).toBe('tool_done')
+      expect(tracker.getActivityType('sess-1')).toBe('tool_use')
     })
 
     it('updates activity type when new event arrives', async () => {
@@ -107,9 +107,9 @@ describe('ActivityTracker', () => {
         makeActivityEvent({ session_id: 'sess-1', type: 'tool_use' }),
       )
       tracker.handleEvent(
-        makeActivityEvent({ session_id: 'sess-1', type: 'tool_done' }),
+        makeActivityEvent({ session_id: 'sess-1', type: 'agent_stop' }),
       )
-      expect(tracker.getActivityType('sess-1')).toBe('tool_done')
+      expect(tracker.getActivityType('sess-1')).toBe('agent_stop')
     })
 
     it(
@@ -217,10 +217,10 @@ describe('ActivityTracker', () => {
           makeActivityEvent({ session_id: 'sess-1', type: 'tool_use' }),
         )
         tracker.handleEvent(
-          makeActivityEvent({ session_id: 'sess-2', type: 'tool_done' }),
+          makeActivityEvent({ session_id: 'sess-2', type: 'agent_stop' }),
         )
         expect(tracker.getActivityType('sess-1')).toBe('tool_use')
-        expect(tracker.getActivityType('sess-2')).toBe('tool_done')
+        expect(tracker.getActivityType('sess-2')).toBe('agent_stop')
       },
     )
   })

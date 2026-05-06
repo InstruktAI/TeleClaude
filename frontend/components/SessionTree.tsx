@@ -161,14 +161,6 @@ function outputDetailLine(
     }
   }
 
-  if (state?.activityEvent === "tool_done") {
-    return {
-      timestamp: formatSessionTime(session.last_activity),
-      text: "out: ...",
-      emphasized: true,
-    }
-  }
-
   if (state?.activityEvent === "user_prompt_submit") {
     return {
       timestamp: formatSessionTime(session.last_activity),

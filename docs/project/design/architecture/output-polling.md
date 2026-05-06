@@ -15,7 +15,7 @@ type: 'design'
 2. **PollingCoordinator**: Manages the collection of pollers and ensures they start/stop with the session lifecycle.
 3. **Single data plane**:
    - Output progression is transcript/tmux polling driven.
-   - Hook `tool_use` / `tool_done` are control-plane signals only.
+   - Hook `tool_use` is a control-plane signal only.
 4. **Read**: Poller executes `tmux capture-pane`.
 5. **Normalize**: Raw pane output is normalized for generic change detection; raw capture is preserved for Codex-specific synthesis.
 6. **Diff**: Normalized pane snapshots are compared against prior normalized capture.

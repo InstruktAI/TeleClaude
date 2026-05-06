@@ -16,7 +16,7 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 **Inputs:**
 
 - `user_input_sent` event — User sends a message to an agent
-- `tool_done` event — Agent produces output (streaming, Gemini only currently)
+- `tool_use` event — Agent starts a tool call (drives the "live activity" lit state)
 - `agent_stop` event — Agent completes its turn
 - User navigation — Selecting/previewing a session
 
@@ -35,7 +35,7 @@ The highlight system provides visual cues in the TUI to alert users about sessio
 
 4. **Viewing clears output highlight**: Selecting a session (preview pane or sticky) acknowledges the output, clearing its highlight.
 
-5. **Brief output highlight on streaming output**: For agents with streaming output (`tool_done` events), output is temporarily highlighted for 3 seconds, then cleared — unless `agent_stop` follows, which sets persistent highlight.
+5. **Live output highlight during active tool**: While `activity_event == "tool_use"` the output line is lit. The highlight follows the live activity state — the next `tool_use` or `agent_stop` advances it.
 
 ## Primary flows
 
@@ -61,7 +61,7 @@ sequenceDiagram
     Note over TUI: No highlight (acknowledged)
 ```
 
-### 2. Streaming agent output (Gemini)
+### 2. Live tool activity
 
 ```mermaid
 sequenceDiagram
@@ -72,17 +72,17 @@ sequenceDiagram
     User->>TUI: Send message
     TUI->>TUI: Highlight input
 
-    Agent->>TUI: tool_done event
+    Agent->>TUI: tool_use event
     TUI->>TUI: Clear input highlight
-    TUI->>TUI: Set temp output highlight (3s)
-    Note over TUI: Brief highlight during streaming
+    TUI->>TUI: Output line lit while activity_event == tool_use
+    Note over TUI: Live activity highlight
 
-    TUI->>TUI: Timer expires (3s)
-    TUI->>TUI: Clear temp highlight
+    Agent->>TUI: tool_use (next tool) / agent_stop
+    Note over TUI: activity_event advances; highlight follows
 
-    Agent->>TUI: agent_stop event
+    Agent->>TUI: agent_stop event with summary
     TUI->>TUI: Set persistent output highlight
-    Note over TUI: Final highlight until viewed
+    Note over TUI: Final highlight until viewed (or 3s on preview)
 ```
 
 ### 3. User returns to laptop

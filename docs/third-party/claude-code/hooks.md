@@ -70,9 +70,10 @@ Mapping rules:
   - Requires `data.transcript_path` (native transcript path).
 - `UserPromptSubmit` → `event_type = "prompt"`
   - Extracts `data.user_prompt` to update `last_message_sent` in the database.
+- `PreToolUse` → `event_type = "tool_use"` (drives TUI activity)
 - `Stop` → `event_type = "stop"`
 - `Notification` → `event_type = "notification"`
-- `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)
+- Other Claude hook signatures (`PostToolUse`, `PostToolUseFailure`, `SubagentStart`, `SubagentStop`, `SessionEnd`, `PreCompact`) are catalogued in `HOOK_EVENT_MAP` but mapped to `None` — TeleClaude does not install or process them.
 
 ## Sources
 

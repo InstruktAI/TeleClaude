@@ -29,9 +29,7 @@ agent_hook_events:
   - session_start
   - user_prompt_submit
   - tool_use
-  - tool_done
   - agent_stop
-  - session_end
   - error
 
 canonical_outbound_activity_events:
@@ -52,7 +50,6 @@ Canonical activity events are the stable outbound vocabulary for all consumer ad
 | -------------------- | --------------------- | ---------------------------------- |
 | `user_prompt_submit` | `user_prompt_submit`  | User turn start signal             |
 | `tool_use`           | `agent_output_update` | Agent working: tool call initiated |
-| `tool_done`          | `agent_output_update` | Agent working: tool call completed |
 | `agent_stop`         | `agent_output_stop`   | Agent turn complete                |
 
 ### Canonical payload fields

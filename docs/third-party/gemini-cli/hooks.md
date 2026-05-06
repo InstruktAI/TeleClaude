@@ -72,22 +72,24 @@ Notification fields:
 
 ## TeleClaude adapter mapping
 
-TeleClaude installs hooks for **all Gemini events** so any event can refresh
-the transcript path. Only session_start, stop, notification, and session_end
-drive agent workflow. Other events are used for transcript capture only.
+TeleClaude installs hooks for the Gemini events with internal handlers.
+Other Gemini hook signatures are catalogued in `HOOK_EVENT_MAP` but mapped to
+`None` and not installed.
 
 Mapping rules:
 
 - `SessionStart` → `event_type = "session_start"`
   - Requires `data.session_id` (native session id).
   - Requires `data.transcript_path` (native transcript path).
+- `BeforeAgent` → `event_type = "user_prompt_submit"`
+- `BeforeTool` → `event_type = "tool_use"` (drives TUI activity)
 - `AfterAgent` → `event_type = "stop"` (fires when agent loop ends = turn completion)
   - **TODO(2025-01):** Using Gemini CLI nightly (0.24.0) for AfterAgent fix (fires once per turn).
     When stable release includes fix from PR #15651/#15701, switch back: `npm install --grep @google/gemini-cli@latest`
     Track: https://github.com/google-gemini/gemini-cli/issues/15712
   - Also triggers extraction of last user input from transcript to update `last_message_sent` in the database.
 - `Notification` → `event_type = "notification"`
-- `SessionEnd` → `event_type = "session_end"` (reserved; no handler logic yet)
+- Other Gemini hook signatures (`AfterTool`, `BeforeModel`, `BeforeToolSelection`, `PreCompress`, `SessionEnd`) are catalogued but mapped to `None` — TeleClaude does not install or process them.
 
 Note: `BeforeUserInput` does NOT exist in Gemini CLI. Use `AfterAgent` for turn completion.
 

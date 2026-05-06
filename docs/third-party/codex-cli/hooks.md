@@ -23,7 +23,7 @@ TeleClaude currently manages this native Codex subset:
 - `UserPromptSubmit`
 - `Stop`
 
-`tool_use` and `tool_done` remain synthetic for now.
+`tool_use` is synthesized from terminal-output polling (see polling_coordinator).
 
 ## Input shape we care about
 
