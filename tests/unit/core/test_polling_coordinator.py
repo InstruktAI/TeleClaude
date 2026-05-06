@@ -71,10 +71,8 @@ def _make_session(
 @pytest.fixture(autouse=True)
 def _reset_codex_sets() -> Generator[None, None, None]:
     pc._codex_transcript_bind_attempted.clear()
-    pc._title_projection_signatures.clear()
     yield
     pc._codex_transcript_bind_attempted.clear()
-    pc._title_projection_signatures.clear()
 
 
 class TestTryBindCodexTranscript:
