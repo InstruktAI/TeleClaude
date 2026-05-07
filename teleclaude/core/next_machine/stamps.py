@@ -13,6 +13,7 @@ factory; nothing is threaded through parameters.
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
 from teleclaude.core.next_machine.state_io import (
+    _ARTIFACT_UPSTREAMS,
     _BUILD_VERDICT_PHASE,
     _BUILD_VERDICT_VALUES,
     _PREPARE_VERDICT_PHASES,
@@ -136,14 +138,29 @@ async def _apply_readiness_stamp(
     artifact_name: str,
     signal: str,
 ) -> None:
-    """Validate artifact existence, hydrate digest, apply signal, and reject no-ops."""
+    """Validate artifact existence, hydrate provenance, apply signal, reject no-ops.
+
+    Provenance hydration mirrors what ``stamp_artifact`` and
+    ``_sync_reconcile_artifacts`` do on the happy path: digest, ``produced_at``,
+    and ``upstream_digests``. Without ``upstream_digests``, the prepare state
+    machine reads the entry as having missing provenance and loops on
+    ``Dispatch reason: provenance-missing`` even though the stamp was issued.
+    """
     if not await todos_db.artifact_exists(slug, artifact_name):
         raise StateMutationError(f"cannot stamp {signal}: {artifact_name} artifact missing")
     state_key = _READINESS_ARTIFACT_KEY.get(artifact_name)
     if state_key:
         digest = await todos_db.artifact_digest(slug, artifact_name)
         if digest:
-            getattr(writer.state.artifacts, state_key).digest = digest
+            entry = getattr(writer.state.artifacts, state_key)
+            entry.digest = digest
+            if not entry.produced_at:
+                entry.produced_at = datetime.now(UTC).isoformat()
+            upstream_keys = _ARTIFACT_UPSTREAMS.get(state_key, ())
+            if upstream_keys:
+                entry.upstream_digests = {
+                    upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
+                }
     _apply_effective_signal(writer, signal)
 
 
