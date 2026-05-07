@@ -1,7 +1,7 @@
 """teleclaude.events — event processing platform core package."""
 
 from teleclaude.events.catalog import EventCatalog, EventSchema, NotificationLifecycle, build_default_catalog
-from teleclaude.events.db import EventDB
+from teleclaude.events.db import EventDB, get_event_db
 from teleclaude.events.envelope import ActionDescriptor, EventEnvelope, EventLevel, EventVisibility
 from teleclaude.events.pipeline import Pipeline, PipelineContext
 from teleclaude.events.processor import EventProcessor
@@ -24,4 +24,6 @@ __all__ = [
     "configure_producer",
     "emit_event",
     "ensure_event_producer",
+    "get_event_db",
 ]
+

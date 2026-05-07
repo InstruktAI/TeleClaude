@@ -114,7 +114,7 @@ async def delete_observation(observation_id: int) -> dict:  # type: ignore[type-
 
 @router.get("/inject")
 async def inject_context(projects: str, identity_key: str | None = None) -> str:
-    """Generate context for injection (replaces memory-management-api /api/context/inject)."""
+    """Generate context for injection."""
     project = projects.split(",")[0].strip()
     if not project:
         return ""

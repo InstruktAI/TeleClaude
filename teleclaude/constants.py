@@ -226,7 +226,6 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
             "teleclaude/utils/**",
             "teleclaude/quality/**",
             "teleclaude/session_scoping/**",
-            "teleclaude/core/next_machine/**",
             "teleclaude/project_setup/**",
             "teleclaude/install/**",
             "teleclaude/codegen/**",

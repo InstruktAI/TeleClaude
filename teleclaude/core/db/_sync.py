@@ -3,6 +3,9 @@
 These are standalone functions, not class methods.
 """
 
+import sqlite3
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from sqlalchemy.exc import OperationalError
@@ -95,6 +98,56 @@ def get_session_field_sync(db_path: str, session_id: str, field: str) -> object 
                 raise
     finally:
         engine.dispose()
+
+
+def _parse_iso_utc(value: str) -> datetime | None:
+    try:
+        cleaned = value.strip()
+        if cleaned.endswith("Z"):
+            cleaned = cleaned[:-1] + "+00:00"
+        parsed = datetime.fromisoformat(cleaned)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed
+
+
+def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float = 0.2) -> bool:
+    """Sync helper to probe agent availability from the main DB.
+
+    Cold-path read used by sub-CLIs that run without a daemon-managed Db
+    instance. Fail-open: missing DB/table/row, contention beyond timeout, or
+    any sqlite error all return True so dispatch is never blocked by an
+    unreachable availability table. The semantic mirrors what an interactive
+    user would see when probing availability without joining the daemon.
+    """
+    if not Path(db_path).exists():
+        return True
+    try:
+        with sqlite3.connect(db_path, timeout=timeout_s) as conn:
+            row = conn.execute(
+                "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",  # guard: raw-sql
+                (agent,),
+            ).fetchone()
+    except sqlite3.Error:
+        return True
+
+    if row is None:
+        return True
+
+    available_raw, unavailable_until, reason = row
+    if isinstance(reason, str) and reason.startswith("degraded"):
+        return False
+    if bool(available_raw):
+        return True
+
+    if isinstance(unavailable_until, str) and unavailable_until.strip():
+        parsed = _parse_iso_utc(unavailable_until)
+        if parsed is not None and parsed <= datetime.now(UTC):
+            return True
+
+    return False
 
 
 class SessionIdentityError(ValueError):

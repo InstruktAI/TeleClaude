@@ -16,10 +16,8 @@ import json
 import os
 import shlex
 import shutil
-import sqlite3
 import subprocess
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
@@ -35,6 +33,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config as app_config
 from teleclaude.constants import AGENT_PROTOCOL
 from teleclaude.core.agents import get_enabled_agents, is_agent_enabled
+from teleclaude.core.db import read_agent_availability_sync
 from teleclaude.helpers.agent_types import AgentName, ThinkingMode
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.runtime.binaries import resolve_agent_binary
@@ -170,39 +169,7 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
         return shutil.which(binary) is not None
 
     def db_available(agent: AgentName) -> bool:
-        """Read agent availability from teleclaude.db.
-
-        Missing DB/table/row is treated as available to preserve standalone behavior.
-        """
-        db_path = MAIN_DB_PATH
-        if not db_path.exists():
-            return True
-
-        try:
-            with sqlite3.connect(str(db_path), timeout=0.2) as conn:
-                row = conn.execute(
-                    "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",
-                    (agent.value,),
-                ).fetchone()
-        except sqlite3.Error:
-            return True
-
-        if row is None:
-            return True
-
-        available_raw, unavailable_until, reason = row
-        if isinstance(reason, str) and reason.startswith("degraded"):
-            return False
-        if bool(available_raw):
-            return True
-
-        # Expired temporary unavailability should not block selection.
-        if isinstance(unavailable_until, str) and unavailable_until.strip():
-            parsed = _parse_iso_utc(unavailable_until)
-            if parsed is not None and parsed <= datetime.now(UTC):
-                return True
-
-        return False
+        return read_agent_availability_sync(str(MAIN_DB_PATH), agent.value)
 
     def agent_usable(agent: AgentName) -> bool:
         return is_agent_enabled(agent.value) and binary_available(agent) and db_available(agent)
@@ -220,18 +187,6 @@ def _pick_agent(preferred: AgentName | None) -> AgentName:
         if agent_usable(candidate):
             return candidate
     raise SystemExit("ERROR: no available agent CLI found for runtime policy")
-
-
-def _parse_iso_utc(value: str) -> datetime | None:
-    """Parse ISO timestamp to timezone-aware UTC datetime."""
-    normalized = value.strip().replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=UTC)
-    return parsed.astimezone(UTC)
 
 
 # CLI agents authenticate via OAuth/account allowance, not API keys.

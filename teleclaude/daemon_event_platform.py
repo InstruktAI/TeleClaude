@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config, config_path
 from teleclaude.config.loader import load_project_config
-from teleclaude.core.db import db
+from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
@@ -29,6 +29,7 @@ from teleclaude.events import (
     PipelineContext,
     build_default_catalog,
     configure_producer,
+    get_event_db,
 )
 from teleclaude.events.cartridges import (
     ClassificationCartridge,
@@ -87,8 +88,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _init_event_db_storage(self) -> None:
         """Initialize event storage."""
-        self._event_db = EventDB()
-        await self._event_db.init()
+        self._event_db = await get_event_db()
         logger.info("EventDB initialized")
 
     async def _get_event_redis_client(self) -> object | None:
@@ -422,6 +422,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""
 
+        db = await get_db()
         contract_registry = ContractRegistry()
         handler_registry = HandlerRegistry()
         dispatcher = HookDispatcher(contract_registry, handler_registry, db.enqueue_webhook)  # type: ignore[arg-type]

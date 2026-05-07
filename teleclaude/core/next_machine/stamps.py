@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.db import db as default_sessions_db
+from teleclaude.core.db import get_db
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
@@ -79,7 +79,7 @@ async def apply_todo_stamp(
         raise ValueError(f"no state found for slug '{slug}'")
 
     writer = StateWriter(raw_state)
-    sessions = session_db or default_sessions_db
+    sessions = session_db if session_db is not None else await get_db()
 
     if stamp_type == "grounding":
         _apply_grounding_stamp(writer, value)
@@ -224,7 +224,6 @@ async def _validate_build_complete_owner(
 ) -> None:
     if not caller_session_id:
         raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
-    await _ensure_session_db_initialized(session_db)
     session = await session_db.get_session(caller_session_id)
     if session is None:
         raise PermissionError(f"build_complete stamp for {slug} requires a known TeleClaude session")
@@ -232,11 +231,6 @@ async def _validate_build_complete_owner(
         raise PermissionError(
             f"build_complete stamp for {slug} requires caller session {caller_session_id} to own working_slug={slug}"
         )
-
-
-async def _ensure_session_db_initialized(session_db: Db) -> None:
-    if not session_db.is_initialized():
-        await session_db.initialize()
 
 
 def _apply_effective_signal(writer: StateWriter, signal: str, *, worktree_cwd: str | None = None) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from importlib import import_module
@@ -13,6 +14,7 @@ import aiosqlite
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventEnvelope
+from teleclaude.paths import EVENTS_DB_PATH
 
 if TYPE_CHECKING:
     from teleclaude.events.signal.db import SignalDB
@@ -156,11 +158,11 @@ def _signal_db_class() -> type[SignalDB]:
 class EventDB:
     """SQLite-backed storage for event notifications and correlation state."""
 
-    def __init__(self, db_path: str | Path = "~/.teleclaude/events.db") -> None:
+    def __init__(self, db_path: str | Path = EVENTS_DB_PATH) -> None:
         self._db_path = Path(db_path).expanduser()
         self._conn: aiosqlite.Connection | None = None
 
-    async def init(self) -> None:
+    async def initialize(self) -> None:
         """Initialize the SQLite database and all event-related tables."""
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
         bootstrap_engine = create_sync_db_engine(self._db_path)
@@ -176,11 +178,15 @@ class EventDB:
         # Initialize signal pipeline tables after the shared engine bootstraps the DB file.
         await _signal_db_class()(self._conn).init()
 
+    def is_initialized(self) -> bool:
+        """Return whether the SQLite connection has been opened."""
+        return self._conn is not None
+
     @property
     def signal(self) -> SignalDB:
         """Return a signal-pipeline DB wrapper sharing the same SQLite connection."""
         if self._conn is None:
-            raise RuntimeError("EventDB not initialized. Call init() first.")
+            raise RuntimeError("EventDB not initialized. Call initialize() first.")
         return _signal_db_class()(self._conn)
 
     async def close(self) -> None:
@@ -192,7 +198,7 @@ class EventDB:
     def _db(self) -> aiosqlite.Connection:
         """Return the initialized SQLite connection."""
         if self._conn is None:
-            raise RuntimeError("EventDB not initialized. Call init() first.")
+            raise RuntimeError("EventDB not initialized. Call initialize() first.")
         return self._conn
 
     async def insert_notification(self, envelope: EventEnvelope) -> int:
@@ -465,3 +471,23 @@ class EventDB:
             (older_than.isoformat(),),
         )
         await self._db().commit()
+
+
+_event_db_instance: EventDB | None = None
+_event_db_lock = asyncio.Lock()
+
+
+async def get_event_db() -> EventDB:
+    """Return the process-wide initialized EventDB, creating it on first call.
+
+    Daemon, API, and CLI consumers all reach the events DB through this factory.
+    Memoized per process; safe under concurrent first-callers via the lock.
+    """
+    global _event_db_instance
+    if _event_db_instance is None:
+        async with _event_db_lock:
+            if _event_db_instance is None:
+                inst = EventDB()
+                await inst.initialize()
+                _event_db_instance = inst
+    return _event_db_instance
