@@ -36,7 +36,7 @@ def read_head_sha(workspace_root: str) -> str | None:
 def paths_changed_since(workspace_root: str, anchor_sha: str) -> set[str]:
     """Return paths that differ between anchor commit and the working state.
 
-    Combines three sources to cover everything that changed in this turn:
+    Two git queries cover everything changed in this turn:
     - `git diff --name-only <anchor>`: committed-since-anchor + tracked dirty
     - `git ls-files --others --exclude-standard`: untracked files (e.g. agent
       Write of a new file that hasn't been added yet)
