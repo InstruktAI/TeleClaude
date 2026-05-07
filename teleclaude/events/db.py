@@ -190,10 +190,13 @@ class EventDB:
         return _signal_db_class()(self._conn)
 
     async def close(self) -> None:
-        """Close the underlying SQLite connection."""
+        """Close the underlying SQLite connection and clear the factory cache."""
+        global _event_db_instance
         if self._conn:
             await self._conn.close()
             self._conn = None
+        if _event_db_instance is self:
+            _event_db_instance = None
 
     def _db(self) -> aiosqlite.Connection:
         """Return the initialized SQLite connection."""
@@ -482,12 +485,18 @@ async def get_event_db() -> EventDB:
 
     Daemon, API, and CLI consumers all reach the events DB through this factory.
     Memoized per process; safe under concurrent first-callers via the lock.
+    A cached instance whose connection has been closed is replaced rather than
+    handed out — ``EventDB.close`` clears this cache, but a defensive
+    ``is_initialized()`` check covers external lifecycle paths.
     """
     global _event_db_instance
-    if _event_db_instance is None:
+    cached = _event_db_instance
+    if cached is None or not cached.is_initialized():
         async with _event_db_lock:
-            if _event_db_instance is None:
+            cached = _event_db_instance
+            if cached is None or not cached.is_initialized():
                 inst = EventDB()
                 await inst.initialize()
                 _event_db_instance = inst
-    return _event_db_instance
+                return inst
+    return cached

@@ -11,15 +11,12 @@ description: 'Persistent memory subsystem for storing, searching, and injecting 
 
 Give AI agents persistent memory across sessions by storing relationship-centric observations in the daemon's SQLite database. Observations are typed, searchable via FTS5, and injected into agent sessions at startup via the hook receiver.
 
-Replaces the external `memory-management-api` dependency (TypeScript/Bun on port 37777) with a fully integrated Python implementation: single database, single package, full ownership.
-
 ## Inputs/Outputs
 
 **Inputs:**
 
 - HTTP API requests from agents (`POST /api/memory/save`, `GET /api/memory/search`)
 - Hook receiver `SessionStart` event (triggers context injection)
-- Migration script for one-time import from legacy `memory-management-api` database
 
 **Outputs:**
 
@@ -36,7 +33,6 @@ teleclaude/memory/
 ├── store.py             # MemoryStore: save/retrieve observations (async + sync)
 ├── search.py            # MemorySearch: FTS5/LIKE search, timeline, batch fetch
 ├── api_routes.py        # FastAPI router: /api/memory/* endpoints
-├── migrate_from_claude_mem.py  # One-time migration from legacy memory-management-api DB
 └── context/
     ├── __init__.py      # Exports: generate_context, generate_context_sync
     ├── builder.py       # Entry points: fetch observations + summaries, compile, render
@@ -115,7 +111,7 @@ The `files_read` and `files_modified` columns are retained in the schema for bac
 
 ### 1. HTTP API (agent-facing)
 
-Agents discover the memory API through `telec docs index` + `telec docs get` (retrieving the `memory-management-api` spec doc) and then call the daemon API over the local unix socket.
+Agents discover the memory API through `telec docs index` + `telec docs get` and then call the daemon API over the local unix socket.
 
 | Endpoint               | Method | Purpose                                    |
 | ---------------------- | ------ | ------------------------------------------ |
@@ -218,7 +214,6 @@ sequenceDiagram
 | Context generation fails                   | Empty string returned; no injection         | Agent starts without memory context; logged as warning |
 | Invalid observation type                   | 422 response with allowed values            | Agent adjusts payload; no data corruption              |
 | Database locked during save                | SQLAlchemy retries via busy_timeout (5s)    | Automatic for short locks; longer locks fail and log   |
-| Migration from memory-management-api fails | INSERT OR IGNORE; partial migration is safe | Re-run migration; idempotent by design                 |
 | Hook receiver DB connection fails          | Empty context returned                      | Agent starts without memory; daemon continues normally |
 
 ## See Also

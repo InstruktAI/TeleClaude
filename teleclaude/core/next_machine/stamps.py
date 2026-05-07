@@ -85,7 +85,6 @@ async def apply_todo_stamp(
         raise ValueError(f"no state found for slug '{slug}'")
 
     writer = StateWriter(raw_state)
-    sessions = session_db if session_db is not None else await get_db()
 
     if stamp_type == "grounding":
         _apply_grounding_stamp(writer, value)
@@ -102,14 +101,14 @@ async def apply_todo_stamp(
     elif stamp_type == "specs_built":
         _apply_effective_signal(writer, "specs_built")
     elif stamp_type == "prepare_pair":
-        await _apply_prepare_pair_stamp(writer, value, session_db=sessions)
+        await _apply_prepare_pair_stamp(writer, value, session_db=session_db)
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
             cwd=cwd,
             slug=slug,
             caller_session_id=caller_session_id,
-            session_db=sessions,
+            session_db=session_db,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -165,15 +164,16 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
     creative[section] = section_state
 
 
-async def _apply_prepare_pair_stamp(writer: StateWriter, value: str, *, session_db: Db) -> None:
+async def _apply_prepare_pair_stamp(writer: StateWriter, value: str, *, session_db: Db | None = None) -> None:
     sid_a, sid_b = _parse_prepare_pair_value(value)
     if not sid_a or not sid_b:
         raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
 
-    session_a = await session_db.get_session(sid_a)
+    sessions = session_db if session_db is not None else await get_db()
+    session_a = await sessions.get_session(sid_a)
     if session_a is None:
         raise StateMutationError(f"unknown session for slot_a: {sid_a}")
-    session_b = await session_db.get_session(sid_b)
+    session_b = await sessions.get_session(sid_b)
     if session_b is None:
         raise StateMutationError(f"unknown session for slot_b: {sid_b}")
 
@@ -217,9 +217,10 @@ async def _apply_build_complete_stamp(
     cwd: str,
     slug: str,
     caller_session_id: str | None,
-    session_db: Db,
+    session_db: Db | None = None,
 ) -> None:
-    await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id, session_db=session_db)
+    sessions = session_db if session_db is not None else await get_db()
+    await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id, session_db=sessions)
 
     current = LifecyclePhase(writer.state.lifecycle_phase)
     if current not in (LifecyclePhase.BUILD_STARTED, LifecyclePhase.REVIEW_CHANGES_REQUESTED):

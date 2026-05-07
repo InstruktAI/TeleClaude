@@ -119,15 +119,20 @@ def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float =
     Cold-path read used by sub-CLIs that run without a daemon-managed Db
     instance. Fail-open: missing DB/table/row, contention beyond timeout, or
     any sqlite error all return True so dispatch is never blocked by an
-    unreachable availability table. The semantic mirrors what an interactive
-    user would see when probing availability without joining the daemon.
+    unreachable availability table.
+
+    Mirrors the expiry semantics of the async ``Db.get_agent_availability``:
+    an expired ``unavailable_until`` overrides the ``available`` flag, and an
+    expired ``degraded_until`` clears a ``degraded`` reason. Without these
+    checks an agent stays excluded after its TTL has elapsed.
     """
     if not Path(db_path).exists():
         return True
     try:
         with sqlite3.connect(db_path, timeout=timeout_s) as conn:
             row = conn.execute(
-                "SELECT available, unavailable_until, reason FROM agent_availability WHERE agent = ?",  # guard: raw-sql
+                "SELECT available, unavailable_until, degraded_until, reason "  # guard: raw-sql
+                "FROM agent_availability WHERE agent = ?",
                 (agent,),
             ).fetchone()
     except sqlite3.Error:
@@ -136,18 +141,22 @@ def read_agent_availability_sync(db_path: str, agent: str, *, timeout_s: float =
     if row is None:
         return True
 
-    available_raw, unavailable_until, reason = row
-    if isinstance(reason, str) and reason.startswith("degraded"):
-        return False
-    if bool(available_raw):
-        return True
+    available_raw, unavailable_until, degraded_until, reason = row
+    now = datetime.now(UTC)
 
     if isinstance(unavailable_until, str) and unavailable_until.strip():
         parsed = _parse_iso_utc(unavailable_until)
-        if parsed is not None and parsed <= datetime.now(UTC):
+        if parsed is not None and parsed <= now:
             return True
 
-    return False
+    if isinstance(reason, str) and reason.startswith("degraded"):
+        if isinstance(degraded_until, str) and degraded_until.strip():
+            parsed_degraded = _parse_iso_utc(degraded_until)
+            if parsed_degraded is not None and parsed_degraded <= now:
+                return True
+        return False
+
+    return bool(available_raw)
 
 
 class SessionIdentityError(ValueError):
