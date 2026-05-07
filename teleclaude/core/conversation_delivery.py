@@ -229,6 +229,23 @@ def _max_segment_timestamp(segments: list[ConversationSegment]) -> datetime | No
     return latest
 
 
+def _trim_trailing_user_turn(segments: list[ConversationSegment]) -> list[ConversationSegment]:
+    """Drop a trailing ``user`` segment that has no agent reply attached.
+
+    A bare human turn at the end of the bundle means the human typed but the
+    agent has not yet replied. Shipping it would deliver an unanswered human
+    turn to the peer; the requirement is that human input rides with the
+    agent's response. Holding the trailing user segment past the cursor lets
+    the next ``agent_stop`` cycle pick it up bundled with the reply.
+
+    The collector merges consecutive same-role blocks, so segments alternate
+    by role — at most one ``user`` segment can be at the tail.
+    """
+    if segments and segments[-1].role == "user":
+        return segments[:-1]
+    return segments
+
+
 async def _replay_pending_bundle(
     *,
     source_session: Session,
@@ -364,6 +381,8 @@ async def _deliver_for_peer(
     else:
         fresh_segments = all_segments
         cursor_iso = cursor_dt.isoformat() if cursor_dt else None
+
+    fresh_segments = _trim_trailing_user_turn(fresh_segments)
 
     if not fresh_segments:
         return delivered

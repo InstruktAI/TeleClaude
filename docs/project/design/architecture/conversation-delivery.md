@@ -49,6 +49,7 @@ This system is separate from one-shot session listeners. It owns peer conversati
 - **Boundary is later(anchor, cursor)**: replay starts at the later of the session anchor and the persisted directional cursor.
 - **Visible content only**: replay includes visible `user` and `assistant` text blocks. TeleClaude-prefixed bridge messages are excluded by the conversation projector.
 - **User and assistant both matter**: plain human input after the anchor is mirrored, not only assistant output.
+- **Hold trailing human turns**: a bundle whose final segment is `user` is trimmed before send — the held-back human turn stays past the cursor and ships with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone.
 - **Single bundled delivery**: all visible segments since the cursor are merged into ONE outer message per delivery, with inner markers preserving the temporal sequence. This collapses N user-prompt entries on the receiver into 1.
 - **Debounced trigger**: agent_stops drive a per-source coalescing window (10s reset on each fresh signal) before delivery fires, so rapid multi-turn activity does not produce a burst of mid-turn deliveries.
 - **Advance after handoff**: the cursor moves only after durable handoff succeeds:
@@ -81,10 +82,14 @@ This system is separate from one-shot session listeners. It owns peer conversati
    the pending bound.
 6. It projects visible transcript segments since
    `max(last_conversation_injected_at, delivered_through_ts)`.
-7. If any segments exist, it persists `pending_through_ts = latest_segment_ts`
+7. If the final projected segment has role `user`, it is trimmed off — that
+   turn is unanswered and must wait for the next `agent_stop` to ride with
+   the agent's reply. If trimming leaves no segments, delivery is skipped
+   and the cursor stays put.
+8. If any segments remain, it persists `pending_through_ts = latest_segment_ts`
    BEFORE sending, then formats all segments into ONE bundled message and
    submits a single `ProcessMessageCommand` to the peer.
-8. On successful handoff, an atomic upsert advances
+9. On successful handoff, an atomic upsert advances
    `delivered_through_ts = latest_segment_ts` and clears `pending_through_ts`.
 
 ### 3. Startup reconciliation
