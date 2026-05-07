@@ -18,6 +18,7 @@ from teleclaude.core.events import AgentHookEvents
 from teleclaude.hooks.receiver import (
     _handle_user_prompt_submit,
     _maybe_checkpoint_output,
+    _reset_checkpoint_flags,
     _resolve_checkpoint_project_path,
     enqueue_hook_event,
 )
@@ -164,10 +165,22 @@ def test_checkpoint_fires_once_per_turn_then_subsequent_stops_skip(
             outbox_db="/tmp/outbox.sqlite",
         )
 
+        # New turn: user_prompt_submit clears the marker, the next stop must
+        # fire again. Without this assertion, a regression that no-ops
+        # _reset_checkpoint_flags would silently mute checkpoints forever.
+        _reset_checkpoint_flags("session-1")
+        next_turn = _maybe_checkpoint_output(
+            "session-1",
+            "claude",
+            {"stop_hook_active": False},
+            outbox_db="/tmp/outbox.sqlite",
+        )
+
     assert first == "checkpoint"
     assert second is None
     assert third is None
-    assert checkpoint_mock.call_count == 1
+    assert next_turn == "checkpoint"
+    assert checkpoint_mock.call_count == 2
 
 
 class TestResolveCheckpointProjectPath:
