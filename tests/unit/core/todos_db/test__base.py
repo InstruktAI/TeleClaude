@@ -36,6 +36,23 @@ async def test_initialize_creates_database_file(tmp_path: Path) -> None:
     await db.close()
 
 
+async def test_initialize_sync_leaves_async_runtime_usable(tmp_path: Path) -> None:
+    """A sync-init instance must remain usable from async callers.
+
+    The factory caches one TodosDb per project path. If sync-first callers
+    leave the async runtime unset, the cached instance breaks downstream
+    async users. ``initialize_sync`` therefore sets up both runtimes.
+    """
+    db_path = tmp_path / "todos.db"
+    db = TodosDb(str(db_path))
+    db.initialize_sync()
+    # Observable: the async session can be opened without raising
+    # "TodosDb not initialized".
+    async with db._session():
+        pass
+    await db.close()
+
+
 async def test_initialize_creates_all_tables(todos_db: TodosDb) -> None:
     """initialize() must bootstrap all required tables."""
     assert todos_db.conn is not None

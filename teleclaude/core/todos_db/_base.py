@@ -305,10 +305,22 @@ class TodosDbBase:
         self.conn.row_factory = aiosqlite.Row
 
     def initialize_sync(self) -> None:
-        """Sync schema bootstrap using the shared factory (for worker-thread contexts)."""
+        """Sync schema bootstrap using the shared factory.
+
+        Also sets up the async engine + sessionmaker so a single instance
+        cached by ``get_todos_db_sync`` is fully usable from async callers
+        too. Without this, the factory cache becomes order-sensitive:
+        sync-first callers leave async runtime fields ``None``, and the
+        next async caller gets the same cached instance and fails with
+        "TodosDb not initialized" even though the file is on disk.
+        """
         _bootstrap_todos_db(self.db_path)
         self._sync_engine = create_sync_db_engine(self.db_path)
         self._sync_sessionmaker = sessionmaker(self._sync_engine, expire_on_commit=False, class_=SqlSession)
+        if self._engine is None:
+            self._engine = create_async_db_engine(self.db_path)
+        if self._sessionmaker is None:
+            self._sessionmaker = async_sessionmaker(self._engine, expire_on_commit=False, class_=SqlAsyncSession)
 
     def _session(self) -> SqlAsyncSession:
         """Create an async ORM session from the initialized session factory."""
