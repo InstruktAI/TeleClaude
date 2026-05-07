@@ -217,7 +217,7 @@ class TodoRow(TelecMixin, Widget):
 
         Column order: P | I | B | R | F | D
         """
-        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "F": 0, "D": 0}
+        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
         for t in todos:
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
@@ -236,15 +236,13 @@ class TodoRow(TelecMixin, Widget):
             rs = t.review_status
             if rs and rs != _TODO_STATUS_PENDING:
                 maxes["R"] = max(maxes["R"], len(f"R:{rs}"))
-            if t.findings_count:
-                maxes["F"] = max(maxes["F"], len(f"F:{t.findings_count}"))
             if t.deferrals_status:
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
         # Compute max rendered width across the mutually exclusive column paths
         path_prepare = sized["P"]
         path_integration = sized["P"]  # I renders in P slot
-        path_work = sized["B"] + sized["R"] + sized["F"] + sized["D"]
+        path_work = sized["B"] + sized["R"] + sized["D"]
         sized["_max"] = max(path_prepare, path_integration, path_work) + 1  # +1 trailing dot
         return sized
 
@@ -332,7 +330,7 @@ class TodoRow(TelecMixin, Widget):
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
             return _pad(result, target)
 
-        # 3. Work phase (build != pending) — existing B/R/F/D path
+        # 3. Work phase (build != pending) — existing B/R/D path
         if bs is not None and bs != _TODO_STATUS_PENDING:
             b_val = bs if bs and bs != _TODO_STATUS_PENDING else ""
             result.append_text(
@@ -347,9 +345,6 @@ class TodoRow(TelecMixin, Widget):
                     "R", r_val, w.get("R", 0), Style(color=ok if rs == _TODO_STATUS_APPROVED else gold, bold=True)
                 )
             )
-
-            fc = self.todo.findings_count
-            result.append_text(self._build_col("F", str(fc) if fc else "", w.get("F", 0), Style(color=gold, bold=True)))
 
             ds = self.todo.deferrals_status
             result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))

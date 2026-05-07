@@ -67,7 +67,7 @@ After `design-spec.md` is written, call the machine again.
 **Action**: present the design spec to the human. Highlight any `[proposed]`
 values that need their input. Ask for one of:
 
-- **Confirm**: mark `creative.design_spec.confirmed: true` in `todo state (todos.db)`.
+- **Confirm**: run `telec todo stamp {slug} --design-spec-confirmed`.
 - **Revise**: collect feedback, update `design-spec.md`, present again.
 
 Do not advance until the human explicitly confirms. This is a blocking gate.
@@ -116,7 +116,7 @@ Review the mood board:
 
 Collect the human's response:
 
-- **Approve**: mark `creative.art.approved: true` in `todo state (todos.db)`.
+- **Approve**: run `telec todo stamp {slug} --art-approved`.
 - **Iterate**: collect specific feedback, relay to the artist session.
 
 #### ART_ITERATION_REQUIRED
@@ -129,8 +129,6 @@ artist generates revised images, potentially switching engines via the
 
 After revision, call the machine again. The machine loops back to
 CHECK_ART_APPROVAL. The human reviews again.
-
-Track iteration count in `todo state (todos.db)` (`creative.art.iteration_count`).
 
 #### VISUAL_DRAFTS_REQUIRED
 
@@ -193,7 +191,7 @@ Version C (Codex):   workspace/{slug}/html/codex/hero.html
 
 Collect the human's response:
 
-- **Approve**: mark `creative.visuals.approved: true` in `todo state (todos.db)`.
+- **Approve**: run `telec todo stamp {slug} --visuals-approved`.
   For bake-offs, record `selected_version` and promote the winner's files
   to the top-level `html/` folder.
 - **Cherry-pick** (bake-off): the human selects specific sections from
@@ -215,7 +213,6 @@ After revision, call the machine again. The machine loops back to
 CHECK_VISUAL_APPROVAL. The human reviews again. This loop continues until
 approval.
 
-Track iteration count in `todo state (todos.db)` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
 the design spec or art may need refinement rather than the visuals.
 
@@ -260,7 +257,7 @@ in the conversation.
 When the human's input arrives:
 
 1. Interpret the signal: confirm, revise, approve, iterate, or cherry-pick.
-2. Update `todo state (todos.db)` accordingly.
+2. Run the concrete `telec todo stamp` command for the approved branch.
 3. Call the machine again to advance.
 
 The orchestrator never auto-advances past a human gate. No timeouts, no
@@ -279,7 +276,7 @@ defaults, no "assuming approval." The human decides.
 1. Confirmed `telec todo artifacts read {slug} design-spec`.
 2. Approved art in `workspace/{slug}/art/`.
 3. Approved visual artifacts in `workspace/{slug}/html/`.
-4. Updated `todo state (todos.db)` with creative phase completion markers.
+4. Human gate approvals stamped via `telec todo stamp`.
 5. All worker sessions ended on completion.
 6. The todo is ready for the prepare machine.
 

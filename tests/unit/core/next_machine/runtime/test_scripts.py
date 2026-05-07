@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from inspect import signature
+
 from teleclaude.core.next_machine.runtime.scripts import (
+    format_fix_findings_message,
     format_review_ground_shift_script,
     format_review_in_progress_script,
     format_review_needs_work_script,
@@ -35,6 +38,20 @@ def test_format_review_needs_work_script_tells_reviewer_to_open_direct_fix_link(
     assert not command_lines[0].endswith(" --direct")
     assert "Wait for reviewer session reviewer-1 to report idle." in instruction
     assert "telec todo prepare slug-a" in instruction
+
+
+def test_format_fix_findings_message_points_to_artifact_without_count_claim() -> None:
+    assert "open_count" not in signature(format_fix_findings_message).parameters
+
+    instruction = format_fix_findings_message(
+        "slug-a",
+        "requirements",
+        2,
+        "requirements-review-findings",
+        "requirements",
+    )
+
+    assert "telec todo artifacts read slug-a requirements-review-findings" in instruction
 
 
 def test_format_review_ground_shift_script_sends_scoped_follow_up() -> None:

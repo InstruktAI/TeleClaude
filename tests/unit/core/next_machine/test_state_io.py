@@ -286,24 +286,19 @@ def test_reconcile_phase_state_defaults_to_prepare_stage_and_adopts_existing_art
         "requirements_review": {
             "verdict": "",
             "reviewed_at": "",
-            "findings_count": 0,
             "rounds": 0,
             "baseline_commit": "",
-            "findings": [],
         },
         "test_spec_review": {
             "verdict": "",
             "reviewed_at": "",
-            "findings_count": 0,
             "rounds": 0,
         },
         "plan_review": {
             "verdict": "",
             "reviewed_at": "",
-            "findings_count": 0,
             "rounds": 0,
             "baseline_commit": "",
-            "findings": [],
         },
         "build_review": {
             "verdict": "",
@@ -399,19 +394,15 @@ def _reconcile_state_with_artifacts(
         "requirements_review": {
             "verdict": "approve",
             "reviewed_at": "",
-            "findings_count": 0,
             "rounds": 0,
             "baseline_commit": "",
-            "findings": [],
         },
-        "test_spec_review": {"verdict": "approve", "reviewed_at": "", "findings_count": 0, "rounds": 0},
+        "test_spec_review": {"verdict": "approve", "reviewed_at": "", "rounds": 0},
         "plan_review": {
             "verdict": "approve",
             "reviewed_at": "",
-            "findings_count": 0,
             "rounds": 0,
             "baseline_commit": "",
-            "findings": [],
         },
         "build_review": {"verdict": "", "reviewed_at": "", "round": 0, "baseline_commit": "", "dispatch_head": ""},
         "grounding": {

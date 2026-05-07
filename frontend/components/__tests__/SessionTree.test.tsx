@@ -30,6 +30,7 @@ function makeTree(): ComputerGroup[] {
               type: 'session',
               session: {
                 session_id: 'sess-1',
+                detached: false,
                 title: 'Session Alpha',
                 status: 'running',
                 active_agent: 'claude',
@@ -46,6 +47,7 @@ function makeTree(): ComputerGroup[] {
                   type: 'session',
                   session: {
                     session_id: 'sess-child',
+                    detached: false,
                     title: 'Child Session',
                     status: 'running',
                     active_agent: 'gemini',
@@ -64,6 +66,7 @@ function makeTree(): ComputerGroup[] {
               type: 'session',
               session: {
                 session_id: 'sess-2',
+                detached: false,
                 title: 'Session Beta',
                 status: 'idle',
                 active_agent: 'codex',
@@ -86,6 +89,7 @@ function makeTree(): ComputerGroup[] {
               type: 'session',
               session: {
                 session_id: 'sess-orphan',
+                detached: false,
                 title: 'Orphan Session',
                 status: 'running',
                 project_path: null,

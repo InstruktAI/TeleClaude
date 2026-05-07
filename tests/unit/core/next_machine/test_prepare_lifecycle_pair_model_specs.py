@@ -276,31 +276,6 @@ async def test_input_assessment_no_pair_emits_dual_dispatch_and_link(todos_db: T
 
 
 @pytest.mark.asyncio
-async def test_input_assessment_no_worktree(monkeypatch: pytest.MonkeyPatch, todos_db: TodosDb) -> None:
-    calls = _spy_worktree_calls(monkeypatch)
-    await todos_db.add_to_roadmap("input-no-worktree")
-    await todos_db.write_state(
-        "input-no-worktree",
-        {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "input_assessment"},
-    )
-    state = await todos_db.read_state("input-no-worktree")
-    assert state is not None
-    db = AsyncMock()
-    db.list_sessions.return_value = []
-
-    await _prepare_dispatch(
-        db=db,
-        todos_db=todos_db,
-        slug="input-no-worktree",
-        cwd="/repo",
-        phase=PreparePhase.INPUT_ASSESSMENT,
-        state=state,
-    )
-
-    assert calls == []
-
-
-@pytest.mark.asyncio
 async def test_input_assessment_existing_pair_targets_stored_a(todos_db: TodosDb) -> None:
     await todos_db.add_to_roadmap("pair-existing")
     await todos_db.write_state("pair-existing", _pair_state_dict())
@@ -529,10 +504,8 @@ async def test_needs_work_relays_findings_to_writer_fix_forward(todos_db: TodosD
     state["requirements_review"] = {
         "verdict": "needs_work",
         "reviewed_at": "2026-04-25T00:00:00+00:00",
-        "findings_count": 1,
         "rounds": 0,
         "baseline_commit": "",
-        "findings": [{"id": "R1", "severity": "Important", "summary": "gap", "status": "open"}],
     }
 
     _, instruction = await _prepare_dispatch(
@@ -587,23 +560,6 @@ async def test_triangulation_targets_writer_a(todos_db: TodosDb) -> None:
     )
 
     assert "telec sessions send session-a" in instruction
-
-
-@pytest.mark.asyncio
-async def test_triangulation_no_worktree(monkeypatch: pytest.MonkeyPatch, todos_db: TodosDb) -> None:
-    calls = _spy_worktree_calls(monkeypatch)
-    state = await _stored_pair_state(todos_db, "triangulation-no-worktree", PreparePhase.TRIANGULATION)
-
-    await _prepare_dispatch(
-        db=AsyncMock(),
-        todos_db=todos_db,
-        slug="triangulation-no-worktree",
-        cwd="/repo",
-        phase=PreparePhase.TRIANGULATION,
-        state=state,
-    )
-
-    assert calls == []
 
 
 @pytest.mark.asyncio

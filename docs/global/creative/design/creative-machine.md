@@ -22,7 +22,7 @@ to signal convergence. Between those gates, it dispatches creative agents
 autonomously.
 
 Like the next-machine, the creative machine is stateless — it derives all state
-from filesystem artifacts and `todo state (todos.db)`.
+from filesystem artifacts and stamp-owned creative state.
 
 Three roles participate: the **Creator** (rich orchestrator — captures input,
 drives the machine, dispatches workers, manages human gates), the **Artist**
@@ -48,7 +48,7 @@ compositional intent into code).
 - Confirmed `telec todo artifacts read {slug} design-spec`.
 - Approved images in `workspace/{slug}/art/`.
 - Approved visual artifacts in `workspace/{slug}/html/`.
-- Updated `todo state (todos.db)` with creative phase completion markers.
+- Human gate approvals stamped via `telec todo stamp`.
 - The todo is ready to enter the prepare machine.
 
 ## Invariants
@@ -125,7 +125,7 @@ After `design-spec.md` is written, call the machine again.
 
 #### CHECK_DS_CONFIRMATION
 
-Check `todo state (todos.db)` for design spec confirmation:
+Check stamp-owned creative state for design spec confirmation:
 
 ```yaml
 creative:
@@ -144,7 +144,7 @@ The design spec exists but the human has not confirmed it. The machine
 parks. The orchestrator presents the design spec to the human and waits
 for their signal. When the human confirms:
 
-- Set `creative.design_spec.confirmed: true` in `todo state (todos.db)`.
+- Run `telec todo stamp {slug} --design-spec-confirmed`.
 - Call the machine again.
 
 When the human requests changes:
@@ -183,7 +183,7 @@ After images are written, call the machine again.
 
 #### CHECK_ART_APPROVAL
 
-Check `todo state (todos.db)` for art approval:
+Check stamp-owned creative state for art approval:
 
 ```yaml
 creative:
@@ -205,7 +205,7 @@ them via messaging (Discord/Telegram) if the human requests it.
 
 When the human approves:
 
-- Set `creative.art.approved: true` in `todo state (todos.db)`.
+- Run `telec todo stamp {slug} --art-approved`.
 - Call the machine again.
 
 When the human requests changes:
@@ -220,8 +220,6 @@ switch engines via the `image-generator` meta-skill if the feedback implies
 a different style direction.
 
 After revision, call the machine again (loops back to CHECK_ART_APPROVAL).
-
-Track iteration count in `todo state (todos.db)` (`creative.art.iteration_count`).
 
 #### CHECK_VISUALS
 
@@ -258,7 +256,7 @@ After artifacts are written, call the machine again.
 
 #### CHECK_VISUAL_APPROVAL
 
-Check `todo state (todos.db)` for visual approval:
+Check stamp-owned creative state for visual approval:
 
 ```yaml
 creative:
@@ -280,7 +278,7 @@ and review.
 
 When the human approves:
 
-- Set `creative.visuals.approved: true` in `todo state (todos.db)`.
+- Run `telec todo stamp {slug} --visuals-approved`.
 - For bake-offs: promote the selected version's files to `workspace/{slug}/html/`
   (top level) and remove the agent subfolders.
 - Call the machine again.
@@ -297,7 +295,6 @@ artifacts, applies the requested changes, and writes updated files.
 
 After revision, call the machine again (loops back to CHECK_VISUAL_APPROVAL).
 
-Track iteration count in `todo state (todos.db)` (`creative.visuals.iteration_count`).
 If iterations exceed 3 without convergence, surface this to the human —
 the design spec or art may need refinement rather than the visuals.
 
@@ -313,31 +310,18 @@ Terminal state. All creative artifacts are confirmed and approved.
 
 The orchestrator ends all creative worker sessions and reports completion.
 
-### State tracking in todo state (todos.db)
+### State Tracking
 
-The creative machine reads and writes to the `creative` section of `todo state (todos.db)`:
+The creative machine reads gate approvals from the stamp-owned `creative` section:
 
 ```yaml
 creative:
-  phase: 'creative_complete' # current phase
   design_spec:
     confirmed: true
-    confirmed_at: '2026-03-12T14:30:00Z'
-    confirmed_by: 'human'
   art:
     approved: true
-    approved_at: '2026-03-12T15:00:00Z'
-    approved_by: 'human'
-    iteration_count: 2
-    engine_used: 'gemini' # or "flux", "gpt-image", etc.
   visuals:
     approved: true
-    approved_at: '2026-03-12T16:00:00Z'
-    approved_by: 'human'
-    selected_version: null # or agent name for bake-off
-    iteration_count: 1
-  started_at: '2026-03-12T10:00:00Z'
-  completed_at: '2026-03-12T16:00:00Z'
 ```
 
 ## Failure modes

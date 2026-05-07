@@ -90,7 +90,7 @@ policy:
   loaded domain specs -> Critical.
 - Every task has a verification step. Task with no verification -> Important.
   Verification that doesn't prove the task is done -> Important.
-- Referenced file paths are listed in `todo state (todos.db).grounding.referenced_paths`.
+- Referenced file paths are explicit in the plan tasks for grounding review.
   Missing or incomplete -> Important.
 
 ### 5. Grounding
@@ -168,13 +168,12 @@ Not allowed — route via `needs_work` instead:
 
 ### 9. Write verdict
 
-Update `todos.db` state:
+Stamp the review verdict:
 
-```yaml
-plan_review:
-  verdict: "approve" | "needs_work"
-  reviewed_at: "<now ISO8601>"
-  findings_count: <n>
+```bash
+telec todo stamp {slug} --verdict approve --phase plan_review
+# or
+telec todo stamp {slug} --verdict needs_work --phase plan_review
 ```
 
 Verdict rules:
@@ -182,11 +181,11 @@ Verdict rules:
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
 
-If unresolved findings exist, write them to `telec todo artifacts read {slug} plan-review-findings`
+If unresolved findings exist, write them via `telec todo artifacts write {slug} plan-review-findings <content>`
 with severity levels (Critical, Important) following the same format as code review
 findings, including the policy citation requirement defined in `lifecycle/work/review` §6.
 
-If no unresolved findings remain, remove stale `plan-review-findings.md` if present.
+If no unresolved findings remain, do not write a new findings artifact.
 
 ### 10. Commit and report
 
@@ -196,12 +195,12 @@ Commit all files in the worktree. Report:
 PLAN REVIEW: {slug}
 
 Verdict: [APPROVE | NEEDS WORK]
-Findings: {count}
+Findings artifact: plan-review-findings when NEEDS WORK
 ```
 
 ## Outputs
 
-- Verdict in `todos.db` state.
+- Verdict stamped with `telec todo stamp`.
 - `telec todo artifacts read {slug} plan-review-findings` if findings exist.
 - Commit containing review artifacts.
 

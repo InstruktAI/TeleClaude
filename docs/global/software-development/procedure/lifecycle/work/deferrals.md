@@ -15,7 +15,7 @@ scope: 'domain'
 ## Preconditions
 
 - `telec todo artifacts read {slug} deferrals` exists.
-- `todos.db` state exists and `deferrals_processed` is false.
+- A deferrals artifact exists and has not been processed.
 
 ## Steps
 
@@ -23,14 +23,13 @@ scope: 'domain'
 2. For each deferral entry:
    - If `Suggested outcome` is `NEW_TODO`, create a new todo with `input.md`, add to roadmap, and add dependencies if needed.
    - If `Suggested outcome` is `NOOP`, mark the entry as processed.
-3. Update `todo state (todos.db)`:
-   - Set `deferrals_processed` to true.
-   - Store `deferrals_hash` as SHA256 of `deferrals.md`.
+3. Stamp processing complete:
+   - `telec todo stamp {slug} --deferrals-processed`
 4. Commit all changes and report a summary.
 
 ## Outputs
 
-- Deferrals processed and recorded.
+- Deferrals processed and stamped.
 - New todos created when required.
 
 ## Recovery

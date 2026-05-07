@@ -173,11 +173,12 @@ section, highlighting:
 
 Iterate until the human confirms the document captures their vision.
 
-### 7. Update todo state
+### 7. Stamp confirmation
 
 Once the design spec is confirmed:
 
 - The `design-spec.md` artifact exists in the todo folder.
+- Run `telec todo stamp {slug} --design-spec-confirmed`.
 - Update `input.md` if the discovery dialogue surfaced new intent that
   supersedes the original input.
 - The todo is now ready for requirements discovery, which can reference

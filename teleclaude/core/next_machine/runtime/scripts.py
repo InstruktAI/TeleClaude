@@ -9,13 +9,12 @@ def format_fix_findings_message(
     slug: str,
     phase_label: str,
     rounds: int,
-    open_count: int,
     findings_artifact: str,
     target_artifact: str,
 ) -> str:
     """Build the findings relay message sent to an existing worker session."""
     return (
-        f"Round {rounds} {phase_label} review: {open_count} unresolved finding(s). "
+        f"Round {rounds} {phase_label} review needs work. "
         f"Findings artifact: `{findings_artifact}`. "
         f"Target artifact: `{target_artifact}`. "
         f"Required read: software-development/procedure/lifecycle/fix-review-findings. "

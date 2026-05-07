@@ -251,11 +251,9 @@ async def _prepare_step_requirements_review(
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
-        open_count = sum(1 for f in review.findings if f.status != "resolved")
         await _commit_writer(writer, todos_db, slug, state)
         return False, (
-            f"BLOCKED: {slug} requirements have {open_count} unresolved architectural finding(s) "
-            f"requiring human decision. Read findings via "
+            f"BLOCKED: {slug} requirements review needs a human decision. Read findings via "
             f"`telec todo artifacts read {slug} requirements-review-findings`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
@@ -270,9 +268,6 @@ async def _prepare_step_requirements_review(
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
             return False, format_review_blocked_script(slug, "requirements", reviewer_id, worker_id)
-        # Count-and-pointer pattern: no file content injection (R2)
-        open_findings = [f for f in review.findings if f.status != "resolved"]
-        open_count = len(open_findings)
         audit.completed_at = now
         audit.verdict = "needs_work"
         audit.rounds = rounds
@@ -280,11 +275,11 @@ async def _prepare_step_requirements_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "finding_ids": [f.id for f in open_findings]},
+            {"slug": slug, "findings_artifact": "requirements-review-findings"},
         )
         if pair_slots is not None and worker_id and reviewer_id:
             message = format_fix_findings_message(
-                slug, "requirements", rounds, open_count, "requirements-review-findings", "requirements"
+                slug, "requirements", rounds, "requirements-review-findings", "requirements"
             )
             return False, format_pair_member_send_script(
                 slug=slug,
@@ -294,7 +289,7 @@ async def _prepare_step_requirements_review(
             )
         if worker_id and reviewer_id:
             message = format_fix_findings_message(
-                slug, "requirements", rounds, open_count, "requirements-review-findings", "requirements"
+                slug, "requirements", rounds, "requirements-review-findings", "requirements"
             )
             return False, format_review_needs_work_script(
                 slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
@@ -306,7 +301,7 @@ async def _prepare_step_requirements_review(
         additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
         findings_note = format_dispatch_reason(
             (
-                f"Requirements need revision: {open_count} unresolved finding(s). "
+                f"Requirements need revision. "
                 f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
             ),
             slug,
@@ -520,7 +515,6 @@ async def _prepare_step_test_spec_review(
             await _commit_writer(writer, todos_db, slug, state)
             return False, format_review_blocked_script(slug, "test spec", reviewer_id, worker_id)
         writer.state.artifacts.test_specs.produced_at = ""
-        open_count = 0
         audit.completed_at = now
         audit.verdict = "needs_work"
         audit.rounds = rounds
@@ -528,7 +522,7 @@ async def _prepare_step_test_spec_review(
 
         if pair_slots is not None and worker_id and reviewer_id:
             message = format_fix_findings_message(
-                slug, "test spec", rounds, open_count, "spec-review-findings", "test spec files in the worktree"
+                slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
             )
             return False, format_pair_member_send_script(
                 slug=slug,
@@ -538,7 +532,7 @@ async def _prepare_step_test_spec_review(
             )
         if worker_id and reviewer_id:
             message = format_fix_findings_message(
-                slug, "test spec", rounds, open_count, "spec-review-findings", "test spec files in the worktree"
+                slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
             )
             return False, format_review_needs_work_script(
                 slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
@@ -750,11 +744,9 @@ async def _prepare_step_plan_review(
 
     if verdict == "needs_decision":
         # Architectural blocker — requires human decision before proceeding
-        open_count = sum(1 for f in review.findings if f.status != "resolved")
         await _commit_writer(writer, todos_db, slug, state)
         return False, (
-            f"BLOCKED: {slug} plan has {open_count} unresolved architectural finding(s) "
-            f"requiring human decision. Read findings via "
+            f"BLOCKED: {slug} plan review needs a human decision. Read findings via "
             f"`telec todo artifacts read {slug} plan-review-findings`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
@@ -769,9 +761,6 @@ async def _prepare_step_plan_review(
         if rounds > DEFAULT_MAX_REVIEW_ROUNDS:
             await _commit_writer(writer, todos_db, slug, state)
             return False, format_review_blocked_script(slug, "plan", reviewer_id, worker_id)
-        # Count-and-pointer pattern: no file content injection (R2)
-        open_findings = [f for f in review.findings if f.status != "resolved"]
-        open_count = len(open_findings)
         audit.completed_at = now
         audit.verdict = "needs_work"
         audit.rounds = rounds
@@ -779,12 +768,10 @@ async def _prepare_step_plan_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "finding_ids": [f.id for f in open_findings]},
+            {"slug": slug, "findings_artifact": "plan-review-findings"},
         )
         if pair_slots is not None and worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "plan", rounds, open_count, "plan-review-findings", "implementation-plan"
-            )
+            message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
             return False, format_pair_member_send_script(
                 slug=slug,
                 session_id=worker_id,
@@ -792,9 +779,7 @@ async def _prepare_step_plan_review(
                 next_step=f"telec todo prepare {slug}",
             )
         if worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "plan", rounds, open_count, "plan-review-findings", "implementation-plan"
-            )
+            message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
             return False, format_review_needs_work_script(
                 slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
             )
@@ -805,7 +790,7 @@ async def _prepare_step_plan_review(
         additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
         findings_note = format_dispatch_reason(
             (
-                f"Implementation plan needs revision: {open_count} unresolved finding(s). "
+                f"Implementation plan needs revision. "
                 f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
             ),
             slug,

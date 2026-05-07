@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/review-requirements'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Requirements review phase. Validate requirements.md against quality standard and write verdict to todo state (todos.db).'
+description: 'Requirements review phase. Validate requirements.md against quality standard and stamp the review verdict.'
 ---
 
 # Review Requirements — Procedure
@@ -16,7 +16,7 @@ description: 'Requirements review phase. Validate requirements.md against qualit
 
 ## Goal
 
-Validate `requirements.md` against the requirements quality standard and write a binary verdict to `todo state (todos.db)`. This is a preparation review, not a code review.
+Validate `requirements.md` against the requirements quality standard and stamp a binary verdict. This is a preparation review, not a code review.
 
 ## Preconditions
 
@@ -114,13 +114,12 @@ the requirements cover.
 
 ### 4. Write verdict
 
-Update `todos.db` state:
+Stamp the review verdict:
 
-```yaml
-requirements_review:
-  verdict: "approve" | "needs_work"
-  reviewed_at: "<now ISO8601>"
-  findings_count: <n>
+```bash
+telec todo stamp {slug} --verdict approve --phase requirements_review
+# or
+telec todo stamp {slug} --verdict needs_work --phase requirements_review
 ```
 
 Verdict rules:
@@ -128,13 +127,12 @@ Verdict rules:
 - `approve` only when unresolved Critical and unresolved Important findings are both zero.
 - `needs_work` when any unresolved Critical or Important finding remains.
 
-If unresolved findings exist, write them to
-`telec todo artifacts read {slug} requirements-review-findings` with severity levels
+If unresolved findings exist, write them via
+`telec todo artifacts write {slug} requirements-review-findings <content>` with severity levels
 (Critical, Important) following the same format as code review findings, including
 the policy citation requirement defined in `lifecycle/work/review` §6.
 
-If no unresolved findings remain, remove stale `requirements-review-findings.md`
-if present.
+If no unresolved findings remain, do not write a new findings artifact.
 
 ### 5. Commit and report
 
@@ -144,12 +142,12 @@ Commit all files in the worktree. Report:
 REQUIREMENTS REVIEW: {slug}
 
 Verdict: [APPROVE | NEEDS WORK]
-Findings: {count}
+Findings artifact: requirements-review-findings when NEEDS WORK
 ```
 
 ## Outputs
 
-- Verdict in `todos.db` state.
+- Verdict stamped with `telec todo stamp`.
 - `telec todo artifacts read {slug} requirements-review-findings` if findings exist.
 - Commit containing review artifacts.
 

@@ -48,6 +48,12 @@ _READINESS_ARTIFACT_KEY: dict[str, str] = {
     "implementation-plan": "implementation_plan",
 }
 
+_CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
+    "creative_design_spec_confirmed": ("design_spec", "confirmed"),
+    "creative_art_approved": ("art", "approved"),
+    "creative_visuals_approved": ("visuals", "approved"),
+}
+
 
 async def apply_todo_stamp(
     *,
@@ -84,6 +90,11 @@ async def apply_todo_stamp(
     if stamp_type == "grounding":
         _apply_grounding_stamp(writer, value)
         apply_authoritative_signal(writer.state, "grounding")
+    elif stamp_type == "deferrals_processed":
+        writer.state.deferrals_processed = True
+    elif stamp_type in _CREATIVE_GATE_STAMPS:
+        section, flag = _CREATIVE_GATE_STAMPS[stamp_type]
+        _apply_creative_gate_stamp(writer, section=section, flag=flag)
     elif stamp_type == "requirements_ready":
         await _apply_readiness_stamp(todos_db, writer, slug, "requirements", "requirements_ready")
     elif stamp_type == "plan_ready":
@@ -140,6 +151,18 @@ def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
         grounding_manager.clear_invalidation()
     else:
         grounding_manager.invalidate(reason="stamped_invalid", changed_paths=[])
+
+
+def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) -> None:
+    creative = writer.state.creative
+    if creative is None:
+        creative = {}
+        writer.state.creative = creative
+
+    raw_section = creative.get(section)
+    section_state: dict[str, StateValue] = dict(raw_section) if isinstance(raw_section, dict) else {}
+    section_state[flag] = True
+    creative[section] = section_state
 
 
 async def _apply_prepare_pair_stamp(writer: StateWriter, value: str, *, session_db: Db) -> None:

@@ -397,7 +397,6 @@ class TestFieldCompletenessParity:
         assert re.search(r"\bslug\s*:\s*string\b", output), "slug must be string"
         assert re.search(r"\bhas_requirements\s*:\s*boolean\b", output), "has_requirements must be boolean"
         assert re.search(r"\bhas_impl_plan\s*:\s*boolean\b", output), "has_impl_plan must be boolean"
-        assert re.search(r"\bfindings_count\s*:\s*number\b", output), "findings_count must be number"
         assert re.search(r"\bfiles\s*:\s*(?:string\[\]|Array<string>)", output), "files must be string[]"
 
     def test_computer_dto_field_type_mappings(self, generated_output: str) -> None:

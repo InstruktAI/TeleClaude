@@ -25,6 +25,7 @@ function makeSession(overrides?: Partial<SessionInfo>): SessionInfo {
   idCounter++
   return {
     session_id: `sess-${idCounter}`,
+    detached: false,
     title: `Session ${idCounter}`,
     status: 'running',
     computer: 'local',

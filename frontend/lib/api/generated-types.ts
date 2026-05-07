@@ -14,6 +14,7 @@ export type MessageType = "text" | "compaction" | "tool_use" | "tool_result" | "
 export type RefreshEventType = "computer_updated" | "project_updated" | "projects_updated" | "todos_updated" | "todo_created" | "todo_updated" | "todo_removed";
 export type SessionLifecycleStatusEvent = SessionStatusEvent;
 export type ThinkingMode = "fast" | "med" | "slow";
+export type TuiBootstrapPillar = "computers" | "projects" | "sessions" | "availability" | "jobs" | "settings" | "chiptunes";
 
 export interface AgentStatusRequest {
   status?: AgentStatus | null;
@@ -29,7 +30,6 @@ export interface CreateSessionRequest {
   launch_kind?: LaunchKind;
   agent?: AgentName | null;
   thinking_mode?: "fast" | "med" | "slow" | "default" | null;
-  title?: string | null;
   message?: string | null;
   direct?: boolean;
   skip_listener_registration?: boolean;
@@ -105,7 +105,7 @@ export interface TodoDumpRequest {
   slug: string;
   content: string;
   after?: string[] | null;
-  kind?: "bug" | "prepped" | null;
+  kind?: "bug" | "draft" | "prepped" | null;
   cwd?: string | null;
 }
 
@@ -233,6 +233,12 @@ export interface MessageInfo {
   file_index: number;
 }
 
+export interface OperationCompletedEvent {
+  event: "operation.todo_work.completed" | "operation.todo_integrate.completed" | "operation.todo_create.completed" | "operation.todo_prepare.completed" | "operation.todo_remove.completed";
+  operation_id: string;
+  error?: string | null;
+}
+
 export interface OperationStatus {
   operation_id: string;
   kind: string;
@@ -311,6 +317,7 @@ export interface SessionClosedEvent {
 }
 
 export interface SessionInfo {
+  detached: boolean;
   last_output_digest?: string | null;
   native_session_id?: string | null;
   tmux_session_name?: string | null;
@@ -400,14 +407,12 @@ export interface TodoInfo {
   has_impl_plan: boolean;
   build_status?: string | null;
   review_status?: string | null;
-  dor_score?: number | null;
   deferrals_status?: string | null;
-  findings_count: number;
   files: string[];
   after?: string[];
   group?: string | null;
   delivered_at?: string | null;
-  prepare_phase?: string | null;
+  lifecycle_phase?: string | null;
   integration_phase?: string | null;
   finalize_status?: string | null;
 }
@@ -416,6 +421,28 @@ export interface ToolUseActivityEvent extends BaseAgentActivityEvent {
   type: "tool_use";
   tool_name?: string | null;
   tool_preview?: string | null;
+}
+
+export interface TuiBootstrap {
+  requested: TuiBootstrapPillar[];
+  data: TuiBootstrapData;
+  errors: TuiBootstrapError[];
+}
+
+export interface TuiBootstrapData {
+  computers?: ComputerInfo[] | null;
+  projects_with_todos?: ProjectWithTodosInfo[] | null;
+  sessions?: SessionInfo[] | null;
+  availability?: Record<string, AgentAvailabilityInfo> | null;
+  jobs?: JobInfo[] | null;
+  settings?: Settings | null;
+  chiptunes?: ChiptunesStatus | null;
+}
+
+export interface TuiBootstrapError {
+  pillar: TuiBootstrapPillar;
+  message: string;
+  retryable: boolean;
 }
 
 export interface UserPromptSubmitActivityEvent extends BaseAgentActivityEvent {

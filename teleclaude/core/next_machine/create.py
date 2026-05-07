@@ -51,8 +51,7 @@ def _design_spec_pending_confirmation(slug: str) -> str:
         f"DESIGN_SPEC_PENDING_CONFIRMATION: {slug}\n\n"
         f"design-spec.md exists but the human has not confirmed it.\n"
         f"Present the design spec to the human. Highlight any [proposed] values.\n"
-        f"When confirmed: update state.yaml creative.design_spec.confirmed to true,\n"
-        f"set creative.design_spec.confirmed_at and confirmed_by.\n"
+        f"When confirmed: run `telec todo stamp {slug} --design-spec-confirmed`.\n"
         f"When the human requests revisions: update design-spec.md accordingly.\n\n"
         f"After confirmation, call `telec todo design {slug}` again."
     )
@@ -64,8 +63,7 @@ def _art_pending_approval(slug: str, cwd: str) -> str:
         f"ART_PENDING_APPROVAL: {slug}\n\n"
         f"Art images exist but are not approved. Present to the human:\n"
         f"{file_list}\n\n"
-        f"When approved: update state.yaml creative.art.approved to true,\n"
-        f"set creative.art.approved_at and approved_by.\n"
+        f"When approved: run `telec todo stamp {slug} --art-approved`.\n"
         f"When the human requests changes: relay feedback to the artist session.\n\n"
         f"After approval, call `telec todo design {slug}` again."
     )
@@ -77,8 +75,7 @@ def _visuals_pending_approval(slug: str, cwd: str) -> str:
         f"VISUALS_PENDING_APPROVAL: {slug}\n\n"
         f"Visual artifacts exist but are not approved. Tell the human to review:\n"
         f"{file_list}\n\n"
-        f"When approved: update state.yaml creative.visuals.approved to true,\n"
-        f"set creative.visuals.approved_at and approved_by.\n"
+        f"When approved: run `telec todo stamp {slug} --visuals-approved`.\n"
         f"When the human requests changes: relay feedback for revision.\n\n"
         f"After approval, call `telec todo design {slug}` again."
     )

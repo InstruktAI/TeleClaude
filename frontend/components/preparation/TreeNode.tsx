@@ -111,16 +111,6 @@ export function TreeNode({
           {phaseTags.map((tag) => (
             <PhaseTag key={tag} tag={tag} />
           ))}
-          {todo.dor_score !== null && todo.dor_score !== undefined && (
-            <span className="text-[10px] text-muted-foreground">
-              DOR:{todo.dor_score}
-            </span>
-          )}
-          {todo.findings_count > 0 && (
-            <span className="text-[10px] text-muted-foreground">
-              F:{todo.findings_count}
-            </span>
-          )}
         </div>
       )}
     </div>

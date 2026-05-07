@@ -63,14 +63,8 @@ export function deriveTodoPhaseTags(todo: TodoInfo): string[] {
   if (todo.review_status) {
     tags.push("R");
   }
-  if (todo.dor_score !== null && todo.dor_score !== undefined) {
-    tags.push("DOR");
-  }
   if (todo.deferrals_status) {
     tags.push("DEF");
-  }
-  if (todo.findings_count > 0) {
-    tags.push("F");
   }
 
   return tags;

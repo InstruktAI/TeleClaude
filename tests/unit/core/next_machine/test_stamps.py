@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.core.next_machine._types import CreativePhase
+from teleclaude.core.next_machine.create import _derive_creative_phase
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.todos_db import TodosDb
@@ -140,6 +142,72 @@ async def test_prepare_pair_rejects_unknown_session(tmp_path: Path) -> None:
                     value="slot_a:sid-a,slot_b:sid-b",
                     session_db=_SessionDb({}),
                 )
+    finally:
+        await database.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deferrals_processed_stamp_clears_pending_deferrals_route(tmp_path: Path) -> None:
+    database = await _make_db(tmp_path)
+    try:
+        await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+        await database.write_artifact("my-slug", "deferrals", "- defer follow-up")
+        assert await database.has_pending_deferrals("my-slug") is True
+
+        with patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)):
+            await apply_todo_stamp(
+                cwd="/repo",
+                slug="my-slug",
+                stamp_type="deferrals_processed",
+                value="true",
+            )
+
+        assert await database.has_pending_deferrals("my-slug") is False
+    finally:
+        await database.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_creative_gate_stamp_advances_derived_creative_route(tmp_path: Path) -> None:
+    database = await _make_db(tmp_path)
+    workspace_dir = tmp_path / "workspace" / "my-slug"
+    art_dir = workspace_dir / "art"
+    art_dir.mkdir(parents=True)
+    (art_dir / "hero.png").write_text("image placeholder", encoding="utf-8")
+
+    try:
+        await database.write_state(
+            "my-slug",
+            {
+                "lifecycle_phase": "draft",
+                "creative": {"design_spec": {"confirmed": True}},
+            },
+        )
+        before_state = await database.read_state("my-slug")
+        assert isinstance(before_state, dict)
+        before_creative = before_state["creative"]
+        assert isinstance(before_creative, dict)
+        assert (
+            _derive_creative_phase(workspace_dir, has_design_spec=True, creative=before_creative)
+            == CreativePhase.ART_PENDING_APPROVAL
+        )
+
+        with patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)):
+            state = await apply_todo_stamp(
+                cwd="/repo",
+                slug="my-slug",
+                stamp_type="creative_art_approved",
+                value="true",
+            )
+
+        creative = state["creative"]
+        assert isinstance(creative, dict)
+        assert (
+            _derive_creative_phase(workspace_dir, has_design_spec=True, creative=creative)
+            == CreativePhase.VISUAL_DRAFTS_REQUIRED
+        )
     finally:
         await database.close()
 

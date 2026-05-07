@@ -23,6 +23,20 @@ beforeEach(() => {
   todoCounter = 0;
 });
 
+function expectPreparationBinding(
+  key: string,
+  modifiers: { shift?: boolean },
+  action: string,
+): void {
+  const binding = findBinding(key, modifiers, "preparation");
+
+  expect(binding).toMatchObject({
+    key,
+    context: "preparation",
+    action,
+  });
+}
+
 function makeComputer(overrides?: Partial<ComputerInfo>): ComputerInfo {
   return {
     name: "local",
@@ -41,9 +55,7 @@ function makeTodo(overrides?: Partial<TodoInfo>): TodoInfo {
     has_impl_plan: false,
     build_status: null,
     review_status: null,
-    dor_score: null,
     deferrals_status: null,
-    findings_count: 0,
     files: [],
     ...overrides,
   };
@@ -60,27 +72,33 @@ function makeProject(overrides?: Partial<ProjectWithTodosInfo>): ProjectWithTodo
 }
 
 describe("preparation panel bindings", () => {
-  const bindingCases = [
-    { key: "n", modifiers: {}, action: "new_todo" },
-    { key: "b", modifiers: {}, action: "new_bug" },
-    { key: "r", modifiers: {}, action: "refine_input" },
-    { key: "R", modifiers: { shift: true }, action: "remove_todo" },
-    { key: "f", modifiers: {}, action: "freeze_todo" },
-    { key: "upArrow", modifiers: { shift: true }, action: "move_todo_up" },
-    { key: "downArrow", modifiers: { shift: true }, action: "move_todo_down" },
-  ] as const;
+  it("registers new_todo in the preparation context", () => {
+    expectPreparationBinding("n", {}, "new_todo");
+  });
 
-  for (const { key, modifiers, action } of bindingCases) {
-    it(`registers ${action} in the preparation context`, () => {
-      const binding = findBinding(key, modifiers, "preparation");
+  it("registers new_bug in the preparation context", () => {
+    expectPreparationBinding("b", {}, "new_bug");
+  });
 
-      expect(binding).toMatchObject({
-        key,
-        context: "preparation",
-        action,
-      });
-    });
-  }
+  it("registers refine_input in the preparation context", () => {
+    expectPreparationBinding("r", {}, "refine_input");
+  });
+
+  it("registers remove_todo in the preparation context", () => {
+    expectPreparationBinding("R", { shift: true }, "remove_todo");
+  });
+
+  it("registers freeze_todo in the preparation context", () => {
+    expectPreparationBinding("f", {}, "freeze_todo");
+  });
+
+  it("registers move_todo_up in the preparation context", () => {
+    expectPreparationBinding("upArrow", { shift: true }, "move_todo_up");
+  });
+
+  it("registers move_todo_down in the preparation context", () => {
+    expectPreparationBinding("downArrow", { shift: true }, "move_todo_down");
+  });
 });
 
 describe("buildPreparationTree", () => {
@@ -119,53 +137,26 @@ describe("buildPreparationTree", () => {
   });
 });
 describe("deriveTodoPhaseTags", () => {
-  const phaseCases = [
-    {
-      name: "includes B when build status exists",
-      todo: makeTodo({ build_status: "built" }),
-      expected: ["B"],
-    },
-    {
-      name: "includes R when review status exists",
-      todo: makeTodo({ review_status: "approved" }),
-      expected: ["R"],
-    },
-    {
-      name: "includes DOR when a DOR score exists",
-      todo: makeTodo({ dor_score: 7 }),
-      expected: ["DOR"],
-    },
-    {
-      name: "includes DEF when deferrals status exists",
-      todo: makeTodo({ deferrals_status: "deferred" }),
-      expected: ["DEF"],
-    },
-    {
-      name: "includes F when findings count is non-zero",
-      todo: makeTodo({ findings_count: 2 }),
-      expected: ["F"],
-    },
-    {
-      name: "returns the full compact set when every phase signal exists",
-      todo: makeTodo({
-        build_status: "built",
-        review_status: "approved",
-        dor_score: 9,
-        deferrals_status: "deferred",
-        findings_count: 1,
-      }),
-      expected: ["B", "R", "DOR", "DEF", "F"],
-    },
-  ] as const;
+  it("includes B when build status exists", async () => {
+    const modulePath = "@/lib/preparation/tree" as string;
+    const { deriveTodoPhaseTags } = await import(modulePath);
 
-  for (const phaseCase of phaseCases) {
-    it(phaseCase.name, async () => {
-      const modulePath = "@/lib/preparation/tree" as string;
-      const { deriveTodoPhaseTags } = await import(modulePath);
+    expect(deriveTodoPhaseTags(makeTodo({ build_status: "built" }))).toEqual(["B"]);
+  });
 
-      expect(deriveTodoPhaseTags(phaseCase.todo)).toEqual(phaseCase.expected);
-    });
-  }
+  it("includes R when review status exists", async () => {
+    const modulePath = "@/lib/preparation/tree" as string;
+    const { deriveTodoPhaseTags } = await import(modulePath);
+
+    expect(deriveTodoPhaseTags(makeTodo({ review_status: "approved" }))).toEqual(["R"]);
+  });
+
+  it("includes DEF when deferrals status exists", async () => {
+    const modulePath = "@/lib/preparation/tree" as string;
+    const { deriveTodoPhaseTags } = await import(modulePath);
+
+    expect(deriveTodoPhaseTags(makeTodo({ deferrals_status: "deferred" }))).toEqual(["DEF"]);
+  });
 });
 
 describe("getPreparationActionAvailability", () => {

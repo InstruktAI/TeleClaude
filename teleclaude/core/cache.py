@@ -493,7 +493,6 @@ class DaemonCache:
                             todo.build_status or "",
                             todo.review_status or "",
                             todo.deferrals_status or "",
-                            str(todo.findings_count),
                             ",".join(todo.files),
                         ]
                     )

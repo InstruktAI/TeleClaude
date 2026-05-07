@@ -216,7 +216,6 @@ class TodoDTO(BaseModel):
     build_status: str | None = None
     review_status: str | None = None
     deferrals_status: str | None = None
-    findings_count: int = 0
     files: list[str] = Field(default_factory=list)
     after: list[str] = Field(default_factory=list)
     group: str | None = None

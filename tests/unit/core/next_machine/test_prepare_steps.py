@@ -56,9 +56,9 @@ def _base_state(
                 "confirmed": False,
             },
         },
-        "requirements_review": {"verdict": "", "reviewed_at": "", "findings_count": 0, "rounds": 0},
-        "test_spec_review": {"verdict": "", "reviewed_at": "", "findings_count": 0, "rounds": 0},
-        "plan_review": {"verdict": "", "reviewed_at": "", "findings_count": 0, "rounds": 0},
+        "requirements_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
+        "test_spec_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
+        "plan_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
         "grounding": {"valid": False, "base_sha": "", "input_digest": "", "referenced_paths": []},
     }
 
@@ -348,7 +348,6 @@ async def test_grounding_check_stays_fresh_when_only_parent_head_advances(tmp_pa
     state["plan_review"] = {
         "verdict": "approve",
         "reviewed_at": "2026-01-01T00:00:00+00:00",
-        "findings_count": 0,
         "rounds": 0,
         "baseline_commit": "",
         "approved_digest": "plan-digest",

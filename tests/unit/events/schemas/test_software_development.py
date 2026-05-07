@@ -45,8 +45,6 @@ _EXPECTED_TYPES = {
     "domain.software-development.prepare.input_consumed",
     "domain.software-development.prepare.artifact_produced",
     "domain.software-development.prepare.artifact_invalidated",
-    "domain.software-development.prepare.finding_recorded",
-    "domain.software-development.prepare.finding_resolved",
     "domain.software-development.prepare.review_scoped",
     "domain.software-development.prepare.split_inherited",
     # Integration

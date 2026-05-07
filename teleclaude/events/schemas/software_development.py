@@ -342,32 +342,12 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.prepare.finding_recorded",
-            description="Review finding recorded in state with severity and summary",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            idempotency_fields=["slug", "review_type", "summary"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["severity", "summary"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="domain.software-development.prepare.finding_resolved",
-            description="Review finding resolved via auto-remediation or human action",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            idempotency_fields=["slug", "finding_id"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["resolution_method"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="domain.software-development.prepare.review_scoped",
-            description="Scoped re-review dispatched targeting specific open findings",
+            description="Scoped re-review dispatched with a findings artifact",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
             idempotency_fields=["slug"],
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["finding_ids"]),
+            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["findings_artifact"]),
         )
     )
     catalog.register(

@@ -102,36 +102,21 @@ class PreparePair(BaseModel):
     slot_b: PreparePairSlot | None = None
 
 
-class ReviewFinding(BaseModel):
-    """Structured record for a single review finding."""
-
-    model_config = ConfigDict(extra="allow")
-    id: str = ""
-    severity: str = ""
-    summary: str = ""
-    status: str = "open"
-    resolved_at: str = ""
-    resolution_method: str = ""
-
-
 class ReviewVerdictState(BaseModel):
     """Verdict state for a prepare review phase."""
 
     verdict: str = ""
     reviewed_at: str = ""
-    findings_count: int = 0
     rounds: int = 0
     baseline_commit: str = ""
     approved_digest: str = ""
-    findings: list[ReviewFinding] = Field(default_factory=list)
 
 
 class TestSpecReviewState(BaseModel):
-    """Verdict state for test spec review (no baseline_commit/findings)."""
+    """Verdict state for test spec review (no baseline_commit)."""
 
     verdict: str = ""
     reviewed_at: str = ""
-    findings_count: int = 0
     rounds: int = 0
     approved_digest: str = ""
 
@@ -199,7 +184,6 @@ class AuditReviewEntry(BaseModel):
     baseline_commit: str = ""
     verdict: str = ""
     rounds: int = 0
-    findings: list[ReviewFinding] = Field(default_factory=list)
 
 
 class AuditState(BaseModel):

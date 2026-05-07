@@ -133,8 +133,8 @@ Plans must provide enough detail for a builder to execute without guessing:
   file and assertions.
 - Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan
   requirements (coverage gaps).
-- Referenced file paths are listed in `todo state (todos.db).grounding.referenced_paths`
-  for staleness detection.
+- Referenced file paths are explicit in the plan tasks for grounding and
+  staleness review.
 
 ## Rationale
 

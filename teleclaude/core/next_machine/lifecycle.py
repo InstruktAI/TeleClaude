@@ -216,8 +216,6 @@ def _has_input_artifact(model: TodoState, *, artifact_presence: _ArtifactPresenc
 def _clear_prepare_review(review: ReviewVerdictState | TestSpecReviewState) -> None:
     review.verdict = ""
     review.reviewed_at = ""
-    if hasattr(review, "findings_count"):
-        review.findings_count = 0
 
 
 def _clear_build_review(model: TodoState) -> None:

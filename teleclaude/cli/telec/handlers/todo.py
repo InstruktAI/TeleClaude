@@ -624,6 +624,10 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --requirements-ready
       --plan-ready
       --specs-built
+      --deferrals-processed
+      --design-spec-confirmed
+      --art-approved
+      --visuals-approved
       --build-complete
       --finalize-ready
       --agent-a <session_id> --agent-b <session_id>  (atomic, both required)
@@ -642,7 +646,8 @@ def _handle_todo_stamp(args: list[str]) -> None:
         print(
             "Missing stamp flag (--verdict, --grounding-invalidated, "
             "--requirements-ready, --plan-ready, --specs-built, --build-complete, "
-            "--finalize-ready, --agent-a/--agent-b)"
+            "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
+            "--art-approved, --visuals-approved, --agent-a/--agent-b)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -712,6 +717,22 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 1
         elif arg == "--specs-built":
             stamp_type = "specs_built"
+            value = "true"
+            i += 1
+        elif arg == "--deferrals-processed":
+            stamp_type = "deferrals_processed"
+            value = "true"
+            i += 1
+        elif arg == "--design-spec-confirmed":
+            stamp_type = "creative_design_spec_confirmed"
+            value = "true"
+            i += 1
+        elif arg == "--art-approved":
+            stamp_type = "creative_art_approved"
+            value = "true"
+            i += 1
+        elif arg == "--visuals-approved":
+            stamp_type = "creative_visuals_approved"
             value = "true"
             i += 1
         elif arg == "--build-complete":

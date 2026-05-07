@@ -120,9 +120,7 @@ in the prepare state machine. All events carry `slug` as a payload field unless 
 | `prepare.input_consumed`       | WORKFLOW    | Input consumed by discovery, requirements production started | `slug`                                         |
 | `prepare.artifact_produced`    | WORKFLOW    | Artifact written and lifecycle-tracked in state              | `slug`, `artifact`, `digest`                   |
 | `prepare.artifact_invalidated` | OPERATIONAL | Upstream change cascaded staleness to artifact               | `slug`, `artifact`                             |
-| `prepare.finding_recorded`     | WORKFLOW    | Finding recorded by reviewer with severity and summary       | `slug`, `finding_id`, `severity`, `summary`    |
-| `prepare.finding_resolved`     | WORKFLOW    | Finding resolved via auto-remediation or human action        | `slug`, `finding_id`, `resolution_method`      |
-| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched targeting open findings          | `slug`, `finding_ids`                          |
+| `prepare.review_scoped`        | WORKFLOW    | Scoped re-review dispatched with a findings artifact         | `slug`, `findings_artifact`                    |
 | `prepare.split_inherited`      | WORKFLOW    | Child todo inherited parent's approved prepare phase         | `parent_slug`, `child_slug`, `inherited_phase` |
 
 ### Expansion Joint

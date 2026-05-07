@@ -26,4 +26,3 @@ __all__ = [
     "ensure_event_producer",
     "get_event_db",
 ]
-

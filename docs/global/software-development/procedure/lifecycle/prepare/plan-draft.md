@@ -96,7 +96,7 @@ work that will fail gate validation. Split first:
 - create focused child todos
 - seed them from the approved parent requirements
 - add dependency ordering in `todos.db` roadmap
-- update the holder `todos.db` state `breakdown.todos`
+- call `telec todo split <slug> --into <child1> <child2> ...`
 - stop treating the parent as directly builder-ready
 
 If the work passes the scope/size gate, continue to plan drafting.
@@ -115,7 +115,7 @@ policy. Structure the plan as an ordered task list. Each task must include:
   GREEN. The builder's first action per task is removing the expected-failure marker and
   writing the implementation that makes the test pass.
 - **Referenced files**: exact file paths that will be created or modified. These are
-  extracted into `todo state (todos.db).grounding.referenced_paths` for staleness detection.
+  used by the state machine for grounding and staleness detection.
 
 Verify plan tasks against the domain specs loaded in step 1. Plans that reference
 non-existent APIs, wrong schema fields, or incorrect directory structures are
@@ -160,10 +160,8 @@ If the todo stays atomic, write (using approved requirements and test spec files
 - `telec todo artifacts read {slug} implementation-plan` — the full plan with tasks, rationale, and verification.
   Each task must reference which expected-failure test specifications it satisfies.
 
-Update `todos.db` state:
-
-- Set `grounding.referenced_paths` to the list of file paths from the plan.
-- Update `grounding.base_sha` to current HEAD.
+Do not write grounding fields directly. The state machine owns grounding
+metadata and current worktree state.
 
 If the todo is split instead:
 

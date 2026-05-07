@@ -18,6 +18,7 @@ vi.mock("@/lib/ws/WebSocketProvider", () => ({
 const sessions: SessionInfo[] = [
   {
     session_id: "sess-1",
+    detached: false,
     title: "Session Alpha",
     status: "running",
     active_agent: "claude",

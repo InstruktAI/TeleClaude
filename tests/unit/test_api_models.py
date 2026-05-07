@@ -402,17 +402,6 @@ class TestTodoDTO:
         )
         assert dto.after == []
 
-    @pytest.mark.unit
-    def test_findings_count_defaults_to_zero(self):
-        """findings_count defaults to 0."""
-        dto = TodoDTO(
-            slug="my-slug",
-            status="pending",
-            has_requirements=False,
-            has_impl_plan=False,
-        )
-        assert dto.findings_count == 0
-
 
 # ---------------------------------------------------------------------------
 # OperationStatusDTO

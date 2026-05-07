@@ -25,7 +25,6 @@ from teleclaude.types.todos import (
     GroundingState,
     PreparePair,
     PreparePairSlot,
-    ReviewFinding,
     ReviewVerdictState,
     TestSpecReviewState,
     TodoState,
@@ -103,9 +102,8 @@ class StateWriter:
     def review(self, review_type: str) -> ReviewVerdictState:
         """Return a `ReviewVerdictState` sub-state by phase name.
 
-        Used by callers that mutate findings (`record_finding`, `resolve_finding`).
         Raises :class:`StateMutationError` for unknown phases or for
-        verdict-only sub-states like `test_spec_review` that lack `findings`.
+        verdict-only sub-states like `test_spec_review`.
         """
         review = getattr(self._model, review_type, None)
         if not isinstance(review, ReviewVerdictState):
@@ -319,10 +317,9 @@ class GroundingManager:
 
 
 class ReviewManager:
-    """Typed review verdict and findings owner.
+    """Typed review verdict owner.
 
-    Keeps phase verdict, audit verdict, findings order and resolution state
-    aligned so they cannot diverge.
+    Keeps phase verdict and audit verdict aligned so they cannot diverge.
     """
 
     def __init__(self, writer: StateWriter) -> None:
@@ -338,41 +335,3 @@ class ReviewManager:
         audit_entry = self._writer.audit_entry(review_type)
         audit_entry.verdict = verdict
         audit_entry.completed_at = now
-
-    def record_finding(self, review_type: str, finding: dict[str, StateValue]) -> ReviewFinding:
-        """Append a new finding to the review state.
-
-        Rejects duplicate IDs — callers must supply a new stable ID or resolve
-        the existing finding first. Returns the typed finding so callers can
-        inspect the coerced record without re-reading the review state.
-        """
-        review = self._writer.review(review_type)
-        new_finding = _coerce_finding(finding)
-        if not new_finding.id:
-            raise StateMutationError("finding record missing 'id' field")
-        for existing in review.findings:
-            if existing.id == new_finding.id:
-                raise StateMutationError(f"finding id {new_finding.id!r} already recorded for {review_type}")
-        review.findings.append(new_finding)
-        review.findings_count = len(review.findings)
-        return new_finding
-
-    def resolve_finding(self, review_type: str, finding_id: str, resolution_method: str) -> ReviewFinding:
-        """Mark a finding resolved. Fails fast when the ID is unknown."""
-        review = self._writer.review(review_type)
-        now = datetime.now(UTC).isoformat()
-        for finding in review.findings:
-            if finding.id == finding_id:
-                finding.status = "resolved"
-                finding.resolved_at = now
-                finding.resolution_method = resolution_method
-                return finding
-        raise StateMutationError(f"cannot resolve unknown finding id {finding_id!r} in {review_type}")
-
-
-def _coerce_finding(raw: dict[str, StateValue]) -> ReviewFinding:
-    """Build a :class:`ReviewFinding` from a raw dict, failing fast on bad types."""
-    try:
-        return ReviewFinding.model_validate(raw)
-    except ValidationError as exc:
-        raise StateMutationError(f"invalid finding record: {exc}") from exc

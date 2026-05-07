@@ -24,7 +24,6 @@ def test_todo_item_uses_fresh_default_lists_and_none_status_fields() -> None:
 
     assert first.files == []
     assert first.after == []
-    assert first.findings_count == 0
     assert first.build_status is None
     assert first.group is None
     assert first.files is not second.files
