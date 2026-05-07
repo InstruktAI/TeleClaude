@@ -9,8 +9,10 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
+from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.operations import get_operations_service
@@ -18,6 +20,7 @@ from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -209,41 +212,71 @@ class MaintenanceService:
                     logger.warning("Adapter %s cleanup failed: %s", adapter_type, exc)
 
     async def _restore_tmux_session(self, session: Session) -> None:
-        """Recreate a missing tmux session and restart the agent. Runs as a background task."""
+        """Recreate a missing tmux session and restart the agent. Runs as a background task.
+
+        Critical: only inject the launcher when the tmux session is actually missing.
+        If the tmux session already exists, the foreground is the live agent TUI and
+        any send-keys would land in its input buffer as paste-text rather than
+        starting a fresh shell. The poller_watch can spuriously trigger restoration
+        when ``tmux list-sessions`` is briefly slow, so an early-exit guard here is
+        load-bearing — without it, the launcher command shows up as a user prompt.
+        """
         try:
+            if await tmux_bridge.session_exists(session.tmux_session_name, log_missing=False):
+                return
+
             working_dir = resolve_working_dir(session.project_path, session.subdir)
             env_vars = await self._build_tmux_env_vars(session.session_id)
             if not await ensure_tmux_with_identity(session, session.tmux_session_name, working_dir, env_vars):
                 return
 
-            if session.active_agent and session.native_session_id:
-                cmd = get_agent_command(
-                    agent=session.active_agent,
-                    thinking_mode=session.thinking_mode,
-                    exec=False,
-                    native_session_id=session.native_session_id,
-                )
+            if not (session.active_agent and session.native_session_id):
+                return
 
-                wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd, active_agent=session.active_agent)
-
-                restored = await tmux_bridge.send_keys_existing_tmux(
-                    session_name=session.tmux_session_name,
-                    text=wrapped_cmd,
-                    active_agent=session.active_agent,
+            cmd = get_agent_command(
+                agent=session.active_agent,
+                thinking_mode=session.thinking_mode,
+                exec=False,
+                native_session_id=session.native_session_id,
+            )
+            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd, active_agent=session.active_agent)
+            if not await tmux_bridge.send_keys_existing_tmux(
+                session_name=session.tmux_session_name,
+                text=wrapped_cmd,
+                active_agent=session.active_agent,
+            ):
+                logger.warning(
+                    "Failed to restore agent %s for session %s",
+                    session.active_agent,
+                    session.session_id,
                 )
-                if restored:
-                    logger.info(
-                        "Restored agent %s for session %s (native=%s)",
-                        session.active_agent,
-                        session.session_id,
-                        session.native_session_id,
-                    )
-                else:
-                    logger.warning(
-                        "Failed to restore agent %s for session %s",
-                        session.active_agent,
-                        session.session_id,
-                    )
+                return
+
+            logger.info(
+                "Restored agent %s for session %s (native=%s)",
+                session.active_agent,
+                session.session_id,
+                session.native_session_id,
+            )
+
+            ready, readiness_tail = await wait_for_agent_ready(
+                session.active_agent,
+                session,
+                AGENT_PROMPT_READY_TIMEOUT_S,
+                AGENT_START_STABILIZE_QUIET_S,
+            )
+            if not ready:
+                logger.warning(
+                    "Restored tmux for session %s but agent did not reach ready prompt; stimulus not sent. tail=%r",
+                    session.session_id,
+                    readiness_tail[-160:],
+                )
+                return
+
+            await tmux_bridge.send_keys_existing_tmux(
+                session_name=session.tmux_session_name,
+                text=RESTART_CONTINUATION_STIMULUS,
+            )
         finally:
             self._restoring_sessions.discard(session.session_id)
 

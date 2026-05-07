@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import HUMAN_ROLE_ADMIN
+from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
 from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
@@ -33,7 +33,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
-_RESTART_CONTINUATION_STIMULUS = "Session restarted. Continue pending work or remain idle."
 
 
 def _get_session_profile(session: Session) -> str:
@@ -394,7 +393,7 @@ async def agent_restart(
             # The agent has full context via --resume; it just needs a stimulus.
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=session.tmux_session_name or "",
-                text=_RESTART_CONTINUATION_STIMULUS,
+                text=RESTART_CONTINUATION_STIMULUS,
             )
 
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")

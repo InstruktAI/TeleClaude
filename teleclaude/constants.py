@@ -177,6 +177,11 @@ CHECKPOINT_BLAST_RADIUS_THRESHOLD = 3
 TUI_RELOAD_PROCESS_PATTERN = r"\.venv/bin/telec$|teleclaude\.cli\.telec($| )"
 TUI_RELOAD_COMMAND = f"Run `pkill -SIGUSR2 -f -- '{TUI_RELOAD_PROCESS_PATTERN}'`"
 
+# Sent to the agent after a restart (self-restart or maintenance auto-restore)
+# once the TUI prompt is ready. The agent has full context via --resume; this
+# is just a nudge to either continue in-flight work or stay idle.
+RESTART_CONTINUATION_STIMULUS = "Session restarted. Continue pending work or remain idle."
+
 
 @dataclass(frozen=True)
 class FileCategory:
