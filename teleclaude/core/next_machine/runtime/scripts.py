@@ -24,6 +24,21 @@ def format_fix_findings_message(
     )
 
 
+def format_reviewer_direct_fix_message(
+    *,
+    fixer_session_id: str,
+    task_context: str,
+    completion_clause: str,
+) -> str:
+    """Build the reviewer message that opens the worker-owned direct fix link."""
+    return (
+        f"A fixer is active at {fixer_session_id}. "
+        f"Start a direct conversation: telec sessions send {fixer_session_id} '<your findings summary>' --direct. "
+        f"{task_context} "
+        f"{completion_clause}"
+    )
+
+
 def format_review_approved_script(
     slug: str,
     reviewer_session_id: str | None,
@@ -50,15 +65,22 @@ def format_review_needs_work_script(
     *,
     next_step: str,
 ) -> str:
-    """Script for NEEDS_WORK variant: send findings to an existing worker and wait."""
-    escaped = message.replace('"', '\\"')
+    """Script for NEEDS_WORK variant: have the reviewer link directly with the worker."""
+    reviewer_message = format_reviewer_direct_fix_message(
+        fixer_session_id=worker_session_id,
+        task_context=message,
+        completion_clause="Collaborate until all findings are resolved, then report FIX COMPLETE.",
+    )
+    escaped = reviewer_message.replace('"', '\\"')
     return (
         f"REVIEW NEEDS WORK: {slug}\n\n"
         f"Execute in order:\n\n"
-        f'telec sessions send {worker_session_id} "{escaped}"\n\n'
+        f"Tell the reviewer to start a direct conversation with the fixer:\n"
+        f'telec sessions send {reviewer_session_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
         f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
         f"and save the new task_id.\n"
+        f"Wait for fixer to complete (monitor via heartbeat; do not poll continuously).\n"
         f"Wait for reviewer session {reviewer_session_id} to report idle.\n"
         f"When the reviewer idles, call {next_step}."
     )

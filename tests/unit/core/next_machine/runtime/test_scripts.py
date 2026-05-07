@@ -18,7 +18,7 @@ def test_format_review_in_progress_script_reuses_live_reviewer() -> None:
     assert "telec sessions run" not in instruction
 
 
-def test_format_review_needs_work_script_relays_to_live_worker() -> None:
+def test_format_review_needs_work_script_tells_reviewer_to_open_direct_fix_link() -> None:
     instruction = format_review_needs_work_script(
         "slug-a",
         "worker-1",
@@ -27,7 +27,12 @@ def test_format_review_needs_work_script_relays_to_live_worker() -> None:
         next_step="telec todo prepare slug-a",
     )
 
-    assert 'telec sessions send worker-1 "Fix the findings"' in instruction
+    command_lines = [
+        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
+    ]
+    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
+    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
+    assert not command_lines[0].endswith(" --direct")
     assert "Wait for reviewer session reviewer-1 to report idle." in instruction
     assert "telec todo prepare slug-a" in instruction
 

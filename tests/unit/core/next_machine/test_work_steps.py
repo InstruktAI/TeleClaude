@@ -212,6 +212,44 @@ async def test_review_changes_requested_relay_message_addresses_every_finding() 
 
 
 @pytest.mark.asyncio
+async def test_review_changes_requested_tells_reviewer_to_open_direct_builder_link() -> None:
+    """The reviewer, not the orchestrator, initiates the direct fix conversation."""
+    state: dict = {
+        "lifecycle_phase": "review_changes_requested",
+        "build_review": {
+            "verdict": "changes_requested",
+            "baseline_commit": "aaa111",
+            "dispatch_head": "aaa111",
+            "round": 0,
+        },
+    }
+
+    with (
+        patch(f"{_WORK_STEPS}.get_head_commit", return_value="aaa111"),
+        patch(
+            f"{_WORK_STEPS}.find_live_session_for_slug",
+            new=AsyncMock(side_effect=["builder-1", "reviewer-1"]),
+        ),
+    ):
+        keep_going, instruction = await _work_step_review_changes_requested(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug="test-slug",
+            cwd="/project",
+            worktree_cwd="/project/trees/test-slug",
+            state=state,
+        )
+
+    command_lines = [
+        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
+    ]
+    assert keep_going is False
+    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at builder-1.')
+    assert "telec sessions send builder-1 '<your findings summary>' --direct" in command_lines[0]
+    assert not command_lines[0].endswith(" --direct")
+
+
+@pytest.mark.asyncio
 async def test_build_complete_round_limit_message_has_no_suggestion_floor() -> None:
     """Round-limit message must not promise approval for Suggestion-only findings.
 
