@@ -392,8 +392,6 @@ async def _prepare_step_test_spec_build(
     requirements digest still matches the current requirements digest, specs are
     fresh — emit ``specs_built`` to advance the lifecycle without dispatching.
     """
-    await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
-
     writer = StateWriter(state)
     test_specs_entry = writer.state.artifacts.test_specs
     if test_specs_entry.produced_at:
@@ -892,6 +890,11 @@ async def _prepare_dispatch(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """Dispatch to the appropriate phase handler."""
+    # Every prepare phase from INPUT_ASSESSMENT onward dispatches workers into
+    # the slug worktree (via --subfolder) or reads from it. Ensure it exists
+    # once, here, before any handler runs. Idempotent.
+    await ensure_worktree_with_policy_async(_derive_project_root(cwd, slug), slug)
+
     if phase == PreparePhase.INPUT_ASSESSMENT:
         return await _prepare_step_input_assessment(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.TRIANGULATION:
