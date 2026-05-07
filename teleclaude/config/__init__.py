@@ -816,7 +816,7 @@ def _build_config(
     remote_computers = _parse_remote_computers(raw.get("remote_computers"))
 
     # Derive trusted_bots from fleet (local + remotes) union explicit entries
-    local_bot = str(comp_raw["bot_username"]) if comp_raw.get("bot_username") else None  # type: ignore[union-attr]
+    local_bot = str(comp_raw["bot_username"]) if comp_raw.get("bot_username") else None  # type: ignore[index,attr-defined]
     fleet_bots: list[str] = [b for b in [local_bot, *[rc.bot_username for rc in remote_computers]] if b]
     explicit_bots: list[str] = list(tg_raw["trusted_bots"])  # type: ignore[index,misc]
     merged_bots: list[str] = list(dict.fromkeys(fleet_bots + explicit_bots))
