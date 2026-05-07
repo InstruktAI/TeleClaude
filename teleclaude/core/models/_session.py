@@ -124,6 +124,7 @@ class SessionField(Enum):
     LAST_TOOL_USE_AT = "last_tool_use_at"
     LAST_CHECKPOINT_AT = "last_checkpoint_at"
     LAST_AGENT_STOP_AT = "last_agent_stop_at"
+    TURN_ANCHOR_SHA = "turn_anchor_sha"
 
 
 class TranscriptFormat(str, Enum):
@@ -345,6 +346,7 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             last_tool_use_at=ensure_utc(last_tool_use_at) if isinstance(last_tool_use_at, datetime) else None,
             last_checkpoint_at=ensure_utc(last_checkpoint_at) if isinstance(last_checkpoint_at, datetime) else None,
             last_agent_stop_at=ensure_utc(last_agent_stop_at) if isinstance(last_agent_stop_at, datetime) else None,
+            turn_anchor_sha=_get_optional_str("turn_anchor_sha"),
             last_output_summary=_get_optional_str("last_output_summary"),
             last_output_digest=_get_optional_str("last_output_digest"),
             last_projected_output_digest=_get_optional_str("last_projected_output_digest"),

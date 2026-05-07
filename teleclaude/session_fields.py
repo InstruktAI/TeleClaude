@@ -105,6 +105,7 @@ class SessionRecentToolFields:
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
     working_slug: str | None = None
+    turn_anchor_sha: str | None = None
 
 
 class SessionRecentOutputColumns(SQLModel):
@@ -129,3 +130,4 @@ class SessionRecentToolColumns(SQLModel):
     last_checkpoint_at: datetime | None = None
     last_agent_stop_at: datetime | None = None
     working_slug: str | None = None
+    turn_anchor_sha: str | None = None

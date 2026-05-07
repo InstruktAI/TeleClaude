@@ -34,6 +34,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
+from teleclaude.session_scoping._git import read_head_sha
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
 
@@ -349,8 +350,20 @@ class AgentCoordinator(
         # Clear notification flag when new prompt starts (all sessions)
         await db.set_notification_flag(session_id, False)
 
-        # Clear checkpoint state on real user input
-        await db.update_session(session_id, last_checkpoint_at=None, last_tool_use_at=None)
+        # Snapshot HEAD as the turn-start anchor for scoped path resolution.
+        # Captured here because user_prompt_submit is the canonical turn boundary:
+        # any commit after this point belongs to the new turn.
+        anchor_sha: str | None = None
+        if session.project_path:
+            anchor_sha = await asyncio.to_thread(read_head_sha, session.project_path)
+
+        # Clear checkpoint state on real user input; record the new turn anchor.
+        await db.update_session(
+            session_id,
+            last_checkpoint_at=None,
+            last_tool_use_at=None,
+            turn_anchor_sha=anchor_sha,
+        )
 
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
 

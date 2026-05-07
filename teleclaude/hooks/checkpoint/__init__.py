@@ -307,6 +307,7 @@ def get_checkpoint_content(
     native_session_id: str | None = None,
     working_slug: str | None = None,
     elapsed_since_turn_start_s: float | None = None,
+    turn_anchor_sha: str | None = None,
 ) -> str | None:
     """Build context-aware checkpoint content for both hook and codex routes.
 
@@ -350,6 +351,7 @@ def get_checkpoint_content(
             scope_mode="turn_delta",
             transcript_path=transcript_path,
             native_session_id=native_session_id,
+            turn_anchor_sha=turn_anchor_sha,
         )
         effective_files = list(scoped_paths.paths)
 

@@ -409,6 +409,75 @@ class TestHandleUserPromptSubmit:
         mock_db.update_session.assert_not_called()
 
     @pytest.mark.unit
+    async def test_snapshots_head_sha_when_project_is_git_repo(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.prompt = "fix the bug"
+        context.data.raw = {}
+        session = _make_session(lifecycle_status="active", project_path="/repo")
+
+        def _close_coro(coro: object, label: str) -> None:
+            if hasattr(coro, "close"):
+                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.read_head_sha",
+                return_value="abc123",
+            ) as read_head_mock,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._queue_background_task = MagicMock(side_effect=_close_coro)
+            await coord.handle_user_prompt_submit(context)
+
+        read_head_mock.assert_called_once_with("/repo")
+        anchor_calls = [c for c in mock_db.update_session.call_args_list if "turn_anchor_sha" in c.kwargs]
+        assert len(anchor_calls) == 1
+        assert anchor_calls[0].kwargs["turn_anchor_sha"] == "abc123"
+
+    @pytest.mark.unit
+    async def test_skips_head_snapshot_when_project_path_missing(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.prompt = "fix the bug"
+        context.data.raw = {}
+        session = _make_session(lifecycle_status="active", project_path=None)
+
+        def _close_coro(coro: object, label: str) -> None:
+            if hasattr(coro, "close"):
+                coro.close()  # pyright: ignore[reportAttributeAccessIssue]
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.read_head_sha",
+            ) as read_head_mock,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            coord._queue_background_task = MagicMock(side_effect=_close_coro)
+            await coord.handle_user_prompt_submit(context)
+
+        read_head_mock.assert_not_called()
+        anchor_calls = [c for c in mock_db.update_session.call_args_list if "turn_anchor_sha" in c.kwargs]
+        assert len(anchor_calls) == 1
+        assert anchor_calls[0].kwargs["turn_anchor_sha"] is None
+
+    @pytest.mark.unit
     async def test_normal_prompt_emits_activity_event(self):
         coord, _ = await self._run_normal_prompt()
         coord._emit_activity_event.assert_called_with("sess-001", AgentHookEvents.USER_PROMPT_SUBMIT)

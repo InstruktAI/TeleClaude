@@ -75,6 +75,7 @@ class TestGetCheckpointContent:
             scope_mode="turn_delta",
             transcript_path="/tmp/parent.jsonl",
             native_session_id="parent-thread",
+            turn_anchor_sha=None,
         )
         assert checkpoint_text is not None
 
