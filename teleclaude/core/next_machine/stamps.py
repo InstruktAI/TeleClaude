@@ -50,6 +50,7 @@ _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 _READINESS_ARTIFACT_KEY: dict[str, str] = {
     "requirements": "requirements",
     "implementation-plan": "implementation_plan",
+    "test-specs": "test_specs",
 }
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
@@ -102,7 +103,7 @@ async def apply_todo_stamp(
     elif stamp_type == "plan_ready":
         await _apply_readiness_stamp(todos_db, writer, slug, "implementation-plan", "plan_ready")
     elif stamp_type == "specs_built":
-        _apply_effective_signal(writer, "specs_built")
+        await _apply_readiness_stamp(todos_db, writer, slug, "test-specs", "specs_built")
     elif stamp_type == "prepare_pair":
         await _apply_prepare_pair_stamp(writer, value)
     elif stamp_type == "build_complete":
