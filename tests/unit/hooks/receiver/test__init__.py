@@ -104,7 +104,8 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
 
     with (
         patch("teleclaude.hooks.receiver.is_checkpoint_disabled", return_value=False),
-        patch("teleclaude.hooks.receiver.consume_checkpoint_flag", return_value=False),
+        patch("teleclaude.hooks.receiver.has_checkpoint_flag", return_value=False),
+        patch("teleclaude.hooks.receiver.set_checkpoint_flag"),
         patch("teleclaude.hooks.receiver._load_checkpoint_row", return_value=row),
         patch("teleclaude.hooks.receiver.get_checkpoint_content", return_value="checkpoint") as checkpoint_mock,
         patch("teleclaude.hooks.receiver.enqueue_checkpoint_seen"),
@@ -118,6 +119,55 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
 
     assert result == "checkpoint"
     assert checkpoint_mock.call_args.kwargs["session_id"] == "session-1"
+
+
+def test_checkpoint_fires_once_per_turn_then_subsequent_stops_skip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Once a checkpoint payload is emitted, subsequent stop_hook_active re-entries
+    in the same turn must skip without re-evaluating until user_prompt_submit
+    resets the per-turn marker."""
+    monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+
+    row = SimpleNamespace(
+        native_log_file="/tmp/session.jsonl",
+        native_session_id="native-1",
+        working_slug=None,
+        project_path="/repo",
+        subdir=None,
+        last_message_sent_at=datetime(2026, 4, 11, 10, 0, tzinfo=UTC),
+        last_checkpoint_at=None,
+    )
+
+    with (
+        patch("teleclaude.hooks.receiver.is_checkpoint_disabled", return_value=False),
+        patch("teleclaude.hooks.receiver._load_checkpoint_row", return_value=row),
+        patch("teleclaude.hooks.receiver.get_checkpoint_content", return_value="checkpoint") as checkpoint_mock,
+        patch("teleclaude.hooks.receiver.enqueue_checkpoint_seen"),
+    ):
+        first = _maybe_checkpoint_output(
+            "session-1",
+            "claude",
+            {"stop_hook_active": False},
+            outbox_db="/tmp/outbox.sqlite",
+        )
+        second = _maybe_checkpoint_output(
+            "session-1",
+            "claude",
+            {"stop_hook_active": True},
+            outbox_db="/tmp/outbox.sqlite",
+        )
+        third = _maybe_checkpoint_output(
+            "session-1",
+            "claude",
+            {"stop_hook_active": True},
+            outbox_db="/tmp/outbox.sqlite",
+        )
+
+    assert first == "checkpoint"
+    assert second is None
+    assert third is None
+    assert checkpoint_mock.call_count == 1
 
 
 class TestResolveCheckpointProjectPath:

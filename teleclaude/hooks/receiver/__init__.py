@@ -33,6 +33,7 @@ from teleclaude.hooks.checkpoint import get_checkpoint_content
 from teleclaude.hooks.checkpoint_flags import (
     CHECKPOINT_RECHECK_FLAG,
     consume_checkpoint_flag,
+    has_checkpoint_flag,
     is_checkpoint_disabled,
     set_checkpoint_flag,
 )
@@ -209,7 +210,8 @@ def _build_receiver_error_payload(
 
 
 def _reset_checkpoint_flags(session_id: str) -> None:
-    # Keep CLEAR persistent across turns; only reset one-shot recheck limiter.
+    # Keep CLEAR persistent across turns; clear the per-turn fired marker so
+    # the next turn's first checkpoint can fire.
     consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
 
@@ -233,8 +235,8 @@ def _maybe_checkpoint_output(
         return None
 
     stop_hook_active = bool(raw_data.get("stop_hook_active"))
-    if stop_hook_active and consume_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
-        logger.info("Checkpoint skipped (recheck limit reached)", session_id=session_id, agent=agent)
+    if stop_hook_active and has_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG):
+        logger.info("Checkpoint skipped (already fired this turn)", session_id=session_id, agent=agent)
         return None
 
     row = _load_checkpoint_row(session_id)
@@ -272,10 +274,10 @@ def _maybe_checkpoint_output(
         )
         return None
 
-    # Native Stop continuation indicates we already blocked once for this turn.
-    # If no explicit clear marker is provided, allow at most one extra recheck.
-    if stop_hook_active:
-        set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
+    # One checkpoint payload per turn: any subsequent stop_hook_active re-entry
+    # skips until user_prompt_submit clears the marker. The agent's transcript
+    # already carries the prior payload — re-firing only nags.
+    set_checkpoint_flag(session_id, CHECKPOINT_RECHECK_FLAG)
 
     enqueue_checkpoint_seen(
         session_id=session_id,
