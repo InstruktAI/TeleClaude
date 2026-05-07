@@ -133,7 +133,8 @@ class TestSessionEscalationEventEmission:
         # A minimal stub that passes the isinstance(adapter, DiscordAdapter) check
         # by replacing the class itself in the module during the call.
         class _FakeDiscordAdapter:
-            async def create_escalation_thread(self, **_kwargs: object) -> str:
+            async def create_escalation_thread(self, **kwargs: object) -> str:
+                _ = kwargs
                 return "thread-123"
 
         mock_discord = _FakeDiscordAdapter()
@@ -153,10 +154,11 @@ class TestSessionEscalationEventEmission:
             emitted.append((event, context))
 
         with (
-            # Patch DiscordAdapter so the local import inside the method gets _FakeDiscordAdapter,
-            # making isinstance(mock_discord, DiscordAdapter) resolve correctly.
-            patch("teleclaude.adapters.discord_adapter.DiscordAdapter", _FakeDiscordAdapter),
-            patch("teleclaude.core.db.db") as mock_db,
+            # _handle_escalate_session does `isinstance(adapter, DiscordAdapter)` against the
+            # name imported into command_service, so the patch must target that local rebinding
+            # rather than the source module.
+            patch("teleclaude.core.command_service.DiscordAdapter", _FakeDiscordAdapter),
+            patch("teleclaude.core.command_service.db") as mock_db,
             patch.object(event_bus, "emit", side_effect=capture_emit),
         ):
             mock_db.get_session = AsyncMock(return_value=mock_session)
@@ -182,6 +184,7 @@ class TestJobLifecycleEventEmission:
     """Job execution emits lifecycle events (started, completed, failed)."""
 
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         "payload_cls_name,required_fields",
         [
@@ -338,6 +341,7 @@ class TestDomainEventPayloadPattern:
     """All new events follow the typed payload dataclass pattern."""
 
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         "payload_cls_name",
         [

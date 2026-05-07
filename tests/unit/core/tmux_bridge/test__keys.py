@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.tmux_bridge import _keys
+from teleclaude.core.tmux_bridge._subprocess import SubprocessTimeoutError
 
 
 def _completed_process(*, returncode: int = 0) -> SimpleNamespace:
@@ -18,6 +19,7 @@ def _completed_process(*, returncode: int = 0) -> SimpleNamespace:
 
 class TestPidIsAlive:
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         ("side_effect", "expected"),
         [
@@ -78,6 +80,42 @@ class TestSendKeys:
             result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text="echo hi")
 
         assert result is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_existing_tmux_returns_false_on_subprocess_timeout(self) -> None:
+        with patch(
+            "teleclaude.core.tmux_bridge._keys._send_keys_tmux",
+            new=AsyncMock(side_effect=SubprocessTimeoutError("tmux operation", 15.0, 1234)),
+        ):
+            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text="hi", timeout=15.0)
+
+        assert result is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_existing_tmux_propagates_custom_timeout(self) -> None:
+        processes = [_completed_process(), _completed_process()]
+        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b"")])
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=processes),
+            ),
+            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="hello",
+                timeout=15.0,
+            )
+
+        assert result is True
+        # Both the text and the submit subprocesses must use the caller-supplied timeout.
+        assert communicate_mock.await_args_list[0].args[2] == 15.0
+        assert communicate_mock.await_args_list[1].args[2] == 15.0
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -225,6 +263,7 @@ class TestSendSignal:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(("signal_value", "key_name"), [(SIGINT, "C-c"), (SIGTERM, "C-\\")])
     async def test_control_signals_map_to_tmux_keys(self, signal_value: int, key_name: str) -> None:
         with (
@@ -261,6 +300,7 @@ class TestSendSignal:
 class TestSpecialKeyHelpers:
     @pytest.mark.unit
     @pytest.mark.asyncio
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         ("helper_name", "kwargs", "expected_call"),
         [

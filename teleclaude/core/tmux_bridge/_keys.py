@@ -80,6 +80,7 @@ async def send_keys_existing_tmux(
     text: str,
     *,
     active_agent: str | None = None,
+    timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to an existing tmux session (do not auto-create).
 
@@ -92,9 +93,23 @@ async def send_keys_existing_tmux(
             session_name=session_name,
             text=text,
             active_agent=active_agent,
+            timeout=timeout,
         )
-    except (OSError, ValueError, RuntimeError, SubprocessTimeoutError) as e:
-        logger.exception("Error sending keys to existing tmux session %s: %s", session_name, e)
+    except SubprocessTimeoutError as e:
+        logger.error(
+            "tmux send-keys timed out",
+            session=session_name,
+            reason="timeout",
+            timeout_s=e.timeout,
+        )
+        return False
+    except (OSError, ValueError, RuntimeError) as e:
+        logger.exception(
+            "tmux send-keys subprocess error",
+            session=session_name,
+            reason="subprocess_error",
+            error_class=type(e).__name__,
+        )
         return False
 
 
@@ -153,6 +168,7 @@ async def _send_keys_tmux(
     session_name: str,
     text: str,
     active_agent: str | None,
+    timeout: float = SUBPROCESS_TIMEOUT_QUICK,
 ) -> bool:
     """Send keys to tmux (session must already exist)."""
     # Gemini CLI can't handle '!' character - escape it
@@ -176,14 +192,15 @@ async def _send_keys_tmux(
     result = await asyncio.create_subprocess_exec(
         *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
 
     if result.returncode != 0:
         logger.error(
-            "Failed to send keys to session %s: returncode=%d, stderr=%s",
-            session_name,
-            result.returncode,
-            stderr.decode().strip(),
+            "tmux send-keys text returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_text",
+            returncode=result.returncode,
+            stderr=stderr.decode().strip(),
         )
         return False
 
@@ -196,14 +213,15 @@ async def _send_keys_tmux(
     result = await asyncio.create_subprocess_exec(
         *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    _, stderr = await communicate_with_timeout(result, None, SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
 
     if result.returncode != 0:
         logger.error(
-            "Failed to send Enter to session %s: returncode=%d, stderr=%s",
-            session_name,
-            result.returncode,
-            stderr.decode().strip(),
+            "tmux send-keys submit returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_submit",
+            returncode=result.returncode,
+            stderr=stderr.decode().strip(),
         )
         return False
 
