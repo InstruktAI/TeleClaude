@@ -2,14 +2,19 @@
 id: 'project/spec/teleclaude-config'
 type: 'spec'
 scope: 'project'
-description: 'Authoritative surface for TeleClaude YAML configuration and environment variables.'
+description: 'Authoritative surface for TeleClaude config files, daemon runtime config, and related environment variables.'
 ---
 
 # Teleclaude Config — Spec
 
 ## What it is
 
-The Teleclaude Config surface defines how the daemon and CLI are initialized and validated.
+The Teleclaude Config surface defines how TeleClaude configuration is initialized and validated across two distinct surfaces:
+
+1. User-facing `teleclaude.yml` files (`GlobalConfig`, `ProjectConfig`, `PersonConfig`)
+2. Daemon runtime `config.yml` loaded by `teleclaude.config`
+
+These surfaces are related but not interchangeable. The config wizard, `_ADAPTER_ENV_VARS`, and `GuidanceRegistry` cover the user-facing `teleclaude.yml` / environment-variable surface. Daemon-only `config.yml` keys are documented here for runtime correctness, but they do not automatically imply new wizard steps or env-var registry entries.
 
 ### Two config files, three levels
 
@@ -111,9 +116,42 @@ environment_variables:
   - EMAIL_FROM
 ```
 
+### Daemon runtime config keys (`config.yml`)
+
+These keys are loaded by the daemon runtime config parser in `teleclaude/config/__init__.py`.
+
+```yaml
+computer:
+  name: string
+  user: string
+  role: string
+  default_working_dir: string
+  timezone: string
+  host: string | null
+  bot_username: string | null
+  trusted_dirs: list[TrustedDir]
+remote_computers:
+  <name>:
+    user: string | null
+    host: string | null
+    ip: string | null
+    teleclaude_path: string | null
+    bot_username: string | null
+telegram:
+  trusted_bots: list[string] # explicit entries merged with non-null fleet bot_username values
+agents:
+  default: string
+  claude|gemini|codex:
+    enabled: boolean
+```
+
 ### Maintenance
 
-This spec must be updated whenever config keys or env vars are added, renamed, or removed. The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with this spec.
+This spec must be updated whenever a documented config key or env var is added, renamed, or removed.
+
+The config wizard, `_ADAPTER_ENV_VARS` registry, and `GuidanceRegistry` must stay in sync with the user-facing `teleclaude.yml` / environment-variable surfaces documented here.
+
+Daemon-only structural keys in `config.yml` must also be documented here, but they only require wizard or env-var changes when those keys become part of the interactive `teleclaude.yml` setup flow.
 
 ### Project registry
 

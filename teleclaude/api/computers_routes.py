@@ -43,8 +43,12 @@ async def list_computers(
                 host=info.host,
                 is_local=True,
                 tmux_binary=info.tmux_binary,
+                bot_username=getattr(info, "bot_username", None),
             )
         ]
+
+        # Track names already in the result (case-insensitive) to avoid duplicates
+        seen_names: set[str] = {config.computer.name.lower()}
 
         # Add cached remote computers (if available)
         cache = _CACHE["value"]
@@ -58,10 +62,26 @@ async def list_computers(
                         user=comp.user,
                         host=comp.host,
                         is_local=False,
+                        bot_username=getattr(comp, "bot_username", None),
+                    )
+                )
+                seen_names.add(comp.name.lower())
+
+        # Append config-defined remotes that are not already in the result (offline)
+        for remote in config.remote_computers:
+            if remote.name.lower() not in seen_names:
+                result.append(
+                    ComputerDTO(
+                        name=remote.name,
+                        status="offline",
+                        user=remote.user,
+                        host=remote.host,
+                        is_local=False,
+                        bot_username=remote.bot_username,
                     )
                 )
 
         return result
     except Exception as e:
         logger.error("list_computers failed: %s", e, exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list computers: {e}") from e
+        raise HTTPException(status_code=500, detail="Failed to list computers.") from e

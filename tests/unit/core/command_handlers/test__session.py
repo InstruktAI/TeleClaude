@@ -241,7 +241,6 @@ class TestCreateSession:
             native_session_id="native-123",
             native_log_file="/tmp/native.log",
             project_path=str(project_path),
-            title="Headless",
             origin="terminal",
             origin_metadata={"email": "admin@example.com"},
             launch_intent=SessionLaunchIntent(
@@ -295,7 +294,6 @@ class TestCreateSession:
             headless=True,
             native_session_id="native-456",
             project_path=str(project_path),
-            title="Headless Customer",
             origin="terminal",
             origin_metadata=TerminalOriginMetadata(email="customer@example.com"),
             launch_intent=SessionLaunchIntent(
@@ -385,6 +383,7 @@ class TestComputerInfo:
                 role="builder",
                 host="localhost",
                 tmux_binary="/usr/bin/tmux",
+                bot_username=None,
             )
         )
         psutil = SimpleNamespace(
@@ -412,6 +411,56 @@ class TestComputerInfo:
         assert info.system_stats["memory"]["total_gb"] == 16.0
         assert info.system_stats["disk"]["free_gb"] == 50.0
         assert info.system_stats["cpu"]["percent_used"] == 12.5
+
+    @pytest.mark.unit
+    async def test_get_computer_info_includes_configured_bot_username(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = SimpleNamespace(
+            computer=SimpleNamespace(
+                name="local",
+                user="dev",
+                role="builder",
+                host="localhost",
+                bot_username="local_box_bot",
+                tmux_binary="/usr/bin/tmux",
+            )
+        )
+        psutil = SimpleNamespace(
+            virtual_memory=lambda: SimpleNamespace(total=16 * 1024**3, available=4 * 1024**3, percent=75.0),
+            disk_usage=lambda _path="": SimpleNamespace(total=200 * 1024**3, free=50 * 1024**3, percent=75.0),
+            cpu_percent=lambda _interval=None: 12.5,
+        )
+
+        monkeypatch.setattr(_session, "config", config)
+        monkeypatch.setattr(_session, "psutil", psutil)
+
+        info = await _session.get_computer_info()
+
+        assert info.bot_username == "local_box_bot"
+
+    @pytest.mark.unit
+    async def test_get_computer_info_defaults_bot_username_to_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        config = SimpleNamespace(
+            computer=SimpleNamespace(
+                name="local",
+                user="dev",
+                role="builder",
+                host="localhost",
+                bot_username=None,
+                tmux_binary="/usr/bin/tmux",
+            )
+        )
+        psutil = SimpleNamespace(
+            virtual_memory=lambda: SimpleNamespace(total=16 * 1024**3, available=4 * 1024**3, percent=75.0),
+            disk_usage=lambda _path="": SimpleNamespace(total=200 * 1024**3, free=50 * 1024**3, percent=75.0),
+            cpu_percent=lambda _interval=None: 12.5,
+        )
+
+        monkeypatch.setattr(_session, "config", config)
+        monkeypatch.setattr(_session, "psutil", psutil)
+
+        info = await _session.get_computer_info()
+
+        assert info.bot_username is None
 
 
 class TestGetSessionData:

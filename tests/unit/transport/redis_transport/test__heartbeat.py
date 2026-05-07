@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.transport.redis_transport import _heartbeat
 from teleclaude.transport.redis_transport._transport import RedisTransport
 
 
@@ -93,3 +95,23 @@ class TestSendHeartbeat:
         _, _, payload_str = mock_redis.setex.call_args.args
         payload = json.loads(payload_str)
         assert payload["projects_digest"] == "abc123"
+
+    @pytest.mark.unit
+    async def test_payload_includes_bot_username_when_configured(
+        self, transport: RedisTransport, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_redis = AsyncMock()
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+        transport._cache = None
+        monkeypatch.setattr(
+            _heartbeat,
+            "config",
+            SimpleNamespace(computer=SimpleNamespace(bot_username="local_box_bot")),
+            raising=False,
+        )
+
+        await transport._send_heartbeat()
+
+        _, _, payload_str = mock_redis.setex.call_args.args
+        payload = json.loads(payload_str)
+        assert payload["bot_username"] == "local_box_bot"

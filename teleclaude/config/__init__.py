@@ -12,6 +12,8 @@ from typing import Any
 import yaml
 from dotenv import load_dotenv
 
+from teleclaude.config._remote_computers import RemoteComputerConfig as RemoteComputerConfig
+from teleclaude.config._remote_computers import parse_remote_computers as _parse_remote_computers
 from teleclaude.constants import (
     AGENT_PROTOCOL,
     DIRECTORY_CHECK_INTERVAL,
@@ -77,6 +79,7 @@ class ComputerConfig:
     trusted_dirs: list[TrustedDir]
     host: str | None = None  # Optional hostname/IP for SSH remote execution
     tmux_binary: str = "tmux"  # Resolved by runtime policy (not user-configurable)
+    bot_username: str | None = None
 
     def get_all_trusted_dirs(self) -> list[TrustedDir]:
         """Get all trusted directories from config, deduplicated by path."""
@@ -331,6 +334,7 @@ class Config:
     stt: STTConfig | None = None
     chiptunes: ChiptunesConfig | None = None
     experiments: list[ExperimentConfig] = field(default_factory=list)
+    remote_computers: list[RemoteComputerConfig] = field(default_factory=list)
 
     def is_experiment_enabled(self, name: str, agent: str | None = None, adapter: str | None = None) -> bool:
         """Check if an experiment is enabled for a given agent/adapter combination.
@@ -374,7 +378,9 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "is_master": False,
         "trusted_dirs": [],
         "host": None,
+        "bot_username": None,
     },
+    "remote_computers": {},
     "redis": {
         "enabled": False,
         "url": "redis://localhost:6379",
@@ -807,6 +813,14 @@ def _build_config(
 
     whatsapp_enabled = whatsapp_enabled_flag or bool(whatsapp_phone_number_id and whatsapp_access_token)
 
+    remote_computers = _parse_remote_computers(raw.get("remote_computers"))
+
+    # Derive trusted_bots from fleet (local + remotes) union explicit entries
+    local_bot = str(comp_raw["bot_username"]) if comp_raw.get("bot_username") else None  # type: ignore[index,attr-defined]
+    fleet_bots: list[str] = [b for b in [local_bot, *[rc.bot_username for rc in remote_computers]] if b]
+    explicit_bots: list[str] = list(tg_raw["trusted_bots"])  # type: ignore[index,misc]
+    merged_bots: list[str] = list(dict.fromkeys(fleet_bots + explicit_bots))
+
     return Config(
         computer=ComputerConfig(
             name=str(comp_raw["name"]),  # type: ignore[index]
@@ -827,6 +841,7 @@ def _build_config(
                 else None
             ),
             tmux_binary=resolve_tmux_binary(),
+            bot_username=local_bot,
         ),
         polling=PollingConfig(
             directory_check_interval=DIRECTORY_CHECK_INTERVAL,
@@ -843,7 +858,7 @@ def _build_config(
             output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),
         ),
         telegram=TelegramConfig(
-            trusted_bots=list(tg_raw["trusted_bots"]),  # type: ignore[index,misc]
+            trusted_bots=merged_bots,
             qos=TelegramQoSConfig(),
         ),
         discord=DiscordConfig(
@@ -900,6 +915,7 @@ def _build_config(
         stt=_parse_stt_config(stt_raw),  # type: ignore[arg-type]
         chiptunes=_parse_chiptunes_config(chiptunes_raw),  # type: ignore[arg-type]
         experiments=experiments,
+        remote_computers=remote_computers,
     )
 
 
