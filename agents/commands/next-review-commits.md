@@ -17,15 +17,21 @@ Review a set of commits already landed on main, without requiring a worktree or 
 
 ## Inputs
 
-- Commit SHAs: `"$ARGUMENTS"` — comma-separated list of commit hashes to review.
+- Commit SHAs: `"$ARGUMENTS"` — comma-separated **discrete list** of commit
+  hashes to review.
+
+  **This is NOT a range.** Each SHA names exactly one commit. The list may have
+  gaps — commits authored by others can sit between the named SHAs. Those
+  intervening commits are out of scope: they were not handed to you and they
+  belong to whoever wrote them. Reviewing them is a scope violation.
 
 ## Outputs
 
 - Review findings printed to the caller. No todo artifact is written.
-- Report format:
+- Report format (use a comma-separated list, never `..` range notation):
 
   ```
-  REVIEW COMPLETE: commits <sha1[:8]>..<shaN[:8]>
+  REVIEW COMPLETE: commits <sha1[:8]>,<sha2[:8]>,...,<shaN[:8]>
 
   Verdict: [APPROVE | REQUEST CHANGES]
   Findings: {count}
@@ -33,11 +39,21 @@ Review a set of commits already landed on main, without requiring a worktree or 
 
 ## Steps
 
-- Parse `$ARGUMENTS` as a comma-separated list of commit SHAs. Validate each exists via `git cat-file -t`.
-- Compute the unified diff: `git diff <earliest-sha>~1..<latest-sha>` (order SHAs chronologically).
-- Read changed files in full for context — not just the diff.
-- Skip the scope lane (no requirements to trace against). Note "Ad-hoc commit review" in the findings header.
-- Run all other review lanes from the review procedure against the diff.
+- Parse `$ARGUMENTS` as a comma-separated list of commit SHAs. Validate each
+  exists via `git cat-file -t`.
+- For **each** named SHA, inspect that commit in isolation:
+  - `git show <sha>` for its full diff and metadata.
+  - `git show --stat <sha>` for the file list.
+- For full context of changed files, read them at the named commit
+  (`git show <sha>:<path>`) — do not pull in state from neighboring commits
+  you were not asked to review.
+- **Never** compute a range diff such as `git diff <earliest>~1..<latest>` or
+  `git log <a>..<b>`. Those forms silently include intervening commits and
+  produce scope-creep findings against work you were not handed.
+- Skip the scope lane (no requirements to trace against). Note "Ad-hoc commit
+  review" in the findings header.
+- Run all other review lanes from the review procedure against **only** the
+  changes contained in the named SHAs.
 - Report findings and verdict to the caller.
 
 ## Discipline
@@ -74,3 +90,7 @@ APPROVE verdicts. Recognize the urge by name and do not act on it.
   print to the caller and end there — but they remain real findings. The lack of
   a fix loop does not change severity. Report what you find, with citations,
   and let the human decide what to do with it.
+- **Range-expanding across SHAs.** The input is a discrete comma-separated list,
+  not `first..last`. If you find yourself flagging an intervening commit that
+  was not in the input, the finding is out of scope — drop it. That work
+  belongs to whoever authored it, not to the caller who handed you these SHAs.
