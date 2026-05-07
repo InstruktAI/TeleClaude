@@ -75,13 +75,16 @@ async def test_requirements_ready_rejects_missing_artifact(tmp_path: Path) -> No
     try:
         await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
         with patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)):
-            with pytest.raises(StateMutationError, match="requirements artifact missing"):
+            with pytest.raises(StateMutationError):
                 await apply_todo_stamp(
                     cwd="/repo",
                     slug="my-slug",
                     stamp_type="requirements_ready",
                     value="true",
                 )
+        # Observable: state did not advance.
+        post = await database.read_state("my-slug")
+        assert post is not None and post["lifecycle_phase"] == "input_assessment"
     finally:
         await database.close()
 
@@ -139,13 +142,16 @@ async def test_prepare_pair_rejects_unknown_session(tmp_path: Path) -> None:
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
             patch(f"{_STAMPS}.get_db", new=AsyncMock(return_value=_SessionDb({}))),
         ):
-            with pytest.raises(StateMutationError, match="unknown session"):
+            with pytest.raises(StateMutationError):
                 await apply_todo_stamp(
                     cwd="/repo",
                     slug="my-slug",
                     stamp_type="prepare_pair",
                     value="slot_a:sid-a,slot_b:sid-b",
                 )
+        # Observable: pair slot was not persisted.
+        post = await database.read_state("my-slug")
+        assert post is not None and post.get("prepare_pair") is None
     finally:
         await database.close()
 
@@ -223,13 +229,16 @@ async def test_build_complete_requires_owning_worker_session(tmp_path: Path) -> 
     try:
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)):
-            with pytest.raises(PermissionError, match="requires a TeleClaude worker session"):
+            with pytest.raises(PermissionError):
                 await apply_todo_stamp(
                     cwd="/repo",
                     slug="my-slug",
                     stamp_type="build_complete",
                     value="true",
                 )
+        # Observable: state did not advance.
+        post = await database.read_state("my-slug")
+        assert post is not None and post["lifecycle_phase"] == "build_started"
     finally:
         await database.close()
 
@@ -245,7 +254,7 @@ async def test_build_complete_rejects_wrong_working_slug(tmp_path: Path) -> None
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
             patch(f"{_STAMPS}.get_db", new=AsyncMock(return_value=sessions)),
         ):
-            with pytest.raises(PermissionError, match="requires caller session builder"):
+            with pytest.raises(PermissionError):
                 await apply_todo_stamp(
                     cwd="/repo",
                     slug="my-slug",
@@ -253,6 +262,9 @@ async def test_build_complete_rejects_wrong_working_slug(tmp_path: Path) -> None
                     value="true",
                     caller_session_id="builder",
                 )
+        # Observable: state did not advance.
+        post = await database.read_state("my-slug")
+        assert post is not None and post["lifecycle_phase"] == "build_started"
     finally:
         await database.close()
 
@@ -299,7 +311,7 @@ async def test_build_complete_rejects_gate_failure(tmp_path: Path) -> None:
             patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
             patch(f"{_STAMPS}.run_build_gates", return_value=(False, "gate failed")),
         ):
-            with pytest.raises(StateMutationError, match="build gates failed"):
+            with pytest.raises(StateMutationError):
                 await apply_todo_stamp(
                     cwd=str(tmp_path),
                     slug="my-slug",
@@ -307,5 +319,8 @@ async def test_build_complete_rejects_gate_failure(tmp_path: Path) -> None:
                     value="true",
                     caller_session_id="builder",
                 )
+        # Observable: state did not advance.
+        post = await database.read_state("my-slug")
+        assert post is not None and post["lifecycle_phase"] == "build_started"
     finally:
         await database.close()

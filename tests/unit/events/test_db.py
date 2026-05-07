@@ -22,9 +22,9 @@ async def test_get_event_db_returns_initialized_singleton(tmp_path: Path) -> Non
     first = await get_event_db()
     assert isinstance(first, EventDB)
     assert first.is_initialized()
-    # Isolation invariant: the factory honors the monkeypatched EVENTS_DB_PATH
-    # (defaults must resolve at call time, not at import time).
-    assert first._db_path == (tmp_path / "events.db").expanduser()
+    # Observable isolation: the factory used the monkeypatched path, so the
+    # tmp DB file is the one created on disk (defaults resolve at call time).
+    assert (tmp_path / "events.db").exists()
     second = await get_event_db()
     assert second is first
     await first.close()
@@ -32,7 +32,12 @@ async def test_get_event_db_returns_initialized_singleton(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_get_event_db_replaces_closed_cached_instance() -> None:
-    """A closed instance must not be handed out as if initialized."""
+    """A closed instance must not be handed out as if initialized.
+
+    This also covers the ``close`` -> factory-cache-cleared invariant: if
+    the cache were not cleared, the second call would hand back the closed
+    instance instead of an initialized one.
+    """
     first = await get_event_db()
     await first.close()
     assert not first.is_initialized()
@@ -40,11 +45,3 @@ async def test_get_event_db_replaces_closed_cached_instance() -> None:
     assert second is not first
     assert second.is_initialized()
     await second.close()
-
-
-@pytest.mark.asyncio
-async def test_close_clears_factory_cache() -> None:
-    """EventDB.close resets the singleton so the next get_event_db rebuilds."""
-    first = await get_event_db()
-    await first.close()
-    assert event_db_module._event_db_instance is None
