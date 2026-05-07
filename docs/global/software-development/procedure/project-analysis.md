@@ -7,6 +7,14 @@ description: 'AI-driven project analysis procedure for telec init enrichment. Gu
 
 # Project Analysis — Procedure
 
+## Required reads
+
+- @~/.teleclaude/docs/general/procedure/doc-snippet-authoring.md
+- @~/.teleclaude/docs/software-development/spec/init-scaffolding.md
+- @~/.teleclaude/docs/general/concept/normalized-agent-artifacts.md
+- @~/.teleclaude/docs/general/procedure/agent-artifact-authoring.md
+- @~/.teleclaude/docs/general/spec/agent-artifacts.md
+
 ## Goal
 
 Analyze a codebase systematically and produce durable, project-specific doc snippets that
@@ -17,8 +25,10 @@ reflect concrete findings from the analyzed repository, not generic templates.
 
 - The project has source files (not an empty repository).
 - `telec init` plumbing (hooks, sync, project registration) has already completed.
-- The scaffolding schema (`software-development/spec/init-scaffolding`) is loaded
-  as a required read so the analysis session knows the output contract.
+- The required reads above provide the output contract (`init-scaffolding`),
+  the snippet-authoring discipline (`doc-snippet-authoring`, which transitively
+  pulls in the value contract, schema, and referencing rules), and the
+  agent-artifact governance (for the AGENTS.master.md decision in Step 15).
 - The session runs inside the project root with full filesystem read access.
 
 ## Steps
@@ -176,27 +186,62 @@ Generated snippets must:
 - Cover the categories implied by the analyzed codebase. Not every category
   applies to every project.
 
-The analysis determines which snippets to produce based on what exists:
+Apply the value test from `general/policy/snippet-value-contract` to every
+candidate snippet. The table below names common project-snippet shapes worth
+considering. Each row is conditional on the value test: if a candidate fails
+— for example, if the project's "structure" or "conventions" are generic and
+add no signal beyond what stdlib, framework, or global policy already imply —
+do not produce that snippet. Coverage is not a virtue; signal is. When the
+project implements a global policy, prefer a reverse pointer (`See also: <global policy ID>`)
+over restating the contract.
 
-| Snippet ID                     | Taxonomy | When to generate                             |
-| ------------------------------ | -------- | -------------------------------------------- |
-| `project/design/architecture`  | design   | Always (every project has structure)         |
-| `project/policy/conventions`   | policy   | When naming/style conventions are observable |
-| `project/spec/dependencies`    | spec     | When the project has external dependencies   |
-| `project/spec/entry-points`    | spec     | When entry points or routes are identified   |
-| `project/design/test-strategy` | design   | When tests exist                             |
-| `project/spec/build-deploy`    | spec     | When build/deploy config exists              |
-| `project/spec/configuration`   | spec     | When config files are present                |
+| Snippet shape                  | Taxonomy | Worth producing when…                                                                                                                                                                            |
+| ------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `project/design/architecture`  | design   | Repo structure encodes durable intent the code can't express — non-obvious layering, a deliberate constraint, a topology agents must navigate.                                                   |
+| `project/policy/conventions`   | policy   | Conventions diverge from the language's global policy in ways agents must respect (custom error hierarchy, project-specific naming). The global policy answers the rest.                         |
+| `project/spec/dependencies`    | spec     | Dependency choices encode constraints invisible in the manifest (why a version is pinned, why a library was chosen over alternatives). Otherwise the manifest is the source of truth.            |
+| `project/spec/entry-points`    | spec     | Entry points have non-obvious wiring (conditional registration, side-effect imports). Otherwise a 30-second source read answers it.                                                              |
+| `project/design/test-strategy` | design   | The project tests in non-standard ways agents must follow (custom fixtures, coverage philosophy, specific frameworks). Generic pytest/jest patterns do not earn a snippet.                       |
+| `project/spec/build-deploy`    | spec     | The pipeline encodes constraints invisible in the CI YAML (why a step exists, what failure it defends). Otherwise the YAML is the source of truth.                                               |
+| `project/spec/configuration`   | spec     | Configuration semantics are project-specific. **If the project implements a global policy, write a reverse pointer (`See also: <global policy ID>`) and stop — do not duplicate the contract.** |
 
-### 15. Agent Bootstrap Content
+### 15. Agent Bootstrap Content (AGENTS.master.md decision)
 
-When no project-local `AGENTS.master.md` or equivalent artifact source exists:
+The init analysis encounters one of four normal repository states. The
+decision determines whether to create or promote `AGENTS.master.md`. Apply
+the matching case; do not improvise.
 
-- Generate a minimal project-specific agent bootstrap snippet that describes
-  the project, its tech stack, key directories, and primary conventions.
-- The content should be concise enough to fit in the agent's pre-loaded context.
-- Do not overwrite existing agent artifact sources — respect the artifact
-  governance rules.
+**Case 1 — `AGENTS.master.md` exists.** Respect it. Do not modify. The
+existing source is authoritative.
+
+**Case 2 — Hand-authored `AGENTS.md` exists, no master.** Promote it. By
+convention `CLAUDE.md` is a shim (`@./AGENTS.md`) or absent in this case.
+Procedure:
+
+- Move the content of `AGENTS.md` into a new `AGENTS.master.md`.
+- Run `telec sync`.
+- Verify the regenerated `AGENTS.md` (inflated from the master, possibly with
+  baseline additions) and the `CLAUDE.md` shim are produced. The original
+  content survives in `AGENTS.master.md`.
+
+**Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** Respect by
+default. Do not auto-create a master — a substantive standalone `CLAUDE.md`
+is a deliberate Claude-Code-only signal. Promotion to a master is possible
+but only as an explicit human-driven step, never as part of automated init
+analysis.
+
+**Case 4 (greenfield) — no `AGENTS.master.md`, no `AGENTS.md`, no
+substantive `CLAUDE.md`.** Generate a minimal project-specific
+`AGENTS.master.md` capturing tech stack, key directories, and primary
+conventions. Subsequent `telec sync` inflates `AGENTS.md` and writes the
+`CLAUDE.md` shim.
+
+**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
+contradicts the shim convention. Halt automatic promotion and flag the
+conflict for human inspection. Do not auto-promote: a subsequent `telec sync`
+would overwrite `CLAUDE.md` with the shim and silently destroy its content.
+The human must decide which file is authoritative before the analysis
+proceeds.
 
 ## Outputs
 

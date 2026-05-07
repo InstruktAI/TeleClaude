@@ -122,18 +122,31 @@ When enrichment runs on a project that already has auto-generated snippets:
 
 ### Agent Bootstrap Content
 
-Generated project-local agent bootstrap content coexists with the existing
-agent artifact governance:
+The enrichment writer's behavior is governed by the AGENTS.master.md decision
+in `software-development/procedure/project-analysis` (Step 15). The four
+normal cases plus the anomaly:
 
-- **No existing `AGENTS.master.md`:** The enrichment writer generates a minimal
-  `AGENTS.master.md` in the project root containing project-specific context
-  (tech stack, key directories, conventions). Normal artifact inflation then
-  produces `AGENTS.md` and `CLAUDE.md` at sync time.
-- **Existing `AGENTS.master.md`:** The enrichment writer does not overwrite it.
-  The existing artifact source is authoritative.
-- **Existing `CLAUDE.md` without `AGENTS.master.md`:** The enrichment writer
-  does not create `AGENTS.master.md` — a standalone `CLAUDE.md` indicates
-  manual artifact management.
+- **Case 1 — `AGENTS.master.md` exists.** The existing artifact source is
+  authoritative. The enrichment writer does not modify it.
+- **Case 2 — Hand-authored `AGENTS.md` exists, no master.** The enrichment
+  writer promotes it: the existing `AGENTS.md` content is moved into a new
+  `AGENTS.master.md`. Subsequent `telec sync` regenerates `AGENTS.md`
+  (possibly with baseline additions) and writes the `CLAUDE.md` shim. By
+  convention `CLAUDE.md` is a shim or absent in this case.
+- **Case 3 — Substantive standalone `CLAUDE.md`, no `AGENTS.md`.** The
+  enrichment writer does not create a master. A substantive standalone
+  `CLAUDE.md` is a deliberate Claude-Code-only signal. Promotion is possible
+  only as an explicit human-driven step.
+- **Case 4 (greenfield) — none of the above.** The enrichment writer generates
+  a minimal project-specific `AGENTS.master.md` (tech stack, key directories,
+  primary conventions). Normal artifact inflation then produces `AGENTS.md`
+  and the `CLAUDE.md` shim at sync time.
+
+**Anomaly — both substantive `AGENTS.md` and substantive `CLAUDE.md`.** This
+contradicts the shim convention. The enrichment writer halts and flags the
+conflict for human inspection. It does not auto-promote: a subsequent
+`telec sync` would overwrite `CLAUDE.md` with the shim and silently destroy
+its content.
 
 ### Validation Contract
 

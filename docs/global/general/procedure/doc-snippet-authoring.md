@@ -10,10 +10,12 @@ activation_trigger: 'Use when creating or updating documentation snippets'
 
 ## Required reads
 
+- @~/.teleclaude/docs/general/concept/documentation-snippets.md
 - @~/.teleclaude/docs/general/policy/artifact-scope.md
 - @~/.teleclaude/docs/general/principle/priming.md
 - @~/.teleclaude/docs/general/principle/intent-first-documentation.md
 - @~/.teleclaude/docs/general/policy/referencing-doc-snippets.md
+- @~/.teleclaude/docs/general/policy/snippet-value-contract.md
 - @~/.teleclaude/docs/general/spec/snippet-authoring-schema.md
 
 ## Goal
@@ -27,6 +29,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 
 ## Steps
 
+0. **Earn the snippet.** Before drafting, name the specific future-agent question this snippet answers and confirm it is not already answered by a one-minute source read, an already-loaded global policy or principle, the project's README, or an existing snippet. If you cannot name the question, or any of those already answers it, do not write the snippet — either skip it, or add a one-line entry under "See also" of an existing snippet pointing to the upstream source. Apply `general/policy/snippet-value-contract` rigorously: the default is **skip unless justified**, not "produce when applicable."
 1. Interpret the request through taxonomy: decide the correct type and scope per the artifact-scope policy.
 2. Author top-down: broader context should point to narrower details, not the other way around.
 3. Add frontmatter (id, type, scope, description). Set `role` if the snippet should be restricted: `admin` for credentials/destructive ops, `public` for public-facing content. Omit for the default `member` level.
