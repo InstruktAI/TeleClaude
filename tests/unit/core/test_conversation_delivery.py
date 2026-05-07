@@ -595,3 +595,130 @@ async def test_deliver_pending_conversation_updates_writes_pending_before_send(
 
     # Strict ordering: pre-pending write, THEN send, THEN clear-pending+advance.
     assert write_log == ["pre-pending", "send", "clear-pending+advance"]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_drops_trailing_user_segment_so_human_turn_waits_for_reply(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A trailing ``user`` segment means the human typed but the agent has not
+    yet replied. Shipping it now would deliver an unanswered human turn to the
+    peer. The bundle must be trimmed to the last assistant turn; the held-back
+    user segment stays past the cursor and rides with the next agent_stop's
+    reply.
+    """
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=None),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+    user_replied_to = ConversationSegment(
+        role="user",
+        text="Earlier human turn that the agent already addressed.",
+        timestamp=datetime(2026, 4, 14, 10, 1, 0, tzinfo=UTC),
+    )
+    assistant_reply = ConversationSegment(
+        role="assistant",
+        text="The reply attached to the earlier human turn.",
+        timestamp=datetime(2026, 4, 14, 10, 2, 0, tzinfo=UTC),
+    )
+    trailing_user = ConversationSegment(
+        role="user",
+        text="Brand-new human turn that the agent has not answered yet.",
+        timestamp=datetime(2026, 4, 14, 10, 3, 0, tzinfo=UTC),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(return_value=[user_replied_to, assistant_reply, trailing_user]),
+    )
+
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    assert delivered == 1
+    assert command_service.process_message.await_count == 1
+    sole_call = command_service.process_message.await_args_list[0].args[0]
+    assert user_replied_to.text in sole_call.text
+    assert assistant_reply.text in sole_call.text
+    assert trailing_user.text not in sole_call.text
+    # Cursor must advance to the assistant's timestamp, NOT the trailing user's:
+    # leaving the held-back user segment past the cursor is what lets the next
+    # agent_stop pick it up bundled with the agent's reply.
+    assert db.upsert_conversation_delivery_state.await_count == 2
+    pre_call = db.upsert_conversation_delivery_state.await_args_list[0].kwargs
+    advance_call = db.upsert_conversation_delivery_state.await_args_list[1].kwargs
+    assert pre_call["pending_through_ts"] == assistant_reply.timestamp.isoformat()
+    assert advance_call["delivered_through_ts"] == assistant_reply.timestamp.isoformat()
+    assert advance_call["pending_through_ts"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_skips_delivery_when_only_a_trailing_user_segment_is_pending(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bare unanswered human turn with no assistant turn since the cursor
+    yields no deliverable bundle. The peer must not receive the human's words
+    until the agent replies; the cursor must stay where it is.
+    """
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=None),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        AsyncMock(
+            return_value=[
+                ConversationSegment(
+                    role="user",
+                    text="Unanswered human turn — nothing to bundle yet.",
+                    timestamp=datetime(2026, 4, 14, 10, 1, 0, tzinfo=UTC),
+                )
+            ]
+        ),
+    )
+
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
+
+    assert delivered == 0
+    assert command_service.process_message.await_count == 0
+    assert db.upsert_conversation_delivery_state.await_count == 0

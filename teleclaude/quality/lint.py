@@ -18,6 +18,7 @@ from typing import Protocol
 
 import yaml
 
+from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.scope import (
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
@@ -79,8 +80,16 @@ class GuardrailsStep:
     _project_root: Path = field(default_factory=Path)
 
     def run(self, targets: list[str]) -> None:
-        """Execute guardrail enforcement against targets."""
-        cmd = [sys.executable, "tools/lint/guardrails.py", *targets]
+        """Execute guardrail enforcement against targets.
+
+        The script ships with TeleClaude (REPO_ROOT/tools/lint/guardrails.py).
+        Cwd remains the project being linted so the script can resolve target
+        files relative to that project, but the script binary itself is
+        always TeleClaude's bundled copy — third-party projects do not need
+        to ship their own.
+        """
+        script = str(REPO_ROOT / "tools" / "lint" / "guardrails.py")
+        cmd = [sys.executable, script, *targets]
         _run_tool(cmd, self._project_root, self.name)
 
 
@@ -92,9 +101,14 @@ class _MarkdownStep:
     _project_root: Path = field(default_factory=Path)
 
     def run(self, targets: list[str]) -> None:
-        """Execute markdown validation (repo-wide, not file-scoped)."""
+        """Execute markdown validation (repo-wide, not file-scoped).
+
+        Same scheme as guardrails: bundled script lives under TeleClaude's
+        REPO_ROOT; cwd stays on the project being linted.
+        """
         _ = targets  # markdown validation is repo-wide
-        cmd = [sys.executable, "tools/lint/markdown.py"]
+        script = str(REPO_ROOT / "tools" / "lint" / "markdown.py")
+        cmd = [sys.executable, script]
         _run_tool(cmd, self._project_root, self.name)
 
 
