@@ -341,3 +341,46 @@ class TestMaintenanceService:
 
         # Only the launcher was sent; no continuation stimulus.
         assert send_keys_mock.await_count == 1
+
+    @pytest.mark.unit
+    async def test_restore_skips_stimulus_when_launcher_send_fails(self, tmp_path: Path) -> None:
+        """Failed launcher send must short-circuit before the readiness wait.
+
+        Guards against a regression where the launcher-failure ``return`` is
+        mutated to a fall-through: we'd otherwise wait for an agent that was
+        never started and inject the stimulus into an empty shell.
+        """
+        session = _make_session(
+            "send-fail",
+            native_session_id="native-9",
+            project_path=str(tmp_path),
+        )
+        service = _make_service()
+
+        with (
+            patch.object(service, "_build_tmux_env_vars", new=AsyncMock(return_value={})),
+            patch(
+                "teleclaude.services.maintenance_service.tmux_bridge.session_exists",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.ensure_tmux_with_identity",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.get_agent_command",
+                return_value="claude --resume native-9",
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.tmux_bridge.send_keys_existing_tmux",
+                new=AsyncMock(return_value=False),
+            ) as send_keys_mock,
+            patch(
+                "teleclaude.services.maintenance_service.wait_for_agent_ready",
+                new=AsyncMock(return_value=(True, "")),
+            ) as wait_mock,
+        ):
+            await service._restore_tmux_session(session)
+
+        send_keys_mock.assert_awaited_once()
+        wait_mock.assert_not_awaited()

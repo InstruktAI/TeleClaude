@@ -197,6 +197,14 @@ class FileCategory:
     precedence: int = 0  # Lower = earlier in required actions
 
 
+# Evidence patterns for general verification actions (R4)
+CHECKPOINT_STATUS_EVIDENCE = ["make status"]
+CHECKPOINT_TEST_EVIDENCE = ["pytest", "make test", "telec code test"]
+CHECKPOINT_RESTART_EVIDENCE = ["make restart"]
+CHECKPOINT_AGENT_RESTART_EVIDENCE = ["telec sessions restart", "/agent-restart", "agent_restart"]
+CHECKPOINT_RELOAD_EVIDENCE = ["pkill -SIGUSR2", "kill -USR2"]
+CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
+
 # File categories ordered by action precedence (R2, R9).
 # Evidence substrings are matched against Bash tool call commands (R4).
 CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
@@ -239,8 +247,8 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
             "teleclaude/tagging/**",
             "teleclaude/helpers/**",
         ],
-        instruction="Run `make restart` then `make status`",
-        evidence_substrings=["make restart"],
+        instruction="Run `make restart`",
+        evidence_substrings=CHECKPOINT_RESTART_EVIDENCE,
         main_only=True,
         precedence=30,
     ),
@@ -254,8 +262,8 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
     FileCategory(
         name="config",
         include_patterns=["config.yml"],
-        instruction="Run `make restart` then `make status`",
-        evidence_substrings=["make restart"],
+        instruction="Run `make restart`",
+        evidence_substrings=CHECKPOINT_RESTART_EVIDENCE,
         main_only=True,
         precedence=30,
     ),
@@ -263,7 +271,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         name="TUI code",
         include_patterns=["teleclaude/cli/tui/**"],
         instruction=TUI_RELOAD_COMMAND,
-        evidence_substrings=["pkill -SIGUSR2", "kill -USR2"],
+        evidence_substrings=CHECKPOINT_RELOAD_EVIDENCE,
         evidence_must_follow_last_mutation=True,
         precedence=40,
     ),
@@ -271,7 +279,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         name="agent artifacts",
         include_patterns=["agents/**", ".agents/**", "**/AGENTS.master.md"],
         instruction="Reload artifacts: `telec sessions restart self`",
-        evidence_substrings=["telec sessions restart", "/agent-restart", "agent_restart"],
+        evidence_substrings=CHECKPOINT_AGENT_RESTART_EVIDENCE,
         precedence=50,
     ),
     FileCategory(
@@ -285,7 +293,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
         name="tests only",
         include_patterns=["tests/**/*.py"],
         instruction="Run targeted tests for changed test files",
-        evidence_substrings=["pytest", "make test"],
+        evidence_substrings=CHECKPOINT_TEST_EVIDENCE,
         precedence=60,
     ),
 ]
@@ -299,11 +307,6 @@ CHECKPOINT_NO_ACTION_PATTERNS: list[str] = [
     "*.txt",
     "*.rst",
 ]
-
-# Evidence patterns for general verification actions (R4)
-CHECKPOINT_STATUS_EVIDENCE = ["make status"]
-CHECKPOINT_TEST_EVIDENCE = ["pytest", "make test"]
-CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
 
 # Error enrichment patterns (R5 Layer 2)
 CHECKPOINT_ERROR_ENRICHMENT: list[tuple[str, str]] = [
