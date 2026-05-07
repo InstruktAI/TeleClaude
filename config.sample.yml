@@ -20,13 +20,27 @@ computer:
       desc: coding projects
       path: ${HOME}/Projects
 
+# Remote computers (optional): declare other machines in your fleet.
+# Each entry makes the computer visible in the /computers list even when offline,
+# and activates TUI WebSocket subscriptions so live cache refresh works when online.
+# remote_computers:
+#   workstation:
+#     user: alice
+#     host: workstation.local
+#     ip: 10.0.0.10
+#     teleclaude_path: /srv/teleclaude
+#     bot_username: teleclaude_workstation_bot
+#   raspi:
+#     user: pi
+#     host: raspi.local
+#     bot_username: teleclaude_raspi_bot
+
 telegram:
-  # # Whitelist of trusted bots (security for AI-to-AI communication)
+  # trusted_bots is fleet-derived: the daemon automatically merges bot_username
+  # from all fleet members (local + remote_computers) into the trusted list.
+  # Add explicit entries here to merge additional bots not in the fleet config.
   # trusted_bots:
-  #   - teleclaude_mac_bot
-  #   - teleclaude_workstation_bot
-  #   - teleclaude_server_bot
-  # Add other computer bot usernames here
+  #   - some_external_bot
 discord:
   enabled: false
   # Bot token. Prefer environment interpolation to avoid plaintext secrets.

@@ -43,6 +43,7 @@ from teleclaude.cli.models import (
     UnsubscribeRequest,
     WsEvent,
 )
+from teleclaude.config import config
 from teleclaude.constants import API_SOCKET_PATH
 from teleclaude.session_identity import get_session_id, get_session_token
 
@@ -322,6 +323,17 @@ class _TelecConnectionClient:
             }
         }
         ws.send(json.dumps(initial_payload))
+
+        # Subscribe to each config-defined remote computer
+        for rc in config.remote_computers:
+            remote_payload: WsPayload = {
+                "subscribe": {
+                    "computer": rc.name,
+                    "types": list(self._ws_state.subscriptions),
+                }
+            }
+            ws.send(json.dumps(remote_payload))
+
         if self._ws_state.on_connect:
             self._ws_state.on_connect()
 

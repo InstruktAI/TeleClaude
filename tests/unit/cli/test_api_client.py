@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.cli import api_client as api_client_module
 from teleclaude.cli.api_client import APIError, TelecAPIClient
 
 # ---------------------------------------------------------------------------
@@ -318,6 +320,48 @@ def test_stop_websocket_clears_running_flag() -> None:
         client.start_websocket(callback)
     client.stop_websocket()
     assert client._ws_running is False
+
+
+def test_ws_connect_and_run_subscribes_configured_remote_computers_on_connect(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = TelecAPIClient()
+
+    class FakeWS:
+        def __init__(self) -> None:
+            self.sent: list[dict[str, dict[str, str | list[str]]]] = []
+
+        def send(self, payload: str) -> None:
+            self.sent.append(json.loads(payload))
+
+        def __iter__(self):
+            return iter(())
+
+    fake_ws = FakeWS()
+
+    monkeypatch.setattr(api_client_module, "unix_connect", lambda path, uri: fake_ws)
+    monkeypatch.setattr(
+        api_client_module,
+        "config",
+        SimpleNamespace(
+            remote_computers=[
+                SimpleNamespace(name="raspi"),
+                SimpleNamespace(name="workstation"),
+            ]
+        ),
+        raising=False,
+    )
+    client._ws_state.subscriptions = {"sessions", "preparation"}
+    client._ws_state.running = True
+
+    client._ws_connect_and_run()
+
+    subscribe_targets = [payload["subscribe"]["computer"] for payload in fake_ws.sent]
+    subscribe_types = [set(payload["subscribe"]["types"]) for payload in fake_ws.sent]
+    assert subscribe_targets == ["local", "raspi", "workstation"]
+    assert subscribe_types == [
+        {"sessions", "preparation"},
+        {"sessions", "preparation"},
+        {"sessions", "preparation"},
+    ]
 
 
 # ---------------------------------------------------------------------------

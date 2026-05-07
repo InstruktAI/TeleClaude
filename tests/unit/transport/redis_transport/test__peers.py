@@ -145,3 +145,66 @@ class TestDiscoverPeers:
             result = await transport.discover_peers()
         names = [p.name for p in result]
         assert names == sorted(names)
+
+    @pytest.mark.unit
+    async def test_discover_peers_includes_bot_username_from_computer_info_response(
+        self, transport: RedisTransport
+    ) -> None:
+        mock_redis = AsyncMock()
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+        payload = json.dumps({"computer_name": "other-peer", "last_seen": "2024-01-01T00:00:00+00:00"}).encode()
+        mock_redis.get = AsyncMock(return_value=payload)
+
+        computer_info_response = json.dumps(
+            {
+                "status": "success",
+                "data": {
+                    "user": "u",
+                    "host": "h",
+                    "ip": "1.2.3.4",
+                    "role": "worker",
+                    "bot_username": "peer_bot",
+                },
+            }
+        )
+        transport.send_request = AsyncMock(return_value="msg-id")
+        transport.client.read_response = AsyncMock(return_value=computer_info_response)
+
+        with patch(
+            "teleclaude.transport.redis_transport._peers.scan_keys",
+            AsyncMock(return_value=[b"computer:other-peer:heartbeat"]),
+        ):
+            result = await transport.discover_peers()
+
+        assert result[0].bot_username == "peer_bot"
+
+    @pytest.mark.unit
+    async def test_discover_peers_defaults_bot_username_to_none_for_older_peers(
+        self, transport: RedisTransport
+    ) -> None:
+        mock_redis = AsyncMock()
+        transport._get_redis = AsyncMock(return_value=mock_redis)
+        payload = json.dumps({"computer_name": "other-peer", "last_seen": "2024-01-01T00:00:00+00:00"}).encode()
+        mock_redis.get = AsyncMock(return_value=payload)
+
+        computer_info_response = json.dumps(
+            {
+                "status": "success",
+                "data": {
+                    "user": "u",
+                    "host": "h",
+                    "ip": "1.2.3.4",
+                    "role": "worker",
+                },
+            }
+        )
+        transport.send_request = AsyncMock(return_value="msg-id")
+        transport.client.read_response = AsyncMock(return_value=computer_info_response)
+
+        with patch(
+            "teleclaude.transport.redis_transport._peers.scan_keys",
+            AsyncMock(return_value=[b"computer:other-peer:heartbeat"]),
+        ):
+            result = await transport.discover_peers()
+
+        assert result[0].bot_username is None

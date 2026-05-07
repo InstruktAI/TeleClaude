@@ -248,6 +248,7 @@ class ComputerInfo:
     is_local: bool = False
     system_stats: SystemStats | None = None
     tmux_binary: str | None = None
+    bot_username: str | None = None
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict
         """Convert computer info to a JSON-compatible dictionary."""

@@ -230,6 +230,7 @@ class _PeersMixin:  # pyright: ignore[reportUnusedClass]
             role=self._optional_text(computer_info.get("role")),
             system_stats=system_stats,
             tmux_binary=self._optional_text(computer_info.get("tmux_binary")),
+            bot_username=self._optional_text(computer_info.get("bot_username")),
         )
 
     def _optional_text(self, value: object) -> str | None:
