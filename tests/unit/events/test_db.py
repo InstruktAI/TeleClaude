@@ -18,10 +18,13 @@ def isolate_event_db_singleton(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 
 @pytest.mark.asyncio
-async def test_get_event_db_returns_initialized_singleton() -> None:
+async def test_get_event_db_returns_initialized_singleton(tmp_path: Path) -> None:
     first = await get_event_db()
     assert isinstance(first, EventDB)
     assert first.is_initialized()
+    # Isolation invariant: the factory honors the monkeypatched EVENTS_DB_PATH
+    # (defaults must resolve at call time, not at import time).
+    assert first._db_path == (tmp_path / "events.db").expanduser()
     second = await get_event_db()
     assert second is first
     await first.close()

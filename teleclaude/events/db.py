@@ -158,8 +158,11 @@ def _signal_db_class() -> type[SignalDB]:
 class EventDB:
     """SQLite-backed storage for event notifications and correlation state."""
 
-    def __init__(self, db_path: str | Path = EVENTS_DB_PATH) -> None:
-        self._db_path = Path(db_path).expanduser()
+    def __init__(self, db_path: str | Path | None = None) -> None:
+        # Resolve EVENTS_DB_PATH at call time, not import time, so test fixtures
+        # that monkeypatch the module-level constant take effect.
+        resolved = db_path if db_path is not None else EVENTS_DB_PATH
+        self._db_path = Path(resolved).expanduser()
         self._conn: aiosqlite.Connection | None = None
 
     async def initialize(self) -> None:

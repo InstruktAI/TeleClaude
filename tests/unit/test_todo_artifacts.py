@@ -21,11 +21,15 @@ def test_artifact_display_filename_returns_input() -> None:
 
 def test_read_artifact_content_refuses_missing_db(tmp_path: Path) -> None:
     """Missing project todos.db raises rather than silently bootstrapping a new one."""
-    with pytest.raises(FileNotFoundError, match="Todos DB not found"):
+    db_path = tmp_path / ".teleclaude" / "todos.db"
+    with pytest.raises(FileNotFoundError):
         read_artifact_content(tmp_path, "any-slug", "requirements")
+    assert not db_path.exists()
 
 
 def test_write_artifact_content_refuses_missing_db(tmp_path: Path) -> None:
     """Missing project todos.db must not be auto-created on write."""
-    with pytest.raises(FileNotFoundError, match="Todos DB not found"):
+    db_path = tmp_path / ".teleclaude" / "todos.db"
+    with pytest.raises(FileNotFoundError):
         write_artifact_content(tmp_path, "any-slug", "requirements", "content")
+    assert not db_path.exists()
