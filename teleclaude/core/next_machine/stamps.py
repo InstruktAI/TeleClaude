@@ -3,6 +3,11 @@
 This module is the domain boundary for ``telec todo stamp``.  It accepts a
 parsed stamp intent, validates the relevant evidence, and persists the resulting
 state through :class:`StateWriter`.
+
+Database access goes through the project's memoized factories
+(``get_db``, ``get_todos_db``). They are the singular location and are
+free to call inline — each operation that needs a database just calls the
+factory; nothing is threaded through parameters.
 """
 
 from __future__ import annotations
@@ -38,7 +43,6 @@ from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PreparePairSlot
 
 if TYPE_CHECKING:
-    from teleclaude.core.db import Db
     from teleclaude.core.todos_db import TodosDb
 
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
@@ -63,7 +67,6 @@ async def apply_todo_stamp(
     value: str = "",
     phase: str | None = None,
     caller_session_id: str | None = None,
-    session_db: Db | None = None,
 ) -> dict[str, StateValue]:
     """Apply one parsed todo stamp and return the updated state.
 
@@ -101,14 +104,13 @@ async def apply_todo_stamp(
     elif stamp_type == "specs_built":
         _apply_effective_signal(writer, "specs_built")
     elif stamp_type == "prepare_pair":
-        await _apply_prepare_pair_stamp(writer, value, session_db=session_db)
+        await _apply_prepare_pair_stamp(writer, value)
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
             cwd=cwd,
             slug=slug,
             caller_session_id=caller_session_id,
-            session_db=session_db,
         )
     else:
         raise ValueError(f"unknown stamp type: {stamp_type}")
@@ -164,12 +166,12 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
     creative[section] = section_state
 
 
-async def _apply_prepare_pair_stamp(writer: StateWriter, value: str, *, session_db: Db | None = None) -> None:
+async def _apply_prepare_pair_stamp(writer: StateWriter, value: str) -> None:
     sid_a, sid_b = _parse_prepare_pair_value(value)
     if not sid_a or not sid_b:
         raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
 
-    sessions = session_db if session_db is not None else await get_db()
+    sessions = await get_db()
     session_a = await sessions.get_session(sid_a)
     if session_a is None:
         raise StateMutationError(f"unknown session for slot_a: {sid_a}")
@@ -217,10 +219,8 @@ async def _apply_build_complete_stamp(
     cwd: str,
     slug: str,
     caller_session_id: str | None,
-    session_db: Db | None = None,
 ) -> None:
-    sessions = session_db if session_db is not None else await get_db()
-    await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id, session_db=sessions)
+    await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id)
 
     current = LifecyclePhase(writer.state.lifecycle_phase)
     if current not in (LifecyclePhase.BUILD_STARTED, LifecyclePhase.REVIEW_CHANGES_REQUESTED):
@@ -244,11 +244,11 @@ async def _validate_build_complete_owner(
     *,
     slug: str,
     caller_session_id: str | None,
-    session_db: Db,
 ) -> None:
     if not caller_session_id:
         raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
-    session = await session_db.get_session(caller_session_id)
+    sessions = await get_db()
+    session = await sessions.get_session(caller_session_id)
     if session is None:
         raise PermissionError(f"build_complete stamp for {slug} requires a known TeleClaude session")
     if getattr(session, "working_slug", None) != slug:
