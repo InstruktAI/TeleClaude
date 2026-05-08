@@ -37,7 +37,6 @@ from teleclaude.core.next_machine.prepare_grounding_steps import (
 from teleclaude.core.next_machine.prepare_pair import (
     PRODUCTION_ROLES,
     REVIEW_ROLES,
-    format_pair_member_send_script,
     format_pair_review_or_recovery_script,
     format_pair_write_or_recovery_script,
     format_requirements_human_approval_script,
@@ -277,16 +276,6 @@ async def _prepare_step_requirements_review(
             "domain.software-development.prepare.review_scoped",
             {"slug": slug, "findings_artifact": "requirements-review-findings"},
         )
-        if pair_slots is not None and worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "requirements", rounds, "requirements-review-findings", "requirements"
-            )
-            return False, format_pair_member_send_script(
-                slug=slug,
-                session_id=worker_id,
-                message=message,
-                next_step=f"telec todo prepare {slug}",
-            )
         if worker_id and reviewer_id:
             message = format_fix_findings_message(
                 slug, "requirements", rounds, "requirements-review-findings", "requirements"
@@ -520,16 +509,6 @@ async def _prepare_step_test_spec_review(
         audit.rounds = rounds
         await _commit_writer(writer, todos_db, slug, state)
 
-        if pair_slots is not None and worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
-            )
-            return False, format_pair_member_send_script(
-                slug=slug,
-                session_id=worker_id,
-                message=message,
-                next_step=f"telec todo prepare {slug}",
-            )
         if worker_id and reviewer_id:
             message = format_fix_findings_message(
                 slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
@@ -770,14 +749,6 @@ async def _prepare_step_plan_review(
             "domain.software-development.prepare.review_scoped",
             {"slug": slug, "findings_artifact": "plan-review-findings"},
         )
-        if pair_slots is not None and worker_id and reviewer_id:
-            message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
-            return False, format_pair_member_send_script(
-                slug=slug,
-                session_id=worker_id,
-                message=message,
-                next_step=f"telec todo prepare {slug}",
-            )
         if worker_id and reviewer_id:
             message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
             return False, format_review_needs_work_script(

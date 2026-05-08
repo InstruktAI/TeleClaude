@@ -60,7 +60,9 @@ Report summary and readiness for re-review.
    `APPROVE` only when unresolved Critical and Important counts both reach zero;
    otherwise keep `REQUEST CHANGES`. Silence is a valid response when the reviewer's
    message requires only action.
-6. Commit all files in the worktree. Everything in the worktree belongs to the task.
+6. When all findings are resolved, close the direct link before reporting FIX COMPLETE:
+   `telec sessions send <reviewer_session_id> --close-link`
+7. Commit all files in the worktree. Everything in the worktree belongs to the task.
 
 ## Outputs
 

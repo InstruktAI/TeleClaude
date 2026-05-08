@@ -65,10 +65,19 @@ def format_review_needs_work_script(
     next_step: str,
 ) -> str:
     """Script for NEEDS_WORK variant: have the reviewer link directly with the worker."""
+    completion_clause = (
+        f"Collaborate until all findings are resolved. "
+        f"Before reporting FIX COMPLETE, close the direct link with: "
+        f"telec sessions send {reviewer_session_id} --close-link "
+        f"This prevents stale conversation context from leaking into the next review phase. "
+        f"Then persist the full review-findings artifact, set verdict by arithmetic "
+        f"(APPROVE only when unresolved Critical and Important counts both reach zero), "
+        f"and report FIX COMPLETE."
+    )
     reviewer_message = format_reviewer_direct_fix_message(
         fixer_session_id=worker_session_id,
         task_context=message,
-        completion_clause="Collaborate until all findings are resolved, then report FIX COMPLETE.",
+        completion_clause=completion_clause,
     )
     escaped = reviewer_message.replace('"', '\\"')
     return (

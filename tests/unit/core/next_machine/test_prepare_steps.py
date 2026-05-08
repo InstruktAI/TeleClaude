@@ -14,7 +14,10 @@ from teleclaude.core.next_machine.prepare_grounding_steps import prepare_step_re
 from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_input_assessment,
     _prepare_step_plan_drafting,
+    _prepare_step_plan_review,
+    _prepare_step_requirements_review,
     _prepare_step_test_spec_build,
+    _prepare_step_test_spec_review,
     _prepare_step_triangulation,
 )
 
@@ -525,3 +528,142 @@ async def test_re_grounding_dispatch_marks_upstream_changed() -> None:
 
     assert keep_going is False
     assert "Dispatch reason: upstream-changed" in instruction
+
+
+# --- REVIEW NEEDS WORK: direct-link dispatch must be unconditional ---
+
+
+@pytest.mark.asyncio
+async def test_requirements_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
+    """Pair stamp must not redirect needs_work to pair-member send; direct link wins."""
+    state = _base_state(lifecycle_phase="requirements_review")
+    state["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+    ):
+        keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
+
+    command_lines = [
+        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
+    ]
+    assert keep_going is False
+    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
+    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
+    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
+    assert not command_lines[0].endswith(" --direct")
+    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
+
+
+@pytest.mark.asyncio
+async def test_test_spec_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
+    """Pair stamp must not redirect test-spec needs_work to pair-member send; direct link wins."""
+    state = _base_state(lifecycle_phase="test_spec_review")
+    state["test_spec_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+    ):
+        keep_going, instruction = await _prepare_step_test_spec_review(db, todos_db, "test-slug", "/repo", state)
+
+    command_lines = [
+        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
+    ]
+    assert keep_going is False
+    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
+    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
+    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
+    assert not command_lines[0].endswith(" --direct")
+    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
+
+
+@pytest.mark.asyncio
+async def test_plan_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
+    """Pair stamp must not redirect plan needs_work to pair-member send; direct link wins.
+
+    In plan_review the roles are flipped: B is the writer/fixer, A is the reviewer.
+    """
+    state = _base_state(lifecycle_phase="plan_review")
+    state["plan_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},  # A = reviewer in plan_review
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},  # B = worker/fixer in plan_review
+    }
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+    ):
+        keep_going, instruction = await _prepare_step_plan_review(db, todos_db, "test-slug", "/repo", state)
+
+    command_lines = [
+        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
+    ]
+    assert keep_going is False
+    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
+    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
+    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
+    assert not command_lines[0].endswith(" --direct")
+    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
+
+
+@pytest.mark.asyncio
+async def test_review_needs_work_emits_same_script_with_or_without_pair_stamped() -> None:
+    """Pair-stamping must not change the dispatch shape — identical scripts either way."""
+    state_with_pair = _base_state(lifecycle_phase="requirements_review")
+    state_with_pair["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
+    state_with_pair["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
+
+    state_no_pair = _base_state(lifecycle_phase="requirements_review")
+    state_no_pair["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
+
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+    ):
+        _, instruction_with_pair = await _prepare_step_requirements_review(
+            db, todos_db, "test-slug", "/repo", state_with_pair
+        )
+
+    with (
+        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_STEPS}._emit_prepare_event"),
+        patch(
+            f"{_STEPS}._find_live_session_for_slug",
+            new=AsyncMock(side_effect=["reviewer-1", "worker-1"]),
+        ),
+    ):
+        _, instruction_no_pair = await _prepare_step_requirements_review(
+            db, todos_db, "test-slug", "/repo", state_no_pair
+        )
+
+    assert instruction_with_pair == instruction_no_pair

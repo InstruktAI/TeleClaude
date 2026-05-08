@@ -2,6 +2,10 @@
 
 Reads the canonical ``lifecycle_phase`` from persisted state and dispatches the
 current prepare step. It never derives or advances lifecycle state on its own.
+
+Review fix loops preserve the peer-conversation contract: "send fixer and
+reviewer session IDs to each other with --direct to let them iterate without
+context-destroying churn."
 """
 
 from __future__ import annotations

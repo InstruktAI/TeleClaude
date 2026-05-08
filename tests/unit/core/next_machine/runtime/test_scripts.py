@@ -38,6 +38,7 @@ def test_format_review_needs_work_script_tells_reviewer_to_open_direct_fix_link(
     assert not command_lines[0].endswith(" --direct")
     assert "Wait for reviewer session reviewer-1 to report idle." in instruction
     assert "telec todo prepare slug-a" in instruction
+    assert "telec sessions send reviewer-1 --close-link" in instruction
 
 
 def test_format_fix_findings_message_points_to_artifact_without_count_claim() -> None:

@@ -233,25 +233,6 @@ async def format_pair_review_or_recovery_script(
     )
 
 
-def format_pair_member_send_script(
-    *,
-    slug: str,
-    session_id: str,
-    message: str,
-    next_step: str,
-) -> str:
-    """Format a direct send to an existing prepare pair member."""
-    return format_pair_turn_script(
-        PairTurnScript(
-            slug=slug,
-            turn="continuation",
-            session_id=session_id,
-            message=message,
-            next_step=next_step,
-        )
-    )
-
-
 def format_pair_write_turn_script(
     *,
     slug: str,
