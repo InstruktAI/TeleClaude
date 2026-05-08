@@ -6,11 +6,13 @@ Every machine-originated injection into a session uses the canonical bracket:
     [Role (session_id) on computer]   # category omitted
 
 ``Role`` is a stable taxonomy: ``TeleClaude`` for daemon-injected bridge
-messages, ``Orchestrator`` for state-machine dispatches. ``Category`` is a
-role-specific stable label used by receivers that dispatch on header alone
-(checkpoint receiver, render paths) — only TeleClaude bridges carry one.
-``session_id`` is the originator session, full UUID per identity invariant.
-``computer`` is the originator host.
+messages; ``Orchestrator``, ``Integrator``, ``System`` for machine-role API
+callers whose marker is prepended at the send-message boundary
+(see ``_MACHINE_ROLE_LABELS`` in ``teleclaude/api/sessions_routes.py``).
+``Category`` is a role-specific stable label used by receivers that dispatch
+on header alone (checkpoint receiver, render paths) — only TeleClaude bridges
+carry one. ``session_id`` is the originator session, full UUID per identity
+invariant. ``computer`` is the originator host.
 
 The bracket is the marker. Receivers distinguish machine content from human
 content by the leading bracket — there is no separate stripping pass.
@@ -75,22 +77,6 @@ def format_linked_output_message(
     return _format_with_body(header, content)
 
 
-def format_human_in_the_loop_message(
-    *,
-    sender_session_id: str,
-    sender_computer: str,
-    content: str,
-) -> str:
-    """Format mirrored plain user input for a peer session."""
-    header = format_identity_header(
-        role=_TELECLAUDE_ROLE,
-        category=_CATEGORY_HUMAN_IN_THE_LOOP,
-        session_id=sender_session_id,
-        computer=sender_computer,
-    )
-    return _format_with_body(header, content)
-
-
 def format_direct_conversation_intro_header(
     *,
     caller_session_id: str,
@@ -138,19 +124,6 @@ def format_bundled_conversation_message(
         computer=sender_computer,
     )
     return _format_with_body(header, body)
-
-
-def format_orchestrator_header(
-    *,
-    orchestrator_session_id: str,
-    orchestrator_computer: str,
-) -> str:
-    """Build the identity header for an orchestrator dispatch."""
-    return format_identity_header(
-        role=_ORCHESTRATOR_ROLE,
-        session_id=orchestrator_session_id,
-        computer=orchestrator_computer,
-    )
 
 
 def is_orchestrator_dispatch_message(text: str) -> bool:

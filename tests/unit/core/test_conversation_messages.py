@@ -6,7 +6,6 @@ import pytest
 
 from teleclaude.core.conversation_messages import (
     format_identity_header,
-    format_orchestrator_header,
     is_conversation_bridge_message,
     is_orchestrator_dispatch_message,
 )
@@ -33,15 +32,6 @@ def test_format_identity_header_with_category_renders_role_dash_category() -> No
         computer="host",
     )
     assert header == "[TeleClaude - Linked output (sess-uuid) on host]"
-
-
-@pytest.mark.unit
-def test_format_orchestrator_header_emits_canonical_orchestrator_bracket() -> None:
-    header = format_orchestrator_header(
-        orchestrator_session_id="orch-uuid",
-        orchestrator_computer="local",
-    )
-    assert header == "[Orchestrator (orch-uuid) on local]"
 
 
 @pytest.mark.unit

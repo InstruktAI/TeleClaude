@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core.command_handlers import _message
 from teleclaude.core.conversation_messages import format_linked_output_message
 from teleclaude.core.db import InboundQueueRow
@@ -325,36 +324,6 @@ class TestDeliverInbound:
 
         update_kwargs = db.update_session.await_args_list[0].kwargs
         assert "last_conversation_injected_at" not in update_kwargs
-
-    @pytest.mark.unit
-    async def test_system_message_skips_tmux_injection(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        session = make_session(active_agent="claude")
-        row = make_row(session_id=session.session_id, content=f"{TELECLAUDE_SYSTEM_PREFIX} Internal status")
-        db = SimpleNamespace(
-            get_session=AsyncMock(return_value=session),
-            update_session=AsyncMock(),
-            update_last_activity=AsyncMock(),
-        )
-        client = SimpleNamespace(
-            break_threaded_turn=AsyncMock(),
-        )
-        tmux_io = SimpleNamespace(
-            process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
-        )
-
-        monkeypatch.setattr(_message, "db", db)
-        monkeypatch.setattr(_message, "tmux_io", tmux_io)
-
-        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
-
-        start_polling = AsyncMock()
-
-        await _message.deliver_inbound(row, client, start_polling)
-
-        tmux_io.process_text.assert_not_awaited()
-        db.update_last_activity.assert_not_awaited()
-        start_polling.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_codex_message_starts_polling_without_synthetic_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:

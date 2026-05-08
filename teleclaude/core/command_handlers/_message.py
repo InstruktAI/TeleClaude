@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
 from teleclaude.core.conversation_messages import is_conversation_bridge_message
 from teleclaude.core.db import InboundQueueRow, db
@@ -285,10 +284,6 @@ async def deliver_inbound(
     if origin_metadata:
         await db.update_origin_metadata(session_id, row["origin"], dict(origin_metadata))
 
-    is_system_message = message_text.startswith(TELECLAUDE_SYSTEM_PREFIX) and not is_conversation_bridge_message(
-        message_text
-    )
-
     active_agent = session.active_agent
 
     async def _break_turn() -> None:
@@ -298,9 +293,6 @@ async def deliver_inbound(
             logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:
-        if is_system_message:
-            logger.debug("Skipping tmux injection for system message: session=%s", session_id)
-            return True
         sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         return await tmux_io.process_text(
@@ -317,8 +309,6 @@ async def deliver_inbound(
         raise tmux_result
     if tmux_result is False:
         raise RuntimeError(f"tmux delivery failed for session {session_id}")
-    if is_system_message:
-        return
 
     await db.update_last_activity(session_id)
     await start_polling(session_id, session.tmux_session_name)

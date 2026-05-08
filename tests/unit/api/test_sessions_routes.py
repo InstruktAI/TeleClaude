@@ -395,3 +395,124 @@ class TestSessionsRoutes:
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert launch_intent.message == "/next-review-build chartest-api-routes"
+
+
+class TestWrapMessageWithOrigin:
+    """Branch coverage for `_wrap_message_with_origin` and `_machine_origin_marker`.
+
+    Behavioral contract: prepend the caller's machine identity bracket only when
+    (a) the message is not already bracket-marked, (b) a caller session exists
+    in the database, and (c) the caller carries a machine system_role
+    (orchestrator/integrator/system). Worker callers and bare human callers
+    pass through unwrapped.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_bridge_message_passes_through_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Already bracket-marked TeleClaude bridge messages must not be re-wrapped."""
+        get_session = AsyncMock()
+        monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
+        bridge = "[TeleClaude - Linked output (peer-uuid) on host]\n\nbody"
+
+        result = await sessions_routes._wrap_message_with_origin(bridge, "caller-uuid")
+
+        assert result == bridge
+        get_session.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_orchestrator_dispatch_passes_through_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Already bracket-marked orchestrator dispatches must not be re-wrapped."""
+        get_session = AsyncMock()
+        monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
+        dispatch = "[Orchestrator (orch-uuid) on host]\n\nDispatch reason: upstream-changed"
+
+        result = await sessions_routes._wrap_message_with_origin(dispatch, "caller-uuid")
+
+        assert result == dispatch
+        get_session.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_human_caller_without_session_id_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Terminal/web/Telegram callers have no caller_session_id and never get a marker."""
+        get_session = AsyncMock()
+        monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
+        message = "fix the bug"
+
+        result = await sessions_routes._wrap_message_with_origin(message, None)
+
+        assert result == message
+        get_session.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_unknown_caller_session_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When the caller session id does not resolve in the DB, no header is added."""
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=None))
+        message = "fix the bug"
+
+        result = await sessions_routes._wrap_message_with_origin(message, "ghost-uuid")
+
+        assert result == message
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_worker_caller_returns_unwrapped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Worker system_role is intentionally absent from the machine label map.
+
+        Worker-to-peer communication routes through the Direct Conversation
+        bracket or upstream `DISPATCH_ALLOWED` gating; an automatic marker on
+        plain sends would double-mark or mis-label."""
+        worker = SimpleNamespace(system_role="worker", computer_name="local")
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=worker))
+        message = "fix the bug"
+
+        result = await sessions_routes._wrap_message_with_origin(message, "worker-uuid")
+
+        assert result == message
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_orchestrator_caller_prepends_canonical_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Orchestrator system_role triggers the `[Orchestrator (sess) on host]` header."""
+        orchestrator = SimpleNamespace(system_role="orchestrator", computer_name="MozBook")
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=orchestrator))
+
+        result = await sessions_routes._wrap_message_with_origin("Dispatch body", "orch-uuid")
+
+        assert result == "[Orchestrator (orch-uuid) on MozBook]\n\nDispatch body"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_integrator_caller_prepends_integrator_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        integrator = SimpleNamespace(system_role="integrator", computer_name="MozBook")
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=integrator))
+
+        result = await sessions_routes._wrap_message_with_origin("integration message", "int-uuid")
+
+        assert result == "[Integrator (int-uuid) on MozBook]\n\nintegration message"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_system_caller_prepends_system_bracket(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        system = SimpleNamespace(system_role="system", computer_name="MozBook")
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=system))
+
+        result = await sessions_routes._wrap_message_with_origin("system message", "sys-uuid")
+
+        assert result == "[System (sys-uuid) on MozBook]\n\nsystem message"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_missing_caller_computer_falls_back_to_local_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When the caller's session has no computer_name, the local daemon's host fills in."""
+        orchestrator = SimpleNamespace(system_role="orchestrator", computer_name=None)
+        monkeypatch.setattr(sessions_routes.db, "get_session", AsyncMock(return_value=orchestrator))
+        config_stub = SimpleNamespace(computer=SimpleNamespace(name="MozBook"))
+        monkeypatch.setattr(sessions_routes, "config", config_stub)
+
+        result = await sessions_routes._wrap_message_with_origin("body", "orch-uuid")
+
+        assert result == "[Orchestrator (orch-uuid) on MozBook]\n\nbody"
