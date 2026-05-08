@@ -206,33 +206,6 @@ def test_build_metadata_for_thread_returns_markdownv2_parse_mode(adapter: Telegr
 
 
 # ---------------------------------------------------------------------------
-# _build_project_keyboard
-# ---------------------------------------------------------------------------
-
-
-def test_build_project_keyboard_returns_empty_when_no_trusted_dirs(adapter: TelegramAdapter) -> None:
-    adapter.trusted_dirs = []
-    keyboard = adapter._build_project_keyboard("s")
-    assert len(keyboard.inline_keyboard) == 0
-
-
-def test_build_heartbeat_keyboard_includes_session_and_enabled_agent_actions(
-    adapter: TelegramAdapter,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr("teleclaude.adapters.telegram_adapter.get_enabled_agents", lambda: ["claude"])
-
-    keyboard = adapter._build_heartbeat_keyboard("trusted_bot")
-
-    callback_data = [button.callback_data for row in keyboard.inline_keyboard for button in row]
-    assert callback_data == [
-        "ssel:trusted_bot",
-        "asel:claude:trusted_bot",
-        "arsel:claude:trusted_bot",
-    ]
-
-
-# ---------------------------------------------------------------------------
 # send_threaded_output QoS wiring
 # ---------------------------------------------------------------------------
 

@@ -47,7 +47,6 @@ class CommandHandlersMixin:
     - _validate_update_for_command(update: Update) -> bool
     - _event_to_command(event_name: str) -> str
     - _metadata(**kwargs: object) -> AdapterMetadata
-    - _build_project_keyboard(callback_prefix: str) -> InlineKeyboardMarkup
     - _get_session_from_topic(update: Update) -> Optional[Session]
     - _require_session_from_topic(update: Update) -> Optional[Session]
     - _pre_handle_user_input(session: Session) -> None

@@ -1,22 +1,21 @@
 """Channel operations mixin for Telegram adapter.
 
 Handles forum topic creation, updating, closing, reopening, deletion,
-session-from-topic resolution, menu message management, and output streaming.
+session-from-topic resolution, and output streaming.
 """
 
 from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable
-from datetime import datetime
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
-from telegram import ForumTopic, InlineKeyboardMarkup, Message, Update
+from telegram import ForumTopic, Message, Update
 from telegram.error import BadRequest, TelegramError
 
 from teleclaude.core.db import db
-from teleclaude.core.models import ChannelMetadata, MessageMetadata, PeerInfo, Session, TelegramAdapterMetadata
+from teleclaude.core.models import ChannelMetadata, PeerInfo, Session, TelegramAdapterMetadata
 from teleclaude.utils import command_retry
 
 from ..base_adapter import AdapterError
@@ -33,7 +32,6 @@ if TYPE_CHECKING:
         computer_name: str
         _qos_scheduler: OutputQoSScheduler
         _validate_update_for_command: Callable[[Update], bool]
-        _build_heartbeat_keyboard: Callable[[str], InlineKeyboardMarkup]
         _send_general_message_with_retry: Callable[
             [int | None, str, str | None, object | None],
             Awaitable[Message],
@@ -382,45 +380,6 @@ class ChannelOperationsMixin:
             logger.error("Failed to send session error feedback: %s", error)
 
         return None
-
-    # =========================================================================
-    # Menu message management
-    # =========================================================================
-
-    async def _send_or_update_menu_message(self) -> None:
-        """Send or update the menu message in the general topic.
-
-        On daemon startup, checks for an existing menu message ID in system_settings.
-        If found, attempts to edit it. If edit fails (message deleted), creates a new one.
-        If not found, creates a new message.
-
-        The menu message shows a registry line with the heartbeat keyboard.
-        """
-        host = cast("_ChannelOperationsHost", self)
-        setting_key = f"menu_message_id:{host.computer_name}"
-        bot_info = await self.bot.get_me()
-        bot_username = bot_info.username or "unknown"
-
-        # Build menu content (parse_mode=None to avoid MarkdownV2 escaping issues)
-        reply_markup = host._build_heartbeat_keyboard(bot_username)
-        text = f"[REGISTRY] {host.computer_name} last seen at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        metadata = MessageMetadata(reply_markup=reply_markup, parse_mode=None)
-
-        # Check for existing message ID
-        existing_msg_id = await db.get_system_setting(setting_key)
-
-        if existing_msg_id:
-            # Try to edit existing message
-            success = await host.edit_general_message(existing_msg_id, text, metadata=metadata)
-            if success:
-                logger.info("Updated menu message %s in general topic", existing_msg_id)
-                return
-            # Edit failed (message deleted), fall through to create new
-
-        # Create new message
-        new_msg_id = await host.send_general_message(text, metadata=metadata)
-        await db.set_system_setting(setting_key, new_msg_id)
-        logger.info("Created new menu message %s in general topic", new_msg_id)
 
     # =========================================================================
     # Peer discovery and output streaming

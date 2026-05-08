@@ -50,7 +50,6 @@ if TYPE_CHECKING:
         _startup_housekeeping_task: asyncio.Task[None] | None
         _get_command_handlers: Callable[[], list[tuple[str, object]]]
         _get_command_handler_update_filter: Callable[[], filters.BaseFilter]
-        _send_or_update_menu_message: Callable[[], Coroutine[object, object, None]]
         _handle_private_start: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_private_text: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
         _handle_text_message: Callable[[Update, ContextTypes.DEFAULT_TYPE], Coroutine[object, object, None]]
@@ -89,7 +88,6 @@ class LifecycleMixin:
     - _startup_housekeeping_task: asyncio.Task[None] | None
     - _get_command_handlers() -> list[tuple[str, object]]
     - _get_command_handler_update_filter() -> filters.BaseFilter
-    - _send_or_update_menu_message() -> None
     - _handle_private_start, _handle_private_text, _handle_text_message
     - _handle_callback_query, _handle_voice_message, _handle_file_attachment
     - _handle_topic_created, _handle_topic_closed, _log_all_updates, _handle_error

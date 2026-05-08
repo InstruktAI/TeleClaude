@@ -4,13 +4,6 @@
       "command": "npx",
       "args": [ "-y", "@upstash/context7-mcp@latest" ]
     },
-    "firecrawl": {
-      "command": "bash",
-      "args": [
-        "-lc",
-        "source \"$HOME/.teleclaude/.env\"; [ -n \"${FIRECRAWL_API_KEY:-}\" ] || { echo \"Missing FIRECRAWL_API_KEY\" >&2; exit 1; }; exec env FIRECRAWL_API_KEY=\"$FIRECRAWL_API_KEY\" npx -y firecrawl-mcp"
-      ]
-    },
     "playwright": {
       "command": "npx",
       "args": [
