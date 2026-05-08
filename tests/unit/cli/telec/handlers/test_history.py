@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import importlib
-import sys
 from types import SimpleNamespace
 from typing import TypedDict, cast
 from unittest.mock import patch
@@ -54,12 +53,15 @@ def test_handle_history_search_parses_flags_and_delegates() -> None:
         ),
     )
 
-    with patch.dict(sys.modules, {"teleclaude.history.search": fake_search}):
-        with patch.object(history, "read_current_session_email", return_value=None):
-            with patch.object(history, "resolve_cli_caller_role", return_value=None):
-                history._handle_history_search(
-                    ["error", "budget", "--agent", "claude,codex", "--limit", "15", "--computer", "work", "home"]
-                )
+    with (
+        patch.object(history, "parse_agents", fake_search.parse_agents),
+        patch.object(history, "display_combined_history", fake_search.display_combined_history),
+        patch.object(history, "read_current_session_email", return_value=None),
+        patch.object(history, "resolve_cli_caller_role", return_value=None),
+    ):
+        history._handle_history_search(
+            ["error", "budget", "--agent", "claude,codex", "--limit", "15", "--computer", "work", "home"]
+        )
 
     assert calls == [(["parsed", "claude,codex"], "error budget", 15, ["work", "home"])]
 
@@ -95,22 +97,25 @@ def test_handle_history_show_parses_flags_and_delegates() -> None:
         ),
     )
 
-    with patch.dict(sys.modules, {"teleclaude.history.search": fake_search}):
-        with patch.object(history, "read_current_session_email", return_value=None):
-            with patch.object(history, "resolve_cli_caller_role", return_value=None):
-                history._handle_history_show(
-                    [
-                        "session-123",
-                        "--agent",
-                        "codex",
-                        "--thinking",
-                        "--raw",
-                        "--tail",
-                        "120",
-                        "--computer",
-                        "workstation",
-                    ]
-                )
+    with (
+        patch.object(history, "parse_agents", fake_search.parse_agents),
+        patch.object(history, "show_transcript", fake_search.show_transcript),
+        patch.object(history, "read_current_session_email", return_value=None),
+        patch.object(history, "resolve_cli_caller_role", return_value=None),
+    ):
+        history._handle_history_show(
+            [
+                "session-123",
+                "--agent",
+                "codex",
+                "--thinking",
+                "--raw",
+                "--tail",
+                "120",
+                "--computer",
+                "workstation",
+            ]
+        )
 
     assert calls == [(["parsed", "codex"], "session-123", 120, True, True, ["workstation"])]
 
@@ -120,16 +125,8 @@ def test_handle_history_show_rejects_extra_positional(
 ) -> None:
     monkeypatch.setattr(history, "_usage", lambda *args: f"usage:{'/'.join(args)}")
 
-    with patch.dict(
-        sys.modules,
-        {
-            "teleclaude.history.search": SimpleNamespace(
-                parse_agents=lambda _agent_arg: ["all"], show_transcript=lambda *a, **k: None
-            )
-        },
-    ):
-        with pytest.raises(SystemExit) as exc_info:
-            history._handle_history_show(["session-123", "extra"])
+    with pytest.raises(SystemExit) as exc_info:
+        history._handle_history_show(["session-123", "extra"])
 
     assert exc_info.value.code == 1
     output = capsys.readouterr().out
@@ -142,16 +139,8 @@ def test_handle_history_show_requires_session_id(
 ) -> None:
     monkeypatch.setattr(history, "_usage", lambda *args: f"usage:{'/'.join(args)}")
 
-    with patch.dict(
-        sys.modules,
-        {
-            "teleclaude.history.search": SimpleNamespace(
-                parse_agents=lambda _agent_arg: ["all"], show_transcript=lambda *a, **k: None
-            )
-        },
-    ):
-        with pytest.raises(SystemExit) as exc_info:
-            history._handle_history_show(["--thinking"])
+    with pytest.raises(SystemExit) as exc_info:
+        history._handle_history_show(["--thinking"])
 
     assert exc_info.value.code == 1
     output = capsys.readouterr().out
@@ -159,16 +148,8 @@ def test_handle_history_show_requires_session_id(
 
 
 def test_handle_history_show_rejects_invalid_tail(capsys: pytest.CaptureFixture[str]) -> None:
-    with patch.dict(
-        sys.modules,
-        {
-            "teleclaude.history.search": SimpleNamespace(
-                parse_agents=lambda _agent_arg: ["all"], show_transcript=lambda *a, **k: None
-            )
-        },
-    ):
-        with pytest.raises(SystemExit) as exc_info:
-            history._handle_history_show(["--tail", "oops", "session-123"])
+    with pytest.raises(SystemExit) as exc_info:
+        history._handle_history_show(["--tail", "oops", "session-123"])
 
     assert exc_info.value.code == 1
     assert "Invalid value for --tail: oops" in capsys.readouterr().out
@@ -181,12 +162,12 @@ def test_handle_history_list_parses_filters_and_delegates() -> None:
         list_mirrors=lambda **kwargs: calls.append(cast(ListMirrorsCall, kwargs)) or [],
     )
 
-    with patch.dict(sys.modules, {"teleclaude.mirrors.store": fake_store}):
-        with patch.object(history, "read_current_session_email", return_value="member@example.com"):
-            with patch.object(history, "resolve_cli_caller_role", return_value="member"):
-                history._handle_history_list(
-                    ["--identity", "telegram:1285425702", "--project", "alpha", "--limit", "5"]
-                )
+    with (
+        patch.object(history, "list_mirrors", fake_store.list_mirrors),
+        patch.object(history, "read_current_session_email", return_value="member@example.com"),
+        patch.object(history, "resolve_cli_caller_role", return_value="member"),
+    ):
+        history._handle_history_list(["--identity", "telegram:1285425702", "--project", "alpha", "--limit", "5"])
 
     assert calls == [
         {

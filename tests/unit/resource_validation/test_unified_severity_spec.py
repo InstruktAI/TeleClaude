@@ -169,7 +169,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         """When ``warn_only=True``, sync returns True even if findings exist."""
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
-        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _pr: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _pr: [])
         monkeypatch.setattr(sync, "build_all_indexes", lambda _pr: [])
@@ -194,7 +193,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         """When ``warn_only=False``, sync returns False if findings exist."""
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
-        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _pr: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _pr: [])
 

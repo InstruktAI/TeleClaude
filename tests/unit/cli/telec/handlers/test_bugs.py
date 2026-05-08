@@ -67,7 +67,7 @@ def test_resolve_project_by_name_matches_case_insensitive(tmp_path: Path) -> Non
     target = str(tmp_path / "my-project")
     cfg = _mock_config_with_dirs([_make_trusted_dir("MyProject", target)])
 
-    with patch("teleclaude.config.config", cfg):
+    with patch.object(bugs, "config", cfg):
         result = bugs._resolve_project_by_name("myproject")
 
     assert result == Path(target)
@@ -81,7 +81,7 @@ def test_resolve_project_by_name_unknown_raises_system_exit() -> None:
         ]
     )
 
-    with patch("teleclaude.config.config", cfg):
+    with patch.object(bugs, "config", cfg):
         with pytest.raises(SystemExit):
             bugs._resolve_project_by_name("nonexistent")
 
@@ -98,7 +98,7 @@ def test_handle_bugs_report_with_project_flag(
     monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "fix-some-bug"})
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
-    with patch("teleclaude.config.config", cfg):
+    with patch.object(bugs, "config", cfg):
         bugs._handle_bugs_report(["Some bug", "--project", "target"])
 
     output = capsys.readouterr().out
@@ -116,7 +116,7 @@ def test_handle_bugs_create_with_project_flag(
     monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: {"status": "ok", "slug": "my-bug"})
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
-    with patch("teleclaude.config.config", cfg):
+    with patch.object(bugs, "config", cfg):
         bugs._handle_bugs_create(["my-bug", "--project", "target"])
 
     assert "Created bug: my-bug" in capsys.readouterr().out

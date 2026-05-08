@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,11 +12,7 @@ def test_handle_sessions_routes_revive_to_telec_misc() -> None:
     received: list[list[str]] = []
 
     with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.cli.telec.handlers.misc",
-            SimpleNamespace(_handle_revive=lambda args: received.append(args)),
-        )
+        sys_patch.setattr(sessions, "_handle_revive", received.append)
         sessions.handle_sessions(["revive", "sess-1", "--attach"])
 
     assert received == [["sess-1", "--attach"]]

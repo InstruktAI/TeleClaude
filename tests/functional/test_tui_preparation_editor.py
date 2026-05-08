@@ -10,7 +10,18 @@ from unittest.mock import AsyncMock
 import pytest
 
 import teleclaude.cli.tui.app as app_module
-from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectWithTodosDTO, TodoDTO
+from teleclaude.api_models import (
+    AgentAvailabilityDTO,
+    ChiptunesStatusDTO,
+    ComputerDTO,
+    ProjectWithTodosDTO,
+    SettingsDTO,
+    TodoDTO,
+    TTSSettingsDTO,
+    TuiBootstrapDataDTO,
+    TuiBootstrapDTO,
+    TuiBootstrapPillar,
+)
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
@@ -73,6 +84,20 @@ class _StubAPI:
 
     async def get_chiptunes_status(self) -> None:
         return None
+
+    async def get_tui_bootstrap(self, requested: list[TuiBootstrapPillar]) -> TuiBootstrapDTO:
+        return TuiBootstrapDTO(
+            requested=requested,
+            data=TuiBootstrapDataDTO(
+                computers=await self.list_computers(),
+                projects_with_todos=await self.list_projects_with_todos(),
+                sessions=[],
+                availability={},
+                jobs=[],
+                settings=SettingsDTO(tts=TTSSettingsDTO(enabled=False)),
+                chiptunes=ChiptunesStatusDTO(),
+            ),
+        )
 
 
 async def _wait_for_preparation_rows(pilot: object, prep: PreparationView) -> None:

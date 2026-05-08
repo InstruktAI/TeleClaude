@@ -356,16 +356,21 @@ class TestSessionsRoutes:
         identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
 
         with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="codex"):
-            metadata, _initiator, _title, launch_intent, _caller = await sessions_routes._prepare_create_session(
+            metadata, _initiator, initial_input, launch_intent, _caller = await sessions_routes._prepare_create_session(
                 request, identity
             )
 
-        assert metadata.title == "/next-review-build chartest-api-routes"
+        assert initial_input == "/next-review-build chartest-api-routes"
+        assert metadata.title is None
         assert metadata.system_role == "worker"
         assert metadata.job == "reviewer"
         assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
+        assert launch_intent.message == sessions_routes._rewrite_codex_next_startup_message(
+            "/next-review-build chartest-api-routes",
+            effective_agent="codex",
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -380,11 +385,12 @@ class TestSessionsRoutes:
         identity = SimpleNamespace(session_id="caller-123", human_role="member", email="member@example.com")
 
         with patch("teleclaude.api.sessions_routes.assert_agent_enabled", return_value="claude"):
-            metadata, _initiator, _title, launch_intent, _caller = await sessions_routes._prepare_create_session(
+            metadata, _initiator, initial_input, launch_intent, _caller = await sessions_routes._prepare_create_session(
                 request, identity
             )
 
-        assert metadata.title == "/next-review-build chartest-api-routes"
+        assert initial_input == "/next-review-build chartest-api-routes"
+        assert metadata.title is None
         assert metadata.launch_intent is not None
         assert launch_intent is not None
         assert launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE

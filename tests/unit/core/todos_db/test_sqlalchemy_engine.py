@@ -82,7 +82,7 @@ class TestTodosDbAsyncAccess:
         await db.initialize()
         try:
             await db.add_entry(slug="state-test", position=1, description="State test")
-            state = {"phase": "draft", "version": 2}
+            state = {"phase": "draft"}
             await db.set_state("state-test", json.dumps(state))
             result = await db.get_state("state-test")
             assert result is not None
@@ -152,7 +152,7 @@ class TestMutationHookPreserved:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         mutations: list[str] = []
-        db._on_mutation = lambda: mutations.append("fired")
+        db._on_mutation = lambda _event: mutations.append("fired")
         try:
             await db.add_entry(slug="hook-test", position=1, description="Hook test")
             assert len(mutations) > 0, "Mutation callback did not fire"

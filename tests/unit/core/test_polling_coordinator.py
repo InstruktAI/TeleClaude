@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 import teleclaude.core.polling_coordinator as pc
+import teleclaude.core.session_title as session_title
 from teleclaude.core.models import Session
 from teleclaude.core.polling_coordinator import (
     _assistant_projection_signature,
@@ -651,7 +652,7 @@ class TestProjectSessionFromTranscript:
         assert result is session
 
     @pytest.mark.unit
-    async def test_refresh_session_title_preserves_slash_prefixed_titles(self):
+    async def test_generate_session_title_preserves_slash_prefixed_titles(self):
         session = Session(
             session_id="sess-title-slash-1",
             computer_name="local",
@@ -663,24 +664,24 @@ class TestProjectSessionFromTranscript:
 
         with (
             patch(
-                "teleclaude.core.polling_coordinator.collect_transcript_messages",
+                "teleclaude.core.session_title.collect_transcript_messages",
                 return_value=[("user", "hello"), ("assistant", "world")],
             ),
             patch(
-                "teleclaude.core.polling_coordinator.generate_session_title",
+                "teleclaude.core.session_title.generate_session_title",
                 AsyncMock(return_value="Overwritten title"),
             ) as mock_generate,
-            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            result = await pc.refresh_session_title_from_transcript(session)
+            result = await session_title.generate_session_title_from_transcript(session)
 
         mock_generate.assert_not_awaited()
         mock_db.update_session.assert_not_awaited()
         assert result is session
 
     @pytest.mark.unit
-    async def test_refresh_session_title_uses_last_completed_turn_only(self):
+    async def test_generate_session_title_uses_last_completed_turn_only(self):
         session = Session(
             session_id="sess-title-2",
             computer_name="local",
@@ -691,11 +692,11 @@ class TestProjectSessionFromTranscript:
         )
         with (
             patch(
-                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                "teleclaude.core.session_title.extract_last_user_message_with_timestamp",
                 return_value=("latest request", datetime(2026, 4, 18, 0, 0, 0, tzinfo=UTC)),
             ),
             patch(
-                "teleclaude.core.polling_coordinator.collect_transcript_messages",
+                "teleclaude.core.session_title.collect_transcript_messages",
                 return_value=[
                     ("user", "old request"),
                     ("assistant", "old answer"),
@@ -705,14 +706,14 @@ class TestProjectSessionFromTranscript:
                 ],
             ),
             patch(
-                "teleclaude.core.polling_coordinator.generate_session_title",
+                "teleclaude.core.session_title.generate_session_title",
                 AsyncMock(return_value="New title"),
             ) as mock_generate,
-            patch("teleclaude.core.polling_coordinator.event_bus") as mock_bus,
-            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch("teleclaude.core.session_title.event_bus") as mock_bus,
+            patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            result = await pc.refresh_session_title_from_transcript(session)
+            result = await session_title.generate_session_title_from_transcript(session)
 
         mock_generate.assert_awaited_once_with([("user", "latest request"), ("assistant", "first part\n\nsecond part")])
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="New title")
@@ -723,7 +724,7 @@ class TestProjectSessionFromTranscript:
         assert result.title == "New title"
 
     @pytest.mark.unit
-    async def test_refresh_session_title_runs_once_per_user_turn(self):
+    async def test_generate_session_title_runs_once_per_user_turn(self):
         session = Session(
             session_id="sess-title-turn-once",
             computer_name="local",
@@ -735,26 +736,26 @@ class TestProjectSessionFromTranscript:
 
         with (
             patch(
-                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                "teleclaude.core.session_title.extract_last_user_message_with_timestamp",
                 return_value=("same request", datetime(2026, 4, 18, 0, 1, 0, tzinfo=UTC)),
             ),
             patch(
-                "teleclaude.core.polling_coordinator.collect_transcript_messages",
+                "teleclaude.core.session_title.collect_transcript_messages",
                 side_effect=[
                     [("user", "same request"), ("assistant", "first answer")],
                     [("user", "same request"), ("assistant", "first answer"), ("assistant", "later answer")],
                 ],
             ),
             patch(
-                "teleclaude.core.polling_coordinator.generate_session_title",
+                "teleclaude.core.session_title.generate_session_title",
                 AsyncMock(return_value="Stable title"),
             ) as mock_generate,
-            patch("teleclaude.core.polling_coordinator.event_bus") as mock_bus,
-            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch("teleclaude.core.session_title.event_bus") as mock_bus,
+            patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            await pc.refresh_session_title_from_transcript(session)
-            await pc.refresh_session_title_from_transcript(session)
+            await session_title.generate_session_title_from_transcript(session)
+            await session_title.generate_session_title_from_transcript(session)
 
         mock_generate.assert_awaited_once()
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Stable title")
@@ -782,14 +783,6 @@ class TestProjectSessionFromTranscript:
                 "teleclaude.core.polling_coordinator._build_transcript_output_update",
                 return_value=None,
             ),
-            patch(
-                "teleclaude.core.polling_coordinator.collect_transcript_messages",
-                return_value=[("user", "hello"), ("assistant", "world")],
-            ),
-            patch(
-                "teleclaude.core.polling_coordinator.generate_session_title",
-                AsyncMock(return_value="New title"),
-            ),
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
@@ -801,7 +794,7 @@ class TestProjectSessionFromTranscript:
         assert result is session
 
     @pytest.mark.unit
-    async def test_finalize_session_title_on_agent_stop_fetches_session_and_refreshes(self):
+    async def test_generate_session_title_updates_passed_session(self):
         session = Session(
             session_id="sess-title-finalize-1",
             computer_name="local",
@@ -812,15 +805,23 @@ class TestProjectSessionFromTranscript:
         )
 
         with (
-            patch("teleclaude.core.polling_coordinator.db") as mock_db,
             patch(
-                "teleclaude.core.polling_coordinator.refresh_session_title_from_transcript",
-                AsyncMock(return_value=session),
-            ) as mock_refresh,
+                "teleclaude.core.session_title.extract_last_user_message_with_timestamp",
+                return_value=("request", datetime(2026, 4, 18, 0, 2, 0, tzinfo=UTC)),
+            ),
+            patch(
+                "teleclaude.core.session_title.collect_transcript_messages",
+                return_value=[("user", "request"), ("assistant", "answer")],
+            ),
+            patch(
+                "teleclaude.core.session_title.generate_session_title",
+                AsyncMock(return_value="Generated title"),
+            ),
+            patch("teleclaude.core.session_title.db") as mock_db,
         ):
-            mock_db.get_session = AsyncMock(return_value=session)
-            result = await pc.finalize_session_title_on_agent_stop(session.session_id)
+            mock_db.update_session = AsyncMock()
+            result = await session_title.generate_session_title_from_transcript(session)
 
-        mock_db.get_session.assert_awaited_once_with(session.session_id)
-        mock_refresh.assert_awaited_once_with(session)
+        mock_db.update_session.assert_awaited_once_with(session.session_id, title="Generated title")
+        assert result.title == "Generated title"
         assert result is session

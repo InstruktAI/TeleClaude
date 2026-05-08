@@ -15,11 +15,11 @@ import ast
 import inspect
 from pathlib import Path
 from textwrap import dedent
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
 import pytest
 from sqlalchemy import Engine, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from teleclaude.core.db._base import DbBase
@@ -32,9 +32,6 @@ from teleclaude.hooks.receiver import _session
 from teleclaude.mirrors import store
 
 pytestmark = [pytest.mark.unit]
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncEngine
 
 
 class _PragmaValues(TypedDict):
@@ -226,16 +223,12 @@ class TestPragmaConsolidation:
         assert pragma_calls == [], f"Found manual PRAGMA calls in receiver/_session.py: {pragma_calls}"
 
 
-class TestAllDatabasesPragmaConsistency:
-    """Integration-style: all four databases report identical PRAGMA values at runtime."""
+class TestFactoryEnginePragmaBaseline:
+    """Integration-style: a factory-created engine reports the canonical PRAGMA values at runtime."""
 
-    @pytest.mark.parametrize(
-        "db_name",
-        ["teleclaude", "todos", "mirrors", "outbox"],
-    )
-    def test_pragma_values_match_baseline(self, tmp_path: Path, db_name: str) -> None:
-        """Each database engine reports the canonical PRAGMA baseline."""
-        db_path = tmp_path / f"{db_name}.db"
+    def test_factory_engine_pragma_values_match_baseline(self, tmp_path: Path) -> None:
+        """Factory-created engines report the canonical PRAGMA baseline."""
+        db_path = tmp_path / "teleclaude.db"
         engine = create_sync_db_engine(db_path)
         with engine.connect() as conn:
             journal = conn.exec_driver_sql("PRAGMA journal_mode").scalar()
@@ -244,8 +237,8 @@ class TestAllDatabasesPragmaConsistency:
             fk = conn.exec_driver_sql("PRAGMA foreign_keys").scalar()
             cache = conn.exec_driver_sql("PRAGMA cache_size").scalar()
 
-        assert journal.lower() == "wal", f"{db_name}: journal_mode"
-        assert sync == 1, f"{db_name}: synchronous"
-        assert timeout == 5000, f"{db_name}: busy_timeout"
-        assert fk == 1, f"{db_name}: foreign_keys"
-        assert cache == -8000, f"{db_name}: cache_size"
+        assert journal.lower() == "wal"
+        assert sync == 1
+        assert timeout == 5000
+        assert fk == 1
+        assert cache == -8000

@@ -63,7 +63,7 @@ async def _create_headless_via_command(
         native_session_id=native_session_id,
         native_log_file=native_log_file,
         project_path=str(project_path),
-        title=title,
+        initial_input=title,
         subdir=subdir,
         origin="terminal",
         origin_metadata=TerminalOriginMetadata(email="admin@example.com"),

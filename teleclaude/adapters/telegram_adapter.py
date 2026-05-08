@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
     from teleclaude.core.adapter_client import AdapterClient
 
-from telegram import Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 from telegram.ext import filters
 
@@ -24,6 +24,7 @@ from teleclaude.adapters.qos.output_scheduler import OutputQoSScheduler
 from teleclaude.adapters.qos.policy import telegram_policy
 from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
+from teleclaude.core.agents import get_enabled_agents
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, TelegramAdapterMetadata
 from teleclaude.core.session_utils import get_display_title_for_session
@@ -38,7 +39,7 @@ from teleclaude.utils.markdown import (
     truncate_markdown_v2_with_consumed,
 )
 
-from .telegram.callback_handlers import CallbackHandlersMixin
+from .telegram.callback_handlers import CallbackAction, CallbackHandlersMixin
 from .telegram.channel_ops import ChannelOperationsMixin
 from .telegram.command_handlers import CommandHandlersMixin
 from .telegram.input_handlers import InputHandlersMixin
@@ -562,3 +563,36 @@ class TelegramAdapter(
     def _get_command_handler_update_filter(self) -> filters.BaseFilter:
         """Return UpdateType filter for command handlers."""
         return filters.UpdateType.MESSAGE
+
+    def _build_project_keyboard(self, callback_prefix: str) -> InlineKeyboardMarkup:
+        """Build the project selection keyboard using compact callback payloads."""
+        keyboard = []
+        for idx, trusted_dir in enumerate(self.trusted_dirs):
+            button_text = f"{trusted_dir.name} - {trusted_dir.desc}" if trusted_dir.desc else trusted_dir.name
+            keyboard.append([InlineKeyboardButton(text=button_text, callback_data=f"{callback_prefix}:{idx}")])
+        return InlineKeyboardMarkup(keyboard)
+
+    def _build_heartbeat_keyboard(self, bot_username: str) -> InlineKeyboardMarkup:
+        """Build the menu keyboard for session and agent launch actions."""
+        keyboard: list[list[InlineKeyboardButton]] = [
+            [
+                InlineKeyboardButton(
+                    text="🚀 Tmux Session",
+                    callback_data=f"{CallbackAction.SESSION_SELECT.value}:{bot_username}",
+                )
+            ],
+        ]
+        for agent in get_enabled_agents():
+            keyboard.append(
+                [
+                    InlineKeyboardButton(
+                        text=f"🤖 New {agent.title()}",
+                        callback_data=f"{CallbackAction.AGENT_SELECT.value}:{agent}:{bot_username}",
+                    ),
+                    InlineKeyboardButton(
+                        text=f"🔄 Resume {agent.title()}",
+                        callback_data=f"{CallbackAction.AGENT_RESUME_SELECT.value}:{agent}:{bot_username}",
+                    ),
+                ]
+            )
+        return InlineKeyboardMarkup(keyboard)

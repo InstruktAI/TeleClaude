@@ -95,24 +95,9 @@ def test_apply_chiptunes_receipt_marks_resume_and_skip_actions_as_loading() -> N
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("playing", "expected_method", "expected_pending_action", "reconcile_expected"),
-    [
-        # Pause path tracks the receipt and schedules reconcile.
-        (True, "chiptunes_pause", "pause", True),
-        # Resume path skips receipt tracking and reconcile — WS events correct the state
-        # once the worker is up, so the button flips to "pause" immediately.
-        (False, "chiptunes_resume", "", False),
-    ],
-)
-async def test_chiptunes_play_pause_toggles_local_playing_state_and_reconciles(
-    playing: bool,
-    expected_method: str,
-    expected_pending_action: str,
-    reconcile_expected: bool,
-) -> None:
+async def test_chiptunes_play_pause_pauses_and_schedules_reconcile() -> None:
     footer = SimpleNamespace(
-        chiptunes_playing=playing,
+        chiptunes_playing=True,
         chiptunes_loaded=False,
         chiptunes_pending_command_id="",
         chiptunes_pending_action="",
@@ -122,13 +107,30 @@ async def test_chiptunes_play_pause_toggles_local_playing_state_and_reconciles(
 
     await app_media.TelecAppMediaMixin._chiptunes_play_pause.__wrapped__(app)
 
-    getattr(app.api, expected_method).assert_awaited_once()
-    assert footer.chiptunes_playing is (not playing)
-    assert footer.chiptunes_pending_action == expected_pending_action
-    if reconcile_expected:
-        app._schedule_chiptunes_reconcile.assert_called_once_with()
-    else:
-        app._schedule_chiptunes_reconcile.assert_not_called()
+    app.api.chiptunes_pause.assert_awaited_once()
+    assert footer.chiptunes_playing is False
+    assert footer.chiptunes_pending_action == "pause"
+    app._schedule_chiptunes_reconcile.assert_called_once_with()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_chiptunes_play_pause_resumes_without_receipt_reconcile() -> None:
+    footer = SimpleNamespace(
+        chiptunes_playing=False,
+        chiptunes_loaded=False,
+        chiptunes_pending_command_id="",
+        chiptunes_pending_action="",
+        chiptunes_playback="cold",
+    )
+    app = _MediaApp(footer)
+
+    await app_media.TelecAppMediaMixin._chiptunes_play_pause.__wrapped__(app)
+
+    app.api.chiptunes_resume.assert_awaited_once()
+    assert footer.chiptunes_playing is True
+    assert footer.chiptunes_pending_action == ""
+    app._schedule_chiptunes_reconcile.assert_not_called()
 
 
 @pytest.mark.unit
@@ -144,7 +146,7 @@ def test_animation_tick_precomputes_and_caches_header_frames(monkeypatch: pytest
     sentinel_banner = object()
     sentinel_tabs = object()
     monkeypatch.setattr(
-        "teleclaude.cli.tui.header_frames.build_header_frames",
+        "teleclaude.cli.tui.app_media.build_header_frames",
         lambda *, banner, tab_bar: (sentinel_banner, sentinel_tabs),
     )
     app.query_one = Mock(side_effect=[banner, tab_bar])

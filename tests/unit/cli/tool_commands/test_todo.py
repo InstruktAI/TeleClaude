@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import importlib
-import sys
-from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,12 +16,10 @@ def test_handle_todo_prepare_invalidate_check_stays_local(monkeypatch: pytest.Mo
     monkeypatch.setattr(todo_commands.os, "getcwd", lambda: "/tmp/project")
 
     with pytest.MonkeyPatch.context() as sys_patch:
-        sys_patch.setitem(
-            sys.modules,
-            "teleclaude.core.next_machine.core",
-            SimpleNamespace(
-                invalidate_stale_preparations=lambda cwd, changed_paths: {"cwd": cwd, "changed_paths": changed_paths}
-            ),
+        sys_patch.setattr(
+            todo_commands,
+            "invalidate_stale_preparations",
+            lambda cwd, changed_paths: {"cwd": cwd, "changed_paths": changed_paths},
         )
         todo_commands.handle_todo_prepare(["--invalidate-check", "--changed-paths", "a.py,b.py"])
 

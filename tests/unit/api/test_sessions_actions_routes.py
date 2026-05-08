@@ -627,12 +627,23 @@ class TestSessionsActionsRoutes:
         expected_title = (
             "/next-review-build chartest-api-routes --direct\n\nADDITIONAL CONTEXT:\nTrace real route behavior."
         )
+        expected_startup = (
+            sessions_actions_routes._build_codex_loader_message(
+                "next-review-build",
+                "chartest-api-routes --direct",
+            )
+            + "\n\nADDITIONAL CONTEXT:\nTrace real route behavior."
+        )
         expected_role = sessions_actions_routes.COMMAND_ROLE_MAP[sessions_actions_routes.SlashCommand.NEXT_REVIEW_BUILD]
         assert command_name == "new_session"
-        assert payload == {"skip_listener_registration": True, "initiator_session_id": "caller-123"}
+        assert payload == {
+            "skip_listener_registration": True,
+            "initiator_session_id": "caller-123",
+            "initial_input": expected_title,
+        }
         assert isinstance(metadata, MessageMetadata)
         assert metadata.origin == InputOrigin.TERMINAL.value
-        assert metadata.title == expected_title
+        assert metadata.title is None
         assert metadata.project_path == "/repo/demo"
         assert metadata.subdir == "api"
         assert metadata.origin_metadata is None
@@ -640,6 +651,7 @@ class TestSessionsActionsRoutes:
         assert metadata.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert metadata.launch_intent.agent == "codex"
         assert metadata.launch_intent.thinking_mode == "med"
+        assert metadata.launch_intent.message == expected_startup
         assert metadata.system_role == expected_role[0]
         assert metadata.job == expected_role[1].value
 
@@ -676,7 +688,7 @@ class TestSessionsActionsRoutes:
         _command_name, _payload, metadata = map_api_input.call_args.args
         expected_message = "/next-review-build chartest-api-routes --direct"
         assert isinstance(metadata, MessageMetadata)
-        assert metadata.title == expected_message
+        assert metadata.title is None
         assert metadata.launch_intent is not None
         assert metadata.launch_intent.kind == SessionLaunchKind.AGENT_THEN_MESSAGE
         assert metadata.launch_intent.agent == "claude"
@@ -685,26 +697,40 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    @pytest.mark.parametrize(
-        ("unregister_result", "expected_status"),
-        [(True, "success"), (False, "error")],
-    )
-    async def test_unsubscribe_session_reports_listener_state(
-        self,
-        unregister_result: bool,
-        expected_status: str,
-    ) -> None:
-        """Unsubscribe reports whether the caller had an active listener on the target session."""
+    async def test_unsubscribe_session_reports_success_when_listener_was_registered(self) -> None:
+        """Unsubscribe reports success when the caller had an active listener."""
         identity = _identity("caller-unsub")
 
         with patch(
             "teleclaude.api.sessions_actions_routes.unregister_listener",
-            new=AsyncMock(return_value=unregister_result),
+            new=AsyncMock(return_value=True),
         ) as unregister_listener:
             response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
 
         message = response["message"]
-        assert response["status"] == expected_status
+        assert response["status"] == "success"
+        assert isinstance(message, str)
+        assert message
+        assert "sess-unsub" in message
+        unregister_listener.assert_awaited_once_with(
+            target_session_id="sess-unsub",
+            caller_session_id="caller-unsub",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_unsubscribe_session_reports_error_when_listener_was_absent(self) -> None:
+        """Unsubscribe reports error when the caller had no active listener."""
+        identity = _identity("caller-unsub")
+
+        with patch(
+            "teleclaude.api.sessions_actions_routes.unregister_listener",
+            new=AsyncMock(return_value=False),
+        ) as unregister_listener:
+            response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
+
+        message = response["message"]
+        assert response["status"] == "error"
         assert isinstance(message, str)
         assert message
         assert "sess-unsub" in message

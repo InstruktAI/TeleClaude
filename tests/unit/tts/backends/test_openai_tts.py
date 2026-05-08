@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import sys
-import types
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -32,19 +30,17 @@ def test_speak_writes_audio_plays_file_and_cleans_up(monkeypatch: pytest.MonkeyP
     class FakeOpenAI:
         def __init__(self, api_key: str) -> None:
             calls["api_key"] = api_key
-            self.audio = types.SimpleNamespace(speech=types.SimpleNamespace(create=self.create))
+            self.audio = SimpleNamespace(speech=SimpleNamespace(create=self.create))
 
         def create(self, **kwargs):
             calls["create"] = kwargs
             return FakeResponse()
 
-    openai_module = types.ModuleType("openai")
-    openai_module.OpenAI = FakeOpenAI
     monkeypatch.setenv("OPENAI_API_KEY", "secret")
     monkeypatch.setattr("teleclaude.tts.backends.openai_tts.subprocess.run", run)
+    monkeypatch.setattr("teleclaude.tts.backends.openai_tts.OpenAI", FakeOpenAI)
 
-    with patch.dict(sys.modules, {"openai": openai_module}):
-        assert OpenAITTSBackend().speak("hello", "nova") is True
+    assert OpenAITTSBackend().speak("hello", "nova") is True
 
     assert calls["api_key"] == "secret"
     assert calls["create"] == {"model": "gpt-4o-mini-tts", "voice": "nova", "input": "hello"}

@@ -82,7 +82,7 @@ async def test_spawn_rejects_missing_caller_identity():
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[])
 
-    with patch("teleclaude.core.db.db", mock_db):
+    with patch("teleclaude.core.integration_bridge.db", mock_db):
         with pytest.raises(ValueError, match="missing caller session identity"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "")
 
@@ -93,7 +93,7 @@ async def test_spawn_rejects_unknown_caller_identity():
     mock_db = MagicMock()
     mock_db.list_sessions = AsyncMock(return_value=[])
 
-    with patch("teleclaude.core.db.db", mock_db):
+    with patch("teleclaude.core.integration_bridge.db", mock_db):
         with pytest.raises(ValueError, match="missing caller session identity"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "unknown")
 
@@ -110,8 +110,8 @@ async def test_spawn_notifies_running_integrator():
     mock_svc.process_message = AsyncMock()
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
     ):
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "caller-sess")
 
@@ -131,8 +131,8 @@ async def test_spawn_notifies_running_integrator_without_caller_identity():
     mock_svc.process_message = AsyncMock()
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
     ):
         result = await spawn_integrator_session("my-slug", "my-branch", "abc123def456", "")
 
@@ -154,8 +154,8 @@ async def test_spawn_notify_failure_raises():
     mock_svc.process_message = AsyncMock(side_effect=RuntimeError("session gone"))
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
     ):
         with pytest.raises(RuntimeError, match="session gone"):
             await spawn_integrator_session("my-slug", "my-branch", "abc123", "caller-sess")
@@ -174,8 +174,8 @@ async def test_spawn_creates_session_with_identity():
     )
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
@@ -206,8 +206,8 @@ async def test_spawn_failure_raises():
     mock_svc.create_session = AsyncMock(side_effect=RuntimeError("tmux creation failed"))
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):
@@ -224,8 +224,8 @@ async def test_spawn_db_error_raises():
     mock_svc.create_session = AsyncMock()
 
     with (
-        patch("teleclaude.core.db.db", mock_db),
-        patch("teleclaude.core.command_registry.get_command_service", return_value=mock_svc),
+        patch("teleclaude.core.integration_bridge.db", mock_db),
+        patch("teleclaude.core.integration_bridge.get_command_service", return_value=mock_svc),
         patch("teleclaude.core.agents.get_default_agent", return_value="claude"),
         patch.dict("os.environ", {"TELECLAUDE_PROJECT_PATH": "/project"}),
     ):

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import sys
-import types
+from types import SimpleNamespace
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -31,28 +30,17 @@ def test_speak_uses_client_convert_and_play(monkeypatch: pytest.MonkeyPatch) -> 
     class FakeElevenLabs:
         def __init__(self, api_key: str) -> None:
             calls["api_key"] = api_key
-            self.text_to_speech = types.SimpleNamespace(convert=self.convert)
+            self.text_to_speech = SimpleNamespace(convert=self.convert)
 
         def convert(self, **kwargs):
             calls["convert"] = kwargs
             return "audio-bytes"
 
-    elevenlabs = types.ModuleType("elevenlabs")
-    elevenlabs_client = types.ModuleType("elevenlabs.client")
-    elevenlabs_client.ElevenLabs = FakeElevenLabs
-    elevenlabs_play = types.ModuleType("elevenlabs.play")
-    elevenlabs_play.play = play
     monkeypatch.setenv("ELEVENLABS_API_KEY", "secret")
+    monkeypatch.setattr("teleclaude.tts.backends.elevenlabs.ElevenLabs", FakeElevenLabs)
+    monkeypatch.setattr("teleclaude.tts.backends.elevenlabs.play", play)
 
-    with patch.dict(
-        sys.modules,
-        {
-            "elevenlabs": elevenlabs,
-            "elevenlabs.client": elevenlabs_client,
-            "elevenlabs.play": elevenlabs_play,
-        },
-    ):
-        assert ElevenLabsBackend().speak("hello", "voice-1") is True
+    assert ElevenLabsBackend().speak("hello", "voice-1") is True
 
     assert calls["api_key"] == "secret"
     assert calls["convert"] == {

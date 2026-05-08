@@ -68,7 +68,7 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
         patch("teleclaude.core.lifecycle.OperationsService", return_value=operations_service),
         patch("teleclaude.core.lifecycle.set_operations_service"),
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
-        patch("teleclaude.core.inbound_queue.get_inbound_queue_manager", return_value=inbound_queue_manager),
+        patch("teleclaude.core.lifecycle.get_inbound_queue_manager", return_value=inbound_queue_manager),
         patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
         patch(
             "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",
@@ -121,7 +121,7 @@ async def test_startup_repairs_outstanding_final_output_after_adapter_start():
         patch("teleclaude.core.lifecycle.OperationsService", return_value=operations_service),
         patch("teleclaude.core.lifecycle.set_operations_service"),
         patch("teleclaude.core.lifecycle.APIServer", return_value=api_server),
-        patch("teleclaude.core.inbound_queue.get_inbound_queue_manager", return_value=inbound_queue_manager),
+        patch("teleclaude.core.lifecycle.get_inbound_queue_manager", return_value=inbound_queue_manager),
         patch("teleclaude.core.lifecycle.get_command_service", return_value=MagicMock()),
         patch(
             "teleclaude.core.lifecycle.reconcile_outstanding_conversation_deliveries",

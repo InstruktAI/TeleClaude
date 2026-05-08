@@ -58,7 +58,7 @@ class TestRepairBrokenDocsLinks:
 
         mock_repo.git.show = fake_show
 
-        with patch("teleclaude.git.Repo", return_value=mock_repo):
+        with patch("teleclaude.sync.Repo", return_value=mock_repo):
             sync._repair_broken_docs_links(project_root)
 
         assert baseline_path.is_symlink() is False
@@ -73,7 +73,7 @@ class TestRepairBrokenDocsLinks:
         git_calls: list[str] = []
         mock_repo.git.show = lambda ref: git_calls.append(ref) or ""
 
-        with patch("teleclaude.git.Repo", return_value=mock_repo):
+        with patch("teleclaude.sync.Repo", return_value=mock_repo):
             sync._repair_broken_docs_links(project_root)
 
         # After Task 2.1, index.yaml must not be in tracked_docs_files.
@@ -136,7 +136,6 @@ class TestSyncBootstrapOrdering:
         call_order: list[str] = []
 
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
-        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
         monkeypatch.setattr(sync, "get_errors", lambda: [])
@@ -179,7 +178,6 @@ class TestSyncDoesNotRegisterProject:
         monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
-        monkeypatch.setattr(sync, "validate_third_party_docs", lambda _: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
         monkeypatch.setattr(sync, "get_errors", lambda: [])
