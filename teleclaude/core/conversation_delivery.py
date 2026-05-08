@@ -83,12 +83,11 @@ def _sender_identity(
     source_session: Session,
     *,
     source_computer: str | None,
-) -> tuple[str, str, str]:
-    """Build sender display and actor identity values."""
-    sender_label = source_session.title or source_session.session_id
+) -> tuple[str, str]:
+    """Build sender computer and actor identity values."""
     sender_computer = source_computer or source_session.computer_name or config.computer.name
     actor_id = f"system:{sender_computer}:{source_session.session_id}"
-    return sender_label, sender_computer, actor_id
+    return sender_computer, actor_id
 
 
 async def _collect_visible_conversation_segments_since(
@@ -166,13 +165,12 @@ async def _deliver_bundle(
     if not segments:
         return False, None
 
-    sender_label, sender_computer, actor_id = _sender_identity(source_session, source_computer=source_computer)
+    sender_computer, actor_id = _sender_identity(source_session, source_computer=source_computer)
     actor_name = f"system@{sender_computer}"
     origin = (source_session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
 
     bundle_segments = [(seg.role, seg.timestamp, seg.text) for seg in segments]
     framed_message = format_bundled_conversation_message(
-        sender_label=sender_label,
         sender_session_id=source_session.session_id,
         sender_computer=sender_computer,
         segments=bundle_segments,
@@ -398,7 +396,7 @@ async def _deliver_for_peer(
             pending_through_ts=latest_ts_all.isoformat(),
         )
     try:
-        handed_off, _sent_latest_ts = await _deliver_bundle(
+        handed_off, _ = await _deliver_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,

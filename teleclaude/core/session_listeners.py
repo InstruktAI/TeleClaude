@@ -539,6 +539,26 @@ async def create_or_reuse_direct_link(
             participant_role="peer",
             computer_name=target_computer,
         )
+        # Anchor the per-link delivery cursors at link creation time. Without
+        # this, the conversation projector falls back to the source session's
+        # global ``last_conversation_injected_at`` anchor — which may be stale
+        # from any prior link or fan-out and would pull pre-link transcript
+        # content into the first bundle. The cursor floor is per-link, so the
+        # sender's history before link establishment is filtered out for both
+        # directions.
+        now_iso = datetime.now(UTC).isoformat()
+        await db.upsert_conversation_delivery_state(
+            link_id=link.link_id,
+            source_session_id=caller_session_id,
+            target_session_id=target_session_id,
+            delivered_through_ts=now_iso,
+        )
+        await db.upsert_conversation_delivery_state(
+            link_id=link.link_id,
+            source_session_id=target_session_id,
+            target_session_id=caller_session_id,
+            delivered_through_ts=now_iso,
+        )
         refreshed = await db.get_conversation_link(link.link_id)
         if refreshed is None:
             return (link, True)

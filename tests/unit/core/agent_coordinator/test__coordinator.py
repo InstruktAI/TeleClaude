@@ -632,7 +632,7 @@ class TestHandleAgentStop:
         coord = _make_coordinator()
         linked_at = datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC)
         session = _make_session(
-            last_message_sent='[TeleClaude Linked output from "Peer" (sess-peer) on peer-host]',
+            last_message_sent="[TeleClaude - Linked output (sess-peer) on peer-host]",
             last_message_sent_at=linked_at,
         )
         context = MagicMock()

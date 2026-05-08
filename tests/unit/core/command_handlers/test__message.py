@@ -9,8 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX, format_system_message
+from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core.command_handlers import _message
+from teleclaude.core.conversation_messages import format_linked_output_message
 from teleclaude.core.db import InboundQueueRow
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
@@ -266,9 +267,10 @@ class TestDeliverInbound:
         session = make_session(active_agent="claude")
         row = make_row(
             session_id=session.session_id,
-            content=format_system_message(
-                'Linked output from "Peer" (peer-001) on remote',
-                "Need review on the latest change.",
+            content=format_linked_output_message(
+                sender_session_id="peer-001",
+                sender_computer="remote",
+                content="Need review on the latest change.",
             ),
         )
         db = SimpleNamespace(
@@ -450,7 +452,11 @@ class TestProcessMessage:
         monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
         monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
 
-        content = format_system_message('Linked output from "Peer" (peer-001) on remote', "Thanks.")
+        content = format_linked_output_message(
+            sender_session_id="peer-001",
+            sender_computer="remote",
+            content="Thanks.",
+        )
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=content,

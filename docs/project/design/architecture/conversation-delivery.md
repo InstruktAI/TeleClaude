@@ -47,7 +47,8 @@ This system is separate from one-shot session listeners. It owns peer conversati
 - **Session-local anchor**: `last_conversation_injected_at` marks the most recent TeleClaude conversation injection into a session.
 - **Directional progress**: delivery is tracked per `(link_id, source_session_id, target_session_id)`.
 - **Boundary is later(anchor, cursor)**: replay starts at the later of the session anchor and the persisted directional cursor.
-- **Visible content only**: replay includes visible `user` and `assistant` text blocks. TeleClaude-prefixed bridge messages are excluded by the conversation projector.
+- **Per-link cursor seeded at link creation**: when a fresh direct link is created, both directional cursors (`caller→target` and `target→caller`) are seeded with `now()` as `delivered_through_ts`. Without this floor, the sender side has no anchor refresh from the Direct Conversation intro (only the receiver does), so a stale `last_conversation_injected_at` from a prior link or fan-out would pull pre-link transcript content into the first bundle. The cursor floor is per-link and authoritative regardless of session-level anchor history. Reused links keep their existing cursors.
+- **Visible content only**: replay includes visible `user` and `assistant` text blocks. Agent-CLI runtime artifacts (`<system-reminder>`, `<task-notification>`, hook-feedback prefixes) are stripped by the projector. Bracket-marked machine messages (`[TeleClaude …]`, `[Orchestrator …]`) are NOT stripped — receivers identify them by the bracket and act accordingly.
 - **User and assistant both matter**: plain human input after the anchor is mirrored, not only assistant output.
 - **Hold trailing human turns**: a bundle whose final segment is `user` is trimmed before send — the held-back human turn stays past the cursor and ships with the next `agent_stop`'s reply. This enforces the invariant that human input always travels bundled with the agent's response, never alone.
 - **Single bundled delivery**: all visible segments since the cursor are merged into ONE outer message per delivery, with inner markers preserving the temporal sequence. This collapses N user-prompt entries on the receiver into 1.
@@ -63,9 +64,10 @@ This system is separate from one-shot session listeners. It owns peer conversati
 
 ### 1. Direct conversation anchor
 
-1. A TeleClaude conversation bridge message is injected into a session.
-2. `deliver_inbound` stores `last_conversation_injected_at` on the target session.
-3. Subsequent visible conversation activity in that session becomes eligible for mirroring.
+1. `create_or_reuse_direct_link` (fresh-create branch only) seeds `delivered_through_ts = now()` for both directional cursors so the per-link floor is authoritative regardless of either peer's session-level history.
+2. A TeleClaude conversation bridge message is injected into the receiver session.
+3. `deliver_inbound` stores `last_conversation_injected_at` on the receiver, gating future replays on that side.
+4. Subsequent visible conversation activity in either session becomes eligible for mirroring; the floor is the per-link cursor on each direction.
 
 ### 2. Stop-time replay
 

@@ -13,18 +13,32 @@ from teleclaude.output_projection.models import VisibilityPolicy
 
 class TestProjectEntries:
     @pytest.mark.unit
-    def test_applies_visibility_rules_and_sanitizes_internal_user_content(self) -> None:
+    def test_applies_visibility_rules_and_strips_agent_cli_artifacts(self) -> None:
+        """Agent-CLI runtime artifacts (system-reminder wrappers, hook feedback,
+        XML-style prefixes) are stripped. Bracket-marked machine messages
+        (``[TeleClaude …]``, ``[Orchestrator …]``) are NOT stripped — brackets
+        are identity markers, not delete cues."""
         entries: list[object] = [
             {
                 "timestamp": "2024-01-01T00:00:00Z",
-                "message": {"role": "user", "content": "[TeleClaude System]\n\nhidden"},
+                "message": {
+                    "role": "user",
+                    "content": "<system-reminder>internal</system-reminder>",
+                },
             },
             {
                 "timestamp": "2024-01-01T00:00:01Z",
-                "message": {"role": "user", "content": "hello user"},
+                "message": {
+                    "role": "user",
+                    "content": "[TeleClaude - Linked output (sess-peer) on remote]\n\nbridge body",
+                },
             },
             {
                 "timestamp": "2024-01-01T00:00:02Z",
+                "message": {"role": "user", "content": "hello user"},
+            },
+            {
+                "timestamp": "2024-01-01T00:00:03Z",
                 "message": {
                     "role": "assistant",
                     "content": [
@@ -40,7 +54,7 @@ class TestProjectEntries:
                 },
             },
             {
-                "timestamp": "2024-01-01T00:00:03Z",
+                "timestamp": "2024-01-01T00:00:04Z",
                 "message": {
                     "role": "user",
                     "content": [{"type": "tool_result", "content": "rerouted output"}],
@@ -67,13 +81,23 @@ class TestProjectEntries:
             )
             for block in blocks
         ] == [
-            ("text", "user", "text", "hello user", None, None, 1, 4),
-            ("text", "assistant", "text", "assistant text", None, None, 2, 4),
-            ("text", "assistant", "input_text", "input text", None, None, 2, 4),
-            ("text", "assistant", "output_text", "output text", None, None, 2, 4),
-            ("tool_use", "assistant", "tool_use", None, "visible-tool", None, 2, 4),
-            ("tool_result", "assistant", "tool_result", None, None, "tool output", 2, 4),
-            ("tool_result", "assistant", "tool_result", None, None, "rerouted output", 3, 4),
+            (
+                "text",
+                "user",
+                "text",
+                "[TeleClaude - Linked output (sess-peer) on remote]\n\nbridge body",
+                None,
+                None,
+                1,
+                4,
+            ),
+            ("text", "user", "text", "hello user", None, None, 2, 4),
+            ("text", "assistant", "text", "assistant text", None, None, 3, 4),
+            ("text", "assistant", "input_text", "input text", None, None, 3, 4),
+            ("text", "assistant", "output_text", "output text", None, None, 3, 4),
+            ("tool_use", "assistant", "tool_use", None, "visible-tool", None, 3, 4),
+            ("tool_result", "assistant", "tool_result", None, None, "tool output", 3, 4),
+            ("tool_result", "assistant", "tool_result", None, None, "rerouted output", 4, 4),
         ]
 
     @pytest.mark.unit

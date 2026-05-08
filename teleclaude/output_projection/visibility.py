@@ -1,8 +1,18 @@
 """Visibility classification for transcript content.
 
-Determines whether user text is system-injected (internal) or genuine human
-input. Used by the projection, extraction, and hook layers to filter internal
-content from public-facing outputs.
+Two predicates with distinct responsibilities:
+
+- ``is_agent_cli_internal_text`` matches agent-runtime artifacts that have no
+  meaning outside the agent CLI that produced them: hook feedback prefixes,
+  ``<system-reminder>`` and ``<task-notification>`` wrappers, XML-style
+  prefixes. These must never be mirrored to peers, rendered to humans, or
+  treated as user input.
+
+- ``is_internal_user_text`` extends the above with the ``[TeleClaude`` prefix
+  to support the hook receiver's checkpoint-reset gate: bridge messages
+  delivered to a session must NOT be classified as a real user turn that
+  resets the checkpoint timer. The ``[TeleClaude`` prefix is *not* a strip
+  trigger for projection — brackets are identity markers, not delete cues.
 """
 
 from __future__ import annotations
@@ -20,19 +30,15 @@ _INTERNAL_WRAPPER_RE = re.compile(
 _XML_STYLE_PREFIX_RE = re.compile(r"^\s*</?[A-Za-z_][\w:.-]*(?:\s[^>]*)?>", re.DOTALL)
 
 
-def is_internal_user_text(text: str) -> bool:
-    """Return True if text is system-injected content that must not enter public data fields.
+def is_agent_cli_internal_text(text: str) -> bool:
+    """Return True when text is an agent-CLI runtime artifact, not real content.
 
-    Detects:
-    - TeleClaude system prefix ("[TeleClaude ...")
-    - Claude Code hook feedback injections ("Stop hook feedback:", etc.)
-    - XML-style wrapper/tag prefixes (for example <hook_prompt ...>)
-    - Claude Code task-notification wrappers (full or prefix)
-    - Claude Code system-reminder wrappers (full or prefix)
+    Detects hook feedback prefixes injected by the agent CLI, XML-style tag
+    prefixes, and Claude-style ``<task-notification>`` / ``<system-reminder>``
+    wrappers. These are runtime mechanics of a specific agent CLI and have no
+    place in peer mirrors or human-facing renders.
     """
     stripped = text.lstrip()
-    if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
-        return True
     if stripped.startswith(_HOOK_FEEDBACK_PREFIXES):
         return True
     if _XML_STYLE_PREFIX_RE.match(stripped):
@@ -40,3 +46,18 @@ def is_internal_user_text(text: str) -> bool:
     if _INTERNAL_WRAPPER_RE.match(text):
         return True
     return False
+
+
+def is_internal_user_text(text: str) -> bool:
+    """Return True when text must not reset checkpoint timing or count as a user turn.
+
+    Used by the hook receiver to gate checkpoint-flag resets. Includes
+    ``is_agent_cli_internal_text`` plus the ``[TeleClaude`` prefix — bridge
+    messages and other daemon injections share the agent's transcript with
+    real user input, but the unified turn timer must only restart on a real
+    human prompt.
+    """
+    stripped = text.lstrip()
+    if stripped.startswith(TELECLAUDE_SYSTEM_PREFIX):
+        return True
+    return is_agent_cli_internal_text(text)

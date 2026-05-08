@@ -29,11 +29,22 @@ from teleclaude.api_models import (
 )
 from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import HUMAN_ROLE_ADMIN, format_system_message
+from teleclaude.constants import (
+    HUMAN_ROLE_ADMIN,
+    ROLE_INTEGRATOR,
+    ROLE_ORCHESTRATOR,
+    ROLE_SYSTEM,
+)
 from teleclaude.core import command_handlers
 from teleclaude.core.agents import assert_agent_enabled, get_default_agent
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
+from teleclaude.core.conversation_messages import (
+    format_direct_conversation_intro_header,
+    format_identity_header,
+    is_conversation_bridge_message,
+    is_orchestrator_dispatch_message,
+)
 from teleclaude.core.db import db
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import JsonDict, MessageMetadata, SessionLaunchIntent, SessionLaunchKind, SessionSnapshot
@@ -118,15 +129,16 @@ def enrich_human_names(dtos: list[SessionDTO]) -> list[SessionDTO]:
 def _format_direct_conversation_intro(
     *,
     caller_session_id: str,
-    caller_label: str,
     caller_computer: str,
     message_text: str,
 ) -> str:
     """Wrap the first direct-conversation message with the required operating instructions."""
+    header = format_direct_conversation_intro_header(
+        caller_session_id=caller_session_id,
+        caller_computer=caller_computer,
+    )
     body = "\n".join(
         [
-            f'The direct conversation is active with "{caller_label}" ({caller_session_id}) on {caller_computer}.',
-            "",
             "Rules:",
             "- Do not use `telec sessions send` for follow-up messages.",
             "- Just talk in normal output; your turn-complete output is delivered automatically.",
@@ -143,7 +155,7 @@ def _format_direct_conversation_intro(
             message_text.strip(),
         ]
     )
-    return format_system_message("Direct Conversation", body)
+    return f"{header}\n\n{body}"
 
 
 def _extract_initiator_session_id(
@@ -240,12 +252,10 @@ async def _build_direct_launch_message(
         return request.message or "", None
 
     caller_session = await db.get_session(identity.session_id)
-    caller_label = caller_session.title if caller_session and caller_session.title else identity.session_id
     caller_computer = caller_session.computer_name if caller_session else config.computer.name
     return (
         _format_direct_conversation_intro(
             caller_session_id=identity.session_id,
-            caller_label=caller_label,
             caller_computer=caller_computer,
             message_text=request.message,
         ),
@@ -645,6 +655,53 @@ def _active_direct_link_response(
     )
 
 
+_MACHINE_ROLE_LABELS: dict[str, str] = {
+    ROLE_ORCHESTRATOR: "Orchestrator",
+    ROLE_INTEGRATOR: "Integrator",
+    ROLE_SYSTEM: "System",
+}
+
+
+async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
+    """Build the identity header for a machine-role caller, or None for humans/workers.
+
+    Workers are intentionally unmarked here — their inter-peer messaging flows
+    through the Direct Conversation bracket (which carries its own identity)
+    or is gated upstream by ``DISPATCH_ALLOWED``. Humans (terminal/web/Telegram)
+    have no caller session id and therefore no marker.
+    """
+    if not caller_session_id:
+        return None
+    caller = await db.get_session(caller_session_id)
+    if not caller:
+        return None
+    role_label = _MACHINE_ROLE_LABELS.get((caller.system_role or "").strip())
+    if not role_label:
+        return None
+    return format_identity_header(
+        role=role_label,
+        session_id=caller_session_id,
+        computer=caller.computer_name or config.computer.name,
+    )
+
+
+async def _wrap_message_with_origin(
+    message_text: str,
+    caller_session_id: str | None,
+) -> str:
+    """Prepend the caller's machine identity header when applicable.
+
+    Skip when the message is already bracket-marked (TeleClaude bridge,
+    Orchestrator dispatch) so we never double-wrap.
+    """
+    if is_conversation_bridge_message(message_text) or is_orchestrator_dispatch_message(message_text):
+        return message_text
+    header = await _machine_origin_marker(caller_session_id)
+    if not header:
+        return message_text
+    return f"{header}\n\n{message_text}"
+
+
 async def _process_api_message(
     session_id: str,
     message_text: str,
@@ -820,7 +877,6 @@ async def _handle_direct_message_request(
     link_id, member_count = link_result
     message_text = _format_direct_conversation_intro(
         caller_session_id=identity.session_id,
-        caller_label=context.caller_label,
         caller_computer=context.caller_computer,
         message_text=request.message or "",
     )
@@ -918,7 +974,8 @@ async def send_message_endpoint(
                     "One-shot listener registration failed: caller=%s target=%s", identity.session_id, session_id
                 )
 
-        await _process_api_message(session_id, request.message, metadata)
+        message_text = await _wrap_message_with_origin(request.message, identity.session_id)
+        await _process_api_message(session_id, message_text, metadata)
         return SendMessageResponseDTO(status="success", mode="work")
     except SessionMessageRejectedError as exc:
         raise HTTPException(status_code=exc.http_status_code, detail=str(exc)) from exc

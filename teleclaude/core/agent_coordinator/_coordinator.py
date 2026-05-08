@@ -47,7 +47,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
-_LINKED_OUTPUT_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} Linked output from "
+_LINKED_OUTPUT_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} - Linked output "
 
 
 class AgentCoordinator(

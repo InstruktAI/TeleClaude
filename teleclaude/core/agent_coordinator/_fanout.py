@@ -244,10 +244,8 @@ class _FanoutMixin:  # pyright: ignore[reportUnusedClass]
             return 0
 
         sender = await db.get_session(sender_session_id)
-        sender_label = sender.title if sender and sender.title else sender_session_id
         sender_computer = source_computer or (sender.computer_name if sender else config.computer.name)
         framed_message = format_linked_output_message(
-            sender_label=sender_label,
             sender_session_id=sender_session_id,
             sender_computer=sender_computer,
             content=distilled_output,

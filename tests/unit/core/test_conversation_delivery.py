@@ -93,7 +93,7 @@ async def test_deliver_pending_conversation_updates_bundles_mixed_segments_into_
     sole_call = command_service.process_message.await_args_list[0].args[0]
     assert sole_call.source_message_id is not None
     # Outer wrapper marks the entire bundle as system-injected
-    assert sole_call.text.startswith("[TeleClaude Conversation update from ")
+    assert sole_call.text.startswith("[TeleClaude - Conversation update ")
     # Inner markers preserve temporal sequence — user turn before assistant turn
     user_marker_idx = sole_call.text.find("--- Human in the Loop @")
     assistant_marker_idx = sole_call.text.find("--- Linked output @")
@@ -208,7 +208,6 @@ def test_format_bundled_conversation_message_orders_markers_chronologically() ->
     """Bundled body wraps the whole delta in one outer header and emits one
     inner marker per segment in temporal order, with role-specific labels."""
     body = format_bundled_conversation_message(
-        sender_label="A",
         sender_session_id="sess-a",
         sender_computer="MozBook",
         segments=[
@@ -217,7 +216,7 @@ def test_format_bundled_conversation_message_orders_markers_chronologically() ->
             ("assistant", datetime(2026, 5, 4, 9, 52, 18, tzinfo=UTC), "found the issue"),
         ],
     )
-    assert body.startswith('[TeleClaude Conversation update from "A" (sess-a) on MozBook]')
+    assert body.startswith("[TeleClaude - Conversation update (sess-a) on MozBook]")
     user_idx = body.find("--- Human in the Loop @ 2026-05-04T09:50:10")
     first_assistant_idx = body.find("--- Linked output @ 2026-05-04T09:51:42")
     second_assistant_idx = body.find("--- Linked output @ 2026-05-04T09:52:18")
@@ -230,7 +229,6 @@ def test_format_bundled_conversation_message_orders_markers_chronologically() ->
 @pytest.mark.unit
 def test_format_bundled_conversation_message_handles_missing_timestamp() -> None:
     body = format_bundled_conversation_message(
-        sender_label="A",
         sender_session_id="sess-a",
         sender_computer="MozBook",
         segments=[("assistant", None, "no timestamp")],
@@ -242,7 +240,6 @@ def test_format_bundled_conversation_message_handles_missing_timestamp() -> None
 @pytest.mark.unit
 def test_format_bundled_conversation_message_empty_segments_returns_empty_string() -> None:
     body = format_bundled_conversation_message(
-        sender_label="A",
         sender_session_id="sess-a",
         sender_computer="MozBook",
         segments=[],
@@ -256,7 +253,6 @@ def test_is_conversation_bridge_message_recognizes_bundled_prefix() -> None:
     inbound message handler does NOT skip tmux injection (which would prevent
     the receiver from ever seeing the bundle)."""
     body = format_bundled_conversation_message(
-        sender_label="A",
         sender_session_id="sess-a",
         sender_computer="MozBook",
         segments=[("assistant", datetime(2026, 5, 4, 9, 50, 10, tzinfo=UTC), "x")],
@@ -412,7 +408,7 @@ async def test_deliver_pending_conversation_updates_replays_bounded_bundle_on_cr
     # Replay re-sent the bounded bundle exactly once.
     assert command_service.process_message.await_count == 1
     sent_command = command_service.process_message.await_args_list[0].args[0]
-    assert sent_command.text.startswith("[TeleClaude Conversation update from ")
+    assert sent_command.text.startswith("[TeleClaude - Conversation update ")
     assert "bundle that may or may not have reached the receiver" in sent_command.text
     # After successful replay, cursor advances to pending bound and pending is
     # cleared — atomically, in a single upsert.

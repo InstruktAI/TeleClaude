@@ -13,9 +13,10 @@ Included parts (yielded as ProjectedBlock):
     - ``compaction`` markers (system role, always emitted)
 
 Input sanitization rules (applied to user text before emission):
-    - User text starting with ``TELECLAUDE_SYSTEM_PREFIX`` ("[TeleClaude") is stripped.
-    - User text that is a pure ``<task-notification>`` or ``<system-reminder>`` wrapper
-      is stripped.
+    - Agent-CLI runtime artifacts (hook feedback prefixes, ``<system-reminder>``
+      and ``<task-notification>`` wrappers, XML-style tag prefixes) are stripped.
+      ``[TeleClaude …]`` and ``[Orchestrator …]`` bracket headers are NOT
+      stripped — brackets are identity markers, receivers parse the role.
     - User messages emptied by sanitization are dropped from the public stream.
 
 Intentionally dropped data:
@@ -39,7 +40,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
-from teleclaude.output_projection.visibility import is_internal_user_text
+from teleclaude.output_projection.visibility import is_agent_cli_internal_text
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
 from teleclaude.utils.transcript._tool_calls import _is_compaction_entry, _is_user_tool_result_only_message
@@ -88,8 +89,8 @@ def _project_user_text(
     entry_idx: int,
     file_index: int,
 ) -> Iterator[ProjectedBlock]:
-    if is_internal_user_text(content):
-        logger.debug("Sanitized TeleClaude-internal user text at index %d", entry_idx)
+    if is_agent_cli_internal_text(content):
+        logger.debug("Sanitized agent-CLI internal user text at index %d", entry_idx)
         return
     yield ProjectedBlock(
         block_type="text",
@@ -115,8 +116,8 @@ def _project_content_block(
         text = str(block.get("text", ""))
         if not text.strip():
             return
-        if role == "user" and is_internal_user_text(text):
-            logger.debug("Sanitized TeleClaude-internal user text block at index %d", entry_idx)
+        if role == "user" and is_agent_cli_internal_text(text):
+            logger.debug("Sanitized agent-CLI internal user text block at index %d", entry_idx)
             return
         yield ProjectedBlock(
             block_type="text",
