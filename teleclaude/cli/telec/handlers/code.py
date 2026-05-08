@@ -175,6 +175,13 @@ def _commit_under_lock(
         print("Nothing staged for commit.", file=sys.stderr)
         raise SystemExit(1)
 
+    if not scope_resolution.scoped_dirty_paths and staged_for_commit:
+        print(
+            f"telec code commit: session scope unavailable; committing "
+            f"{len(staged_for_commit)} pre-staged file(s): {', '.join(staged_for_commit)}",
+            file=sys.stderr,
+        )
+
     _check_partial_staging(project_root)
 
     # Path A/B/C classification on main
