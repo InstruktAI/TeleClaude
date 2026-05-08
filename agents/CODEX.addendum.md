@@ -20,6 +20,7 @@ This file defines Codex-specific operating rules for this repository.
 - Optimize for the user's intended meaning, not the most literal parse of their wording. When likely intent and literal wording diverge, follow the intent and state the interpretation plainly.
 - Preserve the distinctions the user is drawing. Do not collapse qualified boundaries into simpler binary rules or answer a narrower question than the one the user is actually asking.
 - When the user scopes work to tests only, treat that as a hard boundary. Do not change production code to satisfy failing tests unless the user explicitly broadens scope.
+- A missing symbol referenced by a failing test does not by itself imply a production regression. Run `git log -S '<symbol>'` and read the removing commit before drawing any conclusion. If the removal was deliberate, the test is obsolete — delete it. Trace transitive callers before assuming surrounding code is alive: a call site that references a removed symbol may itself be dead. Restoring previously-removed code under a tests-only scope is forbidden.
 
 ## Worker Orchestration Discipline
 
