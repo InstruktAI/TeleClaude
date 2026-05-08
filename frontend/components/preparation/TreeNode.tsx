@@ -1,11 +1,17 @@
 "use client";
 
-import { ChevronRight, ChevronDown, File, Folder, Monitor, Package } from "lucide-react";
+import { ChevronRight, ChevronDown, File, Monitor, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TodoInfo } from "@/lib/api/types";
-import { deriveTodoPhaseTags } from "@/lib/preparation/tree";
+import {
+  deriveTodoPhaseTags,
+  getPhaseTagColor,
+  getTodoStatusBlock,
+  type PhaseTagColor,
+  type TodoStatusBlock,
+} from "@/lib/preparation/tree";
 
-type NodeType = "computer" | "project" | "todo" | "file";
+type NodeType = "computer" | "project" | "todo" | "file" | "group";
 
 interface TreeNodeProps {
   label: string;
@@ -16,7 +22,52 @@ interface TreeNodeProps {
   isCursor: boolean;
   todo?: TodoInfo;
   computerStatus?: string;
+  slugColWidth?: number;
   onToggle: () => void;
+}
+
+const PHASE_COLOR_CLASS: Record<PhaseTagColor, string> = {
+  green: "text-green-600 dark:text-green-400",
+  gold: "text-amber-600 dark:text-amber-400",
+  red: "text-red-600 dark:text-red-400",
+  gray: "text-muted-foreground",
+};
+
+const BLOCK_COLOR_CLASS: Record<TodoStatusBlock["color"], string> = {
+  green: "text-green-600 dark:text-green-400",
+  gold: "text-amber-600 dark:text-amber-400",
+  gray: "text-muted-foreground",
+};
+
+function StatusBlock({ block }: { block: TodoStatusBlock }) {
+  return (
+    <span
+      data-testid="status-block"
+      data-color={block.color}
+      data-filled={String(block.filled)}
+      className={cn(
+        "inline-block w-3 text-center font-mono text-[10px]",
+        BLOCK_COLOR_CLASS[block.color],
+      )}
+    >
+      {block.filled ? "█" : "□"}
+    </span>
+  );
+}
+
+function PhaseIndicator({ tag }: { tag: string }) {
+  const value = tag.includes(":") ? tag.slice(tag.indexOf(":") + 1) : tag;
+  const color = getPhaseTagColor(value);
+  return (
+    <span
+      data-testid="phase-indicator"
+      data-color={color}
+      data-tag={tag}
+      className={cn("text-[10px] font-mono", PHASE_COLOR_CLASS[color])}
+    >
+      {tag}
+    </span>
+  );
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -38,26 +89,11 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function PhaseTag({ tag }: { tag: string }) {
-  const colors: Record<string, string> = {
-    B: "text-blue-600 dark:text-blue-400",
-    R: "text-purple-600 dark:text-purple-400",
-    DOR: "text-orange-600 dark:text-orange-400",
-    DEF: "text-red-600 dark:text-red-400",
-    F: "text-amber-600 dark:text-amber-400",
-  };
-
-  return (
-    <span className={cn("text-[10px] font-bold", colors[tag] ?? "text-muted-foreground")}>
-      {tag}
-    </span>
-  );
-}
-
 const ICONS: Record<NodeType, typeof Monitor> = {
   computer: Monitor,
   project: Package,
-  todo: Folder,
+  group: Package,
+  todo: Package,
   file: File,
 };
 
@@ -70,13 +106,20 @@ export function TreeNode({
   isCursor,
   todo,
   computerStatus,
+  slugColWidth,
   onToggle,
 }: TreeNodeProps) {
   const Icon = ICONS[type];
   const phaseTags = todo ? deriveTodoPhaseTags(todo) : [];
+  const statusBlock = todo ? getTodoStatusBlock(todo) : null;
 
   return (
     <div
+      data-testid={type === "todo" ? "preparation-todo-node" : undefined}
+      data-slug={type === "todo" && todo ? todo.slug : undefined}
+      data-slug-col-width={
+        type === "todo" && slugColWidth !== undefined ? String(slugColWidth) : undefined
+      }
       className={cn(
         "flex items-center gap-1 py-0.5 px-2 cursor-pointer select-none text-sm",
         isCursor && "bg-accent text-accent-foreground",
@@ -93,8 +136,21 @@ export function TreeNode({
       ) : (
         <span className="w-3.5 shrink-0" />
       )}
-      <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate">{label}</span>
+      {type === "todo" && statusBlock ? (
+        <StatusBlock block={statusBlock} />
+      ) : (
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      )}
+      <span
+        className="truncate"
+        style={
+          type === "todo" && slugColWidth !== undefined
+            ? { minWidth: `${slugColWidth}ch` }
+            : undefined
+        }
+      >
+        {label}
+      </span>
 
       {type === "computer" && computerStatus && (
         <span
@@ -109,7 +165,7 @@ export function TreeNode({
         <div className="flex items-center gap-1 ml-auto shrink-0">
           <StatusBadge status={todo.status} />
           {phaseTags.map((tag) => (
-            <PhaseTag key={tag} tag={tag} />
+            <PhaseIndicator key={tag} tag={tag} />
           ))}
         </div>
       )}

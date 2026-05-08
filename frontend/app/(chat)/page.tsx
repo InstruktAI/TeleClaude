@@ -188,6 +188,14 @@ function ChatPageInner() {
     );
   }, [revealSession, sessionId, setLayoutState]);
 
+  const panelParam = searchParams?.get("panel") as TabValue | null;
+  useEffect(() => {
+    if (!panelParam) return;
+    setLayoutState((prev) =>
+      prev.activeTab === panelParam ? prev : { ...prev, activeTab: panelParam },
+    );
+  }, [panelParam, setLayoutState]);
+
   useEffect(() => {
     if (sessionId) return;
     if (!lastSessionId) return;

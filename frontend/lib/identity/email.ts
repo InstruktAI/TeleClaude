@@ -1,3 +1,6 @@
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createTransport } from "nodemailer";
 
 interface SendVerificationRequestParams {
@@ -13,12 +16,26 @@ interface SendVerificationRequestParams {
   request: Request;
 }
 
+// Test-only OTP sink: when running under NEXT_PUBLIC_E2E_FIXTURES=1 (and
+// NODE_ENV is not production), write the latest verification code per email
+// to a temp file so the Playwright global setup can complete sign-in without
+// scraping server stdout. Production builds short-circuit before this path is
+// reached because the env var is unset and the sender takes the SMTP branch.
+function maybeRecordOtpForTest(email: string, token: string, url: string): void {
+  if (process.env.NODE_ENV === "production") return;
+  if (process.env.NEXT_PUBLIC_E2E_FIXTURES !== "1") return;
+  const path = join(tmpdir(), `teleclaude-e2e-otp-${encodeURIComponent(email)}.json`);
+  const payload = JSON.stringify({ email, token, url, ts: Date.now() });
+  writeFileSync(path, payload, { encoding: "utf8" });
+}
+
 export async function sendVerificationRequest(
   params: SendVerificationRequestParams,
 ) {
-  const { identifier: email, token, provider } = params;
+  const { identifier: email, token, url, provider } = params;
   if (process.env.NODE_ENV === "development") {
     console.log(`[AUTH DEV] Verification code for ${email}: ${token}`);
+    maybeRecordOtpForTest(email, token, url);
     return;
   }
 

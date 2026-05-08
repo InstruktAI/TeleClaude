@@ -14,7 +14,8 @@
     "db:studio": "drizzle-kit studio",
     "cli": "tsx cli/index.tsx",
     "cli:dev": "tsx watch cli/index.tsx",
-    "test:cli": "vitest run --config vitest.cli.config.ts"
+    "test:cli": "vitest run --config vitest.cli.config.ts",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.88",
@@ -53,6 +54,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
+    "@playwright/test": "1.59.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
@@ -80,7 +82,9 @@
     "onlyBuiltDependencies": [
       "better-sqlite3",
       "esbuild",
-      "sharp"
+      "msw",
+      "sharp",
+      "unrs-resolver"
     ]
   }
 }

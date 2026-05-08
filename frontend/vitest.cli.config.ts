@@ -11,6 +11,7 @@ export default defineConfig({
       'components/**/__tests__/**/*.test.{ts,tsx}',
       'hooks/__tests__/**/*.test.{ts,tsx}',
       'lib/keys/__tests__/**/*.test.ts',
+      'lib/preparation/__tests__/**/*.test.ts',
     ],
     environment: 'node',
     setupFiles: ['lib/__tests__/setup.ts'],

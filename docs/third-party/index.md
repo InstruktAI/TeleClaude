@@ -32,6 +32,9 @@
 @docs/third-party/image-generation/gemini-nano-banana.md
 @docs/third-party/image-generation/landscape.md
 @docs/third-party/json-schema-to-typescript/overview.md
+@docs/third-party/playwright/config.md
+@docs/third-party/playwright/install.md
+@docs/third-party/playwright/selectors-and-assertions.md
 @docs/third-party/tmux/session-output-observation.md
 @docs/third-party/whatsapp/cloud-api.md
 @docs/third-party/whatsapp/media-api.md

@@ -47,3 +47,10 @@ next-env.d.ts
 
 # local theme overrides
 /public/theme.local.css
+
+# playwright
+/test-results/
+/playwright-report/
+/blob-report/
+/.playwright/
+/e2e/.auth/state.json

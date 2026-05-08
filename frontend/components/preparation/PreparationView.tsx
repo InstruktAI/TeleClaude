@@ -6,22 +6,107 @@ import { useProjects } from "@/lib/hooks/useProjects";
 import {
   buildPreparationTree,
   type PreparationComputerNode,
+  type PreparationGroupNode,
+  type PreparationProjectNode,
+  type PreparationTodoNode,
 } from "@/lib/preparation/tree";
+import { loadPreparationFixture } from "@/lib/preparation/fixture-mode";
 import { TreeNode } from "./TreeNode";
 import { NewTodoModal } from "./NewTodoModal";
 import { NewBugModal } from "./NewBugModal";
 import { findBinding } from "@/lib/keys/bindings";
 import { toast } from "@/lib/hooks/useToast";
-import type { ProjectWithTodosInfo, TodoInfo } from "@/lib/api/types";
+import type { ComputerInfo, ProjectWithTodosInfo, TodoInfo } from "@/lib/api/types";
 
 interface FlatNode {
   id: string;
   label: string;
-  type: "computer" | "project" | "todo" | "file";
+  type: "computer" | "project" | "group" | "todo" | "file";
   depth: number;
   hasChildren: boolean;
   computerStatus?: string;
   todo?: TodoInfo;
+  slugColWidth?: number;
+}
+
+function todoHasChildren(todo: PreparationTodoNode): boolean {
+  return todo.todos.length > 0 || todo.files.length > 0;
+}
+
+function flattenTodo(
+  todo: PreparationTodoNode,
+  depth: number,
+  slugColWidth: number,
+  expandedIds: ReadonlySet<string>,
+  out: FlatNode[],
+): void {
+  const hasChildren = todoHasChildren(todo);
+  out.push({
+    id: todo.id,
+    label: todo.label,
+    type: "todo",
+    depth,
+    hasChildren,
+    todo: todo.todo,
+    slugColWidth,
+  });
+  if (!expandedIds.has(todo.id)) return;
+  for (const child of todo.todos) {
+    flattenTodo(child, depth + 1, slugColWidth, expandedIds, out);
+  }
+  for (const file of todo.files) {
+    out.push({
+      id: file.id,
+      label: file.label,
+      type: "file",
+      depth: depth + 1,
+      hasChildren: false,
+    });
+  }
+}
+
+function flattenGroup(
+  group: PreparationGroupNode,
+  depth: number,
+  slugColWidth: number,
+  expandedIds: ReadonlySet<string>,
+  out: FlatNode[],
+): void {
+  out.push({
+    id: group.id,
+    label: group.label,
+    type: "group",
+    depth,
+    hasChildren: group.todos.length > 0,
+  });
+  if (!expandedIds.has(group.id)) return;
+  for (const todo of group.todos) {
+    flattenTodo(todo, depth + 1, slugColWidth, expandedIds, out);
+  }
+}
+
+function flattenProject(
+  project: PreparationProjectNode,
+  depth: number,
+  expandedIds: ReadonlySet<string>,
+  out: FlatNode[],
+): void {
+  const hasChildren = project.rootChildren.length > 0;
+  out.push({
+    id: project.id,
+    label: project.label,
+    type: "project",
+    depth,
+    hasChildren,
+  });
+  if (!expandedIds.has(project.id)) return;
+  for (const child of project.rootChildren) {
+    if (child.kind === "group") {
+      flattenGroup(child.node, depth + 1, project.maxSlugLength, expandedIds, out);
+    } else {
+      flattenTodo(child.node, depth + 1, project.maxSlugLength, expandedIds, out);
+    }
+  }
 }
 
 function flattenTree(
@@ -42,40 +127,18 @@ function flattenTree(
     if (!expandedIds.has(computer.id)) continue;
 
     for (const project of computer.projects) {
-      nodes.push({
-        id: project.id,
-        label: project.label,
-        type: "project",
-        depth: 1,
-        hasChildren: project.todos.length > 0,
-      });
-      if (!expandedIds.has(project.id)) continue;
-
-      for (const todo of project.todos) {
-        nodes.push({
-          id: todo.id,
-          label: todo.label,
-          type: "todo",
-          depth: 2,
-          hasChildren: todo.files.length > 0,
-          todo: todo.todo,
-        });
-        if (!expandedIds.has(todo.id)) continue;
-
-        for (const file of todo.files) {
-          nodes.push({
-            id: file.id,
-            label: file.label,
-            type: "file",
-            depth: 3,
-            hasChildren: false,
-          });
-        }
-      }
+      flattenProject(project, 1, expandedIds, nodes);
     }
   }
 
   return nodes;
+}
+
+function collectExpandableTodoIds(todo: PreparationTodoNode, ids: string[]): void {
+  if (todoHasChildren(todo)) ids.push(todo.id);
+  for (const child of todo.todos) {
+    collectExpandableTodoIds(child, ids);
+  }
 }
 
 function collectAllExpandableIds(tree: readonly PreparationComputerNode[]): string[] {
@@ -83,9 +146,16 @@ function collectAllExpandableIds(tree: readonly PreparationComputerNode[]): stri
   for (const c of tree) {
     if (c.projects.length > 0) ids.push(c.id);
     for (const p of c.projects) {
-      if (p.todos.length > 0) ids.push(p.id);
-      for (const t of p.todos) {
-        if (t.files.length > 0) ids.push(t.id);
+      if (p.rootChildren.length > 0) ids.push(p.id);
+      for (const child of p.rootChildren) {
+        if (child.kind === "group") {
+          if (child.node.todos.length > 0) ids.push(child.node.id);
+          for (const t of child.node.todos) {
+            collectExpandableTodoIds(t, ids);
+          }
+        } else {
+          collectExpandableTodoIds(child.node, ids);
+        }
       }
     }
   }
@@ -124,8 +194,20 @@ interface PreparationViewProps {
 }
 
 export function PreparationView({ isActive = true }: PreparationViewProps) {
-  const { data: computers } = useComputers();
-  const { data: projects } = useProjects();
+  const { data: computersData } = useComputers();
+  const { data: projectsData } = useProjects();
+
+  const fixtureName = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("fixtures");
+  }, []);
+  const fixture = useMemo(
+    () => loadPreparationFixture(fixtureName),
+    [fixtureName],
+  );
+
+  const computers = fixture ? fixture.computers : computersData;
+  const projects = fixture ? fixture.projects : projectsData;
 
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [cursorIndex, setCursorIndex] = useState(0);
@@ -137,13 +219,20 @@ export function PreparationView({ isActive = true }: PreparationViewProps) {
     if (!projects || !computers) return [];
     return buildPreparationTree(
       projects as ProjectWithTodosInfo[],
-      computers,
+      computers as ComputerInfo[],
     );
   }, [projects, computers]);
 
+  // In fixture mode the smoke test needs every node visible. Compute the effective
+  // expanded set as a derived value rather than syncing it via setState in an effect.
+  const effectiveExpandedIds = useMemo(() => {
+    if (fixture) return new Set(collectAllExpandableIds(tree));
+    return expandedIds;
+  }, [fixture, tree, expandedIds]);
+
   const visibleNodes = useMemo(
-    () => flattenTree(tree, expandedIds),
-    [tree, expandedIds],
+    () => flattenTree(tree, effectiveExpandedIds),
+    [tree, effectiveExpandedIds],
   );
 
   const clampedCursor = Math.min(cursorIndex, Math.max(visibleNodes.length - 1, 0));
@@ -239,7 +328,7 @@ export function PreparationView({ isActive = true }: PreparationViewProps) {
         case "collapse_or_back": {
           e.preventDefault();
           const node = visibleNodes[clampedCursor];
-          if (node && expandedIds.has(node.id)) {
+          if (node && effectiveExpandedIds.has(node.id)) {
             toggleNode(node.id);
           }
           break;
@@ -303,7 +392,7 @@ export function PreparationView({ isActive = true }: PreparationViewProps) {
           break;
       }
     },
-    [isActive, visibleNodes, clampedCursor, expandedIds, tree, toggleNode, handleAction, todoModalOpen, bugModalOpen],
+    [isActive, visibleNodes, clampedCursor, effectiveExpandedIds, tree, toggleNode, handleAction, todoModalOpen, bugModalOpen],
   );
 
   useEffect(() => {
@@ -345,11 +434,12 @@ export function PreparationView({ isActive = true }: PreparationViewProps) {
               label={node.label}
               type={node.type}
               depth={node.depth}
-              expanded={expandedIds.has(node.id)}
+              expanded={effectiveExpandedIds.has(node.id)}
               hasChildren={node.hasChildren}
               isCursor={index === clampedCursor}
               todo={node.todo}
               computerStatus={node.computerStatus}
+              slugColWidth={node.slugColWidth}
               onToggle={() => {
                 setCursorIndex(index);
                 if (node.hasChildren) toggleNode(node.id);
