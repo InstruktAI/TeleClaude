@@ -144,8 +144,17 @@ their own session.
 **Lock contention.** Another agent holds the lock. `flock(LOCK_EX)` blocks
 until released. No timeout — the agent waits, no exit code.
 
-**Empty workspace scope.** The agent has not edited any tracked files yet.
-Exit code 1 — there is nothing to commit.
+**Empty workspace scope.** Two distinct sub-cases:
+
+- *Scope empty + nothing pre-staged.* The agent has not edited any tracked
+  files yet and the index is empty. Exit code 1 — there is nothing to commit.
+- *Scope empty + files pre-staged.* The transcript yielded no signal
+  (integrator session, fresh shell, or a human staged files manually) but
+  the index is non-empty. Telec falls back to committing exactly what is
+  staged and emits a one-line stderr diagnostic
+  (`telec code commit: session scope unavailable; committing N pre-staged
+  file(s): ...`) so the fallback is observable rather than silent. The
+  pathspec invariant still holds: only the pre-staged files are committed.
 
 **Pre-commit hook failure.** The hook runs format and lint. If lint fails,
 git aborts the commit and surfaces the hook output. Files remain staged for
