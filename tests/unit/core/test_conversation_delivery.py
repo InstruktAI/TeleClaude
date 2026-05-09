@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -641,6 +642,59 @@ async def test_deliver_pending_conversation_updates_drops_trailing_user_segment_
     assert pre_call["pending_through_ts"] == assistant_reply.timestamp.isoformat()
     assert advance_call["delivered_through_ts"] == assistant_reply.timestamp.isoformat()
     assert advance_call["pending_through_ts"] is None
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_deliver_pending_conversation_updates_logs_and_returns_zero_when_cursor_row_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Every active link is anchored with a per-link cursor at creation. If the
+    cursor row is absent for an active link (anchor write failed, hand-edited
+    state, link predates anchor logic), delivery must surface the contract
+    violation via an ERROR log instead of silently dropping peer output."""
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-orphan")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=None),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    collect = AsyncMock()
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
+        collect,
+    )
+
+    with caplog.at_level(logging.ERROR, logger="teleclaude.core.conversation_delivery"):
+        delivered = await deliver_pending_conversation_updates(
+            "source-001",
+            client=client,
+            command_service=command_service,
+        )
+
+    assert delivered == 0
+    collect.assert_not_awaited()
+    command_service.process_message.assert_not_awaited()
+    db.upsert_conversation_delivery_state.assert_not_awaited()
+    assert any(
+        "no delivery cursor" in record.message and "link-orphan" in record.message and "target-001" in record.message
+        for record in caplog.records
+    ), f"expected contract-violation log naming the link and target; got: {[r.message for r in caplog.records]}"
 
 
 @pytest.mark.unit

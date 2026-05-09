@@ -666,9 +666,9 @@ async def _machine_origin_marker(caller_session_id: str | None) -> str | None:
     """Build the identity header for a machine-role caller, or None for humans/workers.
 
     Workers are intentionally unmarked here — their inter-peer messaging flows
-    through the Direct Conversation bracket (which carries its own identity)
-    or is gated upstream by ``DISPATCH_ALLOWED``. Humans (terminal/web/Telegram)
-    have no caller session id and therefore no marker.
+    through the Peer bracket (which carries its own identity) or is gated
+    upstream by ``DISPATCH_ALLOWED``. Humans (terminal/web/Telegram) have no
+    caller session id and therefore no marker.
     """
     if not caller_session_id:
         return None

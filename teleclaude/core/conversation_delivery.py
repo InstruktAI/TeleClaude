@@ -325,6 +325,19 @@ async def _deliver_for_peer(
         parse_iso_datetime(persisted.delivered_through_ts) if persisted and persisted.delivered_through_ts else None
     )
     if cursor_dt is None:
+        # Contract violation: every active link must have a cursor anchored at
+        # creation by establish_or_reuse_link. A missing cursor means either
+        # the anchor write failed, or this link predates the anchor logic, or
+        # state was hand-edited. Surfacing this loudly is the only correct
+        # behavior — silently returning would drop peer output.
+        logger.error(
+            "Conversation delivery skipped: no delivery cursor for active link "
+            "(contract violation): link=%s source=%s target=%s — "
+            "verify conversation_delivery_state row exists.",
+            link_id,
+            source_session_id,
+            target_session_id,
+        )
         return 0
     since_timestamp = cursor_dt
     if not source_session.native_log_file:
