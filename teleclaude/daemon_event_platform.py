@@ -6,7 +6,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -14,7 +14,7 @@ from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config, config_path
 from teleclaude.config.loader import load_project_config
 from teleclaude.core.db import get_db
-from teleclaude.core.event_bus import event_bus
+from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.deployment.handler import (
     DEPLOYMENT_FANOUT_CHANNEL,
     configure_deployment_handler,
@@ -89,6 +89,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         _deployment_fanout_task: asyncio.Task[object] | None
         _contract_sweep_task: asyncio.Task[object] | None
         _event_processor_task: asyncio.Task[object] | None
+        _internal_event_bus_task: asyncio.Task[object] | None
         _ingest_scheduler_task: asyncio.Task[object] | None
         webhook_delivery_task: asyncio.Task[object] | None
         channel_subscription_worker_task: asyncio.Task[object] | None
@@ -314,6 +315,16 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         logger.info("EventProcessor started")
         return computer_label
 
+    def _start_internal_event_bus(self, redis_client: object) -> None:
+        """Configure and start the daemon role's internal EventBus consumer."""
+        bus = configure_event_bus(role="daemon", redis_client=cast(RedisStreamsClient, redis_client))
+        self._internal_event_bus_task = asyncio.create_task(
+            bus.start(self.shutdown_event),
+            name="internal-event-bus",
+        )
+        self._internal_event_bus_task.add_done_callback(self._log_background_task_exception("internal_event_bus"))
+        logger.info("Internal EventBus started", role="daemon")
+
     async def _emit_daemon_restarted_event(
         self,
         event_producer: EventProducer,
@@ -432,6 +443,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
             self._event_platform_status.redis_reachable = True
             self._event_platform_status.pending_recovery_progress = "processor_starting"
+            self._start_internal_event_bus(redis_client)
             event_producer = self._configure_event_producer(redis_client)
             push_callbacks = self._build_push_callbacks()
             integration_trigger = self._build_integration_trigger()

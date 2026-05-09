@@ -6,24 +6,25 @@ from collections.abc import Awaitable, Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.events import ErrorEventContext, EventContext, EventType, TeleClaudeEvents
+from teleclaude.core.events import ErrorEventContext, EventContext, TeleClaudeEvents
 
 logger = get_logger(__name__)
 
-EventHandler = Callable[[EventType, EventContext], Awaitable[object]]
+EventHandler = Callable[[str, EventContext], Awaitable[object]]
 
 
 def create_event_guard(
     handler: EventHandler,
     *,
-    emit: Callable[[EventType, EventContext], None],
+    emit: Callable[[str, EventContext], object],
     handler_name: str | None = None,
+    reraise: bool = False,
 ) -> EventHandler:
     """Wrap handler to emit a standardized error event on failure."""
 
     name = handler_name or f"{handler.__module__}.{handler.__qualname__}"
 
-    async def _guarded(event_name: EventType, context: EventContext) -> object:
+    async def _guarded(event_name: str, context: EventContext) -> object:
         try:
             return await handler(event_name, context)
         except Exception as exc:
@@ -41,6 +42,8 @@ def create_event_guard(
                         retryable=False,
                     ),
                 )
+            if reraise:
+                raise
             return None
 
     return _guarded

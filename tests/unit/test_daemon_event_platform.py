@@ -158,6 +158,34 @@ async def test_start_event_processor_passes_reliability_config(monkeypatch: pyte
     assert captured.dlq_destination == "test:dlq"
 
 
+@pytest.mark.asyncio
+async def test_start_internal_event_bus_configures_singleton_with_daemon_role(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    redis_client = object()
+    daemon_instance = _MinimalDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()  # type: ignore[assignment]
+    captured: dict[str, object] = {}  # guard: loose-dict - Test captures heterogeneous call fields.
+
+    class _FakeBus:
+        async def start(self, shutdown_event: asyncio.Event) -> None:
+            captured["shutdown_event"] = shutdown_event
+
+    def _configure_event_bus(*, role: str, redis_client: object) -> _FakeBus:
+        captured["role"] = role
+        captured["redis_client"] = redis_client
+        return _FakeBus()
+
+    monkeypatch.setattr(daemon_event_platform, "configure_event_bus", _configure_event_bus)
+
+    daemon_instance._start_internal_event_bus(redis_client)
+    await daemon_instance._internal_event_bus_task  # type: ignore[attr-defined]
+
+    assert captured["role"] == "daemon"
+    assert captured["redis_client"] is redis_client
+    assert captured["shutdown_event"] is daemon_instance.shutdown_event
+
+
 # ---------------------------------------------------------------------------
 # Specs (xfail) for guaranteed-event-consumption
 # These pin the post-implementation contract; remove pytestmark when satisfied.

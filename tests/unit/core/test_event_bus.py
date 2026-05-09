@@ -1,64 +1,991 @@
-"""Characterization tests for teleclaude.core.event_bus."""
+"""Characterization tests, regression guards, and behavioral specs for
+teleclaude.core.event_bus.
+
+- ``TestEventBus`` characterizes the Redis-backed public API behavior that
+  replaces the original in-process implementation.
+- ``TestEventBusApiRegressionGuards`` provides non-spec coverage of the
+  public API surface (signatures, module-level singleton). Survives the
+  migration as ordinary regression coverage; not in the spec suite.
+- ``TestEventBusRedisMigrationSpecs`` pins the behavioral contract of the
+  Redis-Streams-backed adapter.
+- ``TestEventBusContextRoundTripSpecs`` pins typed-round-trip behavior for
+  every ``EventContext`` union member declared in
+  ``teleclaude/core/events.py``.
+- ``TestEventBusCallSiteSpecs`` pins emit/subscribe behavior for
+  existing call-site patterns from the migration scope.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import MagicMock
+import dataclasses
+import inspect
+from collections.abc import Mapping
+from typing import Any, cast
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from teleclaude.core import event_bus as event_bus_module
 from teleclaude.core.event_bus import EventBus
+from teleclaude.core.events import (
+    AgentActivityEvent,
+    AgentAvailabilityContext,
+    AgentEventContext,
+    AgentHookEventType,
+    AgentRestartDispatchedPayload,
+    AgentSessionStartPayload,
+    AgentStopActivityEvent,
+    ErrorEventContext,
+    JobCompletedPayload,
+    JobFailedPayload,
+    JobStartedPayload,
+    MessageEventContext,
+    NotificationClaimedPayload,
+    NotificationResolvedPayload,
+    OperationCompletedContext,
+    SessionCloseCompletedPayload,
+    SessionEscalatedPayload,
+    SessionLifecycleContext,
+    SessionStatusContext,
+    SessionTitleChangedContext,
+    SessionUpdatedContext,
+    SystemCommandContext,
+    ToolUseActivityEvent,
+    UserPromptSubmitActivityEvent,
+)
+from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.processor import (
+    CONSUMER_GROUP as CARTRIDGE_CONSUMER_GROUP,
+)
+from teleclaude.events.processor import (
+    STREAM_NAME as CARTRIDGE_STREAM_NAME,
+)
+
+
+def _make_redis_fake() -> MagicMock:
+    """Build a Redis client fake matching the project's tests/unit/events pattern."""
+    redis = MagicMock()
+    redis.xadd = AsyncMock(return_value=b"1-0")
+    redis.xack = AsyncMock()
+    redis.xgroup_create = AsyncMock()
+    redis.xreadgroup = AsyncMock(return_value=[])
+    redis.xautoclaim = AsyncMock(return_value=(b"0-0", [], []))
+    redis.xpending = AsyncMock(return_value={"pending": 0, "min": None, "max": None, "consumers": []})
+    redis.xpending_range = AsyncMock(return_value=[])
+    redis.xclaim = AsyncMock(return_value=[])
+    return redis
+
+
+def _captured_xadd_calls(redis_fake: MagicMock) -> list[tuple[str, dict[str, str]]]:
+    """Return [(stream_name, payload_dict), ...] captured by redis_fake.xadd."""
+    out: list[tuple[str, dict[str, str]]] = []
+    for call in redis_fake.xadd.await_args_list:
+        args, kwargs = call.args, call.kwargs
+        stream = args[0] if args else kwargs.get("name", "")
+        data = args[1] if len(args) > 1 else kwargs.get("fields", {})
+        out.append((stream, data))
+    return out
+
+
+def _captured_xgroup_create_calls(redis_fake: MagicMock) -> list[tuple[str, str]]:
+    """Return [(stream_name, group_name), ...] captured by redis_fake.xgroup_create."""
+    out: list[tuple[str, str]] = []
+    for call in redis_fake.xgroup_create.await_args_list:
+        args, kwargs = call.args, call.kwargs
+        stream = args[0] if args else kwargs.get("name", "")
+        group = args[1] if len(args) > 1 else kwargs.get("groupname", "")
+        out.append((stream, group))
+    return out
+
+
+async def _start_and_immediately_shutdown(bus: EventBus) -> None:
+    """Run ``bus.start`` with an already-set shutdown event so consumer-group
+    setup runs but the read loop does not block."""
+    shutdown = asyncio.Event()
+    shutdown.set()
+    await bus.start(shutdown)
+
+
+def _contract_field(contract: object, field_name: str) -> object | None:
+    """Read a structured implementation-boundary contract from a mapping or object."""
+    if isinstance(contract, Mapping):
+        return contract.get(field_name)
+    return getattr(contract, field_name, None)
+
+
+def _session_started_envelope(session_id: str = "sess-1") -> EventEnvelope:
+    """Build a typed internal session_started envelope for consumer-path specs."""
+    return EventEnvelope(
+        event="internal.session_started",
+        source="test",
+        level=2,
+        payload={"context_type": "SessionLifecycleContext", "session_id": session_id},
+    )
+
+
+def _agent_event_envelope() -> EventEnvelope:
+    """Build a typed internal agent_event envelope for fan-out specs."""
+    return EventEnvelope(
+        event="internal.agent_event",
+        source="test",
+        level=2,
+        payload={"context_type": "AgentAvailabilityContext", "agent": "claude", "available": True},
+    )
 
 
 class TestEventBus:
     @pytest.mark.unit
-    async def test_subscribe_and_emit_fires_handler(self):
+    async def test_emit_publishes_event_to_internal_stream(self) -> None:
+        bus = EventBus()
+        redis = _make_redis_fake()
+        bus.configure(role="daemon", redis_client=redis)
+        await bus.emit("agent_event", AgentAvailabilityContext(agent="claude", available=True))
+        calls = _captured_xadd_calls(redis)
+        assert calls
+
+    @pytest.mark.unit
+    async def test_emit_without_local_handler_still_publishes(self) -> None:
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("agent_event", AgentAvailabilityContext(agent="claude", available=True))
+        calls = _captured_xadd_calls(redis)
+        assert calls
+
+    @pytest.mark.unit
+    def test_clear_removes_all_handlers(self) -> None:
         bus = EventBus()
         calls: list[str] = []
 
-        async def handler(event, context):
-            calls.append(event)
-
-        bus.subscribe("agent_event", handler)
-        bus.emit("agent_event", MagicMock())
-        await asyncio.sleep(0)
-        assert "agent_event" in calls
-
-    @pytest.mark.unit
-    def test_emit_without_handler_does_not_raise(self):
-        bus = EventBus()
-        bus.emit("agent_event", MagicMock())
-        # No handler registered; bus state is unchanged (no side effects)
-        assert bus._handlers.get("agent_event") is None
-
-    @pytest.mark.unit
-    def test_clear_removes_all_handlers(self):
-        bus = EventBus()
-        calls: list[str] = []
-
-        async def handler(event, context):
+        async def handler(event: str, context: Any) -> None:
+            del context
             calls.append(event)
 
         bus.subscribe("agent_event", handler)
         bus.clear()
-
-        bus.emit("agent_event", MagicMock())
-        assert len(calls) == 0
+        assert bus._handlers.get("agent_event") is None
 
     @pytest.mark.unit
-    async def test_multiple_handlers_for_same_event(self):
+    async def test_multiple_handlers_for_same_event_are_registered(self) -> None:
         bus = EventBus()
-        results: list[str] = []
 
-        async def h1(event, context):
-            results.append("h1")
+        async def h1(event: str, context: Any) -> None:
+            del event, context
 
-        async def h2(event, context):
-            results.append("h2")
+        async def h2(event: str, context: Any) -> None:
+            del event, context
 
         bus.subscribe("agent_event", h1)
         bus.subscribe("agent_event", h2)
-        bus.emit("agent_event", MagicMock())
-        await asyncio.sleep(0.01)
-        assert "h1" in results
-        assert "h2" in results
+        assert len(bus._handlers["agent_event"]) == 2
+
+
+class TestEventBusApiRegressionGuards:
+    """Regression coverage for the public API surface across the migration.
+
+    These tests are deliberately not in the migration spec suite. They
+    are ordinary characterization plus contract preservation. A failure here
+    indicates either the migration broke the public API (regression) or a
+    pre-existing call site has drifted.
+    """
+
+    @pytest.mark.unit
+    def test_public_api_signatures_match_existing_call_site_shape(self) -> None:
+        """``subscribe``, ``emit``, and ``clear`` keep their existing call shape.
+
+        Catches a regression where a future edit drops `event`/`context` or
+        adds required positional args without defaults. Existing call sites
+        across `daemon_session.py`, `core/operations/service.py`, and others
+        rely on the unchanged shape.
+        """
+        subscribe_sig = inspect.signature(EventBus.subscribe)
+        emit_sig = inspect.signature(EventBus.emit)
+        clear_sig = inspect.signature(EventBus.clear)
+        assert list(subscribe_sig.parameters)[1:] == ["event", "handler"]
+        assert list(emit_sig.parameters)[1:] == ["event", "context"]
+        assert list(clear_sig.parameters) == ["self"]
+
+    @pytest.mark.unit
+    def test_module_level_singleton_is_importable(self) -> None:
+        """The module-level ``event_bus`` singleton is importable.
+
+        Catches a regression where the singleton is removed or renamed,
+        breaking every existing call site that imports it.
+        """
+        assert hasattr(event_bus_module, "event_bus")
+        bus = event_bus_module.event_bus
+        assert callable(bus.subscribe)
+        assert callable(bus.emit)
+        assert callable(bus.clear)
+
+
+class TestEventBusRedisMigrationSpecs:
+    """Behavioral contract for the Redis-Streams-backed ``EventBus`` adapter.
+
+    These specs pin public-API and on-the-wire behavior. The required public seam is the
+    minimum contract pinned in ``requirements.md``: ``EventBus(role,
+    redis_client)``, async ``start(shutdown_event)``, and the existing
+    ``subscribe``/``emit``/``clear`` API.
+    """
+
+    @pytest.mark.unit
+    async def test_internal_event_stream_distinct_from_cartridge_stream(self) -> None:
+        """Internal-event emit publishes to a stream name != cartridge ``STREAM_NAME``.
+
+        Catches a regression where internal events accidentally collide with
+        the cartridge pipeline's ``teleclaude:events`` stream.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("session_started", SessionLifecycleContext(session_id="sess-1"))
+        calls = _captured_xadd_calls(redis)
+        assert calls, "emit must produce at least one XADD call"
+        for stream_name, _ in calls:
+            assert stream_name != CARTRIDGE_STREAM_NAME
+
+    @pytest.mark.unit
+    async def test_internal_event_uses_distinct_event_namespace(self) -> None:
+        """Envelope ``event`` field for an internal event is distinct from cartridge events.
+
+        Catches a regression where the migration reuses cartridge event
+        identifiers (e.g. raw ``EventType`` values) verbatim on the wire.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("session_started", SessionLifecycleContext(session_id="sess-1"))
+        calls = _captured_xadd_calls(redis)
+        assert calls, "emit must produce at least one XADD call"
+        for _, payload in calls:
+            envelope_event = payload.get("event", "")
+            assert envelope_event != "session_started"
+
+    @pytest.mark.unit
+    async def test_internal_event_namespace_does_not_collide_with_cartridge_vocabulary(self) -> None:
+        """Internal-event envelope ``event`` does not match any cartridge event identifier.
+
+        Catches a regression where the migration's namespace prefix collides
+        with cartridge event vocabulary, routing internal traffic into
+        cartridge consumer code paths.
+        """
+        cartridge_event_identifiers = {
+            "todo_dumped",
+            "agent_restart_dispatched",
+            "session_close_completed",
+            "session_escalated",
+            "todo_finalize_ready",
+            "system.event.dead_lettered",
+        }
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("session_started", SessionLifecycleContext(session_id="sess-1"))
+        await bus.emit("agent_event", AgentAvailabilityContext(agent="claude", available=True))
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        for _, payload in calls:
+            envelope_event = payload.get("event", "")
+            assert envelope_event not in cartridge_event_identifiers, (
+                f"Internal event {envelope_event!r} collides with the cartridge vocabulary"
+            )
+
+    @pytest.mark.unit
+    async def test_internal_consumer_group_distinct_from_cartridge_consumer_group(self) -> None:
+        """Internal-event consumer group identity != cartridge ``CONSUMER_GROUP``.
+
+        Catches a regression where the EventBus creates a consumer group
+        on the cartridge pipeline's group name, mixing cartridge and
+        internal delivery cursors.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await _start_and_immediately_shutdown(bus)
+        groups = _captured_xgroup_create_calls(redis)
+        assert groups, "start() must register a consumer group via xgroup_create"
+        for _stream, group_name in groups:
+            assert group_name != CARTRIDGE_CONSUMER_GROUP, (
+                f"Internal-event group {group_name!r} collides with cartridge group {CARTRIDGE_CONSUMER_GROUP!r}"
+            )
+
+    @pytest.mark.unit
+    def test_module_exposes_internal_event_contract_metadata(self) -> None:
+        """Module exposes structured stream/group/namespace/outage contract metadata.
+
+        Catches a regression where the implementation lands without
+        publishing the implementation-boundary contract required by the
+        requirements. The assertion uses structured fields instead of
+        prose-locking human-facing documentation text.
+        """
+        contract = getattr(event_bus_module, "INTERNAL_EVENT_BUS_CONTRACT", None)
+        assert contract is not None
+        assert _contract_field(contract, "stream_name") != CARTRIDGE_STREAM_NAME
+        assert _contract_field(contract, "consumer_group_rule") not in (None, "")
+        assert _contract_field(contract, "event_namespace_rule") not in (None, "")
+        assert _contract_field(contract, "redis_outage_mode") not in (None, "")
+
+    @pytest.mark.unit
+    async def test_subscribers_run_under_durable_acknowledgment_boundary_subscriber_exception(
+        self,
+    ) -> None:
+        """A subscribed handler that raises does not produce an XACK.
+
+        Catches a regression where the migration silently swallows handler
+        exceptions instead of letting the durable acknowledgment boundary
+        withhold ACK and trigger redelivery.
+        """
+        redis = _make_redis_fake()
+        envelope = _session_started_envelope()
+        redis.xreadgroup = AsyncMock(
+            side_effect=[
+                [],
+                [(b"internal-stream", [(b"1-0", envelope.to_stream_dict())])],
+                asyncio.CancelledError(),
+            ]
+        )
+        bus = EventBus(role="daemon", redis_client=redis)
+
+        async def raising_handler(_event: str, _context: Any) -> None:
+            raise RuntimeError("handler failure")
+
+        bus.subscribe("session_started", raising_handler)
+        shutdown = asyncio.Event()
+        await bus.start(shutdown)
+        redis.xack.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_subscribers_run_under_durable_acknowledgment_boundary_subscriber_skip(
+        self,
+    ) -> None:
+        """A subscribed handler that returns ``None`` is a deliberate skip and ACKs.
+
+        Catches a regression where deliberate skips are treated as failures.
+        """
+        redis = _make_redis_fake()
+        envelope = _session_started_envelope()
+        redis.xreadgroup = AsyncMock(
+            side_effect=[
+                [],
+                [(b"internal-stream", [(b"1-0", envelope.to_stream_dict())])],
+                asyncio.CancelledError(),
+            ]
+        )
+        bus = EventBus(role="daemon", redis_client=redis)
+
+        async def skipping_handler(_event: str, _context: Any) -> None:
+            return None
+
+        bus.subscribe("session_started", skipping_handler)
+        shutdown = asyncio.Event()
+        await bus.start(shutdown)
+        redis.xack.assert_called()
+
+    @pytest.mark.unit
+    async def test_subscriber_idempotent_under_redelivery(self) -> None:
+        """A successful subscriber is not re-run when the same entry is redelivered."""
+        redis = _make_redis_fake()
+        envelope = EventEnvelope(
+            event="internal.session_started",
+            source="test",
+            level=2,
+            idempotency_key="sess-1",
+            payload={"context_type": "SessionLifecycleContext", "session_id": "sess-1"},
+        )
+        redis.xreadgroup = AsyncMock(
+            side_effect=[
+                [],
+                [(b"internal-stream", [(b"1-0", envelope.to_stream_dict())])],
+                [(b"internal-stream", [(b"1-0", envelope.to_stream_dict())])],
+                asyncio.CancelledError(),
+            ]
+        )
+        bus = EventBus(role="daemon", redis_client=redis)
+        external_effects: list[str] = []
+
+        async def successful_handler(_event: str, context: Any) -> None:
+            external_effects.append(getattr(context, "session_id", "unknown"))
+
+        async def failing_handler(_event: str, _context: Any) -> None:
+            raise RuntimeError("force redelivery")
+
+        bus.subscribe("session_started", successful_handler)
+        bus.subscribe("session_started", failing_handler)
+        shutdown = asyncio.Event()
+        await bus.start(shutdown)
+        assert external_effects == ["sess-1"]
+
+    @pytest.mark.unit
+    async def test_per_role_consumer_group_identity_is_stable_across_restarts(self) -> None:
+        """Two EventBus instances with the same role register the same consumer group.
+
+        Pinned via observable Redis side-effect (xgroup_create), not via a
+        bus accessor — preserves the requirement's "role-binding mechanism
+        is a draft-phase choice" stance for everything except the role
+        parameter and the resulting Redis-side group identity.
+        """
+        redis_a = _make_redis_fake()
+        redis_b = _make_redis_fake()
+        bus_a = EventBus(role="operation-runner", redis_client=redis_a)
+        bus_b = EventBus(role="operation-runner", redis_client=redis_b)
+        await _start_and_immediately_shutdown(bus_a)
+        await _start_and_immediately_shutdown(bus_b)
+        groups_a = {group for _, group in _captured_xgroup_create_calls(redis_a)}
+        groups_b = {group for _, group in _captured_xgroup_create_calls(redis_b)}
+        assert groups_a, "first instance must register a consumer group"
+        assert groups_b, "second instance must register a consumer group"
+        assert groups_a == groups_b
+
+    @pytest.mark.unit
+    async def test_per_role_consumer_group_identity_differs_across_roles(self) -> None:
+        """Two EventBus instances with different roles register different consumer groups."""
+        redis_daemon = _make_redis_fake()
+        redis_runner = _make_redis_fake()
+        bus_daemon = EventBus(role="daemon", redis_client=redis_daemon)
+        bus_runner = EventBus(role="operation-runner", redis_client=redis_runner)
+        await _start_and_immediately_shutdown(bus_daemon)
+        await _start_and_immediately_shutdown(bus_runner)
+        groups_daemon = {group for _, group in _captured_xgroup_create_calls(redis_daemon)}
+        groups_runner = {group for _, group in _captured_xgroup_create_calls(redis_runner)}
+        assert groups_daemon
+        assert groups_runner
+        assert groups_daemon.isdisjoint(groups_runner)
+
+    @pytest.mark.unit
+    async def test_multiple_subscribers_in_one_process_all_receive_event(self) -> None:
+        """Two subscribers in one Redis-backed EventBus instance both fire for one event.
+
+        Pins post-migration intra-process concurrent fan-out under the
+        durable acknowledgment boundary.
+        """
+        redis = _make_redis_fake()
+        envelope = _agent_event_envelope()
+        redis.xreadgroup = AsyncMock(
+            side_effect=[
+                [],
+                [(b"internal-stream", [(b"1-0", envelope.to_stream_dict())])],
+                asyncio.CancelledError(),
+            ]
+        )
+        bus = EventBus(role="daemon", redis_client=redis)
+        invocations: list[str] = []
+
+        async def handler_one(_event: str, _context: Any) -> None:
+            invocations.append("one")
+
+        async def handler_two(_event: str, _context: Any) -> None:
+            invocations.append("two")
+
+        bus.subscribe("agent_event", handler_one)
+        bus.subscribe("agent_event", handler_two)
+        shutdown = asyncio.Event()
+        await bus.start(shutdown)
+        assert sorted(invocations) == ["one", "two"]
+
+
+class TestEventBusContextRoundTripSpecs:
+    """Per-member ``EventContext`` round-trip behavioral specs.
+
+    Each spec emits an instance of one ``EventContext`` union member, then
+    reconstructs the same union-member instance from the wire-format
+    envelope and asserts field-level equality. Catches per-member
+    serialization regressions that the single-member representative test
+    cannot distinguish.
+    """
+
+    async def _emit_and_reconstruct(self, event_name: str, context: Any, context_type: type[Any]) -> Any:
+        """Emit ``context`` and reconstruct a typed instance of ``context_type``.
+
+        Filters envelope payload keys to the declared dataclass fields of
+        ``context_type`` so envelope-level metadata does not break
+        instantiation. Builders satisfy these specs by carrying the full
+        dataclass field set in the envelope payload.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(event_name, context)
+        calls = _captured_xadd_calls(redis)
+        assert calls, "emit must produce at least one XADD call"
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        field_names = {f.name for f in dataclasses.fields(context_type)}
+        kwargs = {k: v for k, v in envelope.payload.items() if k in field_names}
+        return context_type(**kwargs)
+
+    @pytest.mark.unit
+    async def test_round_trip_session_lifecycle_context(self) -> None:
+        """``SessionLifecycleContext`` round-trip preserves session_id."""
+        original = SessionLifecycleContext(session_id="sess-lifecycle-1")
+        rebuilt = await self._emit_and_reconstruct("session_started", original, SessionLifecycleContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_session_close_completed_payload(self) -> None:
+        """``SessionCloseCompletedPayload`` round-trip preserves session_id."""
+        original = SessionCloseCompletedPayload(session_id="sess-close-1")
+        rebuilt = await self._emit_and_reconstruct("session_closed", original, SessionCloseCompletedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_session_escalated_payload(self) -> None:
+        """``SessionEscalatedPayload`` round-trip preserves session_id."""
+        original = SessionEscalatedPayload(session_id="sess-escalated-1")
+        rebuilt = await self._emit_and_reconstruct("session_started", original, SessionEscalatedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_agent_restart_dispatched_payload(self) -> None:
+        """``AgentRestartDispatchedPayload`` round-trip preserves session_id."""
+        original = AgentRestartDispatchedPayload(session_id="sess-restart-1")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, AgentRestartDispatchedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_session_status_context(self) -> None:
+        """``SessionStatusContext`` round-trip preserves required + optional fields."""
+        original = SessionStatusContext(
+            session_id="sess-status-1",
+            status="active",
+            reason="started",
+            timestamp="2026-05-09T12:00:00Z",
+            last_activity_at="2026-05-09T12:00:01Z",
+            message_intent="ctrl_status",
+            delivery_scope="CTRL",
+        )
+        rebuilt = await self._emit_and_reconstruct("session_status", original, SessionStatusContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_session_title_changed_context(self) -> None:
+        """``SessionTitleChangedContext`` round-trip preserves session_id and title."""
+        original = SessionTitleChangedContext(session_id="sess-title-1", title="A meaningful title")
+        rebuilt = await self._emit_and_reconstruct("session_title_changed", original, SessionTitleChangedContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_session_updated_context(self) -> None:
+        """``SessionUpdatedContext`` round-trip preserves Mapping payload."""
+        original = SessionUpdatedContext(
+            session_id="sess-update-1",
+            updated_fields={"status": "active", "last_activity_at": "2026-05-09T12:00:00Z"},
+        )
+        rebuilt = await self._emit_and_reconstruct("session_updated", original, SessionUpdatedContext)
+        assert rebuilt.session_id == original.session_id
+        assert dict(rebuilt.updated_fields) == dict(original.updated_fields)
+
+    @pytest.mark.unit
+    async def test_round_trip_message_event_context(self) -> None:
+        """``MessageEventContext`` round-trip preserves session_id and text."""
+        original = MessageEventContext(session_id="sess-msg-1", text="hello world")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, MessageEventContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_system_command_context(self) -> None:
+        """``SystemCommandContext`` round-trip preserves command and from_computer."""
+        original = SystemCommandContext(command="restart", from_computer="MozBook")
+        rebuilt = await self._emit_and_reconstruct("system_command", original, SystemCommandContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_agent_availability_context(self) -> None:
+        """``AgentAvailabilityContext`` round-trip preserves required + optional fields."""
+        original = AgentAvailabilityContext(
+            agent="claude",
+            available=False,
+            status="busy",
+            unavailable_until="2026-05-09T13:00:00Z",
+            reason="rate-limited",
+        )
+        rebuilt = await self._emit_and_reconstruct("agent_availability", original, AgentAvailabilityContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_agent_event_context(self) -> None:
+        """``AgentEventContext`` round-trip preserves nested payload union shape."""
+        original = AgentEventContext(
+            session_id="sess-agent-1",
+            data=AgentSessionStartPayload(
+                raw={"hook": "SessionStart"},
+                transcript_path="/tmp/sess-agent-1.jsonl",
+                session_id="sess-agent-1",
+            ),
+            event_type="session_start",
+        )
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("agent_event", original)
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        nested = envelope.payload.get("data")
+        event_type = envelope.payload.get("event_type")
+        assert isinstance(nested, Mapping)
+        assert event_type == original.event_type
+        rebuilt = AgentEventContext(
+            session_id=str(envelope.payload.get("session_id")),
+            data=AgentSessionStartPayload(
+                raw=dict(nested.get("raw", {})),
+                transcript_path=nested.get("transcript_path"),
+                session_id=nested.get("session_id"),
+            ),
+            event_type=cast(AgentHookEventType, event_type),
+        )
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_error_event_context(self) -> None:
+        """``ErrorEventContext`` round-trip preserves message, severity, and details."""
+        original = ErrorEventContext(
+            session_id="sess-err-1",
+            message="upstream timeout",
+            source="api",
+            details={"attempt": 3, "route": "jobs"},
+            severity="error",
+            retryable=True,
+            code="UPSTREAM_TIMEOUT",
+        )
+        rebuilt = await self._emit_and_reconstruct("error", original, ErrorEventContext)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_operation_completed_context(self) -> None:
+        """``OperationCompletedContext`` round-trip preserves operation_id and error."""
+        original = OperationCompletedContext(operation_id="op-1", error="boom: timeout reaching upstream")
+        rebuilt = await self._emit_and_reconstruct(
+            "operation.todo_create.completed", original, OperationCompletedContext
+        )
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_job_started_payload(self) -> None:
+        """``JobStartedPayload`` round-trip preserves job_name."""
+        original = JobStartedPayload(job_name="ingest-corpus")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, JobStartedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_job_completed_payload(self) -> None:
+        """``JobCompletedPayload`` round-trip preserves job_name."""
+        original = JobCompletedPayload(job_name="ingest-corpus")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, JobCompletedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_job_failed_payload(self) -> None:
+        """``JobFailedPayload`` round-trip preserves job_name and error."""
+        original = JobFailedPayload(job_name="ingest-corpus", error="parser crashed")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, JobFailedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_notification_claimed_payload(self) -> None:
+        """``NotificationClaimedPayload`` round-trip preserves notification_id and agent_id."""
+        original = NotificationClaimedPayload(notification_id=42, agent_id="claude")
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, NotificationClaimedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_notification_resolved_payload(self) -> None:
+        """``NotificationResolvedPayload`` round-trip preserves notification_id."""
+        original = NotificationResolvedPayload(notification_id=42)
+        rebuilt = await self._emit_and_reconstruct("agent_event", original, NotificationResolvedPayload)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_user_prompt_submit_activity_event(self) -> None:
+        """``UserPromptSubmitActivityEvent`` round-trip preserves the activity discriminant."""
+        original = UserPromptSubmitActivityEvent(
+            session_id="sess-prompt-1",
+            event_type="user_prompt_submit",
+            timestamp="2026-05-09T12:01:00Z",
+            canonical_type="user_prompt",
+            message_intent="activity",
+            delivery_scope="SESSION",
+        )
+        rebuilt = await self._emit_and_reconstruct("agent_activity", original, UserPromptSubmitActivityEvent)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_tool_use_activity_event(self) -> None:
+        """``ToolUseActivityEvent`` round-trip preserves tool fields."""
+        original = ToolUseActivityEvent(
+            session_id="sess-tool-1",
+            event_type="tool_use",
+            timestamp="2026-05-09T12:02:00Z",
+            canonical_type="tool_use",
+            message_intent="activity",
+            delivery_scope="SESSION",
+            tool_name="Bash",
+            tool_preview="echo hi",
+        )
+        rebuilt = await self._emit_and_reconstruct("agent_activity", original, ToolUseActivityEvent)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_agent_stop_activity_event(self) -> None:
+        """``AgentStopActivityEvent`` round-trip preserves summary/message."""
+        original = AgentStopActivityEvent(
+            session_id="sess-stop-1",
+            event_type="agent_stop",
+            timestamp="2026-05-09T12:03:00Z",
+            canonical_type="agent_stop",
+            message_intent="activity",
+            delivery_scope="SESSION",
+            summary="finished work",
+            message="done",
+        )
+        rebuilt = await self._emit_and_reconstruct("agent_activity", original, AgentStopActivityEvent)
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_round_trip_agent_activity_event_union(self) -> None:
+        """``AgentActivityEvent`` union dispatches to the correct subclass on round-trip.
+
+        Catches a regression where the discriminant field is dropped on the
+        wire, collapsing the union into a single shape.
+        """
+        original: AgentActivityEvent = ToolUseActivityEvent(
+            session_id="sess-union-1",
+            event_type="tool_use",
+            tool_name="Read",
+        )
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("agent_activity", original)
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        event_type = envelope.payload.get("event_type")
+        assert event_type == "tool_use"
+        activity_type = cast(AgentHookEventType, event_type)
+        if activity_type == "tool_use":
+            rebuilt = ToolUseActivityEvent(
+                session_id=str(envelope.payload.get("session_id")),
+                event_type=activity_type,
+                tool_name=envelope.payload.get("tool_name"),
+            )
+        elif activity_type == "user_prompt_submit":
+            rebuilt = UserPromptSubmitActivityEvent(
+                session_id=str(envelope.payload.get("session_id")),
+                event_type=activity_type,
+            )
+        else:
+            rebuilt = AgentStopActivityEvent(
+                session_id=str(envelope.payload.get("session_id")),
+                event_type=activity_type,
+            )
+        assert rebuilt == original
+
+    @pytest.mark.unit
+    async def test_envelope_payload_carries_context_type_discriminator(self) -> None:
+        """Envelope payload carries a non-domain discriminator for reconstruction."""
+        original = ErrorEventContext(session_id="sess-discriminator-1", message="boom")
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("error", original)
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("context_type") == "ErrorEventContext"
+
+    @pytest.mark.unit
+    async def test_decode_internal_envelope_reconstructs_agent_activity_subclass(self) -> None:
+        """Internal envelope decode rebuilds the typed activity subclass."""
+        original = ToolUseActivityEvent(
+            session_id="sess-decode-1",
+            event_type="tool_use",
+            tool_name="Read",
+            tool_preview="teleclaude/core/event_bus.py",
+        )
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("agent_activity", original)
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        event_name, rebuilt = event_bus_module.decode_internal_event_envelope(envelope)
+        assert event_name == "agent_activity"
+        assert isinstance(rebuilt, ToolUseActivityEvent)
+        assert rebuilt == original
+
+
+class TestEventBusCallSiteSpecs:
+    """Behavioral specs for existing call-site patterns from the migration scope.
+
+    Each spec exercises one distinct EventType + EventContext shape used by
+    the existing production callers. Catches a regression where the
+    migration breaks a specific call-site pattern (e.g. session lifecycle,
+    operation completion) even when the public-API signature check passes.
+    """
+
+    @pytest.mark.unit
+    async def test_call_site_session_lifecycle_emit(self) -> None:
+        """``daemon_session.py``-style session-lifecycle emit produces an XADD.
+
+        Pins that the migration preserves the most common emitter shape:
+        a session-lifecycle event with a ``SessionLifecycleContext`` payload.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("session_started", SessionLifecycleContext(session_id="sess-cs-1"))
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("session_id") == "sess-cs-1"
+
+    @pytest.mark.unit
+    async def test_call_site_agent_availability_emit(self) -> None:
+        """``daemon_session.py``-style agent-availability emit produces an XADD.
+
+        Pins the migration preserves agent-availability emission with the
+        ``AgentAvailabilityContext`` shape.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "agent_availability",
+            AgentAvailabilityContext(agent="claude", available=True, status="ready"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("agent") == "claude"
+        assert envelope.payload.get("available") is True
+
+    @pytest.mark.unit
+    async def test_call_site_operation_completed_emit(self) -> None:
+        """``core/operations/service.py``-style operation-completion emit produces an XADD.
+
+        Pins the migration preserves the operation-completion call site at
+        ``_run_operation`` — the most reliability-sensitive emission today.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "operation.todo_create.completed",
+            OperationCompletedContext(operation_id="op-cs-1"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("operation_id") == "op-cs-1"
+
+    @pytest.mark.unit
+    async def test_call_site_error_emit(self) -> None:
+        """Error-event emit produces an XADD with the error payload preserved.
+
+        Pins migration behavior for callers that surface an
+        ``ErrorEventContext`` (e.g. session cleanup, command service).
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "error",
+            ErrorEventContext(session_id="sess-err-cs", message="boom", severity="error"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("message") == "boom"
+        assert envelope.payload.get("severity") == "error"
+
+    @pytest.mark.unit
+    async def test_call_site_system_command_emit(self) -> None:
+        """``daemon.py``-style system-command emit produces an XADD.
+
+        Pins the migration preserves the no-session-id system-command shape.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "system_command",
+            SystemCommandContext(command="restart", from_computer="MozBook"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("command") == "restart"
+        assert envelope.payload.get("from_computer") == "MozBook"
+
+    @pytest.mark.unit
+    async def test_call_site_job_started_raw_emit(self) -> None:
+        """``api/jobs_routes.py`` job-started raw event-name emit produces an XADD."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "job.started",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            JobStartedPayload(job_name="nightly-sync"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("job_name") == "nightly-sync"
+
+    @pytest.mark.unit
+    async def test_call_site_job_completed_raw_emit(self) -> None:
+        """``api/jobs_routes.py`` job-completed raw event-name emit produces an XADD."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "job.completed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            JobCompletedPayload(job_name="nightly-sync"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("job_name") == "nightly-sync"
+
+    @pytest.mark.unit
+    async def test_call_site_job_failed_raw_emit(self) -> None:
+        """``api/jobs_routes.py`` job-failed raw event-name emit preserves the error."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "job.failed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            JobFailedPayload(job_name="nightly-sync", error="cron runner failed"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("job_name") == "nightly-sync"
+        assert envelope.payload.get("error") == "cron runner failed"
+
+    @pytest.mark.unit
+    async def test_call_site_notification_claimed_raw_emit(self) -> None:
+        """``api/notifications_routes.py`` notification-claimed raw emit preserves fields."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "notification.claimed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            NotificationClaimedPayload(notification_id=42, agent_id="claude"),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("notification_id") == 42
+        assert envelope.payload.get("agent_id") == "claude"
+
+    @pytest.mark.unit
+    async def test_call_site_notification_resolved_raw_emit(self) -> None:
+        """``api/notifications_routes.py`` notification-resolved raw emit preserves fields."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit(
+            "notification.resolved",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            NotificationResolvedPayload(notification_id=42),
+        )
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        assert envelope.payload.get("notification_id") == 42

@@ -382,6 +382,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._event_db: EventDB | None = None
         self.mirror_worker_task: asyncio.Task[object] | None = None
         self._event_processor_task: asyncio.Task[object] | None = None
+        self._internal_event_bus_task: asyncio.Task[object] | None = None
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._ingest_scheduler_task: asyncio.Task[object] | None = None
@@ -747,6 +748,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         )
         await self._await_task_attr("_deployment_fanout_task", "Deployment fanout stopped", timeout=5.0)
         await self._await_task_attr("_ingest_scheduler_task", "IngestScheduler stopped", timeout=5.0)
+        await self._await_task_attr("_internal_event_bus_task", "Internal EventBus stopped", timeout=5.0)
         await self._await_task_attr("_event_processor_task", "EventProcessor stopped", timeout=5.0)
 
         for attr_name, log_message in (

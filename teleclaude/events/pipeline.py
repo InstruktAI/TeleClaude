@@ -11,12 +11,12 @@ from typing import TYPE_CHECKING, Any, Protocol
 from instrukt_ai_logging import get_logger
 
 from teleclaude.events.catalog import EventCatalog
-from teleclaude.events.db import EventDB
 from teleclaude.events.envelope import EventEnvelope
 
 if TYPE_CHECKING:
     from teleclaude.events.cartridges.correlation import CorrelationConfig
     from teleclaude.events.cartridges.trust import TrustConfig
+    from teleclaude.events.db import EventDB
     from teleclaude.events.domain_pipeline import DomainPipelineRunner
     from teleclaude.events.producer import EventProducer
 
