@@ -161,8 +161,10 @@ def _run_pytest_in_child_process(
     worktree_cwd: str, pytest_args: list[str], *, timeout_seconds: int
 ) -> _PytestRunResult:
     """Execute pytest in an isolated Python child process and capture its output."""
+    # SimpleQueue has no background feeder thread, so the parent process exits
+    # cleanly. mp.Queue's feeder thread blocks Py_FinalizeEx and produces zombies.
     ctx = mp.get_context("spawn")
-    result_queue = ctx.Queue()
+    result_queue = ctx.SimpleQueue()
     process = ctx.Process(target=_pytest_worker, args=(worktree_cwd, pytest_args, result_queue))
     process.start()
     process.join(timeout_seconds)
