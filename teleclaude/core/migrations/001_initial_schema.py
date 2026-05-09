@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     tui_capture_started INTEGER DEFAULT 0,
     last_message_sent TEXT,
     last_message_sent_at TEXT,
-    last_conversation_injected_at TEXT,
     last_output_raw TEXT,
     last_output_at TEXT,
     last_output_summary TEXT,

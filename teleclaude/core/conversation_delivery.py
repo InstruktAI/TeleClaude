@@ -15,7 +15,7 @@ from teleclaude.constants import LOCAL_COMPUTER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
-    format_bundled_conversation_message,
+    format_peer_message,
 )
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -47,15 +47,6 @@ class ConversationSegment:
     role: str
     text: str
     timestamp: datetime | None
-
-
-def _later_timestamp(first: datetime | None, second: datetime | None) -> datetime | None:
-    """Return the later of two optional timestamps."""
-    if first is None:
-        return second
-    if second is None:
-        return first
-    return first if first >= second else second
 
 
 def _delivery_key(
@@ -170,7 +161,7 @@ async def _deliver_bundle(
     origin = (source_session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
 
     bundle_segments = [(seg.role, seg.timestamp, seg.text) for seg in segments]
-    framed_message = format_bundled_conversation_message(
+    framed_message = format_peer_message(
         sender_session_id=source_session.session_id,
         sender_computer=sender_computer,
         segments=bundle_segments,
@@ -333,9 +324,9 @@ async def _deliver_for_peer(
     cursor_dt = (
         parse_iso_datetime(persisted.delivered_through_ts) if persisted and persisted.delivered_through_ts else None
     )
-    since_timestamp = _later_timestamp(source_session.last_conversation_injected_at, cursor_dt)
-    if since_timestamp is None:
+    if cursor_dt is None:
         return 0
+    since_timestamp = cursor_dt
     if not source_session.native_log_file:
         return 0
 
@@ -347,7 +338,7 @@ async def _deliver_for_peer(
     pending_dt: datetime | None = None
     if persisted is not None and persisted.pending_through_ts:
         pending_candidate = parse_iso_datetime(persisted.pending_through_ts)
-        if pending_candidate is not None and (cursor_dt is None or pending_candidate > cursor_dt):
+        if pending_candidate is not None and pending_candidate > cursor_dt:
             pending_dt = pending_candidate
 
     delivered = 0
@@ -378,7 +369,7 @@ async def _deliver_for_peer(
         cursor_iso: str | None = pending_dt.isoformat()
     else:
         fresh_segments = all_segments
-        cursor_iso = cursor_dt.isoformat() if cursor_dt else None
+        cursor_iso = cursor_dt.isoformat()
 
     fresh_segments = _trim_trailing_user_turn(fresh_segments)
 
@@ -436,11 +427,9 @@ async def deliver_pending_conversation_updates(
     command_service: CommandService | None = None,
     source_computer: str | None = None,
 ) -> int:
-    """Replay visible conversation activity since the last TeleClaude injection."""
+    """Deliver any new transcript activity from this session to its linked peers."""
     source_session = await db.get_session(source_session_id)
     if source_session is None:
-        return 0
-    if source_session.last_conversation_injected_at is None:
         return 0
     if not source_session.native_log_file or not source_session.active_agent:
         return 0
@@ -482,7 +471,7 @@ async def reconcile_outstanding_conversation_deliveries(
     sessions = await db.list_sessions(computer_name=computer_name, include_headless=True)
     repaired = 0
     for session in sessions:
-        if session.closed_at is not None or session.last_conversation_injected_at is None:
+        if session.closed_at is not None:
             continue
         repaired += await deliver_pending_conversation_updates(
             session.session_id,

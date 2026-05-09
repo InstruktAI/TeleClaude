@@ -117,7 +117,6 @@ class SessionField(Enum):
     LAST_MESSAGE_SENT_AT = "last_message_sent_at"
     LAST_PROJECTED_AT = "last_projected_at"
     LAST_PROJECTED_OUTPUT_DIGEST = "last_projected_output_digest"
-    LAST_CONVERSATION_INJECTED_AT = "last_conversation_injected_at"
     LAST_OUTPUT_RAW = "last_output_raw"
     LAST_OUTPUT_AT = "last_output_at"
     LAST_TOOL_DONE_AT = "last_tool_done_at"
@@ -194,8 +193,6 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             data["last_message_sent_at"] = self.last_message_sent_at.isoformat()
         if self.last_projected_at:
             data["last_projected_at"] = self.last_projected_at.isoformat()
-        if self.last_conversation_injected_at:
-            data["last_conversation_injected_at"] = self.last_conversation_injected_at.isoformat()
         if self.last_output_at:
             data["last_output_at"] = self.last_output_at.isoformat()
         if self.last_tool_done_at:
@@ -248,13 +245,6 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             parse_iso_datetime(last_projected_at_raw)
             if isinstance(last_projected_at_raw, str)
             else last_projected_at_raw
-        )
-
-        last_conversation_injected_at_raw = data.get("last_conversation_injected_at")
-        last_conversation_injected_at = (
-            parse_iso_datetime(last_conversation_injected_at_raw)
-            if isinstance(last_conversation_injected_at_raw, str)
-            else last_conversation_injected_at_raw
         )
 
         last_output_at_raw = data.get("last_output_at")
@@ -337,9 +327,6 @@ class Session(SessionRecentOutputFields, SessionRecentToolFields):
             if isinstance(last_message_sent_at, datetime)
             else None,
             last_projected_at=ensure_utc(last_projected_at) if isinstance(last_projected_at, datetime) else None,
-            last_conversation_injected_at=ensure_utc(last_conversation_injected_at)
-            if isinstance(last_conversation_injected_at, datetime)
-            else None,
             last_output_raw=_get_optional_str("last_output_raw"),
             last_output_at=ensure_utc(last_output_at) if isinstance(last_output_at, datetime) else None,
             last_tool_done_at=ensure_utc(last_tool_done_at) if isinstance(last_tool_done_at, datetime) else None,

@@ -87,7 +87,6 @@ class SessionRecentOutputFields:
 
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
-    last_conversation_injected_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None
@@ -113,7 +112,6 @@ class SessionRecentOutputColumns(SQLModel):
 
     last_message_sent: str | None = None
     last_message_sent_at: datetime | None = None
-    last_conversation_injected_at: datetime | None = None
     last_output_raw: str | None = None
     last_output_at: datetime | None = None
     last_output_summary: str | None = None

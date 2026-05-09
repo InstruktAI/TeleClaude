@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from teleclaude.core.command_handlers import _message
-from teleclaude.core.conversation_messages import format_linked_output_message
+from teleclaude.core.conversation_messages import format_peer_message
 from teleclaude.core.db import InboundQueueRow
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
@@ -259,47 +259,13 @@ class TestWaitForSessionReady:
 
 class TestDeliverInbound:
     @pytest.mark.unit
-    async def test_conversation_bridge_message_records_conversation_anchor(
+    async def test_inbound_delivery_writes_session_metadata(
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        session = make_session(active_agent="claude")
-        row = make_row(
-            session_id=session.session_id,
-            content=format_linked_output_message(
-                sender_session_id="peer-001",
-                sender_computer="remote",
-                content="Need review on the latest change.",
-            ),
-        )
-        db = SimpleNamespace(
-            get_session=AsyncMock(return_value=session),
-            update_session=AsyncMock(),
-            update_last_activity=AsyncMock(),
-        )
-        client = SimpleNamespace(
-            break_threaded_turn=AsyncMock(),
-        )
-        tmux_io = SimpleNamespace(
-            process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
-        )
-
-        monkeypatch.setattr(_message, "db", db)
-        monkeypatch.setattr(_message, "tmux_io", tmux_io)
-        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
-        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
-
-        await _message.deliver_inbound(row, client, AsyncMock())
-
-        update_kwargs = db.update_session.await_args_list[0].kwargs
-        assert "last_conversation_injected_at" in update_kwargs
-
-    @pytest.mark.unit
-    async def test_plain_human_message_does_not_record_conversation_anchor(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
+        """Inbound delivery records the message preview, accepted timestamp, and
+        origin on the session — same fields for every message regardless of
+        whether it's a peer bridge or human input."""
         session = make_session(active_agent="claude")
         row = make_row(session_id=session.session_id, content="Please explain the latest failure.")
         db = SimpleNamespace(
@@ -307,9 +273,7 @@ class TestDeliverInbound:
             update_session=AsyncMock(),
             update_last_activity=AsyncMock(),
         )
-        client = SimpleNamespace(
-            break_threaded_turn=AsyncMock(),
-        )
+        client = SimpleNamespace(break_threaded_turn=AsyncMock())
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
             wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
@@ -323,7 +287,9 @@ class TestDeliverInbound:
         await _message.deliver_inbound(row, client, AsyncMock())
 
         update_kwargs = db.update_session.await_args_list[0].kwargs
-        assert "last_conversation_injected_at" not in update_kwargs
+        assert update_kwargs["last_message_sent"] == "Please explain the latest failure."
+        assert update_kwargs["last_input_origin"] == row["origin"]
+        assert "last_message_sent_at" in update_kwargs
 
     @pytest.mark.unit
     async def test_codex_message_starts_polling_without_synthetic_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -421,10 +387,10 @@ class TestProcessMessage:
         monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
         monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
 
-        content = format_linked_output_message(
+        content = format_peer_message(
             sender_session_id="peer-001",
             sender_computer="remote",
-            content="Thanks.",
+            segments=[("assistant", datetime(2026, 5, 9, 10, 0, 0, tzinfo=UTC), "Thanks.")],
         )
         cmd = ProcessMessageCommand(
             session_id=session.session_id,

@@ -81,7 +81,6 @@ class DbBase:
             last_projected_at=DbBase._coerce_datetime(
                 row.last_projected_at if hasattr(row, "last_projected_at") else None
             ),
-            last_conversation_injected_at=DbBase._coerce_datetime(row.last_conversation_injected_at),
             last_output_raw=row.last_output_raw,
             last_output_at=DbBase._coerce_datetime(row.last_output_at),
             last_tool_done_at=DbBase._coerce_datetime(row.last_tool_done_at),

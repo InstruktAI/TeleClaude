@@ -413,7 +413,7 @@ class TestWrapMessageWithOrigin:
         """Already bracket-marked TeleClaude bridge messages must not be re-wrapped."""
         get_session = AsyncMock()
         monkeypatch.setattr(sessions_routes.db, "get_session", get_session)
-        bridge = "[TeleClaude - Linked output (peer-uuid) on host]\n\nbody"
+        bridge = "[TeleClaude - Peer (peer-uuid) on host]\n\nbody"
 
         result = await sessions_routes._wrap_message_with_origin(bridge, "caller-uuid")
 

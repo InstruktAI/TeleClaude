@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core import tmux_bridge, tmux_io, voice_message_handler
-from teleclaude.core.conversation_messages import is_conversation_bridge_message
 from teleclaude.core.db import InboundQueueRow, db
 from teleclaude.core.events import FileEventContext, VoiceEventContext
 from teleclaude.core.file_handler import handle_file as handle_file_upload
@@ -266,21 +265,12 @@ async def deliver_inbound(
 
     # DB update must precede broadcast so echo guard reads the persisted state.
     accepted_at = datetime.now(UTC).isoformat()
-    if is_conversation_bridge_message(message_text):
-        await db.update_session(
-            session_id,
-            last_message_sent=message_text[:200],
-            last_message_sent_at=accepted_at,
-            last_input_origin=row["origin"],
-            last_conversation_injected_at=accepted_at,
-        )
-    else:
-        await db.update_session(
-            session_id,
-            last_message_sent=message_text[:200],
-            last_message_sent_at=accepted_at,
-            last_input_origin=row["origin"],
-        )
+    await db.update_session(
+        session_id,
+        last_message_sent=message_text[:200],
+        last_message_sent_at=accepted_at,
+        last_input_origin=row["origin"],
+    )
     if origin_metadata:
         await db.update_origin_metadata(session_id, row["origin"], dict(origin_metadata))
 

@@ -40,8 +40,8 @@ from teleclaude.core.agents import assert_agent_enabled, get_default_agent
 from teleclaude.core.command_mapper import CommandMapper
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
-    format_direct_conversation_intro_header,
     format_identity_header,
+    format_peer_header,
     is_conversation_bridge_message,
     is_orchestrator_dispatch_message,
 )
@@ -133,9 +133,9 @@ def _format_direct_conversation_intro(
     message_text: str,
 ) -> str:
     """Wrap the first direct-conversation message with the required operating instructions."""
-    header = format_direct_conversation_intro_header(
-        caller_session_id=caller_session_id,
-        caller_computer=caller_computer,
+    header = format_peer_header(
+        sender_session_id=caller_session_id,
+        sender_computer=caller_computer,
     )
     body = "\n".join(
         [
@@ -144,7 +144,7 @@ def _format_direct_conversation_intro(
             "- Just talk in normal output; your turn-complete output is delivered automatically.",
             "- Default emit state is false. Reply only if your output changes the peer's next action.",
             "- Valid replies answer a question, report a blocker or decision point, provide new information, or deliver a result or artifact.",
-            "- Linked-output wrappers do not make a message actionable.",
+            "- The bracketed peer header and per-segment markers are framing, not content; only act on what the segments say.",
             "- Do not acknowledge, echo, narrate, or send status-only output such as `idle` or `done`.",
             "",
             "Protocol:",

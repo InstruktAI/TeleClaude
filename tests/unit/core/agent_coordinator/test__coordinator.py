@@ -348,7 +348,6 @@ class TestHandleUserPromptSubmit:
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
-            patch("teleclaude.core.agent_coordinator._coordinator.TELECLAUDE_SYSTEM_PREFIX", "__TC__"),
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -625,94 +624,36 @@ class TestHandleAgentStop:
 
         coord._finalize_agent_stop.assert_awaited_once()
         finalize_args = coord._finalize_agent_stop.await_args.args
-        assert finalize_args[3] == "final output"
-
-    @pytest.mark.unit
-    async def test_passes_linked_prompt_timestamp_to_finalize(self):
-        coord = _make_coordinator()
-        linked_at = datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC)
-        session = _make_session(
-            last_message_sent="[TeleClaude - Linked output (sess-peer) on peer-host]",
-            last_message_sent_at=linked_at,
-        )
-        context = MagicMock()
-        context.session_id = "sess-001"
-        context.data.source_computer = None
-
-        with (
-            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch(
-                "teleclaude.core.agent_coordinator._coordinator.generate_session_title_from_transcript",
-                new_callable=AsyncMock,
-                return_value=session,
-            ),
-        ):
-            mock_db.get_session = AsyncMock(side_effect=[session, session])
-            mock_db.update_session = AsyncMock()
-            coord._record_agent_stop_output = AsyncMock(return_value=("final output", None))
-            coord._emit_activity_event = MagicMock()
-            coord._emit_status_event = MagicMock()
-            coord._signal_headless_activity = AsyncMock()
-            coord._finalize_agent_stop = AsyncMock()
-            await coord.handle_agent_stop(context)
-
-        assert coord._finalize_agent_stop.await_args.kwargs["linked_prompt_at"] == linked_at
+        assert finalize_args[2] == "final output"
 
 
 class TestFinalizeAgentStop:
     @pytest.mark.unit
-    async def test_fans_out_assistant_delta_after_linked_prompt(self):
+    async def test_schedules_debounced_delivery_unconditionally(self):
         coord = _make_coordinator()
-        linked_at = datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC)
-        coord._extract_agent_output_since = AsyncMock(return_value="assistant reply")
-        coord._fanout_linked_stop_output = AsyncMock()
         coord._notify_session_listener = AsyncMock()
         coord._forward_stop_to_initiator = AsyncMock()
 
         payload = MagicMock()
         payload.raw = {}
 
-        await coord._finalize_agent_stop(
-            "sess-001",
-            _make_session(),
-            payload,
-            "stale link output",
-            None,
-            linked_prompt_at=linked_at,
-        )
+        with (
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.schedule_debounced_delivery",
+            ) as mock_schedule,
+            patch("teleclaude.core.agent_coordinator._coordinator.get_command_service") as mock_cs,
+        ):
+            mock_cs.return_value = MagicMock()
+            await coord._finalize_agent_stop("sess-001", payload, "link output", None)
 
-        coord._extract_agent_output_since.assert_awaited_once_with(
+        mock_schedule.assert_called_once_with(
             "sess-001",
-            payload,
-            since_timestamp=linked_at,
-        )
-        coord._fanout_linked_stop_output.assert_awaited_once_with(
-            "sess-001",
-            "assistant reply",
+            client=coord.client,
+            command_service=mock_cs.return_value,
             source_computer=None,
         )
-
-    @pytest.mark.unit
-    async def test_skips_fanout_when_no_assistant_delta_after_linked_prompt(self):
-        coord = _make_coordinator()
-        coord._extract_agent_output_since = AsyncMock(return_value=None)
-        coord._fanout_linked_stop_output = AsyncMock()
-        coord._notify_session_listener = AsyncMock()
-        coord._forward_stop_to_initiator = AsyncMock()
-
-        payload = MagicMock()
-        payload.raw = {}
-
-        await coord._finalize_agent_stop(
-            "sess-001",
-            _make_session(),
-            payload,
-            "stale link output",
-            None,
-            linked_prompt_at=datetime(2026, 4, 14, 10, 23, 30, tzinfo=UTC),
-        )
-
-        coord._fanout_linked_stop_output.assert_not_awaited()
+        coord._notify_session_listener.assert_awaited_once()
+        coord._forward_stop_to_initiator.assert_awaited_once_with("sess-001", "link output")
 
 
 class TestHandleToolUse:

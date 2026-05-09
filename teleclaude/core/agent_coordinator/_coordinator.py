@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import TELECLAUDE_SYSTEM_PREFIX
 from teleclaude.core import polling_coordinator
 from teleclaude.core.activity_contract import serialize_activity_event
 from teleclaude.core.command_registry import get_command_service
@@ -43,11 +42,8 @@ from ._helpers import _is_checkpoint_prompt
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
-    from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
-
-_LINKED_OUTPUT_PREFIX = f"{TELECLAUDE_SYSTEM_PREFIX} - Linked output "
 
 
 class AgentCoordinator(
@@ -403,13 +399,6 @@ class AgentCoordinator(
 
         # Fetch session early for logic checks
         session = await db.get_session(session_id)
-        linked_prompt_at = (
-            session.last_message_sent_at
-            if session is not None
-            and isinstance(session.last_message_sent_at, datetime)
-            and (session.last_message_sent or "").strip().startswith(_LINKED_OUTPUT_PREFIX)
-            else None
-        )
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
@@ -438,11 +427,9 @@ class AgentCoordinator(
 
         await self._finalize_agent_stop(
             session_id,
-            session,
             payload,
             link_output,
             source_computer,
-            linked_prompt_at=linked_prompt_at,
         )
 
     async def _record_agent_stop_output(
@@ -501,32 +488,17 @@ class AgentCoordinator(
     async def _finalize_agent_stop(
         self,
         session_id: str,
-        session: "Session | None",
         payload: AgentStopPayload,
         link_output: str | None,
         source_computer: str | None,
-        *,
-        linked_prompt_at: datetime | None = None,
     ) -> None:
         """Complete stop fan-out, listener notification, and forwarding."""
-        fanout_output = link_output
-        used_conversation_replay = False
-        if session is not None and isinstance(session.last_conversation_injected_at, datetime):
-            schedule_debounced_delivery(
-                session_id,
-                client=self.client,
-                command_service=get_command_service(),
-                source_computer=source_computer,
-            )
-            used_conversation_replay = True
-        elif linked_prompt_at is not None:
-            fanout_output = await self._extract_agent_output_since(
-                session_id,
-                payload,
-                since_timestamp=linked_prompt_at,
-            )
-        if not used_conversation_replay and fanout_output and fanout_output.strip():
-            await self._fanout_linked_stop_output(session_id, fanout_output, source_computer=source_computer)
+        schedule_debounced_delivery(
+            session_id,
+            client=self.client,
+            command_service=get_command_service(),
+            source_computer=source_computer,
+        )
 
         title_raw = payload.raw.get("title")
         title = title_raw if isinstance(title_raw, str) and title_raw else None
