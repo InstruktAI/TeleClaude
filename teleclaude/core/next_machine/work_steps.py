@@ -479,6 +479,13 @@ async def _handle_finalize_ready_claim(
 
     worktree_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
     branch_head = await asyncio.to_thread(get_ref_commit, cwd, slug)
+    remote_head = await asyncio.to_thread(get_remote_branch_head, cwd, slug)
+    claimed_sha = writer.state.finalize.sha
+
+    # Stale-claim guard: every observed ref AND the stamped SHA must agree.
+    # If the worker stamped against an older HEAD and someone has since pushed,
+    # the refs may match each other but disagree with finalize.sha — never enqueue
+    # the wrong commit for integration.
     if not worktree_head or not branch_head or worktree_head != branch_head:
         return False, format_error(
             "FINALIZE_BRANCH_MISMATCH",
@@ -486,7 +493,6 @@ async def _handle_finalize_ready_claim(
             next_call=f"telec todo work {slug}",
         )
 
-    remote_head = await asyncio.to_thread(get_remote_branch_head, cwd, slug)
     if not remote_head or remote_head != branch_head:
         return False, format_error(
             "FINALIZE_REMOTE_MISMATCH",
@@ -497,24 +503,40 @@ async def _handle_finalize_ready_claim(
             next_call=f"telec todo work {slug}",
         )
 
+    if not claimed_sha or claimed_sha != worktree_head:
+        return False, format_error(
+            "FINALIZE_STALE_CLAIM",
+            (
+                f"finalize_ready: stamped SHA ({claimed_sha!r}) does not match current worktree HEAD "
+                f"({worktree_head!r}) — the branch advanced after the claim was stamped. Re-stamp finalize_ready."
+            ),
+            next_call=f"telec todo work {slug}",
+        )
+
+    # Emit before commit so an emission failure leaves the lifecycle on
+    # REVIEW_APPROVED and the next dispatch retries cleanly. Committing first
+    # then logging-and-continuing on emit failure would silently strand the
+    # work item with no integration trigger.
+    sha = claimed_sha
+    worker_session_id = writer.state.finalize.worker_session_id
+    await emit_event(
+        event="domain.software-development.planning.todo_finalize_ready",
+        source=f"work-machine/{slug}",
+        level=EventLevel.WORKFLOW,
+        domain="software-development",
+        visibility=EventVisibility.LOCAL,
+        entity=slug,
+        description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
+        payload={
+            "slug": slug,
+            "branch": slug,
+            "sha": sha,
+            "worker_session_id": worker_session_id,
+        },
+    )
+
     apply_authoritative_signal(writer.state, "finalize_ready")
     await _commit_writer(writer, todos_db, slug, state)
-
-    sha = writer.state.finalize.sha
-    try:
-        await emit_event(
-            event="domain.software-development.planning.todo_finalize_ready",
-            source=f"work-machine/{slug}",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            visibility=EventVisibility.LOCAL,
-            entity=slug,
-            description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
-            payload={"slug": slug, "branch": slug, "sha": sha},
-        )
-    except Exception:
-        logger.warning("Failed to emit todo_finalize_ready event for %s", slug, exc_info=True)
-
     return True, ""
 
 

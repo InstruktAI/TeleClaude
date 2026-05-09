@@ -79,7 +79,7 @@ async def apply_todo_stamp(
         return await asyncio.to_thread(stamp_verdict, cwd, slug, phase or "", value)
 
     if stamp_type == "finalize_ready":
-        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug)
+        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug, caller_session_id or "")
 
     todos_db = await get_todos_db(cwd)
     raw_state = await todos_db.read_state(slug)

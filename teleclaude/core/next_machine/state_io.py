@@ -440,9 +440,12 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     via direct mutation on :class:`BuildReviewState` (which is not a
     ``ReviewVerdictState`` and has no audit entry).
 
-    For build_review: when the stored ``baseline_commit`` is empty (first
-    stamp), it is initialized from the current worktree HEAD so round 2+
-    re-review dispatch can scope the diff to commits since the last verdict.
+    Per the stamp/machine boundary rule, this stamp records the verdict only.
+    The corresponding lifecycle signal fires from the prepare or work state
+    machine on its next dispatch when it observes the recorded verdict.
+    For build_review specifically, the work machine derives ``baseline_commit``
+    from the current worktree HEAD when consuming a verdict that has no
+    baseline yet, so re-review rounds can scope their diff.
 
     Args:
         cwd: Project root directory (not worktree)
@@ -519,13 +522,15 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     return payload
 
 
-def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
+def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> dict[str, StateValue]:
     """Record the worker's claim that the worktree is finalize-ready.
 
-    Writes a :class:`FinalizeModel` with ``status="ready"`` and the current
-    worktree HEAD as the candidate SHA. Triple-ref validation (worktree HEAD
-    == local branch ref == remote ref) and the lifecycle event emission
-    happen in the work state machine when it observes the claim.
+    Writes a :class:`FinalizeModel` with ``status="ready"``, the current
+    worktree HEAD as the candidate SHA, and the caller's session ID so the
+    later integration trigger event carries the worker's identity. Triple-ref
+    validation (worktree HEAD == local branch ref == remote ref) and the
+    lifecycle event emission happen in the work state machine when it
+    observes the claim.
     """
     project_root = str(resolve_state_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
@@ -541,6 +546,7 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
         sha=head_sha,
         ready_at=now,
         handed_off_at="",
+        worker_session_id=caller_session_id,
     )
     return writer.commit_sync(db, slug)
 
