@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import shlex
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -325,20 +325,28 @@ async def _deliver_for_peer(
         parse_iso_datetime(persisted.delivered_through_ts) if persisted and persisted.delivered_through_ts else None
     )
     if cursor_dt is None:
-        # Contract violation: every active link must have a cursor anchored at
-        # creation by establish_or_reuse_link. A missing cursor means either
-        # the anchor write failed, or this link predates the anchor logic, or
-        # state was hand-edited. Surfacing this loudly is the only correct
-        # behavior — silently returning would drop peer output.
-        logger.error(
-            "Conversation delivery skipped: no delivery cursor for active link "
-            "(contract violation): link=%s source=%s target=%s — "
-            "verify conversation_delivery_state row exists.",
+        # Active link without an anchored cursor: repair by backfilling the
+        # cursor at "now". `create_or_reuse_direct_link` writes the anchor at
+        # link creation, so a missing row means the anchor write failed or the
+        # link predates anchor logic. Backfilling lets the next agent_stop
+        # deliver normally; transcript activity that happened before this
+        # repair is intentionally not replayed (we cannot reconstruct the
+        # original anchor point).
+        cursor_dt = datetime.now(UTC)
+        await db.upsert_conversation_delivery_state(
+            link_id=link_id,
+            source_session_id=source_session_id,
+            target_session_id=target_session_id,
+            delivered_through_ts=cursor_dt.isoformat(),
+            pending_through_ts=None,
+        )
+        logger.warning(
+            "Backfilled missing delivery cursor for active link: link=%s source=%s target=%s anchored_at=%s",
             link_id,
             source_session_id,
             target_session_id,
+            cursor_dt.isoformat(),
         )
-        return 0
     since_timestamp = cursor_dt
     if not source_session.native_log_file:
         return 0

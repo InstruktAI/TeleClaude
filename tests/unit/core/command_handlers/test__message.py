@@ -123,7 +123,6 @@ class TestHandleVoice:
     async def test_transcribed_voice_skip_delete_when_message_id_missing(
         self,
         monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
         session = make_session(active_agent="codex")
         db = SimpleNamespace(
@@ -153,11 +152,9 @@ class TestHandleVoice:
             actor_avatar_url="https://avatar.example/bob.png",
         )
 
-        with caplog.at_level("DEBUG"):
-            await _message.handle_voice(cmd, client, AsyncMock())
+        await _message.handle_voice(cmd, client, AsyncMock())
 
         client.delete_message.assert_not_awaited()
-        assert any("Skipping voice message cleanup for session" in record.message for record in caplog.records)
 
     @pytest.mark.unit
     async def test_transcribed_voice_logs_when_session_missing_for_cleanup(

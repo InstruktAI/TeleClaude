@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -646,14 +645,15 @@ async def test_deliver_pending_conversation_updates_drops_trailing_user_segment_
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_deliver_pending_conversation_updates_logs_and_returns_zero_when_cursor_row_missing(
+async def test_deliver_pending_conversation_updates_backfills_missing_cursor_and_proceeds(
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Every active link is anchored with a per-link cursor at creation. If the
-    cursor row is absent for an active link (anchor write failed, hand-edited
-    state, link predates anchor logic), delivery must surface the contract
-    violation via an ERROR log instead of silently dropping peer output."""
+    """If an active link has no `conversation_delivery_state` row, the delivery
+    path must self-heal by writing a backfilled cursor anchored at "now" and
+    continue. The next agent_stop then delivers normally. Pre-repair transcript
+    activity is intentionally not replayed (the original anchor point is
+    unreachable). This is the caller-visible contract: a missing cursor never
+    causes a permanent stuck state."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
     link = SimpleNamespace(link_id="link-orphan")
@@ -674,27 +674,37 @@ async def test_deliver_pending_conversation_updates_logs_and_returns_zero_when_c
         "teleclaude.core.conversation_delivery.get_peer_members",
         AsyncMock(return_value=[peer]),
     )
-    collect = AsyncMock()
+    # No segments visible after the just-anchored cursor — nothing to deliver
+    # this turn; the next agent_stop will work normally.
+    collect = AsyncMock(return_value=[])
     monkeypatch.setattr(
         "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
         collect,
     )
 
-    with caplog.at_level(logging.ERROR, logger="teleclaude.core.conversation_delivery"):
-        delivered = await deliver_pending_conversation_updates(
-            "source-001",
-            client=client,
-            command_service=command_service,
-        )
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
+    )
 
     assert delivered == 0
-    collect.assert_not_awaited()
     command_service.process_message.assert_not_awaited()
-    db.upsert_conversation_delivery_state.assert_not_awaited()
-    assert any(
-        "no delivery cursor" in record.message and "link-orphan" in record.message and "target-001" in record.message
-        for record in caplog.records
-    ), f"expected contract-violation log naming the link and target; got: {[r.message for r in caplog.records]}"
+    # Backfill upsert: cursor anchored at the repair moment, no pending bound.
+    db.upsert_conversation_delivery_state.assert_awaited_once()
+    backfill_kwargs = db.upsert_conversation_delivery_state.await_args.kwargs
+    assert backfill_kwargs["link_id"] == "link-orphan"
+    assert backfill_kwargs["source_session_id"] == "source-001"
+    assert backfill_kwargs["target_session_id"] == "target-001"
+    assert backfill_kwargs["pending_through_ts"] is None
+    backfilled_dt = datetime.fromisoformat(backfill_kwargs["delivered_through_ts"])
+    # Anchored at "now" (within a generous window for test execution drift).
+    age_s = (datetime.now(UTC) - backfilled_dt).total_seconds()
+    assert 0 <= age_s < 5, f"backfilled cursor not anchored at ~now: age={age_s}s"
+    # The collect call uses the freshly anchored cursor as the floor.
+    collect.assert_awaited_once()
+    collect_args = collect.await_args.args
+    assert collect_args[2] == backfilled_dt
 
 
 @pytest.mark.unit
