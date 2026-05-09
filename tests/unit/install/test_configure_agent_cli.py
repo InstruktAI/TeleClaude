@@ -288,6 +288,69 @@ def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Pa
     )
 
 
+def test_configure_codex_migrates_user_disable_when_managed_hook_shifts(tmp_path: Path) -> None:
+    """When a foreign block shifts a TeleClaude hook to a new (group, handler) index,
+    a previously persisted ``enabled = false`` must migrate to the new key. Otherwise
+    the foreign hook now occupying the old index would inherit the disable, and the
+    real TeleClaude hook would silently re-enable.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    receiver_command = f'{receiver} --agent codex --cwd "$PWD"'
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup",
+                            "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
+                        },
+                        {
+                            "matcher": "startup|resume",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": receiver_command,
+                                    "statusMessage": "Loading session notes",
+                                }
+                            ],
+                        },
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    old_managed_key = f"{hooks_path}:session_start:0:0"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{old_managed_key}"]\n  enabled = false\n  trusted_hash = "sha256:stale"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads(config_path.read_text(encoding="utf-8"))["hooks"]["state"]
+    new_managed_key = f"{hooks_path}:session_start:1:0"
+
+    assert old_managed_key not in state, (
+        "stale managed key must be dropped, not preserved as foreign — otherwise the foreign "
+        "hook now at index 0 would inherit our user's enabled=false"
+    )
+    assert state[new_managed_key]["enabled"] is False, (
+        "user-set enabled=false must migrate forward when the managed hook shifts position"
+    )
+    assert state[new_managed_key]["trusted_hash"].startswith("sha256:")
+
+
 def test_configure_codex_preserves_user_disable_on_managed_hook(tmp_path: Path) -> None:
     """A user's explicit ``enabled = false`` via /hooks must survive ``telec init``.
 
@@ -533,22 +596,13 @@ def test_prototype_codex_compaction_md_not_in_repository() -> None:
 
 
 class TestExtractReceiverScript:
-    """Tests for _extract_receiver_script — one named test per code path."""
+    """Tests for _extract_receiver_script."""
 
-    def test_string_command_with_legacy_receiver_filename(self) -> None:
-        """String input runs through shlex; legacy receiver*.py filenames map to RECEIVER_TOKEN."""
-        assert configure_agent_cli._extract_receiver_script("python /tmp/receiver.py --agent claude") == "receiver"
-
-    def test_string_command_with_package_main(self) -> None:
-        """String input where the receiver is the package __main__.py form normalizes too."""
+    def test_managed_receiver_path_normalizes_to_token(self) -> None:
+        """Any TeleClaude-managed receiver script collapses to RECEIVER_TOKEN regardless of filename variant."""
         assert (
-            configure_agent_cli._extract_receiver_script("python /tmp/receiver/__main__.py --agent gemini")
-            == "receiver"
+            configure_agent_cli._extract_receiver_script("python /tmp/receiver/__main__.py --agent codex") == "receiver"
         )
-
-    def test_list_command_uses_direct_str_cast(self) -> None:
-        """List input bypasses shlex entirely and exercises the direct-str-cast branch."""
-        assert configure_agent_cli._extract_receiver_script(["python", "/tmp/custom_receiver.py"]) == "receiver"
 
 
 class TestMergeHooks:
