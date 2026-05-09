@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import tomllib
+from copy import deepcopy
 from pathlib import Path
 from unittest.mock import patch
 
@@ -286,6 +287,89 @@ def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Pa
     assert state.get(foreign_key, {}).get("trusted_hash") == foreign_hash, (
         "foreign entry under the same hooks.json path must be preserved"
     )
+
+
+def test_configure_codex_strips_every_duplicate_managed_position(tmp_path: Path) -> None:
+    """Multiple old TeleClaude handlers for the same event must all be stripped.
+
+    A user (or a previous installer) could end up with several TeleClaude
+    handlers at distinct positions inside hooks.json. Every persisted
+    ``hooks.state`` key for those old positions has to be removed; otherwise
+    a non-current one survives and a foreign handler that later moves into
+    that index inherits the stale TeleClaude trust.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    receiver_command = f'{receiver} --agent codex --cwd "$PWD"'
+    tc_block = {
+        "matcher": "startup|resume",
+        "hooks": [
+            {
+                "type": "command",
+                "command": receiver_command,
+                "statusMessage": "Loading session notes",
+            }
+        ],
+    }
+    foreign_block = {
+        "matcher": "resume",
+        "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
+    }
+    # Three TeleClaude blocks followed by a foreign block. After the merge
+    # every TC is stripped (each block becomes empty and is dropped), the
+    # foreign block stays, and TC is re-appended at the tail. The merge
+    # leaves new TC at (1, 0) and old TC at [(0, 0), (1, 0), (2, 0)] — the
+    # earliest position is the bug-revealing one.
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        deepcopy(tc_block),
+                        deepcopy(tc_block),
+                        deepcopy(tc_block),
+                        deepcopy(foreign_block),
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    stale_keys = [
+        f"{hooks_path}:session_start:0:0",
+        f"{hooks_path}:session_start:1:0",
+        f"{hooks_path}:session_start:2:0",
+    ]
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        "\n".join(
+            f'[hooks.state."{key}"]\n  trusted_hash = "sha256:stale-{idx}"\n' for idx, key in enumerate(stale_keys)
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads(config_path.read_text(encoding="utf-8"))["hooks"]["state"]
+    new_managed_key = f"{hooks_path}:session_start:1:0"
+
+    for idx, stale_key in enumerate(stale_keys):
+        if stale_key == new_managed_key:
+            assert state[stale_key]["trusted_hash"] != f"sha256:stale-{idx}", (
+                "new managed key must carry the freshly computed trusted_hash"
+            )
+            continue
+        assert stale_key not in state, (
+            f"every old TeleClaude position must be stripped; {stale_key} leaked through "
+            "(stale TeleClaude trust would attach to whatever handler now sits there)"
+        )
 
 
 def test_configure_codex_remaps_foreign_trust_when_compaction_shifts_indices(tmp_path: Path) -> None:

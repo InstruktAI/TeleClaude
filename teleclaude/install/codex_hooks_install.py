@@ -134,8 +134,16 @@ def merge_codex_hook_trust_state(
     existing_state = hooks_section.get("state") if isinstance(hooks_section.get("state"), dict) else None
 
     new_keys_by_label = _build_keys(hooks_path, new_positions.items())
-    old_keys_by_label = {
-        label: list(_build_keys(hooks_path, ((label, pos) for pos in occurrences)).values())
+    old_keys_by_label: dict[str, list[str]] = {
+        label: [
+            codex_hook_state_key(
+                source_path=hooks_path,
+                event_label=label,
+                group_index=group_index,
+                handler_index=handler_index,
+            )
+            for group_index, handler_index in occurrences
+        ]
         for label, occurrences in old_positions_by_label.items()
     }
     stale_keys: set[str] = set(new_keys_by_label.values())
