@@ -130,11 +130,10 @@ class TestSendKeys:
     @pytest.mark.asyncio
     async def test_send_keys_existing_tmux_uses_buffer_pipeline_and_strips_paste_markers(self) -> None:
         # The buffer pipeline must:
-        # 1. strip caller-supplied bracketed-paste markers (paste-buffer -p asks tmux
-        #    to wrap the paste, but tmux only emits the markers when the pane
-        #    application has enabled bracketed-paste mode)
+        # 1. strip caller-supplied bracketed-paste markers (raw stream delivery,
+        #    same as the original send-keys -l behavior)
         # 2. send the cleaned payload via load-buffer stdin
-        # 3. paste with -p
+        # 3. paste-buffer (no -p)
         # 4. delete the buffer
         # 5. submit with C-m
         processes = [
@@ -174,7 +173,7 @@ class TestSendKeys:
         assert load_input == rb"run\!"
 
         paste_args = mock_exec.await_args_list[1].args
-        assert paste_args == (binary, "paste-buffer", "-p", "-t", "tmux-alpha", "-b", buf_name)
+        assert paste_args == (binary, "paste-buffer", "-t", "tmux-alpha", "-b", buf_name)
 
         delete_args = mock_exec.await_args_list[2].args
         assert delete_args == (binary, "delete-buffer", "-b", buf_name)
@@ -219,11 +218,11 @@ class TestSendKeysSubmission:
         assert load_args[4] == "-"
         # The payload bytes are written to stdin via communicate_with_timeout.
         assert communicate_mock.await_args_list[0].args[1] == b"hello"
-        # 2. paste-buffer uses the same buffer name.
+        # 2. paste-buffer (no -p — raw stream so the trailing C-m lands as submit
+        #    instead of getting absorbed by codex's bracketed-paste handling).
         assert mock_exec.await_args_list[1].args == (
             binary,
             "paste-buffer",
-            "-p",
             "-t",
             "tmux-alpha",
             "-b",

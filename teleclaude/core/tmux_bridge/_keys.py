@@ -176,17 +176,20 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
-    # Strip any caller-supplied bracketed-paste markers. paste-buffer -p asks tmux
-    # to wrap the paste with markers, but tmux only emits them when the pane's
-    # application has enabled bracketed-paste mode (DECSET 2004). The agent CLIs
-    # we target (Claude, Codex, Gemini) all enable it; non-bracketed clients still
-    # receive the literal text, just without markers.
+    # Strip any caller-supplied bracketed-paste markers. We deliberately do NOT
+    # re-emit them: paste-buffer with -p wraps the content in DECSET 2004 markers,
+    # but agent CLIs (Codex in particular) buffer the bracketed paste and don't
+    # finish processing the close marker before the trailing C-m arrives — the
+    # submit gets absorbed and the paste sits unsubmitted in the input area.
+    # Plain paste-buffer (no -p) writes the buffer to the pane as a raw character
+    # stream — exactly what `send-keys -l` did before — so the subsequent C-m
+    # always lands as a clean submit.
     send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
     # peer-bundle path routinely produces. load-buffer reads from stdin, so it has
-    # no argv limit.
+    # no argv limit; paste-buffer streams the content directly into the pane.
     buf_name = f"telec-{uuid4().hex}"
     load_cmd = [config.computer.tmux_binary, "load-buffer", "-b", buf_name, "-"]
     load_proc = await asyncio.create_subprocess_exec(
@@ -211,7 +214,6 @@ async def _send_keys_tmux(
         paste_cmd = [
             config.computer.tmux_binary,
             "paste-buffer",
-            "-p",
             "-t",
             session_name,
             "-b",
