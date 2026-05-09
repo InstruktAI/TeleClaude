@@ -20,6 +20,7 @@ from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
+from teleclaude.install.codex_hook_trust import build_codex_managed_hook_state
 from teleclaude.paths import BIN_DIR, ENV_PATH
 from teleclaude.project_root import resolve_state_root
 
@@ -74,40 +75,36 @@ def _toml_scalar(value: object) -> str:
 
 
 def _serialize_toml(config: dict[str, object]) -> str:
-    """Serialize a config dict to TOML text.
-
-    Handles top-level scalars, single-depth sections, and dotted subsections.
-    """
+    """Serialize a config dict to TOML text, recursing into nested tables."""
     lines: list[str] = []
-    sections: list[tuple[str, dict[str, object]]] = []
+    _emit_toml_table(lines, config, prefix=())
+    return "\n".join(lines) + "\n"
 
-    for key, value in config.items():
-        if isinstance(value, dict):
-            sections.append((key, value))
-        else:
-            lines.append(f"{_toml_key(key)} = {_toml_scalar(value)}")
 
-    for section_name, section_dict in sections:
+def _emit_toml_table(
+    lines: list[str],
+    table: dict[str, object],
+    *,
+    prefix: tuple[str, ...],
+) -> None:
+    """Emit one TOML table at ``prefix`` and recurse into its sub-tables."""
+    scalars = [(key, value) for key, value in table.items() if not isinstance(value, dict)]
+    subtables = [(key, value) for key, value in table.items() if isinstance(value, dict)]
+
+    if prefix and scalars:
         if lines and lines[-1] != "":
             lines.append("")
+        header = ".".join(_toml_key(part) for part in prefix)
+        lines.append(f"[{header}]")
+        indent = "  "
+    else:
+        indent = ""
 
-        scalars = [(k, v) for k, v in section_dict.items() if not isinstance(v, dict)]
-        subsections = [(k, v) for k, v in section_dict.items() if isinstance(v, dict)]
+    for key, value in scalars:
+        lines.append(f"{indent}{_toml_key(key)} = {_toml_scalar(value)}")
 
-        if scalars:
-            lines.append(f"[{_toml_key(section_name)}]")
-            for key, value in scalars:
-                lines.append(f"  {_toml_key(key)} = {_toml_scalar(value)}")
-
-        for sub_name, sub_dict in subsections:
-            if lines and lines[-1] != "":
-                lines.append("")
-            lines.append(f"[{_toml_key(section_name)}.{_toml_key(sub_name)}]")
-            for key, value in sub_dict.items():
-                if not isinstance(value, dict):
-                    lines.append(f"  {_toml_key(key)} = {_toml_scalar(value)}")
-
-    return "\n".join(lines) + "\n"
+    for key, sub_dict in subtables:
+        _emit_toml_table(lines, sub_dict, prefix=(*prefix, key))
 
 
 PY_EXTENSION = ".py"
@@ -589,12 +586,62 @@ def configure_codex(
             mcp[name] = spec
         config["mcp_servers"] = mcp
 
-    config_path.write_text(_serialize_toml(config))
-
     receiver_invocation = _build_hook_invocation(receiver_script)
     managed_hook_blocks = _codex_hook_blocks(receiver_invocation, receiver_script)
     _write_codex_hooks_json(hooks_path, managed_hook_blocks)
+
+    receiver_command = _build_hook_command_without_event(receiver_invocation, CODEX_AGENT)
+    _merge_codex_hook_trust_state(config, hooks_path=hooks_path, receiver_command=receiver_command)
+
+    config_path.write_text(_serialize_toml(config))
     print(f"Codex hooks and settings configured in {config_path}")
+
+
+def _merge_codex_hook_trust_state(
+    config: dict[str, object],
+    *,
+    hooks_path: Path,
+    receiver_command: str,
+) -> None:
+    """Pre-trust the TeleClaude-managed Codex hooks under ``[hooks.state]``.
+
+    Codex 0.129+ (PR openai/codex#20321) silently drops execution of any
+    User-layer hook whose persisted ``trusted_hash`` does not match its
+    computed ``currentHash``. Without this, every fresh codex session ignores
+    SessionStart/Stop/UserPromptSubmit until the user manually trusts each one
+    via the ``/hooks`` TUI.
+
+    Foreign hook trust entries are preserved verbatim. For our managed hooks,
+    ``trusted_hash`` is always rewritten (it must match the current command),
+    but any user-set ``enabled`` flag is preserved so a deliberate disable in
+    the codex TUI is not silently re-enabled by ``telec init``.
+    """
+    managed = build_codex_managed_hook_state(hooks_path=hooks_path, receiver_command=receiver_command)
+
+    hooks_section = config.get("hooks")
+    if not isinstance(hooks_section, dict):
+        hooks_section = {}
+    existing_state = hooks_section.get("state") if isinstance(hooks_section.get("state"), dict) else None
+
+    merged: dict[str, dict[str, object]] = {}
+    managed_prefix = f"{hooks_path}:"
+    if isinstance(existing_state, dict):
+        for key, value in existing_state.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            if key.startswith(managed_prefix):
+                continue
+            merged[key] = dict(value)
+
+    for key, managed_entry in managed.items():
+        entry: dict[str, object] = dict(managed_entry)
+        prior = existing_state.get(key) if isinstance(existing_state, dict) else None
+        if isinstance(prior, dict) and "enabled" in prior:
+            entry["enabled"] = prior["enabled"]
+        merged[key] = entry
+
+    hooks_section["state"] = dict(sorted(merged.items()))
+    config["hooks"] = hooks_section
 
 
 def _merge_codex_hook_blocks(existing_blocks: object, managed_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:

@@ -20,6 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.install import configure_agent_cli
+from teleclaude.install.codex_hook_trust import build_codex_managed_hook_state
 from teleclaude.install.configure_agent_cli import configure_claude, configure_codex, configure_gemini
 
 pytestmark = pytest.mark.unit
@@ -116,12 +117,15 @@ def test_configure_codex_enables_native_hooks_feature_flag(tmp_path: Path) -> No
         configure_codex(tmp_path)
 
     config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
-    assert config["features"]["codex_hooks"] is True
+    assert config["features"]["hooks"] is True
+    assert "codex_hooks" not in config["features"], (
+        "codex_hooks is a legacy alias in codex 0.129+; the canonical key is 'hooks'"
+    )
     assert "notify" not in config
 
 
 def test_configure_codex_writes_feature_flag_inside_features_table(tmp_path: Path) -> None:
-    """configure_codex must place codex_hooks under [features], not under a project block."""
+    """configure_codex must place the hooks feature flag under [features], not under a project block."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -146,9 +150,9 @@ trust_level = "trusted"
         configure_codex(tmp_path)
 
     config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
-    assert config["features"]["codex_hooks"] is True
-    assert "codex_hooks" not in config["projects"]["/repo-a"]
-    assert "codex_hooks" not in config["projects"]["/repo-b"]
+    assert config["features"]["hooks"] is True
+    assert "hooks" not in config["projects"]["/repo-a"]
+    assert "hooks" not in config["projects"]["/repo-b"]
 
 
 def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -> None:
@@ -175,6 +179,95 @@ def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -
     assert "SessionStart" not in start_command
     assert "UserPromptSubmit" not in submit_command
     assert " Stop" not in stop_command
+
+
+def test_configure_codex_persists_managed_hook_trust_state(tmp_path: Path) -> None:
+    """configure_codex must pre-trust the three TeleClaude codex hooks in config.toml.
+
+    Codex 0.129+ silently drops execution of any hook whose ``trusted_hash`` in
+    ``[hooks.state."<key>"]`` does not match its computed ``currentHash``.
+    Without this entry, every fresh codex session ignores SessionStart, Stop,
+    and UserPromptSubmit until the user runs ``/hooks`` and trusts each one.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    config = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))
+    state = config.get("hooks", {}).get("state", {})
+    assert state, "config.toml must persist hooks.state for managed codex hooks"
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    hooks_json = json.loads(hooks_path.read_text(encoding="utf-8"))
+    receiver_command = hooks_json["hooks"]["SessionStart"][0]["hooks"][0]["command"]
+    expected = build_codex_managed_hook_state(hooks_path=hooks_path, receiver_command=receiver_command)
+
+    for key, entry in expected.items():
+        assert key in state, f"missing trust entry for {key}"
+        assert state[key].get("trusted_hash") == entry["trusted_hash"], (
+            f"trusted_hash for {key} must match codex's computed currentHash"
+        )
+
+
+def test_configure_codex_preserves_user_disable_on_managed_hook(tmp_path: Path) -> None:
+    """A user's explicit ``enabled = false`` via /hooks must survive ``telec init``.
+
+    The installer always rewrites ``trusted_hash`` (it must match the current
+    command), but the ``enabled`` flag is the user's deliberate override and
+    must not be silently flipped back on by re-running the installer.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    stop_key = f"{hooks_path}:stop:0:0"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{stop_key}"]\n  enabled = false\n  trusted_hash = "sha256:stale"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    stop_entry = config["hooks"]["state"][stop_key]
+    assert stop_entry["enabled"] is False, "user's explicit enabled=false must be preserved"
+    assert stop_entry["trusted_hash"] != "sha256:stale", "trusted_hash must be rewritten to match the current command"
+    assert stop_entry["trusted_hash"].startswith("sha256:")
+
+
+def test_configure_codex_preserves_foreign_hook_trust_entries(tmp_path: Path) -> None:
+    """Re-running configure_codex must not delete unrelated [hooks.state] entries."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    foreign_key = "/some/foreign/hooks.json:session_start:0:0"
+    foreign_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{foreign_key}"]\n  trusted_hash = "{foreign_hash}"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    state = config["hooks"]["state"]
+    assert foreign_key in state, "foreign hook trust entry must be preserved"
+    assert state[foreign_key]["trusted_hash"] == foreign_hash
 
 
 def test_configure_codex_compaction_prompt_deployment_is_idempotent(tmp_path: Path) -> None:
@@ -368,6 +461,7 @@ def test_prototype_codex_compaction_md_not_in_repository() -> None:
 class TestExtractReceiverScript:
     """Tests for _extract_receiver_script."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         ("command", "expected"),
         [

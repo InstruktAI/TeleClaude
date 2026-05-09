@@ -14,8 +14,11 @@ enabled by `~/.codex/config.toml`:
 
 ```toml
 [features]
-codex_hooks = true
+hooks = true
 ```
+
+The `hooks` feature is `Stage::Stable` with `default_enabled = true` in codex
+0.129+, so the explicit flag is belt-and-suspenders.
 
 TeleClaude currently manages this native Codex subset:
 
@@ -83,6 +86,47 @@ Payload normalization used by the adapter:
 - TeleClaude uses native `Stop` continuation JSON for checkpointing.
 - TeleClaude does not currently emit Codex `UserPromptSubmit` additional-context output.
 
+## Trust gate (Codex 0.129+)
+
+Codex 0.129 added a per-hook trust requirement (PR
+[`openai/codex#20321`](https://github.com/openai/codex/pull/20321)). Hooks
+discovered from `~/.codex/hooks.json` are `User`-layer (unmanaged) and stay
+out of the runnable handler set until `~/.codex/config.toml` carries a matching
+`trusted_hash` for each handler. Without that entry codex silently drops the
+handler — no log, no warning beyond a one-line startup banner.
+
+Persisted shape:
+
+```toml
+[hooks.state."<key>"]
+trusted_hash = "sha256:<hex>"
+enabled = true   # optional; user toggle from /hooks
+```
+
+Where `<key>` is `{abs_hooks_json_path}:{event_label}:{group_index}:{handler_index}`
+and `event_label` is the snake-cased name (`session_start`, `user_prompt_submit`,
+`stop`, …).
+
+`trusted_hash` is a SHA-256 of the canonical JSON representation of the
+normalized hook identity. Codex's algorithm
+(`codex-rs/hooks/src/engine/discovery.rs::command_hook_hash` +
+`codex-rs/config/src/fingerprint.rs::version_for_toml`):
+
+1. Build `{ event_name, matcher, hooks: [normalized_handler] }`.
+2. Force `matcher` to `None` for `UserPromptSubmit` and `Stop`. Keep the
+   configured matcher for `SessionStart` and the tool/compact events.
+3. Normalize `timeout` to `Some(timeout_sec.unwrap_or(600).max(1))`.
+4. Convert struct → TOML value → JSON value. None-typed fields drop out.
+5. Recursively sort object keys (canonical JSON), serialize compactly, hash,
+   prefix with `sha256:`.
+
+`telec init` writes these entries deterministically via
+`teleclaude.install.codex_hook_trust`, so a fresh codex session picks up the
+hooks without forcing the operator through the `/hooks` TUI. The installer
+overwrites `trusted_hash` on every run (it must track the current command) but
+preserves any user-set `enabled = false`.
+
 ## Source
 
 - https://developers.openai.com/codex/hooks
+- https://github.com/openai/codex/pull/20321
