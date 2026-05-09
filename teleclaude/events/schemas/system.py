@@ -38,6 +38,18 @@ def register_system(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="system.event.dead_lettered",
+            description="An event exhausted its retry ceiling and transitioned to the dead-letter destination",
+            default_level=EventLevel.OPERATIONAL,
+            domain="system",
+            default_visibility=EventVisibility.CLUSTER,
+            idempotency_fields=["original_entry_id"],
+            lifecycle=NotificationLifecycle(creates=True),
+            actionable=True,
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="system.burst.detected",
             description=(
                 "A burst of events of the same type was detected within a short window. "

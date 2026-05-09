@@ -53,11 +53,11 @@ class DomainPipeline:
                 return_exceptions=True,
             )
 
-            # Take last non-None result; exceptions already logged by _run_handler
+            # Take last non-None result after sibling handlers have all had a chance to run.
             last_result: EventEnvelope | None = None
             for r in results:
                 if isinstance(r, BaseException):
-                    continue
+                    raise r
                 if r is not None:
                     last_result = r
 
@@ -86,17 +86,7 @@ class DomainPipeline:
             )
             return None
 
-        try:
-            result = await handler.process(event, ctx)
-        except Exception as e:
-            logger.error(
-                "Handler '%s' in domain '%s' raised an exception: %s",
-                handler_id,
-                ctx.domain_name,
-                e,
-                exc_info=True,
-            )
-            return None
+        result = await handler.process(event, ctx)
 
         if autonomy == AutonomyLevel.NOTIFY and result is not None:
             logger.info(
@@ -137,10 +127,8 @@ class DomainPipelineRunner:
 
         for name, result in zip(self._pipelines.keys(), domain_results):
             if isinstance(result, BaseException):
-                logger.error("Domain pipeline '%s' failed: %s", name, result, exc_info=result)
-                results[name] = None
-            else:
-                results[name] = result
+                raise result
+            results[name] = result
 
         return results
 

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.db import get_db
+from teleclaude.core.db import get_db, get_session_field_sync
 from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
@@ -40,6 +40,7 @@ from teleclaude.core.next_machine.state_mutation import (
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.events.envelope import EventLevel, EventVisibility
 from teleclaude.events.producer import emit_event
+from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import PreparePairSlot
@@ -241,13 +242,21 @@ async def _apply_build_complete_stamp(
     await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id)
 
     current = LifecyclePhase(writer.state.lifecycle_phase)
+    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
+    if current == LifecyclePhase.BUILD_COMPLETE:
+        if not has_build_commits_beyond_main(worktree_cwd):
+            raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
+        gates_passed, gate_output = run_build_gates(worktree_cwd, slug)
+        if not gates_passed:
+            raise StateMutationError(f"build_complete: build gates failed for {slug}\n\n{gate_output}")
+        return
+
     if current not in (LifecyclePhase.BUILD_STARTED, LifecyclePhase.REVIEW_CHANGES_REQUESTED):
         raise StateMutationError(
             f"cannot stamp build_complete from lifecycle_phase {current.value!r}; "
             "expected build_started or review_changes_requested"
         )
 
-    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 
@@ -265,11 +274,10 @@ async def _validate_build_complete_owner(
 ) -> None:
     if not caller_session_id:
         raise PermissionError(f"build_complete stamp for {slug} requires a TeleClaude worker session")
-    sessions = await get_db()
-    session = await sessions.get_session(caller_session_id)
-    if session is None:
+    working_slug = get_session_field_sync(str(MAIN_DB_PATH), caller_session_id, "working_slug")
+    if working_slug is None:
         raise PermissionError(f"build_complete stamp for {slug} requires a known TeleClaude session")
-    if getattr(session, "working_slug", None) != slug:
+    if working_slug != slug:
         raise PermissionError(
             f"build_complete stamp for {slug} requires caller session {caller_session_id} to own working_slug={slug}"
         )

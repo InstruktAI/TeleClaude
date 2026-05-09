@@ -137,6 +137,16 @@ class RedisConfig:
 
 
 @dataclass
+class EventReliabilityConfig:
+    """Event processor reliability controls."""
+
+    idle_threshold_ms: int
+    max_attempts: int
+    sweep_interval_ms: int
+    dlq_destination: str
+
+
+@dataclass
 class TelegramQoSConfig:
     """QoS configuration for Telegram output pacing and coalescing."""
 
@@ -323,6 +333,7 @@ class Config:
     computer: ComputerConfig
     polling: PollingConfig
     redis: RedisConfig
+    event_reliability: EventReliabilityConfig
     telegram: TelegramConfig
     discord: DiscordConfig
     creds: CredsConfig
@@ -390,6 +401,12 @@ DEFAULT_CONFIG: dict[str, object] = {  # guard: loose-dict - YAML configuration 
         "message_stream_maxlen": REDIS_MESSAGE_STREAM_MAXLEN,
         "output_stream_maxlen": REDIS_OUTPUT_STREAM_MAXLEN,
         "output_stream_ttl": REDIS_OUTPUT_STREAM_TTL,
+    },
+    "event_reliability": {
+        "idle_threshold_ms": 30_000,
+        "max_attempts": 3,
+        "sweep_interval_ms": 5_000,
+        "dlq_destination": "teleclaude:events:dlq",
     },
     "telegram": {
         "trusted_bots": [],
@@ -694,6 +711,9 @@ def _build_config(
     redis_raw = raw["redis"]
     if not isinstance(redis_raw, dict):
         raise ValueError("Invalid config key `config.yml:redis`: expected a mapping.")
+    event_reliability_raw = raw.get("event_reliability", {})
+    if not isinstance(event_reliability_raw, dict):
+        raise ValueError("Invalid config key `config.yml:event_reliability`: expected a mapping.")
     tg_raw = raw["telegram"]
     discord_raw = raw.get("discord", {})
     whatsapp_raw = raw.get("whatsapp", {})
@@ -856,6 +876,12 @@ def _build_config(
             message_stream_maxlen=int(redis_raw.get("message_stream_maxlen", REDIS_MESSAGE_STREAM_MAXLEN)),
             output_stream_maxlen=int(redis_raw.get("output_stream_maxlen", REDIS_OUTPUT_STREAM_MAXLEN)),
             output_stream_ttl=int(redis_raw.get("output_stream_ttl", REDIS_OUTPUT_STREAM_TTL)),
+        ),
+        event_reliability=EventReliabilityConfig(
+            idle_threshold_ms=int(event_reliability_raw["idle_threshold_ms"]),
+            max_attempts=int(event_reliability_raw["max_attempts"]),
+            sweep_interval_ms=int(event_reliability_raw["sweep_interval_ms"]),
+            dlq_destination=str(event_reliability_raw["dlq_destination"]),
         ),
         telegram=TelegramConfig(
             trusted_bots=merged_bots,

@@ -57,6 +57,14 @@ async def get_todos_db(project_root_or_cwd: str | Path) -> TodosDb:
     return _instances[db_path]
 
 
+async def close_todos_db_instances() -> None:
+    """Close and clear memoized todo DB instances for one-shot CLI commands."""
+    instances = list(_instances.values())
+    _instances.clear()
+    for instance in instances:
+        await instance.close()
+
+
 def get_todos_db_sync(project_root_or_cwd: str | Path) -> TodosDb:
     """Sync sibling of get_todos_db: resolve project root, return cached TodosDb."""
     project_root = str(resolve_state_root(project_root_or_cwd))
@@ -74,6 +82,7 @@ __all__ = [
     "ArtifactVersionRow",
     "RoadmapRow",
     "TodosDb",
+    "close_todos_db_instances",
     "get_todos_db",
     "get_todos_db_sync",
     "set_todos_mutation_hook",

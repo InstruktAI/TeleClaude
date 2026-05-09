@@ -9,6 +9,7 @@ from teleclaude.events.schemas.system import register_system
 _EXPECTED_TYPES = {
     "system.daemon.restarted",
     "system.worker.crashed",
+    "system.event.dead_lettered",
     "system.burst.detected",
     "system.failure_cascade.detected",
     "system.entity.degraded",
@@ -23,7 +24,7 @@ def _catalog() -> EventCatalog:
     return catalog
 
 
-def test_register_system_registers_seven_types() -> None:
+def test_register_system_registers_expected_types() -> None:
     types = {s.event_type for s in _catalog().list_all()}
     assert types == _EXPECTED_TYPES
 
@@ -45,6 +46,15 @@ def test_worker_crashed_is_actionable() -> None:
     assert schema is not None
     assert schema.actionable is True
     assert schema.default_level == EventLevel.OPERATIONAL
+
+
+def test_event_dead_lettered_is_actionable_and_idempotent_by_original_entry() -> None:
+    schema = _catalog().get("system.event.dead_lettered")
+    assert schema is not None
+    assert schema.actionable is True
+    assert schema.default_level == EventLevel.OPERATIONAL
+    assert schema.default_visibility == EventVisibility.CLUSTER
+    assert schema.idempotency_fields == ["original_entry_id"]
 
 
 def test_failure_cascade_detected_is_actionable_and_business_level() -> None:

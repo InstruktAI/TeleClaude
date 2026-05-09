@@ -91,14 +91,14 @@ class TestDomainPipeline:
         mock_process.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_run_handles_cartridge_exception(self) -> None:
+    async def test_run_propagates_cartridge_exception(self) -> None:
         event = _make_envelope()
         mock_process = AsyncMock(side_effect=RuntimeError("boom"))
         cartridge = DomainHandlerSpec(handler_id="c1", process=mock_process)
         domain_cfg = DomainConfig(name="eng")
         pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
-        result = await pipeline.run(event, _make_base_context())
-        assert result is None
+        with pytest.raises(RuntimeError, match="boom"):
+            await pipeline.run(event, _make_base_context())
 
 
 class TestDomainPipelineRunner:
@@ -142,3 +142,67 @@ class TestDomainPipelineRunner:
         runner.register_domain_pipeline("eng", mock_pipeline)
         result = await runner.run_for_domain("eng", event, _make_base_context())
         assert result is output
+
+
+# ---------------------------------------------------------------------------
+# Specs (xfail) for guaranteed-event-consumption
+# These pin the post-implementation contract; remove pytestmark when satisfied.
+# ---------------------------------------------------------------------------
+
+
+class TestDomainPipelineHandlerExceptionPropagationSpecs:
+    """Domain handler exceptions must surface as delivery failures, not be swallowed.
+
+    Verbatim requirement criterion (from `requirements.md`):
+
+    > **No silent success at named sites.** Spawn failures in
+    > `IntegrationTriggerCartridge._spawn_integrator`, lane-dispatch failures
+    > in `LifecycleRouterCartridge._dispatch_router_lane`, and handler
+    > exceptions in `DomainPipeline._run_handler` propagate as delivery
+    > failures rather than being swallowed and treated as success. Deliberate
+    > skips (e.g. `AutonomyLevel.MANUAL`) remain non-failures.
+    """
+
+    @pytest.mark.asyncio
+    async def test_handler_exception_propagates_through_pipeline_run(self) -> None:
+        """When a domain handler raises, ``DomainPipeline.run`` must raise rather than return None.
+
+        The complementary contract — manual-autonomy still skips without
+        raising — is pinned by the existing characterization
+        ``test_run_skips_cartridge_with_manual_autonomy``.
+        """
+        event = _make_envelope()
+        mock_process = AsyncMock(side_effect=RuntimeError("handler failure"))
+        cartridge = DomainHandlerSpec(handler_id="c1", process=mock_process)
+        domain_cfg = DomainConfig(name="eng")
+        pipeline = DomainPipeline(domain=domain_cfg, levels=[[cartridge]])
+
+        with pytest.raises(RuntimeError, match="handler failure"):
+            await pipeline.run(event, _make_base_context())
+
+
+class TestDomainPipelineRunnerExceptionPropagationSpecs:
+    """``run_all`` must surface domain-pipeline exceptions for the ack boundary, not swallow them.
+
+    Verbatim requirement criterion (from `requirements.md`):
+
+    > **Durable delivery boundary.** An event is acknowledged (and removed
+    > from the pending entry list) only after every required processing step
+    > for that delivery has either succeeded or deliberately skipped. For v1,
+    > "required processing" comprises the synchronous system pipeline and the
+    > domain pipeline fan-out. A required cartridge that raises must propagate
+    > its exception so the delivery is not acknowledged. A skip (returning
+    > `None` to indicate the event is not for this cartridge, or a deliberate
+    > manual/skipped autonomy decision) is not a failure.
+    """
+
+    @pytest.mark.asyncio
+    async def test_run_all_propagates_when_a_domain_pipeline_raises(self) -> None:
+        """A domain pipeline raising must cause ``run_all`` to raise, not return a None result."""
+        runner = DomainPipelineRunner()
+        failing_pipeline = MagicMock()
+        failing_pipeline.run = AsyncMock(side_effect=RuntimeError("domain failure"))
+        runner.register_domain_pipeline("eng", failing_pipeline)
+
+        with pytest.raises(RuntimeError, match="domain failure"):
+            await runner.run_all(_make_envelope(), _make_base_context())

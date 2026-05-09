@@ -55,6 +55,12 @@ Self-recovery status:
 
 Recovery actions must use project-approved service commands.
 
+Current runtime operations:
+
+| Operation | Frequency | What it does | User symptom if broken | Self-recovery | First checks | Recovery action |
+| --- | --- | --- | --- | --- | --- | --- |
+| `event-processor` | Continuous stream consumer; pending recovery runs at startup and on processor sweeps | Consumes Redis Streams events, runs the event pipeline, reclaims stale pending entries, and moves exhausted deliveries to the DLQ | Notifications, lifecycle routing, and integration triggers stop advancing while the daemon may still appear up | partial | Check logs for `event_platform_redis_unavailable`, `event_processor_pending`, `event_processor_reclaim`, and `event_processor_dead_letter`; check Redis reachability and `XPENDING teleclaude:events event-processor` | Restore Redis availability, then run `make restart` and verify with `make status` |
+
 ## Known caveats
 
 - Frequencies can drift if code defaults change.

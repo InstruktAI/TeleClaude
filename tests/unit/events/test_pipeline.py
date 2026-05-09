@@ -96,9 +96,6 @@ class TestPipeline:
         pipeline = Pipeline([cartridge], _make_context(), domain_runner=domain_runner)
         result = await pipeline.execute(event)
         assert result is event
-        # Fan-out is fire-and-forget via asyncio.create_task;
-        # give the event loop a chance to run it
-        await asyncio.sleep(0)
         domain_runner.run_all.assert_called_once()
 
     @pytest.mark.asyncio
@@ -109,30 +106,58 @@ class TestPipeline:
         domain_runner.run_all = AsyncMock(return_value={})
         pipeline = Pipeline([cartridge], _make_context(), domain_runner=domain_runner)
         await pipeline.execute(event)
-        await asyncio.sleep(0)
         domain_runner.run_all.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_shutdown_awaits_pending_domain_fanout_tasks(self) -> None:
-        event = _make_envelope()
-        started = asyncio.Event()
-        release = asyncio.Event()
 
-        async def _run_all(_event: EventEnvelope, _context: PipelineContext) -> dict[str, EventEnvelope | None]:
-            started.set()
-            await release.wait()
+# ---------------------------------------------------------------------------
+# Specs (xfail) for guaranteed-event-consumption
+# These pin the post-implementation contract; remove pytestmark when satisfied.
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineDurableBoundarySpecs:
+    """The acknowledgment boundary spans the system pipeline AND domain fan-out for v1.
+
+    Verbatim requirement criterion (from `requirements.md`):
+
+    > **Durable delivery boundary.** An event is acknowledged (and removed
+    > from the pending entry list) only after every required processing step
+    > for that delivery has either succeeded or deliberately skipped. For v1,
+    > "required processing" comprises the synchronous system pipeline and the
+    > domain pipeline fan-out. A required cartridge that raises must propagate
+    > its exception so the delivery is not acknowledged. A skip (returning
+    > `None` to indicate the event is not for this cartridge, or a deliberate
+    > manual/skipped autonomy decision) is not a failure.
+    """
+
+    @pytest.mark.asyncio
+    async def test_execute_completes_domain_fanout_before_returning(self) -> None:
+        """``execute`` must not return until the domain runner's ``run_all`` has completed."""
+        event = _make_envelope()
+        completion = {"done": False}
+
+        async def _slow_run_all(_event: EventEnvelope, _context: PipelineContext) -> dict[str, EventEnvelope | None]:
+            await asyncio.sleep(0)
+            completion["done"] = True
             return {}
 
         cartridge = _make_cartridge(result=event)
         domain_runner = MagicMock()
-        domain_runner.run_all = AsyncMock(side_effect=_run_all)
+        domain_runner.run_all = AsyncMock(side_effect=_slow_run_all)
         pipeline = Pipeline([cartridge], _make_context(), domain_runner=domain_runner)
 
         await pipeline.execute(event)
-        await started.wait()
-        release.set()
 
-        await pipeline.shutdown(timeout=0.1)
+        assert completion["done"] is True
 
-        domain_runner.run_all.assert_called_once()
-        assert not pipeline._pending_fanout_tasks
+    @pytest.mark.asyncio
+    async def test_execute_propagates_when_domain_runner_raises(self) -> None:
+        """A domain runner raising must cause ``execute`` to raise (delivery failure)."""
+        event = _make_envelope()
+        cartridge = _make_cartridge(result=event)
+        domain_runner = MagicMock()
+        domain_runner.run_all = AsyncMock(side_effect=RuntimeError("domain failure"))
+        pipeline = Pipeline([cartridge], _make_context(), domain_runner=domain_runner)
+
+        with pytest.raises(RuntimeError, match="domain failure"):
+            await pipeline.execute(event)

@@ -757,9 +757,6 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         ):
             await self._cancel_task_attr(attr_name, log_message)
 
-        if getattr(self, "_event_pipeline", None) is not None:
-            await self._event_pipeline.shutdown(timeout=5.0)
-
         signal_ai_client = getattr(self, "_signal_ai_client", None)
         close_signal_ai = getattr(signal_ai_client, "close", None)
         if callable(close_signal_ai):

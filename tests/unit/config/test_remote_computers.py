@@ -195,3 +195,40 @@ class TestConfigSurfaceDocumentation:
         assert "REMOTE_COMPUTERS" not in " ".join(sorted(env_names))
         assert guidance.get("computer.bot_username") is None
         assert guidance.get("remote_computers") is None
+
+
+class TestEventReliabilityConfig:
+    def test_default_config_exposes_event_reliability_controls(self) -> None:
+        raw = config_module.DEFAULT_CONFIG["event_reliability"]
+
+        assert isinstance(raw, dict)
+        assert raw["idle_threshold_ms"] == 30_000
+        assert raw["max_attempts"] == 3
+        assert raw["sweep_interval_ms"] == 5_000
+        assert raw["dlq_destination"] == "teleclaude:events:dlq"
+
+    def test_build_config_parses_event_reliability_overrides(self) -> None:
+        built = _build_test_config(
+            {
+                "event_reliability": {
+                    "idle_threshold_ms": 12_000,
+                    "max_attempts": 7,
+                    "sweep_interval_ms": 900,
+                    "dlq_destination": "custom:dlq",
+                }
+            }
+        )
+
+        assert built.event_reliability.idle_threshold_ms == 12_000
+        assert built.event_reliability.max_attempts == 7
+        assert built.event_reliability.sweep_interval_ms == 900
+        assert built.event_reliability.dlq_destination == "custom:dlq"
+
+    def test_teleclaude_config_spec_documents_event_reliability_keys(self) -> None:
+        content = _CONFIG_SPEC.read_text(encoding="utf-8")
+
+        assert "event_reliability:" in content
+        assert "idle_threshold_ms:" in content
+        assert "max_attempts:" in content
+        assert "sweep_interval_ms:" in content
+        assert "dlq_destination:" in content

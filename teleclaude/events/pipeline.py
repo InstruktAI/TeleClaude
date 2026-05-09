@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from teleclaude.events.producer import EventProducer
 
 logger = get_logger(__name__)
+_FAILING_STAGE_NOTE_PREFIX = "teleclaude_failing_stage="
 
 
 def _default_trust_config() -> Any:
@@ -60,6 +61,17 @@ class Cartridge(Protocol):
         return self.name
 
 
+def failing_stage_from_exception(exc: BaseException) -> str | None:
+    """Return a pipeline failing-stage marker attached to an exception."""
+    notes = getattr(exc, "__notes__", ())
+    if not isinstance(notes, list):
+        return None
+    for note in reversed(notes):
+        if isinstance(note, str) and note.startswith(_FAILING_STAGE_NOTE_PREFIX):
+            return note.removeprefix(_FAILING_STAGE_NOTE_PREFIX)
+    return None
+
+
 class Pipeline:
     """Execute the approved system pipeline and optionally fan out to domain pipelines."""
 
@@ -72,7 +84,6 @@ class Pipeline:
         self._cartridges = cartridges
         self._context = context
         self._domain_runner = domain_runner
-        self._pending_fanout_tasks: set[asyncio.Task[None]] = set()
 
     def register(self, cartridge: Cartridge) -> None:
         """Append a cartridge to the end of the processing chain."""
@@ -84,42 +95,22 @@ class Pipeline:
         for cartridge in self._cartridges:
             if current is None:
                 return None
-            current = await cartridge.process(current, self._context)
+            try:
+                current = await cartridge.process(current, self._context)
+            except Exception as exc:
+                exc.add_note(f"{_FAILING_STAGE_NOTE_PREFIX}{cartridge.name}")
+                raise
 
-        # Fan out to domain pipelines after system pipeline completes (fire-and-forget)
         if current is not None and self._domain_runner is not None:
-            task = asyncio.create_task(
-                self._run_domain_pipelines(current),
-                name="domain_pipeline_fanout",
-            )
-            self._pending_fanout_tasks.add(task)
-            task.add_done_callback(self._pending_fanout_tasks.discard)
+            await self._run_domain_pipelines(current)
 
         return current
 
     async def _run_domain_pipelines(self, event: EventEnvelope) -> None:
-        """Run domain pipelines in the background once the system pipeline completes."""
+        """Run domain pipelines once the system pipeline completes."""
         try:
             results = await self._domain_runner.run_all(event, self._context)
             logger.debug("Domain pipeline results: %s", {k: v is not None for k, v in results.items()})
         except asyncio.CancelledError:
             logger.debug("Domain pipeline fan-out cancelled during shutdown")
             raise
-        except Exception as e:
-            logger.error("Domain pipeline fan-out error: %s", e, exc_info=True)
-
-    async def shutdown(self, *, timeout: float = 5.0) -> None:
-        """Drain or cancel in-flight domain fan-out tasks."""
-        if not self._pending_fanout_tasks:
-            return
-
-        pending = tuple(self._pending_fanout_tasks)
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*pending, return_exceptions=True),
-                timeout=timeout,
-            )
-        except TimeoutError:
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(*pending, return_exceptions=True)

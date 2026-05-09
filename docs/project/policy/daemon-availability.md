@@ -13,6 +13,7 @@ description: 'The TeleClaude daemon must stay up; restarts must be brief and ver
 - After any change needing a restart, call `make restart` and observe success, or verify with `make status`.
 - During instability, keep SIGTERM/socket monitoring enabled and retain logs under `/var/log/instrukt-ai/teleclaude/monitoring`.
 - Verify key services after restart (API socket, API health/read endpoints, adapters).
+- If Redis is configured for the event platform, startup must expose Redis reachability and pending recovery progress through daemon state or structured logs before continuing degraded; a silent healthy-but-no-Streams state is forbidden.
 
 ## Rationale
 

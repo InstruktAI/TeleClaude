@@ -43,6 +43,7 @@ class IntegrationTriggerCartridge:
         spawn_callback: IntegratorSpawnCallback | None = None,
     ) -> None:
         self._spawn_callback = spawn_callback
+        self._spawned_event_keys: set[tuple[str, str, str]] = set()
 
     async def process(self, event: EventEnvelope, _context: PipelineContext) -> EventEnvelope | None:
         """On todo_finalize_ready, spawn the integrator. All other events pass through."""
@@ -64,7 +65,18 @@ class IntegrationTriggerCartridge:
 
         if self._spawn_callback is not None:
             worker_session_id = str(payload.get("worker_session_id", ""))
+            logical_key = (slug, sha, worker_session_id)
+            if logical_key in self._spawned_event_keys:
+                logger.info(
+                    "skipping duplicate integrator spawn for slug=%s branch=%s sha=%s caller=%s",
+                    slug,
+                    branch,
+                    sha[:8] if sha else "",
+                    worker_session_id or "unknown",
+                )
+                return event
             await self._spawn_integrator(slug, branch, sha, worker_session_id)
+            self._spawned_event_keys.add(logical_key)
 
         return event
 
@@ -81,10 +93,7 @@ class IntegrationTriggerCartridge:
             sha[:8] if sha else "",
             caller_session_id or "unknown",
         )
-        try:
-            result = self._spawn_callback(slug, branch, sha, caller_session_id)
-            if asyncio.iscoroutine(result):
-                await result
-            logger.info("spawn callback completed for %s", slug)
-        except Exception:
-            logger.exception("spawn callback failed for %s", slug)
+        result = self._spawn_callback(slug, branch, sha, caller_session_id)
+        if asyncio.iscoroutine(result):
+            await result
+        logger.info("spawn callback completed for %s", slug)

@@ -26,6 +26,7 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStag
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError
+from teleclaude.core.todos_db import close_todos_db_instances
 from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
@@ -657,9 +658,9 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if stamp_type == "finalize_ready":
         ensure_event_producer()
 
-    try:
-        asyncio.run(
-            apply_todo_stamp(
+    async def _apply_stamp() -> None:
+        try:
+            await apply_todo_stamp(
                 cwd=str(resolve_invocation_cwd()),
                 slug=slug,
                 stamp_type=stamp_type,
@@ -667,7 +668,11 @@ def _handle_todo_stamp(args: list[str]) -> None:
                 phase=phase,
                 caller_session_id=get_session_id(),
             )
-        )
+        finally:
+            await close_todos_db_instances()
+
+    try:
+        asyncio.run(_apply_stamp())
     except (PermissionError, ValueError, RuntimeError, GitCommandError, StateMutationError) as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc

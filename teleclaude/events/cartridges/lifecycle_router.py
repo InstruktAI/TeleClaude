@@ -115,22 +115,15 @@ class LifecycleRouterCartridge:
                 "detach": True,
             }
 
+        api = TelecAPIClient()
+        await api.connect()
         try:
-            api = TelecAPIClient()
-            await api.connect()
-            try:
-                await api.run_session(**dispatch_args)
-            finally:
-                await api.close()
-            logger.info(
-                "dispatched lane",
-                slug=slug,
-                kind=resolved_kind,
-                command=dispatch_args["command"],
-            )
-        except Exception:
-            logger.exception(
-                "failed to dispatch lane",
-                slug=slug,
-                kind=resolved_kind,
-            )
+            await api.run_session(**dispatch_args)
+        finally:
+            await api.close()
+        logger.info(
+            "dispatched lane",
+            slug=slug,
+            kind=resolved_kind,
+            command=dispatch_args["command"],
+        )

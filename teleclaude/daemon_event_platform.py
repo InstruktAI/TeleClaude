@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -67,6 +68,13 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+@dataclass
+class _EventPlatformStatus:
+    redis_configured: bool
+    redis_reachable: bool | None = None
+    pending_recovery_progress: str = "not_started"
+
+
 class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
     """Event platform and webhook service methods extracted from TeleClaudeDaemon."""
 
@@ -76,6 +84,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         lifecycle: DaemonLifecycle
         _event_db: EventDB | None
         _event_pipeline: Pipeline | None
+        _event_platform_status: _EventPlatformStatus
         _signal_ai_client: object | None
         _deployment_fanout_task: asyncio.Task[object] | None
         _contract_sweep_task: asyncio.Task[object] | None
@@ -288,10 +297,15 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         """Start the Redis-backed event processor."""
         computer_name = getattr(config, "computer", None)
         computer_label = getattr(computer_name, "name", "local") if computer_name else "local"
+        reliability = config.event_reliability
         event_processor = EventProcessor(
             redis_client=redis_client,
             pipeline=pipeline,
             consumer_name=f"{computer_label}-{os.getpid()}",
+            idle_threshold_ms=reliability.idle_threshold_ms,
+            max_attempts=reliability.max_attempts,
+            sweep_interval_ms=reliability.sweep_interval_ms,
+            dlq_destination=reliability.dlq_destination,
         )
         self._event_processor_task = asyncio.create_task(
             event_processor.start(self.shutdown_event), name="event-processor"
@@ -399,14 +413,25 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
 
     async def _start_event_platform(self) -> None:
         """Initialize and start the event processing platform."""
+        redis_configured = bool(config.redis.url)
+        self._event_platform_status = _EventPlatformStatus(redis_configured=redis_configured)
         try:
             await self._init_event_db_storage()
             event_catalog = build_default_catalog()
             redis_client = await self._get_event_redis_client()
             if redis_client is None:
-                logger.warning("No Redis client available; event platform started in degraded mode (no Streams)")
+                self._event_platform_status.redis_reachable = False
+                self._event_platform_status.pending_recovery_progress = "blocked_redis_unreachable"
+                logger.warning(
+                    "event_platform_redis_unavailable: pending recovery blocked; continuing degraded without Streams",
+                    redis_configured=redis_configured,
+                    redis_reachable=False,
+                    pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
+                )
                 return
 
+            self._event_platform_status.redis_reachable = True
+            self._event_platform_status.pending_recovery_progress = "processor_starting"
             event_producer = self._configure_event_producer(redis_client)
             push_callbacks = self._build_push_callbacks()
             integration_trigger = self._build_integration_trigger()
@@ -414,10 +439,26 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
             pipeline = self._build_pipeline(context, integration_trigger)
             self._event_pipeline = pipeline
             computer_label = self._start_event_processor(redis_client, pipeline)
+            self._event_platform_status.pending_recovery_progress = "processor_started"
+            logger.info(
+                "event_platform_redis_available: pending recovery scheduled",
+                redis_configured=redis_configured,
+                redis_reachable=True,
+                pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
+            )
             await self._emit_daemon_restarted_event(event_producer, computer_label)
             self._start_signal_pipeline(pipeline, context, event_producer)
         except Exception:
-            logger.exception("Event platform startup failed; continuing without event platform")
+            if self._event_platform_status.redis_reachable is None:
+                self._event_platform_status.redis_reachable = False if redis_configured else None
+            if self._event_platform_status.pending_recovery_progress == "not_started":
+                self._event_platform_status.pending_recovery_progress = "startup_failed_before_pending_recovery"
+            logger.exception(
+                "Event platform startup failed; continuing without event platform",
+                redis_configured=redis_configured,
+                redis_reachable=self._event_platform_status.redis_reachable,
+                pending_recovery_progress=self._event_platform_status.pending_recovery_progress,
+            )
 
     async def _init_webhook_service(self) -> None:
         """Initialize the webhook service subsystem (contracts, handlers, dispatcher, bridge, delivery)."""

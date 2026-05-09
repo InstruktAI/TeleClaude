@@ -143,6 +143,11 @@ agents:
   default: string
   claude|gemini|codex:
     enabled: boolean
+event_reliability:
+  idle_threshold_ms: integer # minimum idle time before stale pending entries can be reclaimed
+  max_attempts: integer # cumulative retry ceiling before dead-letter transition
+  sweep_interval_ms: integer # periodic stale-pending sweep cadence
+  dlq_destination: string # dead-letter destination identity
 ```
 
 ### Maintenance

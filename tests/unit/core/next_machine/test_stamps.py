@@ -247,12 +247,11 @@ async def test_build_complete_requires_owning_worker_session(tmp_path: Path) -> 
 @pytest.mark.asyncio
 async def test_build_complete_rejects_wrong_working_slug(tmp_path: Path) -> None:
     database = await _make_db(tmp_path)
-    sessions = _SessionDb({"builder": SimpleNamespace(working_slug="other-slug")})
     try:
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with (
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
-            patch(f"{_STAMPS}.get_db", new=AsyncMock(return_value=sessions)),
+            patch(f"{_STAMPS}.get_session_field_sync", return_value="other-slug"),
         ):
             with pytest.raises(PermissionError):
                 await apply_todo_stamp(
@@ -273,12 +272,11 @@ async def test_build_complete_rejects_wrong_working_slug(tmp_path: Path) -> None
 @pytest.mark.asyncio
 async def test_build_complete_validates_evidence_and_advances(tmp_path: Path) -> None:
     database = await _make_db(tmp_path)
-    sessions = _SessionDb({"builder": SimpleNamespace(working_slug="my-slug")})
     try:
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with (
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
-            patch(f"{_STAMPS}.get_db", new=AsyncMock(return_value=sessions)),
+            patch(f"{_STAMPS}.get_session_field_sync", return_value="my-slug"),
             patch(f"{_STAMPS}.resolve_state_root", return_value=str(tmp_path)),
             patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
             patch(f"{_STAMPS}.run_build_gates", return_value=(True, "passed")),
@@ -299,14 +297,47 @@ async def test_build_complete_validates_evidence_and_advances(tmp_path: Path) ->
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_build_complete_is_idempotent_after_successful_stamp(tmp_path: Path) -> None:
+    database = await _make_db(tmp_path)
+    try:
+        await database.write_state(
+            "my-slug",
+            {
+                "lifecycle_phase": "build_complete",
+                "build_completed_at": "2026-01-01T00:00:00+00:00",
+            },
+        )
+        with (
+            patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
+            patch(f"{_STAMPS}.get_session_field_sync", return_value="my-slug"),
+            patch(f"{_STAMPS}.resolve_state_root", return_value=str(tmp_path)),
+            patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
+            patch(f"{_STAMPS}.run_build_gates", return_value=(True, "passed")) as run_gates,
+        ):
+            state = await apply_todo_stamp(
+                cwd=str(tmp_path),
+                slug="my-slug",
+                stamp_type="build_complete",
+                value="true",
+                caller_session_id="builder",
+            )
+
+        assert state["lifecycle_phase"] == "build_complete"
+        assert state["build_completed_at"] == "2026-01-01T00:00:00+00:00"
+        run_gates.assert_called_once()
+    finally:
+        await database.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_build_complete_rejects_gate_failure(tmp_path: Path) -> None:
     database = await _make_db(tmp_path)
-    sessions = _SessionDb({"builder": SimpleNamespace(working_slug="my-slug")})
     try:
         await database.write_state("my-slug", {"lifecycle_phase": "build_started"})
         with (
             patch(f"{_STAMPS}.get_todos_db", new=AsyncMock(return_value=database)),
-            patch(f"{_STAMPS}.get_db", new=AsyncMock(return_value=sessions)),
+            patch(f"{_STAMPS}.get_session_field_sync", return_value="my-slug"),
             patch(f"{_STAMPS}.resolve_state_root", return_value=str(tmp_path)),
             patch(f"{_STAMPS}.has_build_commits_beyond_main", return_value=True),
             patch(f"{_STAMPS}.run_build_gates", return_value=(False, "gate failed")),

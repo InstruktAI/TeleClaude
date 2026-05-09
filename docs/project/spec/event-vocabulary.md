@@ -109,6 +109,11 @@ All built-in event types are registered in `teleclaude.events/schemas/` and wire
 into `register_all()` in `teleclaude.events/schemas/__init__.py`. Domain-specific
 cartridges may register additional types in the same catalog.
 
+`system.event.dead_lettered` is the operator-visible signal for event processor
+dead-letter growth. Payload fields are `original_entry_id`, `original_stream`,
+`attempt_count`, `failing_stage`, `consumer_id`, and `dlq_destination`; the
+idempotency key is `original_entry_id`.
+
 ### Prepare lifecycle events (software-development domain)
 
 The `domain.software-development.prepare.*` family covers every observable transition

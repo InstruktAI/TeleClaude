@@ -68,7 +68,7 @@ async def test_stop_awaits_webhook_delivery_task_gracefully() -> None:
     daemon_instance._cancel_task_attr = AsyncMock()
     daemon_instance._await_task_attr = AsyncMock()
     daemon_instance._stop_session_outbox_workers = AsyncMock()
-    daemon_instance._event_pipeline = SimpleNamespace(shutdown=AsyncMock())
+    daemon_instance._event_pipeline = None
     daemon_instance._signal_ai_client = SimpleNamespace(close=AsyncMock())
     daemon_instance._release_lock = MagicMock()
     daemon_instance.lifecycle = SimpleNamespace(shutdown=AsyncMock())
@@ -116,5 +116,4 @@ async def test_stop_awaits_webhook_delivery_task_gracefully() -> None:
         "EventProcessor stopped",
         timeout=5.0,
     )
-    daemon_instance._event_pipeline.shutdown.assert_awaited_once_with(timeout=5.0)
     daemon_instance._signal_ai_client.close.assert_awaited_once_with()
