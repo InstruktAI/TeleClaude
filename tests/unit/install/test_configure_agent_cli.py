@@ -205,13 +205,87 @@ def test_configure_codex_persists_managed_hook_trust_state(tmp_path: Path) -> No
     hooks_path = codex_dir / CODEX_HOOKS_FILENAME
     hooks_json = json.loads(hooks_path.read_text(encoding="utf-8"))
     receiver_command = hooks_json["hooks"]["SessionStart"][0]["hooks"][0]["command"]
-    expected = build_codex_managed_hook_state(hooks_path=hooks_path, receiver_command=receiver_command)
+    expected = build_codex_managed_hook_state(
+        hooks_path=hooks_path,
+        receiver_command=receiver_command,
+        positions={"session_start": (0, 0), "user_prompt_submit": (0, 0), "stop": (0, 0)},
+    )
 
     for key, entry in expected.items():
         assert key in state, f"missing trust entry for {key}"
         assert state[key].get("trusted_hash") == entry["trusted_hash"], (
             f"trusted_hash for {key} must match codex's computed currentHash"
         )
+
+
+def test_configure_codex_trust_keys_track_foreign_block_offsets(tmp_path: Path) -> None:
+    """Foreign blocks already in hooks.json shift TeleClaude managed handlers to
+    higher (group_index, handler_index) positions; the trusted_hash key must
+    follow or codex will silently drop the managed hook for failing the trust
+    check."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup",
+                            "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads((codex_dir / "config.toml").read_text(encoding="utf-8"))["hooks"]["state"]
+    expected_key = f"{hooks_path}:session_start:1:0"
+    assert expected_key in state, (
+        f"foreign hook at group_index 0 must shift the TeleClaude managed key to {expected_key}"
+    )
+    assert f"{hooks_path}:session_start:0:0" not in state
+
+
+def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Path) -> None:
+    """A foreign hook entry under the same hooks.json path must survive telec init.
+
+    Earlier the merge stripped any state key whose prefix matched ``{hooks_path}:``,
+    deleting unrelated entries. The contract is to replace only the exact keys
+    we own.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    foreign_key = f"{hooks_path}:pre_tool_use:0:0"
+    foreign_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{foreign_key}"]\n  trusted_hash = "{foreign_hash}"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads(config_path.read_text(encoding="utf-8"))["hooks"]["state"]
+    assert state.get(foreign_key, {}).get("trusted_hash") == foreign_hash, (
+        "foreign entry under the same hooks.json path must be preserved"
+    )
 
 
 def test_configure_codex_preserves_user_disable_on_managed_hook(tmp_path: Path) -> None:
@@ -459,20 +533,22 @@ def test_prototype_codex_compaction_md_not_in_repository() -> None:
 
 
 class TestExtractReceiverScript:
-    """Tests for _extract_receiver_script."""
+    """Tests for _extract_receiver_script — one named test per code path."""
 
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize(
-        ("command", "expected"),
-        [
-            ("python /tmp/receiver.py --agent claude", "receiver"),
-            ("python /tmp/receiver/__main__.py --agent gemini", "receiver"),
-            (["python", "/tmp/custom_receiver.py"], "receiver"),
-        ],
-    )
-    def test_normalizes_receiver_variants(self, command: str | list[object], expected: str) -> None:
-        """_extract_receiver_script normalizes all receiver script path variants to 'receiver'."""
-        assert configure_agent_cli._extract_receiver_script(command) == expected
+    def test_string_command_with_legacy_receiver_filename(self) -> None:
+        """String input runs through shlex; legacy receiver*.py filenames map to RECEIVER_TOKEN."""
+        assert configure_agent_cli._extract_receiver_script("python /tmp/receiver.py --agent claude") == "receiver"
+
+    def test_string_command_with_package_main(self) -> None:
+        """String input where the receiver is the package __main__.py form normalizes too."""
+        assert (
+            configure_agent_cli._extract_receiver_script("python /tmp/receiver/__main__.py --agent gemini")
+            == "receiver"
+        )
+
+    def test_list_command_uses_direct_str_cast(self) -> None:
+        """List input bypasses shlex entirely and exercises the direct-str-cast branch."""
+        assert configure_agent_cli._extract_receiver_script(["python", "/tmp/custom_receiver.py"]) == "receiver"
 
 
 class TestMergeHooks:

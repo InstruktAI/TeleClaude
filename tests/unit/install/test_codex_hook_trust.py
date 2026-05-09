@@ -134,10 +134,16 @@ def test_managed_hook_state_returns_three_entries_with_distinct_hashes() -> None
     """The installer-managed payload covers SessionStart, UserPromptSubmit, Stop."""
     hooks_path = Path("/Users/example/.codex/hooks.json")
     receiver_command = '/path/receiver.py --agent codex --cwd "$PWD"'
+    positions = {
+        "session_start": (0, 0),
+        "user_prompt_submit": (0, 0),
+        "stop": (0, 0),
+    }
 
     state = build_codex_managed_hook_state(
         hooks_path=hooks_path,
         receiver_command=receiver_command,
+        positions=positions,
     )
 
     expected_keys = {
@@ -156,11 +162,36 @@ def test_managed_hook_state_is_deterministic() -> None:
     """Re-running the installer must produce byte-identical hashes (idempotency)."""
     hooks_path = Path("/Users/example/.codex/hooks.json")
     receiver_command = '/path/receiver.py --agent codex --cwd "$PWD"'
+    positions = {"session_start": (0, 0), "user_prompt_submit": (0, 0), "stop": (0, 0)}
 
-    first = build_codex_managed_hook_state(hooks_path=hooks_path, receiver_command=receiver_command)
-    second = build_codex_managed_hook_state(hooks_path=hooks_path, receiver_command=receiver_command)
+    first = build_codex_managed_hook_state(
+        hooks_path=hooks_path,
+        receiver_command=receiver_command,
+        positions=positions,
+    )
+    second = build_codex_managed_hook_state(
+        hooks_path=hooks_path,
+        receiver_command=receiver_command,
+        positions=positions,
+    )
 
     assert first == second
+
+
+def test_managed_hook_state_keys_track_supplied_positions() -> None:
+    """Foreign blocks shift TeleClaude handlers to non-zero indices; the key must follow."""
+    hooks_path = Path("/Users/example/.codex/hooks.json")
+    receiver_command = '/path/receiver.py --agent codex --cwd "$PWD"'
+
+    state = build_codex_managed_hook_state(
+        hooks_path=hooks_path,
+        receiver_command=receiver_command,
+        positions={"session_start": (1, 0), "stop": (2, 0)},
+    )
+
+    assert f"{hooks_path}:session_start:1:0" in state
+    assert f"{hooks_path}:stop:2:0" in state
+    assert f"{hooks_path}:session_start:0:0" not in state
 
 
 def test_trusted_hash_changes_when_command_changes() -> None:
