@@ -173,7 +173,7 @@ class TestSendKeys:
         assert load_input == rb"run\!"
 
         paste_args = mock_exec.await_args_list[1].args
-        assert paste_args == (binary, "paste-buffer", "-t", "tmux-alpha", "-b", buf_name)
+        assert paste_args == (binary, "paste-buffer", "-r", "-t", "tmux-alpha", "-b", buf_name)
 
         delete_args = mock_exec.await_args_list[2].args
         assert delete_args == (binary, "delete-buffer", "-b", buf_name)
@@ -218,11 +218,14 @@ class TestSendKeysSubmission:
         assert load_args[4] == "-"
         # The payload bytes are written to stdin via communicate_with_timeout.
         assert communicate_mock.await_args_list[0].args[1] == b"hello"
-        # 2. paste-buffer (no -p — raw stream so the trailing C-m lands as submit
-        #    instead of getting absorbed by codex's bracketed-paste handling).
+        # 2. paste-buffer with -r (preserve LF — without it tmux rewrites \n to \r
+        #    and collapses multiline bundles) and without -p (raw stream so the
+        #    trailing C-m lands as submit instead of getting absorbed by codex's
+        #    bracketed-paste handling).
         assert mock_exec.await_args_list[1].args == (
             binary,
             "paste-buffer",
+            "-r",
             "-t",
             "tmux-alpha",
             "-b",
@@ -243,6 +246,45 @@ class TestSendKeysSubmission:
             "tmux-alpha",
             "C-m",
         )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_paste_buffer_uses_dash_r_to_preserve_newlines(self) -> None:
+        # Without -r, tmux rewrites every LF to CR, collapsing multiline bundles
+        # (peer-fanout bundles, multi-segment Human/Agent blocks) into one
+        # carriage-returned line on the receiver's input. The byte stream must
+        # match what send-keys -l used to emit: LFs preserved.
+        multiline = "first line\nsecond line\nthird line"
+        processes = [
+            _completed_process(),
+            _completed_process(),
+            _completed_process(),
+            _completed_process(),
+        ]
+        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b""), (b"", b"")])
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=processes),
+            ) as mock_exec,
+            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text=multiline,
+            )
+
+        assert result is True
+        binary = _keys.config.computer.tmux_binary
+        # The exact LF payload must reach load-buffer's stdin.
+        load_input = communicate_mock.await_args_list[0].args[1]
+        assert load_input == multiline.encode()
+        assert b"\n" in load_input
+        # paste-buffer must include -r so tmux does NOT rewrite LF -> CR.
+        paste_args = mock_exec.await_args_list[1].args
+        assert paste_args == (binary, "paste-buffer", "-r", "-t", "tmux-alpha", "-b", paste_args[6])
 
     @pytest.mark.unit
     @pytest.mark.asyncio
