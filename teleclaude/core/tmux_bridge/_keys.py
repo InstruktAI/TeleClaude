@@ -8,6 +8,7 @@ import termios
 import time
 from pathlib import Path
 from signal import SIGINT, SIGKILL, SIGTERM, Signals
+from uuid import uuid4
 
 from instrukt_ai_logging import get_logger
 
@@ -175,34 +176,61 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
-    # Check if text contains bracketed paste markers
-    has_bracketed_paste = "\x1b[200~" in send_text or "\x1b[201~" in send_text
-    if has_bracketed_paste:
-        # tmux send-keys without -l can fail with "not in a mode" when ESC sequences
-        # are present. Unwrap markers and always send text via literal mode.
-        send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
+    # Strip any caller-supplied bracketed-paste markers; paste-buffer -p re-emits them.
+    send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
-    # Send command (no pipes - don't leak file descriptors)
-    # UPDATE: We must capture stderr to debug failures. send-keys is ephemeral and doesn't
-    # start a long-lived process that would inherit the pipe, so this is safe.
-    # Always send with -l for literal interpretation (prevents shell/key-name expansion).
-    cmd_text = [config.computer.tmux_binary, "send-keys", "-t", session_name, "-l", "--", send_text]
-    if has_bracketed_paste:
-        logger.debug("Unwrapped bracketed paste markers for literal tmux send: %s", send_text[:80])
-    result = await asyncio.create_subprocess_exec(
-        *cmd_text, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
+    # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
+    # peer-bundle path routinely produces. load-buffer reads from stdin, so it has
+    # no argv limit, and paste-buffer -p emits real bracketed-paste markers.
+    buf_name = f"telec-{uuid4().hex[:12]}"
+    load_cmd = [config.computer.tmux_binary, "load-buffer", "-b", buf_name, "-"]
+    load_proc = await asyncio.create_subprocess_exec(
+        *load_cmd,
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
-
-    if result.returncode != 0:
+    _, stderr = await communicate_with_timeout(load_proc, send_text.encode(), timeout, "tmux load-buffer")
+    if load_proc.returncode != 0:
         logger.error(
-            "tmux send-keys text returned nonzero exit",
+            "tmux load-buffer returned nonzero exit",
             session=session_name,
-            reason="nonzero_exit_text",
-            returncode=result.returncode,
+            reason="nonzero_exit_load_buffer",
+            returncode=load_proc.returncode,
             stderr=stderr.decode().strip(),
         )
         return False
+
+    try:
+        paste_cmd = [
+            config.computer.tmux_binary,
+            "paste-buffer",
+            "-p",
+            "-t",
+            session_name,
+            "-b",
+            buf_name,
+        ]
+        paste_proc = await asyncio.create_subprocess_exec(
+            *paste_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await communicate_with_timeout(paste_proc, None, timeout, "tmux paste-buffer")
+        if paste_proc.returncode != 0:
+            logger.error(
+                "tmux paste-buffer returned nonzero exit",
+                session=session_name,
+                reason="nonzero_exit_paste_buffer",
+                returncode=paste_proc.returncode,
+                stderr=stderr.decode().strip(),
+            )
+            return False
+    finally:
+        cleanup_cmd = [config.computer.tmux_binary, "delete-buffer", "-b", buf_name]
+        cleanup_proc = await asyncio.create_subprocess_exec(
+            *cleanup_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        await cleanup_proc.wait()
 
     # Keep a small buffer between text injection and submit. This submit path is
     # shared by checkpoints, direct conversation, listener notifications, and
