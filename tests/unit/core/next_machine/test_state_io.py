@@ -12,10 +12,12 @@ from unittest.mock import patch
 
 import pytest
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine.state_io import (
     mark_phase_state,
     reconcile_phase_state,
     stamp_artifact,
+    stamp_finalize_ready,
     validate_mark_phase_preconditions,
 )
 from teleclaude.core.todos_db import TodosDb
@@ -582,3 +584,47 @@ def test_reconcile_phase_state_reports_no_valid_work_phase(tmp_path: Path) -> No
             match="No valid work phase matches the current todo state",
         ):
             reconcile_phase_state(str(project_root), "my-slug", "work")
+
+
+# ── stamp_finalize_ready: caller_session_id contract ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_stamp_finalize_ready_rejects_empty_caller_session_id(seeded_db: TodosDb, tmp_path: Path) -> None:
+    """Empty caller identity must not produce an unattributable claim — the
+    integration trigger event needs a non-empty worker_session_id."""
+    with (
+        patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=str(tmp_path)),
+    ):
+        with pytest.raises(RuntimeError, match="non-empty caller session ID"):
+            stamp_finalize_ready(str(tmp_path), "slug-a", "")
+
+    # No claim was persisted
+    state = await seeded_db.read_state("slug-a")
+    assert state is not None
+    finalize = state.get("finalize", {})
+    assert isinstance(finalize, dict)
+    assert finalize.get("status", "pending") != "ready"
+
+
+@pytest.mark.asyncio
+async def test_stamp_finalize_ready_persists_caller_as_worker_session_id(seeded_db: TodosDb, tmp_path: Path) -> None:
+    """A non-empty caller is stored on FinalizeModel.worker_session_id so the
+    later integration trigger event carries the chain-of-ownership address."""
+    # Worktree must exist for the SHA derivation branch to fire.
+    worktree_path = tmp_path / WORKTREE_DIR / "slug-a"
+    worktree_path.mkdir(parents=True)
+
+    with (
+        patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=str(tmp_path)),
+        patch(f"{_STATE_IO}.get_head_commit", return_value="cafebabe"),
+    ):
+        payload = stamp_finalize_ready(str(tmp_path), "slug-a", "caller-42")
+
+    finalize = payload.get("finalize")
+    assert isinstance(finalize, dict)
+    assert finalize.get("status") == "ready"
+    assert finalize.get("sha") == "cafebabe"
+    assert finalize.get("worker_session_id") == "caller-42"
