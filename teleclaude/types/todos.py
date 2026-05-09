@@ -220,6 +220,7 @@ class TodoState(BaseModel):
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
     build_completed_at: str = ""
+    build_gate_claim_at: str = ""
     kind: str = "todo"  # "todo" | "bug" | "draft" | "prepped"
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)

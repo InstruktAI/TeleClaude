@@ -18,10 +18,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.db import get_db, get_session_field_sync
-from teleclaude.core.next_machine.build_gates import run_build_gates
+from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
-from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_io import (
     _ARTIFACT_UPSTREAMS,
     _BUILD_VERDICT_PHASE,
@@ -38,8 +37,6 @@ from teleclaude.core.next_machine.state_mutation import (
     StateWriter,
 )
 from teleclaude.core.todos_db import get_todos_db
-from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.producer import emit_event
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
@@ -82,9 +79,7 @@ async def apply_todo_stamp(
         return await asyncio.to_thread(stamp_verdict, cwd, slug, phase or "", value)
 
     if stamp_type == "finalize_ready":
-        state = await asyncio.to_thread(stamp_finalize_ready, cwd, slug)
-        await _emit_finalize_ready(slug, state, caller_session_id=caller_session_id)
-        return state
+        return await asyncio.to_thread(stamp_finalize_ready, cwd, slug)
 
     todos_db = await get_todos_db(cwd)
     raw_state = await todos_db.read_state(slug)
@@ -95,7 +90,6 @@ async def apply_todo_stamp(
 
     if stamp_type == "grounding":
         _apply_grounding_stamp(writer, value)
-        apply_authoritative_signal(writer.state, "grounding")
     elif stamp_type == "deferrals_processed":
         writer.state.deferrals_processed = True
     elif stamp_type in _CREATIVE_GATE_STAMPS:
@@ -139,13 +133,12 @@ async def _apply_readiness_stamp(
     artifact_name: str,
     signal: str,
 ) -> None:
-    """Validate artifact existence, hydrate provenance, apply signal, reject no-ops.
+    """Validate artifact existence and hydrate provenance.
 
-    Provenance hydration mirrors what ``stamp_artifact`` and
-    ``_sync_reconcile_artifacts`` do on the happy path: digest, ``produced_at``,
-    and ``upstream_digests``. Without ``upstream_digests``, the prepare state
-    machine reads the entry as having missing provenance and loops on
-    ``Dispatch reason: provenance-missing`` even though the stamp was issued.
+    Provenance hydration (digest, ``produced_at``, ``upstream_digests``) is
+    the fact this stamp records. The corresponding lifecycle signal fires
+    from the prepare state machine on its next dispatch when it observes
+    the populated provenance.
     """
     if not await todos_db.artifact_exists(slug, artifact_name):
         raise StateMutationError(f"cannot stamp {signal}: {artifact_name} artifact missing")
@@ -162,7 +155,6 @@ async def _apply_readiness_stamp(
                 entry.upstream_digests = {
                     upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
                 }
-    _apply_effective_signal(writer, signal)
 
 
 def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
@@ -186,41 +178,20 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
 
 
 async def _apply_prepare_pair_stamp(writer: StateWriter, value: str) -> None:
+    """Record the orchestrator's claimed pair slot IDs.
+
+    Slot validation (session liveness, ``active_agent``, ``native_session_id``)
+    runs in the prepare state machine on its next dispatch entry. If a slot
+    fails validation there, the machine emits a fix-relay script for the
+    orchestrator instead of writing garbage canonical pair fields.
+    """
     sid_a, sid_b = _parse_prepare_pair_value(value)
     if not sid_a or not sid_b:
         raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
 
-    sessions = await get_db()
-    session_a = await sessions.get_session(sid_a)
-    if session_a is None:
-        raise StateMutationError(f"unknown session for slot_a: {sid_a}")
-    session_b = await sessions.get_session(sid_b)
-    if session_b is None:
-        raise StateMutationError(f"unknown session for slot_b: {sid_b}")
-
-    for lens, session_id, session in (("A", sid_a, session_a), ("B", sid_b, session_b)):
-        if not session.active_agent:
-            raise StateMutationError(
-                f"session {session_id} for slot_{lens.lower()} has no active_agent - cannot resolve pair agent"
-            )
-        if not session.native_session_id:
-            raise StateMutationError(
-                f"session {session_id} for slot_{lens.lower()} has no native_session_id - slot would not survive TC purge"
-            )
-
     PreparePairManager(writer).set_pair(
-        slot_a=PreparePairSlot(
-            lens="A",
-            session_id=sid_a,
-            native_session_id=session_a.native_session_id,
-            agent=session_a.active_agent,
-        ),
-        slot_b=PreparePairSlot(
-            lens="B",
-            session_id=sid_b,
-            native_session_id=session_b.native_session_id,
-            agent=session_b.active_agent,
-        ),
+        slot_a=PreparePairSlot(lens="A", session_id=sid_a, native_session_id="", agent=""),
+        slot_b=PreparePairSlot(lens="B", session_id=sid_b, native_session_id="", agent=""),
     )
 
 
@@ -239,32 +210,27 @@ async def _apply_build_complete_stamp(
     slug: str,
     caller_session_id: str | None,
 ) -> None:
+    """Record the worker's claim that the build is complete.
+
+    Gate execution and lifecycle advancement run in the work state machine
+    on its next dispatch entry. Keeping pytest out of the stamp prevents
+    minute-long stamp calls and the zombie processes the previous design
+    produced when the gate runner's queue thread blocked interpreter exit.
+    """
     await _validate_build_complete_owner(slug=slug, caller_session_id=caller_session_id)
 
     current = LifecyclePhase(writer.state.lifecycle_phase)
-    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
-    if current == LifecyclePhase.BUILD_COMPLETE:
-        if not has_build_commits_beyond_main(worktree_cwd):
-            raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
-        gates_passed, gate_output = run_build_gates(worktree_cwd, slug)
-        if not gates_passed:
-            raise StateMutationError(f"build_complete: build gates failed for {slug}\n\n{gate_output}")
-        return
-
     if current not in (LifecyclePhase.BUILD_STARTED, LifecyclePhase.REVIEW_CHANGES_REQUESTED):
         raise StateMutationError(
             f"cannot stamp build_complete from lifecycle_phase {current.value!r}; "
             "expected build_started or review_changes_requested"
         )
 
+    worktree_cwd = str(Path(resolve_state_root(cwd)) / WORKTREE_DIR / slug)
     if not has_build_commits_beyond_main(worktree_cwd):
         raise StateMutationError(f"build_complete: missing commits beyond main in {worktree_cwd}")
 
-    gates_passed, gate_output = run_build_gates(worktree_cwd, slug)
-    if not gates_passed:
-        raise StateMutationError(f"build_complete: build gates failed for {slug}\n\n{gate_output}")
-
-    _apply_effective_signal(writer, "build_complete", worktree_cwd=worktree_cwd)
+    writer.state.build_gate_claim_at = datetime.now(UTC).isoformat()
 
 
 async def _validate_build_complete_owner(
@@ -281,37 +247,3 @@ async def _validate_build_complete_owner(
         raise PermissionError(
             f"build_complete stamp for {slug} requires caller session {caller_session_id} to own working_slug={slug}"
         )
-
-
-def _apply_effective_signal(writer: StateWriter, signal: str, *, worktree_cwd: str | None = None) -> None:
-    before = writer.state.lifecycle_phase
-    apply_authoritative_signal(writer.state, signal, worktree_cwd=worktree_cwd)
-    if writer.state.lifecycle_phase == before:
-        raise StateMutationError(f"{signal} has no effect at phase {before}")
-
-
-async def _emit_finalize_ready(
-    slug: str,
-    state: dict[str, StateValue],
-    *,
-    caller_session_id: str | None,
-) -> None:
-    finalize_raw = state.get("finalize")
-    finalize: dict[str, StateValue] = finalize_raw if isinstance(finalize_raw, dict) else {}
-    sha = str(finalize.get("sha", ""))
-    worker_session_id = caller_session_id or ""
-    await emit_event(
-        event="domain.software-development.planning.todo_finalize_ready",
-        source=f"finalizer/{worker_session_id or 'unknown'}",
-        level=EventLevel.WORKFLOW,
-        domain="software-development",
-        visibility=EventVisibility.LOCAL,
-        entity=slug,
-        description=f"Finalize ready for {slug} (sha {sha[:8]})",
-        payload={
-            "slug": slug,
-            "branch": slug,
-            "sha": sha,
-            "worker_session_id": worker_session_id,
-        },
-    )

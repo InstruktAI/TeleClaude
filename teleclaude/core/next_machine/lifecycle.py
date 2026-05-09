@@ -522,6 +522,7 @@ def _apply_verdict_signal(model: TodoState, current: LifecyclePhase, phase: str 
             return _move_to(model, LifecyclePhase.REVIEW_APPROVED)
         if model.build_review.verdict == "changes_requested":
             model.build_completed_at = ""
+            model.build_gate_claim_at = ""
             return _move_to(model, LifecyclePhase.REVIEW_CHANGES_REQUESTED)
         return current
 

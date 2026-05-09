@@ -238,6 +238,7 @@ async def _prepare_step_requirements_review(
         if review.approved_digest == current_requirements_digest:
             audit.completed_at = now
             audit.verdict = "approve"
+            apply_authoritative_signal(writer.state, "verdict", phase="requirements_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
             if pair_slots is not None:
@@ -486,6 +487,7 @@ async def _prepare_step_test_spec_review(
         if not current_specs_digest or spec_review.approved_digest == current_specs_digest:
             audit.completed_at = now
             audit.verdict = "approve"
+            apply_authoritative_signal(writer.state, "verdict", phase="test_spec_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
             if pair_slots is not None:
@@ -711,6 +713,7 @@ async def _prepare_step_plan_review(
         if review.approved_digest == current_plan_digest:
             audit.completed_at = now
             audit.verdict = "approve"
+            apply_authoritative_signal(writer.state, "verdict", phase="plan_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
             if pair_slots is not None:
@@ -858,6 +861,11 @@ async def _prepare_dispatch(
     if phase == PreparePhase.REQUIREMENTS_REVIEW:
         return await _prepare_step_requirements_review(db, todos_db, slug, cwd, state)
     if phase == PreparePhase.REQUIREMENTS_HUMAN_APPROVAL:
+        writer = StateWriter(state)
+        if writer.state.artifacts.requirements.approved:
+            apply_authoritative_signal(writer.state, "verdict", phase="requirements_human_approval")
+            await _commit_writer(writer, todos_db, slug, state)
+            return True, ""
         return False, format_requirements_human_approval_script(slug)
     if phase == PreparePhase.TEST_SPEC_BUILD:
         return await _prepare_step_test_spec_build(db, todos_db, slug, cwd, state)

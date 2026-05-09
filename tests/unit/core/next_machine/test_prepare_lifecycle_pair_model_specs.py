@@ -236,8 +236,9 @@ async def test_human_approval_stamp_advances_to_test_spec_build(tmp_path: Path) 
     stamp_verdict(str(tmp_path), "human-approved", "requirements_human_approval", "approve")
     state = await db.read_state("human-approved")
 
+    # Stamp records the approval; the prepare machine advances on next dispatch.
     assert state is not None
-    assert state["lifecycle_phase"] == LifecyclePhase.TEST_SPEC_BUILD.value
+    assert state["lifecycle_phase"] == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL.value
     artifacts = state["artifacts"]
     assert isinstance(artifacts, dict)
     requirements = artifacts["requirements"]

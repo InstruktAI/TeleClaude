@@ -28,12 +28,15 @@ from teleclaude.core.next_machine._types import (
     StateValue,
     WorkPhase,
 )
+from teleclaude.core.next_machine.build_gates import run_build_gates
 from teleclaude.core.next_machine.git_ops import (
     compose_agent_guidance,
     get_head_commit,
+    get_ref_commit,
+    get_remote_branch_head,
     has_uncommitted_changes,
 )
-from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal, is_ready_for_work
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, is_ready_for_work
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_error,
@@ -45,6 +48,8 @@ from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_p
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -95,6 +100,64 @@ async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
+async def _handle_build_complete_claim(
+    *,
+    db: Db,
+    todos_db: TodosDb,
+    slug: str,
+    worktree_cwd: str,
+    state: dict[str, StateValue],
+) -> tuple[bool, str] | None:
+    """Consume a build_complete claim by running gates and advancing the lifecycle.
+
+    Returns ``None`` when no claim is outstanding so the caller falls through
+    to its normal handler logic. Returns ``(keep_going, instruction)`` when the
+    claim was consumed:
+
+    - On pass: clears the claim, fires ``build_complete`` signal,
+      ``keep_going=True`` so the dispatch loop advances to the next phase.
+    - On fail: clears the claim, returns a fix-relay script that tells the
+      orchestrator to send the gate output to the live builder session.
+    """
+    writer = StateWriter(state)
+    if not writer.state.build_gate_claim_at:
+        return None
+
+    gates_passed, gate_output = await asyncio.to_thread(run_build_gates, worktree_cwd, slug)
+    writer.state.build_gate_claim_at = ""
+
+    if not gates_passed:
+        await _commit_writer(writer, todos_db, slug, state)
+        builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUILD.value}")
+        if builder_id is None:
+            builder_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_BUGS_FIX.value}")
+        if builder_id is None:
+            return False, format_error(
+                "BUILD_GATE_FAILED",
+                f"Build gates failed for {slug} and no live builder session exists to relay output. "
+                f"Manual intervention required.\n\n{gate_output}",
+                next_call=f"telec todo work {slug}",
+            )
+        message = (
+            f"Build gates failed on your build_complete claim for {slug}. "
+            f"Fix the failures and re-stamp build_complete.\n\n{gate_output}"
+        )
+        escaped = message.replace('"', '\\"')
+        return False, (
+            f"BUILD GATE FAILED: {slug}\n\n"
+            f"Execute in order:\n\n"
+            f'telec sessions send {builder_id} "{escaped}"\n\n'
+            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+            f"Start a new non-blocking heartbeat timer via "
+            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
+            f"When the builder reports idle after re-stamping, call telec todo work {slug}."
+        )
+
+    apply_authoritative_signal(writer.state, "build_complete", worktree_cwd=worktree_cwd)
+    await _commit_writer(writer, todos_db, slug, state)
+    return True, ""
+
+
 async def _work_step_build_started(
     *,
     db: Db,
@@ -110,7 +173,11 @@ async def _work_step_build_started(
     helper checks ``lifecycle_phase`` (which already encodes requirements
     approval, plan approval, and grounding validity).
     """
-    _ = todos_db, worktree_cwd
+    claim_result = await _handle_build_complete_claim(
+        db=db, todos_db=todos_db, slug=slug, worktree_cwd=worktree_cwd, state=state
+    )
+    if claim_result is not None:
+        return claim_result
 
     kind_raw = state.get("kind")
     kind = kind_raw if isinstance(kind_raw, str) else "todo"
@@ -173,6 +240,22 @@ async def _work_step_build_complete(
     detects ground shifts from merge, tracks dispatch HEAD, and reuses active
     reviewer sessions across rounds.
     """
+    # Consume a stamped build_review verdict — stamps record facts, the
+    # machine fires the lifecycle signal. Derive baseline_commit on first
+    # consumption so re-review rounds can scope their diff.
+    writer = StateWriter(state)
+    br_writer = writer.state.build_review
+    if br_writer.verdict in ("approve", "changes_requested"):
+        if not br_writer.baseline_commit:
+            head = await asyncio.to_thread(get_head_commit, worktree_cwd)
+            if head:
+                br_writer.baseline_commit = head
+        before_phase = writer.state.lifecycle_phase
+        apply_authoritative_signal(writer.state, "verdict", phase="build_review")
+        if writer.state.lifecycle_phase != before_phase:
+            await _commit_writer(writer, todos_db, slug, state)
+            return True, ""
+
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     round_raw = build_review.get("round", 0)
@@ -274,7 +357,13 @@ async def _work_step_review_changes_requested(
     The lifecycle remains on ``review_changes_requested`` until the builder
     stamps ``build_complete`` after committing fixes that pass the build gates.
     """
-    _ = cwd, todos_db
+    _ = cwd
+    claim_result = await _handle_build_complete_claim(
+        db=db, todos_db=todos_db, slug=slug, worktree_cwd=worktree_cwd, state=state
+    )
+    if claim_result is not None:
+        return claim_result
+
     build_review_raw = state.get("build_review")
     build_review = build_review_raw if isinstance(build_review_raw, dict) else {}
     baseline_raw = build_review.get("baseline_commit", "")
@@ -355,6 +444,80 @@ async def _work_step_review_changes_requested(
     )
 
 
+async def _handle_finalize_ready_claim(
+    *,
+    slug: str,
+    cwd: str,
+    worktree_cwd: str,
+    todos_db: TodosDb,
+    state: dict[str, StateValue],
+) -> tuple[bool, str] | None:
+    """Consume a finalize-ready claim by validating triple-ref consistency.
+
+    Returns ``None`` when no claim is outstanding so the caller falls through
+    to its normal dispatch logic. Returns ``(keep_going, instruction)`` when
+    the claim was consumed:
+
+    - On valid triple-ref: fires ``finalize_ready`` signal, emits the
+      ``todo_finalize_ready`` lifecycle event for the integration trigger
+      cartridge, returns ``keep_going=True``.
+    - On invalid: returns a fix-relay script instructing the orchestrator to
+      surface the mismatch (e.g., remote ref drift) and re-stamp.
+    """
+    writer = StateWriter(state)
+    if writer.state.finalize.status != "ready":
+        return None
+    if writer.state.lifecycle_phase != LifecyclePhase.REVIEW_APPROVED.value:
+        return None
+
+    if has_uncommitted_changes(cwd, slug):
+        return False, format_error(
+            "FINALIZE_UNCOMMITTED",
+            f"finalize_ready: worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit before finalizing",
+            next_call=f"telec todo work {slug}",
+        )
+
+    worktree_head = await asyncio.to_thread(get_head_commit, worktree_cwd)
+    branch_head = await asyncio.to_thread(get_ref_commit, cwd, slug)
+    if not worktree_head or not branch_head or worktree_head != branch_head:
+        return False, format_error(
+            "FINALIZE_BRANCH_MISMATCH",
+            (f"finalize_ready: worktree HEAD ({worktree_head!r}) does not match branch ref {slug!r} ({branch_head!r})"),
+            next_call=f"telec todo work {slug}",
+        )
+
+    remote_head = await asyncio.to_thread(get_remote_branch_head, cwd, slug)
+    if not remote_head or remote_head != branch_head:
+        return False, format_error(
+            "FINALIZE_REMOTE_MISMATCH",
+            (
+                f"finalize_ready: remote branch {slug!r} ({remote_head!r}) does not match "
+                f"local branch ({branch_head!r}) — push first, then re-stamp finalize_ready"
+            ),
+            next_call=f"telec todo work {slug}",
+        )
+
+    apply_authoritative_signal(writer.state, "finalize_ready")
+    await _commit_writer(writer, todos_db, slug, state)
+
+    sha = writer.state.finalize.sha
+    try:
+        await emit_event(
+            event="domain.software-development.planning.todo_finalize_ready",
+            source=f"work-machine/{slug}",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            visibility=EventVisibility.LOCAL,
+            entity=slug,
+            description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
+            payload={"slug": slug, "branch": slug, "sha": sha},
+        )
+    except Exception:
+        logger.warning("Failed to emit todo_finalize_ready event for %s", slug, exc_info=True)
+
+    return True, ""
+
+
 async def _work_step_review_approved(
     *,
     db: Db,
@@ -368,10 +531,16 @@ async def _work_step_review_approved(
 
     Preconditions: no uncommitted changes in the worktree.
     Branches:
+    - Finalize-ready claim present → triple-ref check, advance lifecycle, emit event.
     - Pending deferrals → dispatch ``/next-defer``.
     - No deferrals → dispatch ``/next-finalize`` (worker stamps finalize_ready).
     """
-    _ = worktree_cwd, state
+    finalize_result = await _handle_finalize_ready_claim(
+        slug=slug, cwd=cwd, worktree_cwd=worktree_cwd, todos_db=todos_db, state=state
+    )
+    if finalize_result is not None:
+        return finalize_result
+
     if has_uncommitted_changes(cwd, slug):
         return False, format_uncommitted_changes(slug)
 

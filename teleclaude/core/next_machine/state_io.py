@@ -31,16 +31,12 @@ from teleclaude.core.next_machine.file_io import (
 )
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
-    get_ref_commit,
-    get_remote_branch_head,
     has_build_commits_beyond_main,
-    has_uncommitted_changes,
     run_git_command,
 )
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     LifecycleStage,
-    apply_authoritative_signal,
     infer_lifecycle_stage,
     normalize_mark_phase,
     phase_is_complete,
@@ -470,13 +466,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
         build_review = writer.state.build_review
         build_review.verdict = verdict
         build_review.reviewed_at = datetime.now(UTC).isoformat()
-        if not build_review.baseline_commit:
-            project_root = str(resolve_state_root(cwd))
-            worktree_path = str(Path(project_root) / WORKTREE_DIR / slug)
-            head = get_head_commit(worktree_path)
-            if head:
-                build_review.baseline_commit = head
-        apply_authoritative_signal(writer.state, "verdict", phase=phase)
         payload = writer.commit_sync(db, slug)
         logger.info(
             "todo verdict stamped",
@@ -501,7 +490,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     writer = StateWriter(state)
     if phase == _REQUIREMENTS_HUMAN_APPROVAL_PHASE:
         writer.state.artifacts.requirements.approved = verdict == "approve"
-        apply_authoritative_signal(writer.state, "verdict", phase=phase)
         payload = writer.commit_sync(db, slug)
         logger.info(
             "todo verdict stamped",
@@ -519,7 +507,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
             artifact_entry = getattr(writer.state.artifacts, artifact_key)
             review = writer.verdict_target(phase)
             review.approved_digest = artifact_entry.digest
-    apply_authoritative_signal(writer.state, "verdict", phase=phase)
     payload = writer.commit_sync(db, slug)
     logger.info(
         "todo verdict stamped",
@@ -533,47 +520,16 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
 
 
 def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
-    """Stamp finalize state for integration handoff.
+    """Record the worker's claim that the worktree is finalize-ready.
 
-    The worktree must exist, have no uncommitted changes, and the worktree HEAD,
-    local branch ref, and remote branch ref must all resolve to the same commit.
-    On success, writes a :class:`FinalizeModel` with ``status="ready"``.
-
-    The caller session identity is not stored here — the local stamp service
-    passes it directly into the finalize-ready event payload.
-
-    Args:
-        cwd: Project root directory (not worktree)
-        slug: Work item slug
-
-    Returns:
-        Updated state dict
-
-    Raises:
-        RuntimeError: when any validation step fails.
+    Writes a :class:`FinalizeModel` with ``status="ready"`` and the current
+    worktree HEAD as the candidate SHA. Triple-ref validation (worktree HEAD
+    == local branch ref == remote ref) and the lifecycle event emission
+    happen in the work state machine when it observes the claim.
     """
     project_root = str(resolve_state_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
-    if not worktree_path.exists():
-        raise RuntimeError(f"finalize_ready: worktree not found at {worktree_path}")
-    if has_uncommitted_changes(project_root, slug):
-        raise RuntimeError(
-            f"finalize_ready: worktree {WORKTREE_DIR}/{slug} has uncommitted changes — commit before finalizing"
-        )
-
-    worktree_head = get_head_commit(str(worktree_path))
-    branch_head = get_ref_commit(project_root, slug)
-    if not worktree_head or not branch_head or worktree_head != branch_head:
-        raise RuntimeError(
-            f"finalize_ready: worktree HEAD ({worktree_head!r}) does not match branch ref {slug!r} ({branch_head!r})"
-        )
-
-    remote_head = get_remote_branch_head(project_root, slug)
-    if not remote_head or remote_head != branch_head:
-        raise RuntimeError(
-            f"finalize_ready: remote branch {slug!r} ({remote_head!r}) "
-            f"does not match local branch ({branch_head!r}) — push first"
-        )
+    head_sha = get_head_commit(str(worktree_path)) if worktree_path.exists() else ""
 
     db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
@@ -582,11 +538,10 @@ def stamp_finalize_ready(cwd: str, slug: str) -> dict[str, StateValue]:
     writer.state.finalize = FinalizeModel(
         status="ready",
         branch=slug,
-        sha=branch_head,
+        sha=head_sha,
         ready_at=now,
         handed_off_at="",
     )
-    apply_authoritative_signal(writer.state, "finalize_ready")
     return writer.commit_sync(db, slug)
 
 
