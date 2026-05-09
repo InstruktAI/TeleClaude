@@ -645,18 +645,19 @@ async def test_deliver_pending_conversation_updates_drops_trailing_user_segment_
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_deliver_pending_conversation_updates_backfills_missing_cursor_and_proceeds(
+async def test_deliver_pending_conversation_updates_backfills_missing_cursor_from_link_created_at(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If an active link has no `conversation_delivery_state` row, the delivery
-    path must self-heal by writing a backfilled cursor anchored at "now" and
-    continue. The next agent_stop then delivers normally. Pre-repair transcript
-    activity is intentionally not replayed (the original anchor point is
-    unreachable). This is the caller-visible contract: a missing cursor never
-    causes a permanent stuck state."""
+    path must self-heal by writing a backfilled cursor anchored at the link's
+    creation timestamp — NOT at "now" — so any post-link transcript content
+    that hasn't been delivered yet is still recoverable. This is the
+    caller-visible contract: a missing cursor never causes a permanent stuck
+    state, and recoverable peer output is not silently dropped."""
     source = _session()
     peer = SimpleNamespace(session_id="target-001", computer_name="local")
-    link = SimpleNamespace(link_id="link-orphan")
+    link_created_at = datetime(2026, 4, 14, 9, 0, 0, tzinfo=UTC)
+    link = SimpleNamespace(link_id="link-orphan", created_at=link_created_at)
     command_service = SimpleNamespace(process_message=AsyncMock())
     client = MagicMock()
     db = SimpleNamespace(
@@ -674,9 +675,12 @@ async def test_deliver_pending_conversation_updates_backfills_missing_cursor_and
         "teleclaude.core.conversation_delivery.get_peer_members",
         AsyncMock(return_value=[peer]),
     )
-    # No segments visible after the just-anchored cursor — nothing to deliver
-    # this turn; the next agent_stop will work normally.
-    collect = AsyncMock(return_value=[])
+    post_link_segment = ConversationSegment(
+        role="assistant",
+        text="Reply that arrived after the link was established but before repair.",
+        timestamp=datetime(2026, 4, 14, 10, 0, 0, tzinfo=UTC),
+    )
+    collect = AsyncMock(return_value=[post_link_segment])
     monkeypatch.setattr(
         "teleclaude.core.conversation_delivery._collect_visible_conversation_segments_since",
         collect,
@@ -688,23 +692,26 @@ async def test_deliver_pending_conversation_updates_backfills_missing_cursor_and
         command_service=command_service,
     )
 
-    assert delivered == 0
-    command_service.process_message.assert_not_awaited()
-    # Backfill upsert: cursor anchored at the repair moment, no pending bound.
-    db.upsert_conversation_delivery_state.assert_awaited_once()
-    backfill_kwargs = db.upsert_conversation_delivery_state.await_args.kwargs
+    # The post-link segment IS delivered — repair recovered it from the link
+    # floor instead of anchoring at "now" and dropping it.
+    assert delivered == 1
+    command_service.process_message.assert_awaited_once()
+    sent_command = command_service.process_message.await_args.args[0]
+    assert post_link_segment.text in sent_command.text
+
+    # First upsert: backfill at link.created_at.
+    backfill_kwargs = db.upsert_conversation_delivery_state.await_args_list[0].kwargs
     assert backfill_kwargs["link_id"] == "link-orphan"
     assert backfill_kwargs["source_session_id"] == "source-001"
     assert backfill_kwargs["target_session_id"] == "target-001"
+    assert backfill_kwargs["delivered_through_ts"] == link_created_at.isoformat()
     assert backfill_kwargs["pending_through_ts"] is None
-    backfilled_dt = datetime.fromisoformat(backfill_kwargs["delivered_through_ts"])
-    # Anchored at "now" (within a generous window for test execution drift).
-    age_s = (datetime.now(UTC) - backfilled_dt).total_seconds()
-    assert 0 <= age_s < 5, f"backfilled cursor not anchored at ~now: age={age_s}s"
-    # The collect call uses the freshly anchored cursor as the floor.
+
+    # Collector was called with the link.created_at floor — that's the
+    # invariant: missing cursor recovers from the link's real creation point,
+    # not from "now".
     collect.assert_awaited_once()
-    collect_args = collect.await_args.args
-    assert collect_args[2] == backfilled_dt
+    assert collect.await_args.args[2] == link_created_at
 
 
 @pytest.mark.unit
