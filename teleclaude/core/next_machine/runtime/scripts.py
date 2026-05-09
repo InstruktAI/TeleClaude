@@ -38,24 +38,6 @@ def format_reviewer_direct_fix_message(
     )
 
 
-def format_review_approved_script(
-    slug: str,
-    reviewer_session_id: str | None,
-    worker_session_id: str | None,
-    phase_label: str,
-) -> str:
-    """Script for APPROVED variant: end phase sessions, then re-enter the state machine."""
-    end_lines: list[str] = []
-    if reviewer_session_id:
-        end_lines.append(f"telec sessions end {reviewer_session_id}")
-    if worker_session_id:
-        end_lines.append(f"telec sessions end {worker_session_id}")
-    end_block = "\n".join(end_lines) if end_lines else "(no live sessions for this phase to end)"
-    return (
-        f"{phase_label.upper()} REVIEW APPROVED: {slug}\n\nExecute in order:\n\n{end_block}\ntelec todo prepare {slug}"
-    )
-
-
 def format_review_needs_work_script(
     slug: str,
     worker_session_id: str,

@@ -46,7 +46,6 @@ from teleclaude.core.next_machine.prepare_pair import (
 )
 from teleclaude.core.next_machine.runtime.scripts import (
     format_fix_findings_message,
-    format_review_approved_script,
     format_review_blocked_script,
     format_review_needs_work_script,
 )
@@ -241,9 +240,7 @@ async def _prepare_step_requirements_review(
             apply_authoritative_signal(writer.state, "verdict", phase="requirements_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.requirements_approved", {"slug": slug})
-            if pair_slots is not None:
-                return False, f"REQUIREMENTS REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-            return False, format_review_approved_script(slug, reviewer_id, worker_id, "requirements")
+            return False, f"REQUIREMENTS REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
         # Stale approval — clear verdict to re-trigger reviewer dispatch below.
         review.verdict = ""
         verdict = ""
@@ -490,9 +487,7 @@ async def _prepare_step_test_spec_review(
             apply_authoritative_signal(writer.state, "verdict", phase="test_spec_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.specs_approved", {"slug": slug})
-            if pair_slots is not None:
-                return False, f"TEST SPEC REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-            return False, format_review_approved_script(slug, reviewer_id, worker_id, "test spec")
+            return False, f"TEST SPEC REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
         # Stale approval — clear verdict to re-trigger reviewer dispatch below.
         spec_review.verdict = ""
         verdict = ""
@@ -716,9 +711,7 @@ async def _prepare_step_plan_review(
             apply_authoritative_signal(writer.state, "verdict", phase="plan_review")
             await _commit_writer(writer, todos_db, slug, state)
             _emit_prepare_event("domain.software-development.prepare.plan_approved", {"slug": slug})
-            if pair_slots is not None:
-                return False, f"PLAN REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
-            return False, format_review_approved_script(slug, reviewer_id, worker_id, "plan")
+            return False, f"PLAN REVIEW APPROVED: {slug}\n\ntelec todo prepare {slug}"
         # Stale approval — clear verdict to re-trigger reviewer dispatch below.
         review.verdict = ""
         verdict = ""
