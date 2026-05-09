@@ -19,18 +19,21 @@ def _completed_process(*, returncode: int = 0) -> SimpleNamespace:
 
 class TestPidIsAlive:
     @pytest.mark.unit
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize(
-        ("side_effect", "expected"),
-        [
-            (None, True),
-            (PermissionError(), True),
-            (OSError(), False),
-        ],
-    )
-    def test_kill_probe_maps_exceptions_to_liveness(self, side_effect: BaseException | None, expected: bool) -> None:
-        with patch("teleclaude.core.tmux_bridge._keys.os.kill", side_effect=side_effect):
-            assert _keys.pid_is_alive(321) is expected
+    def test_kill_probe_succeeds_returns_true(self) -> None:
+        with patch("teleclaude.core.tmux_bridge._keys.os.kill"):
+            assert _keys.pid_is_alive(321) is True
+
+    @pytest.mark.unit
+    def test_kill_probe_permission_error_returns_true(self) -> None:
+        # PermissionError means the pid exists but we don't own it — still alive.
+        with patch("teleclaude.core.tmux_bridge._keys.os.kill", side_effect=PermissionError()):
+            assert _keys.pid_is_alive(321) is True
+
+    @pytest.mark.unit
+    def test_kill_probe_oserror_returns_false(self) -> None:
+        # OSError (typically ESRCH) means the pid is gone.
+        with patch("teleclaude.core.tmux_bridge._keys.os.kill", side_effect=OSError()):
+            assert _keys.pid_is_alive(321) is False
 
 
 class TestSendKeys:
@@ -127,7 +130,9 @@ class TestSendKeys:
     @pytest.mark.asyncio
     async def test_send_keys_existing_tmux_uses_buffer_pipeline_and_strips_paste_markers(self) -> None:
         # The buffer pipeline must:
-        # 1. strip caller-supplied bracketed-paste markers (paste-buffer -p re-adds them)
+        # 1. strip caller-supplied bracketed-paste markers (paste-buffer -p asks tmux
+        #    to wrap the paste, but tmux only emits the markers when the pane
+        #    application has enabled bracketed-paste mode)
         # 2. send the cleaned payload via load-buffer stdin
         # 3. paste with -p
         # 4. delete the buffer
@@ -265,6 +270,78 @@ class TestSendKeysSubmission:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_send_keys_returns_true_when_delete_buffer_fails_after_successful_paste(self) -> None:
+        # Cleanup failure after a successful paste must NOT override the operation
+        # result. The user payload reached the pane; submit must still run; the
+        # leftover buffer is logged but not failed-back to the caller.
+        processes = [
+            _completed_process(),  # load-buffer
+            _completed_process(),  # paste-buffer
+            _completed_process(returncode=1),  # delete-buffer (fails)
+            _completed_process(),  # submit
+        ]
+        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"no such buffer"), (b"", b"")])
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=processes),
+            ) as mock_exec,
+            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="hello",
+            )
+
+        assert result is True
+        assert mock_exec.await_count == 4
+        # Submit ran after the cleanup failure.
+        assert mock_exec.await_args_list[3].args[1] == "send-keys"
+        assert mock_exec.await_args_list[3].args[-1] == "C-m"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_returns_true_when_delete_buffer_times_out_after_successful_paste(self) -> None:
+        # Cleanup timeout must NOT override the operation result either. Same
+        # invariant as the nonzero case: paste reached the pane, submit must run.
+        processes = [
+            _completed_process(),  # load-buffer
+            _completed_process(),  # paste-buffer
+            _completed_process(),  # delete-buffer (times out via communicate)
+            _completed_process(),  # submit
+        ]
+        communicate_mock = AsyncMock(
+            side_effect=[
+                (b"", b""),  # load-buffer
+                (b"", b""),  # paste-buffer
+                SubprocessTimeoutError("tmux delete-buffer", 5.0, 1234),  # cleanup timeout
+                (b"", b""),  # submit
+            ]
+        )
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=processes),
+            ) as mock_exec,
+            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
+        ):
+            result = await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="hello",
+            )
+
+        assert result is True
+        assert mock_exec.await_count == 4
+        # Submit ran after the cleanup timeout was caught.
+        assert mock_exec.await_args_list[3].args[1] == "send-keys"
+        assert mock_exec.await_args_list[3].args[-1] == "C-m"
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_send_keys_runs_delete_buffer_cleanup_even_when_paste_buffer_fails(self) -> None:
         # The reviewer's contract: paste failure must NOT skip delete-buffer cleanup.
         # The buffer holds the user payload; leaving it in tmux is data retention.
@@ -361,9 +438,7 @@ class TestSendSignal:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize(("signal_value", "key_name"), [(SIGINT, "C-c"), (SIGTERM, "C-\\")])
-    async def test_control_signals_map_to_tmux_keys(self, signal_value: int, key_name: str) -> None:
+    async def test_sigint_maps_to_ctrl_c_via_send_keys(self) -> None:
         with (
             patch(
                 "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
@@ -374,7 +449,7 @@ class TestSendSignal:
                 new=AsyncMock(return_value=(b"", b"")),
             ),
         ):
-            result = await _keys.send_signal("tmux-alpha", signal_value)
+            result = await _keys.send_signal("tmux-alpha", SIGINT)
 
         assert result is True
         assert mock_exec.await_args.args == (
@@ -382,7 +457,31 @@ class TestSendSignal:
             "send-keys",
             "-t",
             "tmux-alpha",
-            key_name,
+            "C-c",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_sigterm_maps_to_ctrl_backslash_via_send_keys(self) -> None:
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(return_value=_completed_process()),
+            ) as mock_exec,
+            patch(
+                "teleclaude.core.tmux_bridge._keys.communicate_with_timeout",
+                new=AsyncMock(return_value=(b"", b"")),
+            ),
+        ):
+            result = await _keys.send_signal("tmux-alpha", SIGTERM)
+
+        assert result is True
+        assert mock_exec.await_args.args == (
+            _keys.config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            "tmux-alpha",
+            "C-\\",
         )
 
     @pytest.mark.unit
@@ -396,42 +495,102 @@ class TestSendSignal:
 
 
 class TestSpecialKeyHelpers:
+    @staticmethod
+    async def _run_helper(
+        helper: object,
+        kwargs: dict[str, object],  # guard: loose-dict - test scaffolding accepts varied helper kwargs
+    ) -> tuple[bool, AsyncMock, AsyncMock, SimpleNamespace]:
+        """Shared scaffolding: patch subprocess + wait, invoke the helper, return mocks."""
+        process = _completed_process()
+        mock_exec = AsyncMock(return_value=process)
+        mock_wait = AsyncMock()
+        with (
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec", new=mock_exec),
+            patch("teleclaude.core.tmux_bridge._keys.wait_with_timeout", new=mock_wait),
+        ):
+            assert callable(helper)
+            result = await helper("tmux-alpha", **kwargs)
+        return result, mock_exec, mock_wait, process
+
     @pytest.mark.unit
     @pytest.mark.asyncio
-    # guard: parametrize-cleanup-pending
-    @pytest.mark.parametrize(
-        ("helper_name", "kwargs", "expected_call"),
-        [
-            ("send_escape", {}, ("send-keys", "-t", "tmux-alpha", "Escape")),
-            ("send_ctrl_key", {"key": "Z"}, ("send-keys", "-t", "tmux-alpha", "C-z")),
-            ("send_tab", {}, ("send-keys", "-t", "tmux-alpha", "Tab")),
-            ("send_shift_tab", {"count": 3}, ("send-keys", "-t", "tmux-alpha", "-N", "3", "BTab")),
-            ("send_backspace", {"count": 2}, ("send-keys", "-t", "tmux-alpha", "-N", "2", "BSpace")),
-            ("send_enter", {}, ("send-keys", "-t", "tmux-alpha", "C-m")),
-            ("send_arrow_key", {"direction": "left", "count": 4}, ("send-keys", "-t", "tmux-alpha", "-N", "4", "Left")),
-        ],
-    )
-    async def test_helpers_send_expected_tmux_sequences(
-        self,
-        helper_name: str,
-        kwargs: dict[str, int | str],
-        expected_call: tuple[str, ...],
-    ) -> None:
-        helper = getattr(_keys, helper_name)
-        process = _completed_process()
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(return_value=process),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.wait_with_timeout", new=AsyncMock()) as mock_wait,
-        ):
-            result = await helper("tmux-alpha", **kwargs)
-
+    async def test_send_escape_emits_escape_key(self) -> None:
+        result, mock_exec, mock_wait, process = await self._run_helper(_keys.send_escape, {})
         assert result is True
-        assert mock_exec.await_args.args == (_keys.config.computer.tmux_binary, *expected_call)
+        assert mock_exec.await_args.args == (
+            _keys.config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            "tmux-alpha",
+            "Escape",
+        )
         mock_wait.assert_awaited_once_with(process, _keys.SUBPROCESS_TIMEOUT_QUICK, "tmux operation")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_ctrl_key_emits_lowercase_modifier_form(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_ctrl_key, {"key": "Z"})
+        assert result is True
+        assert mock_exec.await_args.args == (_keys.config.computer.tmux_binary, "send-keys", "-t", "tmux-alpha", "C-z")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_tab_emits_tab_key(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_tab, {})
+        assert result is True
+        assert mock_exec.await_args.args == (_keys.config.computer.tmux_binary, "send-keys", "-t", "tmux-alpha", "Tab")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_shift_tab_uses_repeat_count(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_shift_tab, {"count": 3})
+        assert result is True
+        assert mock_exec.await_args.args == (
+            _keys.config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            "tmux-alpha",
+            "-N",
+            "3",
+            "BTab",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_backspace_uses_repeat_count(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_backspace, {"count": 2})
+        assert result is True
+        assert mock_exec.await_args.args == (
+            _keys.config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            "tmux-alpha",
+            "-N",
+            "2",
+            "BSpace",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_enter_emits_carriage_return(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_enter, {})
+        assert result is True
+        assert mock_exec.await_args.args == (_keys.config.computer.tmux_binary, "send-keys", "-t", "tmux-alpha", "C-m")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_arrow_key_left_uses_repeat_count(self) -> None:
+        result, mock_exec, _, _ = await self._run_helper(_keys.send_arrow_key, {"direction": "left", "count": 4})
+        assert result is True
+        assert mock_exec.await_args.args == (
+            _keys.config.computer.tmux_binary,
+            "send-keys",
+            "-t",
+            "tmux-alpha",
+            "-N",
+            "4",
+            "Left",
+        )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
