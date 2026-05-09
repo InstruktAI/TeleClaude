@@ -14,7 +14,6 @@ CREATE TABLE IF NOT EXISTS sessions (
     tmux_session_name TEXT,
     last_input_origin TEXT NOT NULL DEFAULT 'telegram',
     adapter_metadata TEXT,
-    session_metadata TEXT,
     origin_metadata TEXT,
     system_role TEXT,
     job TEXT,

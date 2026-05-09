@@ -315,6 +315,7 @@ orphan-exclude = [
     "tests/unit/core/integration/test_queue_transitions.py",  # Cross-module: queue transition contract spans IntegrationQueue and readiness projection keys.
     "tests/unit/core/integration/test_step_delivery_bookkeeping.py",  # Cross-module: delivery bookkeeping spans checkpoint, readiness projection, and step_functions.
     "tests/unit/core/integration/test_worktree_guards.py",  # Cross-module: integration worktree guard validates step_functions against worktree state.
+    "tests/unit/core/migrations/test_drop_session_metadata_column.py",  # Mapper-gap: migration filenames carry numeric prefixes (045_drop_session_metadata_column.py) and do not fit the 1:1 mirror convention.
     "tests/unit/core/next_machine/test_authoritative_phase_clearing.py",  # Cross-module: phase clearing spans lifecycle normalization and TodoState data.
     "tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py",  # Deferred split: authoritative phase specs span CLI todo handler, state_io, and types.
     "tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py",  # Deferred split: prepare lifecycle specs span lifecycle, output formatting, state_io, and worktrees.

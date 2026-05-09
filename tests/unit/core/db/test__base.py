@@ -80,3 +80,18 @@ async def test_initialize_sessions_schema_excludes_dead_linked_output_column() -
     assert "turn_triggered_by_linked_output" not in columns
 
     await db.close()
+
+
+@pytest.mark.asyncio
+async def test_initialize_sessions_schema_excludes_dead_session_metadata_column() -> None:
+    db = DbBase(DB_IN_MEMORY)
+    await db.initialize()
+
+    async with db._session() as session:
+        result = await session.exec(text("SELECT name FROM pragma_table_info('sessions')"))  # guard: raw-sql
+        rows = result.fetchall()
+
+    columns = {str(row[0]) for row in rows}
+    assert "session_metadata" not in columns
+
+    await db.close()

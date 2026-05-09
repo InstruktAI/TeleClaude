@@ -25,7 +25,6 @@ class Session(SessionRecentOutputColumns, SessionRecentToolColumns, SQLModel, ta
     tmux_session_name: str | None = None
     last_input_origin: str = InputOrigin.TELEGRAM.value
     adapter_metadata: str | None = None
-    session_metadata: str | None = None
     origin_metadata: str | None = None
     system_role: str | None = None
     job: str | None = None
