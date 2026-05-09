@@ -414,9 +414,11 @@ class LintRunner:
     def run_step(self, step_name: str, files: list[str]) -> None:
         """Run a single named pipeline step against the given files.
 
-        Pre-commit hooks invoke ``telec code lint --step <name> [files]`` to route
-        per-hook file lists through the shared pipeline. Files are validated
-        against the project root (no traversal, no absolute paths outside).
+        Pre-commit hooks invoke ``telec code lint --step <name> [files]`` with
+        explicit paths. Interactive ``telec code lint --step <name>`` (no
+        paths) auto-resolves workspace scope so a step run mirrors the
+        scoping ``LintRunner.run`` already provides — agents spot-checking
+        their own work see only their files, not the whole repo.
 
         Step names span both Python and TypeScript pipelines. Raises
         SystemExit(2) when ``step_name`` does not match any step.
@@ -430,12 +432,15 @@ class LintRunner:
             logger.error("Unknown lint step: %r. Valid steps: %s", step_name, valid)
             sys.exit(2)
 
-        targets = validate_scoped_paths(files, self._project_root)
-        if not targets and files:
-            # All paths rejected by validation — fail-fast per R1's
-            # never-silently-fall-back contract.
-            logger.error("All provided files rejected by path validation")
-            sys.exit(1)
+        if files:
+            targets = validate_scoped_paths(files, self._project_root)
+            if not targets:
+                logger.error("All provided files rejected by path validation")
+                sys.exit(1)
+        else:
+            languages = get_project_languages(self._project_root)
+            scope_resolution = self._resolve_workspace_scope_resolution()
+            targets = self._targets_from_workspace_scope(scope_resolution, languages)
 
         step.run(targets)
 

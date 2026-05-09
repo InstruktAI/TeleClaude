@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core.events import ErrorEventContext, EventContext, TeleClaudeEvents
+from teleclaude.core.events import ErrorEventContext, EventContext, EventType, TeleClaudeEvents
 
 logger = get_logger(__name__)
 
@@ -16,7 +16,7 @@ EventHandler = Callable[[str, EventContext], Awaitable[object]]
 def create_event_guard(
     handler: EventHandler,
     *,
-    emit: Callable[[str, EventContext], object],
+    emit: Callable[[EventType, EventContext], object],
     handler_name: str | None = None,
     reraise: bool = False,
 ) -> EventHandler:

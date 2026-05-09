@@ -761,3 +761,40 @@ class TestRunStep:
         with pytest.raises(SystemExit) as exc_info:
             runner.run_step("guardrails", ["../etc/passwd"])
         assert exc_info.value.code == 1
+
+    def test_run_step_with_empty_files_auto_scopes_workspace(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Interactive --step (no files) resolves workspace scope, mirroring run().
+
+        Without this, an agent running ``telec code lint --step guardrails``
+        to spot-check their own work gets the whole repo's noise back —
+        the same failure mode workspace scoping was designed to prevent for
+        the no-step path.
+        """
+        scoped_files = ("teleclaude/foo.py",)
+        captured: dict[str, list[str]] = {}
+
+        class _Recording:
+            name = "guardrails"
+
+            def run(self, targets: list[str]) -> None:
+                captured["targets"] = list(targets)
+
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=scoped_files,
+            ),
+        )
+        runner = LintRunner(project_root=tmp_path)
+        monkeypatch.setattr(
+            runner,
+            "_collect_all_steps",
+            lambda: {"guardrails": _Recording()},
+        )
+
+        runner.run_step("guardrails", [])
+
+        assert captured.get("targets") == list(scoped_files)

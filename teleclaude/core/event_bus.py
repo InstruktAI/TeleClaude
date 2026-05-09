@@ -14,7 +14,7 @@ import os
 import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, cast
 
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
@@ -162,7 +162,7 @@ def _context_from_payload(payload: Mapping[str, JsonValue]) -> EventContext:
     return builder(payload)
 
 
-def _build_dataclass_context(context_type: type[object], payload: Mapping[str, JsonValue]) -> EventContext:
+def _build_dataclass_context(context_type: type[Any], payload: Mapping[str, JsonValue]) -> EventContext:
     field_names = {field.name for field in dataclasses.fields(context_type)}
     kwargs = {key: value for key, value in payload.items() if key in field_names}
     return cast(EventContext, context_type(**kwargs))
