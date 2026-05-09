@@ -176,14 +176,18 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
-    # Strip any caller-supplied bracketed-paste markers; paste-buffer -p re-emits them.
+    # Strip any caller-supplied bracketed-paste markers. paste-buffer -p asks tmux
+    # to wrap the paste with markers, but tmux only emits them when the pane's
+    # application has enabled bracketed-paste mode (DECSET 2004). The agent CLIs
+    # we target (Claude, Codex, Gemini) all enable it; non-bracketed clients still
+    # receive the literal text, just without markers.
     send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
     # peer-bundle path routinely produces. load-buffer reads from stdin, so it has
-    # no argv limit, and paste-buffer -p emits real bracketed-paste markers.
-    buf_name = f"telec-{uuid4().hex[:12]}"
+    # no argv limit.
+    buf_name = f"telec-{uuid4().hex}"
     load_cmd = [config.computer.tmux_binary, "load-buffer", "-b", buf_name, "-"]
     load_proc = await asyncio.create_subprocess_exec(
         *load_cmd,
@@ -202,6 +206,7 @@ async def _send_keys_tmux(
         )
         return False
 
+    paste_succeeded = False
     try:
         paste_cmd = [
             config.computer.tmux_binary,
@@ -225,12 +230,35 @@ async def _send_keys_tmux(
                 stderr=stderr.decode().strip(),
             )
             return False
+        paste_succeeded = True
     finally:
+        # Always attempt cleanup. The buffer holds the user payload, so a failed
+        # delete leaves it in tmux memory until the server exits — we want this
+        # visible in logs. Don't mask an upstream paste failure: cleanup errors
+        # are logged but never override the operation result.
         cleanup_cmd = [config.computer.tmux_binary, "delete-buffer", "-b", buf_name]
         cleanup_proc = await asyncio.create_subprocess_exec(
-            *cleanup_cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            *cleanup_cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        await cleanup_proc.wait()
+        try:
+            _, cleanup_stderr = await communicate_with_timeout(cleanup_proc, None, timeout, "tmux delete-buffer")
+            if cleanup_proc.returncode != 0:
+                logger.warning(
+                    "tmux delete-buffer returned nonzero exit",
+                    session=session_name,
+                    reason="nonzero_exit_delete_buffer",
+                    buffer_name=buf_name,
+                    returncode=cleanup_proc.returncode,
+                    stderr=cleanup_stderr.decode().strip(),
+                    paste_succeeded=paste_succeeded,
+                )
+        except SubprocessTimeoutError:
+            logger.warning(
+                "tmux delete-buffer timed out",
+                session=session_name,
+                buffer_name=buf_name,
+                paste_succeeded=paste_succeeded,
+            )
 
     # Keep a small buffer between text injection and submit. This submit path is
     # shared by checkpoints, direct conversation, listener notifications, and
