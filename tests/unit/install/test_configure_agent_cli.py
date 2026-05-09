@@ -288,6 +288,69 @@ def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Pa
     )
 
 
+def test_configure_codex_remaps_foreign_trust_when_compaction_shifts_indices(tmp_path: Path) -> None:
+    """If TeleClaude shares a hook block with a foreign handler, removing TC from
+    that block compacts the remaining handlers and shifts their indices. Any
+    user-trusted foreign handler must keep working: its ``trusted_hash`` entry
+    has to migrate to the new ``(group, handler)`` key, otherwise codex looks
+    up the old key, finds nothing matching the foreign hook's currentHash, and
+    silently disables it.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    receiver_command = f'{receiver} --agent codex --cwd "$PWD"'
+    # Single block with TWO handlers: TeleClaude at (0, 0), foreign at (0, 1).
+    # The merge strips TC and compacts foreign down to (0, 0), then re-appends TC at (1, 0).
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup|resume",
+                            "hooks": [
+                                {
+                                    "type": "command",
+                                    "command": receiver_command,
+                                    "statusMessage": "Loading session notes",
+                                },
+                                {"type": "command", "command": "/usr/local/bin/foreign-tool"},
+                            ],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    foreign_old_key = f"{hooks_path}:session_start:0:1"
+    foreign_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{foreign_old_key}"]\n  trusted_hash = "{foreign_hash}"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads(config_path.read_text(encoding="utf-8"))["hooks"]["state"]
+    foreign_new_key = f"{hooks_path}:session_start:0:0"
+
+    assert state.get(foreign_new_key, {}).get("trusted_hash") == foreign_hash, (
+        "foreign trust must migrate from old position (0,1) to compacted position (0,0)"
+    )
+    assert foreign_old_key not in state, (
+        "stale foreign trust entry at the original position must not linger after compaction"
+    )
+
+
 def test_configure_codex_preserves_user_trusted_foreign_managed_event(tmp_path: Path) -> None:
     """A user-trusted foreign hook for one of our managed event labels must keep its trust.
 

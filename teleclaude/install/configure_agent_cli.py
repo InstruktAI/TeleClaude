@@ -14,16 +14,17 @@ import shlex
 import shutil
 import tomllib
 from collections.abc import Mapping
-from copy import deepcopy
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from teleclaude.constants import MAIN_MODULE
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
-from teleclaude.install.codex_hook_trust import (
-    build_codex_managed_hook_state,
-    codex_hook_state_key,
+from teleclaude.install.codex_hooks_install import (
+    all_positions_per_label,
+    first_positions_per_label,
+    foreign_remap_per_label,
+    merge_codex_hook_trust_state,
+    write_codex_hooks_json,
 )
 from teleclaude.paths import BIN_DIR, ENV_PATH
 from teleclaude.project_root import resolve_state_root
@@ -592,265 +593,26 @@ def configure_codex(
 
     receiver_invocation = _build_hook_invocation(receiver_script)
     managed_hook_blocks = _codex_hook_blocks(receiver_invocation, receiver_script)
-    write_result = _write_codex_hooks_json(hooks_path, managed_hook_blocks)
+    write_result = write_codex_hooks_json(
+        hooks_path,
+        managed_hook_blocks,
+        load_settings=_load_json_settings,
+        prune=_prune_agent_hooks,
+        extract_receiver_script=_extract_receiver_script,
+    )
 
     receiver_command = _build_hook_command_without_event(receiver_invocation, CODEX_AGENT)
-    new_positions = _first_positions_per_label(write_result.new_positions)
-    old_positions_by_label = _all_positions_per_label(write_result.old_positions)
-    _merge_codex_hook_trust_state(
+    merge_codex_hook_trust_state(
         config,
         hooks_path=hooks_path,
         receiver_command=receiver_command,
-        new_positions=new_positions,
-        old_positions_by_label=old_positions_by_label,
+        new_positions=first_positions_per_label(write_result.new_positions),
+        old_positions_by_label=all_positions_per_label(write_result.old_positions),
+        foreign_remap_by_label=foreign_remap_per_label(write_result.foreign_remap),
     )
 
     config_path.write_text(_serialize_toml(config))
     print(f"Codex hooks and settings configured in {config_path}")
-
-
-# Codex hook events expose two parallel naming systems: the camelCase event
-# names that appear inside ``hooks.json`` (e.g. ``SessionStart``) and the
-# snake_case labels that codex uses for ``hooks.state.<key>``. The trust hash
-# tracks the snake_case label, so installer plumbing translates between the two.
-CODEX_TRUST_LABEL_BY_HOOK_NAME: dict[str, str] = {
-    "SessionStart": "session_start",
-    "UserPromptSubmit": "user_prompt_submit",
-    "Stop": "stop",
-}
-
-
-@dataclass(frozen=True)
-class _CodexHookWriteResult:
-    """Result of writing hooks.json: where TeleClaude handlers live now and where they used to.
-
-    ``new_positions`` reflects the freshly-written file. ``old_positions`` is
-    captured from the file *before* mutation so the trust merge can drop stale
-    keys and migrate any user-set ``enabled`` override forward.
-    """
-
-    new_positions: dict[str, list[tuple[int, int]]]
-    old_positions: dict[str, list[tuple[int, int]]]
-
-
-def _first_positions_per_label(
-    positions_by_event: Mapping[str, list[tuple[int, int]]],
-) -> dict[str, tuple[int, int]]:
-    """Take the first managed handler per event and key it by snake_case trust label."""
-    positions: dict[str, tuple[int, int]] = {}
-    for hook_name, occurrences in positions_by_event.items():
-        label = CODEX_TRUST_LABEL_BY_HOOK_NAME.get(hook_name)
-        if label is None or not occurrences:
-            continue
-        positions[label] = occurrences[0]
-    return positions
-
-
-def _all_positions_per_label(
-    positions_by_event: Mapping[str, list[tuple[int, int]]],
-) -> dict[str, list[tuple[int, int]]]:
-    """Collect every managed handler position per event, keyed by snake_case trust label."""
-    positions: dict[str, list[tuple[int, int]]] = {}
-    for hook_name, occurrences in positions_by_event.items():
-        label = CODEX_TRUST_LABEL_BY_HOOK_NAME.get(hook_name)
-        if label is None or not occurrences:
-            continue
-        positions[label] = list(occurrences)
-    return positions
-
-
-def _merge_codex_hook_trust_state(
-    config: dict[str, object],
-    *,
-    hooks_path: Path,
-    receiver_command: str,
-    new_positions: Mapping[str, tuple[int, int]],
-    old_positions_by_label: Mapping[str, list[tuple[int, int]]],
-) -> None:
-    """Pre-trust the TeleClaude-managed Codex hooks under ``[hooks.state]``.
-
-    Codex 0.129+ (PR openai/codex#20321) silently drops execution of any
-    User-layer hook whose persisted ``trusted_hash`` does not match its
-    computed ``currentHash``.
-
-    Strip only the exact ``hooks.state`` keys whose ``(group_index,
-    handler_index)`` came from a TeleClaude-recognized handler — both the new
-    positions written in this run and the positions where TeleClaude lived in
-    the file before mutation. Foreign trust entries survive verbatim, including
-    user-trusted foreign hooks at our managed event labels (e.g. a foreign
-    ``SessionStart`` block in the same file). If a stripped entry carried a
-    user-set ``enabled`` flag, migrate it to the new managed key for the same
-    label so a deliberate ``/hooks`` disable survives a position shift.
-    """
-    managed = build_codex_managed_hook_state(
-        hooks_path=hooks_path,
-        receiver_command=receiver_command,
-        positions=new_positions,
-    )
-
-    hooks_section = config.get("hooks")
-    if not isinstance(hooks_section, dict):
-        hooks_section = {}
-    existing_state = hooks_section.get("state") if isinstance(hooks_section.get("state"), dict) else None
-
-    new_keys_by_label = {
-        label: codex_hook_state_key(
-            source_path=hooks_path,
-            event_label=label,
-            group_index=position[0],
-            handler_index=position[1],
-        )
-        for label, position in new_positions.items()
-    }
-    old_keys_by_label: dict[str, list[str]] = {}
-    for label, occurrences in old_positions_by_label.items():
-        old_keys_by_label[label] = [
-            codex_hook_state_key(
-                source_path=hooks_path,
-                event_label=label,
-                group_index=group_index,
-                handler_index=handler_index,
-            )
-            for group_index, handler_index in occurrences
-        ]
-
-    stale_keys: set[str] = set(new_keys_by_label.values())
-    for keys in old_keys_by_label.values():
-        stale_keys.update(keys)
-
-    enabled_at_new_key: dict[str, bool] = {}
-    enabled_at_old_managed_key: dict[str, bool] = {}
-    if isinstance(existing_state, dict):
-        for label, new_key in new_keys_by_label.items():
-            prior = existing_state.get(new_key)
-            if isinstance(prior, dict) and "enabled" in prior:
-                enabled_at_new_key[label] = bool(prior["enabled"])
-        for label, old_keys in old_keys_by_label.items():
-            for old_key in old_keys:
-                prior = existing_state.get(old_key)
-                if isinstance(prior, dict) and "enabled" in prior and label not in enabled_at_old_managed_key:
-                    enabled_at_old_managed_key[label] = bool(prior["enabled"])
-
-    merged: dict[str, dict[str, object]] = {}
-    if isinstance(existing_state, dict):
-        for key, value in existing_state.items():
-            if not isinstance(key, str) or not isinstance(value, dict):
-                continue
-            if key in stale_keys:
-                continue
-            merged[key] = dict(value)
-
-    for label, new_key in new_keys_by_label.items():
-        managed_entry = managed.get(new_key)
-        if managed_entry is None:
-            continue
-        entry: dict[str, object] = dict(managed_entry)
-        if label in enabled_at_new_key:
-            entry["enabled"] = enabled_at_new_key[label]
-        elif label in enabled_at_old_managed_key:
-            entry["enabled"] = enabled_at_old_managed_key[label]
-        merged[new_key] = entry
-
-    hooks_section["state"] = dict(sorted(merged.items()))
-    config["hooks"] = hooks_section
-
-
-def _merge_codex_hook_blocks(
-    existing_blocks: object,
-    managed_blocks: list[dict[str, Any]],
-) -> tuple[list[dict[str, Any]], list[tuple[int, int]]]:
-    """Replace TeleClaude receiver hooks while preserving foreign Codex hook blocks.
-
-    Returns ``(merged_blocks, managed_positions)`` where ``managed_positions``
-    lists ``(group_index, handler_index)`` for each TeleClaude-managed handler
-    in the merged structure. The trust hash is keyed by these positions, so
-    foreign blocks already in the user's ``hooks.json`` shift our handlers and
-    must be reflected in the trust state.
-    """
-    merged_blocks: list[dict[str, Any]] = []
-    if isinstance(existing_blocks, list):
-        for block in existing_blocks:
-            if not isinstance(block, dict):
-                continue
-            hooks_list = block.get("hooks", [])
-            if not isinstance(hooks_list, list):
-                merged_blocks.append(block)
-                continue
-            filtered_hooks = []
-            for hook in hooks_list:
-                if not isinstance(hook, dict):
-                    filtered_hooks.append(hook)
-                    continue
-                if _extract_receiver_script(hook.get("command", "")) == RECEIVER_TOKEN:
-                    continue
-                filtered_hooks.append(hook)
-            if filtered_hooks:
-                updated_block = block.copy()
-                updated_block["hooks"] = filtered_hooks
-                merged_blocks.append(updated_block)
-
-    managed_positions: list[tuple[int, int]] = []
-    base_group_index = len(merged_blocks)
-    for offset, block in enumerate(deepcopy(managed_blocks)):
-        merged_blocks.append(block)
-        for handler_index in range(len(block.get("hooks", []))):
-            managed_positions.append((base_group_index + offset, handler_index))
-    return merged_blocks, managed_positions
-
-
-def _write_codex_hooks_json(
-    hooks_path: Path,
-    managed_hooks: dict[str, list[dict[str, Any]]],
-) -> _CodexHookWriteResult:
-    """Write Codex native hooks while preserving foreign non-TeleClaude hooks.
-
-    Returns the new and old TeleClaude handler positions per event. The trust
-    merge needs both: new positions to write the trusted_hash for the current
-    command, old positions (captured before mutating ``hooks.json``) to drop
-    stale TeleClaude trust entries without disturbing foreign trust entries
-    that happen to share an event label.
-    """
-    existing = _load_json_settings(hooks_path, label="Codex hooks")
-    if existing is None:
-        return _CodexHookWriteResult(new_positions={}, old_positions={})
-
-    existing_hooks = existing.get("hooks", {})
-    if not isinstance(existing_hooks, dict):
-        existing_hooks = {}
-
-    old_positions: dict[str, list[tuple[int, int]]] = {
-        event_name: _find_managed_positions_in_blocks(existing_hooks.get(event_name)) for event_name in managed_hooks
-    }
-
-    updated_hooks = _prune_agent_hooks(existing_hooks, set(managed_hooks.keys()))
-    new_positions: dict[str, list[tuple[int, int]]] = {}
-    for event_name, managed_blocks in managed_hooks.items():
-        merged, positions = _merge_codex_hook_blocks(existing_hooks.get(event_name), managed_blocks)
-        updated_hooks[event_name] = merged
-        new_positions[event_name] = positions
-
-    with open(hooks_path, "w") as handle:
-        json.dump({"hooks": updated_hooks}, handle, indent=2)
-    return _CodexHookWriteResult(new_positions=new_positions, old_positions=old_positions)
-
-
-def _find_managed_positions_in_blocks(blocks: object) -> list[tuple[int, int]]:
-    """Locate ``(group_index, handler_index)`` for TeleClaude handlers inside hooks.json blocks."""
-    if not isinstance(blocks, list):
-        return []
-    positions: list[tuple[int, int]] = []
-    for group_index, block in enumerate(blocks):
-        if not isinstance(block, dict):
-            continue
-        hooks_list = block.get("hooks", [])
-        if not isinstance(hooks_list, list):
-            continue
-        for handler_index, hook in enumerate(hooks_list):
-            if not isinstance(hook, dict):
-                continue
-            if _extract_receiver_script(hook.get("command", "")) == RECEIVER_TOKEN:
-                positions.append((group_index, handler_index))
-    return positions
 
 
 def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
