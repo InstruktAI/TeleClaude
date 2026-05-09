@@ -8,10 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from teleclaude.core import conversation_delivery
-from teleclaude.core.agents import AgentName
 from teleclaude.core.conversation_delivery import (
     ConversationSegment,
-    _collect_visible_conversation_segments_since,
     deliver_pending_conversation_updates,
     reconcile_outstanding_conversation_deliveries,
     schedule_debounced_delivery,
@@ -21,7 +19,6 @@ from teleclaude.core.conversation_messages import (
     is_conversation_bridge_message,
 )
 from teleclaude.core.models import Session
-from teleclaude.output_projection.models import ProjectedBlock
 
 # Per-link cursor anchored at link creation; tests use a fixed floor.
 _LINK_FLOOR = datetime(2026, 4, 14, 10, 0, 0, tzinfo=UTC)
@@ -719,68 +716,102 @@ async def test_deliver_pending_conversation_updates_backfills_missing_cursor_fro
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_collect_visible_conversation_segments_skips_machine_originated_user_blocks(
+async def test_deliver_pending_conversation_updates_strips_all_machine_originated_user_blocks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The collector must drop user blocks that are machine-originated bridges
-    or orchestrator dispatches. They show up in the transcript as `user` because
-    the agent CLI received them as paste, but re-shipping them as `Human`
-    segments to the peer creates a ping-pong loop: A's bundle lands in B as
-    user input, B's next agent_stop wraps it back into a bundle to A, etc.
+    """Public-boundary regression: when the source transcript contains user
+    blocks that are actually machine-injected pastes (peer bridges, orchestrator
+    / integrator / system dispatches), the bundled message delivered to the
+    peer must NOT contain any of them. Re-shipping machine framing as Human
+    segments creates a ping-pong loop where each side echoes the other's last
+    bundle back. All four canonical machine-role headers are exercised.
     """
 
-    def _block(role: str, text: str, ts: str) -> ProjectedBlock:
-        return ProjectedBlock(
-            block_type="text",
-            block={"type": "text", "text": text},
-            role=role,
-            timestamp=ts,
-            entry_index=0,
-        )
+    # Claude transcript entries: user content can be a plain string; assistant
+    # content is a list of typed blocks. Match that shape so the projector
+    # accepts both roles without falling through its non-list-content guard.
+    def _entry(role: str, text: str, ts: str) -> dict[str, object]:  # guard: loose-dict
+        if role == "user":
+            return {"timestamp": ts, "message": {"role": role, "content": text}}
+        return {
+            "timestamp": ts,
+            "message": {"role": role, "content": [{"type": "text", "text": text}]},
+        }
 
-    blocks = [
-        _block("user", "What is the status?", "2026-04-14T10:00:00+00:00"),  # real human turn
-        _block(
+    # All entry timestamps are strictly AFTER the per-link cursor floor so the
+    # projector's `<= since` filter doesn't eat the real human turn.
+    # Mix: real human input, one block per machine-role header, agent reply.
+    entries = [
+        _entry("user", "What is the status?", "2026-04-14T10:00:01.000Z"),
+        _entry(
             "user",
-            "[TeleClaude - Peer (peer-id) on host]\n\n--- Agent @ ts ---\nlinked output",
-            "2026-04-14T10:01:00+00:00",
-        ),  # peer bridge — must be dropped
-        _block(
+            "[TeleClaude - Peer (peer-id) on host]\n\n--- Agent @ ts ---\nx",
+            "2026-04-14T10:01:00.000Z",
+        ),
+        _entry(
             "user",
             "[Orchestrator (orch-id) on host]\n\nDispatch reason",
-            "2026-04-14T10:02:00+00:00",
-        ),  # orchestrator dispatch — must be dropped
-        _block(
-            "assistant",
-            "Status: nominal.",
-            "2026-04-14T10:03:00+00:00",
+            "2026-04-14T10:02:00.000Z",
         ),
+        _entry(
+            "user",
+            "[Integrator (int-id) on host]\n\nMerge complete",
+            "2026-04-14T10:03:00.000Z",
+        ),
+        _entry(
+            "user",
+            "[System (sys-id) on host]\n\nMaintenance notice",
+            "2026-04-14T10:04:00.000Z",
+        ),
+        _entry("assistant", "Status: nominal.", "2026-04-14T10:05:00.000Z"),
     ]
 
+    source = _session()
+    peer = SimpleNamespace(session_id="target-001", computer_name="local")
+    link = SimpleNamespace(link_id="link-001")
+    command_service = SimpleNamespace(process_message=AsyncMock())
+    client = MagicMock()
+    db = SimpleNamespace(
+        get_session=AsyncMock(return_value=source),
+        get_conversation_delivery_state=AsyncMock(return_value=_persisted_at_floor()),
+        upsert_conversation_delivery_state=AsyncMock(),
+    )
+
+    monkeypatch.setattr("teleclaude.core.conversation_delivery.db", db)
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_active_links_for_session",
+        AsyncMock(return_value=[link]),
+    )
+    monkeypatch.setattr(
+        "teleclaude.core.conversation_delivery.get_peer_members",
+        AsyncMock(return_value=[peer]),
+    )
+    # Mock only the on-disk read; the rest of the path runs end-to-end:
+    # project_entries, the machine-originated filter, the bundler, the dispatcher.
     monkeypatch.setattr(
         "teleclaude.core.conversation_delivery._get_entries_for_agent",
-        lambda *args, **kwargs: ["unused-stub"],
-    )
-    monkeypatch.setattr(
-        "teleclaude.core.conversation_delivery.project_entries",
-        lambda *args, **kwargs: iter(blocks),
+        lambda *args, **kwargs: entries,
     )
 
-    segments = await _collect_visible_conversation_segments_since(
-        transcript_path="/tmp/fake.jsonl",
-        agent_name=AgentName.CLAUDE,
-        since_timestamp=datetime(2026, 4, 14, 9, 0, 0, tzinfo=UTC),
+    delivered = await deliver_pending_conversation_updates(
+        "source-001",
+        client=client,
+        command_service=command_service,
     )
 
-    # Exactly two segments: the real human turn and the assistant reply.
-    # Both bridge and orchestrator user blocks are filtered out.
-    assert [seg.role for seg in segments] == ["user", "assistant"]
-    assert segments[0].text == "What is the status?"
-    assert segments[1].text == "Status: nominal."
-    # The bridge bracket and orchestrator bracket must NOT survive in any segment.
-    joined = "\n".join(seg.text for seg in segments)
-    assert "[TeleClaude - Peer" not in joined
-    assert "[Orchestrator" not in joined
+    assert delivered == 1
+    assert command_service.process_message.await_count == 1
+    body = command_service.process_message.await_args_list[0].args[0].text
+    # The real human turn and the assistant reply make it through.
+    assert "What is the status?" in body
+    assert "Status: nominal." in body
+    # None of the machine-role headers leak into the bundle as Human segments.
+    assert "[TeleClaude - Peer (peer-id)" not in body
+    assert "[Orchestrator (orch-id)" not in body
+    assert "[Integrator (int-id)" not in body
+    assert "[System (sys-id)" not in body
+    # Sanity: only one Human marker (the real turn) — not five.
+    assert body.count("--- Human @") == 1
 
 
 @pytest.mark.unit

@@ -24,12 +24,25 @@ from datetime import datetime
 
 _TELECLAUDE_ROLE = "TeleClaude"
 _ORCHESTRATOR_ROLE = "Orchestrator"
+_INTEGRATOR_ROLE = "Integrator"
+_SYSTEM_ROLE = "System"
 
 _CATEGORY_PEER = "Peer"
 _SEGMENT_HUMAN = "Human"
 _SEGMENT_AGENT = "Agent"
 
 _BRIDGE_PREFIXES: tuple[str, ...] = (f"[{_TELECLAUDE_ROLE} - {_CATEGORY_PEER}",)
+
+# All canonical machine-role headers that the API wraps around outbound messages.
+# Any user-role transcript block whose text starts with one of these is a
+# machine-injected paste, not real human input. See `_MACHINE_ROLE_LABELS` in
+# `teleclaude/api/sessions_routes.py` for the producing side.
+_MACHINE_ORIGINATED_PREFIXES: tuple[str, ...] = (
+    f"[{_TELECLAUDE_ROLE} - {_CATEGORY_PEER}",
+    f"[{_ORCHESTRATOR_ROLE} ",
+    f"[{_INTEGRATOR_ROLE} ",
+    f"[{_SYSTEM_ROLE} ",
+)
 
 
 def format_identity_header(
@@ -100,3 +113,15 @@ def format_peer_message(
 def is_orchestrator_dispatch_message(text: str) -> bool:
     """Return True when text is an orchestrator dispatch."""
     return text.lstrip().startswith(f"[{_ORCHESTRATOR_ROLE} ")
+
+
+def is_machine_originated_user_text(text: str) -> bool:
+    """Return True when a user-role block is actually a machine-injected paste.
+
+    Covers every canonical machine-role header (``TeleClaude - Peer``,
+    ``Orchestrator``, ``Integrator``, ``System``). Used by the conversation
+    collector to keep these blocks out of the bundled delivery — re-shipping
+    them to the peer would echo machine framing as human input.
+    """
+    stripped = text.lstrip()
+    return any(stripped.startswith(prefix) for prefix in _MACHINE_ORIGINATED_PREFIXES)

@@ -16,8 +16,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.conversation_messages import (
     format_peer_message,
-    is_conversation_bridge_message,
-    is_orchestrator_dispatch_message,
+    is_machine_originated_user_text,
 )
 from teleclaude.core.dates import parse_iso_datetime
 from teleclaude.core.db import db
@@ -107,14 +106,12 @@ async def _collect_visible_conversation_segments_since(
             if not raw_text:
                 continue
             # Skip user blocks that are machine-originated injections (peer bridges,
-            # orchestrator dispatches). These show up in the agent's transcript as
-            # `user` because they were pasted into the prompt, but they are not
-            # real human input and re-shipping them creates a ping-pong: A's bundle
-            # lands in B's transcript, then B's next agent_stop bundles it back to
-            # A as a `Human` segment, ad infinitum.
-            if block.role == "user" and (
-                is_conversation_bridge_message(raw_text) or is_orchestrator_dispatch_message(raw_text)
-            ):
+            # orchestrator/integrator/system dispatches). These show up in the
+            # agent's transcript as `user` because they were pasted into the
+            # prompt, but they are not real human input and re-shipping them
+            # creates a ping-pong: A's bundle lands in B's transcript, then B's
+            # next agent_stop bundles it back to A as a `Human` segment.
+            if block.role == "user" and is_machine_originated_user_text(raw_text):
                 continue
             block_timestamp = _parse_timestamp(block.timestamp) if block.timestamp else None
             if current_role == block.role:
