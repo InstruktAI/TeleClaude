@@ -288,6 +288,62 @@ def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Pa
     )
 
 
+def test_configure_codex_preserves_user_trusted_foreign_managed_event(tmp_path: Path) -> None:
+    """A user-trusted foreign hook for one of our managed event labels must keep its trust.
+
+    If hooks.json holds both a foreign SessionStart and a TeleClaude SessionStart, both
+    can carry their own trusted_hash entries. Stripping every key under the managed
+    event-label prefix would silently disable the foreign hook on the next telec init.
+    Trust deletion must be position-targeted: only the keys at the actual TeleClaude
+    handler positions are stripped.
+    """
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
+    receiver.parent.mkdir(parents=True)
+    receiver.touch()
+
+    hooks_path = codex_dir / CODEX_HOOKS_FILENAME
+    hooks_path.write_text(
+        json.dumps(
+            {
+                "hooks": {
+                    "SessionStart": [
+                        {
+                            "matcher": "startup",
+                            "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
+                        }
+                    ]
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    foreign_key = f"{hooks_path}:session_start:0:0"
+    foreign_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+    config_path = codex_dir / "config.toml"
+    config_path.write_text(
+        f'[hooks.state."{foreign_key}"]\n  trusted_hash = "{foreign_hash}"\n',
+        encoding="utf-8",
+    )
+
+    with patch("pathlib.Path.home", return_value=tmp_path):
+        configure_codex(tmp_path)
+
+    state = tomllib.loads(config_path.read_text(encoding="utf-8"))["hooks"]["state"]
+
+    assert state.get(foreign_key, {}).get("trusted_hash") == foreign_hash, (
+        "user-trusted foreign hook at a managed event label must keep its trusted_hash; "
+        "telec init only owns the TeleClaude handler position"
+    )
+
+    new_managed_key = f"{hooks_path}:session_start:1:0"
+    assert new_managed_key in state, "TeleClaude managed key at the shifted position must be written"
+    assert state[new_managed_key]["trusted_hash"].startswith("sha256:")
+    assert state[new_managed_key]["trusted_hash"] != foreign_hash
+
+
 def test_configure_codex_migrates_user_disable_when_managed_hook_shifts(tmp_path: Path) -> None:
     """When a foreign block shifts a TeleClaude hook to a new (group, handler) index,
     a previously persisted ``enabled = false`` must migrate to the new key. Otherwise
@@ -302,15 +358,13 @@ def test_configure_codex_migrates_user_disable_when_managed_hook_shifts(tmp_path
 
     hooks_path = codex_dir / CODEX_HOOKS_FILENAME
     receiver_command = f'{receiver} --agent codex --cwd "$PWD"'
+    # Existing hooks.json: TeleClaude at (0, 0), foreign appended at (1, 0).
+    # The merge strips TC from its block and re-appends at the tail, shifting TC to (1, 0).
     hooks_path.write_text(
         json.dumps(
             {
                 "hooks": {
                     "SessionStart": [
-                        {
-                            "matcher": "startup",
-                            "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
-                        },
                         {
                             "matcher": "startup|resume",
                             "hooks": [
@@ -320,6 +374,10 @@ def test_configure_codex_migrates_user_disable_when_managed_hook_shifts(tmp_path
                                     "statusMessage": "Loading session notes",
                                 }
                             ],
+                        },
+                        {
+                            "matcher": "resume",
+                            "hooks": [{"type": "command", "command": "/usr/local/bin/foreign-tool"}],
                         },
                     ]
                 }
@@ -342,8 +400,8 @@ def test_configure_codex_migrates_user_disable_when_managed_hook_shifts(tmp_path
     new_managed_key = f"{hooks_path}:session_start:1:0"
 
     assert old_managed_key not in state, (
-        "stale managed key must be dropped, not preserved as foreign — otherwise the foreign "
-        "hook now at index 0 would inherit our user's enabled=false"
+        "stale TeleClaude key at the old position must be dropped after the merge shifts TC; "
+        "otherwise the foreign hook now at (0,0) would inherit our user's enabled=false"
     )
     assert state[new_managed_key]["enabled"] is False, (
         "user-set enabled=false must migrate forward when the managed hook shifts position"
