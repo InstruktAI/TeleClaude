@@ -531,7 +531,18 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
     validation (worktree HEAD == local branch ref == remote ref) and the
     lifecycle event emission happen in the work state machine when it
     observes the claim.
+
+    The caller session identity is required: it becomes the
+    ``worker_session_id`` field on the eventual ``todo_finalize_ready`` event,
+    which the integration trigger cartridge uses to attribute the spawn.
+    Empty caller identity would propagate an unattributable event downstream.
     """
+    if not caller_session_id:
+        raise RuntimeError(
+            f"finalize_ready stamp for {slug} requires a non-empty caller session ID; "
+            "the integration trigger event needs an attributable worker_session_id."
+        )
+
     project_root = str(resolve_state_root(cwd))
     worktree_path = Path(project_root) / WORKTREE_DIR / slug
     head_sha = get_head_commit(str(worktree_path)) if worktree_path.exists() else ""

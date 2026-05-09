@@ -133,7 +133,6 @@ class FinalizeReadyPayload(TypedDict):
     branch: str
     sha: str
     worker_session_id: str
-    orchestrator_session_id: str
     ready_at: str
 
 
@@ -176,7 +175,7 @@ class IntegrationEventRecord(TypedDict):
 _REQUIRED_FIELDS: Mapping[IntegrationEventType, tuple[str, ...]] = MappingProxyType(
     {
         "review_approved": ("slug", "approved_at", "review_round", "reviewer_session_id"),
-        "finalize_ready": ("slug", "branch", "sha", "worker_session_id", "orchestrator_session_id", "ready_at"),
+        "finalize_ready": ("slug", "branch", "sha", "worker_session_id", "ready_at"),
         "branch_pushed": ("branch", "sha", "remote", "pushed_at", "pusher"),
         "integration_blocked": (
             "slug",
@@ -383,7 +382,6 @@ def _validate_finalize_ready(payload: Mapping[str, object], diagnostics: list[st
     branch = _as_non_empty_str(payload, "branch", diagnostics)
     sha = _as_non_empty_str(payload, "sha", diagnostics)
     worker_session_id = _as_non_empty_str(payload, "worker_session_id", diagnostics)
-    orchestrator_session_id = _as_non_empty_str(payload, "orchestrator_session_id", diagnostics)
     ready_at = _as_iso8601("finalize_ready", payload, "ready_at", diagnostics)
     if diagnostics:
         raise IntegrationEventValidationError("finalize_ready", diagnostics)
@@ -392,7 +390,6 @@ def _validate_finalize_ready(payload: Mapping[str, object], diagnostics: list[st
         "branch": branch,
         "sha": sha,
         "worker_session_id": worker_session_id,
-        "orchestrator_session_id": orchestrator_session_id,
         "ready_at": ready_at,
     }
 

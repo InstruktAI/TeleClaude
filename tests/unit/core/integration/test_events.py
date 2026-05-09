@@ -34,7 +34,6 @@ _FINALIZE_READY_PAYLOAD: FinalizeReadyPayload = {
     "branch": "my-branch",
     "sha": "abc123",
     "worker_session_id": "worker-1",
-    "orchestrator_session_id": "orch-1",
     "ready_at": "2024-01-01T12:00:00+00:00",
 }
 

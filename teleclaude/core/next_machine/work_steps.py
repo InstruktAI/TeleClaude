@@ -519,6 +519,7 @@ async def _handle_finalize_ready_claim(
     # work item with no integration trigger.
     sha = claimed_sha
     worker_session_id = writer.state.finalize.worker_session_id
+    ready_at = writer.state.finalize.ready_at
     await emit_event(
         event="domain.software-development.planning.todo_finalize_ready",
         source=f"work-machine/{slug}",
@@ -532,6 +533,7 @@ async def _handle_finalize_ready_claim(
             "branch": slug,
             "sha": sha,
             "worker_session_id": worker_session_id,
+            "ready_at": ready_at,
         },
     )
 

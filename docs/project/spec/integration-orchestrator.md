@@ -51,7 +51,6 @@ integrator:
       - branch
       - sha
       - worker_session_id
-      - orchestrator_session_id
       - ready_at
     branch_pushed:
       - branch
@@ -134,8 +133,7 @@ Required fields:
 - `slug`
 - `branch`
 - `sha` (branch HEAD used for integration)
-- `worker_session_id`
-- `orchestrator_session_id` (session that consumed worker output and recorded readiness)
+- `worker_session_id` (caller session that stamped readiness; chain-of-ownership address the integrator uses to talk back)
 - `ready_at` (ISO8601)
 
 ### `branch_pushed`

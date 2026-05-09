@@ -36,7 +36,6 @@ def _build_finalize_ready(slug: str, branch: str, sha: str) -> object:
             "branch": branch,
             "sha": sha,
             "worker_session_id": "worker-1",
-            "orchestrator_session_id": "orch-1",
             "ready_at": _READY_AT,
         },
     )
@@ -112,7 +111,6 @@ def test_projection_older_candidate_superseded_by_newer() -> None:
                 "branch": "branch-old",
                 "sha": "sha-old",
                 "worker_session_id": "w1",
-                "orchestrator_session_id": "o1",
                 "ready_at": "2024-01-01T10:00:00+00:00",
             },
         )
@@ -126,7 +124,6 @@ def test_projection_older_candidate_superseded_by_newer() -> None:
                 "branch": "branch-new",
                 "sha": "sha-new",
                 "worker_session_id": "w1",
-                "orchestrator_session_id": "o1",
                 "ready_at": "2024-01-02T10:00:00+00:00",
             },
         )

@@ -495,11 +495,18 @@ async def test_finalize_ready_claim_stale_sha_blocks() -> None:
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_emits_event_with_worker_session_id() -> None:
-    """Valid claim emits the lifecycle event with worker_session_id propagated to
-    the integration trigger cartridge."""
+async def test_finalize_ready_claim_emits_event_with_full_payload_contract() -> None:
+    """Valid claim emits the lifecycle event with the full payload contract
+    required by the Integration Orchestrator Spec: slug, branch, sha,
+    worker_session_id, ready_at."""
     state = {
-        "finalize": {"status": "ready", "sha": "cafebabe", "worker_session_id": "w-1"},
+        "finalize": {
+            "status": "ready",
+            "branch": "test-slug",
+            "sha": "cafebabe",
+            "ready_at": "2026-05-09T12:00:00+00:00",
+            "worker_session_id": "w-1",
+        },
         "lifecycle_phase": "review_approved",
     }
     emit = AsyncMock()
@@ -523,8 +530,12 @@ async def test_finalize_ready_claim_emits_event_with_worker_session_id() -> None
     assert result == (True, "")
     assert emit.await_count == 1
     payload = emit.await_args.kwargs["payload"]
-    assert payload["worker_session_id"] == "w-1"
+    assert payload["slug"] == "test-slug"
+    assert payload["branch"] == "test-slug"
     assert payload["sha"] == "cafebabe"
+    assert payload["worker_session_id"] == "w-1"
+    assert payload["ready_at"] == "2026-05-09T12:00:00+00:00"
+    assert "orchestrator_session_id" not in payload
 
 
 @pytest.mark.asyncio
