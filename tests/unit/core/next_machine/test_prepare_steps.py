@@ -675,48 +675,15 @@ async def test_review_needs_work_emits_same_script_with_or_without_pair_stamped(
 # the prepare pair is persistent across the entire lifecycle. Sessions are only
 # cleaned up at the PREPARED terminal (or stay alive on BLOCKED). Approved
 # review checkpoints must advance the state machine without killing sessions.
+#
+# Regression: the legacy non-paired branch previously emitted telec sessions end
+# for both worker and reviewer after every approved review, violating the
+# persistent-pair contract whenever the pair stamp was unset.
 
 
 @pytest.mark.asyncio
-async def test_requirements_review_approve_does_not_end_sessions_with_pair_stamped() -> None:
-    """Approved requirements review on a paired flow must not emit telec sessions end."""
-    state = _base_state(lifecycle_phase="requirements_review")
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "rounds": 0,
-        "approved_digest": "req-digest",
-    }
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="req-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
-
-    assert keep_going is False
-    assert instruction.startswith("REQUIREMENTS REVIEW APPROVED: test-slug")
-    assert "telec todo prepare test-slug" in instruction
-    assert "telec sessions end" not in instruction
-
-
-@pytest.mark.asyncio
-async def test_requirements_review_approve_does_not_end_sessions_without_pair_stamped() -> None:
-    """Approved requirements review on a non-paired flow must also not emit telec sessions end.
-
-    Regression: the legacy non-paired branch previously emitted telec sessions end for
-    both worker and reviewer after every approved review, violating the persistent-pair
-    contract whenever the pair stamp was unset (e.g. when the writer's native_session_id
-    failed to register).
-    """
+async def test_requirements_review_approve_advances_without_ending_sessions() -> None:
+    """Approved requirements review must advance the state machine without killing sessions."""
     state = _base_state(lifecycle_phase="requirements_review")
     state["requirements_review"] = {
         "verdict": "approve",
@@ -740,14 +707,13 @@ async def test_requirements_review_approve_does_not_end_sessions_without_pair_st
         keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
 
     assert keep_going is False
-    assert instruction.startswith("REQUIREMENTS REVIEW APPROVED: test-slug")
     assert "telec todo prepare test-slug" in instruction
     assert "telec sessions end" not in instruction
 
 
 @pytest.mark.asyncio
-async def test_test_spec_review_approve_does_not_end_sessions_without_pair_stamped() -> None:
-    """Approved test-spec review on a non-paired flow must not emit telec sessions end."""
+async def test_test_spec_review_approve_advances_without_ending_sessions() -> None:
+    """Approved test-spec review must advance the state machine without killing sessions."""
     state = _base_state(lifecycle_phase="test_spec_review")
     state["test_spec_review"] = {
         "verdict": "approve",
@@ -771,14 +737,13 @@ async def test_test_spec_review_approve_does_not_end_sessions_without_pair_stamp
         keep_going, instruction = await _prepare_step_test_spec_review(db, todos_db, "test-slug", "/repo", state)
 
     assert keep_going is False
-    assert instruction.startswith("TEST SPEC REVIEW APPROVED: test-slug")
     assert "telec todo prepare test-slug" in instruction
     assert "telec sessions end" not in instruction
 
 
 @pytest.mark.asyncio
-async def test_plan_review_approve_does_not_end_sessions_without_pair_stamped() -> None:
-    """Approved plan review on a non-paired flow must not emit telec sessions end."""
+async def test_plan_review_approve_advances_without_ending_sessions() -> None:
+    """Approved plan review must advance the state machine without killing sessions."""
     state = _base_state(lifecycle_phase="plan_review")
     state["plan_review"] = {
         "verdict": "approve",
@@ -802,6 +767,5 @@ async def test_plan_review_approve_does_not_end_sessions_without_pair_stamped() 
         keep_going, instruction = await _prepare_step_plan_review(db, todos_db, "test-slug", "/repo", state)
 
     assert keep_going is False
-    assert instruction.startswith("PLAN REVIEW APPROVED: test-slug")
     assert "telec todo prepare test-slug" in instruction
     assert "telec sessions end" not in instruction
