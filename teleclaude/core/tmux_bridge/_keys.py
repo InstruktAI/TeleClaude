@@ -20,6 +20,12 @@ from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, commu
 
 logger = get_logger(__name__)
 
+# Sub-second ordering margin between paste-buffer completion and the discrete
+# send-keys C-m, so tmux flushes the bracketed-paste close marker before the
+# next subprocess writes \r. Size-independent — the close marker is the same
+# regardless of content size.
+_SUBMIT_GAP_S = 0.2
+
 
 def pid_is_alive(pid: int) -> bool:
     """Return True if a PID appears to be alive."""
@@ -221,6 +227,7 @@ async def _send_keys_tmux(
         paste_cmd = [
             config.computer.tmux_binary,
             "paste-buffer",
+            "-p",
             "-r",
             "-t",
             session_name,
@@ -271,20 +278,23 @@ async def _send_keys_tmux(
                 paste_succeeded=paste_succeeded,
             )
 
-    # Submit via a DISCRETE send-keys C-m AFTER the paste has had time to be
-    # consumed by the agent CLI. An inline trailing \r inside paste-buffer's
-    # stream does NOT submit for claude code / codex — those agents detect
-    # rapid input as a paste and wait for a separate Enter event to fire.
-    # The wait scales with payload size so large bundles don't race the
-    # agent's pty reader. 50 KB/s is a conservative read rate; floor at 0.2s.
-    submit_delay_s = max(0.2, payload_len / 50_000)
+    # Submit via a DISCRETE send-keys C-m. paste-buffer -p emitted DECSET 2004
+    # markers (\x1b[200~ ... \x1b[201~) around the content. All three agent
+    # CLIs (codex, claude code, gemini) enable bracketed-paste mode at startup
+    # and atomically buffer everything between the markers as a single 'paste'
+    # event. The next Enter KeyEvent is unambiguously discrete → submit.
+    #
+    # The short fixed sleep is a sub-second ordering safety margin so tmux
+    # finishes writing the close marker through the pty before the next
+    # subprocess writes \r. It is NOT a paste-detection heuristic, and does
+    # NOT need to scale with payload size — the close marker is the same
+    # regardless of how much content preceded it.
     logger.debug(
         "tmux paste pipeline: waiting before submit",
         session=session_name,
-        submit_delay_s=submit_delay_s,
-        payload_bytes=payload_len,
+        submit_delay_s=_SUBMIT_GAP_S,
     )
-    await asyncio.sleep(submit_delay_s)
+    await asyncio.sleep(_SUBMIT_GAP_S)
 
     cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
     result = await asyncio.create_subprocess_exec(

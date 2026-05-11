@@ -164,7 +164,7 @@ class TestSendKeys:
         assert load_input == rb"run\!"
 
         paste_args = mock_exec.await_args_list[1].args
-        assert paste_args == (binary, "paste-buffer", "-r", "-t", "tmux-alpha", "-b", buf_name)
+        assert paste_args == (binary, "paste-buffer", "-p", "-r", "-t", "tmux-alpha", "-b", buf_name)
 
         delete_args = mock_exec.await_args_list[2].args
         assert delete_args == (binary, "delete-buffer", "-b", buf_name)
@@ -176,15 +176,16 @@ class TestSendKeys:
 class TestSendKeysSubmission:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_send_keys_submit_delay_scales_with_payload_size(self) -> None:
-        # Adaptive sleep before the discrete send-keys C-m so the agent's pty
-        # reader has time to fully consume the paste before Enter arrives.
-        # Rate: 50 KB/s. A 100 KB payload yields a 2.0s wait.
-        big_payload = "x" * 100_000  # 100 KB
+    async def test_send_keys_submit_uses_fixed_short_gap_regardless_of_size(self) -> None:
+        # The submit gap is size-INDEPENDENT: it only covers tmux's flush of
+        # the bracketed-paste close marker, which is the same regardless of
+        # how much content preceded it. Both small and large payloads use
+        # the same fixed _SUBMIT_GAP_S.
         sleep_mock = AsyncMock()
         processes = [_completed_process() for _ in range(4)]
         communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
+        big_payload = "x" * 100_000  # 100 KB
         with (
             patch(
                 "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
@@ -197,20 +198,14 @@ class TestSendKeysSubmission:
                 session_name="tmux-alpha",
                 text=big_payload,
             )
-
         assert result is True
         sleep_mock.assert_awaited_once()
-        assert sleep_mock.await_args.args[0] == 2.0
+        big_gap = sleep_mock.await_args.args[0]
 
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_send_keys_submit_delay_floors_at_200ms_for_small_payload(self) -> None:
-        # Small payloads still wait 0.2s — enough for typical agent input loops
-        # to consume the paste before Enter arrives.
+        # Reset and run with a tiny payload — gap must be identical.
         sleep_mock = AsyncMock()
         processes = [_completed_process() for _ in range(4)]
         communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
-
         with (
             patch(
                 "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
@@ -223,10 +218,11 @@ class TestSendKeysSubmission:
                 session_name="tmux-alpha",
                 text="ok",
             )
-
         assert result is True
-        sleep_mock.assert_awaited_once()
-        assert sleep_mock.await_args.args[0] == 0.2
+        small_gap = sleep_mock.await_args.args[0]
+
+        # Same fixed gap for any size. Matches the module constant.
+        assert big_gap == small_gap == _keys._SUBMIT_GAP_S
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -259,7 +255,7 @@ class TestSendKeysSubmission:
         assert b"\n" in load_input
         # paste-buffer must include -r so tmux does NOT rewrite LF -> CR.
         paste_args = mock_exec.await_args_list[1].args
-        assert paste_args == (binary, "paste-buffer", "-r", "-t", "tmux-alpha", "-b", paste_args[6])
+        assert paste_args == (binary, "paste-buffer", "-p", "-r", "-t", "tmux-alpha", "-b", paste_args[7])
 
     @pytest.mark.unit
     @pytest.mark.asyncio
