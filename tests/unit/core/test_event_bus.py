@@ -21,6 +21,7 @@ import asyncio
 import dataclasses
 import inspect
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -570,6 +571,52 @@ class TestEventBusContextRoundTripSpecs:
         assert dict(rebuilt.updated_fields) == dict(original.updated_fields)
 
     @pytest.mark.unit
+    async def test_session_updated_context_serializes_datetime_update_values_as_utc_iso(self) -> None:
+        """``SessionUpdatedContext`` datetime updates serialize as JSON-safe UTC timestamps."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        local_timestamp = datetime(2026, 5, 9, 14, 30, 0, tzinfo=timezone(timedelta(hours=2)))
+        expected_timestamp = local_timestamp.astimezone(UTC).isoformat()
+
+        await bus.emit(
+            "session_updated",
+            SessionUpdatedContext(
+                session_id="sess-update-datetime-1",
+                updated_fields={"last_activity_at": local_timestamp},
+            ),
+        )
+
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        updated_fields = envelope.payload.get("updated_fields")
+        assert isinstance(updated_fields, Mapping)
+        assert updated_fields.get("last_activity_at") == expected_timestamp
+
+    @pytest.mark.unit
+    async def test_session_updated_context_treats_naive_datetime_update_values_as_utc(self) -> None:
+        """``SessionUpdatedContext`` naive datetime updates serialize as UTC timestamps."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+
+        await bus.emit(
+            "session_updated",
+            SessionUpdatedContext(
+                session_id="sess-update-naive-datetime-1",
+                updated_fields={"last_activity_at": datetime(2026, 5, 9, 14, 30, 0)},
+            ),
+        )
+
+        calls = _captured_xadd_calls(redis)
+        assert calls
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        updated_fields = envelope.payload.get("updated_fields")
+        assert isinstance(updated_fields, Mapping)
+        assert updated_fields.get("last_activity_at") == "2026-05-09T14:30:00+00:00"
+
+    @pytest.mark.unit
     async def test_round_trip_message_event_context(self) -> None:
         """``MessageEventContext`` round-trip preserves session_id and text."""
         original = MessageEventContext(session_id="sess-msg-1", text="hello world")
@@ -919,7 +966,7 @@ class TestEventBusCallSiteSpecs:
         redis = _make_redis_fake()
         bus = EventBus(role="daemon", redis_client=redis)
         await bus.emit(
-            "job.started",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            "job.started",  # type: ignore[arg-type, unused-ignore]  # spec mirrors existing raw-string call site
             JobStartedPayload(job_name="nightly-sync"),
         )
         calls = _captured_xadd_calls(redis)
@@ -934,7 +981,7 @@ class TestEventBusCallSiteSpecs:
         redis = _make_redis_fake()
         bus = EventBus(role="daemon", redis_client=redis)
         await bus.emit(
-            "job.completed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            "job.completed",  # type: ignore[arg-type, unused-ignore]  # spec mirrors existing raw-string call site
             JobCompletedPayload(job_name="nightly-sync"),
         )
         calls = _captured_xadd_calls(redis)
@@ -949,7 +996,7 @@ class TestEventBusCallSiteSpecs:
         redis = _make_redis_fake()
         bus = EventBus(role="daemon", redis_client=redis)
         await bus.emit(
-            "job.failed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            "job.failed",  # type: ignore[arg-type, unused-ignore]  # spec mirrors existing raw-string call site
             JobFailedPayload(job_name="nightly-sync", error="cron runner failed"),
         )
         calls = _captured_xadd_calls(redis)
@@ -965,7 +1012,7 @@ class TestEventBusCallSiteSpecs:
         redis = _make_redis_fake()
         bus = EventBus(role="daemon", redis_client=redis)
         await bus.emit(
-            "notification.claimed",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            "notification.claimed",  # type: ignore[arg-type, unused-ignore]  # spec mirrors existing raw-string call site
             NotificationClaimedPayload(notification_id=42, agent_id="claude"),
         )
         calls = _captured_xadd_calls(redis)
@@ -981,7 +1028,7 @@ class TestEventBusCallSiteSpecs:
         redis = _make_redis_fake()
         bus = EventBus(role="daemon", redis_client=redis)
         await bus.emit(
-            "notification.resolved",  # type: ignore[arg-type]  # spec mirrors existing raw-string call site
+            "notification.resolved",  # type: ignore[arg-type, unused-ignore]  # spec mirrors existing raw-string call site
             NotificationResolvedPayload(notification_id=42),
         )
         calls = _captured_xadd_calls(redis)
