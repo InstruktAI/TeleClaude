@@ -482,7 +482,15 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--after", desc="Comma-separated dependency slugs"),
                     Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
-                    Flag("--prepped", desc="Content is a complete plan; mark todo prepped and ready for build"),
+                    Flag(
+                        "--prepped",
+                        desc=(
+                            "HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped "
+                            "and ready for build. Agents must obtain explicit human approval of the "
+                            "exact plan content before invoking. Never apply general guidance from a "
+                            "prior --prepped dump as authorization for a different todo."
+                        ),
+                    ),
                 ],
                 notes=[
                     "Emits todo.dumped notification for autonomous processing.",
@@ -490,6 +498,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Use --prepped when content is a complete implementation plan: content becomes "
                     "the implementation-plan artifact, kind=prepped, plan_review=approve, "
                     "requirements_review=skipped, ready for build.",
+                    "POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. "
+                    "Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, "
+                    "where an autonomous orchestrator can spawn builders against it. Agents must present "
+                    "the full plan and the dump command to the human and obtain explicit consent BEFORE "
+                    "invoking. Approval is per-todo and per-plan — never inherit it from another todo.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
