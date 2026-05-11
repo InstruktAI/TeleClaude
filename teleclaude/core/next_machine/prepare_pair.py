@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Awaitable
-from typing import TYPE_CHECKING, Literal, Protocol, cast
+from typing import TYPE_CHECKING, Literal
 
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
@@ -24,12 +23,6 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 PrepareLens = Literal["A", "B"]
-
-
-class _ListSessions(Protocol):
-    def __call__(self, *, include_closed: bool) -> Awaitable[object]:
-        """Return session rows from the runtime DB."""
-        ...
 
 
 DEFAULT_PREPARE_PAIR_AGENTS: dict[PrepareLens, str] = {"A": "claude", "B": "codex"}
@@ -162,15 +155,15 @@ async def pair_members_idle(db: Db, slot_a: PreparePairSlot, slot_b: PreparePair
     return statuses.get(slot_a.session_id) == "idle" and statuses.get(slot_b.session_id) == "idle"
 
 
-async def pair_slot_alive(db: object, slot: PreparePairSlot) -> bool:
-    """Return whether a stored pair slot currently maps to a live session."""
-    list_sessions = getattr(db, "list_sessions", None)
-    if not callable(list_sessions):
-        return True
-    sessions_obj = await cast(_ListSessions, list_sessions)(include_closed=False)
-    if not isinstance(sessions_obj, list):
-        return True
-    return any(getattr(session, "session_id", "") == slot.session_id for session in sessions_obj)
+async def pair_slot_alive(db: Db, slot: PreparePairSlot) -> bool:
+    """Return whether a stored pair slot currently maps to a live session.
+
+    Contract: ``db.list_sessions`` is part of the Db protocol. Failures bubble
+    up — silent-fail guards are not used; a DB/contract failure must not be
+    confused with "slot is alive" and dispatched into a stale session.
+    """
+    sessions = await db.list_sessions(include_closed=False)
+    return any(session.session_id == slot.session_id for session in sessions)
 
 
 def format_pair_recovery_script(
@@ -241,7 +234,7 @@ def format_pair_recovery_script(
 
 async def format_pair_write_or_recovery_script(
     *,
-    db: object,
+    db: Db,
     slug: str,
     writer_slot: PreparePairSlot,
     reviewer_slot: PreparePairSlot,
@@ -273,7 +266,7 @@ async def format_pair_write_or_recovery_script(
 
 async def format_pair_review_or_recovery_script(
     *,
-    db: object,
+    db: Db,
     slug: str,
     writer_slot: PreparePairSlot,
     reviewer_slot: PreparePairSlot,

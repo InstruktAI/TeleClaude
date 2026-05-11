@@ -566,9 +566,14 @@ async def test_triangulation_targets_writer_a(todos_db: TodosDb) -> None:
 @pytest.mark.asyncio
 async def test_requirements_review_targets_reviewer_b(todos_db: TodosDb) -> None:
     state = await _stored_pair_state(todos_db, "requirements-reviewer", PreparePhase.REQUIREMENTS_REVIEW)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", subdir="trees/requirements-reviewer"),
+        _session("session-b", subdir="trees/requirements-reviewer"),
+    ]
 
     _, instruction = await _prepare_dispatch(
-        db=AsyncMock(),
+        db=db,
         todos_db=todos_db,
         slug="requirements-reviewer",
         cwd="/repo",
@@ -618,9 +623,14 @@ async def test_test_spec_build_ensures_worktree(monkeypatch: pytest.MonkeyPatch,
 @pytest.mark.asyncio
 async def test_test_spec_review_targets_reviewer_b(todos_db: TodosDb) -> None:
     state = await _stored_pair_state(todos_db, "spec-reviewer", PreparePhase.TEST_SPEC_REVIEW)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", subdir="trees/spec-reviewer"),
+        _session("session-b", subdir="trees/spec-reviewer"),
+    ]
 
     _, instruction = await _prepare_dispatch(
-        db=AsyncMock(),
+        db=db,
         todos_db=todos_db,
         slug="spec-reviewer",
         cwd="/repo",
@@ -652,9 +662,14 @@ async def test_plan_drafting_targets_writer_b_role_flip(todos_db: TodosDb) -> No
 @pytest.mark.asyncio
 async def test_plan_review_targets_reviewer_a_role_flip(todos_db: TodosDb) -> None:
     state = await _stored_pair_state(todos_db, "plan-reviewer", PreparePhase.PLAN_REVIEW)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("session-a", subdir="trees/plan-reviewer"),
+        _session("session-b", subdir="trees/plan-reviewer"),
+    ]
 
     _, instruction = await _prepare_dispatch(
-        db=AsyncMock(),
+        db=db,
         todos_db=todos_db,
         slug="plan-reviewer",
         cwd="/repo",
