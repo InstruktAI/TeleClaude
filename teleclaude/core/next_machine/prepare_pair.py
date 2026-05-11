@@ -6,6 +6,7 @@ import os
 from collections.abc import Awaitable
 from typing import TYPE_CHECKING, Literal, Protocol, cast
 
+from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
 from teleclaude.core.next_machine.output_formatting import (
     ORCHESTRATOR_IDLE_INVARIANT,
@@ -14,12 +15,13 @@ from teleclaude.core.next_machine.output_formatting import (
     format_human_approval_script,
     format_pair_turn_script,
 )
-from teleclaude.core.next_machine.state_mutation import StateWriter
+from teleclaude.core.next_machine.state_mutation import PreparePairManager, StateWriter
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.types.todos import PreparePairSlot
 
 if TYPE_CHECKING:
     from teleclaude.core.db import Db
+    from teleclaude.core.todos_db import TodosDb
 
 PrepareLens = Literal["A", "B"]
 
@@ -74,6 +76,70 @@ def pair_writer_reviewer_slots(
     if writer is None or reviewer is None:
         return None
     return writer, reviewer
+
+
+async def resolve_pair_or_recover(
+    db: object,
+    todos_db: TodosDb,
+    slug: str,
+    state: dict[str, StateValue],
+    phase: PreparePhase,
+    roles: dict[PreparePhase, tuple[PrepareLens, PrepareLens]],
+) -> tuple[PreparePairSlot, PreparePairSlot] | None:
+    """Return writer/reviewer slots; auto-recover from live sessions if state is empty.
+
+    Resolution order:
+      1. ``pair_writer_reviewer_slots`` — if state has both slots, return them.
+      2. Auto-recovery — scan live sessions for this slug's worktree subdir,
+         pick the newest session matching the configured A and B agents,
+         re-stamp the pair programmatically (single-shot, no recursion),
+         then return the recovered slots.
+      3. ``None`` — unrecoverable; the phase handler emits BLOCKED.
+
+    Recovery is bounded: a single attempt per state-machine call. Once the
+    pair is stamped, the state mutation persists and future calls take path 1.
+    """
+    pair = pair_writer_reviewer_slots(state, phase, roles)
+    if pair is not None:
+        return pair
+
+    agents = prepare_pair_agent_mapping()
+    expected_subdir = f"{WORKTREE_DIR}/{slug}"
+    list_sessions = getattr(db, "list_sessions", None)
+    if not callable(list_sessions):
+        return None
+    sessions_obj = await cast(_ListSessions, list_sessions)(include_closed=False)
+    if not isinstance(sessions_obj, list):
+        return None
+
+    slot_a: PreparePairSlot | None = None
+    slot_b: PreparePairSlot | None = None
+    for session in sessions_obj:
+        if getattr(session, "subdir", "") != expected_subdir:
+            continue
+        active_agent = getattr(session, "active_agent", "") or ""
+        session_id = getattr(session, "session_id", "") or ""
+        if not session_id:
+            continue
+        native_session_id = getattr(session, "native_session_id", "") or ""
+        if slot_a is None and active_agent == agents["A"]:
+            slot_a = PreparePairSlot(
+                lens="A", session_id=session_id, native_session_id=native_session_id, agent=active_agent
+            )
+        elif slot_b is None and active_agent == agents["B"]:
+            slot_b = PreparePairSlot(
+                lens="B", session_id=session_id, native_session_id=native_session_id, agent=active_agent
+            )
+        if slot_a is not None and slot_b is not None:
+            break
+
+    if slot_a is None or slot_b is None:
+        return None
+
+    writer = StateWriter(state)
+    PreparePairManager(writer).set_pair(slot_a=slot_a, slot_b=slot_b)
+    await writer.commit(todos_db, slug)
+    return pair_writer_reviewer_slots(state, phase, roles)
 
 
 async def pair_members_idle(db: Db, slot_a: PreparePairSlot, slot_b: PreparePairSlot) -> bool:

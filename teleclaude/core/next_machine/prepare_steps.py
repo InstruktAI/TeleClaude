@@ -11,17 +11,14 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, PreparePhase, StateValue
-from teleclaude.core.next_machine.artifacts import compute_artifact_diff, compute_todo_folder_diff
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
+from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
 from teleclaude.core.next_machine.output_formatting import (
     ConvergenceAssessmentScript,
     PairFormationScript,
-    ToolCallRequest,
     format_command_loader_message,
     format_convergence_assessment_script,
     format_pair_formation_script,
-    format_tool_call,
 )
 from teleclaude.core.next_machine.prepare_diff_dispatch import (
     DispatchReason,
@@ -41,16 +38,14 @@ from teleclaude.core.next_machine.prepare_pair import (
     format_pair_write_or_recovery_script,
     format_requirements_human_approval_script,
     pair_members_idle,
-    pair_writer_reviewer_slots,
     prepare_pair_agent_mapping,
+    resolve_pair_or_recover,
 )
 from teleclaude.core.next_machine.runtime.scripts import (
     format_fix_findings_message,
+    format_pair_missing_error,
     format_review_blocked_script,
     format_review_needs_work_script,
-)
-from teleclaude.core.next_machine.runtime.sessions import (
-    find_live_session_for_slug as _find_live_session_for_slug,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.core.next_machine.worktrees import ensure_worktree_with_policy_async
@@ -64,8 +59,6 @@ logger = get_logger(__name__)
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
-_reviewer_idle_post_block = prepare_step_support.reviewer_idle_post_block
-_worker_idle_post_block = prepare_step_support.worker_idle_post_block
 
 
 async def _prepare_step_input_assessment(
@@ -150,52 +143,27 @@ async def _prepare_step_triangulation(
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
 
-    has_input = await todos_db.artifact_exists(slug, "input")
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TRIANGULATION, PRODUCTION_ROLES)
-    if pair_slots is not None:
-        writer_slot, reviewer_slot = pair_slots
-        message = (
-            f"Continue your paired discovery discussion for {slug}. "
-            f"Converge on what the requirements should contain. "
-            f"Go idle when converged."
-        )
-        instruction = await format_pair_write_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=writer_slot,
-            reviewer_slot=reviewer_slot,
-            command=f"/{SlashCommand.NEXT_PREPARE_DISCOVERY.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DISCOVERY,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=(
-                f"Run a triangulated discovery pass for {slug}. "
-                + (
-                    f"Read the input via `telec todo artifacts read {slug} input`, "
-                    if has_input
-                    else "There is no input artifact; work from the existing draft context and artifacts, "
-                )
-                + "incorporate a complementary "
-                "perspective, rewrite requirements via "
-                f"`telec todo artifacts write {slug} requirements <content>`, "
-                f"then stamp via `telec todo stamp {slug} --requirements-ready`."
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.TRIANGULATION, PRODUCTION_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "triangulation")
+    writer_slot, reviewer_slot = pair_slots
+    message = (
+        f"Continue your paired discovery discussion for {slug}. "
+        f"Converge on what the requirements should contain. "
+        f"Go idle when converged."
     )
+    instruction = await format_pair_write_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=writer_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_PREPARE_DISCOVERY.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_step_requirements_review(
@@ -220,14 +188,14 @@ async def _prepare_step_requirements_review(
         if current_digest and current_digest != writer.state.artifacts.requirements.digest:
             writer.state.artifacts.requirements.digest = current_digest
 
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.REQUIREMENTS_REVIEW, REVIEW_ROLES)
+    pair_slots = await resolve_pair_or_recover(
+        db, todos_db, slug, state, PreparePhase.REQUIREMENTS_REVIEW, REVIEW_ROLES
+    )
     if pair_slots is None:
-        reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-requirements")
-        worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-discovery")
-    else:
-        worker_slot, reviewer_slot = pair_slots
-        worker_id = worker_slot.session_id
-        reviewer_id = reviewer_slot.session_id
+        return False, format_pair_missing_error(slug, "requirements_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: the verdict only stands while the artifact's
@@ -274,39 +242,11 @@ async def _prepare_step_requirements_review(
             "domain.software-development.prepare.review_scoped",
             {"slug": slug, "findings_artifact": "requirements-review-findings"},
         )
-        if worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "requirements", rounds, "requirements-review-findings", "requirements"
-            )
-            return False, format_review_needs_work_script(
-                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
-            )
-        # Fallback: dispatch a fresh discovery worker with baseline diff context
-        base_sha = review.baseline_commit
-        req_diff = compute_artifact_diff(cwd, slug, "requirements", base_sha)
-        folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
-        additional_context = "\n\n".join(filter(None, [req_diff, folder_diff])) or ""
-        findings_note = format_dispatch_reason(
-            (
-                f"Requirements need revision. "
-                f"Read findings via `telec todo artifacts read {slug} requirements-review-findings`."
-            ),
-            slug,
-            DispatchReason.FINDINGS_FIX,
+        message = format_fix_findings_message(
+            slug, "requirements", rounds, "requirements-review-findings", "requirements"
         )
-        guidance = await compose_agent_guidance(db)
-        return False, format_tool_call(
-            ToolCallRequest(
-                command=SlashCommand.NEXT_PREPARE_DISCOVERY,
-                args=slug,
-                project=_derive_project_root(cwd, slug),
-                guidance=guidance,
-                subfolder=f"{WORKTREE_DIR}/{slug}",
-                note=findings_note,
-                next_call=f"telec todo prepare {slug}",
-                additional_context=additional_context,
-                post_block=_worker_idle_post_block(slug),
-            )
+        return False, format_review_needs_work_script(
+            slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
@@ -318,47 +258,24 @@ async def _prepare_step_requirements_review(
     current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
     diff_pairs = review_digest_pair("requirements", "requirements", review.approved_digest, current_requirements_digest)
     review_reason = DispatchReason.UPSTREAM_CHANGED if diff_pairs else DispatchReason.FRESH
-    if pair_slots is not None:
-        message = format_dispatch_reason(
-            format_command_loader_message("next-review-requirements", slug),
-            slug,
-            review_reason,
-            diff_pairs,
-        )
-        instruction = await format_pair_review_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=pair_slots[0],
-            reviewer_slot=pair_slots[1],
-            command=f"/{SlashCommand.NEXT_REVIEW_REQUIREMENTS.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_REVIEW_REQUIREMENTS,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Review requirements via `telec todo artifacts read {slug} requirements` "
-                    f"and stamp verdict via "
-                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`."
-                ),
-                slug,
-                review_reason,
-                diff_pairs,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_reviewer_idle_post_block(slug),
-        )
+    message = format_dispatch_reason(
+        format_command_loader_message("next-review-requirements", slug),
+        slug,
+        review_reason,
+        diff_pairs,
     )
+    instruction = await format_pair_review_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=worker_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_REVIEW_REQUIREMENTS.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_step_test_spec_build(
@@ -402,51 +319,30 @@ async def _prepare_step_test_spec_build(
     else:
         build_reason = DispatchReason.UPSTREAM_CHANGED
 
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES)
-    if pair_slots is not None:
-        writer_slot, reviewer_slot = pair_slots
-        message = format_dispatch_reason(
-            format_command_loader_message("next-build-specs", slug),
-            slug,
-            build_reason,
-            build_diff_pairs,
-        )
-        instruction = await format_pair_write_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=writer_slot,
-            reviewer_slot=reviewer_slot,
-            command=f"/{SlashCommand.NEXT_BUILD_SPECS.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_BUILD_SPECS,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Read requirements via `telec todo artifacts read {slug} requirements` and write "
-                    f"xfail-marked pytest test specs in the worktree. Each test should capture a "
-                    f"requirement as a failing test. Commit the specs to the worktree branch, then call "
-                    f"`telec todo prepare {slug}` so the machine can continue from the resulting work."
-                ),
-                slug,
-                build_reason,
-                build_diff_pairs,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
+    pair_slots = await resolve_pair_or_recover(
+        db, todos_db, slug, state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES
     )
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "test_spec_build")
+    writer_slot, reviewer_slot = pair_slots
+    message = format_dispatch_reason(
+        format_command_loader_message("next-build-specs", slug),
+        slug,
+        build_reason,
+        build_diff_pairs,
+    )
+    instruction = await format_pair_write_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=writer_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_BUILD_SPECS.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_step_test_spec_review(
@@ -467,14 +363,12 @@ async def _prepare_step_test_spec_review(
     spec_review = writer.state.test_spec_review
     verdict = spec_review.verdict
 
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.TEST_SPEC_REVIEW, REVIEW_ROLES)
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.TEST_SPEC_REVIEW, REVIEW_ROLES)
     if pair_slots is None:
-        reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-specs")
-        worker_id = await _find_live_session_for_slug(db, slug, "/next-build-specs")
-    else:
-        worker_slot, reviewer_slot = pair_slots
-        worker_id = worker_slot.session_id
-        reviewer_id = reviewer_slot.session_id
+        return False, format_pair_missing_error(slug, "test_spec_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: only stands while specs digest matches the
@@ -506,35 +400,11 @@ async def _prepare_step_test_spec_review(
         audit.rounds = rounds
         await _commit_writer(writer, todos_db, slug, state)
 
-        if worker_id and reviewer_id:
-            message = format_fix_findings_message(
-                slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
-            )
-            return False, format_review_needs_work_script(
-                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
-            )
-
-        # Fallback: dispatch fresh spec builder when no live worker is available
-        guidance = await compose_agent_guidance(db)
-        return False, format_tool_call(
-            ToolCallRequest(
-                command=SlashCommand.NEXT_BUILD_SPECS,
-                args=slug,
-                project=_derive_project_root(cwd, slug),
-                guidance=guidance,
-                subfolder=f"{WORKTREE_DIR}/{slug}",
-                note=format_dispatch_reason(
-                    (
-                        f"Test specs need revision (round {rounds}). "
-                        f"Read findings via `telec todo artifacts read {slug} spec-review-findings` "
-                        f"and update xfail test specs in the worktree."
-                    ),
-                    slug,
-                    DispatchReason.FINDINGS_FIX,
-                ),
-                next_call=f"telec todo prepare {slug}",
-                post_block=_worker_idle_post_block(slug),
-            )
+        message = format_fix_findings_message(
+            slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
+        )
+        return False, format_review_needs_work_script(
+            slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
         )
 
     # No verdict yet — dispatch reviewer
@@ -542,46 +412,24 @@ async def _prepare_step_test_spec_review(
     current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
     spec_diff_pairs = review_digest_pair("test_specs", "test-specs", spec_review.approved_digest, current_specs_digest)
     spec_review_reason = DispatchReason.UPSTREAM_CHANGED if spec_diff_pairs else DispatchReason.FRESH
-    if pair_slots is not None:
-        message = format_dispatch_reason(
-            format_command_loader_message("next-review-specs", slug),
-            slug,
-            spec_review_reason,
-            spec_diff_pairs,
-        )
-        instruction = await format_pair_review_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=pair_slots[0],
-            reviewer_slot=pair_slots[1],
-            command=f"/{SlashCommand.NEXT_REVIEW_SPECS.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_REVIEW_SPECS,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Review xfail test specs in {WORKTREE_DIR}/{slug} and stamp verdict via "
-                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase test_spec_review`."
-                ),
-                slug,
-                spec_review_reason,
-                spec_diff_pairs,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_reviewer_idle_post_block(slug),
-        )
+    message = format_dispatch_reason(
+        format_command_loader_message("next-review-specs", slug),
+        slug,
+        spec_review_reason,
+        spec_diff_pairs,
     )
+    instruction = await format_pair_review_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=worker_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_REVIEW_SPECS.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_step_plan_drafting(
@@ -620,54 +468,29 @@ async def _prepare_step_plan_drafting(
     else:
         plan_reason = DispatchReason.UPSTREAM_CHANGED
 
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
-    if pair_slots is not None:
-        writer_slot, reviewer_slot = pair_slots
-        await _commit_writer(writer, todos_db, slug, state)
-        message = format_dispatch_reason(
-            format_command_loader_message("next-prepare-draft", slug),
-            slug,
-            plan_reason,
-            plan_diff_pairs,
-        )
-        instruction = await format_pair_write_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=writer_slot,
-            reviewer_slot=reviewer_slot,
-            command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Ground the approved requirements for {slug}. If the work is atomic, "
-                    f"write the implementation plan via "
-                    f"`telec todo artifacts write {slug} implementation-plan <content>`, then "
-                    f"stamp via `telec todo stamp {slug} --plan-ready`. "
-                    "If planning shows the parent is too large, split it into child todos and "
-                    "update the holder breakdown."
-                ),
-                slug,
-                plan_reason,
-                plan_diff_pairs,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "plan_drafting")
+    writer_slot, reviewer_slot = pair_slots
+    await _commit_writer(writer, todos_db, slug, state)
+    message = format_dispatch_reason(
+        format_command_loader_message("next-prepare-draft", slug),
+        slug,
+        plan_reason,
+        plan_diff_pairs,
     )
+    instruction = await format_pair_write_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=writer_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_step_plan_review(
@@ -692,14 +515,12 @@ async def _prepare_step_plan_review(
         if current_digest and current_digest != writer.state.artifacts.implementation_plan.digest:
             writer.state.artifacts.implementation_plan.digest = current_digest
 
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_REVIEW, REVIEW_ROLES)
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_REVIEW, REVIEW_ROLES)
     if pair_slots is None:
-        reviewer_id = await _find_live_session_for_slug(db, slug, "/next-review-plan")
-        worker_id = await _find_live_session_for_slug(db, slug, "/next-prepare-draft")
-    else:
-        worker_slot, reviewer_slot = pair_slots
-        worker_id = worker_slot.session_id
-        reviewer_id = reviewer_slot.session_id
+        return False, format_pair_missing_error(slug, "plan_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: only stands while plan digest matches the
@@ -745,37 +566,9 @@ async def _prepare_step_plan_review(
             "domain.software-development.prepare.review_scoped",
             {"slug": slug, "findings_artifact": "plan-review-findings"},
         )
-        if worker_id and reviewer_id:
-            message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
-            return False, format_review_needs_work_script(
-                slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
-            )
-        # Fallback: dispatch fresh draft worker with baseline diff context when no live worker
-        base_sha = review.baseline_commit
-        plan_diff = compute_artifact_diff(cwd, slug, "implementation-plan", base_sha)
-        folder_diff = compute_todo_folder_diff(cwd, slug, base_sha)
-        additional_context = "\n\n".join(filter(None, [plan_diff, folder_diff])) or ""
-        findings_note = format_dispatch_reason(
-            (
-                f"Implementation plan needs revision. "
-                f"Read findings via `telec todo artifacts read {slug} plan-review-findings`."
-            ),
-            slug,
-            DispatchReason.FINDINGS_FIX,
-        )
-        guidance = await compose_agent_guidance(db)
-        return False, format_tool_call(
-            ToolCallRequest(
-                command=SlashCommand.NEXT_PREPARE_DRAFT,
-                args=slug,
-                project=_derive_project_root(cwd, slug),
-                guidance=guidance,
-                subfolder=f"{WORKTREE_DIR}/{slug}",
-                note=findings_note,
-                next_call=f"telec todo prepare {slug}",
-                additional_context=additional_context,
-                post_block=_worker_idle_post_block(slug),
-            )
+        message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
+        return False, format_review_needs_work_script(
+            slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
         )
 
     # No verdict yet — dispatch reviewer; record HEAD SHA as diff anchor (I-1)
@@ -789,47 +582,24 @@ async def _prepare_step_plan_review(
         "implementation_plan", "implementation-plan", review.approved_digest, current_plan_digest
     )
     plan_review_reason = DispatchReason.UPSTREAM_CHANGED if plan_diff_pairs else DispatchReason.FRESH
-    if pair_slots is not None:
-        message = format_dispatch_reason(
-            format_command_loader_message("next-review-plan", slug),
-            slug,
-            plan_review_reason,
-            plan_diff_pairs,
-        )
-        instruction = await format_pair_review_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=pair_slots[0],
-            reviewer_slot=pair_slots[1],
-            command=f"/{SlashCommand.NEXT_REVIEW_PLAN.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=message,
-            next_step=f"telec todo prepare {slug}",
-        )
-        return False, instruction
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_REVIEW_PLAN,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Review the plan via `telec todo artifacts read {slug} implementation-plan` "
-                    f"and stamp verdict via "
-                    f"`telec todo stamp {slug} --verdict approve|needs_work --phase plan_review`."
-                ),
-                slug,
-                plan_review_reason,
-                plan_diff_pairs,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_reviewer_idle_post_block(slug),
-        )
+    message = format_dispatch_reason(
+        format_command_loader_message("next-review-plan", slug),
+        slug,
+        plan_review_reason,
+        plan_diff_pairs,
     )
+    instruction = await format_pair_review_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=worker_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_REVIEW_PLAN.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=message,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
 
 
 async def _prepare_dispatch(

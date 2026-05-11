@@ -38,6 +38,32 @@ def format_reviewer_direct_fix_message(
     )
 
 
+def format_pair_missing_error(slug: str, phase_label: str) -> str:
+    """BLOCKED script when no prepare pair can be resolved or recovered.
+
+    Per docs/global/software-development/procedure/lifecycle/prepare/overview.md,
+    the prepare pair is persistent across the entire prepare lifecycle. After
+    formation in INPUT_ASSESSMENT, every subsequent phase operates on the same
+    two sessions. If pair_slots is unset AND no live discovery sessions exist
+    for the slug, the system is in an unrecoverable state. Surface with an
+    actionable recovery path instead of fresh-spawning ghost workers.
+    """
+    return (
+        f"BLOCKED: {slug} {phase_label} cannot proceed — the prepare pair is not "
+        f"registered and no live sessions for this slug were found.\n\n"
+        f"The persistent-pair contract requires both worker A and worker B to "
+        f"be alive (or revivable) and registered in todo state. Recovery options:\n\n"
+        f"  1. If worker sessions for this slug still exist (telec sessions list), "
+        f"re-stamp manually:\n"
+        f"     telec todo stamp {slug} --agent-a <session_id_a> --agent-b <session_id_b>\n\n"
+        f"  2. If no worker sessions exist, restart prepare from discovery:\n"
+        f"     telec todo prepare {slug}\n"
+        f"     (INPUT_ASSESSMENT will emit a fresh formation script.)\n\n"
+        f"No new workers will be spawned by the state machine until the pair "
+        f"is registered. Any live worker sessions are preserved."
+    )
+
+
 def format_review_needs_work_script(
     slug: str,
     worker_session_id: str,

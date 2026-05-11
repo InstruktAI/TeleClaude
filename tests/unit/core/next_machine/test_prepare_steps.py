@@ -120,17 +120,19 @@ async def test_input_assessment_advances_when_produced_at_set() -> None:
 
 @pytest.mark.asyncio
 async def test_triangulation_dispatches_when_produced_at_empty() -> None:
-    """TRIANGULATION dispatches discovery when produced_at is empty."""
+    """TRIANGULATION dispatches discovery to the registered pair when requirements is missing."""
     db = AsyncMock()
     todos_db = AsyncMock()
-    todos_db.artifact_exists = AsyncMock(return_value=False)
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="triangulation", requirements_digest="req-digest")
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_triangulation(db, todos_db, "my-slug", "/repo", state)
@@ -166,16 +168,19 @@ async def test_triangulation_advances_when_produced_at_set() -> None:
 
 @pytest.mark.asyncio
 async def test_plan_drafting_dispatches_when_produced_at_empty() -> None:
-    """PLAN_DRAFTING dispatches drafter when produced_at is empty."""
+    """PLAN_DRAFTING dispatches drafter to the registered pair when plan is missing."""
     db = AsyncMock()
     todos_db = AsyncMock()
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
@@ -220,17 +225,20 @@ async def test_plan_drafting_advances_when_produced_at_set() -> None:
 
 @pytest.mark.asyncio
 async def test_re_grounding_dispatches_when_produced_at_empty() -> None:
-    """RE_GROUNDING dispatches drafter when produced_at is empty."""
+    """RE_GROUNDING dispatches drafter to the registered pair when plan is missing."""
     db = AsyncMock()
     todos_db = AsyncMock()
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
+        patch(f"{_GROUNDING}._commit_writer", new_callable=AsyncMock),
+        patch(f"{_GROUNDING}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
 
@@ -409,10 +417,13 @@ async def test_plan_drafting_dispatch_marks_fresh_when_no_prior_artifact() -> No
     todos_db.write_state = AsyncMock()
 
     state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
@@ -439,10 +450,13 @@ async def test_plan_drafting_dispatch_marks_provenance_missing_when_upstream_dig
     )
     # Explicitly empty upstream_digests — the legacy provenance-missing state.
     state["artifacts"]["implementation_plan"]["upstream_digests"] = {}
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
@@ -468,10 +482,13 @@ async def test_test_spec_build_dispatch_marks_provenance_missing_when_upstream_d
     state = _base_state(lifecycle_phase="test_spec_build")
     state["artifacts"]["test_specs"]["produced_at"] = "2026-04-25T20:46:11+00:00"
     state["artifacts"]["test_specs"]["digest"] = "specs-digest"
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
         patch(f"{_STEPS}.ensure_worktree_with_policy_async", new_callable=AsyncMock),
     ):
@@ -498,10 +515,13 @@ async def test_plan_drafting_dispatch_marks_upstream_changed_when_recorded_diges
         "requirements": "old-req",
         "test_specs": "old-spec",
     }
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
         patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
@@ -519,9 +539,12 @@ async def test_re_grounding_dispatch_marks_upstream_changed() -> None:
 
     state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
 
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
     with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_GROUNDING}.compose_agent_guidance", new_callable=AsyncMock, return_value="guidance"),
+        patch(f"{_GROUNDING}._commit_writer", new_callable=AsyncMock),
         patch(f"{_GROUNDING}._derive_project_root", return_value="/repo"),
     ):
         keep_going, instruction = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
@@ -629,46 +652,6 @@ async def test_plan_review_needs_work_emits_direct_link_script_with_pair_stamped
     assert "Wait for reviewer session reviewer-1 to report idle." in instruction
 
 
-@pytest.mark.asyncio
-async def test_review_needs_work_emits_same_script_with_or_without_pair_stamped() -> None:
-    """Pair-stamping must not change the dispatch shape — identical scripts either way."""
-    state_with_pair = _base_state(lifecycle_phase="requirements_review")
-    state_with_pair["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
-    state_with_pair["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    state_no_pair = _base_state(lifecycle_phase="requirements_review")
-    state_no_pair["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        _, instruction_with_pair = await _prepare_step_requirements_review(
-            db, todos_db, "test-slug", "/repo", state_with_pair
-        )
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-        patch(
-            f"{_STEPS}._find_live_session_for_slug",
-            new=AsyncMock(side_effect=["reviewer-1", "worker-1"]),
-        ),
-    ):
-        _, instruction_no_pair = await _prepare_step_requirements_review(
-            db, todos_db, "test-slug", "/repo", state_no_pair
-        )
-
-    assert instruction_with_pair == instruction_no_pair
-
-
 # --- REVIEW APPROVED: must not end worker/reviewer sessions ---
 #
 # Per docs/global/software-development/procedure/lifecycle/prepare/overview.md
@@ -691,6 +674,10 @@ async def test_requirements_review_approve_advances_without_ending_sessions() ->
         "rounds": 0,
         "approved_digest": "req-digest",
     }
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
 
     db = AsyncMock()
     todos_db = AsyncMock()
@@ -699,10 +686,6 @@ async def test_requirements_review_approve_advances_without_ending_sessions() ->
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
         patch(f"{_STEPS}._emit_prepare_event"),
-        patch(
-            f"{_STEPS}._find_live_session_for_slug",
-            new=AsyncMock(side_effect=["reviewer-1", "worker-1"]),
-        ),
     ):
         keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
 
@@ -721,6 +704,10 @@ async def test_test_spec_review_approve_advances_without_ending_sessions() -> No
         "rounds": 0,
         "approved_digest": "specs-digest",
     }
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
+    }
 
     db = AsyncMock()
     todos_db = AsyncMock()
@@ -729,10 +716,6 @@ async def test_test_spec_review_approve_advances_without_ending_sessions() -> No
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
         patch(f"{_STEPS}._emit_prepare_event"),
-        patch(
-            f"{_STEPS}._find_live_session_for_slug",
-            new=AsyncMock(side_effect=["reviewer-1", "worker-1"]),
-        ),
     ):
         keep_going, instruction = await _prepare_step_test_spec_review(db, todos_db, "test-slug", "/repo", state)
 
@@ -751,6 +734,10 @@ async def test_plan_review_approve_advances_without_ending_sessions() -> None:
         "rounds": 0,
         "approved_digest": "plan-digest",
     }
+    state["prepare_pair"] = {
+        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
+        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
+    }
 
     db = AsyncMock()
     todos_db = AsyncMock()
@@ -759,10 +746,6 @@ async def test_plan_review_approve_advances_without_ending_sessions() -> None:
     with (
         patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
         patch(f"{_STEPS}._emit_prepare_event"),
-        patch(
-            f"{_STEPS}._find_live_session_for_slug",
-            new=AsyncMock(side_effect=["reviewer-1", "worker-1"]),
-        ),
     ):
         keep_going, instruction = await _prepare_step_plan_review(db, todos_db, "test-slug", "/repo", state)
 

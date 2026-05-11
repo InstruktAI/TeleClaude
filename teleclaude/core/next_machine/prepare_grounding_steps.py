@@ -17,16 +17,16 @@ from teleclaude.constants import WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
-from teleclaude.core.next_machine.git_ops import compose_agent_guidance, run_git_command
+from teleclaude.core.next_machine.git_ops import run_git_command
 from teleclaude.core.next_machine.lifecycle import apply_authoritative_signal
-from teleclaude.core.next_machine.output_formatting import ToolCallRequest, format_tool_call
 from teleclaude.core.next_machine.prepare_diff_dispatch import DispatchReason, format_dispatch_reason
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.prepare_pair import (
     PRODUCTION_ROLES,
     format_pair_write_or_recovery_script,
-    pair_writer_reviewer_slots,
+    resolve_pair_or_recover,
 )
+from teleclaude.core.next_machine.runtime.scripts import format_pair_missing_error
 from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
 
 if TYPE_CHECKING:
@@ -38,7 +38,6 @@ logger = get_logger(__name__)
 _commit_writer = prepare_step_support.commit_writer
 _derive_project_root = prepare_step_support.derive_project_root
 _derive_worktree_cwd = prepare_step_support.derive_worktree_cwd
-_worker_idle_post_block = prepare_step_support.worker_idle_post_block
 
 
 async def prepare_step_grounding_check(
@@ -158,35 +157,20 @@ async def _handle_stale_grounding(
         slug,
         DispatchReason.UPSTREAM_CHANGED,
     )
-    pair_slots = pair_writer_reviewer_slots(state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
-    if pair_slots is not None:
-        writer_slot, reviewer_slot = pair_slots
-        instruction = await format_pair_write_or_recovery_script(
-            db=db,
-            slug=slug,
-            writer_slot=writer_slot,
-            reviewer_slot=reviewer_slot,
-            command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
-            project=_derive_project_root(cwd, slug),
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            message=note,
-            next_step=f"telec todo prepare {slug}",
-        )
-        _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
-        return False, instruction
-
-    guidance = await compose_agent_guidance(db)
-    instruction = format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=note,
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "grounding_check")
+    writer_slot, reviewer_slot = pair_slots
+    instruction = await format_pair_write_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=writer_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=note,
+        next_step=f"telec todo prepare {slug}",
     )
     _emit_prepare_event("domain.software-development.prepare.regrounded", {"slug": slug})
     return False, instruction
@@ -206,25 +190,29 @@ async def prepare_step_re_grounding(
         await _commit_writer(writer, todos_db, slug, state)
         return True, ""
 
-    guidance = await compose_agent_guidance(db)
-    return False, format_tool_call(
-        ToolCallRequest(
-            command=SlashCommand.NEXT_PREPARE_DRAFT,
-            args=slug,
-            project=_derive_project_root(cwd, slug),
-            guidance=guidance,
-            subfolder=f"{WORKTREE_DIR}/{slug}",
-            note=format_dispatch_reason(
-                (
-                    f"Re-ground {slug} and rewrite the implementation plan via "
-                    f"`telec todo artifacts read {slug} implementation-plan` + "
-                    f"`telec todo artifacts write {slug} implementation-plan <content>`, "
-                    f"then stamp via `telec todo stamp {slug} --plan-ready`."
-                ),
-                slug,
-                DispatchReason.UPSTREAM_CHANGED,
-            ),
-            next_call=f"telec todo prepare {slug}",
-            post_block=_worker_idle_post_block(slug),
-        )
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "re_grounding")
+    writer_slot, reviewer_slot = pair_slots
+    note = format_dispatch_reason(
+        (
+            f"Re-ground {slug} and rewrite the implementation plan via "
+            f"`telec todo artifacts read {slug} implementation-plan` + "
+            f"`telec todo artifacts write {slug} implementation-plan <content>`, "
+            f"then stamp via `telec todo stamp {slug} --plan-ready`."
+        ),
+        slug,
+        DispatchReason.UPSTREAM_CHANGED,
     )
+    instruction = await format_pair_write_or_recovery_script(
+        db=db,
+        slug=slug,
+        writer_slot=writer_slot,
+        reviewer_slot=reviewer_slot,
+        command=f"/{SlashCommand.NEXT_PREPARE_DRAFT.value}",
+        project=_derive_project_root(cwd, slug),
+        subfolder=f"{WORKTREE_DIR}/{slug}",
+        message=note,
+        next_step=f"telec todo prepare {slug}",
+    )
+    return False, instruction
