@@ -176,13 +176,10 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
-    # Strip any caller-supplied bracketed-paste markers. We deliberately do NOT
-    # re-emit them: paste-buffer with -p wraps the content in DECSET 2004 markers,
-    # but agent CLIs (Codex in particular) buffer the bracketed paste and don't
-    # finish processing the close marker before the trailing C-m arrives — the
-    # submit gets absorbed and the paste sits unsubmitted in the input area.
-    # Plain paste-buffer writes the buffer to the pane so the subsequent C-m
-    # lands as a clean submit.
+    # Strip any caller-supplied bracketed-paste markers. They would land as
+    # literal escape sequences in the pane otherwise; agents already enable
+    # bracketed-paste mode themselves when they want it, so leaving the inner
+    # text bare matches the original `send-keys -l` semantic.
     send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
@@ -190,8 +187,16 @@ async def _send_keys_tmux(
     # peer-bundle path routinely produces. load-buffer reads from stdin, so it has
     # no argv limit. paste-buffer needs -r to preserve LF — without it tmux
     # rewrites every \n to \r, which collapses multiline bundles into a single
-    # carriage-returned line. With -r, the byte stream matches what send-keys -l
-    # used to emit.
+    # carriage-returned line.
+    #
+    # Submit is embedded as a trailing \r at the END of the load-buffer stdin so
+    # the Enter is part of the same byte stream as the content. A separate
+    # `send-keys C-m` race-loses for large payloads: the agent's input loop
+    # hasn't finished draining the pty when the second tmux command writes \r,
+    # so the \r lands mid-stream as a literal character instead of Enter.
+    # Inlining \r keeps order under any payload size — tmux preserves byte
+    # order on a single paste-buffer write.
+    payload = send_text.encode() + b"\r"
     buf_name = f"telec-{uuid4().hex}"
     load_cmd = [config.computer.tmux_binary, "load-buffer", "-b", buf_name, "-"]
     load_proc = await asyncio.create_subprocess_exec(
@@ -200,7 +205,7 @@ async def _send_keys_tmux(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await communicate_with_timeout(load_proc, send_text.encode(), timeout, "tmux load-buffer")
+    _, stderr = await communicate_with_timeout(load_proc, payload, timeout, "tmux load-buffer")
     if load_proc.returncode != 0:
         logger.error(
             "tmux load-buffer returned nonzero exit",
@@ -264,27 +269,6 @@ async def _send_keys_tmux(
                 buffer_name=buf_name,
                 paste_succeeded=paste_succeeded,
             )
-
-    # Keep a small buffer between text injection and submit. This submit path is
-    # shared by checkpoints, direct conversation, listener notifications, and
-    # regular sessions send delivery.
-    await asyncio.sleep(0.2)
-
-    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-    result = await asyncio.create_subprocess_exec(
-        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
-
-    if result.returncode != 0:
-        logger.error(
-            "tmux send-keys submit returned nonzero exit",
-            session=session_name,
-            reason="nonzero_exit_submit",
-            returncode=result.returncode,
-            stderr=stderr.decode().strip(),
-        )
-        return False
 
     return True
 
