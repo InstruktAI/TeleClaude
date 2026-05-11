@@ -79,7 +79,7 @@ def pair_writer_reviewer_slots(
 
 
 async def resolve_pair_or_recover(
-    db: object,
+    db: Db,
     todos_db: TodosDb,
     slug: str,
     state: dict[str, StateValue],
@@ -94,10 +94,15 @@ async def resolve_pair_or_recover(
          pick the newest session matching the configured A and B agents,
          re-stamp the pair programmatically (single-shot, no recursion),
          then return the recovered slots.
-      3. ``None`` — unrecoverable; the phase handler emits BLOCKED.
+      3. ``None`` — no recovery candidate (both A and B sessions absent);
+         the phase handler surfaces BLOCKED.
 
     Recovery is bounded: a single attempt per state-machine call. Once the
     pair is stamped, the state mutation persists and future calls take path 1.
+
+    Contract: ``db.list_sessions`` is part of the Db protocol. Failures bubble
+    up — silent-fail guards are not used; an infrastructure failure must not
+    be confused with "no recoverable pair".
     """
     pair = pair_writer_reviewer_slots(state, phase, roles)
     if pair is not None:
@@ -105,30 +110,24 @@ async def resolve_pair_or_recover(
 
     agents = prepare_pair_agent_mapping()
     expected_subdir = f"{WORKTREE_DIR}/{slug}"
-    list_sessions = getattr(db, "list_sessions", None)
-    if not callable(list_sessions):
-        return None
-    sessions_obj = await cast(_ListSessions, list_sessions)(include_closed=False)
-    if not isinstance(sessions_obj, list):
-        return None
+    sessions = await db.list_sessions(include_closed=False)
 
     slot_a: PreparePairSlot | None = None
     slot_b: PreparePairSlot | None = None
-    for session in sessions_obj:
-        if getattr(session, "subdir", "") != expected_subdir:
+    for session in sessions:
+        if session.subdir != expected_subdir:
             continue
-        active_agent = getattr(session, "active_agent", "") or ""
-        session_id = getattr(session, "session_id", "") or ""
-        if not session_id:
+        active_agent = session.active_agent or ""
+        if not session.session_id:
             continue
-        native_session_id = getattr(session, "native_session_id", "") or ""
+        native_session_id = session.native_session_id or ""
         if slot_a is None and active_agent == agents["A"]:
             slot_a = PreparePairSlot(
-                lens="A", session_id=session_id, native_session_id=native_session_id, agent=active_agent
+                lens="A", session_id=session.session_id, native_session_id=native_session_id, agent=active_agent
             )
         elif slot_b is None and active_agent == agents["B"]:
             slot_b = PreparePairSlot(
-                lens="B", session_id=session_id, native_session_id=native_session_id, agent=active_agent
+                lens="B", session_id=session.session_id, native_session_id=native_session_id, agent=active_agent
             )
         if slot_a is not None and slot_b is not None:
             break

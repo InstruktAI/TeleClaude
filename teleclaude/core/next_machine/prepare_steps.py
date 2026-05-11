@@ -133,20 +133,26 @@ async def _prepare_step_triangulation(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TRIANGULATION: force a multi-perspective discovery pass."""
-    writer = StateWriter(state)
-    writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
-    await _commit_writer(writer, todos_db, slug, state)
-
-    if writer.state.artifacts.requirements.produced_at:
-        apply_authoritative_signal(writer.state, "requirements_ready")
-        writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
-        await _commit_writer(writer, todos_db, slug, state)
+    # Quick advance-path check: if requirements landed already, no recovery needed.
+    advance_writer = StateWriter(state)
+    if advance_writer.state.artifacts.requirements.produced_at:
+        advance_writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
+        apply_authoritative_signal(advance_writer.state, "requirements_ready")
+        advance_writer.audit.triangulation.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(advance_writer, todos_db, slug, state)
         return True, ""
 
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
     pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.TRIANGULATION, PRODUCTION_ROLES)
     if pair_slots is None:
         return False, format_pair_missing_error(slug, "triangulation")
     writer_slot, reviewer_slot = pair_slots
+
+    writer = StateWriter(state)
+    writer.audit.triangulation.started_at = datetime.now(UTC).isoformat()
+    await _commit_writer(writer, todos_db, slug, state)
+
     message = (
         f"Continue your paired discovery discussion for {slug}. "
         f"Converge on what the requirements should contain. "
@@ -174,6 +180,17 @@ async def _prepare_step_requirements_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """REQUIREMENTS_REVIEW: tailored output per state (init/approved/needs_work/blocked/needs_decision)."""
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
+    pair_slots = await resolve_pair_or_recover(
+        db, todos_db, slug, state, PreparePhase.REQUIREMENTS_REVIEW, REVIEW_ROLES
+    )
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "requirements_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
+
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
     audit = writer.audit_entry("requirements_review")
@@ -187,15 +204,6 @@ async def _prepare_step_requirements_review(
         current_digest = await todos_db.artifact_digest(slug, "requirements")
         if current_digest and current_digest != writer.state.artifacts.requirements.digest:
             writer.state.artifacts.requirements.digest = current_digest
-
-    pair_slots = await resolve_pair_or_recover(
-        db, todos_db, slug, state, PreparePhase.REQUIREMENTS_REVIEW, REVIEW_ROLES
-    )
-    if pair_slots is None:
-        return False, format_pair_missing_error(slug, "requirements_review")
-    worker_slot, reviewer_slot = pair_slots
-    worker_id = worker_slot.session_id
-    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: the verdict only stands while the artifact's
@@ -291,17 +299,29 @@ async def _prepare_step_test_spec_build(
     requirements digest still matches the current requirements digest, specs are
     fresh — emit ``specs_built`` to advance the lifecycle without dispatching.
     """
-    writer = StateWriter(state)
-    test_specs_entry = writer.state.artifacts.test_specs
-    if test_specs_entry.produced_at:
+    # Quick advance-path check: if specs are fresh, no recovery needed.
+    advance_writer = StateWriter(state)
+    advance_test_specs = advance_writer.state.artifacts.test_specs
+    if advance_test_specs.produced_at:
         current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
-        recorded_requirements_digest = test_specs_entry.upstream_digests.get("requirements", "")
+        recorded_requirements_digest = advance_test_specs.upstream_digests.get("requirements", "")
         if recorded_requirements_digest == current_requirements_digest:
-            apply_authoritative_signal(writer.state, "specs_built")
-            writer.audit.test_spec_build.completed_at = datetime.now(UTC).isoformat()
-            await _commit_writer(writer, todos_db, slug, state)
+            apply_authoritative_signal(advance_writer.state, "specs_built")
+            advance_writer.audit.test_spec_build.completed_at = datetime.now(UTC).isoformat()
+            await _commit_writer(advance_writer, todos_db, slug, state)
             return True, ""
 
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
+    pair_slots = await resolve_pair_or_recover(
+        db, todos_db, slug, state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES
+    )
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "test_spec_build")
+    writer_slot, reviewer_slot = pair_slots
+
+    writer = StateWriter(state)
+    test_specs_entry = writer.state.artifacts.test_specs
     writer.audit.test_spec_build.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
 
@@ -318,13 +338,6 @@ async def _prepare_step_test_spec_build(
         build_reason = DispatchReason.PROVENANCE_MISSING
     else:
         build_reason = DispatchReason.UPSTREAM_CHANGED
-
-    pair_slots = await resolve_pair_or_recover(
-        db, todos_db, slug, state, PreparePhase.TEST_SPEC_BUILD, PRODUCTION_ROLES
-    )
-    if pair_slots is None:
-        return False, format_pair_missing_error(slug, "test_spec_build")
-    writer_slot, reviewer_slot = pair_slots
     message = format_dispatch_reason(
         format_command_loader_message("next-build-specs", slug),
         slug,
@@ -353,6 +366,15 @@ async def _prepare_step_test_spec_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """TEST_SPEC_REVIEW: tailored output per state."""
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.TEST_SPEC_REVIEW, REVIEW_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "test_spec_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
+
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
     audit = writer.audit_entry("test_spec_review")
@@ -362,13 +384,6 @@ async def _prepare_step_test_spec_review(
     # so access it directly rather than via writer.review().
     spec_review = writer.state.test_spec_review
     verdict = spec_review.verdict
-
-    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.TEST_SPEC_REVIEW, REVIEW_ROLES)
-    if pair_slots is None:
-        return False, format_pair_missing_error(slug, "test_spec_review")
-    worker_slot, reviewer_slot = pair_slots
-    worker_id = worker_slot.session_id
-    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: only stands while specs digest matches the
@@ -440,38 +455,43 @@ async def _prepare_step_plan_drafting(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_DRAFTING: implementation-plan.md needed when missing or upstream stale."""
-    writer = StateWriter(state)
-    writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
-
-    plan_entry = writer.state.artifacts.implementation_plan
+    # Quick advance-path check + diff computation up-front (read-only; no commit).
+    advance_writer = StateWriter(state)
+    advance_plan = advance_writer.state.artifacts.implementation_plan
     plan_diff_pairs = await build_upstream_diff_pairs(
         todos_db,
         slug,
-        dict(plan_entry.upstream_digests),
+        dict(advance_plan.upstream_digests),
         (
             ("requirements", "requirements", "requirements"),
             ("test_specs", "test_specs", "test-specs"),
         ),
     )
 
-    if plan_entry.produced_at and plan_entry.upstream_digests and not plan_diff_pairs:
-        apply_authoritative_signal(writer.state, "plan_ready")
-        writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
-        await _commit_writer(writer, todos_db, slug, state)
+    if advance_plan.produced_at and advance_plan.upstream_digests and not plan_diff_pairs:
+        advance_writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
+        apply_authoritative_signal(advance_writer.state, "plan_ready")
+        advance_writer.audit.plan_drafting.completed_at = datetime.now(UTC).isoformat()
+        await _commit_writer(advance_writer, todos_db, slug, state)
         _emit_prepare_event("domain.software-development.prepare.plan_drafted", {"slug": slug})
         return True, ""
 
-    if not plan_entry.produced_at:
+    if not advance_plan.produced_at:
         plan_reason = DispatchReason.FRESH
-    elif not plan_entry.upstream_digests:
+    elif not advance_plan.upstream_digests:
         plan_reason = DispatchReason.PROVENANCE_MISSING
     else:
         plan_reason = DispatchReason.UPSTREAM_CHANGED
 
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
     pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_DRAFTING, PRODUCTION_ROLES)
     if pair_slots is None:
         return False, format_pair_missing_error(slug, "plan_drafting")
     writer_slot, reviewer_slot = pair_slots
+
+    writer = StateWriter(state)
+    writer.audit.plan_drafting.started_at = datetime.now(UTC).isoformat()
     await _commit_writer(writer, todos_db, slug, state)
     message = format_dispatch_reason(
         format_command_loader_message("next-prepare-draft", slug),
@@ -501,6 +521,15 @@ async def _prepare_step_plan_review(
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
     """PLAN_REVIEW: tailored output per state."""
+    # Resolve pair BEFORE constructing the mutation writer so subsequent
+    # writer.commit() includes the (possibly newly-stamped) prepare_pair.
+    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_REVIEW, REVIEW_ROLES)
+    if pair_slots is None:
+        return False, format_pair_missing_error(slug, "plan_review")
+    worker_slot, reviewer_slot = pair_slots
+    worker_id = worker_slot.session_id
+    reviewer_id = reviewer_slot.session_id
+
     writer = StateWriter(state)
     now = datetime.now(UTC).isoformat()
     audit = writer.audit_entry("plan_review")
@@ -514,13 +543,6 @@ async def _prepare_step_plan_review(
         current_digest = await todos_db.artifact_digest(slug, "implementation-plan")
         if current_digest and current_digest != writer.state.artifacts.implementation_plan.digest:
             writer.state.artifacts.implementation_plan.digest = current_digest
-
-    pair_slots = await resolve_pair_or_recover(db, todos_db, slug, state, PreparePhase.PLAN_REVIEW, REVIEW_ROLES)
-    if pair_slots is None:
-        return False, format_pair_missing_error(slug, "plan_review")
-    worker_slot, reviewer_slot = pair_slots
-    worker_id = worker_slot.session_id
-    reviewer_id = reviewer_slot.session_id
 
     if verdict == "approve":
         # Digest-bound approval: only stands while plan digest matches the

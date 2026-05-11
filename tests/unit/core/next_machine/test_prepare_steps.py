@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -20,6 +21,17 @@ from teleclaude.core.next_machine.prepare_steps import (
     _prepare_step_test_spec_review,
     _prepare_step_triangulation,
 )
+
+
+@dataclass
+class _FakeSession:
+    """Minimal session record matching the attributes the recovery helper reads."""
+
+    session_id: str
+    subdir: str
+    active_agent: str
+    native_session_id: str = ""
+
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
@@ -752,3 +764,66 @@ async def test_plan_review_approve_advances_without_ending_sessions() -> None:
     assert keep_going is False
     assert "telec todo prepare test-slug" in instruction
     assert "telec sessions end" not in instruction
+
+
+# --- Auto-recovery: live sessions → stamped pair, survives post-recovery commit ---
+
+
+@pytest.mark.asyncio
+async def test_plan_drafting_auto_recovery_persists_pair_through_post_recovery_commit() -> None:
+    """When prepare_pair state is empty but two live sessions exist for the slug,
+    plan_drafting must auto-recover (stamp the pair from live sessions) AND the
+    subsequent writer.commit must persist that pair instead of overwriting it.
+
+    Regression guard: an earlier shape constructed StateWriter BEFORE recovery,
+    so the post-recovery commit wrote a pre-recovery view back to state and
+    erased the just-stamped pair.
+    """
+    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
+    # No prepare_pair: forces auto-recovery from db.list_sessions.
+    assert state.get("prepare_pair") is None
+
+    persisted: dict[str, object] = {}  # guard: loose-dict — generic payload capture
+
+    async def _capture_write_state(slug: str, payload: dict[str, object]) -> None:  # guard: loose-dict
+        persisted[slug] = payload
+
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(
+        return_value=[
+            _FakeSession(
+                session_id="claude-sess-1",
+                subdir="trees/my-slug",
+                active_agent="claude",
+                native_session_id="claude-native-1",
+            ),
+            _FakeSession(
+                session_id="codex-sess-1",
+                subdir="trees/my-slug",
+                active_agent="codex",
+                native_session_id="codex-native-1",
+            ),
+        ]
+    )
+    todos_db = AsyncMock()
+    todos_db.artifact_digest = AsyncMock(return_value="")
+    todos_db.write_state = AsyncMock(side_effect=_capture_write_state)
+
+    keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
+
+    assert keep_going is False
+    # Recovery stamped the pair into state and the post-recovery commit preserved it.
+    pair = state["prepare_pair"]
+    assert isinstance(pair, dict)
+    assert pair["slot_a"]["session_id"] == "claude-sess-1"
+    assert pair["slot_b"]["session_id"] == "codex-sess-1"
+    # The most recent persisted payload (written by post-recovery commit) carries the pair.
+    final_persisted = persisted["my-slug"]
+    assert isinstance(final_persisted, dict)
+    final_pair = final_persisted["prepare_pair"]
+    assert isinstance(final_pair, dict)
+    assert final_pair["slot_a"]["session_id"] == "claude-sess-1"
+    assert final_pair["slot_b"]["session_id"] == "codex-sess-1"
+    # The dispatched script targets the recovered slot, not a freshly spawned worker.
+    # PLAN_DRAFTING role mapping is ("B", "A") so the writer is slot_b (codex).
+    assert "codex-sess-1" in instruction
