@@ -138,7 +138,11 @@ async def resolve_pair_or_recover(
 
     writer = StateWriter(state)
     PreparePairManager(writer).set_pair(slot_a=slot_a, slot_b=slot_b)
-    await writer.commit(todos_db, slug)
+    payload = await writer.commit(todos_db, slug)
+    # Sync the validated payload back into the caller's state dict so subsequent
+    # reads (including pair_writer_reviewer_slots below) observe the new pair.
+    state.clear()
+    state.update(payload)
     return pair_writer_reviewer_slots(state, phase, roles)
 
 
