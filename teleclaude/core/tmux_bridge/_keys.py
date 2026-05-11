@@ -177,27 +177,26 @@ async def _send_keys_tmux(
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
     # Strip any caller-supplied bracketed-paste markers. They would land as
-    # literal escape sequences in the pane otherwise; agents already enable
-    # bracketed-paste mode themselves when they want it, so leaving the inner
-    # text bare matches the original `send-keys -l` semantic.
+    # literal escape sequences in the pane otherwise.
     send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
 
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
-    # peer-bundle path routinely produces. load-buffer reads from stdin, so it has
-    # no argv limit. paste-buffer needs -r to preserve LF — without it tmux
-    # rewrites every \n to \r, which collapses multiline bundles into a single
-    # carriage-returned line.
-    #
-    # Submit is embedded as a trailing \r at the END of the load-buffer stdin so
-    # the Enter is part of the same byte stream as the content. A separate
-    # `send-keys C-m` race-loses for large payloads: the agent's input loop
-    # hasn't finished draining the pty when the second tmux command writes \r,
-    # so the \r lands mid-stream as a literal character instead of Enter.
-    # Inlining \r keeps order under any payload size — tmux preserves byte
-    # order on a single paste-buffer write.
-    payload = send_text.encode() + b"\r"
+    # peer-bundle path routinely produces. load-buffer reads from stdin (no argv
+    # limit), and paste-buffer streams the content into the pane. paste-buffer
+    # needs -r to preserve LF — without it tmux rewrites \n to \r and collapses
+    # multiline bundles to one carriage-returned line.
+    payload_bytes = send_text.encode()
+    payload_len = len(payload_bytes)
     buf_name = f"telec-{uuid4().hex}"
+
+    logger.debug(
+        "tmux paste pipeline: start",
+        session=session_name,
+        buffer_name=buf_name,
+        payload_bytes=payload_len,
+    )
+
     load_cmd = [config.computer.tmux_binary, "load-buffer", "-b", buf_name, "-"]
     load_proc = await asyncio.create_subprocess_exec(
         *load_cmd,
@@ -205,7 +204,7 @@ async def _send_keys_tmux(
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    _, stderr = await communicate_with_timeout(load_proc, payload, timeout, "tmux load-buffer")
+    _, stderr = await communicate_with_timeout(load_proc, payload_bytes, timeout, "tmux load-buffer")
     if load_proc.returncode != 0:
         logger.error(
             "tmux load-buffer returned nonzero exit",
@@ -215,6 +214,7 @@ async def _send_keys_tmux(
             stderr=stderr.decode().strip(),
         )
         return False
+    logger.debug("tmux paste pipeline: load-buffer ok", session=session_name, buffer_name=buf_name)
 
     paste_succeeded = False
     try:
@@ -241,6 +241,7 @@ async def _send_keys_tmux(
             )
             return False
         paste_succeeded = True
+        logger.debug("tmux paste pipeline: paste-buffer ok", session=session_name, buffer_name=buf_name)
     finally:
         # Always attempt cleanup. The buffer holds the user payload, so a failed
         # delete leaves it in tmux memory until the server exits — we want this
@@ -270,6 +271,37 @@ async def _send_keys_tmux(
                 paste_succeeded=paste_succeeded,
             )
 
+    # Submit via a DISCRETE send-keys C-m AFTER the paste has had time to be
+    # consumed by the agent CLI. An inline trailing \r inside paste-buffer's
+    # stream does NOT submit for claude code / codex — those agents detect
+    # rapid input as a paste and wait for a separate Enter event to fire.
+    # The wait scales with payload size so large bundles don't race the
+    # agent's pty reader. 50 KB/s is a conservative read rate; floor at 0.2s.
+    submit_delay_s = max(0.2, payload_len / 50_000)
+    logger.debug(
+        "tmux paste pipeline: waiting before submit",
+        session=session_name,
+        submit_delay_s=submit_delay_s,
+        payload_bytes=payload_len,
+    )
+    await asyncio.sleep(submit_delay_s)
+
+    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
+    if result.returncode != 0:
+        logger.error(
+            "tmux send-keys submit returned nonzero exit",
+            session=session_name,
+            reason="nonzero_exit_submit",
+            returncode=result.returncode,
+            stderr=stderr.decode().strip(),
+        )
+        return False
+
+    logger.debug("tmux paste pipeline: submit ok", session=session_name, payload_bytes=payload_len)
     return True
 
 

@@ -98,15 +98,9 @@ class TestSendKeys:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_keys_existing_tmux_propagates_custom_timeout(self) -> None:
-        # Buffer pipeline: load-buffer (with inline \r submit), paste-buffer,
-        # delete-buffer. No separate send-keys C-m — Enter is the last byte of
-        # the load-buffer stdin.
-        processes = [
-            _completed_process(),
-            _completed_process(),
-            _completed_process(),
-        ]
-        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"")])
+        # Buffer pipeline: load-buffer, paste-buffer, delete-buffer, submit (C-m).
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         with (
             patch(
@@ -114,6 +108,7 @@ class TestSendKeys:
                 new=AsyncMock(side_effect=processes),
             ),
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -122,7 +117,6 @@ class TestSendKeys:
             )
 
         assert result is True
-        # Every subprocess invoked through communicate_with_timeout must honor the caller timeout.
         for call in communicate_mock.await_args_list:
             assert call.args[2] == 15.0
 
@@ -131,17 +125,13 @@ class TestSendKeys:
     async def test_send_keys_existing_tmux_uses_buffer_pipeline_and_strips_paste_markers(self) -> None:
         # The buffer pipeline must:
         # 1. strip caller-supplied bracketed-paste markers (raw stream delivery)
-        # 2. append \r as the trailing byte of the load-buffer stdin so submit
-        #    is part of the same paste stream as the content
+        # 2. send the cleaned payload via load-buffer stdin (NO trailing \r —
+        #    agent CLIs don't treat \r inside a paste burst as discrete Enter)
         # 3. paste-buffer -r (preserve LF; no -p, no bracketed-paste wrapping)
         # 4. delete the buffer
-        # No separate send-keys C-m — that race-loses for large payloads.
-        processes = [
-            _completed_process(),
-            _completed_process(),
-            _completed_process(),
-        ]
-        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"")])
+        # 5. discrete send-keys C-m AFTER an adaptive sleep
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         with (
             patch(
@@ -149,6 +139,7 @@ class TestSendKeys:
                 new=AsyncMock(side_effect=processes),
             ) as mock_exec,
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -157,7 +148,7 @@ class TestSendKeys:
             )
 
         assert result is True
-        assert mock_exec.await_count == 3
+        assert mock_exec.await_count == 4
         binary = _keys.config.computer.tmux_binary
 
         load_args = mock_exec.await_args_list[0].args
@@ -167,10 +158,10 @@ class TestSendKeys:
         assert load_args[4] == "-"
 
         # Stdin to load-buffer is the bang-escaped, marker-stripped payload
-        # WITH a trailing \r (the inline submit). Communicate is called
-        # positionally with (proc, input_bytes, timeout, label).
+        # — no trailing \r. Communicate is called positionally with
+        # (proc, input_bytes, timeout, label).
         load_input = communicate_mock.await_args_list[0].args[1]
-        assert load_input == rb"run\!" + b"\r"
+        assert load_input == rb"run\!"
 
         paste_args = mock_exec.await_args_list[1].args
         assert paste_args == (binary, "paste-buffer", "-r", "-t", "tmux-alpha", "-b", buf_name)
@@ -178,77 +169,74 @@ class TestSendKeys:
         delete_args = mock_exec.await_args_list[2].args
         assert delete_args == (binary, "delete-buffer", "-b", buf_name)
 
+        submit_args = mock_exec.await_args_list[3].args
+        assert submit_args == (binary, "send-keys", "-t", "tmux-alpha", "C-m")
+
 
 class TestSendKeysSubmission:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_send_keys_appends_carriage_return_to_load_buffer_stdin(self) -> None:
-        # The Enter is delivered as the last byte of the load-buffer payload.
-        # Embedding \r in the stream eliminates the race with a separate
-        # send-keys C-m, which gets absorbed by the agent's pty reader for
-        # large payloads (the agent hasn't drained the content stream yet
-        # when the second tmux command writes \r, so the \r lands mid-stream
-        # as a literal character instead of as Enter).
-        processes = [
-            _completed_process(),
-            _completed_process(),
-            _completed_process(),
-        ]
-        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"")])
+    async def test_send_keys_submit_delay_scales_with_payload_size(self) -> None:
+        # Adaptive sleep before the discrete send-keys C-m so the agent's pty
+        # reader has time to fully consume the paste before Enter arrives.
+        # Rate: 50 KB/s. A 100 KB payload yields a 2.0s wait.
+        big_payload = "x" * 100_000  # 100 KB
+        sleep_mock = AsyncMock()
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         with (
             patch(
                 "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
+            ),
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=sleep_mock),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
-                text="hello",
-                active_agent=None,
+                text=big_payload,
             )
 
         assert result is True
-        # Exactly three subprocesses run; no separate C-m send-keys.
-        assert mock_exec.await_count == 3
-        for call in mock_exec.await_args_list:
-            assert "send-keys" not in call.args, f"send-keys C-m must NOT be invoked: {call.args}"
+        sleep_mock.assert_awaited_once()
+        assert sleep_mock.await_args.args[0] == 2.0
 
-        binary = _keys.config.computer.tmux_binary
-        load_args = mock_exec.await_args_list[0].args
-        assert load_args[:3] == (binary, "load-buffer", "-b")
-        buf_name = load_args[3]
-        assert load_args[4] == "-"
-        # The payload bytes end with \r (the inline submit). For "hello" the
-        # full payload is b"hello\r".
-        assert communicate_mock.await_args_list[0].args[1] == b"hello\r"
-        # paste-buffer with -r.
-        assert mock_exec.await_args_list[1].args == (
-            binary,
-            "paste-buffer",
-            "-r",
-            "-t",
-            "tmux-alpha",
-            "-b",
-            buf_name,
-        )
-        # delete-buffer cleans up.
-        assert mock_exec.await_args_list[2].args == (binary, "delete-buffer", "-b", buf_name)
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_send_keys_submit_delay_floors_at_200ms_for_small_payload(self) -> None:
+        # Small payloads still wait 0.2s — enough for typical agent input loops
+        # to consume the paste before Enter arrives.
+        sleep_mock = AsyncMock()
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
+
+        with (
+            patch(
+                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
+                new=AsyncMock(side_effect=processes),
+            ),
+            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=sleep_mock),
+        ):
+            result = await _keys.send_keys_existing_tmux(
+                session_name="tmux-alpha",
+                text="ok",
+            )
+
+        assert result is True
+        sleep_mock.assert_awaited_once()
+        assert sleep_mock.await_args.args[0] == 0.2
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_keys_paste_buffer_uses_dash_r_to_preserve_newlines(self) -> None:
         # Without -r, tmux rewrites every LF to CR, collapsing multiline bundles
-        # (peer-fanout bundles, multi-segment Human/Agent blocks) into one
-        # carriage-returned line. The byte stream must preserve LFs.
+        # into one carriage-returned line. paste-buffer must include -r so LFs
+        # are preserved in the stream that hits the pane.
         multiline = "first line\nsecond line\nthird line"
-        processes = [
-            _completed_process(),
-            _completed_process(),
-            _completed_process(),
-        ]
-        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"")])
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         with (
             patch(
@@ -256,6 +244,7 @@ class TestSendKeysSubmission:
                 new=AsyncMock(side_effect=processes),
             ) as mock_exec,
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -264,9 +253,9 @@ class TestSendKeysSubmission:
 
         assert result is True
         binary = _keys.config.computer.tmux_binary
-        # Load-buffer stdin is the content with LFs intact plus the trailing \r.
+        # Load-buffer stdin is the content with LFs intact (NO trailing \r).
         load_input = communicate_mock.await_args_list[0].args[1]
-        assert load_input == multiline.encode() + b"\r"
+        assert load_input == multiline.encode()
         assert b"\n" in load_input
         # paste-buffer must include -r so tmux does NOT rewrite LF -> CR.
         paste_args = mock_exec.await_args_list[1].args
@@ -299,15 +288,15 @@ class TestSendKeysSubmission:
     @pytest.mark.asyncio
     async def test_send_keys_returns_true_when_delete_buffer_fails_after_successful_paste(self) -> None:
         # Cleanup failure after a successful paste must NOT override the
-        # operation result. The user payload (with trailing \r) already reached
-        # the pane via paste-buffer; the leftover buffer is logged but not
-        # failed-back to the caller.
+        # operation result. paste-buffer wrote the payload; submit still runs;
+        # the leftover buffer is logged but not failed-back to the caller.
         processes = [
             _completed_process(),  # load-buffer
             _completed_process(),  # paste-buffer
             _completed_process(returncode=1),  # delete-buffer (fails)
+            _completed_process(),  # submit C-m
         ]
-        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"no such buffer")])
+        communicate_mock = AsyncMock(side_effect=[(b"", b""), (b"", b""), (b"", b"no such buffer"), (b"", b"")])
 
         with (
             patch(
@@ -315,6 +304,7 @@ class TestSendKeysSubmission:
                 new=AsyncMock(side_effect=processes),
             ) as mock_exec,
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -322,24 +312,28 @@ class TestSendKeysSubmission:
             )
 
         assert result is True
-        assert mock_exec.await_count == 3
+        assert mock_exec.await_count == 4
+        # Submit ran after the cleanup failure.
+        assert mock_exec.await_args_list[3].args[1] == "send-keys"
+        assert mock_exec.await_args_list[3].args[-1] == "C-m"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_keys_returns_true_when_delete_buffer_times_out_after_successful_paste(self) -> None:
         # Cleanup timeout must NOT override the operation result either. Same
-        # invariant as the nonzero case: paste-buffer wrote the payload (with
-        # inline \r submit) to the pane; the cleanup timeout is observability.
+        # invariant: paste-buffer wrote the payload, submit still runs.
         processes = [
             _completed_process(),  # load-buffer
             _completed_process(),  # paste-buffer
             _completed_process(),  # delete-buffer (times out via communicate)
+            _completed_process(),  # submit C-m
         ]
         communicate_mock = AsyncMock(
             side_effect=[
                 (b"", b""),  # load-buffer
                 (b"", b""),  # paste-buffer
                 SubprocessTimeoutError("tmux delete-buffer", 5.0, 1234),  # cleanup timeout
+                (b"", b""),  # submit
             ]
         )
 
@@ -349,6 +343,7 @@ class TestSendKeysSubmission:
                 new=AsyncMock(side_effect=processes),
             ) as mock_exec,
             patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
+            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
@@ -356,7 +351,9 @@ class TestSendKeysSubmission:
             )
 
         assert result is True
-        assert mock_exec.await_count == 3
+        assert mock_exec.await_count == 4
+        assert mock_exec.await_args_list[3].args[1] == "send-keys"
+        assert mock_exec.await_args_list[3].args[-1] == "C-m"
 
     @pytest.mark.unit
     @pytest.mark.asyncio
