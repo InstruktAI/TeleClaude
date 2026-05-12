@@ -235,12 +235,14 @@ def test_handle_user_prompt_submit_drops_xml_wrapped_internal_prompt() -> None:
     assert dropped is True
 
 
-def test_codex_subagent_event_does_not_enqueue(tmp_path: Path) -> None:
-    """Codex subagent hook events are dropped at the receiver and never enter the outbox.
+def test_codex_subagent_event_drops_before_session_resolution(tmp_path: Path) -> None:
+    """Codex subagent hook events exit before _resolve_receiver_session_id runs.
 
-    Regression guard: a previous version persisted parent metadata-skip but still
-    enqueued the subagent event under the parent's session id, polluting downstream
-    consumers. The receiver must short-circuit before enqueue.
+    Regression guard: a previous version of this drop ran AFTER session resolution,
+    which had already persisted `codex:<subagent_native_id> -> <parent_session>` to
+    the session map — silently binding the subagent's native id to the parent's
+    TeleClaude session and violating the Session Identity Truth spec. The drop
+    must short-circuit before any identity side effect.
     """
     outbox_db = _make_outbox_db(tmp_path)
     fake_args = SimpleNamespace(
@@ -263,13 +265,17 @@ def test_codex_subagent_event_does_not_enqueue(tmp_path: Path) -> None:
         patch("sys.stdin", io.StringIO(stdin_payload)),
         patch("teleclaude.hooks.receiver._parse_args", return_value=fake_args),
         patch("teleclaude.hooks.receiver.is_codex_subagent_transcript", return_value=True),
-        patch("teleclaude.hooks.receiver._resolve_receiver_session_id", return_value="parent-tc-session"),
+        patch("teleclaude.hooks.receiver._resolve_receiver_session_id") as resolve_mock,
         patch("teleclaude.hooks.receiver._get_default_outbox_db", return_value=outbox_db),
     ):
         with pytest.raises(SystemExit) as exit_info:
             receiver_main()
 
     assert exit_info.value.code == 0
+    assert resolve_mock.call_count == 0, (
+        "session resolution must NOT run for Codex subagent events — it persists "
+        "subagent->parent mappings to the session map before the drop can take effect"
+    )
     with SqlSession(create_sync_db_engine(outbox_db)) as session:
         rows = session.exec(select(db_models.HookOutbox)).all()
     assert rows == []

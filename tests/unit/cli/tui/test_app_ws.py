@@ -169,6 +169,17 @@ class _WsApp(app_ws.TelecAppWsMixin):
 
 
 @pytest.mark.unit
+def test_ws_connected_refreshes_only_websocket_uncovered_pillars() -> None:
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_connected()
+
+    app._refresh_data.assert_called_once_with(["computers", "availability", "jobs", "settings", "chiptunes"])
+
+
+@pytest.mark.unit
 def test_handle_ws_event_posts_session_started_messages() -> None:
     sessions_view = _SessionsView()
     pane_bridge = _PaneBridge()

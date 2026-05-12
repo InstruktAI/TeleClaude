@@ -795,6 +795,21 @@ def main() -> None:
     data = adapter.normalize_payload(dict(raw_data))  # type: ignore[union-attr]
     raw_native_session_id, raw_native_log_file = _extract_native_hook_fields(data)
 
+    # Drop Codex subagent events BEFORE session resolution. Session resolution
+    # persists `codex:<native_id> -> <teleclaude_session>` to the session map,
+    # which for a subagent native id would silently bind it to the parent
+    # session — violating the Session Identity Truth Spec.
+    if args.agent == AgentName.CODEX.value and is_codex_subagent_transcript(raw_native_log_file):
+        logger.debug(
+            "subagent_drop",
+            session_id="",
+            agent=args.agent,
+            native_session_id=(raw_native_session_id or ""),
+            native_log_file=(raw_native_log_file or ""),
+            caller="receiver.main",
+        )
+        sys.exit(0)
+
     teleclaude_session_id = _resolve_receiver_session_id(
         args.agent,
         event_type,
@@ -826,17 +841,6 @@ def main() -> None:
         data["native_session_id"] = raw_native_session_id
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
-
-    if args.agent == AgentName.CODEX.value and is_codex_subagent_transcript(raw_native_log_file):
-        logger.debug(
-            "subagent_drop",
-            session_id=teleclaude_session_id,
-            agent=args.agent,
-            native_session_id=(raw_native_session_id or ""),
-            native_log_file=(raw_native_log_file or ""),
-            caller="receiver.main",
-        )
-        sys.exit(0)
 
     if raw_native_session_id or raw_native_log_file:
         try:

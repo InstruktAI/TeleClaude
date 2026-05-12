@@ -69,6 +69,7 @@ class JobsView(Widget, can_focus=True):
         super().__init__(**kwargs)
         self._jobs: list[JobDTO] = []
         self._nav_items: list[Widget] = []
+        self._jobs_fingerprint: tuple[tuple[str, str, str | None, str | None, str], ...] | None = None
 
     def compose(self) -> ComposeResult:
         scroll = VerticalScroll(id="jobs-scroll")
@@ -77,8 +78,17 @@ class JobsView(Widget, can_focus=True):
 
     def update_data(self, jobs: list[JobDTO]) -> None:
         """Update view with fresh job data."""
+        fingerprint = self._fingerprint_jobs(jobs)
+        if fingerprint == self._jobs_fingerprint:
+            self._jobs = jobs
+            return
         self._jobs = jobs
+        self._jobs_fingerprint = fingerprint
         self._rebuild()
+
+    @staticmethod
+    def _fingerprint_jobs(jobs: list[JobDTO]) -> tuple[tuple[str, str, str | None, str | None, str], ...]:
+        return tuple((job.name, job.type, job.schedule, job.last_run, job.status) for job in jobs)
 
     def _rebuild(self) -> None:
         container = self.query_one("#jobs-scroll", VerticalScroll)
