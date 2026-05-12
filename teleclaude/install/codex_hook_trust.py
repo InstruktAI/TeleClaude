@@ -112,7 +112,10 @@ def build_codex_managed_hook_state(
     for event_label, (group_index, handler_index) in positions.items():
         spec = _MANAGED_HOOK_SPECS.get(event_label)
         if spec is None:
-            continue
+            raise ValueError(
+                f"No managed hook spec for label {event_label!r}; add an entry to _MANAGED_HOOK_SPECS "
+                f"and CODEX_MANAGED_EVENT_LABELS together with CODEX_TRUST_LABEL_BY_HOOK_NAME."
+            )
         key = codex_hook_state_key(
             source_path=hooks_path,
             event_label=event_label,

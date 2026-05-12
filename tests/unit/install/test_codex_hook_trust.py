@@ -211,3 +211,21 @@ def test_trusted_hash_changes_when_command_changes() -> None:
         status_message="Loading session notes",
     )
     assert base != moved
+
+
+def test_managed_hook_state_raises_on_unknown_label() -> None:
+    """Unknown managed-hook labels must fail fast so the trust ledger never silently omits a hook.
+
+    The earlier silent-continue behavior shipped a config where Codex dropped the
+    handler with no diagnostic. Raising surfaces the missing _MANAGED_HOOK_SPECS
+    entry at install time instead of at run time.
+    """
+    hooks_path = Path("/Users/example/.codex/hooks.json")
+    receiver_command = '/path/receiver.py --agent codex --cwd "$PWD"'
+
+    with pytest.raises(ValueError, match="No managed hook spec for label"):
+        build_codex_managed_hook_state(
+            hooks_path=hooks_path,
+            receiver_command=receiver_command,
+            positions={"never_registered_label": (0, 0)},
+        )

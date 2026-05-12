@@ -143,8 +143,7 @@ class TestCleanupCodexInputState:
     def test_discards_from_transcript_bind_set(self):
         sid = "sess-cleanup-1"
         pc._codex_transcript_bind_attempted.add(sid)
-        with patch("teleclaude.core.polling_coordinator.codex_prompt_submit"):
-            _cleanup_codex_input_state(sid)
+        _cleanup_codex_input_state(sid)
         assert sid not in pc._codex_transcript_bind_attempted
 
 

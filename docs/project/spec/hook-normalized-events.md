@@ -50,8 +50,9 @@ Current raw-to-normalized lifecycle mapping:
 | Gemini | `AfterTool`, `BeforeModel`, `BeforeToolSelection`, `PreCompress`, `SessionEnd` | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
 | Codex  | `SessionStart`                                     | `session_start`      | forwarded  |
 | Codex  | `UserPromptSubmit`                                 | `user_prompt_submit` | forwarded  |
-| Codex  | synthetic tool lane from polling                   | `tool_use`           | forwarded  |
+| Codex  | `PreToolUse`                                       | `tool_use`           | forwarded  |
 | Codex  | `Stop`                                             | `agent_stop`         | forwarded  |
+| Codex  | `PostToolUse`, `PermissionRequest`                 | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
 
 External-agent hook signatures we know exist but do not ingest are catalogued in
 `teleclaude/core/events.py:HOOK_EVENT_MAP` with `None` as the mapped internal

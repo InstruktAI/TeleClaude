@@ -7,22 +7,19 @@ Handles polling lifecycle orchestration and central transcript-driven delivery.
 import asyncio
 import hashlib
 import time
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.core import codex_prompt_submit, session_cleanup, tmux_bridge
+from teleclaude.core import session_cleanup, tmux_bridge
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import discover_codex_transcript_path
 from teleclaude.core.db import db
-from teleclaude.core.events import AgentEventContext, AgentHookEvents, AgentHookEventType, AgentOutputPayload
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.output_poller import OutputChanged, OutputPoller, ProcessExited
 from teleclaude.core.session_title import clear_title_projection_state
-from teleclaude.core.tool_activity import truncate_tool_preview
 from teleclaude.utils.transcript import (
     count_renderable_assistant_blocks,
     extract_last_turn_boundary_timestamp,
@@ -42,20 +39,6 @@ OUTPUT_METRICS_SUMMARY_INTERVAL_S = 30.0
 
 # Retained as a module attribute for older test patch targets.
 extract_recent_transcript_turns = _extract_recent_transcript_turns
-
-
-@dataclass
-class CodexTurnState:
-    """Per-session state for synthetic codex turn/tool events."""
-
-    turn_active: bool = False
-    in_tool: bool = False
-    prompt_visible_last: bool = False
-    initialized: bool = False
-    last_tool_signature: str = ""
-
-
-_codex_turn_state: dict[str, CodexTurnState] = {}
 
 
 @dataclass
@@ -190,121 +173,11 @@ def _clear_output_metrics(session_id: str) -> None:
     clear_title_projection_state(session_id)
 
 
-async def _emit_synthetic_codex_event(
-    session_id: str,
-    event_type: AgentHookEventType,
-    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
-    *,
-    tool_name: str | None = None,
-    tool_preview: str | None = None,
-    text: str | None = None,
-) -> None:
-    """Emit a synthetic Codex event through the regular agent event handler."""
-    raw = {
-        "synthetic": True,
-        "source": "codex_output_effects",
-    }
-    if tool_name:
-        raw["tool_name"] = tool_name
-    if tool_preview:
-        raw["tool_preview"] = truncate_tool_preview(tool_preview)
-    if text:
-        raw["text"] = text
-
-    if event_type == AgentHookEvents.TOOL_USE:
-        payload = AgentOutputPayload(raw=raw)
-    else:
-        return
-
-    await emit_agent_event(
-        AgentEventContext(
-            session_id=session_id,
-            event_type=event_type,
-            data=payload,
-        )
-    )
-
-
-async def _maybe_emit_codex_turn_events(
-    session_id: str,
-    active_agent: str | None,
-    current_output: str,
-    emit_agent_event: Callable[[AgentEventContext], Awaitable[None]],
-    *,
-    enable_synthetic_turn_events: bool,
-) -> None:
-    """Infer synthetic tool events from visible Codex terminal effects."""
-    if active_agent != "codex" or not enable_synthetic_turn_events:
-        return
-
-    state = _codex_turn_state.get(session_id)
-    if state is None:
-        state = CodexTurnState()
-        _codex_turn_state[session_id] = state
-
-    prompt_visible = codex_prompt_submit._has_live_prompt_marker(current_output)
-    responding = codex_prompt_submit._is_live_agent_responding(current_output)
-    tool_match = codex_prompt_submit._find_recent_tool_action(current_output)
-    raw_tool_action = tool_match[0] if tool_match else None
-    raw_tool_signature = tool_match[1] if tool_match else ""
-    raw_tool_preview = tool_match[2] if tool_match else ""
-    if not state.initialized:
-        state.initialized = True
-        state.prompt_visible_last = prompt_visible
-        if prompt_visible and raw_tool_signature:
-            # Baseline stale scrollback on first sight to avoid startup false positives.
-            state.last_tool_signature = raw_tool_signature
-
-    is_new_tool_signature = bool(raw_tool_signature and raw_tool_signature != state.last_tool_signature)
-    # Prompt-visible snapshots are common; ignore known stale signatures but allow new ones.
-    if prompt_visible and not is_new_tool_signature:
-        tool_action = None
-    else:
-        tool_action = raw_tool_action
-
-    # Track tool lane transitions while prompt is not visible.
-    if tool_action:
-        if is_new_tool_signature:
-            state.last_tool_signature = raw_tool_signature
-        state.turn_active = True
-        if not state.in_tool:
-            await _emit_synthetic_codex_event(
-                session_id,
-                AgentHookEvents.TOOL_USE,
-                emit_agent_event,
-                tool_name=tool_action,
-                tool_preview=raw_tool_preview,
-            )
-            state.in_tool = True
-    elif state.in_tool:
-        state.in_tool = False
-
-    # Any live spinner/status marker means turn is still active.
-    if responding:
-        state.turn_active = True
-        state.prompt_visible_last = False
-        return
-
-    # Prompt visible + not responding => authoritative tool-lane end.
-    # Codex stop is hook-authoritative; tool-lane state is reset for next turn.
-    if prompt_visible:
-        state.turn_active = False
-        state.in_tool = False
-        state.prompt_visible_last = True
-        return
-
-    state.prompt_visible_last = False
-    if tool_action:
-        state.turn_active = True
-        return
-
-
 _codex_transcript_bind_attempted: set[str] = set()
 
 
 def _cleanup_codex_input_state(session_id: str) -> None:
-    """Clean up Codex input tracking state when session ends."""
-    _codex_turn_state.pop(session_id, None)
+    """Clean up Codex transcript-bind tracking state when session ends."""
     _codex_transcript_bind_attempted.discard(session_id)
 
 
@@ -562,8 +435,6 @@ async def poll_and_send_output(
                     "[COORDINATOR %s] Received OutputChanged event from poller",
                     session_id,
                 )
-                # Output is a rendered TUI snapshot (poller reads from raw stream)
-                clean_output = event.output
 
                 # Fetch session once for all operations
                 session = await db.get_session(event.session_id)
@@ -580,28 +451,16 @@ async def poll_and_send_output(
                     session.last_output_digest,
                 )
 
-                # Detect user input for Codex sessions (no hook support).
-                # Keep this inline to avoid spawning unbounded background tasks
-                # on high-frequency output updates.
-                emit_handler = adapter_client.agent_event_handler
-                if emit_handler:
-                    try:
-                        # Codex synthetic tool events come from visible terminal effects
-                        # regardless of native session bindings.
-                        synth_turn_events_enabled = (session.active_agent or "").lower() == "codex"
-                        await _maybe_emit_codex_turn_events(
-                            session_id=event.session_id,
-                            active_agent=session.active_agent,
-                            current_output=clean_output,
-                            emit_agent_event=emit_handler,
-                            enable_synthetic_turn_events=synth_turn_events_enabled,
-                        )
-                        if await _try_bind_codex_transcript(session):
-                            refreshed = await db.get_session(event.session_id)
-                            if refreshed is not None:
-                                session = refreshed
-                    except Exception as e:
-                        logger.error("[CODEX] Error in Codex event processing: %s", e, exc_info=True)
+                # Opportunistic Codex transcript-path binding (no hook support for
+                # transcript_path in some Codex versions). Tool activity comes from
+                # the native PreToolUse hook, not from inferring it here.
+                try:
+                    if await _try_bind_codex_transcript(session):
+                        refreshed = await db.get_session(event.session_id)
+                        if refreshed is not None:
+                            session = refreshed
+                except Exception as e:
+                    logger.error("[CODEX] Error in Codex transcript bind: %s", e, exc_info=True)
 
                 await db.update_last_activity(event.session_id)
                 await project_session_from_transcript(
