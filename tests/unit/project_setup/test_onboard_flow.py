@@ -106,6 +106,12 @@ def test_run_analyze_dispatches_projects_analyze_command(tmp_path: Path, monkeyp
     assert body is not None
     assert body["command"] == "/projects-analyze"
     assert body["project"] == str(tmp_path)
+    # Regression guard: dispatch must not leak unset RunSessionRequest defaults
+    # (e.g. agent="claude") — that would override the daemon's get_default_agent()
+    # and the operator's configured agent choice.
+    assert "agent" not in body
+    assert "thinking_mode" not in body
+    assert "computer" not in body
 
 
 def test_run_analyze_dedup_lookup_queries_all_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
