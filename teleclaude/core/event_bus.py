@@ -284,12 +284,31 @@ class EventBus:
         self._role = role
         self._redis = redis_client
 
-    def subscribe(self, event: EventType, handler: EventHandler) -> None:
-        """Subscribe a handler to an event."""
+    def subscribe(self, event: EventType, handler: EventHandler) -> EventHandler:
+        """Subscribe a handler to an event. Returns the registered (wrapped) handler.
+
+        The returned reference is the handle to pass to ``unsubscribe`` — the bus
+        wraps every handler in an error guard, and only the wrapped version is
+        stored on the dispatch list, so unsubscribing by the original callable
+        would never match.
+        """
         if event not in self._handlers:
             self._handlers[event] = []
-        self._handlers[event].append(create_event_guard(handler, emit=self.emit, reraise=True))
+        wrapped = create_event_guard(handler, emit=self.emit, reraise=True)
+        self._handlers[event].append(wrapped)
         logger.debug("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
+        return wrapped
+
+    def unsubscribe(self, event: EventType, wrapped_handler: EventHandler) -> None:
+        """Remove a handler previously returned by ``subscribe``. Idempotent."""
+        handlers = self._handlers.get(event)
+        if not handlers:
+            return
+        try:
+            handlers.remove(wrapped_handler)
+        except ValueError:
+            return
+        logger.debug("Unsubscribed handler for event: %s (remaining: %d)", event, len(handlers))
 
     def clear(self) -> None:
         """Clear all registered handlers (primarily for tests)."""

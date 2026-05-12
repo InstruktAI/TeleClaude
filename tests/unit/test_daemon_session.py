@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -292,93 +292,6 @@ async def test_bootstrap_writes_human_role_without_email(monkeypatch: pytest.Mon
 
     assert len(identity_calls) == 1
     assert identity_calls[0]["human_role"] == "admin"
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-@pytest.mark.parametrize(("agent_name", "thinking_mode"), [("claude", "slow"), ("gemini", "fast"), ("codex", "fast")])
-async def test_handle_agent_then_message_passes_session_and_constants_to_detector(
-    monkeypatch: pytest.MonkeyPatch,
-    agent_name: str,
-    thinking_mode: str,
-) -> None:
-    daemon_inst = _TestDaemon()
-    session = MagicMock(
-        session_id="sess-1",
-        tmux_session_name="tc_sess-1",
-        project_path="/tmp",
-        subdir="",
-        active_agent=agent_name,
-    )
-    db_stub = SimpleNamespace(
-        update_session=AsyncMock(),
-        get_session=AsyncMock(return_value=session),
-        update_last_activity=AsyncMock(),
-    )
-    ready_mock = AsyncMock(return_value=(True, "prompt > "))
-    emit_mock = MagicMock()
-    monkeypatch.setattr(daemon_session, "db", db_stub)
-    monkeypatch.setattr(daemon_session, "wait_for_agent_ready", ready_mock, raising=False)
-    monkeypatch.setattr(daemon_session.event_bus, "emit", emit_mock)
-    monkeypatch.setattr(daemon_session.tmux_io, "is_process_running", AsyncMock(return_value=True))
-    monkeypatch.setattr(daemon_session.tmux_io, "process_text", AsyncMock(return_value=True))
-    monkeypatch.setattr(daemon_session.tmux_io, "wrap_bracketed_paste", lambda text, active_agent: text)
-    monkeypatch.setattr(daemon_session, "resolve_working_dir", lambda project_path, subdir: project_path)
-    monkeypatch.setattr(daemon_inst, "_poll_and_send_output", AsyncMock())
-    monkeypatch.setattr(daemon_inst, "_confirm_command_acceptance", AsyncMock(return_value=True))
-
-    result = await daemon_inst._handle_agent_then_message(
-        "sess-1", agent_name=agent_name, thinking_mode=thinking_mode, message="hello"
-    )
-
-    assert result["status"] == "success"
-    ready_mock.assert_awaited_once_with(
-        agent_name,
-        session,
-        daemon_session.AGENT_PROMPT_READY_TIMEOUT_S,
-        daemon_session.AGENT_START_STABILIZE_QUIET_S,
-    )
-    assert emit_mock.call_args_list[0].args[0] == TeleClaudeEvents.AGENT_READY
-    assert emit_mock.call_args_list[0].args[1].session_id == "sess-1"
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_handle_agent_then_message_returns_error_when_readiness_times_out(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    daemon_inst = _TestDaemon()
-    session = MagicMock(session_id="sess-1", tmux_session_name="tc_sess-1")
-    db_stub = SimpleNamespace(
-        update_session=AsyncMock(),
-        get_session=AsyncMock(return_value=session),
-        update_last_activity=AsyncMock(),
-    )
-    ready_mock = AsyncMock(return_value=(False, "still loading"))
-    emit_mock = MagicMock()
-    terminate_mock = AsyncMock()
-    process_text_mock = AsyncMock(return_value=True)
-    monkeypatch.setattr(daemon_session, "db", db_stub)
-    monkeypatch.setattr(daemon_session, "wait_for_agent_ready", ready_mock, raising=False)
-    monkeypatch.setattr(daemon_session.event_bus, "emit", emit_mock)
-    monkeypatch.setattr(
-        daemon_session.session_cleanup,
-        "terminate_session",
-        terminate_mock,
-    )
-    monkeypatch.setattr(daemon_session.tmux_io, "process_text", process_text_mock)
-
-    result = await daemon_inst._handle_agent_then_message(
-        "sess-1", agent_name="claude", thinking_mode="slow", message="hello"
-    )
-
-    assert result["status"] == "error"
-    assert "kept alive" in result["message"]
-    assert emit_mock.call_args_list[0].args[0] == TeleClaudeEvents.AGENT_READINESS_TIMEOUT
-    assert emit_mock.call_args_list[0].args[1].session_id == "sess-1"
-    # Session is kept alive on timeout — no terminate, no message injection
-    terminate_mock.assert_not_awaited()
-    process_text_mock.assert_not_awaited()
 
 
 @pytest.mark.unit

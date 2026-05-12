@@ -23,6 +23,7 @@ from teleclaude.core.events import (
     AgentSessionStartPayload,
     AgentStopActivityEvent,
     AgentStopPayload,
+    SessionLifecycleContext,
     SessionStatusContext,
     TeleClaudeEvents,
     ToolUseActivityEvent,
@@ -311,6 +312,14 @@ class AgentCoordinator(
             "Stored Agent session data: teleclaude=%s, native=%s",
             context.session_id,
             str(native_session_id),
+        )
+
+        # Authoritative readiness signal: the agent process fired session_start,
+        # so its stdin loop is live. Launchers awaiting AGENT_READY for this
+        # session unblock here.
+        event_bus.emit(
+            TeleClaudeEvents.AGENT_READY,
+            SessionLifecycleContext(session_id=context.session_id),
         )
 
         # Headless state flows through session data, not status events.

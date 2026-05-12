@@ -15,7 +15,6 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
-from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
@@ -361,57 +360,53 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
         if not session:
             return {"status": "error", "message": "Session not found after creation"}
 
-        # Step 1: Wait for the readiness detector to confirm the TUI is stable at the prompt.
-        logger.debug("agent_then_message: waiting for agent prompt ready (session=%s)", session_id)
+        # Step 1: Await the agent's own session_start hook (re-emitted as
+        # AGENT_READY by the coordinator). The hook is the authoritative
+        # "stdin loop is live" signal; the prior pane-quiet heuristic was a
+        # visual proxy that produced false positives during heavy startup.
+        logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
+        loop = asyncio.get_running_loop()
+        ready_future: asyncio.Future[None] = loop.create_future()
 
-        t1 = time.time()
-        ready, readiness_tail = await wait_for_agent_ready(
-            agent_name,
-            session,
-            AGENT_PROMPT_READY_TIMEOUT_S,
-            AGENT_START_STABILIZE_QUIET_S,
-        )
-        logger.debug("agent_then_message: prompt ready check took %.3fs", time.time() - t1)
+        async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
+            if ctx.session_id == session_id and not ready_future.done():
+                ready_future.set_result(None)
 
-        if not ready:
-            logger.warning(
-                "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
-                session_id,
-                AGENT_PROMPT_READY_TIMEOUT_S,
-            )
-            event_bus.emit(
-                TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
-                SessionLifecycleContext(session_id=session_id),
-            )
-            logger.debug(
-                "agent_then_message readiness timeout tail: session=%s tail=%r",
-                session_id,
-                readiness_tail[-160:],
-            )
-            # Do NOT terminate — the agent may still be starting up. Leave the
-            # session alive so the agent can eventually reach the prompt. The
-            # caller receives an error status but the session persists for
-            # manual inspection or retry.
-            return {"status": "error", "message": "Agent readiness timed out — session kept alive for inspection"}
-
-        event_bus.emit(
-            TeleClaudeEvents.AGENT_READY,
-            SessionLifecycleContext(session_id=session_id),
-        )
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]  # noqa: I dont know
+        try:
+            t1 = time.time()
+            try:
+                await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+            except TimeoutError:
+                logger.warning(
+                    "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
+                    session_id,
+                    AGENT_PROMPT_READY_TIMEOUT_S,
+                )
+                event_bus.emit(
+                    TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
+                    SessionLifecycleContext(session_id=session_id),
+                )
+                return {
+                    "status": "error",
+                    "message": "Agent readiness timed out — session kept alive for inspection",
+                }
+            logger.debug("agent_then_message: AGENT_READY arrived in %.3fs", time.time() - t1)
+        finally:
+            event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
         # Verify agent is actually running before injecting message
         if not await tmux_io.is_process_running(session):
-            logger.error("agent_then_message: process not running after stabilization (session=%s)", session_id)
+            logger.error("agent_then_message: process not running after readiness (session=%s)", session_id)
             return {"status": "error", "message": "Agent process exited/failed to start before message injection"}
 
-        # Step 2: Inject the message immediately (TUI should be ready)
+        # Step 2: Inject the message — the agent's stdin loop is live.
         logger.debug("agent_then_message: injecting message to session=%s", session_id)
 
-        sanitized_message = tmux_io.wrap_bracketed_paste(message, active_agent=agent_name)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         pasted = await tmux_io.process_text(
             session,
-            sanitized_message,
+            message,
             working_dir=working_dir,
             active_agent=session.active_agent,
         )
@@ -420,15 +415,6 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         await db.update_last_activity(session_id)
         await self._poll_and_send_output(session_id, session.tmux_session_name)
-
-        # Step 3: Wait for command acceptance (Enter was already sent)
-        accepted = await self._confirm_command_acceptance(session)
-        if not accepted:
-            logger.warning(
-                "agent_then_message timed out waiting for command acceptance (session=%s)",
-                session_id,
-            )
-            return {"status": "error", "message": "Timeout waiting for command acceptance"}
 
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
         return {"status": "success", "message": "Message injected after agent start"}

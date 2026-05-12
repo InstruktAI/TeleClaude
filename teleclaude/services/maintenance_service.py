@@ -12,15 +12,16 @@ from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
 from teleclaude.core.adapter_client import AdapterClient
-from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
-from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S, AGENT_START_STABILIZE_QUIET_S
+from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -259,19 +260,25 @@ class MaintenanceService:
                 session.native_session_id,
             )
 
-            ready, readiness_tail = await wait_for_agent_ready(
-                session.active_agent,
-                session,
-                AGENT_PROMPT_READY_TIMEOUT_S,
-                AGENT_START_STABILIZE_QUIET_S,
-            )
-            if not ready:
-                logger.warning(
-                    "Restored tmux for session %s but agent did not reach ready prompt; stimulus not sent. tail=%r",
-                    session.session_id,
-                    readiness_tail[-160:],
-                )
-                return
+            loop = asyncio.get_running_loop()
+            ready_future: asyncio.Future[None] = loop.create_future()
+
+            async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
+                if ctx.session_id == session.session_id and not ready_future.done():
+                    ready_future.set_result(None)
+
+            ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]
+            try:
+                try:
+                    await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                except TimeoutError:
+                    logger.warning(
+                        "Restored tmux for session %s but agent did not reach ready prompt; stimulus not sent.",
+                        session.session_id,
+                    )
+                    return
+            finally:
+                event_bus.unsubscribe(TeleClaudeEvents.AGENT_READY, ready_handler)
 
             await tmux_bridge.send_keys_existing_tmux(
                 session_name=session.tmux_session_name,
