@@ -11,23 +11,24 @@ description: 'Git filter that expands tilde paths for agents and normalizes them
 
 The `teleclaude-docs` git filter ensures doc references and index paths work for both agents and version control:
 
-- **Smudge** (on checkout): expands `/Users/Morriz/.teleclaude` to the local absolute path (e.g., `/Users/mo/.teleclaude`). Agents resolve absolute paths reliably; tilde paths cause lookup failures. Matches `@`-prefixed references in `.md` files.
-- **Clean** (on commit): normalizes local absolute paths back to `/Users/Morriz/.teleclaude` so commits remain portable across machines.
+- **Smudge** (on checkout): expands `@~/.teleclaude` to the local absolute `@$HOME/.teleclaude`. Agents resolve absolute paths reliably; tilde paths cause lookup failures. Matches `@`-prefixed references in `.md` files only.
+- **Clean** (on commit): normalizes the local absolute form `@$HOME/.teleclaude` back to the portable `@~/.teleclaude` so commits remain portable across machines.
 
 Configured via `.gitattributes` on all `docs/**/*.md` and `agents/docs/**/*.md` files.
 
 ## Canonical fields
 
 - **Filter name**: `teleclaude-docs`
-- **Smudge command**: `sed "s|/Users/Morriz/.teleclaude|{home}/.teleclaude|g"`
-- **Clean command**: `sed "s|{home}/.teleclaude|/Users/Morriz/.teleclaude|g"`
+- **Smudge command**: `sed "s|@~/.teleclaude|@$HOME/.teleclaude|g"`
+- **Clean command**: `sed "s|@$HOME/.teleclaude|@~/.teleclaude|g"`
 - **Required**: `true` (git will refuse to checkout if filter is missing)
 - **Setup**: `telec projects init` configures the filter in local git config
 
 ## Allowed values
 
-- Only `/Users/Morriz/.teleclaude` paths are stored in commits.
-- Only absolute paths appear in working copies.
+- Only the portable form `@~/.teleclaude` is stored in commits.
+- Only the local absolute form `@$HOME/.teleclaude` appears in working copies.
+- The `@` marker is what triggers normalization; bare `~/.teleclaude` references are not rewritten.
 
 ## Known caveats
 

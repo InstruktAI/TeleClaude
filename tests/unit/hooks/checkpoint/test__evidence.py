@@ -21,6 +21,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _extract_plan_file_paths,
     _has_evidence,
     _has_status_evidence,
+    _segment_matches_evidence,
 )
 from teleclaude.hooks.checkpoint._models import CheckpointContext
 from teleclaude.utils.transcript import ToolCallRecord, TurnTimeline
@@ -149,3 +150,33 @@ class TestEvidenceUtilities:
         )
 
         assert re.search(pattern, command_line) is not None
+
+
+class TestProjectsInitEvidence:
+    """Regression tests for the `telec projects init` evidence matcher.
+
+    After the rename from `telec init`, the matcher must accept the new
+    exact command shape and reject everything else, including the legacy
+    `telec init` form and spurious `telec foo init` shapes.
+    """
+
+    @pytest.mark.unit
+    def test_accepts_exact_projects_init_shape(self) -> None:
+        assert _segment_matches_evidence("telec projects init", "telec projects init") is True
+
+    @pytest.mark.unit
+    def test_accepts_projects_init_with_trailing_args(self) -> None:
+        assert _segment_matches_evidence("telec projects init --foo", "telec projects init") is True
+
+    @pytest.mark.unit
+    def test_rejects_legacy_top_level_init(self) -> None:
+        assert _segment_matches_evidence("telec init", "telec projects init") is False
+
+    @pytest.mark.unit
+    def test_rejects_spurious_intermediate_subcommand(self) -> None:
+        assert _segment_matches_evidence("telec foo init", "telec projects init") is False
+        assert _segment_matches_evidence("telec sessions init", "telec projects init") is False
+
+    @pytest.mark.unit
+    def test_rejects_init_before_projects(self) -> None:
+        assert _segment_matches_evidence("telec init projects", "telec projects init") is False

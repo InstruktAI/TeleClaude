@@ -20,7 +20,7 @@ List sessions (default: spawned by current, --all for all)
 
 Start a new agent session
 
-**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--title <title>] [--direct] [--detach]`
+**Usage:** `telec sessions start [--computer <host>] [--project <path>] [--agent <name>] [--mode <mode>] [--message <msg>] [--direct] [--detach]`
 
 **Flags:**
 
@@ -29,7 +29,6 @@ Start a new agent session
 - `--agent`: Agent: claude, gemini, codex
 - `--mode`: Thinking mode: fast, med, slow
 - `--message`: Initial message to send
-- `--title`: Session title
 - `--direct`: Conversation mode: create direct link with caller and bypass listeners
 - `--detach`: Fire-and-forget: inherit context but skip listener registration
 
@@ -46,8 +45,6 @@ Send a message to a running session
 
 **Flags:**
 
-- `--session` (`-s`): Session ID (compatibility form)
-- `--message` (`-m`): Message text (compatibility form)
 - `--direct`: Conversation mode: create shared direct link
 - `--close-link`: Close direct link with target session (alias: --close_link)
 
@@ -58,7 +55,6 @@ Send a message to a running session
 - After link creation, turn-complete outputs from linked peers are cross-shared automatically.
 - Only one party needs to send with --direct to establish the link.
 - Use --close-link to sever the direct link for all members.
-- Compatibility flags (--session/--message) are accepted for scripts and older clients.
 
 ### `telec sessions tail`
 
@@ -95,7 +91,6 @@ Run a slash command on a new agent session
 
 - Creates a fresh session and runs the slash command as the first agent message.
 - Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.
-- Example: telec sessions run --command /next-build --args my-slug
 - Use --detach for fire-and-forget dispatch: child inherits identity but caller receives no notifications.
 
 ### `telec sessions revive`
@@ -192,7 +187,7 @@ List available computers (local + cached remote)
 
 ## `telec projects`
 
-Manage project inventory
+Manage project inventory and onboarding
 
 ### `telec projects list`
 
@@ -203,6 +198,33 @@ List projects on local and remote computers
 **Flags:**
 
 - `--computer` (`-c`): Filter to a specific computer
+
+### `telec projects init`
+
+Initialize project plumbing and sync artifacts
+
+**Notes:**
+
+- Sets up git hooks, syncs artifacts, and registers the project root.
+- Prompts for release-channel enrollment (alpha/beta/stable).
+- AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.
+
+### `telec projects onboard`
+
+Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis
+
+**Notes:**
+
+- Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.
+- AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list`.
+
+### `telec projects analyze`
+
+Generate project doc snippets via AI analysis
+
+### `telec projects assess`
+
+Assess project quality tool configuration against blessed templates
 
 ## `telec agents`
 
@@ -259,17 +281,6 @@ Fetch durable operation status by operation_id
 
 **Usage:** `telec operations get <operation_id>`
 
-## `telec init`
-
-Initialize project plumbing, sync artifacts, and optionally enrich docs
-
-**Notes:**
-
-- Sets up git hooks, syncs artifacts, and registers the project root.
-- Optionally runs AI-driven project analysis to generate doc snippets.
-- First init offers enrichment; re-init offers refresh of existing analysis.
-- Prompts for release-channel enrollment (alpha/beta/stable).
-
 ## `telec version`
 
 Print version, channel, and commit
@@ -318,11 +329,26 @@ Fetch full snippet content by ID (phase 2)
 
 Manage work items
 
-### `telec todo co-create`
+### `telec todo create`
+
+Create a draft todo skeleton with no input artifact
+
+**Usage:** `telec todo create <slug> [--after <deps>]`
+
+**Flags:**
+
+- `--after`: Comma-separated dependency slugs
+
+**Notes:**
+
+- Creates only the roadmap entry and canonical draft state.
+- Use this when humans are fleshing out artifacts directly and there is no braindump input yet.
+
+### `telec todo design`
 
 Run the creative state machine
 
-**Usage:** `telec todo co-create [<slug>]`
+**Usage:** `telec todo design [<slug>]`
 
 ### `telec todo remove`
 
@@ -353,32 +379,35 @@ Run the Phase C (integrate) state machine
 
 **Usage:** `telec todo integrate [<slug>]`
 
-### `telec todo mark-ready`
-
-Sets build: pending. Fast-track a todo to work-ready state, bypassing prepare lifecycle
-
-**Usage:** `telec todo mark-ready <slug> [<slug> ...]`
-
-**Notes:**
-
-- Requires requirements and implementation-plan artifacts to already exist with content.
-- Sets DOR 8, prepare_phase=prepared, grounding=valid, reviews=approved, generates quality-checklist.
-- Use for straightforward work items that don't need the full prepare ceremony.
-- Accepts multiple slugs to fast-track a batch in one call.
-
 ### `telec todo mark-phase`
 
-Operator override: write the authoritative prepare_phase or work_phase field
+Operator override: write the authoritative lifecycle_phase field
 
 **Usage:** `telec todo mark-phase <slug> --phase <value>`
 
 **Flags:**
 
-- `--phase`: Phase value matching a PreparePhase or WorkPhase enum member
+- `--phase`: Phase value matching the canonical lifecycle phase enum
 
 **Notes:**
 
-- Dispatches by enum; invalid values list both. Recovery/testing only.
+- Validates the target step's prerequisites, then persists lifecycle_phase. Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state.
+
+### `telec todo reconcile`
+
+Re-evaluate current todo evidence and align lifecycle_phase within one stage
+
+**Usage:** `telec todo reconcile <slug> [--stage <prepare|work>]`
+
+**Flags:**
+
+- `--stage`: Optional stage override; defaults from current lifecycle_phase
+
+**Notes:**
+
+- Uses the current lifecycle phase's stage implicitly unless --stage is provided.
+- Stage-bounded: prepare reconciliation ignores work evidence, and work reconciliation ignores prepare evidence.
+- Does not dispatch work; run telec todo prepare/work afterward.
 
 ### `telec todo set-deps`
 
@@ -400,13 +429,14 @@ Fire-and-forget brain dump with notification trigger
 
 - `--after`: Comma-separated dependency slugs
 - `--draft`: Create silently — skip domain event so no cartridge picks it up
-- `--prepped`: Content is a complete plan; mark todo prepped and ready for build
+- `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking. Never apply general guidance from a prior --prepped dump as authorization for a different todo.
 
 **Notes:**
 
 - Emits todo.dumped notification for autonomous processing.
 - Use --draft to stage an idea without triggering autonomous pickup.
 - Use --prepped when content is a complete implementation plan: content becomes the implementation-plan artifact, kind=prepped, plan_review=approve, requirements_review=skipped, ready for build.
+- POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, where an autonomous orchestrator can spawn builders against it. Agents must present the full plan and the dump command to the human and obtain explicit consent BEFORE invoking. Approval is per-todo and per-plan — never inherit it from another todo.
 
 ### `telec todo split`
 
@@ -437,13 +467,24 @@ List artifacts for a todo
 
 Read a todo artifact
 
-**Usage:** `telec todo artifacts read <slug> <name>`
+**Usage:** `telec todo artifacts read <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings>`
 
 #### `telec todo artifacts write`
 
 Write a todo artifact
 
-**Usage:** `telec todo artifacts write <slug> <name> <content>`
+**Usage:** `telec todo artifacts write <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>`
+
+#### `telec todo artifacts diff`
+
+Show a unified diff between two artifact versions
+
+**Usage:** `telec todo artifacts diff <slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>`
+
+**Notes:**
+
+- Looks up both versions by digest in the artifact version history and prints a unified diff between them.
+- Used by the prepare loop to show reviewers what changed since the last approved digest.
 
 ### `telec todo show`
 
@@ -453,19 +494,21 @@ Show full state payload for a todo
 
 ### `telec todo stamp`
 
-Stamp a verdict, DOR result, or readiness marker into todo state
+Stamp a verdict or readiness marker into todo state
 
-**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--dor-score <n>] [--dor-status <s>] [--grounding-invalidated] [--specs-built] [--finalize-ready]`
+**Usage:** `telec todo stamp <slug> [--verdict <v> --phase <p>] [--grounding-invalidated] [--requirements-ready] [--plan-ready] [--specs-built] [--finalize-ready] [--agent-a <session_id> --agent-b <session_id>]`
 
 **Flags:**
 
 - `--verdict`: approve | changes_requested | needs_work | needs_decision
 - `--phase`: Review phase the verdict belongs to (requirements_review, test_spec_review, plan_review, build_review)
-- `--dor-score`: DOR score (integer)
-- `--dor-status`: pass | fail
 - `--grounding-invalidated`: Mark grounding as invalid
+- `--requirements-ready`: Mark requirements as produced and ready for review
+- `--plan-ready`: Mark implementation plan as produced and ready for review
 - `--specs-built`: Mark test specifications as delivered
 - `--finalize-ready`: Mark worktree as ready for finalize handoff
+- `--agent-a`: Prepare pair slot A session_id (atomic with --agent-b)
+- `--agent-b`: Prepare pair slot B session_id (atomic with --agent-a)
 
 ## `telec roadmap`
 
@@ -839,7 +882,7 @@ Run language-aware lint pipeline
 **Flags:**
 
 - `--step`: Run a single pipeline step
-- `--all`: Run against all configured sources, skip session scoping
+- `--all`: Run against all configured sources, skip workspace scoping
 
 ### `telec code test`
 
@@ -848,7 +891,7 @@ Run language-aware test suite
 **Flags:**
 
 - `--expensive`: Include expensive/slow tests
-- `--all`: Run all tests, skip session scoping
+- `--all`: Run all tests, skip workspace scoping
 
 ### `telec code format`
 
@@ -856,15 +899,15 @@ Run language-aware code formatter
 
 **Flags:**
 
-- `--all`: Format all configured sources, skip session scoping
+- `--all`: Format all configured sources, skip workspace scoping
 
 ### `telec code changed`
 
-List session-scoped changed files
+List workspace-scoped changed files
 
 ### `telec code commit`
 
-Stage session-scoped files, lint, format, and commit
+Stage workspace-scoped files, lint, format, and commit
 
 **Usage:** `telec code commit [<git-commit-args>]`
 
