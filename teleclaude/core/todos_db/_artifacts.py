@@ -34,8 +34,14 @@ class TodosDbArtifactsMixin:
 
     _on_mutation: Callable[[str], None]
 
-    async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
-        """Resolve slug to roadmap id for artifact reads. Prefers active/icebox, falls back to delivered."""
+    async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str | None:
+        """Resolve slug to roadmap id for artifact reads. Returns None for unknown slugs.
+
+        Prefers active/icebox, falls back to delivered. Read callers treat None as
+        the absent case — mirroring the existing unknown-artifact-name convention
+        of returning empty content / empty list / False. Write callers go through
+        :meth:`_ensure_artifact_id` which raises instead.
+        """
         result = await session.exec(
             select(TodoRoadmap.id)
             .where(ROADMAP_TABLE.c.slug == slug)
@@ -46,13 +52,10 @@ class TodosDbArtifactsMixin:
             .limit(1)
         )
         roadmap_id = result.first()
-        if roadmap_id is None:
-            msg = f"No roadmap entry for slug {slug!r}"
-            raise ValueError(msg)
-        return str(roadmap_id)
+        return str(roadmap_id) if roadmap_id is not None else None
 
     async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
-        """Resolve slug to roadmap id for artifact writes. Raises if slug has no active roadmap entry."""
+        """Resolve slug to roadmap id for artifact writes. Raises for unknown / delivered slugs."""
         result = await session.exec(
             select(TodoRoadmap)
             .where(ROADMAP_TABLE.c.slug == slug)
@@ -63,18 +66,20 @@ class TodosDbArtifactsMixin:
         if entry is not None:
             return entry.id
 
-        msg = f"Cannot write artifact: no active roadmap entry for slug {slug!r}"
+        msg = f"Cannot write artifact: unknown todo {slug!r}"
         raise ValueError(msg)
 
     async def read_artifact(self, slug: str, name: str) -> str:
-        """Read artifact content. Returns empty string if not found."""
+        """Read artifact content. Returns empty string for unknown slug or unknown name."""
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return ""
             artifact = await session.get(TodoArtifact, (row_id, name))
             return artifact.content if artifact is not None else ""
 
-    def _resolve_artifact_id_sync(self, slug: str) -> str:
-        """Resolve slug to roadmap id for synchronous artifact operations."""
+    def _resolve_artifact_id_sync(self, slug: str) -> str | None:
+        """Sync counterpart of :meth:`_resolve_artifact_id`. Returns None for unknown slugs."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             roadmap_id = session.exec(
                 select(TodoRoadmap.id)
@@ -82,13 +87,10 @@ class TodosDbArtifactsMixin:
                 .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
-            if roadmap_id is None:
-                msg = f"No roadmap entry for slug {slug!r}"
-                raise ValueError(msg)
-            return str(roadmap_id)
+            return str(roadmap_id) if roadmap_id is not None else None
 
     def read_artifact_sync(self, slug: str, name: str) -> str:
-        """Read artifact content synchronously. Returns empty string if not found."""
+        """Read artifact content synchronously. Returns empty string for unknown slug or name."""
         with self._sync_session() as session:  # type: ignore[attr-defined]
             roadmap_id = session.exec(
                 select(TodoRoadmap.id)
@@ -97,8 +99,7 @@ class TodosDbArtifactsMixin:
                 .limit(1)
             ).first()
             if roadmap_id is None:
-                msg = f"No roadmap entry for slug {slug!r}"
-                raise ValueError(msg)
+                return ""
             artifact = session.get(TodoArtifact, (str(roadmap_id), name))
             return artifact.content if artifact is not None else ""
 
@@ -183,7 +184,7 @@ class TodosDbArtifactsMixin:
             )
             entry = result.first()
             if entry is None:
-                msg = f"Cannot write artifact: no active roadmap entry for slug {slug!r}"
+                msg = f"Cannot write artifact: unknown todo {slug!r}"
                 raise ValueError(msg)
 
             now = datetime.now(UTC).isoformat()
@@ -230,32 +231,40 @@ class TodosDbArtifactsMixin:
         self._on_mutation("todo_updated")
 
     async def artifact_digest(self, slug: str, name: str) -> str:
-        """Return SHA-256 digest of current artifact content. Empty string if not found."""
+        """Return SHA-256 digest of current artifact content. Empty string for unknown slug or name."""
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return ""
             artifact = await session.get(TodoArtifact, (row_id, name))
             return artifact.digest if artifact is not None else ""
 
     async def artifact_exists(self, slug: str, name: str) -> bool:
-        """Check if an artifact exists for a slug."""
+        """Check if an artifact exists for a slug. False for unknown slug or name."""
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return False
             artifact = await session.get(TodoArtifact, (row_id, name))
             return artifact is not None
 
     async def list_artifacts(self, slug: str) -> list[str]:
-        """Return artifact names for a slug."""
+        """Return artifact names for a slug. Empty list for unknown slug."""
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return []
             result = await session.exec(
                 select(TodoArtifact.name).where(TODO_ARTIFACT_TABLE.c.id == row_id).order_by(TODO_ARTIFACT_TABLE.c.name)
             )
             return [str(name) for name in result.all()]
 
     async def artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
-        """Return version history for an artifact, newest first."""
+        """Return version history for an artifact, newest first. Empty list for unknown slug."""
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                return []
             result = await session.exec(
                 select(TodoArtifactVersion)
                 .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
@@ -281,12 +290,15 @@ class TodosDbArtifactsMixin:
         """Return a unified diff between two artifact versions identified by digest.
 
         Returns an empty string when both digests refer to the same content. Raises
-        ``ValueError`` when either digest does not match a stored version — even
-        when both digests are identical, the digest must still exist for the
-        artifact, otherwise the caller is asking about a version we never had.
+        ``ValueError`` when the slug is unknown or when either digest does not match
+        a stored version — even when both digests are identical, the digest must
+        still exist for the artifact, otherwise the caller is asking about a
+        version we never had.
         """
         async with self._session() as session:  # type: ignore[attr-defined]
             row_id = await self._resolve_artifact_id(slug, session)
+            if row_id is None:
+                raise ValueError(f"Unknown todo: {slug!r}")
             target_digests = list({old_digest, new_digest})
             result = await session.exec(
                 select(TodoArtifactVersion)
@@ -319,15 +331,14 @@ class TodosDbArtifactsMixin:
     async def delete_artifacts(self, slug: str, *, session: SqlAsyncSession | None = None) -> None:
         """Delete all artifacts and version history for a slug.
 
-        No-op when the slug has no roadmap entry (already removed or never created).
+        No-op when the slug is unknown (already removed or never created).
         """
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
         try:
-            try:
-                row_id = await self._resolve_artifact_id(slug, db_session)
-            except ValueError:
-                return  # no roadmap entry → nothing to delete
+            row_id = await self._resolve_artifact_id(slug, db_session)
+            if row_id is None:
+                return  # unknown slug → nothing to delete
 
             artifacts = await db_session.exec(select(TodoArtifact).where(TodoArtifact.id == row_id))
             for artifact in artifacts.all():

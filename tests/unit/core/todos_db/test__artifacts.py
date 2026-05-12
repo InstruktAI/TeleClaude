@@ -16,9 +16,8 @@ async def _ensure_roadmap_entry(db: TodosDb, slug: str = _SLUG) -> None:
     await db.add_entry(slug=slug, position=0, description="test entry")
 
 
-async def test_read_artifact_raises_for_unknown_slug(todos_db: TodosDb) -> None:
-    with pytest.raises(ValueError, match=r"No .*roadmap entry"):
-        await todos_db.read_artifact("nonexistent", "requirements")
+async def test_read_artifact_returns_empty_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert await todos_db.read_artifact("nonexistent", "requirements") == ""
 
 
 async def test_write_then_read_artifact_round_trips(todos_db: TodosDb) -> None:
@@ -44,9 +43,8 @@ async def test_write_artifact_stores_digest(todos_db: TodosDb) -> None:
     assert len(digest) == 64  # SHA-256 hex
 
 
-async def test_artifact_exists_raises_for_unknown_slug(todos_db: TodosDb) -> None:
-    with pytest.raises(ValueError, match=r"No .*roadmap entry"):
-        await todos_db.artifact_exists("nonexistent", "missing")
+async def test_artifact_exists_returns_false_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert await todos_db.artifact_exists("nonexistent", "missing") is False
 
 
 async def test_artifact_exists_returns_true_after_write(todos_db: TodosDb) -> None:
@@ -63,9 +61,8 @@ async def test_list_artifacts_returns_names(todos_db: TodosDb) -> None:
     assert set(names) == {"input", "requirements"}
 
 
-async def test_list_artifacts_raises_for_unknown_slug(todos_db: TodosDb) -> None:
-    with pytest.raises(ValueError, match=r"No .*roadmap entry"):
-        await todos_db.list_artifacts("nonexistent")
+async def test_list_artifacts_returns_empty_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert await todos_db.list_artifacts("nonexistent") == []
 
 
 async def test_write_artifact_creates_version_history(todos_db: TodosDb) -> None:
