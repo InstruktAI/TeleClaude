@@ -409,9 +409,11 @@ async def poll_and_send_output(
 ) -> None:
     """Poll tmux activity and push transcript-derived output for a session.
 
-    Tmux is a liveness and visible-activity signal only. Durable payloads come
-    from the native transcript, except for Codex synthetic events derived from
-    terminal effects.
+    Tmux is a liveness and visible-activity signal only. Durable payloads —
+    including tool activity — come from the agent's native hooks (Claude
+    PreToolUse, Gemini BeforeTool, Codex PreToolUse). Codex transcript-path
+    binding is opportunistic from polling because some Codex versions omit
+    transcript_path on early lifecycle events.
 
     Args:
         session_id: Session ID

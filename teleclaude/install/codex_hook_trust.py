@@ -98,11 +98,11 @@ def build_codex_managed_hook_state(
 ) -> dict[str, dict[str, str]]:
     """Build the ``hooks.state`` payload for the TeleClaude-managed Codex hooks.
 
-    ``positions`` maps each managed event label (``session_start``,
-    ``user_prompt_submit``, ``stop``) to the ``(group_index, handler_index)``
-    where TeleClaude's handler lives in the final ``hooks.json`` after merging
-    with any foreign blocks. Hardcoding ``(0, 0)`` would silently mistrust
-    managed hooks whenever a foreign block already occupies group zero.
+    ``positions`` maps each managed event label (see ``_MANAGED_HOOK_SPECS`` for
+    the authoritative set) to the ``(group_index, handler_index)`` where
+    TeleClaude's handler lives in the final ``hooks.json`` after merging with any
+    foreign blocks. Hardcoding ``(0, 0)`` would silently mistrust managed hooks
+    whenever a foreign block already occupies group zero.
 
     The shape matches codex's TOML schema: ``{ "<key>": { "trusted_hash": "..." } }``.
     Mirrors the matchers/timeouts written by ``_codex_hook_blocks`` so the hashes
