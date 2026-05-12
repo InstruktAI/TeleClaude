@@ -612,11 +612,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             logger.error("Session %s not found", session_id)
             return False
 
-        sanitized_command = tmux_io.wrap_bracketed_paste(command, active_agent=session.active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
             session,
-            sanitized_command,
+            command,
             working_dir=working_dir,
         )
 

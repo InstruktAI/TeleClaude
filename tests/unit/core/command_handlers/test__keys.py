@@ -113,7 +113,6 @@ class TestEscapeCommand:
         tmux_io = SimpleNamespace(
             send_escape=AsyncMock(return_value=True),
             is_process_running=AsyncMock(return_value=False),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
             process_text=AsyncMock(return_value=True),
         )
         start_polling = AsyncMock()
@@ -129,7 +128,7 @@ class TestEscapeCommand:
         tmux_io.send_escape.assert_awaited_once_with(session)
         tmux_io.process_text.assert_awaited_once_with(
             session,
-            "<wrapped>",
+            "echo ok",
             working_dir="/tmp/project",
             active_agent="codex",
         )

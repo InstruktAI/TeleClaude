@@ -138,15 +138,11 @@ async def handle_file(
         input_text = f"{input_text} {context.caption.strip()}"
         logger.info("Appending caption to file input: %s", context.caption.strip()[:50])
 
-    # Get active agent for agent-specific escaping
     active_agent = session.active_agent
-
-    # Automatic detection: if process running, no marker
-    sanitized_text = tmux_io.wrap_bracketed_paste(input_text, active_agent=active_agent)
     working_dir = resolve_working_dir(session.project_path, session.subdir)
     success = await tmux_io.process_text(
         session,
-        sanitized_text,
+        input_text,
         active_agent=active_agent,
         working_dir=working_dir,
     )

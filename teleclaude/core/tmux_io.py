@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import string
 from signal import Signals
 
 from instrukt_ai_logging import get_logger
@@ -17,33 +16,6 @@ from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX
 from teleclaude.core.voice_assignment import get_voice_env_vars
 
 logger = get_logger(__name__)
-
-_SPECIAL_CHARS = frozenset(set(string.punctuation) - {"/"})
-_BRACKETED_PASTE_START = "\x1b[200~"
-_BRACKETED_PASTE_END = "\x1b[201~"
-
-
-def wrap_bracketed_paste(text: str, active_agent: str | None = None) -> str:
-    """Wrap text in bracketed paste sequences when it contains special characters."""
-    if not text:
-        return text
-    # Only bypass bracketed paste for single-word slash commands (e.g., /help, /exit)
-    # Absolute paths like /Users/... should still be wrapped to prevent shell echo
-    stripped = text.lstrip()
-    if stripped.startswith("/"):
-        first_word = stripped.split()[0] if stripped else ""
-        slash_count = first_word.count("/")
-        # Single slash = command (/help), multiple slashes = path (/Users/...)
-        if slash_count == 1:
-            logger.debug("Bypassing bracketed paste for slash command: %s", text[:50])
-            return text
-        logger.debug("Will wrap path (slash_count=%d): %s", slash_count, text[:80])
-    if any(char in _SPECIAL_CHARS for char in text):
-        wrapped = f"{_BRACKETED_PASTE_START}{text}{_BRACKETED_PASTE_END}"
-        logger.debug("Wrapped with bracketed paste (has special chars): %s", text[:80])
-        return wrapped
-    logger.debug("No wrapping needed (no special chars): %s", text[:50])
-    return text
 
 
 async def _revive_headless_and_send(
@@ -76,10 +48,9 @@ async def _revive_headless_and_send(
             exec=False,
             native_session_id=session.native_session_id,
         )
-        wrapped_resume = wrap_bracketed_paste(resume_cmd, active_agent=session.active_agent)
         await tmux_bridge.send_keys_existing_tmux(
             session_name=tmux_name,
-            text=wrapped_resume,
+            text=resume_cmd,
             active_agent=session.active_agent,
         )
         logger.info(

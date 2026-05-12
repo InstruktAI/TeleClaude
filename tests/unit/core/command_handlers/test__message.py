@@ -273,7 +273,6 @@ class TestDeliverInbound:
         client = SimpleNamespace(break_threaded_turn=AsyncMock())
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
 
         monkeypatch.setattr(_message, "db", db)
@@ -304,7 +303,6 @@ class TestDeliverInbound:
         )
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
@@ -316,7 +314,7 @@ class TestDeliverInbound:
 
         tmux_io.process_text.assert_awaited_once_with(
             session,
-            "<wrapped>",
+            "hello agent",
             working_dir="/tmp/project",
             active_agent="codex",
         )
@@ -463,7 +461,6 @@ class TestDeliverInboundReflectionBoundary:
         )
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
@@ -493,7 +490,6 @@ class TestDeliverInboundReflectionBoundary:
         )
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)
@@ -522,7 +518,6 @@ class TestDeliverInboundReflectionBoundary:
         )
         tmux_io = SimpleNamespace(
             process_text=AsyncMock(return_value=True),
-            wrap_bracketed_paste=MagicMock(return_value="<wrapped>"),
         )
         monkeypatch.setattr(_message, "db", db)
         monkeypatch.setattr(_message, "tmux_io", tmux_io)

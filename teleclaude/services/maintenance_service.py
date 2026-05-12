@@ -10,7 +10,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
-from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
@@ -240,10 +240,9 @@ class MaintenanceService:
                 exec=False,
                 native_session_id=session.native_session_id,
             )
-            wrapped_cmd = tmux_io.wrap_bracketed_paste(cmd, active_agent=session.active_agent)
             if not await tmux_bridge.send_keys_existing_tmux(
                 session_name=session.tmux_session_name,
-                text=wrapped_cmd,
+                text=cmd,
                 active_agent=session.active_agent,
             ):
                 logger.warning(

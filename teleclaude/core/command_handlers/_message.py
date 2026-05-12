@@ -283,11 +283,10 @@ async def deliver_inbound(
             logger.warning("break_threaded_turn failed (non-fatal): session=%s error=%s", session_id, exc)
 
     async def _tmux_inject() -> bool:
-        sanitized_text = tmux_io.wrap_bracketed_paste(message_text, active_agent=active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         return await tmux_io.process_text(
             session,
-            sanitized_text,
+            message_text,
             working_dir=working_dir,
             active_agent=active_agent,
         )

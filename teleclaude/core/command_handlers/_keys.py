@@ -117,10 +117,9 @@ async def _ensure_tmux_for_headless(
             exec=False,
             native_session_id=session.native_session_id,
         )
-        wrapped = tmux_io.wrap_bracketed_paste(resume_cmd, active_agent=session.active_agent)
         await tmux_io.process_text(
             session,
-            wrapped,
+            resume_cmd,
             working_dir=working_dir,
             active_agent=session.active_agent,
         )
@@ -276,12 +275,10 @@ async def escape_command(
         is_process_running = await tmux_io.is_process_running(session)
 
         active_agent = session.active_agent
-
-        sanitized_text = tmux_io.wrap_bracketed_paste(text, active_agent=active_agent)
         working_dir = resolve_working_dir(session.project_path, session.subdir)
         success = await tmux_io.process_text(
             session,
-            sanitized_text,
+            text,
             working_dir=working_dir,
             active_agent=active_agent,
         )

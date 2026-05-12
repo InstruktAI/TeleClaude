@@ -122,15 +122,14 @@ class TestSendKeys:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_send_keys_existing_tmux_uses_buffer_pipeline_and_strips_paste_markers(self) -> None:
+    async def test_send_keys_existing_tmux_uses_buffer_pipeline(self) -> None:
         # The buffer pipeline must:
-        # 1. strip caller-supplied bracketed-paste markers (raw stream delivery)
-        # 2. send the cleaned payload via load-buffer stdin (NO trailing \r —
+        # 1. send the payload via load-buffer stdin (NO trailing \r —
         #    agent CLIs don't treat \r inside a paste burst as discrete Enter)
-        # 3. paste-buffer -p -r (emit DECSET 2004 markers conditional on app
+        # 2. paste-buffer -p -r (emit DECSET 2004 markers conditional on app
         #    request; preserve LF instead of rewriting to CR)
-        # 4. delete the buffer
-        # 5. discrete send-keys C-m AFTER the fixed _SUBMIT_GAP_S
+        # 3. delete the buffer
+        # 4. discrete send-keys C-m AFTER the fixed _SUBMIT_GAP_S
         processes = [_completed_process() for _ in range(4)]
         communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
@@ -144,7 +143,7 @@ class TestSendKeys:
         ):
             result = await _keys.send_keys_existing_tmux(
                 session_name="tmux-alpha",
-                text="\x1b[200~run!\x1b[201~",
+                text="run!",
                 active_agent=AgentName.GEMINI.value,
             )
 
@@ -158,9 +157,8 @@ class TestSendKeys:
         assert buf_name.startswith("telec-")
         assert load_args[4] == "-"
 
-        # Stdin to load-buffer is the bang-escaped, marker-stripped payload
-        # — no trailing \r. Communicate is called positionally with
-        # (proc, input_bytes, timeout, label).
+        # Stdin to load-buffer is the bang-escaped payload — no trailing \r.
+        # Communicate is called positionally with (proc, input_bytes, timeout, label).
         load_input = communicate_mock.await_args_list[0].args[1]
         assert load_input == rb"run\!"
 

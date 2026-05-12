@@ -182,10 +182,6 @@ async def _send_keys_tmux(
     # See: https://github.com/google-gemini/gemini-cli/issues/4454
     send_text = text.replace("!", r"\!") if active_agent == AgentName.GEMINI.value else text
 
-    # Strip any caller-supplied bracketed-paste markers. They would land as
-    # literal escape sequences in the pane otherwise.
-    send_text = send_text.replace("\x1b[200~", "").replace("\x1b[201~", "")
-
     # Deliver via tmux's buffer pipeline. send-keys -l fails with "command too long"
     # once the payload exceeds tmux's command-line parser limit (~16 KB), which the
     # peer-bundle path routinely produces. load-buffer reads from stdin (no argv
