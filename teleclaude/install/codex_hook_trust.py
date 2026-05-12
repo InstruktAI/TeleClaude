@@ -41,8 +41,11 @@ CODEX_HOOK_DEFAULT_TIMEOUT_SEC: Final[int] = 600
 CODEX_HOOK_STOP_TIMEOUT_SEC: Final[int] = 30
 CODEX_SESSION_START_MATCHER: Final[str] = "startup|resume"
 CODEX_SESSION_START_STATUS_MESSAGE: Final[str] = "Loading session notes"
+CODEX_PRE_TOOL_USE_MATCHER: Final[str] = ".*"
 
-CODEX_MANAGED_EVENT_LABELS: Final[frozenset[str]] = frozenset({"session_start", "user_prompt_submit", "stop"})
+CODEX_MANAGED_EVENT_LABELS: Final[frozenset[str]] = frozenset(
+    {"session_start", "user_prompt_submit", "pre_tool_use", "stop"}
+)
 
 
 def codex_hook_state_key(
@@ -160,6 +163,11 @@ _MANAGED_HOOK_SPECS: Final[dict[str, _CodexHookSpec]] = {
     ),
     "user_prompt_submit": _CodexHookSpec(
         matcher=None,
+        timeout_sec=None,
+        status_message=None,
+    ),
+    "pre_tool_use": _CodexHookSpec(
+        matcher=CODEX_PRE_TOOL_USE_MATCHER,
         timeout_sec=None,
         status_message=None,
     ),

@@ -52,6 +52,23 @@ class TestAgentHookEvents:
         codex_map = AgentHookEvents.HOOK_EVENT_MAP["codex"]
         assert codex_map["Stop"] == "agent_stop"
 
+    @pytest.mark.unit
+    def test_codex_pre_tool_use_maps_to_tool_use(self):
+        codex_map = AgentHookEvents.HOOK_EVENT_MAP["codex"]
+        assert codex_map["PreToolUse"] == AgentHookEvents.TOOL_USE
+
+    @pytest.mark.unit
+    def test_codex_post_tool_use_cataloged_but_not_ingested(self):
+        codex_map = AgentHookEvents.HOOK_EVENT_MAP["codex"]
+        assert "PostToolUse" in codex_map
+        assert codex_map["PostToolUse"] is None
+
+    @pytest.mark.unit
+    def test_codex_permission_request_cataloged_but_not_ingested(self):
+        codex_map = AgentHookEvents.HOOK_EVENT_MAP["codex"]
+        assert "PermissionRequest" in codex_map
+        assert codex_map["PermissionRequest"] is None
+
 
 class TestBuildAgentPayload:
     @pytest.mark.unit

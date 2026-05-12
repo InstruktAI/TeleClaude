@@ -25,6 +25,7 @@ from teleclaude.install.codex_hook_trust import build_codex_managed_hook_state, 
 CODEX_TRUST_LABEL_BY_HOOK_NAME: dict[str, str] = {
     "SessionStart": "session_start",
     "UserPromptSubmit": "user_prompt_submit",
+    "PreToolUse": "pre_tool_use",
     "Stop": "stop",
 }
 

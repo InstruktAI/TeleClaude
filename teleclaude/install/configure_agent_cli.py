@@ -337,6 +337,17 @@ def _codex_hook_blocks(receiver_invocation: str, receiver_script: Path) -> dict[
                 ]
             }
         ],
+        "PreToolUse": [
+            {
+                "matcher": ".*",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": command,
+                    }
+                ],
+            }
+        ],
         "Stop": [
             {
                 "hooks": [

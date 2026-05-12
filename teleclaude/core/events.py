@@ -90,6 +90,9 @@ class AgentHookEvents:
             ),
             "codex": MappingProxyType(
                 {
+                    "PermissionRequest": None,
+                    "PostToolUse": None,
+                    "PreToolUse": TOOL_USE,
                     "SessionStart": AGENT_SESSION_START,
                     "Stop": AGENT_STOP,
                     "UserPromptSubmit": USER_PROMPT_SUBMIT,

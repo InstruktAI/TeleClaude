@@ -282,15 +282,18 @@ support `continue`, `stopReason`, or `suppressOutput`.
 
 ## TeleClaude mapping
 
-TeleClaude currently subscribes this subset:
+TeleClaude subscribes this subset of Codex's native hook surface:
 
 - `SessionStart` → internal `session_start`
 - `UserPromptSubmit` → internal `user_prompt_submit`
+- `PreToolUse` → internal `tool_use`
 - `Stop` → internal `agent_stop`
 
-`PreToolUse`, `PostToolUse`, `PermissionRequest` are not yet wired. `tool_use`
-activity is synthesized from terminal-output polling
-(`teleclaude.core.polling_coordinator`).
+The remaining native events are cataloged in `teleclaude.core.events.AgentHookEvents.HOOK_EVENT_MAP["codex"]`
+as `None` — TeleClaude knows the events exist but does not install them:
+
+- `PostToolUse` (cataloged, not ingested)
+- `PermissionRequest` (cataloged, not ingested)
 
 Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
 

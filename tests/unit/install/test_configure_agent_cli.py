@@ -157,7 +157,7 @@ trust_level = "trusted"
 
 
 def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -> None:
-    """configure_codex must install managed SessionStart/UserPromptSubmit/Stop hooks."""
+    """configure_codex must install managed SessionStart/UserPromptSubmit/PreToolUse/Stop hooks."""
     codex_dir = tmp_path / ".codex"
     codex_dir.mkdir()
     receiver = tmp_path / "teleclaude" / "hooks" / "receiver" / "__main__.py"
@@ -169,17 +169,22 @@ def test_configure_codex_writes_hooks_json_with_managed_events(tmp_path: Path) -
 
     hooks_path = codex_dir / CODEX_HOOKS_FILENAME
     hooks = json.loads(hooks_path.read_text(encoding="utf-8"))
-    assert set(hooks["hooks"]) == {"SessionStart", "UserPromptSubmit", "Stop"}
+    assert set(hooks["hooks"]) == {"SessionStart", "UserPromptSubmit", "PreToolUse", "Stop"}
 
     start_command = hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"]
     submit_command = hooks["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
+    pre_tool_command = hooks["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     stop_command = hooks["hooks"]["Stop"][0]["hooks"][0]["command"]
     assert "--agent codex" in start_command
     assert "--agent codex" in submit_command
+    assert "--agent codex" in pre_tool_command
     assert "--agent codex" in stop_command
     assert "SessionStart" not in start_command
     assert "UserPromptSubmit" not in submit_command
+    assert "PreToolUse" not in pre_tool_command
     assert " Stop" not in stop_command
+    # PreToolUse matcher must be present so all tools fire the hook
+    assert hooks["hooks"]["PreToolUse"][0].get("matcher") == ".*"
 
 
 def test_configure_codex_persists_managed_hook_trust_state(tmp_path: Path) -> None:
@@ -209,7 +214,12 @@ def test_configure_codex_persists_managed_hook_trust_state(tmp_path: Path) -> No
     expected = build_codex_managed_hook_state(
         hooks_path=hooks_path,
         receiver_command=receiver_command,
-        positions={"session_start": (0, 0), "user_prompt_submit": (0, 0), "stop": (0, 0)},
+        positions={
+            "session_start": (0, 0),
+            "user_prompt_submit": (0, 0),
+            "pre_tool_use": (0, 0),
+            "stop": (0, 0),
+        },
     )
 
     for key, entry in expected.items():
@@ -272,7 +282,9 @@ def test_configure_codex_preserves_foreign_state_in_same_hooks_json(tmp_path: Pa
     receiver.touch()
 
     hooks_path = codex_dir / CODEX_HOOKS_FILENAME
-    foreign_key = f"{hooks_path}:pre_tool_use:0:0"
+    # post_tool_use is cataloged in HOOK_EVENT_MAP but not a managed trust label;
+    # entries under labels we do not manage must survive intact.
+    foreign_key = f"{hooks_path}:post_tool_use:0:0"
     foreign_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
     config_path = codex_dir / "config.toml"
     config_path.write_text(
