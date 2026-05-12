@@ -175,7 +175,7 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "make" and "test" in rest
     if evidence == "uv sync":
         return head == "uv" and "sync" in rest
-    if evidence == "telec init":
+    if evidence == "telec projects init":
         return head == "telec" and "init" in rest
     if evidence == "pytest":
         return (

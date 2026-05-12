@@ -329,7 +329,7 @@ def init_project(project_root: Path) -> None:
     # Release channel enrollment
     _prompt_release_channel(project_root)
 
-    print("telec init complete.")
+    print("telec projects init complete.")
 
 
 # ---------------------------------------------------------------------------

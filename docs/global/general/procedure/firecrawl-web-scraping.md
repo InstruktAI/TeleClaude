@@ -14,7 +14,7 @@ Scrape web content that built-in web search cannot reach — JavaScript-rendered
 
 ## Preconditions
 
-- Firecrawl MCP server is configured and running (installed via `telec init`).
+- Firecrawl MCP server is configured and running (installed via `telec projects init`).
 - API key loaded from `~/.teleclaude/.env`.
 - Built-in web search and consolidated third-party docs have already been checked and found insufficient.
 

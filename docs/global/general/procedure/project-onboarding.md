@@ -20,7 +20,7 @@ Onboard a project end-to-end to TeleClaude: install plumbing, generate project-s
 documentation snippets that make the codebase legible to AI, and assess the project's
 quality-tool configuration against blessed templates.
 
-This is the AI-driven counterpart to `telec init`. `init` handles plumbing; onboarding
+This is the AI-driven counterpart to `telec projects init`. `init` handles plumbing; onboarding
 adds the intelligence layer.
 
 ## Preconditions

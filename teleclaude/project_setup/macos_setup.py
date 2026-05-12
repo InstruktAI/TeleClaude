@@ -42,11 +42,11 @@ def install_launchers(project_root: Path, skip_build: bool = True) -> None:
                 env=os.environ.copy(),
             )
             if build_result.returncode == 0:
-                print("telec init: built TmuxLauncher.app")
+                print("telec projects init: built TmuxLauncher.app")
             else:
-                print("telec init: failed to build TmuxLauncher.app; using existing bundle")
+                print("telec projects init: failed to build TmuxLauncher.app; using existing bundle")
     else:
-        print("telec init: skipping launcher build; using committed bundles")
+        print("telec projects init: skipping launcher build; using committed bundles")
 
     launcher_apps = (
         "TmuxLauncher.app",
@@ -58,12 +58,12 @@ def install_launchers(project_root: Path, skip_build: bool = True) -> None:
         source_app = project_root / "bin" / app_name
         target_app = applications_dir / app_name
         if not source_app.exists():
-            print(f"telec init: launcher not found, skipping: {source_app}")
+            print(f"telec projects init: launcher not found, skipping: {source_app}")
             continue
         if target_app.exists():
             shutil.rmtree(target_app)
         shutil.copytree(source_app, target_app, symlinks=True)
-        print(f"telec init: installed {app_name} to {target_app}")
+        print(f"telec projects init: installed {app_name} to {target_app}")
 
 
 def run_permissions_probe(project_root: Path) -> bool:
@@ -77,13 +77,13 @@ def run_permissions_probe(project_root: Path) -> bool:
 
     tmux_wrapper = Path(resolve_tmux_binary())
     if not tmux_wrapper.exists():
-        print(f"telec init: tmux launcher missing; skipping permission probe ({tmux_wrapper})")
+        print(f"telec projects init: tmux launcher missing; skipping permission probe ({tmux_wrapper})")
         return False
 
     print("")
-    print("telec init: We are now going to test your new binaries for permissions access on your computer.")
-    print("telec init: If macOS shows a permissions popup and you agree, please allow access.")
-    print("telec init: This is essential, otherwise TeleClaude agents cannot access required local files.")
+    print("telec projects init: We are now going to test your new binaries for permissions access on your computer.")
+    print("telec projects init: If macOS shows a permissions popup and you agree, please allow access.")
+    print("telec projects init: This is essential, otherwise TeleClaude agents cannot access required local files.")
 
     probe_script = """import os
 home = os.path.expanduser('~')
@@ -140,7 +140,7 @@ print('PERMISSIONS_PROBE_DONE')
             text=True,
         )
         if run_result.returncode != 0:
-            print("telec init: permission probe could not start via tmux launcher")
+            print("telec projects init: permission probe could not start via tmux launcher")
             return False
 
         time.sleep(2.0)
@@ -156,10 +156,12 @@ print('PERMISSIONS_PROBE_DONE')
 
         denied = bool(re.search(r"Operation not permitted|PermissionError|denied", output))
         if denied:
-            print("telec init: permission probe found denied paths.")
-            print("telec init: Open System Settings > Privacy & Security > Full Disk Access and enable launcher apps.")
+            print("telec projects init: permission probe found denied paths.")
+            print(
+                "telec projects init: Open System Settings > Privacy & Security > Full Disk Access and enable launcher apps."
+            )
         else:
-            print("telec init: permission probe passed for tested protected paths")
+            print("telec projects init: permission probe passed for tested protected paths")
         return not denied
     finally:
         probe_path.unlink(missing_ok=True)

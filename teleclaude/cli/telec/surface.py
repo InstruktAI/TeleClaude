@@ -282,11 +282,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H, Flag("--computer", "-c", "Filter to a specific computer")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
+            "init": CommandDef(
+                desc="Initialize project plumbing and sync artifacts",
+                flags=[_H],
+                notes=[
+                    "Sets up git hooks, syncs artifacts, and registers the project root.",
+                    "Prompts for release-channel enrollment (alpha/beta/stable).",
+                    "AI-driven analysis lives in `telec projects {onboard,analyze,assess}`.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "onboard": CommandDef(
                 desc="Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis",
                 flags=[_H],
                 notes=[
-                    "Runs `telec init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
+                    "Runs `telec projects init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
                     "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list`.",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
@@ -351,14 +361,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER),
             ),
         },
-    ),
-    "init": CommandDef(
-        desc="Initialize project plumbing and sync artifacts",
-        notes=[
-            "Sets up git hooks, syncs artifacts, and registers the project root.",
-            "Prompts for release-channel enrollment (alpha/beta/stable).",
-        ],
-        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
     ),
     "version": CommandDef(
         desc="Print version, channel, and commit",

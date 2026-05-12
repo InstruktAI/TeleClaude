@@ -90,7 +90,7 @@ PRECOMMIT_CHECK = (
     "git diff --cached --name-only --diff-filter=ACM | "
     "grep '\\.md$' | "
     'xargs -r grep -l "@/Users/\\|@/home/" && '
-    "echo \"ERROR: Hardcoded HOME paths found in docs. Run 'telec init' to set up filters.\" && "
+    "echo \"ERROR: Hardcoded HOME paths found in docs. Run 'telec projects init' to set up filters.\" && "
     "exit 1 || true"
 )
 
@@ -117,7 +117,7 @@ def install_precommit_hook(project_root: Path) -> None:
     elif git_hooks_dir.exists():
         _add_raw_git_hook(git_hooks_dir)
     else:
-        print("telec init: no git hooks directory found, skipping hook installation.")
+        print("telec projects init: no git hooks directory found, skipping hook installation.")
 
 
 def _add_precommit_framework_hook(config_path: Path) -> None:
@@ -125,18 +125,18 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
     content = config_path.read_text(encoding="utf-8")
 
     if DOCS_CHECK_MARKER in content:
-        print("telec init: pre-commit hook already configured.")
+        print("telec projects init: pre-commit hook already configured.")
         return
 
     try:
         loaded_config: object = yaml.safe_load(content)
     except yaml.YAMLError:
-        print("telec init: failed to parse .pre-commit-config.yaml, skipping hook.")
+        print("telec projects init: failed to parse .pre-commit-config.yaml, skipping hook.")
         return
     config_obj = loaded_config if loaded_config is not None else {}
 
     if not isinstance(config_obj, dict):
-        print("telec init: unexpected .pre-commit-config.yaml structure, skipping hook.")
+        print("telec projects init: unexpected .pre-commit-config.yaml structure, skipping hook.")
         return
 
     config = cast(dict[str, object], config_obj)  # guard: loose-dict - JSON config from external tool
@@ -148,7 +148,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
     elif isinstance(repos_obj, list):
         repos = repos_obj
     else:
-        print("telec init: unexpected repos structure in .pre-commit-config.yaml, skipping hook.")
+        print("telec projects init: unexpected repos structure in .pre-commit-config.yaml, skipping hook.")
         return
 
     teleclaude_hook: dict[str, object] = {  # guard: loose-dict - JSON config construction for external tool
@@ -169,7 +169,7 @@ def _add_precommit_framework_hook(config_path: Path) -> None:
 
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, sort_keys=False, default_flow_style=False)
-    print("telec init: pre-commit hook added to .pre-commit-config.yaml.")
+    print("telec projects init: pre-commit hook added to .pre-commit-config.yaml.")
 
 
 def _add_husky_hook(husky_dir: Path) -> None:
@@ -192,9 +192,9 @@ def _add_husky_hook(husky_dir: Path) -> None:
 
     hook_file.chmod(hook_file.stat().st_mode | 0o111)
     if changed:
-        print("telec init: husky pre-commit hook updated.")
+        print("telec projects init: husky pre-commit hook updated.")
     else:
-        print("telec init: husky hook already configured.")
+        print("telec projects init: husky hook already configured.")
 
 
 def _add_raw_git_hook(hooks_dir: Path) -> None:
@@ -219,9 +219,9 @@ def _add_raw_git_hook(hooks_dir: Path) -> None:
 
     hook_file.chmod(hook_file.stat().st_mode | 0o111)
     if changed:
-        print("telec init: git pre-commit hook installed.")
+        print("telec projects init: git pre-commit hook installed.")
     else:
-        print("telec init: git hook already configured.")
+        print("telec projects init: git hook already configured.")
 
 
 def _append_block_if_missing(hook_file: Path, marker: str, block: str) -> bool:
@@ -246,7 +246,7 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
     owns the pre-commit invocation.
     """
     if not precommit_hook_file.exists():
-        print("telec init: pre-commit entrypoint not found; run `pre-commit install`.")
+        print("telec projects init: pre-commit entrypoint not found; run `pre-commit install`.")
         return
 
     content = precommit_hook_file.read_text(encoding="utf-8")
@@ -274,4 +274,4 @@ def _ensure_precommit_entrypoint_guard(precommit_hook_file: Path) -> None:
 
     precommit_hook_file.write_text(content, encoding="utf-8")
     precommit_hook_file.chmod(precommit_hook_file.stat().st_mode | 0o111)
-    print("telec init: pre-commit entrypoint guard installed.")
+    print("telec projects init: pre-commit entrypoint guard installed.")

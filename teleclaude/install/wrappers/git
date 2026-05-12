@@ -25,7 +25,7 @@
 #   Inside tmux, agent session (system_role set): role-based restrictions.
 #   TELECLAUDE_SYSTEM_ROLE env override: honored only when human_role is present.
 #
-# Installed via `telec init` as a symlink at ~/.teleclaude/bin/git.
+# Installed via `telec projects init` as a symlink at ~/.teleclaude/bin/git.
 
 set -euo pipefail
 

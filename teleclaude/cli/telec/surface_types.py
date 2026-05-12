@@ -27,7 +27,6 @@ class TelecCommand(str, Enum):
     AGENTS = "agents"
     CHANNELS = "channels"
     OPERATIONS = "operations"
-    INIT = "init"
     VERSION = "version"
     SYNC = "sync"
     DOCS = "docs"

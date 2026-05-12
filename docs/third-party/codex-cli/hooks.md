@@ -345,7 +345,7 @@ normalized hook identity. Codex's algorithm
 5. Recursively sort object keys (canonical JSON), serialize compactly, hash,
    prefix with `sha256:`.
 
-`telec init` writes these entries deterministically via
+`telec projects init` writes these entries deterministically via
 `teleclaude.install.codex_hook_trust`, so a fresh codex session picks up the
 hooks without forcing the operator through the `/hooks` TUI. The installer
 overwrites `trusted_hash` on every run (it must track the current command) but

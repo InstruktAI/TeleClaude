@@ -27,4 +27,4 @@ def update_gitattributes(project_root: Path) -> None:
             if existing_content and not existing_content.endswith("\n"):
                 f.write("\n")
             f.write("\n".join(lines_to_add) + "\n")
-        print("telec init: .gitattributes updated.")
+        print("telec projects init: .gitattributes updated.")

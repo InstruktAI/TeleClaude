@@ -319,7 +319,7 @@ class ProjectConfig(BaseModel):
         """Enforce slug format when the field is set.
 
         Empty/missing values are accepted here so legacy configs still load;
-        ``telec init`` fills the value during registration.
+        ``telec projects init`` fills the value during registration.
         """
         if value is None:
             return None

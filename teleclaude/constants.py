@@ -248,7 +248,7 @@ CHECKPOINT_FILE_CATEGORIES: list[FileCategory] = [
             ".husky/pre-commit",
         ],
         instruction="Run `make install` (setup changed: templates, hook installers, or git filters)",
-        evidence_substrings=["make install", "telec init"],
+        evidence_substrings=["make install", "telec projects init"],
         main_only=True,
         precedence=10,
     ),

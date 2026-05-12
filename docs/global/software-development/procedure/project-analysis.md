@@ -24,7 +24,7 @@ reflect concrete findings from the analyzed repository, not generic templates.
 ## Preconditions
 
 - The project has source files (not an empty repository).
-- `telec init` plumbing (hooks, sync, project registration) has already completed; the operator invoked `telec projects analyze` or `telec projects onboard`.
+- `telec projects init` plumbing (hooks, sync, project registration) has already completed; the operator invoked `telec projects analyze` or `telec projects onboard`.
 - The required reads above provide the output contract (`init-scaffolding`),
   the snippet-authoring discipline (`doc-snippet-authoring`, which transitively
   pulls in the value contract, schema, and referencing rules), and the

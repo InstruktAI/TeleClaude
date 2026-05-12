@@ -8,20 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- **`telec init`** is now plumbing-only. The AI-driven project enrichment (doc-snippet generation and quality-config assessment) previously dispatched automatically at the end of `init` has moved to a dedicated, user-invoked command group.
+- **`telec projects init`** (renamed from `telec init`) is now plumbing-only. The AI-driven project enrichment (doc-snippet generation and quality-config assessment) previously dispatched automatically at the end of `init` has moved to a dedicated, user-invoked command group.
 
 ### Added
 
-- **`telec projects onboard`** — full project bootstrap: runs `init` synchronously, then dispatches the config-assessment and doc-snippet-analysis agent sessions.
+- **`telec projects onboard`** — full project bootstrap: runs `telec projects init` synchronously, then dispatches the config-assessment and doc-snippet-analysis agent sessions.
 - **`telec projects analyze`** — generate project doc snippets via AI analysis.
 - **`telec projects assess`** — assess project quality tool configuration against blessed templates.
 
 ### Removed
 
-- The interactive enrichment prompt at the end of `telec init`. CI and non-TTY callers no longer have agent sessions spawned as a side effect of plumbing.
+- The interactive enrichment prompt at the end of project init. CI and non-TTY callers no longer have agent sessions spawned as a side effect of plumbing.
 
-### Renamed (slash commands and agent artifacts)
+### Renamed (CLI commands and agent artifacts)
 
+- `telec init` → `telec projects init`
 - `/telec-init-analyze` → `/projects-analyze`
 - `/telec-init-assess-config` → `/projects-assess-config`
 

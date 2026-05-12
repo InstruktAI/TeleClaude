@@ -3,7 +3,7 @@ id: 'general/procedure/project-initialization'
 type: 'procedure'
 domain: 'general'
 scope: 'global'
-description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel.'
+description: 'Complete telec projects init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel.'
 ---
 
 # Project Initialization — Procedure
@@ -80,7 +80,7 @@ Runs `telec sync` (warn-only mode) to build snippet indexes, inflate
 `AGENTS.master.md` into `AGENTS.md`, and distribute artifacts to agent runtimes.
 
 This step happens before slug persistence because `sync_project_artifacts()`
-materializes a bare `teleclaude.yml` for fresh projects. `telec init` then
+materializes a bare `teleclaude.yml` for fresh projects. `telec projects init` then
 rewrites that file in place to guarantee `project_slug` exists before the
 project is registered.
 
@@ -94,7 +94,7 @@ invalid), and writes it back in place using comment-preserving YAML. Then
 appends the absolute project root to `~/.teleclaude/projects.yaml`
 idempotently.
 
-`telec init` is the **sole** writer of the project registry. `telec sync`
+`telec projects init` is the **sole** writer of the project registry. `telec sync`
 must not mutate `~/.teleclaude/projects.yaml`. Once registered, the project
 is visible to `ProjectCatalogService` and every consumer that iterates
 projects (docs cross-project namespace, job orchestration, etc.).
@@ -115,7 +115,7 @@ Source: `teleclaude/project_setup/domain_seeds.py:seed_event_domains()`
 
 ### 10. Register the project root
 
-`telec init` does **not** install watchers. It registers the project root in
+`telec projects init` does **not** install watchers. It registers the project root in
 `~/.teleclaude/projects.yaml`. The single global watcher is installed by
 TeleClaude's machine-level `make init` flow and reads this manifest to decide
 which projects to watch and sync surgically.
@@ -141,7 +141,7 @@ Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 
 ## Recovery
 
-- `telec init` is idempotent. Re-running it is safe and will skip already-configured steps.
+- `telec projects init` is idempotent. Re-running it is safe and will skip already-configured steps.
 - If sync reports findings, the init still completes because this step runs `telec sync --warn-only`; the findings are reported for follow-up.
 
 ## See Also

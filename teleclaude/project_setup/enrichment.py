@@ -1,4 +1,4 @@
-"""Enrichment writer and merge module for telec init.
+"""Enrichment writer and merge module for telec projects init.
 
 Turns AI analysis output into schema-valid project doc snippets under docs/project/.
 Handles idempotent re-analysis with human-edit preservation.
