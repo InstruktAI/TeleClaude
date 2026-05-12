@@ -15,7 +15,14 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_QUALITY_CHECKLIST,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
+    WORKTREE_DIR,
+)
 from teleclaude.core.next_machine._types import (
     DEFAULT_MAX_REVIEW_ROUNDS,
     StateValue,
@@ -124,10 +131,10 @@ _BUILD_VERDICT_PHASE = "build_review"
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
 _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
-    "input": "input",
-    "requirements": "requirements",
-    "test_specs": "test-specs",
-    "implementation_plan": "implementation-plan",
+    "input": ARTIFACT_INPUT,
+    "requirements": ARTIFACT_REQUIREMENTS,
+    "test_specs": ARTIFACT_TEST_SPECS,
+    "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
 }
 
 # Maps a review phase name to the artifact state key it gates.
@@ -657,9 +664,9 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")
 
-    if kind not in ("prepped", "bug") and not _has_artifact_content(cwd, slug, "requirements"):
+    if kind not in ("prepped", "bug") and not _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS):
         raise ValueError(f"Missing requirements artifact with content for {slug}")
-    if kind != "bug" and not _has_artifact_content(cwd, slug, "implementation-plan"):
+    if kind != "bug" and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
     rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
@@ -668,7 +675,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         raise ValueError(msg)
     current_sha = current_sha_raw.strip()
 
-    if not _has_artifact_content(cwd, slug, "quality-checklist"):
+    if not _has_artifact_content(cwd, slug, ARTIFACT_QUALITY_CHECKLIST):
         checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
         now_iso = datetime.now(UTC).isoformat()
         digest = _hl.sha256(checklist_content.encode("utf-8")).hexdigest()
@@ -734,10 +741,10 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         writer.grounding.input_digest = input_digest
     writer.state.lifecycle_phase = "prepared"
     if kind not in ("prepped", "bug"):
-        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, "requirements")
+        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, ARTIFACT_REQUIREMENTS)
         writer.state.artifacts.requirements.produced_at = now_iso
     if kind != "bug":
-        writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, "implementation-plan")
+        writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN)
         writer.state.artifacts.implementation_plan.produced_at = now_iso
 
     payload = writer.commit_sync(db, slug)
@@ -875,8 +882,8 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
 
 # Artifact keys that can be stamped after worker output is verified.
 _PREPARE_ARTIFACT_NAMES = {
-    "requirements": "requirements",
-    "implementation_plan": "implementation-plan",
+    "requirements": ARTIFACT_REQUIREMENTS,
+    "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
 }
 _PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), "test_specs")
 
@@ -916,7 +923,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
         # write a manifest of spec files to the test-specs artifact; the digest
         # then gates test_spec_review approval. When no manifest is written, the
         # digest stays empty and review approval binds to no specific content.
-        specs_digest = _artifact_digest(cwd, slug, "test-specs")
+        specs_digest = _artifact_digest(cwd, slug, ARTIFACT_TEST_SPECS)
         if specs_digest:
             entry.digest = specs_digest
     upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())

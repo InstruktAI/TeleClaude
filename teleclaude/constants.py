@@ -59,6 +59,36 @@ SNIPPET_VISIBILITY_PUBLIC = "public"
 SNIPPET_VISIBILITY_INTERNAL = "internal"
 SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTERNAL)
 
+# Todo artifact names — canonical values for the `name` column of todo_artifacts.
+ARTIFACT_INPUT = "input"
+ARTIFACT_REQUIREMENTS = "requirements"
+ARTIFACT_TEST_SPECS = "test-specs"
+ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
+ARTIFACT_BUG = "bug"
+ARTIFACT_QUALITY_CHECKLIST = "quality-checklist"
+ARTIFACT_DESIGN_SPEC = "design-spec"
+ARTIFACT_DEFERRALS = "deferrals"
+ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
+ARTIFACT_SPEC_REVIEW_FINDINGS = "spec-review-findings"
+ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
+ARTIFACT_REVIEW_FINDINGS = "review-findings"
+ARTIFACT_NAMES: frozenset[str] = frozenset(
+    {
+        ARTIFACT_INPUT,
+        ARTIFACT_REQUIREMENTS,
+        ARTIFACT_TEST_SPECS,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+        ARTIFACT_BUG,
+        ARTIFACT_QUALITY_CHECKLIST,
+        ARTIFACT_DESIGN_SPEC,
+        ARTIFACT_DEFERRALS,
+        ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+        ARTIFACT_SPEC_REVIEW_FINDINGS,
+        ARTIFACT_PLAN_REVIEW_FINDINGS,
+        ARTIFACT_REVIEW_FINDINGS,
+    }
+)
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

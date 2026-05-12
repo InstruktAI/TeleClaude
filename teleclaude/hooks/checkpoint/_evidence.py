@@ -4,6 +4,7 @@ import re
 import shlex
 
 from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
     CHECKPOINT_ERROR_ENRICHMENT,
     CHECKPOINT_GENERIC_ERROR_MESSAGE,
@@ -400,7 +401,7 @@ def _check_slug_alignment(
         return observations
 
     db = get_todos_db_sync(context.project_path)
-    plan_text = db.read_artifact_sync(context.working_slug, "implementation-plan")
+    plan_text = db.read_artifact_sync(context.working_slug, ARTIFACT_IMPLEMENTATION_PLAN)
     if not plan_text:
         return observations
 

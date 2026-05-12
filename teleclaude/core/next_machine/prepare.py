@@ -16,7 +16,14 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
+    WORKTREE_DIR,
+    SlashCommand,
+)
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
 from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktree, compose_agent_guidance
@@ -41,10 +48,10 @@ from teleclaude.core.todos_db import get_todos_db
 logger = get_logger(__name__)
 
 _ADOPTION_ARTIFACTS: tuple[tuple[str, str], ...] = (
-    ("input", "input"),
-    ("requirements", "requirements"),
-    ("test_specs", "test-specs"),
-    ("implementation_plan", "implementation-plan"),
+    ("input", ARTIFACT_INPUT),
+    ("requirements", ARTIFACT_REQUIREMENTS),
+    ("test_specs", ARTIFACT_TEST_SPECS),
+    ("implementation_plan", ARTIFACT_IMPLEMENTATION_PLAN),
 )
 
 
@@ -124,9 +131,9 @@ async def detect_unsatisfied_phase(todos_db: TodosDb, slug: str, state: dict[str
     machine should rewind to; everything downstream re-validates from there.
     """
     current_digests = {
-        "requirements": await todos_db.artifact_digest(slug, "requirements"),
-        "test_specs": await todos_db.artifact_digest(slug, "test-specs"),
-        "implementation_plan": await todos_db.artifact_digest(slug, "implementation-plan"),
+        "requirements": await todos_db.artifact_digest(slug, ARTIFACT_REQUIREMENTS),
+        "test_specs": await todos_db.artifact_digest(slug, ARTIFACT_TEST_SPECS),
+        "implementation_plan": await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN),
     }
     for phase in _SATISFACTION_ORDER:
         if not _phase_satisfied(phase, state, current_digests):

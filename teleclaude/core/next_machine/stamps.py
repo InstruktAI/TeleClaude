@@ -17,7 +17,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
+    WORKTREE_DIR,
+)
 from teleclaude.core.db import get_session_field_sync
 from teleclaude.core.next_machine.git_ops import has_build_commits_beyond_main
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -48,9 +53,9 @@ if TYPE_CHECKING:
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 
 _READINESS_ARTIFACT_KEY: dict[str, str] = {
-    "requirements": "requirements",
-    "implementation-plan": "implementation_plan",
-    "test-specs": "test_specs",
+    ARTIFACT_REQUIREMENTS: "requirements",
+    ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
+    ARTIFACT_TEST_SPECS: "test_specs",
 }
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
@@ -96,11 +101,11 @@ async def apply_todo_stamp(
         section, flag = _CREATIVE_GATE_STAMPS[stamp_type]
         _apply_creative_gate_stamp(writer, section=section, flag=flag)
     elif stamp_type == "requirements_ready":
-        await _apply_readiness_stamp(todos_db, writer, slug, "requirements", "requirements_ready")
+        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_REQUIREMENTS, "requirements_ready")
     elif stamp_type == "plan_ready":
-        await _apply_readiness_stamp(todos_db, writer, slug, "implementation-plan", "plan_ready")
+        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_ready")
     elif stamp_type == "specs_built":
-        await _apply_readiness_stamp(todos_db, writer, slug, "test-specs", "specs_built")
+        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_TEST_SPECS, "specs_built")
     elif stamp_type == "prepare_pair":
         await _apply_prepare_pair_stamp(writer, value)
     elif stamp_type == "build_complete":

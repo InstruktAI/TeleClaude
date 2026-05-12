@@ -15,18 +15,25 @@ You are now the Architect in requirements review mode.
 
 ## Purpose
 
-Validate `requirements.md` against the requirements quality standard and stamp the verdict via `telec todo stamp`.
+Validate the human-approved `requirements` artifact against the requirements
+quality standard and stamp the verdict via `telec todo stamp`. This is a
+craftsmanship check, not a scope check.
 
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `telec todo artifacts read {slug} requirements` (the artifact under review)
-- `telec todo artifacts read {slug} input` (the source it was derived from)
+- `telec todo artifacts read {slug} requirements` (the human-approved artifact under review)
+
+The human-approved `requirements` artifact is the sole source of intent. Do
+not read `input`. Do not cite `input` in findings. The human's approval at
+the requirements digest you are reviewing is the contract. If scope itself
+appears wrong, that is a `needs_decision` for the human — never a finding
+against `input`.
 
 ## Outputs
 
 - Verdict stamped via `telec todo stamp {slug} --verdict approve|needs_work --phase requirements_review`
-- `requirements-review-findings.md` via `telec todo artifacts write` if findings exist
+- `requirements-review-findings` via `telec todo artifacts write` if findings exist
 - All review artifacts stored via `telec todo artifacts write`
 
 ## Steps
@@ -46,6 +53,11 @@ verification language. You may **never** add new scope items, new success
 criteria, or new constraints — that is `needs_work`, not a silent fix. Load
 domain specs before validating — checking grounding without the actual specs
 is checking against air.
+
+The `input` artifact is out of scope for this review. Do not read it, do not
+diff against it, do not cite it. Findings that compare `requirements` to
+`input` are forbidden — the human's approval already settled what was kept
+and what was dropped.
 
 - Every finding must cite the specific policy, DoD line, principle, or spec it
   violates. A finding without a citation is not a finding — drop it. See

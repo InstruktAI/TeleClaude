@@ -27,6 +27,12 @@ from teleclaude.api.auth import (
 )
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
+from teleclaude.constants import (
+    ARTIFACT_BUG,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_REQUIREMENTS,
+)
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
@@ -250,9 +256,9 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
 async def _sync_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
     """Refresh only the artifact digest stored in todo state."""
     key = {
-        "input": "input",
-        "requirements": "requirements",
-        "implementation-plan": "implementation_plan",
+        ARTIFACT_INPUT: "input",
+        ARTIFACT_REQUIREMENTS: "requirements",
+        ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
     }.get(artifact_name)
     if key is None:
         return
@@ -294,13 +300,13 @@ async def write_artifact(
     effective_updated_by = updated_by or "api.todo.write_artifact"
     if not await todos_db.slug_in_roadmap(slug):
         raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
-    if name == "input" and await todos_db.artifact_exists(slug, "requirements"):
+    if name == ARTIFACT_INPUT and await todos_db.artifact_exists(slug, ARTIFACT_REQUIREMENTS):
         raise HTTPException(
             status_code=409,
             detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
     await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
-    if name in {"input", "requirements", "implementation-plan"}:
+    if name in {ARTIFACT_INPUT, ARTIFACT_REQUIREMENTS, ARTIFACT_IMPLEMENTATION_PLAN}:
         await _sync_artifact_digest_state(todos_db, slug, name)
     logger.info(
         "todo artifact write route completed",
@@ -397,7 +403,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                 if request.kind == "bug":
                     await todos_db.write_artifact(
                         slug,
-                        "bug",
+                        ARTIFACT_BUG,
                         request.content,
                         updated_by="api.todo.dump.bug",
                         session=session,
@@ -406,7 +412,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     plan_content = f"# {slug} — Implementation Plan\n\n{request.content}\n"
                     await todos_db.write_artifact(
                         slug,
-                        "implementation-plan",
+                        ARTIFACT_IMPLEMENTATION_PLAN,
                         plan_content,
                         updated_by="api.todo.dump.prepped",
                         session=session,
@@ -415,7 +421,7 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
                     input_content = f"# {slug} — Input\n\n{request.content}\n"
                     await todos_db.write_artifact(
                         slug,
-                        "input",
+                        ARTIFACT_INPUT,
                         input_content,
                         updated_by="api.todo.dump",
                         session=session,
@@ -424,9 +430,9 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         todos_db.on_committed("todo_updated")
 
         if request.kind == "prepped":
-            await _sync_artifact_digest_state(todos_db, slug, "implementation-plan")
+            await _sync_artifact_digest_state(todos_db, slug, ARTIFACT_IMPLEMENTATION_PLAN)
         elif request.kind != "bug":
-            await _sync_artifact_digest_state(todos_db, slug, "input")
+            await _sync_artifact_digest_state(todos_db, slug, ARTIFACT_INPUT)
 
         if request.kind in ("prepped", "bug"):
             # Stamp DOR, grounding baseline, and review approvals so the
@@ -439,9 +445,9 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
             slug=slug,
             kind=request.kind or "todo",
             cwd=effective_cwd,
-            artifact="implementation-plan"
+            artifact=ARTIFACT_IMPLEMENTATION_PLAN
             if request.kind == "prepped"
-            else ("bug" if request.kind == "bug" else "input"),
+            else (ARTIFACT_BUG if request.kind == "bug" else ARTIFACT_INPUT),
         )
 
         return _SlugStatusResponse(status="ok", slug=slug)
@@ -471,7 +477,7 @@ async def todo_split(
     if parent_state is None:
         raise HTTPException(status_code=404, detail=f"Parent todo '{slug}' not found")
 
-    parent_input = await todos_db.read_artifact(slug, "input")
+    parent_input = await todos_db.read_artifact(slug, ARTIFACT_INPUT)
     parent_writer = StateWriter(parent_state)
     parent_writer.state.breakdown = BreakdownState(assessed=True, todos=list(children))
 
@@ -486,7 +492,7 @@ async def todo_split(
                 if parent_input:
                     await todos_db.write_artifact(
                         child_slug,
-                        "input",
+                        ARTIFACT_INPUT,
                         parent_input,
                         updated_by="api.todo.split.clone_input",
                         session=session,

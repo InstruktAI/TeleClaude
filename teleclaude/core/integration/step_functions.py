@@ -15,7 +15,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
 from teleclaude.core.integration.formatters import (
@@ -541,8 +541,8 @@ def _do_merge(
         # Clean merge — read stats from integration worktree, context from repo root
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
-        requirements = _read_artifact_safe(cwd, key.slug, "requirements")
-        impl_plan = _read_artifact_safe(cwd, key.slug, "implementation-plan")
+        requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
+        impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
 
         checkpoint.phase = IntegrationPhase.MERGE_CLEAN.value
         checkpoint.error_context = {"merge_type": "clean"}
@@ -608,8 +608,8 @@ def _step_awaiting_commit(
     if merge_type == "clean":
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
-        requirements = _read_artifact_safe(cwd, key.slug, "requirements")
-        impl_plan = _read_artifact_safe(cwd, key.slug, "implementation-plan")
+        requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
+        impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
         conflicted_files = list((checkpoint.error_context or {}).get("conflicted_files", []))

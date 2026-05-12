@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict, cast
 
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS
 from teleclaude.core.integration.events import IntegrationBlockedPayload
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine._types import default_state
@@ -202,11 +203,11 @@ class BlockedFollowUpStore:
                 conn.close()
             db.write_state_sync(slug, default_state())
 
-        if not db.read_artifact_sync(slug, "requirements"):
-            db.write_artifact_sync(slug, "requirements", _render_requirements(link))
+        if not db.read_artifact_sync(slug, ARTIFACT_REQUIREMENTS):
+            db.write_artifact_sync(slug, ARTIFACT_REQUIREMENTS, _render_requirements(link))
 
-        if not db.read_artifact_sync(slug, "implementation-plan"):
-            db.write_artifact_sync(slug, "implementation-plan", _render_implementation_plan(link))
+        if not db.read_artifact_sync(slug, ARTIFACT_IMPLEMENTATION_PLAN):
+            db.write_artifact_sync(slug, ARTIFACT_IMPLEMENTATION_PLAN, _render_implementation_plan(link))
 
     def _load_state(self) -> None:
         self._state_path.parent.mkdir(parents=True, exist_ok=True)

@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/review-requirements'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Requirements review phase. Validate requirements.md against quality standard and stamp the review verdict.'
+description: 'Requirements review phase. Validate the human-approved requirements artifact against the quality standard and stamp the review verdict.'
 ---
 
 # Review Requirements — Procedure
@@ -16,20 +16,28 @@ description: 'Requirements review phase. Validate requirements.md against qualit
 
 ## Goal
 
-Validate `requirements.md` against the requirements quality standard and stamp a binary verdict. This is a preparation review, not a code review.
+Validate the human-approved `requirements` artifact against the requirements
+quality standard and stamp a binary verdict. This is a preparation review of
+artifact craftsmanship — not a code review and not a scope review.
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} requirements` exists.
-- `telec todo artifacts read {slug} input` exists (the source the requirements were derived from).
+- `telec todo artifacts read {slug} requirements` exists and has been human-approved.
+
+**Source of intent.** The human-approved `requirements` artifact is the sole
+source of intent for this review. Do not read `input`. Do not reference
+`input` in findings. The `input` artifact is a jumping-off pad for the human
+at the start of a todo; once requirements are human-approved, `input` is
+discarded as a source of intent. The human's approval at the requirements
+digest you are reviewing is the contract. If you believe scope is wrong,
+that is a `needs_decision` for the human — not a citation against `input`.
 
 ## Steps
 
 ### 1. Read context
 
-- `telec todo artifacts read {slug} requirements` — the artifact under review.
-- `telec todo artifacts read {slug} input` — the original human thinking.
-- `todos.db` roadmap — the slug's description.
+- `telec todo show {slug}`.
+- `telec todo artifacts read {slug} requirements`.
 - Relevant codebase files referenced in the requirements.
 - Apply the domain-context loading rule from the preparation artifact quality
   policy: identify which specs the requirements touch and load them before
@@ -39,12 +47,6 @@ Validate `requirements.md` against the requirements quality standard and stamp a
 
 Check each criterion from the preparation artifact quality policy. Every
 failure is a finding.
-
-#### Completeness
-
-Every intent expressed in `input.md` is captured as a concrete requirement or
-explicitly deferred with justification. No silent gaps where the human said
-something and the requirements ignored it.
 
 #### Testability
 
@@ -81,14 +83,16 @@ policy. Use the concrete signals and discriminator test to identify leakage.
 
 #### Inference transparency
 
-Anything inferred from codebase or documentation rather than explicitly stated
-in `input.md` is marked `[inferred]`. If inferences are unmarked, the human
-cannot distinguish what they said from what the system assumed.
+Anything inferred from codebase, documentation, or grounding — rather than
+stated directly in the requirements text — is marked `[inferred]`. The
+reviewer checks marker presence against the `requirements` artifact itself.
+If inferences are unmarked, a future reader cannot distinguish stated intent
+from system-derived elaboration.
 
 ### 3. Auto-remediate localized findings
 
 Default behavior is to act in place. If a finding is localized, high-confidence,
-and does not alter human intent, the reviewer should fix `requirements.md`
+and does not alter approved intent, the reviewer should fix `requirements`
 directly in this same pass instead of handing it back.
 
 Allowed in-place fixes:
@@ -105,7 +109,7 @@ Not allowed — route via `needs_work` instead:
 - Adding new scope items.
 - Adding new success criteria.
 - Adding new constraints.
-- Inventing new intent not traceable to `input.md`.
+- Inventing new intent not present in the approved `requirements`.
 - Settling unresolved product decisions.
 - Introducing architectural choices that were not grounded.
 
@@ -155,5 +159,5 @@ Findings artifact: requirements-review-findings when NEEDS WORK
 
 - If unresolved Critical or Important findings remain after auto-remediation,
   mark `needs_work` with specific gaps listed.
-- If requirements are missing critical context or intent is ambiguous, do not
-  invent intent; mark `needs_work`.
+- If a requirement is ambiguous, mark `needs_work` — do not invent intent and
+  do not consult `input` to disambiguate.

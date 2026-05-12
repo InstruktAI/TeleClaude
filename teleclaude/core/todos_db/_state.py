@@ -11,6 +11,7 @@ from instrukt_ai_logging import get_logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
+from teleclaude.constants import ARTIFACT_DEFERRALS
 from teleclaude.types.state_value import StateValue
 
 from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
@@ -162,7 +163,7 @@ class TodosDbStateMixin:
             return False
         if state.get("deferrals_processed") is True:
             return False
-        exists: bool = await self.artifact_exists(slug, "deferrals")  # type: ignore[attr-defined]
+        exists: bool = await self.artifact_exists(slug, ARTIFACT_DEFERRALS)  # type: ignore[attr-defined]
         return exists
 
     def read_state_sync(self, slug: str) -> dict[str, StateValue] | None:

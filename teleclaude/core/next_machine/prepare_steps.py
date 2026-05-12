@@ -7,7 +7,17 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import (
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_PLAN_REVIEW_FINDINGS,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+    ARTIFACT_SPEC_REVIEW_FINDINGS,
+    ARTIFACT_TEST_SPECS,
+    WORKTREE_DIR,
+    SlashCommand,
+)
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import DEFAULT_MAX_REVIEW_ROUNDS, PreparePhase, StateValue
@@ -74,7 +84,7 @@ async def _prepare_step_input_assessment(
 
     if writer.state.artifacts.requirements.produced_at:
         apply_authoritative_signal(writer.state, "requirements_ready")
-        input_digest = await todos_db.artifact_digest(slug, "input")
+        input_digest = await todos_db.artifact_digest(slug, ARTIFACT_INPUT)
         _emit_prepare_event(
             "domain.software-development.prepare.input_consumed",
             {"slug": slug, "phase": "input_assessment", "digest": input_digest},
@@ -201,7 +211,7 @@ async def _prepare_step_requirements_review(
 
     # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        current_digest = await todos_db.artifact_digest(slug, "requirements")
+        current_digest = await todos_db.artifact_digest(slug, ARTIFACT_REQUIREMENTS)
         if current_digest and current_digest != writer.state.artifacts.requirements.digest:
             writer.state.artifacts.requirements.digest = current_digest
 
@@ -209,7 +219,7 @@ async def _prepare_step_requirements_review(
         # Digest-bound approval: the verdict only stands while the artifact's
         # current digest matches the digest the reviewer approved. When they
         # diverge, fall through to dispatch a re-review.
-        current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
+        current_requirements_digest = await todos_db.artifact_digest(slug, ARTIFACT_REQUIREMENTS)
         if review.approved_digest == current_requirements_digest:
             audit.completed_at = now
             audit.verdict = "approve"
@@ -227,7 +237,7 @@ async def _prepare_step_requirements_review(
         await _commit_writer(writer, todos_db, slug, state)
         return False, (
             f"BLOCKED: {slug} requirements review needs a human decision. Read findings via "
-            f"`telec todo artifacts read {slug} requirements-review-findings`.\n\n"
+            f"`telec todo artifacts read {slug} {ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS}`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
             f"Then use telec docs get to load the procedure for the role you are assuming."
@@ -248,10 +258,10 @@ async def _prepare_step_requirements_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "findings_artifact": "requirements-review-findings"},
+            {"slug": slug, "findings_artifact": ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS},
         )
         message = format_fix_findings_message(
-            slug, "requirements", rounds, "requirements-review-findings", "requirements"
+            slug, "requirements", rounds, ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS, ARTIFACT_REQUIREMENTS
         )
         return False, format_review_needs_work_script(
             slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
@@ -263,8 +273,10 @@ async def _prepare_step_requirements_review(
         review.baseline_commit = head_sha.strip()
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
-    current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
-    diff_pairs = review_digest_pair("requirements", "requirements", review.approved_digest, current_requirements_digest)
+    current_requirements_digest = await todos_db.artifact_digest(slug, ARTIFACT_REQUIREMENTS)
+    diff_pairs = review_digest_pair(
+        "requirements", ARTIFACT_REQUIREMENTS, review.approved_digest, current_requirements_digest
+    )
     review_reason = DispatchReason.UPSTREAM_CHANGED if diff_pairs else DispatchReason.FRESH
     message = format_dispatch_reason(
         format_command_loader_message("next-review-requirements", slug),
@@ -303,7 +315,7 @@ async def _prepare_step_test_spec_build(
     advance_writer = StateWriter(state)
     advance_test_specs = advance_writer.state.artifacts.test_specs
     if advance_test_specs.produced_at:
-        current_requirements_digest = await todos_db.artifact_digest(slug, "requirements")
+        current_requirements_digest = await todos_db.artifact_digest(slug, ARTIFACT_REQUIREMENTS)
         recorded_requirements_digest = advance_test_specs.upstream_digests.get("requirements", "")
         if recorded_requirements_digest == current_requirements_digest:
             apply_authoritative_signal(advance_writer.state, "specs_built")
@@ -329,7 +341,7 @@ async def _prepare_step_test_spec_build(
         todos_db,
         slug,
         dict(test_specs_entry.upstream_digests),
-        (("requirements", "requirements", "requirements"),),
+        (("requirements", "requirements", ARTIFACT_REQUIREMENTS),),
     )
 
     if not test_specs_entry.produced_at:
@@ -389,7 +401,7 @@ async def _prepare_step_test_spec_review(
         # Digest-bound approval: only stands while specs digest matches the
         # one the reviewer approved. When test_specs has no DB-backed digest
         # (no manifest), verdict alone gates approval.
-        current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
+        current_specs_digest = await todos_db.artifact_digest(slug, ARTIFACT_TEST_SPECS)
         if not current_specs_digest or spec_review.approved_digest == current_specs_digest:
             audit.completed_at = now
             audit.verdict = "approve"
@@ -416,7 +428,7 @@ async def _prepare_step_test_spec_review(
         await _commit_writer(writer, todos_db, slug, state)
 
         message = format_fix_findings_message(
-            slug, "test spec", rounds, "spec-review-findings", "test spec files in the worktree"
+            slug, "test spec", rounds, ARTIFACT_SPEC_REVIEW_FINDINGS, "test spec files in the worktree"
         )
         return False, format_review_needs_work_script(
             slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
@@ -424,8 +436,10 @@ async def _prepare_step_test_spec_review(
 
     # No verdict yet — dispatch reviewer
     await _commit_writer(writer, todos_db, slug, state)
-    current_specs_digest = await todos_db.artifact_digest(slug, "test-specs")
-    spec_diff_pairs = review_digest_pair("test_specs", "test-specs", spec_review.approved_digest, current_specs_digest)
+    current_specs_digest = await todos_db.artifact_digest(slug, ARTIFACT_TEST_SPECS)
+    spec_diff_pairs = review_digest_pair(
+        "test_specs", ARTIFACT_TEST_SPECS, spec_review.approved_digest, current_specs_digest
+    )
     spec_review_reason = DispatchReason.UPSTREAM_CHANGED if spec_diff_pairs else DispatchReason.FRESH
     message = format_dispatch_reason(
         format_command_loader_message("next-review-specs", slug),
@@ -463,8 +477,8 @@ async def _prepare_step_plan_drafting(
         slug,
         dict(advance_plan.upstream_digests),
         (
-            ("requirements", "requirements", "requirements"),
-            ("test_specs", "test_specs", "test-specs"),
+            ("requirements", "requirements", ARTIFACT_REQUIREMENTS),
+            ("test_specs", "test_specs", ARTIFACT_TEST_SPECS),
         ),
     )
 
@@ -540,14 +554,14 @@ async def _prepare_step_plan_review(
 
     # Reconcile digest: reviewer may have modified the artifact (auto-remediation)
     if verdict:
-        current_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        current_digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
         if current_digest and current_digest != writer.state.artifacts.implementation_plan.digest:
             writer.state.artifacts.implementation_plan.digest = current_digest
 
     if verdict == "approve":
         # Digest-bound approval: only stands while plan digest matches the
         # one the reviewer approved.
-        current_plan_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+        current_plan_digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
         if review.approved_digest == current_plan_digest:
             audit.completed_at = now
             audit.verdict = "approve"
@@ -565,7 +579,7 @@ async def _prepare_step_plan_review(
         await _commit_writer(writer, todos_db, slug, state)
         return False, (
             f"BLOCKED: {slug} plan review needs a human decision. Read findings via "
-            f"`telec todo artifacts read {slug} plan-review-findings`.\n\n"
+            f"`telec todo artifacts read {slug} {ARTIFACT_PLAN_REVIEW_FINDINGS}`.\n\n"
             f"Before acting, load the relevant worker role:\n"
             f"  telec docs index\n"
             f"Then use telec docs get to load the procedure for the role you are assuming."
@@ -586,9 +600,11 @@ async def _prepare_step_plan_review(
         # Emit scoped re-review event (I-3)
         _emit_prepare_event(
             "domain.software-development.prepare.review_scoped",
-            {"slug": slug, "findings_artifact": "plan-review-findings"},
+            {"slug": slug, "findings_artifact": ARTIFACT_PLAN_REVIEW_FINDINGS},
         )
-        message = format_fix_findings_message(slug, "plan", rounds, "plan-review-findings", "implementation-plan")
+        message = format_fix_findings_message(
+            slug, "plan", rounds, ARTIFACT_PLAN_REVIEW_FINDINGS, ARTIFACT_IMPLEMENTATION_PLAN
+        )
         return False, format_review_needs_work_script(
             slug, worker_id, reviewer_id, message, next_step=f"telec todo prepare {slug}"
         )
@@ -599,9 +615,9 @@ async def _prepare_step_plan_review(
         review.baseline_commit = head_sha.strip()
         audit.baseline_commit = head_sha.strip()
         await _commit_writer(writer, todos_db, slug, state)
-    current_plan_digest = await todos_db.artifact_digest(slug, "implementation-plan")
+    current_plan_digest = await todos_db.artifact_digest(slug, ARTIFACT_IMPLEMENTATION_PLAN)
     plan_diff_pairs = review_digest_pair(
-        "implementation_plan", "implementation-plan", review.approved_digest, current_plan_digest
+        "implementation_plan", ARTIFACT_IMPLEMENTATION_PLAN, review.approved_digest, current_plan_digest
     )
     plan_review_reason = DispatchReason.UPSTREAM_CHANGED if plan_diff_pairs else DispatchReason.FRESH
     message = format_dispatch_reason(

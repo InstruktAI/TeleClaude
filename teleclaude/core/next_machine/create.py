@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import ARTIFACT_DESIGN_SPEC, ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import CreativePhase, StateValue
 from teleclaude.core.next_machine.git_ops import compose_agent_guidance
@@ -185,7 +185,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
         if slug in delivered:
             continue
 
-        has_input = await todos_db.artifact_exists(slug, "input")
+        has_input = await todos_db.artifact_exists(slug, ARTIFACT_INPUT)
         if not has_input:
             continue
 
@@ -196,7 +196,7 @@ async def _find_next_creative_slug(todos_db: TodosDb, cwd: str) -> str | None:
         creative = state.get("creative")
         creative_state = creative if isinstance(creative, dict) else {}
 
-        has_design_spec = await todos_db.artifact_exists(slug, "design-spec")
+        has_design_spec = await todos_db.artifact_exists(slug, ARTIFACT_DESIGN_SPEC)
         workspace_dir = Path(cwd) / "workspace" / slug
         phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
         if phase == CreativePhase.CREATIVE_COMPLETE:
@@ -309,11 +309,11 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     if not resolved_slug:
         return "NO_CREATIVE_ITEMS: No work items require creative work. Nothing to do."
 
-    has_input = await todos_db.artifact_exists(resolved_slug, "input")
+    has_input = await todos_db.artifact_exists(resolved_slug, ARTIFACT_INPUT)
     if not has_input:
         return (
             f"BLOCKED: {resolved_slug} has no input artifact. "
-            f"Use telec todo artifacts write {resolved_slug} input before starting creative work."
+            f"Use telec todo artifacts write {resolved_slug} {ARTIFACT_INPUT} before starting creative work."
         )
 
     state = await todos_db.read_state(resolved_slug)
@@ -322,7 +322,7 @@ async def next_create(db: Db, slug: str | None, cwd: str) -> str:
     creative = state.get("creative")
     creative_state = creative if isinstance(creative, dict) else {}
     workspace_dir = Path(cwd) / "workspace" / resolved_slug
-    has_design_spec = await todos_db.artifact_exists(resolved_slug, "design-spec")
+    has_design_spec = await todos_db.artifact_exists(resolved_slug, ARTIFACT_DESIGN_SPEC)
     phase = await asyncio.to_thread(_derive_creative_phase, workspace_dir, has_design_spec, creative_state)
 
     logger.info("NEXT_CREATE_PHASE slug=%s phase=%s", resolved_slug, phase.value)

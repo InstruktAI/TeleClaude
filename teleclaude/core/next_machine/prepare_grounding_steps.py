@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import WORKTREE_DIR, SlashCommand
+from teleclaude.constants import ARTIFACT_INPUT, WORKTREE_DIR, SlashCommand
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
@@ -57,7 +57,7 @@ async def prepare_step_grounding_check(
     current_sha = current_sha_raw.strip() if rc == 0 else ""
 
     current_input_digest = ""
-    input_content = todos_db.read_artifact_sync(slug, "input")
+    input_content = todos_db.read_artifact_sync(slug, ARTIFACT_INPUT)
     if input_content:
         current_input_digest = hashlib.sha256(input_content.encode("utf-8")).hexdigest()
 

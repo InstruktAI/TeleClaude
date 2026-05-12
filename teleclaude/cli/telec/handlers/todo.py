@@ -21,6 +21,7 @@ from teleclaude.cli.tool_commands import (
     handle_todo_work,
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
+from teleclaude.constants import ARTIFACT_NAMES
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
@@ -458,6 +459,14 @@ def _handle_todo_remove(args: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _validate_artifact_name(name: str) -> None:
+    """Reject unknown artifact names before dispatching to the API."""
+    if name not in ARTIFACT_NAMES:
+        print(f"Unknown artifact name: {name!r}")
+        print(f"Valid names: {', '.join(sorted(ARTIFACT_NAMES))}")
+        raise SystemExit(1)
+
+
 def _handle_todo_artifacts(args: list[str]) -> None:
     """Handle telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]."""
     if not args:
@@ -507,6 +516,7 @@ def _handle_artifacts_read(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug, name = args[0], args[1]
+    _validate_artifact_name(name)
     result = tool_api_request("GET", f"/todos/artifacts/{slug}/{name}")
     if isinstance(result, dict):
         print(result.get("content", ""))
@@ -521,6 +531,7 @@ def _handle_artifacts_diff(args: list[str]) -> None:
         raise SystemExit(1)
 
     slug, name, old_digest, new_digest = args[0], args[1], args[2], args[3]
+    _validate_artifact_name(name)
     result = tool_api_request(
         "GET",
         f"/todos/artifacts/{slug}/{name}/diff",
@@ -562,6 +573,7 @@ def _handle_artifacts_write(args: list[str]) -> None:
         print("Usage: telec todo artifacts write <slug> <name> <content>")
         raise SystemExit(1)
 
+    _validate_artifact_name(name)
     result = tool_api_request(
         "POST",
         f"/todos/artifacts/{slug}/{name}",

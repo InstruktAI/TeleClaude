@@ -13,6 +13,13 @@ from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.constants import (
+    ARTIFACT_DESIGN_SPEC,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_INPUT,
+    ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
+)
 from teleclaude.slug import normalize_slug, validate_slug
 from teleclaude.types.todos import DorState, TodoState
 
@@ -20,13 +27,13 @@ logger = get_logger(__name__)
 
 _LEGACY_MARKER_FILES = ("roadmap.md", "icebox.md", "delivered.md", "bugs.md")
 _ARTIFACT_STATE_FIELDS = {
-    "input": "input",
-    "requirements": "requirements",
-    "test-specs": "test_specs",
-    "implementation-plan": "implementation_plan",
+    ARTIFACT_INPUT: "input",
+    ARTIFACT_REQUIREMENTS: "requirements",
+    ARTIFACT_TEST_SPECS: "test_specs",
+    ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
     "art": "art",
     "visuals": "visuals",
-    "design-spec": "design_spec",
+    ARTIFACT_DESIGN_SPEC: "design_spec",
 }
 _ROADMAP_LINE_RE = re.compile(
     r"^- \[(?P<marker>[^\]]+)\]\s+"
@@ -364,9 +371,9 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
             state.test_spec_review.verdict = "skipped"
             state.plan_review.verdict = "skipped"
         else:
-            state.requirements_review.verdict = "approve" if "requirements" in artifacts else "skipped"
+            state.requirements_review.verdict = "approve" if ARTIFACT_REQUIREMENTS in artifacts else "skipped"
             state.test_spec_review.verdict = "skipped"
-            state.plan_review.verdict = "approve" if "implementation-plan" in artifacts else "skipped"
+            state.plan_review.verdict = "approve" if ARTIFACT_IMPLEMENTATION_PLAN in artifacts else "skipped"
         if not state.artifacts.test_specs.produced_at:
             state.artifacts.test_specs.produced_at = now
 

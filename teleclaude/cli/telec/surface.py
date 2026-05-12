@@ -527,21 +527,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name>",
+                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name> <content>",
+                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name> <old-digest> <new-digest>",
+                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
