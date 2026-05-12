@@ -1,0 +1,15 @@
+last_analyzed_at: '2026-05-12T18:11:00Z'
+analyzed_by: telec-init
+files_analyzed: 2253
+snippets_generated: []
+snippets_preserved: []
+notes: >
+  Mother TeleClaude repository. Existing docs/project/ tree contains 100+
+  human-authored snippets that exhaustively cover architecture, policies,
+  specs, and procedures. Applying general/policy/snippet-value-contract,
+  every standard taxonomy slot failed the value test — either covered by
+  existing project snippets, by global policies (python/core, typescript/core),
+  or by authoritative source files (pyproject.toml, frontend/package.json,
+  .github/workflows/, teleclaude.yml). Default-skip per the value contract;
+  no auto-generated snippets were produced. AGENTS.master.md exists (Case 1
+  per init-scaffolding) — preserved unchanged.
