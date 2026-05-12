@@ -9,89 +9,311 @@ type: third-party
 
 ## Overview
 
-Codex uses native hooks from `~/.codex/hooks.json`, with the runtime feature
-enabled by `~/.codex/config.toml`:
+Codex CLI exposes a native hook surface that runs local commands at lifecycle
+events. Hooks receive JSON on stdin and may produce JSON or text on stdout to
+influence Codex's next action.
+
+Six native hook events are supported upstream:
+
+- `SessionStart`
+- `UserPromptSubmit`
+- `PreToolUse`
+- `PermissionRequest`
+- `PostToolUse`
+- `Stop`
+
+## Configuration
+
+### Hooks discovery
+
+Codex resolves hook configuration from these locations:
+
+- `~/.codex/hooks.json`
+- `~/.codex/config.toml` (`[hooks]` table)
+- `<repo>/.codex/hooks.json`
+- `<repo>/.codex/config.toml`
+
+### Feature flag
+
+The native hooks runtime is gated by `~/.codex/config.toml`. Upstream documentation
+references the flag name `codex_hooks`. The flag name has shifted across Codex
+versions; current TeleClaude installs write:
 
 ```toml
 [features]
 hooks = true
 ```
 
-The `hooks` feature is `Stage::Stable` with `default_enabled = true` in codex
-0.129+, so the explicit flag is belt-and-suspenders.
+In Codex 0.129+ the `hooks` feature is `Stage::Stable` with `default_enabled = true`,
+so the explicit flag is belt-and-suspenders. Verify against your installed Codex
+version if hooks are not firing.
 
-TeleClaude currently manages this native Codex subset:
+### Matcher syntax
 
-- `SessionStart`
-- `UserPromptSubmit`
-- `Stop`
+`matcher` is a regex string applied to a specific field per event.
 
-`tool_use` is synthesized from terminal-output polling (see polling_coordinator).
+| Event              | Matcher applies to | Example                 |
+| ------------------ | ------------------ | ----------------------- |
+| `SessionStart`     | `source`           | `"startup\|resume"`     |
+| `PreToolUse`       | `tool_name`        | `"Bash"`, `"^apply_patch$"` |
+| `PostToolUse`      | `tool_name`        | `"Edit\|Write"`         |
+| `PermissionRequest`| `tool_name`        | `"mcp__filesystem__.*"` |
+| `UserPromptSubmit` | not used           | (ignored if present)    |
+| `Stop`             | not used           | (ignored if present)    |
 
-## Input shape we care about
+## Hook payload contract
 
-Codex hook commands receive JSON on stdin with common fields plus event-specific
-fields.
+### Common input fields (every event)
 
-Shared fields TeleClaude relies on:
+```json
+{
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
 
-- `hook_event_name` — native Codex hook event name
-- `session_id` — native Codex session id
-- `transcript_path` — native transcript path when available
-- `cwd` — working directory
+Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
+`UserPromptSubmit`, `Stop`) add a `turn_id` field.
 
-`UserPromptSubmit` adds:
+### Per-event payloads
 
-- `turn_id` — active Codex turn id
-- `prompt` — user prompt about to be sent
+`SessionStart`:
 
-`Stop` adds:
-
-- `turn_id` — active Codex turn id
-- `stop_hook_active` — whether this turn was already continued by `Stop`
-- `last_assistant_message` — latest assistant text, if available
-
-## Stdout behavior
+```json
+{
+  "source": "startup | resume | clear",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
 
 `UserPromptSubmit`:
 
-- `matcher` is not currently used
-- plain stdout text is added as extra developer context
-- JSON stdout may include `hookSpecificOutput.additionalContext`
-- JSON stdout may also return `decision: "block"` with a reason
+```json
+{
+  "turn_id": "string",
+  "prompt": "string",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
+
+`PreToolUse`:
+
+```json
+{
+  "turn_id": "string",
+  "tool_name": "string",
+  "tool_use_id": "string",
+  "tool_input": "JSON value",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
+
+`PermissionRequest`:
+
+```json
+{
+  "turn_id": "string",
+  "tool_name": "string",
+  "tool_input": "JSON value",
+  "tool_input.description": "string | null",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
+
+`PostToolUse`:
+
+```json
+{
+  "turn_id": "string",
+  "tool_name": "string",
+  "tool_use_id": "string",
+  "tool_input": "JSON value",
+  "tool_response": "JSON value",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
 
 `Stop`:
 
-- `matcher` is not currently used
-- plain stdout is invalid
-- stdout must be JSON when exiting `0`
-- `decision: "block"` does not reject the turn; it tells Codex to continue
-  using the provided reason as the continuation prompt
+```json
+{
+  "turn_id": "string",
+  "stop_hook_active": "boolean",
+  "last_assistant_message": "string | null",
+  "session_id": "string",
+  "transcript_path": "string | null",
+  "cwd": "string",
+  "hook_event_name": "string",
+  "model": "string"
+}
+```
+
+## Subagent identification
+
+**The native hook payload does not expose any subagent linkage.** There is no
+`parent_session_id`, `parent_thread_id`, or `subagent_id` field, and there are
+no dedicated subagent hook events. When Codex spawns a thread subagent the
+spawned thread emits the *same* hook events (`SessionStart`, `UserPromptSubmit`,
+`Stop`, …) under its own `session_id`.
+
+To distinguish subagent events from root-session events, the transcript file
+must be inspected. The first line of a Codex transcript is a `session_meta`
+record whose payload carries the parent linkage when present:
+
+```jsonc
+{
+  "type": "session_meta",
+  "payload": {
+    "id": "<thread_id>",
+    "source": {
+      "subagent": {
+        "thread_spawn": {
+          "parent_thread_id": "<parent_thread_id>"
+        }
+      }
+    }
+  }
+}
+```
+
+Presence of `payload.source.subagent.thread_spawn.parent_thread_id` is the
+subagent signal. Absence means root session.
+
+## Stdout / exit code semantics
+
+| Exit code | Stdout                | Effect                                                    |
+| --------- | --------------------- | --------------------------------------------------------- |
+| `0`       | valid JSON            | Codex parses and applies the response                     |
+| `0`       | empty                 | success, execution continues                              |
+| `2`       | stderr text           | block/denial with the stderr as reason                    |
+
+### Block / decision shapes
+
+`PreToolUse` block:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "string"
+  }
+}
+```
+
+`PermissionRequest` allow/deny:
+
+```json
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PermissionRequest",
+    "decision": {
+      "behavior": "allow | deny",
+      "message": "string"
+    }
+  }
+}
+```
+
+`UserPromptSubmit` block:
+
+```json
+{ "decision": "block", "reason": "string" }
+```
+
+`PostToolUse` feedback (command has already executed; feedback only):
+
+```json
+{
+  "decision": "block",
+  "reason": "string",
+  "hookSpecificOutput": {
+    "hookEventName": "PostToolUse",
+    "additionalContext": "string"
+  }
+}
+```
+
+`Stop` continuation — `decision: "block"` does *not* reject the turn; it tells
+Codex to continue, using `reason` as the continuation prompt:
+
+```json
+{ "decision": "block", "reason": "string" }
+```
+
+### Common output fields
+
+`SessionStart`, `UserPromptSubmit`, and `Stop` accept:
+
+```json
+{
+  "continue": "boolean",
+  "stopReason": "string (optional)",
+  "systemMessage": "string (optional)",
+  "suppressOutput": "boolean"
+}
+```
+
+All events support `systemMessage`. `PreToolUse` and `PermissionRequest` do not
+support `continue`, `stopReason`, or `suppressOutput`.
 
 ## TeleClaude mapping
 
-- `SessionStart` → `session_start`
-- `UserPromptSubmit` → `user_prompt_submit`
-- `Stop` → `agent_stop`
+TeleClaude currently subscribes this subset:
 
-Payload normalization used by the adapter:
+- `SessionStart` → internal `session_start`
+- `UserPromptSubmit` → internal `user_prompt_submit`
+- `Stop` → internal `agent_stop`
+
+`PreToolUse`, `PostToolUse`, `PermissionRequest` are not yet wired. `tool_use`
+activity is synthesized from terminal-output polling
+(`teleclaude.core.polling_coordinator`).
+
+Payload normalization done by `teleclaude/hooks/adapters/codex.py`:
 
 - `prompt` stays `prompt`
 - `last_assistant_message` → `message`
 
 ## TeleClaude notes
 
-- TeleClaude receiver commands do not need a positional event argument for Codex.
-- The receiver reads `hook_event_name` from stdin and maps it through the shared adapter path.
+- The receiver reads `hook_event_name` from stdin and maps it through the shared
+  adapter path; no positional event argument is required for Codex.
 - TeleClaude uses native `Stop` continuation JSON for checkpointing.
-- TeleClaude does not currently emit Codex `UserPromptSubmit` additional-context output.
+- TeleClaude does not currently emit Codex `UserPromptSubmit` additional-context
+  output.
+- Subagent detection in TeleClaude reads the transcript's `session_meta` line
+  via `teleclaude.core.codex_transcript.read_codex_transcript_meta` — required
+  because the hook payload does not expose parent linkage.
 
 ## Trust gate (Codex 0.129+)
 
 Codex 0.129 added a per-hook trust requirement (PR
 [`openai/codex#20321`](https://github.com/openai/codex/pull/20321)). Hooks
-discovered from `~/.codex/hooks.json` are `User`-layer (unmanaged) and stay
-out of the runnable handler set until `~/.codex/config.toml` carries a matching
+discovered from `~/.codex/hooks.json` are `User`-layer (unmanaged) and stay out
+of the runnable handler set until `~/.codex/config.toml` carries a matching
 `trusted_hash` for each handler. Without that entry codex silently drops the
 handler — no log, no warning beyond a one-line startup banner.
 
@@ -126,7 +348,7 @@ hooks without forcing the operator through the `/hooks` TUI. The installer
 overwrites `trusted_hash` on every run (it must track the current command) but
 preserves any user-set `enabled = false`.
 
-## Source
+## Sources
 
 - https://developers.openai.com/codex/hooks
 - https://github.com/openai/codex/pull/20321
