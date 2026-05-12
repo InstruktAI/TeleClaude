@@ -127,9 +127,10 @@ class TestSendKeys:
         # 1. strip caller-supplied bracketed-paste markers (raw stream delivery)
         # 2. send the cleaned payload via load-buffer stdin (NO trailing \r —
         #    agent CLIs don't treat \r inside a paste burst as discrete Enter)
-        # 3. paste-buffer -r (preserve LF; no -p, no bracketed-paste wrapping)
+        # 3. paste-buffer -p -r (emit DECSET 2004 markers conditional on app
+        #    request; preserve LF instead of rewriting to CR)
         # 4. delete the buffer
-        # 5. discrete send-keys C-m AFTER an adaptive sleep
+        # 5. discrete send-keys C-m AFTER the fixed _SUBMIT_GAP_S
         processes = [_completed_process() for _ in range(4)]
         communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
