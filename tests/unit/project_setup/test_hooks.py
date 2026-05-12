@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -152,3 +153,63 @@ class TestEntrypointGuardBlockOrdering:
         stash_pos = content.index(hooks.STASH_PREVENTION_MARKER)
         restage_pos = content.index(hooks.RESTAGE_MARKER)
         assert stash_pos < restage_pos
+
+
+class TestPrecommitCheckCommand:
+    """Regression tests for the PRECOMMIT_CHECK shell command itself.
+
+    These tests execute the actual command against a real temp git repo to
+    catch regressions like whitespace-splitting on filenames (previously a
+    `for f in $files` loop and a non-`-z` xargs pipeline both bypassed the
+    HOME-path scan when staged filenames contained spaces).
+    """
+
+    @staticmethod
+    def _init_repo(tmp_path: Path) -> Path:
+        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        return tmp_path
+
+    @staticmethod
+    def _run_check(repo: Path) -> tuple[int, str]:
+        result = subprocess.run(
+            ["bash", "-c", hooks.PRECOMMIT_CHECK],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.returncode, (result.stdout + result.stderr)
+
+    def test_rejects_hardcoded_home_path_in_normal_filename(self, tmp_path: Path) -> None:
+        repo = self._init_repo(tmp_path)
+        bad = repo / "normal.md"
+        bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
+        subprocess.run(["git", "add", "normal.md"], cwd=repo, check=True)
+
+        rc, _ = self._run_check(repo)
+
+        assert rc == 1, "PRECOMMIT_CHECK must reject hardcoded HOME path in a plain filename"
+
+    def test_rejects_hardcoded_home_path_in_filename_with_space(self, tmp_path: Path) -> None:
+        """Regression guard for the whitespace-splitting bug: filenames with
+        spaces must not bypass the HOME-path scan."""
+        repo = self._init_repo(tmp_path)
+        bad = repo / "space name.md"
+        bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
+        subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
+
+        rc, _ = self._run_check(repo)
+
+        assert rc == 1, "PRECOMMIT_CHECK must reject hardcoded HOME path even when filename contains spaces"
+
+    def test_accepts_clean_doc_with_filename_containing_space(self, tmp_path: Path) -> None:
+        repo = self._init_repo(tmp_path)
+        ok = repo / "space name.md"
+        ok.write_text("see `@~/.teleclaude/docs/index.yaml`\n", encoding="utf-8")
+        subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
+
+        rc, _ = self._run_check(repo)
+
+        assert rc == 0, "PRECOMMIT_CHECK must accept a clean doc with a spaced filename"
