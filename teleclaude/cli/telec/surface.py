@@ -417,13 +417,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
-            "validate": CommandDef(
-                desc="Validate todo files and state.yaml schema",
-                args="[slug]",
-                flags=[],
-                notes=["If slug is omitted, all active todos are checked."],
-                auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
-            ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
                 args="[<slug>] [--invalidate-check] [--changed-paths <paths>]",

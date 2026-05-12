@@ -96,7 +96,6 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating an empty draft skeleton is still work planning. Contributors can scaffold work items without input.         |
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                  |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
-| `telec todo validate`         | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Validation is a read/check operation. Workers can validate their own work. Customers have no todo context.           |
 | `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members. |
 | `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                    |
 | `telec todo reconcile`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Re-aligning the lifecycle pointer from current evidence is orchestration. Same boundary as prepare/work.             |
@@ -200,7 +199,6 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |
-| `telec todo validate`         | Customers                                   |
 | `telec todo verify-artifacts` | Customers                                   |
 | `telec todo dump`             | Newcomers, customers                        |
 | `telec roadmap list`          | Customers                                   |

@@ -330,16 +330,6 @@ Remove a todo and its roadmap entry
 
 **Usage:** `telec todo remove <slug>`
 
-### `telec todo validate`
-
-Validate todo files and state.yaml schema
-
-**Usage:** `telec todo validate [slug]`
-
-**Notes:**
-
-- If slug is omitted, all active todos are checked.
-
 ### `telec todo prepare`
 
 Run the Phase A (prepare) state machine

@@ -19,8 +19,6 @@ import yaml
 from pydantic import ValidationError
 
 from teleclaude.config.schema import JobWhenConfig
-from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.resource_validation._models import (
     _ARTIFACT_REF_ORDER,
     REPO_ROOT,
@@ -54,7 +52,6 @@ from teleclaude.resource_validation._snippet import (
     validate_third_party_doc,
     validate_third_party_docs,
 )
-from teleclaude.types.todos import TodoState
 
 __all__ = [
     # Public API
@@ -86,7 +83,6 @@ __all__ = [
     "resolve_ref_path",
     "validate_all_artifacts",
     "validate_all_snippets",
-    "validate_all_todos",
     "validate_artifact",
     "validate_artifact_body",
     "validate_artifact_frontmatter",
@@ -95,7 +91,6 @@ __all__ = [
     "validate_snippet",
     "validate_third_party_doc",
     "validate_third_party_docs",
-    "validate_todo",
 ]
 
 
@@ -561,49 +556,4 @@ def validate_jobs_config(project_root: Path) -> list[str]:
             )
         )
 
-    return errors
-
-
-def validate_todo(slug: str, project_root: Path) -> list[str]:
-    """Validate a todo's state and artifacts in todos.db."""
-    db = get_todos_db_sync(str(project_root))
-    errors: list[str] = []
-
-    # 1. State must exist and validate against schema
-    state_raw = db.read_state_sync(slug)
-    if state_raw is None:
-        errors.append(f"{slug}: missing state in todos.db")
-        return errors
-
-    try:
-        state = TodoState.model_validate(state_raw)
-    except (ValueError, ValidationError) as exc:
-        errors.append(f"{slug}: state schema violation: {exc}")
-        return errors
-
-    # 2. Required artifacts when ready for work
-    ready, _ = is_ready_for_work(kind=state.kind, lifecycle_phase=state.lifecycle_phase)
-    if ready:
-        if not db.read_artifact_sync(slug, "requirements"):
-            errors.append(f"{slug}: marked as Ready but missing requirements artifact")
-        if not db.read_artifact_sync(slug, "implementation-plan"):
-            errors.append(f"{slug}: marked as Ready but missing implementation-plan artifact")
-
-    return errors
-
-
-def validate_all_todos(project_root: Path) -> list[str]:
-    """Enumerate and validate all active todos from todos.db."""
-    db = get_todos_db_sync(str(project_root))
-    conn = db._sync_conn()
-    try:
-        rows = conn.execute(
-            "SELECT slug FROM roadmap WHERE status = 'active' ORDER BY position",  # guard: raw-sql
-        ).fetchall()
-    finally:
-        conn.close()
-
-    errors: list[str] = []
-    for (slug,) in rows:
-        errors.extend(validate_todo(slug, project_root))
     return errors

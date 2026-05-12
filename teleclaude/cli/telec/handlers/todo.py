@@ -31,7 +31,6 @@ from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
-from teleclaude.resource_validation import validate_all_todos, validate_todo
 from teleclaude.session_identity import get_session_id
 from teleclaude.todo_scaffold import create_draft_skeleton
 
@@ -47,7 +46,6 @@ __all__ = [
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
-    "_handle_todo_validate",
     "handle_mark_phase",
 ]
 
@@ -169,8 +167,6 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_design(args[1:])
     elif subcommand == "remove":
         _handle_todo_remove(args[1:])
-    elif subcommand == "validate":
-        _handle_todo_validate(args[1:])
     elif subcommand == "prepare":
         handle_todo_prepare(args[1:])
     elif subcommand == "work":
@@ -237,45 +233,6 @@ def _handle_todo_create(args: list[str]) -> None:
 def _handle_todo_design(args: list[str]) -> None:
     """Handle telec todo design [<slug>]."""
     handle_todo_design(args)
-
-
-def _handle_todo_validate(args: list[str]) -> None:
-    """Handle telec todo validate."""
-
-    slug: str | None = None
-    project_root = resolve_invocation_cwd()
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "validate"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed for validation.")
-                print(_usage("todo", "validate"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    errors = []
-    if slug:
-        errors = validate_todo(slug, project_root)
-    else:
-        errors = validate_all_todos(project_root)
-
-    if errors:
-        print("Todo validation failed:")
-        for error in errors:
-            print(f"  - {error}")
-        raise SystemExit(1)
-
-    if slug:
-        print(f"✓ Todo {slug} is valid")
-    else:
-        print("✓ All active todos are valid")
 
 
 def _handle_todo_dump(args: list[str]) -> None:
