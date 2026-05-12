@@ -47,8 +47,6 @@ def test_normalize_mark_phase_clears_downstream_stamps_but_keeps_artifact_histor
     assert state.artifacts.implementation_plan.produced_at == ""
     assert state.test_spec_review.verdict == ""
     assert state.plan_review.verdict == ""
-    assert state.dor is not None
-    assert state.dor.status == "needs_work"
     assert state.grounding.valid is False
     assert state.build_review.verdict == ""
     assert state.finalize.status == "pending"

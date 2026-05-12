@@ -58,7 +58,7 @@ from teleclaude.core.next_machine.state_mutation import (
 )
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.project_root import resolve_state_root
-from teleclaude.types.todos import ArtifactEntry, BreakdownState, DorState, FinalizeModel, TodoState
+from teleclaude.types.todos import ArtifactEntry, BreakdownState, FinalizeModel, TodoState
 
 logger = get_logger(__name__)
 
@@ -711,14 +711,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     now_iso = datetime.now(UTC).isoformat()
     writer = StateWriter(state)
-    if kind != "bug":
-        writer.state.dor = DorState(
-            last_assessed_at=now_iso,
-            score=8,
-            status="pass",
-            schema_version=1,
-            blockers=[],
-        )
 
     review_mgr = ReviewManager(writer)
     if kind in ("prepped", "bug"):

@@ -32,7 +32,7 @@ LifecyclePhaseValue = Literal[
 
 
 class DorActions(BaseModel):
-    """Actions taken during DOR assessment."""
+    """Legacy-bridge: actions field from old DOR-format state files. Read-only for upcycle."""
 
     model_config = ConfigDict(extra="allow")
     requirements_updated: bool = False
@@ -40,11 +40,17 @@ class DorActions(BaseModel):
 
 
 class DorState(BaseModel):
-    """Definition of Ready (DOR) assessment state."""
+    """Legacy-bridge: DOR field from old-format state files.
+
+    The original Definition-of-Ready scoring system was never implemented — no
+    code scores. This struct is retained solely so the legacy import and upcycle
+    paths can read `status` as a phase-derivation hint when transforming pre-DB
+    project state into the current model.
+    """
 
     last_assessed_at: str | None = None
     score: int = 0
-    status: str = "needs_work"  # pass, needs_work, needs_decision
+    status: str = "needs_work"  # legacy values: pass, needs_work, needs_decision
     schema_version: int = 1
     blockers: list[str] = Field(default_factory=list)
     actions_taken: DorActions | list[str] = Field(default_factory=DorActions)
@@ -227,7 +233,7 @@ class TodoState(BaseModel):
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
     grounding: GroundingState = Field(default_factory=GroundingState)
-    dor: DorState | None = None
+    dor: DorState | None = None  # legacy-bridge; populated only by import/upcycle of old state
     prepare_pair: PreparePair | None = None
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)

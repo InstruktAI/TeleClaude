@@ -231,6 +231,8 @@ def _reset_finalize(model: TodoState) -> None:
 
 
 def _reset_dor(model: TodoState) -> None:
+    """Legacy-bridge reset: clears the dor field after a phase rewind so the
+    upcycle phase-derivation hint cannot resurrect a stale 'pass' status."""
     if model.dor is None:
         return
     model.dor.last_assessed_at = None
@@ -253,7 +255,6 @@ def _reset_after_requirements(model: TodoState) -> None:
     _clear_prepare_review(model.test_spec_review)
     model.artifacts.implementation_plan.produced_at = ""
     _clear_prepare_review(model.plan_review)
-    _reset_dor(model)
     _reset_grounding(model)
     _clear_build_review(model)
     _reset_finalize(model)
@@ -266,7 +267,6 @@ def _reset_after_test_specs(model: TodoState) -> None:
     _clear_prepare_review(model.test_spec_review)
     model.artifacts.implementation_plan.produced_at = ""
     _clear_prepare_review(model.plan_review)
-    _reset_dor(model)
     _reset_grounding(model)
     _clear_build_review(model)
     _reset_finalize(model)
@@ -277,7 +277,6 @@ def _reset_after_test_specs(model: TodoState) -> None:
 def _reset_after_plan(model: TodoState) -> None:
     model.artifacts.implementation_plan.produced_at = ""
     _clear_prepare_review(model.plan_review)
-    _reset_dor(model)
     _reset_grounding(model)
     _clear_build_review(model)
     _reset_finalize(model)
@@ -286,7 +285,6 @@ def _reset_after_plan(model: TodoState) -> None:
 
 
 def _reset_after_gate(model: TodoState) -> None:
-    _reset_dor(model)
     _reset_grounding(model)
     _clear_build_review(model)
     _reset_finalize(model)
