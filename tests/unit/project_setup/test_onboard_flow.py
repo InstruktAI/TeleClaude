@@ -204,7 +204,7 @@ def test_run_onboard_dispatches_assess_and_analyze_after_init(tmp_path: Path, mo
 def test_active_session_for_command_matches_open_session_with_matching_title(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    payload = [
+    payload: list[_SessionEntry] = [
         {
             "project_path": str(tmp_path),
             "title": "/projects-analyze running",
@@ -214,11 +214,11 @@ def test_active_session_for_command_matches_open_session_with_matching_title(
     _calls, fake_run = _make_subprocess_recorder(list_sessions_payload=payload)
     monkeypatch.setattr(onboard_flow.subprocess, "run", fake_run)
 
-    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is True
+    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is onboard_flow.DedupState.ACTIVE
 
 
 def test_active_session_for_command_ignores_closed_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    payload = [
+    payload: list[_SessionEntry] = [
         {
             "project_path": str(tmp_path),
             "title": "/projects-analyze finished",
@@ -228,11 +228,11 @@ def test_active_session_for_command_ignores_closed_sessions(tmp_path: Path, monk
     _calls, fake_run = _make_subprocess_recorder(list_sessions_payload=payload)
     monkeypatch.setattr(onboard_flow.subprocess, "run", fake_run)
 
-    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is False
+    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is onboard_flow.DedupState.INACTIVE
 
 
 def test_active_session_for_command_ignores_different_project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    payload = [
+    payload: list[_SessionEntry] = [
         {
             "project_path": "/some/other/project",
             "title": "/projects-analyze running",
@@ -242,4 +242,49 @@ def test_active_session_for_command_ignores_different_project(tmp_path: Path, mo
     _calls, fake_run = _make_subprocess_recorder(list_sessions_payload=payload)
     monkeypatch.setattr(onboard_flow.subprocess, "run", fake_run)
 
-    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is False
+    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is onboard_flow.DedupState.INACTIVE
+
+
+def test_active_session_for_command_returns_unknown_on_lookup_timeout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Lookup failure must surface as UNKNOWN so callers fail closed."""
+
+    def raising_run(cmd: list[str], *_args: object, **_kwargs: object) -> _CompletedProcess:
+        raise subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+
+    monkeypatch.setattr(onboard_flow.subprocess, "run", raising_run)
+
+    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is onboard_flow.DedupState.UNKNOWN
+
+
+def test_active_session_for_command_returns_unknown_on_invalid_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def garbled_run(cmd: list[str], *_args: object, **_kwargs: object) -> _CompletedProcess:
+        _ = cmd
+        return _CompletedProcess(returncode=0, stdout="not json")
+
+    monkeypatch.setattr(onboard_flow.subprocess, "run", garbled_run)
+
+    assert onboard_flow._active_session_for_command(tmp_path, "/projects-analyze") is onboard_flow.DedupState.UNKNOWN
+
+
+def test_dispatch_refuses_when_dedup_state_is_unknown(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Critical safety: an UNKNOWN dedup state must NOT dispatch.
+
+    Treating unknown as inactive would spawn duplicate long-running sessions
+    when the daemon is briefly unreachable. Fail closed.
+    """
+    dispatch_calls: list[list[str]] = []
+
+    def watcher_run(cmd: list[str], *_args: object, **_kwargs: object) -> _CompletedProcess:
+        if "list" in cmd and "sessions" in cmd:
+            raise subprocess.TimeoutExpired(cmd=cmd, timeout=1)
+        dispatch_calls.append(list(cmd))
+        return _CompletedProcess(returncode=0)
+
+    monkeypatch.setattr(onboard_flow.subprocess, "run", watcher_run)
+
+    assert onboard_flow.run_analyze(tmp_path) is False
+    assert dispatch_calls == [], "run_analyze must not dispatch on UNKNOWN dedup state"

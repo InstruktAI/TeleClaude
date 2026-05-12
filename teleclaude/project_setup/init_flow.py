@@ -291,11 +291,15 @@ def _ensure_project_slug(project_root: Path) -> None:
 
 
 def init_project(project_root: Path) -> None:
-    """Initialize a project for TeleClaude.
+    """Initialize a project for TeleClaude — plumbing only.
 
-    Configures agent CLIs, git filters, pre-commit hooks, syncs artifacts, and
-    registers the project root. Optionally runs AI-driven project analysis to
-    generate doc snippets that make the codebase legible to AI.
+    Configures agent CLIs, git filters, pre-commit hooks, syncs artifacts,
+    registers the project root, and prompts for release-channel enrollment.
+    Idempotent and CI-safe; spawns no agent sessions.
+
+    AI-driven project analysis and quality-config assessment live in
+    ``teleclaude.project_setup.onboard_flow`` and are invoked via the
+    ``telec projects {onboard,analyze,assess}`` commands.
     """
     configure_agent_cli()
     ensure_git_repo(project_root)

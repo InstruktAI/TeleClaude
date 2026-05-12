@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -236,15 +237,41 @@ class TestDetectAndSetLanguages:
         assert "typescript" in config.get("languages", [])
 
 
-def test_init_flow_does_not_dispatch_agent_sessions() -> None:
-    """Structural guard: init_flow must not own AI-enrichment dispatch.
+def test_init_project_does_not_spawn_subprocesses(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Behavioral guard: a complete ``init_project`` run must not shell out.
 
-    The dispatcher lives in onboard_flow. Reintroducing subprocess into
-    init_flow, or referencing the agent slash commands here, would re-couple
-    plumbing to long-running agent sessions — the regression this refactor
-    prevents.
+    With every plumbing helper stubbed, the only way a ``subprocess.run`` call
+    would reach this spy is if init_project itself dispatched an agent session
+    (the regression this refactor prevents). The AI-enrichment dispatchers
+    live in ``onboard_flow`` and are not entered through ``init_project``.
     """
-    source = Path(init_flow.__file__).read_text(encoding="utf-8")
-    assert "import subprocess" not in source
-    assert "/projects-analyze" not in source
-    assert "/projects-assess-config" not in source
+    spy_calls: list[list[str]] = []
+
+    def spying_run(cmd: list[str], *_args: object, **_kwargs: object) -> SimpleNamespace:
+        spy_calls.append(list(cmd))
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    project_root = tmp_path / "spied"
+    project_root.mkdir()
+    (project_root / "teleclaude.yml").write_text("project_name: Spied\n", encoding="utf-8")
+
+    manifest_path = tmp_path / "state" / "projects.yaml"
+
+    # Stub every plumbing helper so we observe init_project's own behavior in isolation.
+    monkeypatch.setattr(init_flow, "configure_agent_cli", lambda: None)
+    monkeypatch.setattr(init_flow, "ensure_git_repo", lambda _p: None)
+    monkeypatch.setattr(init_flow, "ensure_hooks_path", lambda _p: None)
+    monkeypatch.setattr(init_flow, "setup_git_filters", lambda _p: None)
+    monkeypatch.setattr(init_flow, "update_gitattributes", lambda _p: None)
+    monkeypatch.setattr(init_flow, "install_precommit_hook", lambda _p: None)
+    monkeypatch.setattr(init_flow, "sync_project_artifacts", lambda _p: None)
+    monkeypatch.setattr(init_flow, "is_macos", lambda: False)
+    monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
+    monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
+    monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
+    # Spy on the subprocess module itself — any leaked shell-out will be captured.
+    monkeypatch.setattr(subprocess, "run", spying_run)
+
+    init_flow.init_project(project_root)
+
+    assert spy_calls == [], f"init_project leaked subprocess calls: {spy_calls}"

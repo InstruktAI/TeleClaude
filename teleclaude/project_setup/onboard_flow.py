@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from enum import Enum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -31,27 +32,53 @@ _DISPATCH_TIMEOUT_S = 300
 _LIST_TIMEOUT_S = 10
 
 
-def _active_session_for_command(project_root: Path, command_slug: str) -> bool:
-    """True when an open session is already running ``command_slug`` for ``project_root``.
+class DedupState(Enum):
+    """Result of a dedup lookup against the daemon's session list.
 
-    Prevents double-dispatch when the user re-runs ``telec projects onboard``
-    while a previous run is still in flight. Match contract: same project_path
-    AND title starts with the slash command AND lifecycle is not closed.
+    ``UNKNOWN`` distinguishes lookup failure (timeout, OS error, bad JSON,
+    non-zero exit) from a confirmed absence of a matching open session. Callers
+    must refuse to dispatch when the state is ``UNKNOWN`` rather than treat it
+    as ``INACTIVE`` — silent degradation here would spawn duplicate long-running
+    sessions.
     """
+
+    INACTIVE = "inactive"
+    ACTIVE = "active"
+    UNKNOWN = "unknown"
+
+
+def _active_session_for_command(project_root: Path, command_slug: str) -> DedupState:
+    """Probe the daemon for an open session running ``command_slug`` for ``project_root``.
+
+    Match contract: same project_path AND title starts with the slash command
+    AND lifecycle is not closed. Lookup failure surfaces as ``UNKNOWN`` so the
+    caller can fail closed instead of dispatching blind.
+    """
+    # subprocess justification: the TeleClaude HTTP API client (TelecAPIClient)
+    # is async-only; this dispatcher runs in a sync codepath that is also entered
+    # from CLI/init contexts where bringing up an asyncio loop just to enumerate
+    # sessions adds complexity without value. Shelling to the same daemon via
+    # `telec sessions list` routes through the same identity gate as native callers.
     cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sessions", "list"]
     try:
         result = subprocess.run(cmd, check=False, timeout=_LIST_TIMEOUT_S, capture_output=True, text=True)
     except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Could not query sessions for dedup check: %s", exc)
-        return False
+        logger.warning("Dedup lookup failed (%s); treating state as UNKNOWN", exc)
+        return DedupState.UNKNOWN
     if result.returncode != 0:
-        return False
+        logger.warning("Dedup lookup returned rc=%d; treating state as UNKNOWN", result.returncode)
+        return DedupState.UNKNOWN
     try:
         sessions = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return False
+    except json.JSONDecodeError as exc:
+        logger.warning("Dedup lookup produced invalid JSON (%s); treating state as UNKNOWN", exc)
+        return DedupState.UNKNOWN
+    if not isinstance(sessions, list):
+        logger.warning("Dedup lookup payload not a list; treating state as UNKNOWN")
+        return DedupState.UNKNOWN
+
     target_path = str(project_root)
-    for entry in sessions if isinstance(sessions, list) else []:
+    for entry in sessions:
         if not isinstance(entry, dict):
             continue
         if entry.get("project_path") != target_path:
@@ -61,20 +88,32 @@ def _active_session_for_command(project_root: Path, command_slug: str) -> bool:
             continue
         if entry.get("closed_at"):
             continue
-        return True
-    return False
+        return DedupState.ACTIVE
+    return DedupState.INACTIVE
 
 
 def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool:
     """Spawn a TeleClaude agent session running ``command_slug``.
 
-    Returns True if the dispatch succeeded, False on skip (dedup), bad return
-    code, timeout, or OS-level failure.
+    Returns True on confirmed dispatch. Returns False on skip (active session
+    already running), unknown dedup state (fail closed — never dispatch blind),
+    bad return code, timeout, or OS-level failure.
     """
-    if _active_session_for_command(project_root, command_slug):
+    state = _active_session_for_command(project_root, command_slug)
+    if state is DedupState.ACTIVE:
         print(f"Skipping {label}: a {command_slug} session is already running for this project.")
         return False
+    if state is DedupState.UNKNOWN:
+        print(
+            f"Skipping {label}: could not verify whether a {command_slug} session is already running. "
+            f"Investigate the daemon, then retry with:"
+        )
+        print(f"  telec sessions run --command {command_slug} --project {project_root}")
+        return False
 
+    # subprocess justification: same as the dedup lookup — the TeleClaude HTTP
+    # API client is async-only and this dispatcher runs in a sync codepath. The
+    # CLI subprocess routes through the same daemon API as the native client.
     cmd = [
         sys.executable,
         "-m",
