@@ -85,11 +85,14 @@ fi
 exit $_rc
 """
 
-# Check command that detects hardcoded HOME paths in staged .md files
+# Check command that detects hardcoded HOME paths in staged .md files.
+# Matches both `@`-prefixed and bare HOME forms (`/Users/<user>/.teleclaude`
+# or `/home/<user>/.teleclaude`) so the smudge filter's expansion can't slip
+# through commits regardless of whether the doc uses the `@` marker.
 PRECOMMIT_CHECK = (
     "git diff --cached --name-only --diff-filter=ACM | "
     "grep '\\.md$' | "
-    'xargs -r grep -l "@/Users/\\|@/home/" && '
+    'xargs -r grep -lE "(@?)(/Users/[^/[:space:]]+|/home/[^/[:space:]]+)/\\.teleclaude" && '
     "echo \"ERROR: Hardcoded HOME paths found in docs. Run 'telec projects init' to set up filters.\" && "
     "exit 1 || true"
 )
