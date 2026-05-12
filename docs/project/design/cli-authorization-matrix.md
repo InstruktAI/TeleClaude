@@ -78,7 +78,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command         | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                    |
 | --------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `telec init`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
+| `telec projects init`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
 | `telec version` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                              |
 | `telec sync`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync.                                  |
 
@@ -194,7 +194,7 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
 | `telec sessions widget`       | Newcomers, customers                        |
-| `telec init`                  | Contributors, newcomers, customers          |
+| `telec projects init`                  | Contributors, newcomers, customers          |
 | `telec sync`                  | Contributors, newcomers, customers          |
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo design`           | Contributors, newcomers, customers          |

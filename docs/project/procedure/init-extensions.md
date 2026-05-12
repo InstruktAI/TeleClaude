@@ -10,12 +10,12 @@ description: 'TeleClaude-specific init extensions — help desk bootstrap and ma
 
 ## Goal
 
-Document the `telec init` steps that apply only to the TeleClaude project itself,
+Document the `telec projects init` steps that apply only to the TeleClaude project itself,
 beyond the universal project initialization pipeline.
 
 ## Preconditions
 
-- Running `telec init` from the TeleClaude project root (detected by the presence
+- Running `telec projects init` from the TeleClaude project root (detected by the presence
   of `teleclaude/project_setup/init_flow.py`).
 - For macOS steps: running on macOS (`sys.platform == "darwin"`).
 
@@ -29,7 +29,7 @@ help desk workspace. The help desk directory is resolved from
 (`../help-desk` relative to the TeleClaude project root).
 
 Idempotent — skips if the directory already exists. Copies templates and
-re-runs `telec init` within the help desk project to bootstrap its own
+re-runs `telec projects init` within the help desk project to bootstrap its own
 plumbing.
 
 Source: `teleclaude/project_setup/help_desk_bootstrap.py:bootstrap_help_desk()`
@@ -74,7 +74,7 @@ Source: `teleclaude/project_setup/macos_setup.py:run_permissions_probe()`
 
 ## Recovery
 
-- All steps are idempotent. Re-running `telec init` repeats the probe safely.
+- All steps are idempotent. Re-running `telec projects init` repeats the probe safely.
 - If the help desk bootstrap fails, the main init continues unaffected.
 - Permission denials require manual System Settings changes; re-running init
   after granting access will show a passing probe.

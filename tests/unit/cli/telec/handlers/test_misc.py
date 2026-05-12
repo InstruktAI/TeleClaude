@@ -38,6 +38,40 @@ def test_handle_sync_forwards_warn_and_validate_flags(monkeypatch: pytest.Monkey
     assert calls and calls[0][1:] == (True, True)
 
 
+def test_handle_projects_init_invokes_init_project(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`telec projects init` must dispatch through init_project — not the old top-level path."""
+    _ = tmp_path
+    captured: list[object] = []
+    monkeypatch.setattr(misc, "init_project", lambda root: captured.append(root))
+    monkeypatch.setattr(misc, "resolve_invocation_cwd", lambda: "/fake/cwd")
+
+    misc._handle_projects(["init"])
+
+    assert captured == ["/fake/cwd"]
+
+
+def test_handle_projects_rejects_unknown_subcommand(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The handler must reject unrecognized subcommands rather than fall through to init."""
+    monkeypatch.setattr(misc, "init_project", lambda _r: pytest.fail("init_project should not run"))
+    monkeypatch.setattr(misc, "resolve_invocation_cwd", lambda: "/fake/cwd")
+
+    with pytest.raises(SystemExit):
+        misc._handle_projects(["nonexistent"])
+
+
+def test_telec_command_enum_does_not_expose_top_level_init() -> None:
+    """Regression guard: the TelecCommand enum must not advertise a top-level `init`.
+
+    `init` lives under `telec projects init` after the rename. A stray INIT
+    entry would re-expose the old verb via the dispatcher's enum lookup.
+    """
+    surface_types = importlib.import_module("teleclaude.cli.telec.surface_types")
+    enum_values = {member.value for member in surface_types.TelecCommand}
+    assert "init" not in enum_values
+
+
 def test_handle_revive_parses_attach_and_agent(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, bool, str | None]] = []
 

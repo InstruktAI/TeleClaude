@@ -81,7 +81,7 @@ The help desk is a standalone git repository, separate from the TeleClaude codeb
 └── outcomes/                             # gitignored — extracted actionable items
 ```
 
-The `docs/global/organization/` directory follows the standard global-docs convention: `telec init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
+The `docs/global/organization/` directory follows the standard global-docs convention: `telec projects init` symlinks it to `~/.teleclaude/docs/organization/`, making org-level documentation visible across all projects on the machine (same mechanism TeleClaude uses for `general/` and `software-development/`).
 
 The `docs/project/` directory holds help-desk-specific documentation — escalation rules, support SLAs, procedures — scoped to this project only. The escalation tool spec, policy, and procedure live here and are referenced by the operator brain artifact via `## Required reads`.
 
@@ -104,13 +104,13 @@ A new `organization` domain sits alongside `general` and `software-development` 
 └── organization/           # NEW: org product docs, policies, FAQ — visible everywhere
 ```
 
-The help desk project owns this domain via `docs/global/organization/`. When `telec init` runs inside the help desk project, it symlinks `docs/global/organization/` to `~/.teleclaude/docs/organization/`, making org knowledge available to every project on the machine.
+The help desk project owns this domain via `docs/global/organization/`. When `telec projects init` runs inside the help desk project, it symlinks `docs/global/organization/` to `~/.teleclaude/docs/organization/`, making org knowledge available to every project on the machine.
 
 Doc snippets in this domain follow the standard taxonomy (spec, policy, procedure, etc.) with standard frontmatter. The `audience` tag controls who sees what — org docs tagged `help-desk` are visible to the operator, those tagged `public` could be surfaced directly to customers in the future.
 
 ### Help Desk Bootstrap Routine
 
-An idempotent routine scaffolds the help desk workspace when it does not exist. It runs as part of `make init` / `telec init` in the TeleClaude project.
+An idempotent routine scaffolds the help desk workspace when it does not exist. It runs as part of `make init` / `telec projects init` in the TeleClaude project.
 
 **Default location:** Sibling of the TeleClaude project. If TeleClaude lives at `/path/to/TeleClaude`, the default help desk path is `/path/to/help-desk`. Configurable via `help_desk_dir` in computer config.
 
@@ -120,7 +120,7 @@ An idempotent routine scaffolds the help desk workspace when it does not exist. 
 2. If the directory already exists — skip (idempotent).
 3. Create the directory structure from `templates/help-desk/` in the TeleClaude repo.
 4. Run `git init` inside the new directory.
-5. Run `telec init` inside the new directory — installs agent hooks, git filters, pre-commit hook, syncs artifacts, registers the project root, and creates `docs/index.yaml`.
+5. Run `telec projects init` inside the new directory — installs agent hooks, git filters, pre-commit hook, syncs artifacts, registers the project root, and creates `docs/index.yaml`.
 6. Create an initial git commit with the skeleton.
 
 **Template contents** (`templates/help-desk/` in TeleClaude repo):
@@ -728,7 +728,7 @@ The operator brain defines the agent's persona, capabilities, and autonomous rou
 
 ```mermaid
 flowchart TD
-    BOOT[Help desk bootstrap<br/>Scaffold + telec init] --> J[Operator workspace<br/>Standalone repo with docs]
+    BOOT[Help desk bootstrap<br/>Scaffold + telec projects init] --> J[Operator workspace<br/>Standalone repo with docs]
     BOOT --> ORG[Organization doc domain<br/>docs/global/organization/]
 
     A[Identity-scoped memory<br/>Add identity_key to DB + API] --> E[Memory extraction job<br/>Incremental transcript processing]
@@ -892,7 +892,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant User
-    participant Init as make init / telec init
+    participant Init as make init / telec projects init
     participant FS as Filesystem
     participant Git as git
 
@@ -903,7 +903,7 @@ sequenceDiagram
     else Does not exist
         Init->>FS: Copy templates/help-desk/ to help_desk_dir
         Init->>Git: git init
-        Init->>Init: telec init (hooks, filters, sync, registration)
+        Init->>Init: telec projects init (hooks, filters, sync, registration)
         Init->>Git: Initial commit
     end
 ```

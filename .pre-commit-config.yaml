@@ -41,7 +41,7 @@ repos:
     name: Check for hardcoded HOME paths in docs
     entry: bash -c
     args:
-    - 'files=$(git diff --cached --name-only --diff-filter=ACM -- "*.md"); matches=""; for f in $files; do git show ":$f" | grep -q "@/Users/|@/home/" && matches="$matches $f"; done; if [ -n "$matches" ]; then printf "%s\n" "$matches"; echo "ERROR: Hardcoded HOME paths found in docs. Run ''telec init'' to set up filters."; exit 1; fi'
+    - 'files=$(git diff --cached --name-only --diff-filter=ACM -- "*.md"); matches=""; for f in $files; do git show ":$f" | grep -q "@/Users/|@/home/" && matches="$matches $f"; done; if [ -n "$matches" ]; then printf "%s\n" "$matches"; echo "ERROR: Hardcoded HOME paths found in docs. Run ''telec projects init'' to set up filters."; exit 1; fi'
     language: system
     files: \.md$
     pass_filenames: false
