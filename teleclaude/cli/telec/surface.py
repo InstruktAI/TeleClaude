@@ -274,13 +274,32 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "projects": CommandDef(
-        desc="Manage project inventory",
+        desc="Manage project inventory and onboarding",
         subcommands={
             "list": CommandDef(
                 desc="List projects on local and remote computers",
                 args="[--computer <host>]",
                 flags=[_H, Flag("--computer", "-c", "Filter to a specific computer")],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
+            ),
+            "onboard": CommandDef(
+                desc="Full project bootstrap: init plumbing, then dispatch config assessment and doc-snippet analysis",
+                flags=[_H],
+                notes=[
+                    "Runs `telec init` synchronously, then dispatches `telec projects assess` and `telec projects analyze`.",
+                    "AI sessions run concurrently in tmux after dispatch — monitor via `telec sessions list`.",
+                ],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "analyze": CommandDef(
+                desc="Generate project doc snippets via AI analysis",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
+            "assess": CommandDef(
+                desc="Assess project quality tool configuration against blessed templates",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
         },
     ),
@@ -334,11 +353,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "init": CommandDef(
-        desc="Initialize project plumbing, sync artifacts, and optionally enrich docs",
+        desc="Initialize project plumbing and sync artifacts",
         notes=[
             "Sets up git hooks, syncs artifacts, and registers the project root.",
-            "Optionally runs AI-driven project analysis to generate doc snippets.",
-            "First init offers enrichment; re-init offers refresh of existing analysis.",
             "Prompts for release-channel enrollment (alpha/beta/stable).",
         ],
         auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),

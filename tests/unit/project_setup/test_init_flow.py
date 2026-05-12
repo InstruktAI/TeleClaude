@@ -70,7 +70,6 @@ def test_init_project_writes_project_slug_and_registers_root(tmp_path: Path, mon
     monkeypatch.setattr(init_flow, "sync_project_artifacts", lambda _p: None)
     monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
-    monkeypatch.setattr(init_flow, "_offer_enrichment", lambda _p: None)
     # seed_event_domains is imported lazily; patch at source.
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
 
@@ -123,7 +122,6 @@ def test_init_project_writes_project_slug_for_fresh_project(tmp_path: Path, monk
     monkeypatch.setattr(init_flow, "sync_project_artifacts", fake_sync_project_artifacts)
     monkeypatch.setattr(init_flow, "is_macos", lambda: False)
     monkeypatch.setattr(init_flow, "_prompt_release_channel", lambda _p: None)
-    monkeypatch.setattr(init_flow, "_offer_enrichment", lambda _p: None)
     monkeypatch.setattr(domain_seeds, "seed_event_domains", lambda _p: None)
 
     monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
@@ -238,45 +236,15 @@ class TestDetectAndSetLanguages:
         assert "typescript" in config.get("languages", [])
 
 
-def test_offer_enrichment_launches_refresh_for_reinitialized_projects(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    launches: list[object] = []
+def test_init_flow_does_not_dispatch_agent_sessions() -> None:
+    """Structural guard: init_flow must not own AI-enrichment dispatch.
 
-    def has_generated_snippets(project_root: Path) -> bool:
-        _ = project_root
-        return True
-
-    def prompt_yes_no(prompt: str) -> bool:
-        _ = prompt
-        return True
-
-    def launch_enrichment(project_root: Path) -> None:
-        launches.append(project_root)
-
-    monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: True))
-    monkeypatch.setattr(init_flow, "_has_generated_snippets", has_generated_snippets)
-    monkeypatch.setattr(init_flow, "_prompt_yes_no", prompt_yes_no)
-    monkeypatch.setattr(init_flow, "_launch_enrichment", launch_enrichment)
-    monkeypatch.setattr(init_flow, "_launch_config_assessment", lambda _p: None)
-
-    init_flow._offer_enrichment(tmp_path)
-
-    assert launches == [tmp_path]
-
-
-def test_offer_enrichment_launches_both_sessions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """When user approves enrichment, both doc snippets and config assessment sessions launch."""
-    enrichment_launches: list[Path] = []
-    assessment_launches: list[Path] = []
-
-    monkeypatch.setattr(init_flow.sys, "stdin", SimpleNamespace(isatty=lambda: True))
-    monkeypatch.setattr(init_flow, "_has_generated_snippets", lambda _p: False)
-    monkeypatch.setattr(init_flow, "_prompt_yes_no", lambda _prompt: True)
-    monkeypatch.setattr(init_flow, "_launch_enrichment", enrichment_launches.append)
-    monkeypatch.setattr(init_flow, "_launch_config_assessment", assessment_launches.append)
-
-    init_flow._offer_enrichment(tmp_path)
-
-    assert enrichment_launches == [tmp_path], "Enrichment session not launched"
-    assert assessment_launches == [tmp_path], "Config assessment session not launched"
+    The dispatcher lives in onboard_flow. Reintroducing subprocess into
+    init_flow, or referencing the agent slash commands here, would re-couple
+    plumbing to long-running agent sessions — the regression this refactor
+    prevents.
+    """
+    source = Path(init_flow.__file__).read_text(encoding="utf-8")
+    assert "import subprocess" not in source
+    assert "/projects-analyze" not in source
+    assert "/projects-assess-config" not in source

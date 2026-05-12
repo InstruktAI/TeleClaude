@@ -5,7 +5,6 @@ from __future__ import annotations
 import io
 import json
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -18,7 +17,6 @@ from teleclaude.git import Repo
 from teleclaude.install.configure_agent_cli import main as configure_agent_cli
 from teleclaude.project_manifest import register_root
 from teleclaude.project_setup.domain_seeds import seed_event_domains
-from teleclaude.project_setup.enrichment import read_existing_snippets
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
@@ -38,11 +36,6 @@ def _is_teleclaude_project(project_root: Path) -> bool:
     """Check if this is the TeleClaude project itself (not a user project)."""
     marker = project_root / "teleclaude" / "project_setup" / "init_flow.py"
     return marker.exists()
-
-
-def _has_generated_snippets(project_root: Path) -> bool:
-    """Check whether the project already has telec-init generated snippets."""
-    return bool(read_existing_snippets(project_root))
 
 
 def _prompt_yes_no(prompt: str, *, default: bool = True) -> bool:
@@ -244,152 +237,6 @@ def _prompt_release_channel(project_root: Path) -> None:
     print(f"  Release channel set to '{choice}'.")
 
 
-def _active_session_for_command(project_root: Path, command_slug: str) -> bool:
-    """True when an open session is already running ``command_slug`` against ``project_root``.
-
-    Hits the daemon's ``GET /sessions`` via the CLI so a re-run of ``telec init``
-    while a previous analysis is still working doesn't double-launch and doesn't
-    interrupt the live one — we let it complete and skip.
-
-    Match contract: same project_path AND title starts with the slash command
-    AND lifecycle is not closed.
-    """
-    cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sessions", "list"]
-    try:
-        result = subprocess.run(cmd, check=False, timeout=10, capture_output=True, text=True)
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.debug("Could not query sessions for dedup check: %s", exc)
-        return False
-    if result.returncode != 0:
-        return False
-    try:
-        sessions = json.loads(result.stdout)
-    except json.JSONDecodeError:
-        return False
-    target_path = str(project_root)
-    for entry in sessions if isinstance(sessions, list) else []:
-        if not isinstance(entry, dict):
-            continue
-        if entry.get("project_path") != target_path:
-            continue
-        title = entry.get("title") or ""
-        if not isinstance(title, str) or not title.startswith(command_slug):
-            continue
-        if entry.get("closed_at"):
-            continue
-        return True
-    return False
-
-
-def _launch_enrichment(project_root: Path) -> bool:
-    """Launch the telec-init-analyze session for project enrichment.
-
-    Returns True when a session was launched (or already passed the dedup
-    point and entered the launch attempt), False when skipped because one
-    is already running.
-    """
-    if _active_session_for_command(project_root, "/telec-init-analyze"):
-        print("Skipping enrichment: a /telec-init-analyze session is already running for this project.")
-        return False
-    print("\nStarting project analysis...")
-    cmd = [
-        sys.executable,
-        "-m",
-        "teleclaude.cli.telec",
-        "sessions",
-        "run",
-        "--command",
-        "/telec-init-analyze",
-        "--project",
-        str(project_root),
-    ]
-    try:
-        result = subprocess.run(cmd, check=False, timeout=300, capture_output=True, text=True)
-        if not result.returncode:
-            print("Enrichment session started. Analysis will produce project doc snippets.")
-            return True
-        logger.warning("Enrichment session failed (rc=%d): %s", result.returncode, result.stderr.strip())
-        print("Enrichment session could not be started. You can run it later with:")
-        print(f"  telec sessions run --command /telec-init-analyze --project {project_root}")
-    except subprocess.TimeoutExpired:
-        logger.warning("Enrichment session timed out after 300s")
-        print("Enrichment session timed out. You can retry with:")
-        print(f"  telec sessions run --command /telec-init-analyze --project {project_root}")
-    except OSError as exc:
-        logger.warning("Could not launch enrichment session: %s", exc)
-        print("Could not launch enrichment session. You can run it manually with:")
-        print(f"  telec sessions run --command /telec-init-analyze --project {project_root}")
-    return False
-
-
-def _launch_config_assessment(project_root: Path) -> bool:
-    """Launch the telec-init-assess-config session.
-
-    Returns True when launched, False when skipped (already running) or failed.
-    """
-    if _active_session_for_command(project_root, "/telec-init-assess-config"):
-        print("Skipping config assessment: a /telec-init-assess-config session is already running for this project.")
-        return False
-    cmd = [
-        sys.executable,
-        "-m",
-        "teleclaude.cli.telec",
-        "sessions",
-        "run",
-        "--command",
-        "/telec-init-assess-config",
-        "--project",
-        str(project_root),
-    ]
-    try:
-        result = subprocess.run(cmd, check=False, timeout=300, capture_output=True, text=True)
-        if result.returncode:
-            logger.warning("Config assessment session failed (rc=%d): %s", result.returncode, result.stderr.strip())
-            return False
-        return True
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.warning("Could not launch config assessment session: %s", exc)
-        return False
-
-
-def _offer_enrichment(project_root: Path) -> None:
-    """Run intelligent enrichment (analyze + assess-config).
-
-    The intelligence agents run as their own TeleClaude sessions in tmux —
-    they don't need a TTY on the calling process. We launch them by default
-    and use the TTY only for an optional confirmation prompt:
-
-    - TTY available: ask before launching (allows opt-out and avoids
-      surprising an interactive operator with two extra sessions).
-    - No TTY (CI, automation, agent shells, hooks): launch unconditionally
-      so non-interactive callers also benefit from the assessment.
-    """
-    is_reinit = _has_generated_snippets(project_root)
-
-    if sys.stdin.isatty():
-        prompt = "\nRefresh project analysis?" if is_reinit else "\nRun project analysis?"
-        if not _prompt_yes_no(prompt):
-            msg = (
-                "Skipping enrichment refresh."
-                if is_reinit
-                else "Skipping enrichment. You can run it later with: telec init"
-            )
-            print(msg)
-            return
-
-    enrichment_started = _launch_enrichment(project_root)
-    assessment_started = _launch_config_assessment(project_root)
-    started: list[str] = []
-    if enrichment_started:
-        started.append("Doc snippets (telec-init-analyze)")
-    if assessment_started:
-        started.append("Config assessment (telec-init-assess-config)")
-    if started:
-        print("\nAnalysis sessions started:")
-        for line in started:
-            print(f"  - {line}")
-
-
 def _ensure_project_slug(project_root: Path) -> None:
     """Ensure ``teleclaude.yml`` carries a valid ``project_slug`` entry.
 
@@ -477,9 +324,6 @@ def init_project(project_root: Path) -> None:
 
     # Release channel enrollment
     _prompt_release_channel(project_root)
-
-    # Offer AI-driven project enrichment
-    _offer_enrichment(project_root)
 
     print("telec init complete.")
 

@@ -16,6 +16,7 @@ from teleclaude.cli.telec.help import _usage
 from teleclaude.constants import ENV_ENABLE
 from teleclaude.git import InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.project_root import resolve_invocation_cwd
+from teleclaude.project_setup.onboard_flow import run_analyze, run_assess, run_onboard
 
 __all__ = [
     "_attach_tmux_session",
@@ -239,6 +240,15 @@ def _handle_projects(args: list[str]) -> None:
     subcommand = args[0]
     if subcommand == "list":
         _handle_tool_command("handle_projects", args[1:])
+        return
+    if subcommand == "onboard":
+        run_onboard(resolve_invocation_cwd())
+        return
+    if subcommand == "analyze":
+        run_analyze(resolve_invocation_cwd())
+        return
+    if subcommand == "assess":
+        run_assess(resolve_invocation_cwd())
         return
     print(f"Unknown projects subcommand: {subcommand}")
     print(_usage("projects"))

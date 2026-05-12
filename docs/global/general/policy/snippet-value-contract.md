@@ -130,7 +130,7 @@ carries durable signal.
 Applies to all snippet authoring contexts:
 
 - Manual snippet authoring via `general/procedure/doc-snippet-authoring`.
-- Automated authoring during `/telec-init-analyze` via
+- Automated authoring during `/projects-analyze` via
   `software-development/procedure/project-analysis`.
 - Future authoring flows (company onboarding, scaffolding, manual updates).
 

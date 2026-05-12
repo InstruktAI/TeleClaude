@@ -4,6 +4,29 @@ All notable changes to TeleClaude are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- **`telec init`** is now plumbing-only. The AI-driven project enrichment (doc-snippet generation and quality-config assessment) previously dispatched automatically at the end of `init` has moved to a dedicated, user-invoked command group.
+
+### Added
+
+- **`telec projects onboard`** — full project bootstrap: runs `init` synchronously, then dispatches the config-assessment and doc-snippet-analysis agent sessions.
+- **`telec projects analyze`** — generate project doc snippets via AI analysis.
+- **`telec projects assess`** — assess project quality tool configuration against blessed templates.
+
+### Removed
+
+- The interactive enrichment prompt at the end of `telec init`. CI and non-TTY callers no longer have agent sessions spawned as a side effect of plumbing.
+
+### Renamed (slash commands and agent artifacts)
+
+- `/telec-init-analyze` → `/projects-analyze`
+- `/telec-init-assess-config` → `/projects-assess-config`
+
+Internal markers (`generated_by: telec-init` frontmatter, `.telec-init-meta.yaml` filename) are unchanged for backward compatibility with existing analyzed projects.
+
 ## [0.6.1] - 2026-04-18
 
 # Release Notes

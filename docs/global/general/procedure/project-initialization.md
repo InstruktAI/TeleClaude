@@ -3,7 +3,7 @@ id: 'general/procedure/project-initialization'
 type: 'procedure'
 domain: 'general'
 scope: 'global'
-description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel, and optional AI enrichment.'
+description: 'Complete telec init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel.'
 ---
 
 # Project Initialization — Procedure
@@ -11,14 +11,15 @@ description: 'Complete telec init pipeline — agent CLI configuration, git plum
 ## Goal
 
 Bootstrap a project for TeleClaude by installing agent infrastructure, configuring git
-plumbing, syncing artifacts, seeding event domains, registering the project root, and
-optionally generating AI-driven project documentation.
+plumbing, syncing artifacts, seeding event domains, and registering the project root.
+
+AI-driven project analysis and quality-config assessment are a separate, user-invoked
+step — see the project-onboarding procedure (`general/procedure/project-onboarding`).
 
 ## Preconditions
 
 - The project directory exists and contains source files (or is being initialized).
 - `telec` CLI is available and the daemon is running.
-- For enrichment: at least one agent is enabled and available for session dispatch.
 
 ## Steps
 
@@ -129,23 +130,6 @@ choice to `teleclaude.yml` under `deployment.channel`. Stable channel requires a
 
 Source: `teleclaude/project_setup/init_flow.py:_prompt_release_channel()`
 
-### 12. AI-driven project enrichment (interactive)
-
-Detects whether the project already has `telec-init` generated snippets:
-
-- **First init**: prompts "Run project analysis?"
-- **Re-init**: prompts "Refresh project analysis?"
-
-If accepted, launches a `/telec-init-analyze` session asynchronously via
-`telec sessions run`. The analysis session follows the project analysis procedure
-(`software-development/procedure/project-analysis`) and produces schema-valid doc
-snippets under `docs/project/` per the scaffolding spec
-(`software-development/spec/init-scaffolding`).
-
-Skipped in non-interactive mode.
-
-Source: `teleclaude/project_setup/init_flow.py:_offer_enrichment()`
-
 ## Outputs
 
 - Agent hooks and wrappers installed globally.
@@ -154,17 +138,15 @@ Source: `teleclaude/project_setup/init_flow.py:_offer_enrichment()`
 - Artifacts synced and indexes built.
 - Event domains seeded in global config (if not already populated).
 - Release channel persisted (interactive only).
-- Enrichment session dispatched (interactive only, if accepted).
 
 ## Recovery
 
 - `telec init` is idempotent. Re-running it is safe and will skip already-configured steps.
-- If enrichment dispatch fails, the user is shown a manual command to retry:
-  `telec sessions run --command /telec-init-analyze --project <root>`
 - If sync reports findings, the init still completes because this step runs `telec sync --warn-only`; the findings are reported for follow-up.
 
 ## See Also
 
+- ~/.teleclaude/docs/general/procedure/project-onboarding.md
 - ~/.teleclaude/docs/software-development/procedure/project-analysis.md
 - ~/.teleclaude/docs/software-development/spec/init-scaffolding.md
 - ~/.teleclaude/docs/general/procedure/company-onboarding.md

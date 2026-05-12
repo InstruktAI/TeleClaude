@@ -2,17 +2,18 @@
 id: 'software-development/spec/init-scaffolding'
 type: 'spec'
 scope: 'domain'
-description: 'Schema contract for telec init enrichment output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, frontmatter template, and merge rules for re-analysis.'
+description: 'Schema contract for /projects-analyze enrichment output: discovery-to-taxonomy mapping, snippet ID conventions, file placement, frontmatter template, and merge rules for re-analysis.'
 ---
 
 # Init Scaffolding — Spec
 
 ## What it is
 
-The schema contract between the `telec init` analysis session and the enrichment
-writer module. Defines how analysis findings become durable project doc snippets,
-how snippet IDs are structured, where files land, and how re-analysis merges
-without destroying human edits.
+The schema contract between the `/projects-analyze` analysis session (invoked by
+`telec projects analyze` or `telec projects onboard`) and the enrichment writer
+module. Defines how analysis findings become durable project doc snippets, how
+snippet IDs are structured, where files land, and how re-analysis merges without
+destroying human edits.
 
 ## Canonical fields
 

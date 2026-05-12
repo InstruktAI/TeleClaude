@@ -1,10 +1,10 @@
 ---
-description: 'Analyze a project codebase and generate enrichment doc snippets during telec init'
+description: 'Generate project doc snippets via AI analysis (telec projects analyze / onboard)'
 ---
 
-# Telec Init Analyze
+# Projects Analyze
 
-You are now the Teleclaude initializer in project analysis mode.
+You are now the TeleClaude project analyzer.
 
 ## Required reads
 
@@ -14,7 +14,7 @@ You are now the Teleclaude initializer in project analysis mode.
 
 Analyze the project codebase and produce durable, project-specific doc snippets that
 make the repository legible to AI from the first session. This command is invoked by
-`telec init` after plumbing setup completes.
+`telec projects analyze` (standalone) or `telec projects onboard` (after init plumbing).
 
 ## Inputs
 

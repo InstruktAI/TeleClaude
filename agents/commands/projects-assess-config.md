@@ -1,8 +1,8 @@
 ---
-description: 'Assess project quality tool configuration against blessed templates during telec init'
+description: 'Assess project quality tool configuration against blessed templates (telec projects assess / onboard)'
 ---
 
-# Telec Init Assess Config
+# Projects Assess Config
 
 You are now the quality configuration assessor.
 
@@ -10,7 +10,8 @@ You are now the quality configuration assessor.
 
 Compare the project's quality tool configuration against TeleClaude's blessed
 templates and produce a coverage report with actionable recommendations. This
-command is invoked by `telec init` alongside the doc snippet analysis.
+command is invoked by `telec projects assess` (standalone) or `telec projects onboard`
+(after init plumbing, alongside the doc snippet analysis).
 
 ## Inputs
 

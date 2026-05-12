@@ -2,7 +2,7 @@
 id: 'software-development/procedure/project-analysis'
 type: 'procedure'
 scope: 'domain'
-description: 'AI-driven project analysis procedure for telec init enrichment. Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
+description: 'AI-driven project analysis procedure invoked by /projects-analyze (telec projects analyze / onboard). Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
 ---
 
 # Project Analysis — Procedure
@@ -24,7 +24,7 @@ reflect concrete findings from the analyzed repository, not generic templates.
 ## Preconditions
 
 - The project has source files (not an empty repository).
-- `telec init` plumbing (hooks, sync, project registration) has already completed.
+- `telec init` plumbing (hooks, sync, project registration) has already completed; the operator invoked `telec projects analyze` or `telec projects onboard`.
 - The required reads above provide the output contract (`init-scaffolding`),
   the snippet-authoring discipline (`doc-snippet-authoring`, which transitively
   pulls in the value contract, schema, and referencing rules), and the
