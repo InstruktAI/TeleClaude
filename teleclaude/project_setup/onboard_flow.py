@@ -1,9 +1,9 @@
 """AI-driven project onboarding: dispatch quality-config assessment and doc-snippet analysis.
 
-The dispatchers spawn TeleClaude agent sessions in tmux via ``telec sessions
-run``. ``run_onboard`` chains init plumbing with both AI dispatches; the
-individual ``run_analyze`` and ``run_assess`` entry points exist for targeted
-re-runs.
+The dispatchers spawn TeleClaude agent sessions in tmux via the daemon's
+``POST /sessions/run`` endpoint. ``run_onboard`` chains init plumbing with both
+AI dispatches; the individual ``run_analyze`` and ``run_assess`` entry points
+exist for targeted re-runs.
 
 This module is the *only* owner of the agent-session dispatches that used to
 live in ``init_flow.py``. ``init`` itself stays plumbing-only.
@@ -11,14 +11,13 @@ live in ``init_flow.py``. ``init`` itself stays plumbing-only.
 
 from __future__ import annotations
 
-import json
-import subprocess
-import sys
 from enum import Enum
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
+from teleclaude.api_models import RunSessionRequest
+from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.project_setup.init_flow import init_project
 
 logger = get_logger(__name__)
@@ -28,15 +27,15 @@ _ANALYZE_COMMAND = "/projects-analyze"
 _ASSESS_COMMAND = "/projects-assess-config"
 
 # Bounded so a stalled daemon API can't block the operator forever.
-_DISPATCH_TIMEOUT_S = 300
-_LIST_TIMEOUT_S = 10
+_DISPATCH_TIMEOUT_S = 30.0
+_LIST_TIMEOUT_S = 10.0
 
 
 class DedupState(Enum):
     """Result of a dedup lookup against the daemon's session list.
 
-    ``UNKNOWN`` distinguishes lookup failure (timeout, OS error, bad JSON,
-    non-zero exit) from a confirmed absence of a matching open session. Callers
+    ``UNKNOWN`` distinguishes lookup failure (transport error, malformed
+    response) from a confirmed absence of a matching open session. Callers
     must refuse to dispatch when the state is ``UNKNOWN`` rather than treat it
     as ``INACTIVE`` — silent degradation here would spawn duplicate long-running
     sessions.
@@ -50,31 +49,33 @@ class DedupState(Enum):
 def _active_session_for_command(project_root: Path, command_slug: str) -> DedupState:
     """Probe the daemon for an open session running ``command_slug`` for ``project_root``.
 
+    Queries the daemon with ``all=true`` so the dedup probe sees sessions
+    spawned by any caller, not just the current one — a caller-filtered view
+    would miss a parallel onboarding in flight from a different shell.
+
     Match contract: same project_path AND title starts with the slash command
     AND lifecycle is not closed. Lookup failure surfaces as ``UNKNOWN`` so the
     caller can fail closed instead of dispatching blind.
     """
-    # subprocess justification: the TeleClaude HTTP API client (TelecAPIClient)
-    # is async-only; this dispatcher runs in a sync codepath that is also entered
-    # from CLI/init contexts where bringing up an asyncio loop just to enumerate
-    # sessions adds complexity without value. Shelling to the same daemon via
-    # `telec sessions list` routes through the same identity gate as native callers.
-    cmd = [sys.executable, "-m", "teleclaude.cli.telec", "sessions", "list"]
     try:
-        result = subprocess.run(cmd, check=False, timeout=_LIST_TIMEOUT_S, capture_output=True, text=True)
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        logger.warning("Dedup lookup failed (%s); treating state as UNKNOWN", exc)
-        return DedupState.UNKNOWN
-    if result.returncode != 0:
-        logger.warning("Dedup lookup returned rc=%d; treating state as UNKNOWN", result.returncode)
-        return DedupState.UNKNOWN
-    try:
-        sessions = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        logger.warning("Dedup lookup produced invalid JSON (%s); treating state as UNKNOWN", exc)
+        sessions = tool_api_request("GET", "/sessions", params={"all": "true"}, timeout=_LIST_TIMEOUT_S)
+    except ToolAPIError as exc:
+        logger.warning(
+            "dedup_lookup_failed",
+            command=command_slug,
+            project_root=str(project_root),
+            error=str(exc),
+            state="unknown",
+        )
         return DedupState.UNKNOWN
     if not isinstance(sessions, list):
-        logger.warning("Dedup lookup payload not a list; treating state as UNKNOWN")
+        logger.warning(
+            "dedup_lookup_unexpected_payload",
+            command=command_slug,
+            project_root=str(project_root),
+            payload_type=type(sessions).__name__,
+            state="unknown",
+        )
         return DedupState.UNKNOWN
 
     target_path = str(project_root)
@@ -97,7 +98,7 @@ def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool
 
     Returns True on confirmed dispatch. Returns False on skip (active session
     already running), unknown dedup state (fail closed — never dispatch blind),
-    bad return code, timeout, or OS-level failure.
+    or daemon-side failure.
     """
     state = _active_session_for_command(project_root, command_slug)
     if state is DedupState.ACTIVE:
@@ -111,37 +112,28 @@ def _dispatch_session(project_root: Path, command_slug: str, label: str) -> bool
         print(f"  telec sessions run --command {command_slug} --project {project_root}")
         return False
 
-    # subprocess justification: same as the dedup lookup — the TeleClaude HTTP
-    # API client is async-only and this dispatcher runs in a sync codepath. The
-    # CLI subprocess routes through the same daemon API as the native client.
-    cmd = [
-        sys.executable,
-        "-m",
-        "teleclaude.cli.telec",
-        "sessions",
-        "run",
-        "--command",
-        command_slug,
-        "--project",
-        str(project_root),
-    ]
+    request = RunSessionRequest(command=command_slug, project=str(project_root))
     try:
-        result = subprocess.run(cmd, check=False, timeout=_DISPATCH_TIMEOUT_S, capture_output=True, text=True)
-        if not result.returncode:
-            print(f"{label} session started ({command_slug}).")
-            return True
-        logger.warning("%s dispatch failed (rc=%d): %s", label, result.returncode, result.stderr.strip())
-        print(f"{label} session could not be started. Retry with:")
+        tool_api_request(
+            "POST",
+            "/sessions/run",
+            json_body=request.model_dump(mode="json"),
+            timeout=_DISPATCH_TIMEOUT_S,
+        )
+    except ToolAPIError as exc:
+        logger.warning(
+            "dispatch_failed",
+            command=command_slug,
+            project_root=str(project_root),
+            error=str(exc),
+            status_code=exc.status_code,
+            is_timeout=exc.is_timeout,
+        )
+        print(f"{label} session could not be started ({exc.message}). Retry with:")
         print(f"  telec sessions run --command {command_slug} --project {project_root}")
-    except subprocess.TimeoutExpired:
-        logger.warning("%s dispatch timed out after %ds", label, _DISPATCH_TIMEOUT_S)
-        print(f"{label} session timed out. Retry with:")
-        print(f"  telec sessions run --command {command_slug} --project {project_root}")
-    except OSError as exc:
-        logger.warning("Could not launch %s session: %s", label, exc)
-        print(f"Could not launch {label} session. Retry with:")
-        print(f"  telec sessions run --command {command_slug} --project {project_root}")
-    return False
+        return False
+    print(f"{label} session started ({command_slug}).")
+    return True
 
 
 def run_analyze(project_root: Path) -> bool:
