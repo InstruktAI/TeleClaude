@@ -21,7 +21,6 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
-    TuiBootstrapPillar,
 )
 from teleclaude.cli.models import WsEvent
 from teleclaude.cli.tui.animation_triggers import ActivityTrigger
@@ -37,7 +36,6 @@ from teleclaude.cli.tui.views.sessions import SessionsView
 from teleclaude.cli.tui.widgets.telec_footer import TelecFooter
 
 logger = get_logger(__name__)
-_RECONNECT_REFRESH_PILLARS: list[TuiBootstrapPillar] = ["computers", "availability", "jobs", "settings", "chiptunes"]
 
 
 class TelecAppWsMixin:
@@ -52,9 +50,9 @@ class TelecAppWsMixin:
         self.call_from_thread(self._handle_ws_connected)  # type: ignore[attr-defined]
 
     def _handle_ws_connected(self) -> None:
-        """Reconcile websocket-uncovered state without forcing a broad TUI refresh."""
-        logger.info("WebSocket connected; refreshing websocket-uncovered pillars", pillars=_RECONNECT_REFRESH_PILLARS)
-        self._refresh_data(_RECONNECT_REFRESH_PILLARS)  # type: ignore[attr-defined]
+        """Refresh authoritative state after websocket (re)connect."""
+        logger.info("WebSocket connected; refreshing authoritative bootstrap state")
+        self._refresh_data()  # type: ignore[attr-defined]
 
     def _handle_ws_event(self, event: WsEvent) -> None:
         """Process WebSocket event in the main thread."""
