@@ -31,10 +31,12 @@ def test_all_deployment_events_have_correct_domain_and_visibility() -> None:
         assert schema.default_visibility == EventVisibility.LOCAL
 
 
-def test_deployment_all_have_slug_sha_idempotency() -> None:
-    for schema in _catalog().list_all():
-        assert "slug" in schema.idempotency_fields
-        assert "sha" in schema.idempotency_fields
+def test_deployment_failed_creates_meaningful_reason_notification() -> None:
+    schema = _catalog().get("deployment.failed")
+    assert schema is not None
+    assert schema.lifecycle is not None
+    assert schema.lifecycle.creates is True
+    assert schema.lifecycle.meaningful_fields == ["slug", "reason"]
 
 
 def test_deployment_started_creates_lifecycle() -> None:

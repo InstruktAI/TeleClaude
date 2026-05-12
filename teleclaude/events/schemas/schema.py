@@ -20,7 +20,6 @@ def register_schema(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="schema",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["schema_id", "version"],
         )
     )
     catalog.register(
@@ -30,6 +29,5 @@ def register_schema(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="schema",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["schema_id", "version"],
         )
     )

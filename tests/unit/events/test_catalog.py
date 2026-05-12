@@ -39,10 +39,6 @@ class TestEventSchema:
         s = _make_schema()
         assert s.default_visibility == EventVisibility.LOCAL
 
-    def test_default_idempotency_fields_empty(self) -> None:
-        s = _make_schema()
-        assert s.idempotency_fields == []
-
     def test_default_lifecycle_none(self) -> None:
         s = _make_schema()
         assert s.lifecycle is None
@@ -86,63 +82,3 @@ class TestEventCatalog:
     def test_list_all_empty_when_nothing_registered(self) -> None:
         catalog = EventCatalog()
         assert catalog.list_all() == []
-
-
-class TestBuildIdempotencyKey:
-    def test_returns_none_when_schema_not_found(self) -> None:
-        catalog = EventCatalog()
-        key = catalog.build_idempotency_key("missing.event", {"id": "123"})
-        assert key is None
-
-    def test_returns_none_when_no_idempotency_fields(self) -> None:
-        catalog = EventCatalog()
-        schema = EventSchema(
-            event_type="no.fields",
-            description="x",
-            default_level=EventLevel.OPERATIONAL,
-            domain="test",
-            idempotency_fields=[],
-        )
-        catalog.register(schema)
-        key = catalog.build_idempotency_key("no.fields", {"id": "123"})
-        assert key is None
-
-    def test_builds_key_from_payload_fields(self) -> None:
-        catalog = EventCatalog()
-        schema = EventSchema(
-            event_type="my.event",
-            description="x",
-            default_level=EventLevel.OPERATIONAL,
-            domain="test",
-            idempotency_fields=["slug", "version"],
-        )
-        catalog.register(schema)
-        key = catalog.build_idempotency_key("my.event", {"slug": "abc", "version": "1"})
-        assert key == "my.event:abc:1"
-
-    def test_missing_payload_field_becomes_empty_string(self) -> None:
-        catalog = EventCatalog()
-        schema = EventSchema(
-            event_type="my.event",
-            description="x",
-            default_level=EventLevel.OPERATIONAL,
-            domain="test",
-            idempotency_fields=["slug"],
-        )
-        catalog.register(schema)
-        key = catalog.build_idempotency_key("my.event", {})
-        assert key == "my.event:"
-
-    def test_key_starts_with_event_type(self) -> None:
-        catalog = EventCatalog()
-        schema = EventSchema(
-            event_type="some.event",
-            description="x",
-            default_level=EventLevel.OPERATIONAL,
-            domain="test",
-            idempotency_fields=["id"],
-        )
-        catalog.register(schema)
-        key = catalog.build_idempotency_key("some.event", {"id": "42"})
-        assert key is not None
-        assert key.startswith("some.event:")

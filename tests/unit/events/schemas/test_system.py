@@ -48,13 +48,12 @@ def test_worker_crashed_is_actionable() -> None:
     assert schema.default_level == EventLevel.OPERATIONAL
 
 
-def test_event_dead_lettered_is_actionable_and_idempotent_by_original_entry() -> None:
+def test_event_dead_lettered_is_actionable_cluster_event() -> None:
     schema = _catalog().get("system.event.dead_lettered")
     assert schema is not None
     assert schema.actionable is True
     assert schema.default_level == EventLevel.OPERATIONAL
     assert schema.default_visibility == EventVisibility.CLUSTER
-    assert schema.idempotency_fields == ["original_entry_id"]
 
 
 def test_failure_cascade_detected_is_actionable_and_business_level() -> None:
@@ -74,12 +73,14 @@ def test_entity_degraded_creates_and_updates_lifecycle() -> None:
     assert schema.lifecycle.group_key == "entity"
 
 
-def test_sandbox_container_events_have_empty_idempotency() -> None:
+def test_sandbox_container_events_create_operational_notifications() -> None:
     catalog = _catalog()
     for event_type in ("system.sandbox-container.unhealthy", "system.sandbox-container.docker-unavailable"):
         schema = catalog.get(event_type)
         assert schema is not None
-        assert schema.idempotency_fields == []
+        assert schema.lifecycle is not None
+        assert schema.lifecycle.creates is True
+        assert schema.default_level == EventLevel.OPERATIONAL
 
 
 def test_sandbox_events_are_not_actionable() -> None:

@@ -1,4 +1,4 @@
-"""Deduplication cartridge — drops duplicate events by idempotency key."""
+"""Deduplication cartridge — drops duplicate deliveries by event identity."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 
 class DeduplicationCartridge:
-    """Reject events whose configured idempotency key already exists."""
+    """Reject known event identities while allowing new events for the same subject."""
 
     name = "dedup"
 
@@ -25,11 +25,9 @@ class DeduplicationCartridge:
         if schema is None:
             return event
 
-        key = context.catalog.build_idempotency_key(event.event, event.payload)
-        if key is None:
-            return event
-
-        # Stamp the key onto the envelope so downstream cartridges can use it
+        # Stamp the producer-created event identity onto the envelope so downstream
+        # cartridges can persist it as the durable replay deduplication key.
+        key = event.event_id
         event = event.model_copy(update={"idempotency_key": key})
 
         # Updates-only schemas must not be deduplicated — each event updates the existing

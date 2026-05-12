@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from uuid import UUID
 
 import pytest
 from pydantic import ValidationError
@@ -37,6 +38,10 @@ class TestEventEnvelopeDefaults:
         assert e.timestamp is not None
         assert e.timestamp.tzinfo is not None
 
+    def test_event_id_is_set_on_creation(self) -> None:
+        e = _minimal_envelope()
+        UUID(e.event_id)
+
 
 class TestEventEnvelopeRequired:
     def test_missing_event_raises(self) -> None:
@@ -53,6 +58,12 @@ class TestToStreamDict:
         e = _minimal_envelope()
         d = e.to_stream_dict()
         assert d["event"] == "test.event"
+
+    def test_event_id_serialized_as_top_level_field(self) -> None:
+        event_id = "33333333-3333-4333-8333-333333333333"
+        e = _minimal_envelope(event_id=event_id)
+        d = e.to_stream_dict()
+        assert d["event_id"] == event_id
 
     def test_level_serialized_as_int_string(self) -> None:
         e = _minimal_envelope(level=EventLevel.WORKFLOW)
@@ -116,6 +127,27 @@ class TestFromStreamDict:
         assert restored.event == e.event
         assert restored.source == e.source
         assert restored.domain == e.domain
+
+    def test_roundtrip_event_id(self) -> None:
+        event_id = "44444444-4444-4444-8444-444444444444"
+        e = _minimal_envelope(event_id=event_id)
+        d = e.to_stream_dict()
+        restored = EventEnvelope.from_stream_dict(d)
+        assert restored.event_id == event_id
+
+    def test_legacy_stream_without_event_id_gets_migration_identity(self) -> None:
+        d = _minimal_envelope().to_stream_dict()
+        d.pop("event_id")
+        restored = EventEnvelope.from_stream_dict(d)
+        UUID(restored.event_id)
+
+    def test_legacy_extra_event_id_is_promoted(self) -> None:
+        event_id = "55555555-5555-4555-8555-555555555555"
+        d = _minimal_envelope().to_stream_dict()
+        d.pop("event_id")
+        d["_extra"] = json.dumps({"event_id": event_id})
+        restored = EventEnvelope.from_stream_dict(d)
+        assert restored.event_id == event_id
 
     def test_roundtrip_payload(self) -> None:
         e = _minimal_envelope(payload={"a": 1, "b": "two"})

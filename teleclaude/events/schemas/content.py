@@ -20,7 +20,6 @@ def register_content(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="content",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["content_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["content_id"]),
         )
     )
@@ -31,7 +30,6 @@ def register_content(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="content",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["content_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="content_id"),
         )
     )
@@ -42,7 +40,6 @@ def register_content(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="content",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["content_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="content_id"),
         )
     )

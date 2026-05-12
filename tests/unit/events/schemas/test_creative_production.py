@@ -73,7 +73,9 @@ def test_transcode_failed_is_actionable() -> None:
     assert schema.actionable is True
 
 
-def test_transcode_started_idempotency_fields_include_format() -> None:
+def test_transcode_started_creates_silent_job_notification() -> None:
     schema = _catalog().get("domain.creative-production.format.transcode_started")
     assert schema is not None
-    assert schema.idempotency_fields == ["asset_id", "format"]
+    assert schema.lifecycle is not None
+    assert schema.lifecycle.creates is True
+    assert schema.lifecycle.silent_fields == ["job_id"]

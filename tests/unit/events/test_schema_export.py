@@ -21,6 +21,9 @@ class TestExportJsonSchema:
     def test_schema_includes_event_field(self) -> None:
         assert "event" in _props()
 
+    def test_schema_includes_event_id_field(self) -> None:
+        assert "event_id" in _props()
+
     def test_schema_includes_source_field(self) -> None:
         assert "source" in _props()
 
