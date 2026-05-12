@@ -6,7 +6,6 @@ from importlib import import_module
 
 from pydantic import BaseModel
 
-from teleclaude.core.models import JsonDict
 from teleclaude.events.envelope import EventLevel, EventVisibility
 
 
@@ -29,7 +28,6 @@ class EventSchema(BaseModel):
     default_level: EventLevel
     domain: str
     default_visibility: EventVisibility = EventVisibility.LOCAL
-    idempotency_fields: list[str] = []
     lifecycle: NotificationLifecycle | None = None
     actionable: bool = False
 
@@ -53,14 +51,6 @@ class EventCatalog:
     def list_all(self) -> list[EventSchema]:
         """Return all registered schemas sorted by event type."""
         return sorted(self._registry.values(), key=lambda s: s.event_type)
-
-    def build_idempotency_key(self, event_type: str, payload: JsonDict) -> str | None:
-        """Build the configured idempotency key for an event payload."""
-        schema = self._registry.get(event_type)
-        if not schema or not schema.idempotency_fields:
-            return None
-        parts = [event_type] + [str(payload.get(f, "")) for f in schema.idempotency_fields]
-        return ":".join(parts)
 
 
 def build_default_catalog() -> EventCatalog:

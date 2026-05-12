@@ -30,7 +30,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A new help desk ticket was created",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["ticket_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["ticket_id", "subject"]),
         )
     )
@@ -40,7 +39,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A help desk ticket was updated",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["ticket_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="ticket_id", silent_fields=["updated_at"]),
         )
     )
@@ -50,7 +48,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A help desk ticket was escalated and requires immediate attention",
             default_level=EventLevel.BUSINESS,
             domain="customer-relations",
-            idempotency_fields=["ticket_id"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="ticket_id", meaningful_fields=["reason", "escalated_to"]
             ),
@@ -63,7 +60,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A help desk ticket was resolved",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["ticket_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="ticket_id"),
         )
     )
@@ -76,7 +72,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A customer satisfaction survey was sent",
             default_level=EventLevel.OPERATIONAL,
             domain="customer-relations",
-            idempotency_fields=["survey_id"],
             lifecycle=NotificationLifecycle(creates=True, silent_fields=["sent_at"]),
         )
     )
@@ -86,7 +81,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="A customer satisfaction survey response was received",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["survey_id", "respondent_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="survey_id", meaningful_fields=["score"]),
         )
     )
@@ -96,7 +90,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="Customer satisfaction score was aggregated and recorded",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["survey_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="survey_id"),
         )
     )
@@ -109,7 +102,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="An escalation was triggered requiring human decision",
             default_level=EventLevel.BUSINESS,
             domain="customer-relations",
-            idempotency_fields=["escalation_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["escalation_id", "reason"]),
             actionable=True,
         )
@@ -120,7 +112,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="An escalation was acknowledged by a team member",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["escalation_id"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="escalation_id", meaningful_fields=["acknowledged_by"]
             ),
@@ -132,7 +123,6 @@ def register_customer_relations(catalog: EventCatalog) -> None:
             description="An escalation was resolved",
             default_level=EventLevel.WORKFLOW,
             domain="customer-relations",
-            idempotency_fields=["escalation_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="escalation_id"),
         )
     )

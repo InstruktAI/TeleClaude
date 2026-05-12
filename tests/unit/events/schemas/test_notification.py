@@ -57,6 +57,7 @@ def test_notification_resolution_resolves_lifecycle() -> None:
     assert schema.default_level == EventLevel.WORKFLOW
 
 
-def test_both_events_have_escalation_id_idempotency() -> None:
-    for schema in _catalog().list_all():
-        assert "escalation_id" in schema.idempotency_fields
+def test_notification_resolution_is_not_actionable() -> None:
+    schema = _catalog().get("notification.resolution")
+    assert schema is not None
+    assert schema.actionable is False

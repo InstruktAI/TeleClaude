@@ -20,7 +20,6 @@ def register_node(catalog: EventCatalog) -> None:
             default_level=EventLevel.INFRASTRUCTURE,
             domain="node",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["node_id"],
         )
     )
     catalog.register(
@@ -30,7 +29,6 @@ def register_node(catalog: EventCatalog) -> None:
             default_level=EventLevel.INFRASTRUCTURE,
             domain="node",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["node_id"],
         )
     )
     catalog.register(
@@ -40,6 +38,5 @@ def register_node(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="node",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["node_id"],
         )
     )

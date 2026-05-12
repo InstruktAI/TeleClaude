@@ -44,11 +44,13 @@ def test_campaign_budget_threshold_hit_is_actionable() -> None:
     assert schema.default_level == EventLevel.BUSINESS
 
 
-def test_campaign_budget_threshold_idempotency_includes_threshold() -> None:
+def test_campaign_budget_threshold_updates_campaign_spend() -> None:
     schema = _catalog().get("domain.marketing.campaign.budget_threshold_hit")
     assert schema is not None
-    assert "threshold" in schema.idempotency_fields
-    assert "campaign_id" in schema.idempotency_fields
+    assert schema.lifecycle is not None
+    assert schema.lifecycle.updates is True
+    assert schema.lifecycle.group_key == "campaign_id"
+    assert schema.lifecycle.meaningful_fields == ["spent", "threshold"]
 
 
 def test_feed_synthesis_ready_is_actionable() -> None:

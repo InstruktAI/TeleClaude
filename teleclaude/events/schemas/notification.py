@@ -20,7 +20,6 @@ def register_notification(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="notification",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["escalation_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["escalation_id", "reason"]),
             actionable=True,
         )
@@ -32,7 +31,6 @@ def register_notification(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="notification",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["escalation_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="escalation_id"),
         )
     )

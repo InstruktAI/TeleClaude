@@ -20,7 +20,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.INFRASTRUCTURE,
             domain="system",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["computer", "pid"],
             lifecycle=NotificationLifecycle(creates=True),
         )
     )
@@ -31,7 +30,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["worker_name", "timestamp"],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=True,
         )
@@ -43,7 +41,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["original_entry_id"],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=True,
         )
@@ -58,7 +55,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["event_type", "window_start"],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=False,
         )
@@ -72,7 +68,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="system",
             default_visibility=EventVisibility.CLUSTER,
-            idempotency_fields=["window_start"],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=True,
         )
@@ -87,7 +82,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="system",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["entity"],
             lifecycle=NotificationLifecycle(
                 creates=True, updates=True, group_key="entity", meaningful_fields=["failure_count"]
             ),
@@ -101,7 +95,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=[],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=False,
         )
@@ -113,7 +106,6 @@ def register_system(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="system",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=[],
             lifecycle=NotificationLifecycle(creates=True),
             actionable=False,
         )

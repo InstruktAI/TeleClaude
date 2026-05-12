@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ssl
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 
@@ -283,5 +284,22 @@ class TestEmitEvent:
             call_args = redis.xadd.call_args
             stream_data = call_args.args[1]
             assert stream_data["visibility"] == "cluster"
+        finally:
+            _mod._PRODUCER_STATE["producer"] = None
+
+    @pytest.mark.asyncio
+    async def test_emit_event_stamps_event_id_on_stream_record(self) -> None:
+        redis = _make_redis()
+        producer = EventProducer(redis)
+        configure_producer(producer)
+        try:
+            await emit_event(
+                event="test.event",
+                source="svc",
+                level=EventLevel.OPERATIONAL,
+            )
+            call_args = redis.xadd.call_args
+            stream_data = call_args.args[1]
+            UUID(stream_data["event_id"])
         finally:
             _mod._PRODUCER_STATE["producer"] = None

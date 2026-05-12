@@ -42,12 +42,6 @@ def test_signal_ingest_received_has_no_lifecycle() -> None:
     assert schema.default_level == EventLevel.OPERATIONAL
 
 
-def test_signal_ingest_received_idempotency_fields() -> None:
-    schema = _catalog().get("signal.ingest.received")
-    assert schema is not None
-    assert schema.idempotency_fields == ["source_id", "item_url"]
-
-
 def test_signal_cluster_formed_has_no_lifecycle() -> None:
     schema = _catalog().get("signal.cluster.formed")
     assert schema is not None

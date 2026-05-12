@@ -27,7 +27,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset brief was created",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["asset_id", "title"]),
         )
     )
@@ -37,7 +36,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset draft was submitted for review",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["title"]),
         )
     )
@@ -47,7 +45,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Review was requested for a creative asset",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="asset_id", meaningful_fields=["reviewer", "deadline"]
             ),
@@ -60,7 +57,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Revisions were requested for a creative asset",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["feedback"]),
         )
     )
@@ -70,7 +66,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset was approved",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["approved_by"]),
         )
     )
@@ -80,7 +75,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="A creative asset was delivered to the client or destination",
             default_level=EventLevel.WORKFLOW,
             domain="creative-production",
-            idempotency_fields=["asset_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="asset_id"),
         )
     )
@@ -93,7 +87,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Format transcoding started for an asset",
             default_level=EventLevel.OPERATIONAL,
             domain="creative-production",
-            idempotency_fields=["asset_id", "format"],
             lifecycle=NotificationLifecycle(creates=True, silent_fields=["job_id"]),
         )
     )
@@ -103,7 +96,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Format transcoding completed for an asset",
             default_level=EventLevel.OPERATIONAL,
             domain="creative-production",
-            idempotency_fields=["asset_id", "format"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="asset_id"),
         )
     )
@@ -113,7 +105,6 @@ def register_creative_production(catalog: EventCatalog) -> None:
             description="Format transcoding failed and requires attention",
             default_level=EventLevel.BUSINESS,
             domain="creative-production",
-            idempotency_fields=["asset_id", "format"],
             lifecycle=NotificationLifecycle(updates=True, group_key="asset_id", meaningful_fields=["error", "format"]),
             actionable=True,
         )

@@ -20,7 +20,6 @@ def register_signal(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="signal",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["source_id", "item_url"],
             lifecycle=None,
             actionable=False,
         )
@@ -32,7 +31,6 @@ def register_signal(catalog: EventCatalog) -> None:
             default_level=EventLevel.OPERATIONAL,
             domain="signal",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["cluster_id"],
             lifecycle=None,
             actionable=False,
         )
@@ -44,7 +42,6 @@ def register_signal(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="signal",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["cluster_id"],
             lifecycle=NotificationLifecycle(
                 creates=True,
                 meaningful_fields=["synthesis"],

@@ -12,11 +12,12 @@ import json
 from datetime import UTC, datetime
 from enum import Enum, IntEnum
 from typing import Any, cast
+from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator
 
 #: Current envelope schema generation. Used as the default for EventEnvelope.version.
-SCHEMA_VERSION: int = 1
+SCHEMA_VERSION: int = 2
 
 
 class EventVisibility(str, Enum):
@@ -51,6 +52,7 @@ class EventEnvelope(BaseModel):
 
     # Identity
     event: str
+    event_id: str = Field(default_factory=lambda: str(uuid4()))
     version: int = SCHEMA_VERSION
     source: str
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
@@ -69,6 +71,14 @@ class EventEnvelope(BaseModel):
     terminal_when: str | None = None
     resolution_shape: dict[str, str] | None = None
 
+    @field_validator("event_id")
+    @classmethod
+    def _validate_event_id(cls, value: str) -> str:
+        """Reject empty event identities at the envelope boundary."""
+        if not value.strip():
+            raise ValueError("event_id must be a non-empty string")
+        return value
+
     def to_stream_dict(self) -> dict[str, str]:
         """Serialize to a flat string dict for Redis XADD.
 
@@ -78,6 +88,7 @@ class EventEnvelope(BaseModel):
         dumped = self.model_dump(mode="json")
         d: dict[str, str] = {
             "event": self.event,
+            "event_id": self.event_id,
             "version": str(self.version),
             "source": self.source,
             "timestamp": cast(str, dumped["timestamp"]),
@@ -118,9 +129,15 @@ class EventEnvelope(BaseModel):
         extra_raw = d.get("_extra", "")
         if extra_raw:
             extra = cast(dict[str, JsonValue], json.loads(extra_raw))
+        legacy_event_id = extra.pop("event_id", None)
+        # Migration affordance: pre-fix v1 stream entries lack top-level event_id.
+        # Synthesizing one keeps upgrade-time replay out of the DLQ; new producers
+        # always serialize event_id and should never rely on this fallback.
+        event_id = d.get("event_id") or (legacy_event_id if isinstance(legacy_event_id, str) else "") or str(uuid4())
 
         return cls(
             event=d["event"],
+            event_id=event_id,
             version=int(d.get("version", str(SCHEMA_VERSION))),
             source=d["source"],
             timestamp=datetime.fromisoformat(d["timestamp"]),

@@ -27,7 +27,6 @@ def test_content_dumped_schema_fields() -> None:
     assert schema.domain == "content"
     assert schema.default_level == EventLevel.WORKFLOW
     assert schema.default_visibility == EventVisibility.LOCAL
-    assert schema.idempotency_fields == ["content_id"]
     assert schema.actionable is False
 
 

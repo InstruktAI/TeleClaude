@@ -19,7 +19,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A new work item was created",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "title"]),
         )
     )
@@ -29,7 +28,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A brain dump was captured for a work item via telec todo dump",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "kind"]),
         )
     )
@@ -39,7 +37,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A work item moved to active state",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
         )
     )
@@ -49,7 +46,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A planning artifact was modified",
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
-            idempotency_fields=["slug", "artifact"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", silent_fields=["artifact", "changed_at"]),
         )
     )
@@ -59,7 +55,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A work item dependency was resolved",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "dependency"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="slug", meaningful_fields=["dependency", "resolved_at"]
             ),
@@ -71,7 +66,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Definition of Ready was assessed for a work item",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "score"],
             lifecycle=NotificationLifecycle(
                 creates=True, updates=True, group_key="slug", meaningful_fields=["score", "verdict"]
             ),
@@ -84,7 +78,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Build phase completed for a work item",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
@@ -94,7 +87,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Code review verdict is ready",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "round"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["verdict", "round"]),
         )
     )
@@ -104,7 +96,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Review requires a human decision before proceeding",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["slug", "round"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["question", "round"]),
             actionable=True,
         )
@@ -118,7 +109,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Deployment was triggered for a work item",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "environment"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "environment"]),
         )
     )
@@ -128,7 +118,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Deployment completed successfully",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "environment"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
@@ -138,7 +127,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Deployment failed and requires attention",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["slug", "environment"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["error"]),
             actionable=True,
         )
@@ -152,7 +140,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="An operational alert was triggered",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["alert_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["alert_id", "severity"]),
             actionable=True,
         )
@@ -163,7 +150,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="An operational alert was resolved",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["alert_id"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="alert_id"),
         )
     )
@@ -176,7 +162,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A dependency was updated to a new version",
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
-            idempotency_fields=["package", "version"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="package", meaningful_fields=["package", "version"]
             ),
@@ -188,7 +173,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="A security patch is required for a dependency",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["advisory_id"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["advisory_id", "severity"]),
             actionable=True,
         )
@@ -202,7 +186,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Human thinking was captured or updated in input.md",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -212,7 +195,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Requirements discovery phase dispatched",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
         )
     )
@@ -222,7 +204,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Requirements derived from triangulation",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -232,7 +213,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Requirements reviewed and approved, ready for plan drafting",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -242,7 +222,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Implementation plan drafted from approved requirements",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -252,7 +231,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Implementation plan reviewed and approved",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -262,7 +240,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation artifacts invalidated due to drift",
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
-            idempotency_fields=["slug", "reason"],
             lifecycle=NotificationLifecycle(
                 updates=True, group_key="slug", meaningful_fields=["reason", "changed_paths"]
             ),
@@ -274,7 +251,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation artifacts updated against current truth",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -284,7 +260,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation complete, todo ready for build",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
@@ -294,7 +269,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Preparation blocked, requires human decision",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocker"]),
             actionable=True,
         )
@@ -305,7 +279,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Prepare phase skipped via inheritance from parent todo",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "phase"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["phase", "reason"]),
         )
     )
@@ -315,7 +288,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Input consumed by discovery worker, requirements production started",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
         )
     )
@@ -325,7 +297,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Prepare artifact written and lifecycle-tracked in state",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "artifact"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["artifact", "digest"]),
         )
     )
@@ -335,7 +306,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Upstream change cascaded staleness to a prepare artifact",
             default_level=EventLevel.OPERATIONAL,
             domain="software-development",
-            idempotency_fields=["slug", "stale_artifacts"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["stale_artifacts"]),
             actionable=True,
         )
@@ -346,7 +316,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Scoped re-review dispatched with a findings artifact",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["findings_artifact"]),
         )
     )
@@ -356,7 +325,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Child todo inherited parent approved prepare phase on split",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["parent_slug", "child_slug"],
             lifecycle=NotificationLifecycle(
                 creates=True, group_key="child_slug", meaningful_fields=["inherited_phase"]
             ),
@@ -371,7 +339,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Review passed, candidate eligible for finalization",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "review_round"],
             lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["approved_at"]),
         )
     )
@@ -381,7 +348,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Worktree branch pushed to remote, candidate ready for integration",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["branch", "sha", "remote"],
             lifecycle=NotificationLifecycle(creates=True, group_key="branch", meaningful_fields=["pushed_at"]),
         )
     )
@@ -391,7 +357,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Finalize ready, candidate queued for integration",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "branch", "sha"],
             lifecycle=NotificationLifecycle(creates=True, group_key="slug", meaningful_fields=["ready_at"]),
         )
     )
@@ -401,7 +366,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Integrated to main, delivery bookkeeping done",
             default_level=EventLevel.WORKFLOW,
             domain="software-development",
-            idempotency_fields=["slug", "merge_commit"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
@@ -411,7 +375,6 @@ def register_software_development(catalog: EventCatalog) -> None:
             description="Integration blocked, needs attention",
             default_level=EventLevel.BUSINESS,
             domain="software-development",
-            idempotency_fields=["slug", "branch", "sha", "blocked_at"],
             lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["blocked_at"]),
             actionable=True,
         )

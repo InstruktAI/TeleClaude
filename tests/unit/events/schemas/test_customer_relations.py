@@ -66,11 +66,13 @@ def test_escalation_triggered_is_actionable() -> None:
     assert schema.lifecycle.creates is True
 
 
-def test_satisfaction_response_received_idempotency_has_respondent() -> None:
+def test_satisfaction_response_received_updates_survey_score() -> None:
     schema = _catalog().get("domain.customer-relations.satisfaction.response_received")
     assert schema is not None
-    assert "respondent_id" in schema.idempotency_fields
-    assert "survey_id" in schema.idempotency_fields
+    assert schema.lifecycle is not None
+    assert schema.lifecycle.updates is True
+    assert schema.lifecycle.group_key == "survey_id"
+    assert schema.lifecycle.meaningful_fields == ["score"]
 
 
 def test_satisfaction_score_recorded_resolves() -> None:

@@ -20,7 +20,6 @@ def register_deployment(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="deployment",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["slug", "sha"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug"]),
         )
     )
@@ -31,7 +30,6 @@ def register_deployment(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="deployment",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["slug", "sha"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
@@ -42,7 +40,6 @@ def register_deployment(catalog: EventCatalog) -> None:
             default_level=EventLevel.BUSINESS,
             domain="deployment",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["slug", "sha"],
             lifecycle=NotificationLifecycle(creates=True, meaningful_fields=["slug", "reason"]),
             actionable=True,
         )
@@ -54,7 +51,6 @@ def register_deployment(catalog: EventCatalog) -> None:
             default_level=EventLevel.WORKFLOW,
             domain="deployment",
             default_visibility=EventVisibility.LOCAL,
-            idempotency_fields=["slug", "sha"],
             lifecycle=NotificationLifecycle(resolves=True, group_key="slug"),
         )
     )
