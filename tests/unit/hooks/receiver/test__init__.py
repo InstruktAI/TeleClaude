@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -21,6 +22,9 @@ from teleclaude.hooks.receiver import (
     _reset_checkpoint_flags,
     _resolve_checkpoint_project_path,
     enqueue_hook_event,
+)
+from teleclaude.hooks.receiver import (
+    main as receiver_main,
 )
 
 
@@ -229,3 +233,43 @@ def test_handle_user_prompt_submit_drops_xml_wrapped_internal_prompt() -> None:
     )
 
     assert dropped is True
+
+
+def test_codex_subagent_event_does_not_enqueue(tmp_path: Path) -> None:
+    """Codex subagent hook events are dropped at the receiver and never enter the outbox.
+
+    Regression guard: a previous version persisted parent metadata-skip but still
+    enqueued the subagent event under the parent's session id, polluting downstream
+    consumers. The receiver must short-circuit before enqueue.
+    """
+    outbox_db = _make_outbox_db(tmp_path)
+    fake_args = SimpleNamespace(
+        agent="codex",
+        event_type=None,
+        cwd="/some/working/dir",
+    )
+    stdin_payload = json.dumps(
+        {
+            "hook_event_name": "SessionStart",
+            "source": "startup",
+            "session_id": "child-thread-id",
+            "transcript_path": "/fake/path/to/subagent.jsonl",
+            "cwd": "/some/working/dir",
+            "model": "gpt-5.5",
+        }
+    )
+
+    with (
+        patch("sys.stdin", io.StringIO(stdin_payload)),
+        patch("teleclaude.hooks.receiver._parse_args", return_value=fake_args),
+        patch("teleclaude.hooks.receiver.is_codex_subagent_transcript", return_value=True),
+        patch("teleclaude.hooks.receiver._resolve_receiver_session_id", return_value="parent-tc-session"),
+        patch("teleclaude.hooks.receiver._get_default_outbox_db", return_value=outbox_db),
+    ):
+        with pytest.raises(SystemExit) as exit_info:
+            receiver_main()
+
+    assert exit_info.value.code == 0
+    with SqlSession(create_sync_db_engine(outbox_db)) as session:
+        rows = session.exec(select(db_models.HookOutbox)).all()
+    assert rows == []

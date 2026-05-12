@@ -22,7 +22,7 @@ from teleclaude.config import config
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
-from teleclaude.core.codex_transcript import should_persist_codex_native_metadata
+from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.db.connection_factory import get_outbox_db_path
 from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.identity import derive_identity_key
@@ -827,14 +827,18 @@ def main() -> None:
     if raw_native_log_file:
         data["native_log_file"] = raw_native_log_file
 
-    should_persist_native_metadata = True
-    if args.agent == AgentName.CODEX.value:
-        should_persist_native_metadata = should_persist_codex_native_metadata(
-            native_log_file=raw_native_log_file,
-            native_session_id=raw_native_session_id,
+    if args.agent == AgentName.CODEX.value and is_codex_subagent_transcript(raw_native_log_file):
+        logger.debug(
+            "subagent_drop",
+            session_id=teleclaude_session_id,
+            agent=args.agent,
+            native_session_id=(raw_native_session_id or ""),
+            native_log_file=(raw_native_log_file or ""),
+            caller="receiver.main",
         )
+        sys.exit(0)
 
-    if (raw_native_session_id or raw_native_log_file) and should_persist_native_metadata:
+    if raw_native_session_id or raw_native_log_file:
         try:
             _persist_native_metadata(
                 session_id=teleclaude_session_id,
@@ -850,14 +854,6 @@ def main() -> None:
                 agent=args.agent,
                 error=str(exc),
             )
-    elif raw_native_session_id or raw_native_log_file:
-        logger.debug(
-            "Skipping native metadata persist for Codex subagent hook",
-            event_type=event_type,
-            session_id=teleclaude_session_id,
-            native_session_id=(raw_native_session_id or ""),
-            raw_transcript_path=(raw_native_log_file or ""),
-        )
 
     cwd = getattr(args, "cwd", None)
     if isinstance(cwd, str) and cwd:

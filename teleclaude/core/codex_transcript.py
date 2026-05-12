@@ -499,19 +499,6 @@ def is_codex_subagent_transcript(transcript_path: str | None) -> bool:
     return bool(meta and meta.parent_thread_id)
 
 
-def should_persist_codex_native_metadata(
-    *,
-    native_log_file: str | None,
-    native_session_id: str | None,
-) -> bool:
-    """Keep parent-session native metadata stable only when the provided transcript proves subagent."""
-    del native_session_id
-    transcript_path = native_log_file
-    if not transcript_path:
-        return True
-    return not is_codex_subagent_transcript(transcript_path)
-
-
 def resolve_hook_transcript_metadata(
     *,
     session_id: str,

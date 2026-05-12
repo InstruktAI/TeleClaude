@@ -18,7 +18,6 @@ from teleclaude.core.codex_transcript import (
     is_codex_subagent_transcript,
     read_codex_transcript_meta,
     resolve_hook_transcript_metadata,
-    should_persist_codex_native_metadata,
 )
 
 
@@ -239,51 +238,6 @@ class TestCodexSubagentDetection:
         assert [meta.transcript_path for meta in family] == [str(parent), str(child)]
         assert family[0].session_started_at == datetime(2026, 3, 20, 7, 19, 10, 235000, tzinfo=UTC)
         assert family[1].session_started_at == datetime(2026, 3, 20, 7, 21, 10, 235000, tzinfo=UTC)
-
-    @pytest.mark.unit
-    def test_should_persist_native_metadata_for_non_subagent_transcript(self, tmp_path: Path) -> None:
-        transcript = tmp_path / "rollout-parent.jsonl"
-        transcript.write_text(json.dumps({"type": "session_meta", "payload": {"source": {}}}) + "\n", encoding="utf-8")
-
-        assert (
-            should_persist_codex_native_metadata(
-                native_log_file=str(transcript),
-                native_session_id="native-1",
-            )
-            is True
-        )
-
-    @pytest.mark.unit
-    def test_should_skip_persist_for_provided_subagent_transcript(self, tmp_path: Path) -> None:
-        transcript = tmp_path / "rollout-child.jsonl"
-        transcript.write_text(
-            json.dumps(
-                {
-                    "type": "session_meta",
-                    "payload": {"source": {"subagent": {"thread_spawn": {"parent_thread_id": "parent"}}}},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
-
-        assert (
-            should_persist_codex_native_metadata(
-                native_log_file=str(transcript),
-                native_session_id="child-native",
-            )
-            is False
-        )
-
-    @pytest.mark.unit
-    def test_should_persist_when_no_transcript_is_provided(self) -> None:
-        assert (
-            should_persist_codex_native_metadata(
-                native_log_file=None,
-                native_session_id="child-native",
-            )
-            is True
-        )
 
     @pytest.mark.unit
     def test_resolve_hook_transcript_metadata_does_not_discover_missing_codex_path(self) -> None:
