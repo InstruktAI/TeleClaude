@@ -55,7 +55,11 @@ class TodosDbArtifactsMixin:
         return str(roadmap_id) if roadmap_id is not None else None
 
     async def _ensure_artifact_id(self, slug: str, session: SqlAsyncSession) -> str:
-        """Resolve slug to roadmap id for artifact writes. Raises for unknown / delivered slugs."""
+        """Resolve slug to roadmap id for artifact writes. Raises for unknown or delivered slugs.
+
+        Distinguishes the two failure modes in the error message so the caller can tell
+        whether the slug is unrecognized or merely frozen as ``delivered``.
+        """
         result = await session.exec(
             select(TodoRoadmap)
             .where(ROADMAP_TABLE.c.slug == slug)
@@ -66,8 +70,10 @@ class TodosDbArtifactsMixin:
         if entry is not None:
             return entry.id
 
-        msg = f"Cannot write artifact: unknown todo {slug!r}"
-        raise ValueError(msg)
+        delivered = await session.exec(select(TodoRoadmap.id).where(ROADMAP_TABLE.c.slug == slug).limit(1))
+        if delivered.first() is not None:
+            raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
+        raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
 
     async def read_artifact(self, slug: str, name: str) -> str:
         """Read artifact content. Returns empty string for unknown slug or unknown name."""
@@ -184,8 +190,10 @@ class TodosDbArtifactsMixin:
             )
             entry = result.first()
             if entry is None:
-                msg = f"Cannot write artifact: unknown todo {slug!r}"
-                raise ValueError(msg)
+                delivered = session.exec(select(TodoRoadmap.id).where(ROADMAP_TABLE.c.slug == slug).limit(1)).first()
+                if delivered is not None:
+                    raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
+                raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
 
             now = datetime.now(UTC).isoformat()
             digest = _sha256(content)

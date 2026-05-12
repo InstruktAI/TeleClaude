@@ -20,6 +20,18 @@ async def test_read_artifact_returns_empty_for_unknown_slug(todos_db: TodosDb) -
     assert await todos_db.read_artifact("nonexistent", "requirements") == ""
 
 
+async def test_read_artifact_sync_returns_empty_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert todos_db.read_artifact_sync("nonexistent", "requirements") == ""
+
+
+async def test_artifact_digest_returns_empty_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert await todos_db.artifact_digest("nonexistent", "requirements") == ""
+
+
+async def test_artifact_versions_returns_empty_list_for_unknown_slug(todos_db: TodosDb) -> None:
+    assert await todos_db.artifact_versions("nonexistent", "requirements") == []
+
+
 async def test_write_then_read_artifact_round_trips(todos_db: TodosDb) -> None:
     await _ensure_roadmap_entry(todos_db)
     await todos_db.write_artifact(_SLUG, "requirements", "# Requirements\n\nContent here.")

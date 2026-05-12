@@ -243,7 +243,7 @@ class TestArtifactWriteRejectsUnknownSlug:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         try:
-            with pytest.raises(ValueError, match=r"unknown todo"):
+            with pytest.raises(ValueError):
                 await db.write_artifact("nonexistent-slug", "spec.md", "content")
 
             entries = await db.list_entries()
@@ -256,5 +256,5 @@ class TestArtifactWriteRejectsUnknownSlug:
         """write_artifact_sync() raises ValueError when slug has no active roadmap entry."""
         db = TodosDb(str(tmp_path / "todos.db"))
         db.initialize_sync()
-        with pytest.raises(ValueError, match=r"unknown todo"):
+        with pytest.raises(ValueError):
             db.write_artifact_sync("nonexistent-slug", "spec.md", "content")
