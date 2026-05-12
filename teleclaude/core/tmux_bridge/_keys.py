@@ -4,7 +4,6 @@ import asyncio
 import errno
 import fcntl
 import os
-import re
 import termios
 import time
 from pathlib import Path
@@ -26,44 +25,6 @@ logger = get_logger(__name__)
 # next subprocess writes \r. Size-independent — the close marker is the same
 # regardless of content size.
 _SUBMIT_GAP_S = 0.2
-
-# After C-m, give the agent CLI a moment to clear its input area and re-render
-# before we capture-pane to verify. Agents process Enter atomically; 200-300 ms
-# covers the typical render latency for codex/claude/gemini.
-_VERIFY_GAP_S = 0.3
-# Spacing between retry C-m attempts. Longer than _SUBMIT_GAP_S so we land well
-# outside any residual paste-detection window the agent may still be in.
-_RETRY_GAP_S = 0.5
-# Cap on submit attempts. The first C-m is attempt 1; up to 2 retries follow.
-_MAX_SUBMIT_ATTEMPTS = 3
-# Number of trailing alphanumeric characters from the payload used as the
-# verification marker. Long enough to be distinctive across normal agent
-# chrome/status text.
-_VERIFY_TAIL_LEN = 40
-# Below this marker length the alphanumeric tail is too short to discriminate
-# reliably; verification is skipped (optimistic submit).
-_VERIFY_MIN_MARKER_LEN = 10
-# Number of trailing pane lines to inspect for the marker. The agent's input
-# area always lives at the bottom of the pane; a generous window covers
-# wrapped multiline composers plus the status row beneath.
-_VERIFY_PANE_LINES = 12
-
-_ALNUM_RE = re.compile(r"[a-zA-Z0-9]+")
-
-
-def _alnum_tail(payload: str, max_len: int) -> str:
-    """Return up to max_len trailing alphanumeric chars from payload.
-
-    Stripping non-alnum chars makes the marker robust against box-drawing
-    chrome ('│', '╭', '─'), wrapping prefixes, and bracketed-paste markers
-    the agent may render around or near the input.
-    """
-    blob = "".join(_ALNUM_RE.findall(payload))
-    return blob[-max_len:]
-
-
-def _alnum_blob(text: str) -> str:
-    return "".join(_ALNUM_RE.findall(text))
 
 
 def pid_is_alive(pid: int) -> bool:
@@ -323,136 +284,35 @@ async def _send_keys_tmux(
     # and atomically buffer everything between the markers as a single 'paste'
     # event. The next Enter KeyEvent is unambiguously discrete → submit.
     #
-    # tmux subprocess return codes are NOT a delivery signal — they only tell
-    # us whether the key bytes were written to the pty, not whether the agent
-    # acted on them. The agent's paste-detection window can absorb the trailing
-    # C-m as part of the burst, leaving the payload sitting in the input area
-    # unsubmitted. capture-pane is the only feedback channel: if the payload's
-    # alnum tail still appears in the bottom of the pane after a brief render
-    # delay, the submit was absorbed and we retry.
-    return await _submit_with_verification(
-        session_name=session_name,
-        send_text=send_text,
-        payload_len=payload_len,
-        timeout=timeout,
-    )
-
-
-async def _submit_with_verification(
-    *,
-    session_name: str,
-    send_text: str,
-    payload_len: int,
-    timeout: float,
-) -> bool:
-    """Send C-m and verify the input cleared. Retry on absorption."""
-    marker = _alnum_tail(send_text, _VERIFY_TAIL_LEN)
-    verify_enabled = len(marker) >= _VERIFY_MIN_MARKER_LEN
-
-    for attempt in range(1, _MAX_SUBMIT_ATTEMPTS + 1):
-        # First attempt: brief gap for tmux to flush the close marker.
-        # Retries: longer gap so the next C-m lands outside any residual
-        # paste-detection window the agent may still be in.
-        await asyncio.sleep(_RETRY_GAP_S if attempt > 1 else _SUBMIT_GAP_S)
-
-        cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
-        result = await asyncio.create_subprocess_exec(
-            *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
-        if result.returncode != 0:
-            logger.error(
-                "tmux send-keys submit returned nonzero exit",
-                session=session_name,
-                reason="nonzero_exit_submit",
-                returncode=result.returncode,
-                stderr=stderr.decode().strip(),
-                attempt=attempt,
-            )
-            return False
-
-        if not verify_enabled:
-            # Too few alphanumeric chars in the payload to discriminate marker
-            # from agent chrome. Trust the subprocess success and move on.
-            logger.debug(
-                "tmux paste pipeline: submit sent (verification skipped — marker too short)",
-                session=session_name,
-                payload_bytes=payload_len,
-                marker_len=len(marker),
-            )
-            return True
-
-        await asyncio.sleep(_VERIFY_GAP_S)
-        absorbed = await _input_still_contains_payload(session_name, marker, timeout)
-        if absorbed is None:
-            # capture-pane itself failed. Subprocess success is the only
-            # signal we have left; treat as best-effort success and log it
-            # so the issue is auditable.
-            logger.warning(
-                "tmux paste pipeline: submit sent but verification capture failed",
-                session=session_name,
-                attempt=attempt,
-                payload_bytes=payload_len,
-            )
-            return True
-
-        if not absorbed:
-            logger.debug(
-                "tmux paste pipeline: submit verified",
-                session=session_name,
-                attempt=attempt,
-                payload_bytes=payload_len,
-            )
-            return True
-
-        logger.warning(
-            "tmux paste pipeline: submit absorbed, retrying",
-            session=session_name,
-            attempt=attempt,
-            max_attempts=_MAX_SUBMIT_ATTEMPTS,
-            payload_bytes=payload_len,
-        )
-
-    logger.error(
-        "tmux paste pipeline: submit absorbed after all retries",
+    # The short fixed sleep is a sub-second ordering safety margin so tmux
+    # finishes writing the close marker through the pty before the next
+    # subprocess writes \r. It is NOT a paste-detection heuristic, and does
+    # NOT need to scale with payload size — the close marker is the same
+    # regardless of how much content preceded it.
+    logger.debug(
+        "tmux paste pipeline: waiting before submit",
         session=session_name,
-        attempts=_MAX_SUBMIT_ATTEMPTS,
-        payload_bytes=payload_len,
+        submit_delay_s=_SUBMIT_GAP_S,
     )
-    return False
+    await asyncio.sleep(_SUBMIT_GAP_S)
 
-
-async def _capture_pane(session_name: str, timeout: float) -> str | None:
-    """Return rendered pane content, or None if the subprocess failed."""
-    cmd = [config.computer.tmux_binary, "capture-pane", "-t", session_name, "-p"]
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    try:
-        stdout, stderr = await communicate_with_timeout(proc, None, timeout, "tmux capture-pane")
-    except SubprocessTimeoutError:
-        logger.warning("tmux capture-pane timed out", session=session_name)
-        return None
-    if proc.returncode != 0:
-        logger.warning(
-            "tmux capture-pane returned nonzero exit",
+    cmd_enter = [config.computer.tmux_binary, "send-keys", "-t", session_name, "C-m"]
+    result = await asyncio.create_subprocess_exec(
+        *cmd_enter, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await communicate_with_timeout(result, None, timeout, "tmux operation")
+    if result.returncode != 0:
+        logger.error(
+            "tmux send-keys submit returned nonzero exit",
             session=session_name,
-            returncode=proc.returncode,
+            reason="nonzero_exit_submit",
+            returncode=result.returncode,
             stderr=stderr.decode().strip(),
         )
-        return None
-    return stdout.decode("utf-8", errors="replace")
+        return False
 
-
-async def _input_still_contains_payload(session_name: str, marker: str, timeout: float) -> bool | None:
-    """Return True if marker is visible in the bottom of the pane.
-
-    None signals an inconclusive check (capture failed). Callers must decide
-    how to interpret that — typically best-effort success.
-    """
-    pane = await _capture_pane(session_name, timeout)
-    if pane is None:
-        return None
-    bottom = "\n".join(pane.splitlines()[-_VERIFY_PANE_LINES:])
-    return marker in _alnum_blob(bottom)
+    logger.debug("tmux paste pipeline: submit ok", session=session_name, payload_bytes=payload_len)
+    return True
 
 
 async def send_signal(session_name: str, signal: Signals = SIGINT) -> bool:

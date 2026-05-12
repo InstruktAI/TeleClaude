@@ -180,12 +180,10 @@ class TestSendKeysSubmission:
         # The submit gap is size-INDEPENDENT: it only covers tmux's flush of
         # the bracketed-paste close marker, which is the same regardless of
         # how much content preceded it. Both small and large payloads use
-        # the same fixed _SUBMIT_GAP_S for their first submit.
+        # the same fixed _SUBMIT_GAP_S.
         sleep_mock = AsyncMock()
-        # Big payload triggers verification (40 alnum chars in tail):
-        # load, paste, delete, submit, capture-pane.
-        processes = [_completed_process() for _ in range(5)]
-        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 5)
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         big_payload = "x" * 100_000  # 100 KB
         with (
@@ -201,12 +199,10 @@ class TestSendKeysSubmission:
                 text=big_payload,
             )
         assert result is True
-        # First sleep is the submit gap; second is the verify gap.
-        big_submit_gap = sleep_mock.await_args_list[0].args[0]
+        sleep_mock.assert_awaited_once()
+        big_gap = sleep_mock.await_args.args[0]
 
-        # Reset and run with a tiny payload — verification is skipped because
-        # the alnum tail is < 10 chars, so there is exactly one sleep (the
-        # submit gap) and 4 subprocesses (no capture-pane).
+        # Reset and run with a tiny payload — gap must be identical.
         sleep_mock = AsyncMock()
         processes = [_completed_process() for _ in range(4)]
         communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
@@ -223,11 +219,10 @@ class TestSendKeysSubmission:
                 text="ok",
             )
         assert result is True
-        sleep_mock.assert_awaited_once()
-        small_submit_gap = sleep_mock.await_args.args[0]
+        small_gap = sleep_mock.await_args.args[0]
 
-        # Same fixed submit gap for any size. Matches the module constant.
-        assert big_submit_gap == small_submit_gap == _keys._SUBMIT_GAP_S
+        # Same fixed gap for any size. Matches the module constant.
+        assert big_gap == small_gap == _keys._SUBMIT_GAP_S
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -235,12 +230,9 @@ class TestSendKeysSubmission:
         # Without -r, tmux rewrites every LF to CR, collapsing multiline bundles
         # into one carriage-returned line. paste-buffer must include -r so LFs
         # are preserved in the stream that hits the pane.
-        #
-        # This multiline payload has 28 alnum chars in its tail, so verification
-        # runs: 5 subprocesses (load, paste, delete, submit, capture-pane).
         multiline = "first line\nsecond line\nthird line"
-        processes = [_completed_process() for _ in range(5)]
-        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 5)
+        processes = [_completed_process() for _ in range(4)]
+        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
 
         with (
             patch(
@@ -392,222 +384,6 @@ class TestSendKeysSubmission:
         load_args = mock_exec.await_args_list[0].args
         buf_name = load_args[3]
         assert mock_exec.await_args_list[2].args == (binary, "delete-buffer", "-b", buf_name)
-
-
-class TestSubmitVerification:
-    """capture-pane tells us whether the agent actually consumed the C-m.
-
-    The agent's paste-detection window can absorb the trailing C-m as part of
-    the burst, leaving the payload unsubmitted in the input area. tmux's
-    subprocess return code is 0 either way — capture-pane is the only signal
-    we have.
-    """
-
-    @staticmethod
-    def _payload_with_unique_marker() -> tuple[str, str]:
-        # A payload whose alnum tail is well above the 10-char threshold.
-        text = "deliver this notification ABC123XYZ789DEF456"
-        marker = _keys._alnum_tail(text, _keys._VERIFY_TAIL_LEN)
-        assert len(marker) >= _keys._VERIFY_MIN_MARKER_LEN
-        return text, marker
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_submit_verified_when_marker_absent_from_input_area(self) -> None:
-        # capture-pane returns a pane whose bottom does NOT contain the marker
-        # → submit verified on first attempt. 5 subprocesses, 1 submit.
-        text, _ = self._payload_with_unique_marker()
-        pane_after_submit = (
-            b"agent transcript line\n"
-            b"more transcript\n"
-            b"|- input -----------|\n"
-            b"| >                 |\n"
-            b"|-------------------|\n"
-            b"  ready\n"
-        )
-        processes = [_completed_process() for _ in range(5)]
-        communicate_mock = AsyncMock(
-            side_effect=[
-                (b"", b""),  # load-buffer
-                (b"", b""),  # paste-buffer
-                (b"", b""),  # delete-buffer
-                (b"", b""),  # submit
-                (pane_after_submit, b""),  # capture-pane
-            ]
-        )
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
-        ):
-            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text=text)
-
-        assert result is True
-        assert mock_exec.await_count == 5
-        # Exactly one submit, one capture-pane.
-        submit_calls = [c for c in mock_exec.await_args_list if c.args[1] == "send-keys"]
-        capture_calls = [c for c in mock_exec.await_args_list if c.args[1] == "capture-pane"]
-        assert len(submit_calls) == 1
-        assert len(capture_calls) == 1
-        assert capture_calls[0].args == (
-            _keys.config.computer.tmux_binary,
-            "capture-pane",
-            "-t",
-            "tmux-alpha",
-            "-p",
-        )
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_submit_absorbed_then_retries_until_verified(self) -> None:
-        # First capture: marker present (submit absorbed). Second submit fires,
-        # second capture: marker gone (verified). Returns True.
-        text, marker = self._payload_with_unique_marker()
-        absorbed_pane = f"|- input --|\n| > {text}|\n|----------|\n".encode()
-        cleared_pane = b"agent reply\n\n|- input --|\n| > |\n|----------|\n"
-        # load, paste, delete, submit#1, capture#1, submit#2, capture#2
-        processes = [_completed_process() for _ in range(7)]
-        communicate_mock = AsyncMock(
-            side_effect=[
-                (b"", b""),
-                (b"", b""),
-                (b"", b""),
-                (b"", b""),
-                (absorbed_pane, b""),
-                (b"", b""),
-                (cleared_pane, b""),
-            ]
-        )
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
-        ):
-            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text=text)
-
-        assert result is True
-        assert mock_exec.await_count == 7
-        # Sanity: the absorbed pane DID contain the marker (alnum-stripped).
-        assert marker in _keys._alnum_blob(absorbed_pane.decode())
-        # Two submits, two captures.
-        submit_calls = [c for c in mock_exec.await_args_list if c.args[1] == "send-keys"]
-        capture_calls = [c for c in mock_exec.await_args_list if c.args[1] == "capture-pane"]
-        assert len(submit_calls) == 2
-        assert len(capture_calls) == 2
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_submit_absorbed_all_attempts_returns_false(self) -> None:
-        # Marker persists in every capture → submit truly never landed.
-        # Returns False so the caller can re-queue.
-        text, _ = self._payload_with_unique_marker()
-        absorbed_pane = f"|- input --|\n| > {text}|\n|----------|\n".encode()
-        # load, paste, delete, then (submit + capture) * 3 attempts = 9.
-        total_procs = 3 + 2 * _keys._MAX_SUBMIT_ATTEMPTS
-        processes = [_completed_process() for _ in range(total_procs)]
-        side_effects: list[tuple[bytes, bytes]] = [(b"", b"")] * 3  # load/paste/delete
-        for _ in range(_keys._MAX_SUBMIT_ATTEMPTS):
-            side_effects.append((b"", b""))  # submit
-            side_effects.append((absorbed_pane, b""))  # capture
-        communicate_mock = AsyncMock(side_effect=side_effects)
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
-        ):
-            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text=text)
-
-        assert result is False
-        submit_calls = [c for c in mock_exec.await_args_list if c.args[1] == "send-keys"]
-        capture_calls = [c for c in mock_exec.await_args_list if c.args[1] == "capture-pane"]
-        assert len(submit_calls) == _keys._MAX_SUBMIT_ATTEMPTS
-        assert len(capture_calls) == _keys._MAX_SUBMIT_ATTEMPTS
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_capture_pane_failure_treated_as_best_effort_success(self) -> None:
-        # If capture-pane itself errors, we have no way to verify either way.
-        # Trust the subprocess success of the C-m and exit True (logged).
-        text, _ = self._payload_with_unique_marker()
-        processes = [
-            _completed_process(),  # load
-            _completed_process(),  # paste
-            _completed_process(),  # delete
-            _completed_process(),  # submit
-            _completed_process(returncode=1),  # capture-pane fails
-        ]
-        communicate_mock = AsyncMock(
-            side_effect=[
-                (b"", b""),
-                (b"", b""),
-                (b"", b""),
-                (b"", b""),
-                (b"", b"no current pane"),
-            ]
-        )
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
-        ):
-            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text=text)
-
-        assert result is True
-        # Only one submit (no retry triggered by an inconclusive check).
-        submit_calls = [c for c in mock_exec.await_args_list if c.args[1] == "send-keys"]
-        assert len(submit_calls) == 1
-
-    @pytest.mark.unit
-    @pytest.mark.asyncio
-    async def test_short_payload_skips_verification(self) -> None:
-        # Payload with < 10 alnum chars in its tail → no capture-pane call.
-        # Exactly 4 subprocesses: load, paste, delete, submit.
-        processes = [_completed_process() for _ in range(4)]
-        communicate_mock = AsyncMock(side_effect=[(b"", b"")] * 4)
-
-        with (
-            patch(
-                "teleclaude.core.tmux_bridge._keys.asyncio.create_subprocess_exec",
-                new=AsyncMock(side_effect=processes),
-            ) as mock_exec,
-            patch("teleclaude.core.tmux_bridge._keys.communicate_with_timeout", new=communicate_mock),
-            patch("teleclaude.core.tmux_bridge._keys.asyncio.sleep", new=AsyncMock()),
-        ):
-            result = await _keys.send_keys_existing_tmux(session_name="tmux-alpha", text="hi!")
-
-        assert result is True
-        assert mock_exec.await_count == 4
-        capture_calls = [c for c in mock_exec.await_args_list if c.args[1] == "capture-pane"]
-        assert capture_calls == []
-
-    @pytest.mark.unit
-    def test_alnum_tail_strips_non_alphanumeric(self) -> None:
-        # Box-drawing chars, whitespace, punctuation — all stripped.
-        assert _keys._alnum_tail("│ hello │\n│ world │", 10) == "helloworld"
-        assert _keys._alnum_tail("only-punct-...", 10) == "onlypunct"
-        assert _keys._alnum_tail("", 10) == ""
-
-    @pytest.mark.unit
-    def test_alnum_tail_caps_to_max_len(self) -> None:
-        long = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOP"
-        tail = _keys._alnum_tail(long, 5)
-        assert tail == long[-5:]
 
 
 class TestSendKeysToTty:
