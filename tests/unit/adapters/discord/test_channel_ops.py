@@ -32,6 +32,13 @@ class DummyChannelOperations(ChannelOperationsMixin):
         self._create_forum_thread: AsyncMock = AsyncMock()
         self._require_async_callable = staticmethod(lambda fn, *, label: fn)
 
+    # UiAdapter base helpers — stubbed for unit testing in isolation.
+    def headless_prefix(self, session: Session) -> str:
+        return "[HEADLESS] " if session.lifecycle_status == "headless" else ""
+
+    def display_title(self, session: Session) -> str:
+        return f"{self.headless_prefix(session)}{self.title_body(session)}"
+
 
 def _make_session(*, human_role: str | None) -> Session:
     return Session(
@@ -129,7 +136,8 @@ async def test_create_channel_persists_forum_thread_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_channel_title_renames_thread() -> None:
+async def test_update_channel_title_renames_thread_with_display_title_from_session() -> None:
+    """Rename derives the display title from session — never from a caller-provided string."""
     adapter = DummyChannelOperations()
     thread = SimpleNamespace(edit=AsyncMock())
     adapter._get_channel = AsyncMock(return_value=thread)
@@ -143,7 +151,56 @@ async def test_update_channel_title_renames_thread() -> None:
         origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=400).to_dict()},
     )
 
-    result = await adapter.update_channel_title(session, "Renamed title")
+    result = await adapter.update_channel_title(session)
 
     assert result is True
-    thread.edit.assert_awaited_once_with(name="Renamed title")
+    # Per-project forum (proj → 400, not catch-all 200), non-headless → bare title.
+    thread.edit.assert_awaited_once_with(name="New title")
+
+
+@pytest.mark.asyncio
+async def test_update_channel_title_preserves_headless_marker_on_rename() -> None:
+    """Regression guard: the [HEADLESS] prefix must persist across a rename, not be stripped."""
+    adapter = DummyChannelOperations()
+    thread = SimpleNamespace(edit=AsyncMock())
+    adapter._get_channel = AsyncMock(return_value=thread)
+
+    session = Session(
+        session_id="sess-discord-headless",
+        computer_name="machine",
+        tmux_session_name="tmux",
+        title="New title",
+        project_path="proj",
+        lifecycle_status="headless",
+        origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=400).to_dict()},
+    )
+
+    result = await adapter.update_channel_title(session)
+
+    assert result is True
+    thread.edit.assert_awaited_once_with(name="[HEADLESS] New title")
+
+
+@pytest.mark.asyncio
+async def test_update_channel_title_prepends_project_for_catch_all_forum() -> None:
+    """Catch-all forum disambiguation: project short-name prefixed before the title."""
+    adapter = DummyChannelOperations()
+    thread = SimpleNamespace(edit=AsyncMock())
+    adapter._get_channel = AsyncMock(return_value=thread)
+
+    session = Session(
+        session_id="sess-discord-catchall",
+        computer_name="machine",
+        tmux_session_name="tmux",
+        title="Pick a title",
+        project_path="/workspace/unmapped",
+        origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=200).to_dict()},
+    )
+
+    result = await adapter.update_channel_title(session)
+
+    assert result is True
+    # Project unmapped → catch-all forum (200) → "<short_name>: <description>".
+    call_kwargs = thread.edit.await_args.kwargs
+    assert call_kwargs["name"].endswith(": Pick a title")
+    assert "[HEADLESS]" not in call_kwargs["name"]

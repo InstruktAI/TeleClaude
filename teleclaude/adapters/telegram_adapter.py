@@ -26,7 +26,6 @@ from teleclaude.config import config
 from teleclaude.constants import TELEGRAM_MAX_MESSAGE_BYTES
 from teleclaude.core.db import db
 from teleclaude.core.models import ChannelMetadata, MessageMetadata, Session, TelegramAdapterMetadata
-from teleclaude.core.session_utils import get_display_title_for_session
 from teleclaude.utils.markdown import (
     MARKDOWN_V2_INITIAL_STATE,
     continuation_prefix_for_markdown_v2_state,
@@ -231,14 +230,9 @@ class TelegramAdapter(
             )
             return session
 
-        title = await get_display_title_for_session(session)
-        logger.debug(
-            "[TG_ENSURE] session=%s topic_id=None desired_title=%s",
-            session.session_id,
-            title,
-        )
+        title = self.display_title(session)
         logger.info(
-            "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
+            "[TG_ENSURE] No topic_id for session %s, creating topic (title=%s)",
             session.session_id,
             title,
         )

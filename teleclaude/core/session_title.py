@@ -102,5 +102,5 @@ async def generate_session_title_from_transcript(session: Session, adapter_clien
     await db.update_session(session.session_id, title=new_title)
     session.title = new_title
     logger.info("Updated session title from transcript: %s", new_title)
-    await adapter_client.update_channel_title(session, new_title)
+    await adapter_client.update_channel_title(session)
     return session

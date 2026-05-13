@@ -1,4 +1,4 @@
-"""Tests for [HEADLESS] prefix in Discord thread titles."""
+"""Tests for [HEADLESS] prefix in Discord-derived display titles."""
 
 from __future__ import annotations
 
@@ -13,15 +13,28 @@ pytestmark = pytest.mark.unit
 
 
 class DummyChannelOperations(ChannelOperationsMixin):
-    def __init__(self) -> None:
+    """Mirrors DummyChannelOperations in test_channel_ops.py but with a different forum map.
+
+    The headless-prefix and title_body responsibilities live on different layers:
+    headless_prefix is universal (UiAdapter base) and title_body is the
+    Discord-specific decoration. These tests pin the composed display_title.
+    """
+
+    def __init__(self, project_forum_map: dict[str, int] | None = None) -> None:
         self._help_desk_channel_id = 100
         self._all_sessions_channel_id = 200
         self._team_channel_map: dict[int, str] = {}
-        self._project_forum_map = {"proj": 400}
+        self._project_forum_map = project_forum_map if project_forum_map is not None else {"/workspace/proj": 400}
         self._trusted_dirs = [SimpleNamespace(path="/workspace/proj", discord_forum=400)]
         self._parse_optional_int = lambda value: (
             int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
         )
+
+    def headless_prefix(self, session: Session) -> str:
+        return "[HEADLESS] " if session.lifecycle_status == "headless" else ""
+
+    def display_title(self, session: Session) -> str:
+        return f"{self.headless_prefix(session)}{self.title_body(session)}"
 
 
 def _make_session(
@@ -42,25 +55,25 @@ def _make_session(
     )
 
 
-def test_build_thread_title_prefixes_headless_in_project_forum() -> None:
+def test_display_title_prefixes_headless_in_project_forum() -> None:
+    """Headless session routed to a per-project forum: bare title with [HEADLESS] marker."""
     adapter = DummyChannelOperations()
     session = _make_session(lifecycle_status="headless")
-    title = adapter._build_thread_title(session, target_forum_id=400)
-    assert title == "[HEADLESS] My Task"
+    assert adapter.display_title(session) == "[HEADLESS] My Task"
 
 
-def test_build_thread_title_prefixes_headless_in_catchall_forum() -> None:
-    adapter = DummyChannelOperations()
+def test_display_title_prefixes_headless_in_catchall_forum() -> None:
+    """Headless session routed to the catch-all forum: project short-name + title, with [HEADLESS] marker."""
+    # Empty project_forum_map forces fallback to the all_sessions catch-all forum.
+    adapter = DummyChannelOperations(project_forum_map={})
     session = _make_session(lifecycle_status="headless")
-    title = adapter._build_thread_title(session, target_forum_id=200)
+    title = adapter.display_title(session)
     assert title.startswith("[HEADLESS] ")
-    # Catch-all includes project name prefix
     assert "My Task" in title
 
 
-def test_build_thread_title_no_prefix_for_active_session() -> None:
+def test_display_title_no_prefix_for_active_session() -> None:
+    """Active (non-headless) session in a project forum: bare title, no marker."""
     adapter = DummyChannelOperations()
     session = _make_session(lifecycle_status="active")
-    title = adapter._build_thread_title(session, target_forum_id=400)
-    assert not title.startswith("[HEADLESS]")
-    assert title == "My Task"
+    assert adapter.display_title(session) == "My Task"

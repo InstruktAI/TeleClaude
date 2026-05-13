@@ -6,6 +6,7 @@ import { Brain, Sparkles, Code2, Square } from "lucide-react";
 import { useState } from "react";
 import { fetchSessions } from "@/lib/api/sessions";
 import type { SessionInfo } from "@/lib/api/types";
+import { displayTitle } from "@/lib/sessions/displayTitle";
 import { useAgentColors } from "@/hooks/useAgentColors";
 import { safeAgent } from "@/lib/theme/tokens";
 
@@ -92,7 +93,7 @@ export function SessionHeader({ sessionId }: Props) {
   }
 
   const projectName = session.project_path?.split("/").filter(Boolean).pop() || "TeleClaude";
-  const title = session.title || "Untitled";
+  const title = displayTitle(session, "Untitled");
 
   return (
     <div className="flex flex-1 items-center gap-2 overflow-hidden">

@@ -113,17 +113,9 @@ class _AdapterNoopMixin:  # pyright: ignore[reportUnusedClass]
             )
         return ""
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Update channel title (no-op for Redis).
-
-        Args:
-            session: Session object
-            title: New title
-
-        Returns:
-            True
-        """
-        _ = (session, title)
+    async def update_channel_title(self, session: Session) -> bool:
+        """Update channel title (no-op for Redis)."""
+        _ = session
         return True
 
     async def close_channel(self, session: Session) -> bool:

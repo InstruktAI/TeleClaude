@@ -273,7 +273,7 @@ class TestUpdateChannelTitle:
     @pytest.mark.unit
     async def test_returns_true_without_action(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session()
-        result = await adapter.update_channel_title(session, "new title")
+        result = await adapter.update_channel_title(session)
         assert result is True
 
 

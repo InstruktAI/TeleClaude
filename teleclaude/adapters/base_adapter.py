@@ -138,12 +138,15 @@ class BaseAdapter(ABC):
         """
 
     @abstractmethod
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Update channel/topic title.
+    async def update_channel_title(self, session: Session) -> bool:
+        """Rename channel/topic to match the current session state.
+
+        Adapter derives the platform-specific display title from session
+        (semantic title + universal headless marker + any per-platform
+        decoration). Caller never passes the formatted string.
 
         Args:
             session: Session object
-            title: New title
 
         Returns:
             True if successful, False otherwise

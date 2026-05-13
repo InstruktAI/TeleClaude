@@ -535,11 +535,11 @@ class TestChannelUpdates:
         client.register_adapter("whatsapp", whatsapp)
 
         with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
-            result = await client.update_channel_title(session, "New title")
+            result = await client.update_channel_title(session)
 
         assert result is True
-        telegram.update_channel_title.assert_awaited_once_with(session, "New title")
-        discord.update_channel_title.assert_awaited_once_with(session, "New title")
+        telegram.update_channel_title.assert_awaited_once_with(session)
+        discord.update_channel_title.assert_awaited_once_with(session)
         whatsapp.update_channel_title.assert_not_awaited()
 
     @pytest.mark.unit
@@ -560,10 +560,10 @@ class TestChannelUpdates:
         client.register_adapter("whatsapp", whatsapp)
 
         with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
-            result = await client.update_channel_title(session, "New title")
+            result = await client.update_channel_title(session)
 
         assert result is True
-        discord.update_channel_title.assert_awaited_once_with(session, "New title")
+        discord.update_channel_title.assert_awaited_once_with(session)
         telegram.update_channel_title.assert_not_awaited()
         whatsapp.update_channel_title.assert_not_awaited()
 
@@ -583,11 +583,11 @@ class TestChannelUpdates:
         client.register_adapter("whatsapp", whatsapp)
 
         with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh)):
-            result = await client.update_channel_title(stale, "New title")
+            result = await client.update_channel_title(stale)
 
         assert result is True
-        telegram.update_channel_title.assert_awaited_once_with(fresh, "New title")
-        discord.update_channel_title.assert_awaited_once_with(fresh, "New title")
+        telegram.update_channel_title.assert_awaited_once_with(fresh)
+        discord.update_channel_title.assert_awaited_once_with(fresh)
         whatsapp.update_channel_title.assert_not_awaited()
 
     @pytest.mark.unit

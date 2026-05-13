@@ -29,7 +29,7 @@ class _ConcreteAdapter(UiAdapter):
     async def create_channel(self, session: Session, title: str, metadata: ChannelMetadata) -> str:
         return "chan1"
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
+    async def update_channel_title(self, session: Session) -> bool:
         return True
 
     async def close_channel(self, session: Session) -> bool:
@@ -201,6 +201,46 @@ class TestNoOpMethods:
         session = _make_session()
         result = await adapter.ensure_channel(session)
         assert result is session
+
+
+class TestDisplayTitle:
+    @pytest.mark.unit
+    def test_headless_prefix_added_for_headless_session(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.lifecycle_status = "headless"
+        assert adapter.headless_prefix(session) == "[HEADLESS] "
+
+    @pytest.mark.unit
+    def test_headless_prefix_empty_for_non_headless_session(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.lifecycle_status = "active"
+        assert adapter.headless_prefix(session) == ""
+
+    @pytest.mark.unit
+    def test_title_body_returns_session_title(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.title = "Some session"
+        assert adapter.title_body(session) == "Some session"
+
+    @pytest.mark.unit
+    def test_title_body_falls_back_to_untitled_when_title_missing(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.title = ""
+        assert adapter.title_body(session) == "Untitled"
+
+    @pytest.mark.unit
+    def test_display_title_composes_headless_marker_and_body(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.lifecycle_status = "headless"
+        session.title = "Some session"
+        assert adapter.display_title(session) == "[HEADLESS] Some session"
+
+    @pytest.mark.unit
+    def test_display_title_omits_marker_when_not_headless(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session()
+        session.lifecycle_status = "active"
+        session.title = "Some session"
+        assert adapter.display_title(session) == "Some session"
 
     @pytest.mark.unit
     async def test_ensure_output_lane_ready_skips_channel_ensure_for_tmux_activity(

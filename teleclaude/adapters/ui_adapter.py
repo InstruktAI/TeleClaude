@@ -454,6 +454,29 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         """Clean up adapter-specific stale resources. Returns count of cleaned items."""
         return 0
 
+    def headless_prefix(self, session: Session) -> str:
+        """Universal user-facing marker for headless sessions.
+
+        Prepended by every UI adapter's display formatter so customers and
+        admins can see at a glance that a session is unattended and may be
+        adoptable. Defined once on the base so the marker string and the
+        condition stay consistent across all adapters and future surfaces.
+        """
+        return "[HEADLESS] " if session.lifecycle_status == "headless" else ""
+
+    def title_body(self, session: Session) -> str:
+        """Platform-specific decoration over the canonical semantic title.
+
+        Default: bare semantic title with an "Untitled" fallback. Subclasses
+        override only when their platform needs additional disambiguation
+        (e.g. Discord catch-all forum prepending project name).
+        """
+        return session.title or "Untitled"
+
+    def display_title(self, session: Session) -> str:
+        """Full user-facing title used to set this adapter's renamable surface."""
+        return f"{self.headless_prefix(session)}{self.title_body(session)}"
+
     async def ensure_channel(self, session: Session) -> Session:
         """Ensure adapter-specific channel exists (default no-op)."""
         return session

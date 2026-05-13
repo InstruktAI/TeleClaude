@@ -722,7 +722,7 @@ class TestProjectSessionFromTranscript:
 
         mock_generate.assert_awaited_once_with([("user", "latest request"), ("assistant", "first part\n\nsecond part")])
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="New title")
-        adapter_client.update_channel_title.assert_awaited_once_with(session, "New title")
+        adapter_client.update_channel_title.assert_awaited_once_with(session)
         assert result.title == "New title"
 
     @pytest.mark.unit
@@ -761,7 +761,7 @@ class TestProjectSessionFromTranscript:
 
         mock_generate.assert_awaited_once()
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Stable title")
-        adapter_client.update_channel_title.assert_awaited_once_with(session, "Stable title")
+        adapter_client.update_channel_title.assert_awaited_once_with(session)
 
     @pytest.mark.unit
     async def test_project_session_does_not_update_title_during_live_output_projection(self):
@@ -826,7 +826,7 @@ class TestProjectSessionFromTranscript:
             result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Generated title")
-        adapter_client.update_channel_title.assert_awaited_once_with(session, "Generated title")
+        adapter_client.update_channel_title.assert_awaited_once_with(session)
         assert result.title == "Generated title"
         assert result is session
 

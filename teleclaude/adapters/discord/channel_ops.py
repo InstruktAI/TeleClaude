@@ -56,6 +56,11 @@ class ChannelOperationsMixin:
     _get_channel: Callable[[int], Awaitable[object | None]]
     _resolve_parent_forum_id: Callable[[object | None], int | None]
 
+    if TYPE_CHECKING:
+        # Provided by UiAdapter base; declared here so pyright resolves it
+        # when methods on this mixin call self.display_title(session).
+        def display_title(self, session: Session) -> str: ...
+
     # =========================================================================
     # ensure_channel
     # =========================================================================
@@ -77,7 +82,7 @@ class ChannelOperationsMixin:
         if target_forum_id is None:
             return session
 
-        title = self._build_thread_title(session, target_forum_id)
+        title = self.display_title(session)
         await self.create_channel(session, title, ChannelMetadata())
         refreshed = await db.get_session(session.session_id)
         return refreshed or session
@@ -158,20 +163,22 @@ class ChannelOperationsMixin:
             )
         return "help_desk", teleclaude_config.config.computer.help_desk_dir
 
-    def _build_thread_title(self, session: Session, target_forum_id: int) -> str:
-        """Build Discord thread title based on routing target.
+    def title_body(self, session: Session) -> str:
+        """Discord-specific decoration: prefix the project short-name for the catch-all forum.
 
-        Per-project forum: just the session description (project context is implicit).
-        Catch-all fallback: prefixed with short project name for discoverability.
+        Per-project forum: bare session description — forum implies the project.
+        Catch-all forum: prefixed with project short-name so admins can distinguish
+        sessions from different projects sharing the forum.
+
+        The universal headless marker is applied by UiAdapter.display_title; this
+        method returns only the body it wraps.
         """
         description = session.title or "Untitled"
-        headless_prefix = "[HEADLESS] " if session.lifecycle_status == "headless" else ""
-        # If routing to a project-specific forum, use description only
-        if target_forum_id != self._all_sessions_channel_id:
-            return f"{headless_prefix}{description}"
-        # Catch-all: prefix with project name
+        target_forum_id = self._resolve_target_forum(session)
+        if target_forum_id is None or target_forum_id != self._all_sessions_channel_id:
+            return description
         short_name = get_short_project_name(session.project_path, session.subdir)
-        return f"{headless_prefix}{short_name}: {description}"
+        return f"{short_name}: {description}"
 
     @staticmethod
     def _is_customer_session(session: Session) -> bool:
@@ -235,8 +242,13 @@ class ChannelOperationsMixin:
 
         raise AdapterError("Discord session has no mapped destination channel")
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Rename an existing Discord thread to match the current session title."""
+    async def update_channel_title(self, session: Session) -> bool:
+        """Rename the Discord thread to match the current session state.
+
+        The display title is derived from session via UiAdapter.display_title
+        (universal headless marker + Discord title_body for forum routing).
+        Caller does not pass a formatted string.
+        """
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
@@ -248,6 +260,7 @@ class ChannelOperationsMixin:
             return False
         edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
         recoverable_errors = recoverable_operation_errors(self._discord)
+        title = self.display_title(session)
         try:
             await edit_fn(name=title)
             return True

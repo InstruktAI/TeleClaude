@@ -501,13 +501,17 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         result = await self._route_to_ui(session, "send_file", file_path, caption=caption)
         return str(result) if result else ""
 
-    async def update_channel_title(self, session: "Session", title: str) -> bool:
-        """Push a channel title rename through the dual lane: origin UI + Discord admin copy.
+    async def update_channel_title(self, session: "Session") -> bool:
+        """Propagate a channel rename to origin UI + Discord admin copy.
 
-        Mirrors send_output_update's routing — the origin UI adapter receives
-        the rename, Discord also receives it when origin is not already Discord
-        (Discord is the hardcoded admin reflection target). Adapters that are
-        neither origin nor admin for this session are never touched.
+        Mirrors send_output_update's routing — the origin UI adapter renames,
+        Discord also renames when origin is not already Discord (Discord is the
+        hardcoded admin reflection target). Adapters that are neither origin nor
+        admin for this session are never touched.
+
+        The display title is derived inside each adapter from session state
+        (universal headless marker + per-adapter title_body). Caller passes
+        only the session.
 
         Returns True when at least one lane succeeded.
         """
@@ -528,14 +532,14 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         succeeded = False
         if origin_adapter is not None:
             origin_result = await self._route_to_ui(
-                session_to_use, "update_channel_title", title, include_adapters={origin_adapter}
+                session_to_use, "update_channel_title", include_adapters={origin_adapter}
             )
             if origin_result:
                 succeeded = True
 
         if admin_target is not None:
             admin_result = await self._route_to_ui(
-                session_to_use, "update_channel_title", title, include_adapters={admin_target}
+                session_to_use, "update_channel_title", include_adapters={admin_target}
             )
             if admin_result:
                 succeeded = True

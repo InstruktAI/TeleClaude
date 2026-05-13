@@ -103,8 +103,8 @@ class WhatsAppAdapter(UiAdapter):
             return phone_number
         return session.session_id
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        _ = (session, title)
+    async def update_channel_title(self, session: Session) -> bool:
+        _ = session
         return True
 
     @staticmethod

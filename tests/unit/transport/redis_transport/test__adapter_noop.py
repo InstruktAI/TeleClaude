@@ -106,7 +106,7 @@ class TestCreateChannel:
 class TestUpdateChannelTitle:
     @pytest.mark.unit
     async def test_returns_true(self, transport: RedisTransport, session: MagicMock) -> None:
-        result = await transport.update_channel_title(session, "new title")
+        result = await transport.update_channel_title(session)
         assert result is True
 
 

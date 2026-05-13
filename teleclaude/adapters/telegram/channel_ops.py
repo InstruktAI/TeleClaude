@@ -76,6 +76,11 @@ class ChannelOperationsMixin:
         """Ensure the adapter is started before operations."""
         raise NotImplementedError
 
+    if TYPE_CHECKING:
+        # Provided by UiAdapter base; declared here so pyright resolves it
+        # when methods on this mixin call self.display_title(session).
+        def display_title(self, session: Session) -> str: ...
+
     # =========================================================================
     # Channel Operations Implementation
     # =========================================================================
@@ -161,14 +166,20 @@ class ChannelOperationsMixin:
         """Internal method with retry logic for creating forum topics."""
         return await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
 
-    async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Update topic title."""
+    async def update_channel_title(self, session: Session) -> bool:
+        """Rename the Telegram topic to match the current session state.
+
+        Title is derived from session via UiAdapter.display_title (universal
+        headless marker + default bare semantic title — Telegram is a customer-
+        facing surface, no admin disambiguation is added).
+        """
         self._ensure_started()
 
         topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
         if topic_id is None:
             raise AdapterError("Session missing telegram topic_id")
 
+        title = self.display_title(session)
         try:
             await self._edit_forum_topic_with_retry(topic_id, title)
             return True

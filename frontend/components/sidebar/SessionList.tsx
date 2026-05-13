@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Brain, Sparkles, Code2 } from "lucide-react";
 import { fetchSessions } from "@/lib/api/sessions";
+import { displayTitle } from "@/lib/sessions/displayTitle";
 import { useAgentTheming } from "@/hooks/useAgentTheming";
 import { useAgentColors } from "@/hooks/useAgentColors";
 import { safeAgent, type AgentType } from "@/lib/theme/tokens";
@@ -46,7 +47,7 @@ function SessionItem({ session, isActive }: { session: any; isActive: boolean })
   const agent: AgentType = safeAgent(session.active_agent);
   const colors = useAgentColors(agent);
 
-  const title = session.title || session.session_id.slice(0, 8);
+  const title = displayTitle(session);
 
   return (
     <button

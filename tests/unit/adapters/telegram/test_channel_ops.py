@@ -30,14 +30,30 @@ class _StubChannelOps(ChannelOperationsMixin):
     def _ensure_started(self) -> None:
         pass
 
+    # UiAdapter base helpers — stubbed for unit testing in isolation.
+    def headless_prefix(self, session: Session) -> str:
+        return "[HEADLESS] " if session.lifecycle_status == "headless" else ""
 
-def _make_session(session_id: str = "sess-1", topic_id: int | None = None) -> Session:
+    def title_body(self, session: Session) -> str:
+        return session.title or "Untitled"
+
+    def display_title(self, session: Session) -> str:
+        return f"{self.headless_prefix(session)}{self.title_body(session)}"
+
+
+def _make_session(
+    session_id: str = "sess-1",
+    topic_id: int | None = None,
+    title: str = "S",
+    lifecycle_status: str = "active",
+) -> Session:
     tg = TelegramAdapterMetadata(topic_id=topic_id)
     return Session(
         session_id=session_id,
         computer_name="x",
         tmux_session_name=f"t-{session_id}",
-        title="S",
+        title=title,
+        lifecycle_status=lifecycle_status,
         origin_metadata={"telegram": tg.to_dict()},
     )
 
@@ -152,26 +168,39 @@ async def test_update_channel_title_raises_when_topic_id_missing():
     session = _make_session(topic_id=None)
 
     with pytest.raises(AdapterError):
-        await ops.update_channel_title(session, "New Title")
+        await ops.update_channel_title(session)
 
 
-async def test_update_channel_title_returns_true_on_success():
+async def test_update_channel_title_renames_with_display_title_from_session():
+    """Rename target is derived from session via display_title — no title parameter."""
     ops = _StubChannelOps()
-    session = _make_session(topic_id=91)
+    session = _make_session(topic_id=91, title="Renamed")
     ops._edit_forum_topic_with_retry = AsyncMock()
 
-    result = await ops.update_channel_title(session, "Renamed")
+    result = await ops.update_channel_title(session)
 
     ops._edit_forum_topic_with_retry.assert_awaited_once_with(91, "Renamed")
     assert result is True
 
 
+async def test_update_channel_title_preserves_headless_marker_on_rename():
+    """Regression guard: a headless session keeps its [HEADLESS] marker after rename."""
+    ops = _StubChannelOps()
+    session = _make_session(topic_id=91, title="Renamed", lifecycle_status="headless")
+    ops._edit_forum_topic_with_retry = AsyncMock()
+
+    result = await ops.update_channel_title(session)
+
+    ops._edit_forum_topic_with_retry.assert_awaited_once_with(91, "[HEADLESS] Renamed")
+    assert result is True
+
+
 async def test_update_channel_title_returns_false_on_telegram_error():
     ops = _StubChannelOps()
-    session = _make_session(topic_id=42)
+    session = _make_session(topic_id=42, title="Broken")
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=TelegramError("boom"))
 
-    result = await ops.update_channel_title(session, "Broken")
+    result = await ops.update_channel_title(session)
 
     assert result is False
 
@@ -179,10 +208,10 @@ async def test_update_channel_title_returns_false_on_telegram_error():
 async def test_update_channel_title_treats_topic_not_modified_as_noop_success():
     """Topic_not_modified means title already matches — treat as successful no-op, not an error."""
     ops = _StubChannelOps()
-    session = _make_session(topic_id=42)
+    session = _make_session(topic_id=42, title="Same Title")
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Topic_not_modified"))
 
-    result = await ops.update_channel_title(session, "Same Title")
+    result = await ops.update_channel_title(session)
 
     assert result is True
 
@@ -190,10 +219,10 @@ async def test_update_channel_title_treats_topic_not_modified_as_noop_success():
 async def test_update_channel_title_returns_false_on_other_bad_request():
     """Other BadRequest errors (not topic_not_modified) must return False, not be swallowed as success."""
     ops = _StubChannelOps()
-    session = _make_session(topic_id=42)
+    session = _make_session(topic_id=42, title="Any Title")
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Chat not found"))
 
-    result = await ops.update_channel_title(session, "Any Title")
+    result = await ops.update_channel_title(session)
 
     assert result is False
 
