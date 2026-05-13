@@ -383,16 +383,6 @@ class EventBus:
         """
         loop = asyncio.get_running_loop()
 
-        if self._redis is None and visibility != EventVisibility.LOCAL:
-            logger.debug(
-                "EventBus.emit no-op (no Redis configured) event=%s visibility=%s",
-                event,
-                visibility,
-            )
-            future: asyncio.Future[str] = loop.create_future()
-            future.set_result("no-op")
-            return future
-
         envelope = self._build_envelope(event, context, visibility)
         self._local_dispatch_count += 1
         local_task = loop.create_task(
@@ -403,6 +393,20 @@ class EventBus:
         local_task.add_done_callback(self._publish_done)
 
         if visibility == EventVisibility.LOCAL:
+            return local_task
+
+        # CLUSTER: same-process subscribers already got the event via local
+        # dispatch above. The Redis publish leg is for cross-host fan-out.
+        # When Redis is unconfigured (CLI helpers that import the singleton
+        # without going through configure_event_bus, or daemon startup that
+        # took the Redis-unreachable degraded branch in
+        # daemon_event_platform._start_event_platform), the bus carries on
+        # serving same-process subscribers and skips the cross-host leg.
+        if self._redis is None:
+            logger.debug(
+                "EventBus.emit skipping cross-host publish (no Redis configured) event=%s",
+                event,
+            )
             return local_task
 
         self._cluster_publish_count += 1

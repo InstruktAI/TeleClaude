@@ -1205,20 +1205,29 @@ class TestEventBusVisibilityAwareDispatch:
         assert bus.cluster_publish_count == before + 1, "CLUSTER must increment cluster_publish once per emit"
 
     @pytest.mark.unit
-    async def test_emit_returns_noop_when_redis_unconfigured(self) -> None:
-        """``emit`` on a bus with no Redis client must not raise — return a no-op.
+    async def test_emit_dispatches_locally_when_redis_unconfigured(self) -> None:
+        """``emit`` with no Redis client must still dispatch to local subscribers.
 
-        CLI helpers import the module-level ``event_bus`` singleton without
-        going through ``configure_event_bus``. Before this guard, every such
-        emit produced a logged ``RuntimeError`` from the publish task.
+        Same-process subscribers (e.g. the api_server WS-push handler) do not
+        depend on Redis. The earlier guard short-circuited the entire emit
+        when ``_redis is None``, which silently cut off TUI updates when the
+        daemon started up while Redis was unreachable. The bus must serve
+        same-process subscribers regardless of Redis state; only the
+        cross-host publish leg is skipped.
         """
         bus = EventBus()  # no redis_client
+        received: list[str] = []
+
+        async def handler(event: str, _context: Any) -> None:
+            received.append(event)
+
+        bus.subscribe("session_started", handler)
         task = bus.emit(
             "session_started",
             SessionLifecycleContext(session_id="sess-1"),
         )
-        result = await task
-        assert result == "no-op"
+        await task
+        assert received == ["session_started"], "local dispatch must run even when Redis is unconfigured"
 
     @pytest.mark.unit
     async def test_redis_redelivery_does_not_refire_locally_dispatched_handler(self) -> None:
