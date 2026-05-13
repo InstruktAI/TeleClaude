@@ -471,7 +471,7 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
             # Same command re-run (e.g., second pytest after first failed)
             if error_command and _commands_overlap(error_command, later_command):
                 return True
-            if _validation_family_resolves(error_command, later_command, error_families):
+            if _validation_family_resolves(error_record, later_command, error_families):
                 return True
             # Bash command referencing same file area
             if error_file and _command_references_file(later_command, error_file):
@@ -519,13 +519,18 @@ def _command_validation_families(command: str) -> set[str]:
     return families
 
 
-def _validation_family_resolves(error_command: str, later_command: str, error_families: set[str]) -> bool:
+def _validation_family_resolves(
+    error_record: ToolCallRecord,
+    later_command: str,
+    error_families: set[str],
+) -> bool:
     """Return True when a later validation command is broad enough to resolve an earlier error."""
+    error_command = _extract_shell_command(error_record.input_data)
     later_families = _command_validation_families(later_command)
     for family in error_families & later_families:
         if family in {"commit", "logs", "status"}:
             return True
-        error_targets = _validation_targets(error_command, family)
+        error_targets = _validation_targets(error_command, family, error_record.result_snippet)
         later_targets = _validation_targets(later_command, family)
         if family == "tests" and not _pytest_selectors_cover(
             _pytest_selectors(error_command),
@@ -537,8 +542,13 @@ def _validation_family_resolves(error_command: str, later_command: str, error_fa
     return False
 
 
-def _validation_targets(command: str, family: str) -> set[str]:
+def _validation_targets(command: str, family: str, result_snippet: str = "") -> set[str]:
     """Extract path-like validation targets for scope-aware stale-error clearing."""
+    if family == "tests":
+        failed_targets = _failed_pytest_targets(result_snippet)
+        if failed_targets:
+            return failed_targets
+
     targets: set[str] = set()
     for segment in _split_shell_segments(command):
         tokens = _segment_tokens(segment)
@@ -566,6 +576,16 @@ def _validation_targets(command: str, family: str) -> set[str]:
     return targets
 
 
+def _failed_pytest_targets(result_snippet: str) -> set[str]:
+    """Return concrete pytest failure targets from command output."""
+    targets: set[str] = set()
+    for match in re.finditer(r"\bFAILED\s+([^\s]+)", result_snippet or ""):
+        target = match.group(1).strip().replace("\\", "/")
+        if target and not target.startswith("-"):
+            targets.add(target.rstrip("/"))
+    return targets
+
+
 def _path_like_args(args: list[str]) -> set[str]:
     """Return validation arguments that identify files or directories."""
     targets: set[str] = set()
@@ -583,6 +603,7 @@ def _path_like_args(args: list[str]) -> set[str]:
         "--root",
         "--tb",
         "--timeout",
+        "--deselect",
         "-k",
         "-m",
         "-p",
@@ -596,7 +617,7 @@ def _path_like_args(args: list[str]) -> set[str]:
             continue
         if arg.startswith("-"):
             continue
-        target = arg.split("::", 1)[0].strip().replace("\\", "/")
+        target = arg.strip().replace("\\", "/")
         if target and not target.startswith("-"):
             targets.add(target.rstrip("/"))
     return targets
@@ -614,12 +635,25 @@ def _pytest_selectors(command: str) -> set[tuple[str, str]]:
         if head == "uv" and len(rest) >= 2 and rest[0] == "run":
             head = rest[1].rsplit("/", 1)[-1]
             rest = rest[2:]
+        if head == "telec" and rest[:2] == ["code", "test"]:
+            selectors.update(_telec_code_test_selectors(rest[2:]))
+            continue
+        if head == "make" and "test" in rest:
+            selectors.add(("-m", "not expensive"))
+            continue
         if head in {"python", "python3"} and rest[:2] == ["-m", "pytest"]:
             rest = rest[2:]
         elif head != "pytest":
             continue
-        selectors.update(_extract_option_values(rest, {"-k", "-m"}))
+        selectors.update(_extract_option_values(rest, {"-k", "-m", "--deselect"}))
     return selectors
+
+
+def _telec_code_test_selectors(args: list[str]) -> set[tuple[str, str]]:
+    """Return pytest selectors implied by telec's test runner arguments."""
+    if "--expensive" in args:
+        return set()
+    return {("-m", "not expensive")}
 
 
 def _extract_option_values(args: list[str], option_names: set[str]) -> set[tuple[str, str]]:
@@ -655,9 +689,18 @@ def _targets_cover(later_targets: set[str], error_targets: set[str]) -> bool:
     if not error_targets:
         return False
     for failed in error_targets:
-        if not any(failed == target or failed.startswith(f"{target}/") for target in later_targets):
+        if not any(_target_covers_failure(target, failed) for target in later_targets):
             return False
     return True
+
+
+def _target_covers_failure(later_target: str, failed_target: str) -> bool:
+    """Return True when a later validation target covers a failed target."""
+    if later_target == failed_target:
+        return True
+    if "::" in later_target:
+        return False
+    return failed_target.startswith(f"{later_target}/") or failed_target.startswith(f"{later_target}::")
 
 
 def _commands_overlap(cmd_a: str, cmd_b: str) -> bool:
