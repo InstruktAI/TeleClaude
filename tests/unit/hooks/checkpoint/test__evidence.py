@@ -150,6 +150,36 @@ class TestEvidenceChecks:
         assert _check_error_state(timeline) == []
 
     @pytest.mark.unit
+    def test_check_error_state_does_not_clear_failed_pytest_selector_with_different_selector(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest -k special tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py",
+                ),
+                _shell_record("pytest -k other tests/unit/a_test.py", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_failed_pytest_selector_with_unfiltered_path_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest -k special tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py",
+                ),
+                _shell_record("pytest tests/unit/a_test.py", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
     def test_check_error_state_clears_failed_typecheck_after_later_successful_typecheck(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[

@@ -527,6 +527,11 @@ def _validation_family_resolves(error_command: str, later_command: str, error_fa
             return True
         error_targets = _validation_targets(error_command, family)
         later_targets = _validation_targets(later_command, family)
+        if family == "tests" and not _pytest_selectors_cover(
+            _pytest_selectors(error_command),
+            _pytest_selectors(later_command),
+        ):
+            continue
         if _targets_cover(later_targets, error_targets):
             return True
     return False
@@ -595,6 +600,52 @@ def _path_like_args(args: list[str]) -> set[str]:
         if target and not target.startswith("-"):
             targets.add(target.rstrip("/"))
     return targets
+
+
+def _pytest_selectors(command: str) -> set[tuple[str, str]]:
+    """Extract pytest selector options that narrow which tests run."""
+    selectors: set[tuple[str, str]] = set()
+    for segment in _split_shell_segments(command):
+        tokens = _segment_tokens(segment)
+        if not tokens:
+            continue
+        head = tokens[0].rsplit("/", 1)[-1]
+        rest = tokens[1:]
+        if head == "uv" and len(rest) >= 2 and rest[0] == "run":
+            head = rest[1].rsplit("/", 1)[-1]
+            rest = rest[2:]
+        if head in {"python", "python3"} and rest[:2] == ["-m", "pytest"]:
+            rest = rest[2:]
+        elif head != "pytest":
+            continue
+        selectors.update(_extract_option_values(rest, {"-k", "-m"}))
+    return selectors
+
+
+def _extract_option_values(args: list[str], option_names: set[str]) -> set[tuple[str, str]]:
+    """Return option/value pairs for options that constrain validation scope."""
+    values: set[tuple[str, str]] = set()
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        matched = next((name for name in option_names if arg == name or arg.startswith(f"{name}=")), None)
+        if matched is None:
+            i += 1
+            continue
+        if arg == matched:
+            if i + 1 < len(args):
+                values.add((matched, args[i + 1]))
+                i += 2
+                continue
+        else:
+            values.add((matched, arg.split("=", 1)[1]))
+        i += 1
+    return values
+
+
+def _pytest_selectors_cover(error_selectors: set[tuple[str, str]], later_selectors: set[tuple[str, str]]) -> bool:
+    """Return True when a later pytest run is broad enough for the failed selector."""
+    return not later_selectors or later_selectors == error_selectors
 
 
 def _targets_cover(later_targets: set[str], error_targets: set[str]) -> bool:
