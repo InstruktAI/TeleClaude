@@ -581,9 +581,14 @@ def _failed_pytest_targets(result_snippet: str) -> set[str]:
     targets: set[str] = set()
     for match in re.finditer(r"\bFAILED\s+([^\s]+)", result_snippet or ""):
         target = match.group(1).strip().replace("\\", "/")
-        if target and not target.startswith("-"):
+        if _looks_like_pytest_target(target):
             targets.add(target.rstrip("/"))
     return targets
+
+
+def _looks_like_pytest_target(target: str) -> bool:
+    """Return True for pytest file or node identifiers."""
+    return bool(target) and not target.startswith("-") and ("/" in target or ".py" in target or "::" in target)
 
 
 def _path_like_args(args: list[str]) -> set[str]:

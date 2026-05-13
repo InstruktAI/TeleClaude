@@ -246,6 +246,23 @@ class TestEvidenceChecks:
         assert _check_error_state(timeline) == []
 
     @pytest.mark.unit
+    def test_check_error_state_ignores_pytest_progress_failed_marker_as_target(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet=(
+                        "tests/unit/a_test.py::test_a FAILED [100%]\nFAILED tests/unit/a_test.py::test_a - assert 0"
+                    ),
+                ),
+                _shell_record("pytest tests/unit/a_test.py::test_a", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
     def test_check_error_state_does_not_clear_deselected_node_failure(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[
