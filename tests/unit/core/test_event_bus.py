@@ -55,7 +55,7 @@ from teleclaude.core.events import (
     ToolUseActivityEvent,
     UserPromptSubmitActivityEvent,
 )
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.envelope import EventEnvelope, EventVisibility
 from teleclaude.events.processor import (
     CONSUMER_GROUP as CARTRIDGE_CONSUMER_GROUP,
 )
@@ -203,7 +203,20 @@ class TestEventBusApiRegressionGuards:
         emit_sig = inspect.signature(EventBus.emit)
         clear_sig = inspect.signature(EventBus.clear)
         assert list(subscribe_sig.parameters)[1:] == ["event", "handler"]
-        assert list(emit_sig.parameters)[1:] == ["event", "context"]
+        # Positional surface preserved: callers passing (event, context) keep working.
+        # The visibility-aware dispatch contract added a keyword-only `visibility`
+        # parameter with a default so existing call sites are unaffected.
+        emit_params = emit_sig.parameters
+        emit_positional = [
+            name
+            for name, p in emit_params.items()
+            if name != "self" and p.kind in (p.POSITIONAL_OR_KEYWORD, p.POSITIONAL_ONLY)
+        ]
+        assert emit_positional == ["event", "context"]
+        visibility_param = emit_params.get("visibility")
+        assert visibility_param is not None
+        assert visibility_param.kind == visibility_param.KEYWORD_ONLY
+        assert visibility_param.default is not inspect.Parameter.empty
         assert list(clear_sig.parameters) == ["self"]
 
     @pytest.mark.unit
@@ -1036,3 +1049,55 @@ class TestEventBusCallSiteSpecs:
         _, payload = calls[-1]
         envelope = EventEnvelope.from_stream_dict(payload)
         assert envelope.payload.get("notification_id") == 42
+
+
+class TestEventBusVisibilityAwareDispatch:
+    """Behavioral contract for ``EventBus.emit`` visibility-aware routing.
+
+    Pins the LOCAL-vs-CLUSTER transport split that lets high-volume same-process
+    signals (``AGENT_READY``) bypass Redis entirely without changing the
+    public emit/subscribe surface.
+    """
+
+    @pytest.mark.unit
+    async def test_emit_local_does_not_call_xadd(self) -> None:
+        """``visibility=LOCAL`` must skip the Redis publish leg entirely."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        task = bus.emit(
+            "agent_ready",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
+        )
+        await task
+        redis.xadd.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_emit_local_dispatches_to_subscribed_handler(self) -> None:
+        """``visibility=LOCAL`` must invoke registered in-process handlers."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        received: list[tuple[str, SessionLifecycleContext]] = []
+
+        async def handler(event: str, context: Any) -> None:
+            received.append((event, cast(SessionLifecycleContext, context)))
+
+        bus.subscribe("agent_ready", handler)
+        task = bus.emit(
+            "agent_ready",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
+        )
+        await task
+        assert len(received) == 1
+        assert received[0][0] == "agent_ready"
+        assert received[0][1].session_id == "sess-1"
+
+    @pytest.mark.unit
+    async def test_emit_default_visibility_still_publishes_to_redis(self) -> None:
+        """Existing call sites without ``visibility`` keep CLUSTER semantics (xadd called)."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        await bus.emit("session_started", SessionLifecycleContext(session_id="sess-1"))
+        calls = _captured_xadd_calls(redis)
+        assert calls, "default visibility must still publish to Redis"

@@ -34,6 +34,7 @@ from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_title import generate_session_title_from_transcript
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.tool_activity import build_tool_preview, extract_tool_name
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.session_scoping._git import read_head_sha
 from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
@@ -316,10 +317,13 @@ class AgentCoordinator(
 
         # Authoritative readiness signal: the agent process fired session_start,
         # so its stdin loop is live. Launchers awaiting AGENT_READY for this
-        # session unblock here.
+        # session unblock here. LOCAL visibility — the launcher coroutine lives
+        # in this same process; no Redis round-trip needed and the pool stays
+        # free of high-volume readiness traffic.
         event_bus.emit(
             TeleClaudeEvents.AGENT_READY,
             SessionLifecycleContext(session_id=context.session_id),
+            visibility=EventVisibility.LOCAL,
         )
 
         # Headless state flows through session data, not status events.

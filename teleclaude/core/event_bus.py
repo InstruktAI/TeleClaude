@@ -1,9 +1,19 @@
-"""Redis Streams-backed internal event bus for TeleClaude.
+"""Visibility-aware internal event bus for TeleClaude.
 
-Redis is the propagation boundary for internal fan-out. If Redis is
-unavailable, internal event publication fails at XADD time; workflow truth
-remains in SQLite-owned stores and clients fall back to polling canonical
-state.
+Events are routed by ``EventVisibility``:
+
+- ``LOCAL`` — dispatched in-process to registered handlers, no Redis hop.
+  Used for same-process signalling (e.g. ``AGENT_READY`` between coordinator
+  and launcher).
+- ``CLUSTER`` (default) — published to Redis Streams for cross-host fan-out
+  via the EventProcessor consumer-group path. Same-process subscribers are
+  still served through the existing consumer redelivery dedup.
+
+Redis is the cross-host propagation boundary for ``CLUSTER`` events only;
+``LOCAL`` events continue to dispatch when Redis is unavailable. Workflow
+truth remains in SQLite-owned stores; clients fall back to polling canonical
+state when cross-host fan-out is degraded. See
+``docs/project/design/architecture-v2/event-bus-transports.md``.
 """
 
 from __future__ import annotations
@@ -320,13 +330,51 @@ class EventBus:
         self._role = role
         self._redis = redis_client
 
-    def emit(self, event: EventType, context: EventContext) -> Awaitable[str]:
-        """Publish an internal event to Redis and return the scheduled task."""
+    def emit(
+        self,
+        event: EventType,
+        context: EventContext,
+        *,
+        visibility: EventVisibility = EventVisibility.CLUSTER,
+    ) -> Awaitable[str]:
+        """Publish an internal event and return the scheduled task.
+
+        ``visibility=LOCAL`` dispatches handlers in-process and never touches
+        Redis. Use it for intra-process signalling (e.g. ``AGENT_READY`` between
+        coordinator and launcher) so that high-volume same-process events do
+        not consume the Redis connection pool.
+
+        ``visibility=CLUSTER`` (default) publishes the envelope to Redis Streams
+        for cross-host fan-out via the EventProcessor consumer-group path —
+        existing behavior preserved for back-compat.
+        """
         loop = asyncio.get_running_loop()
-        task = loop.create_task(self._publish(event, context), name=f"event-bus-publish-{event}")
+        if visibility == EventVisibility.LOCAL:
+            task = loop.create_task(
+                self._dispatch_local(event, context),
+                name=f"event-bus-local-{event}",
+            )
+        else:
+            task = loop.create_task(self._publish(event, context), name=f"event-bus-publish-{event}")
         self._pending_tasks.add(task)
         task.add_done_callback(self._publish_done)
         return task
+
+    async def _dispatch_local(self, event: str, context: EventContext) -> str:
+        """Synchronously dispatch the event to in-process subscribers.
+
+        Mirrors the same (event_name, context) call shape that the Redis
+        consumer-group path produces via ``_subscriber_process``. Errors in
+        individual handlers are logged and do not propagate, matching the
+        existing event-guard contract for cluster delivery.
+        """
+        handlers = list(self._handlers.get(event, []))
+        for handler in handlers:
+            try:
+                await handler(event, context)
+            except Exception:
+                logger.exception("EventBus local dispatch handler failed event=%s", event)
+        return "local"
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
         """Consume internal events through the shared EventProcessor loop."""

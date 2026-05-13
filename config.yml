@@ -14,22 +14,10 @@ computer:
       desc: AI-powered multi-agent orchestration platform
       path: ${HOME}/Workspace/InstruktAI/TeleClaude
       discord_forum: 1475519670646870248
-    - name: Morriz' HOME
-      desc: Morriz' home where most config lives
-      path: ${HOME}
-      discord_forum: 1475454885335142441
-    - name: Morriz' development
-      desc: Morriz' dev projects manager and full stack developer
-      path: ${HOME}/Workspace/morriz
-      discord_forum: 1475454886383456297
     - name: Morriz' dotfiles
       desc: Morriz' dotfiles and configuration files
       path: ${HOME}/Sync/dotfiles
       discord_forum: 1475454887658655816
-    - name: InstruktAI development
-      desc: InstruktAI's dev projects manager and full stack developer
-      path: ${HOME}/Workspace/InstruktAI
-      discord_forum: 1475454892209471582
     - name: itsUP
       desc: Docker-based deployment platform
       path: ${HOME}/Workspace/morriz/itsUP
@@ -38,22 +26,6 @@ computer:
       desc: VJ Art engine project
       path: ${HOME}/Workspace/InstruktAI/VJArt
       discord_forum: 1475454894977585162
-    - name: Agents
-      desc: Global AI agents documentation and directives
-      path: ${HOME}/.agents
-      discord_forum: 1475454895959048234
-    - name: Claude Config
-      desc: Claude global config
-      path: ${HOME}/.claude
-      discord_forum: 1475454896949166082
-    - name: CODEX Config
-      desc: CODEX global config
-      path: ${HOME}/.codex
-      discord_forum: 1475454899251843103
-    - name: Gemini Config
-      desc: Gemini global config
-      path: ${HOME}/.gemini
-      discord_forum: 1475454900719714419
     - name: InstruktAI logger
       desc: Better logging for AI
       path: ${HOME}/Workspace/InstruktAI/python-logger
@@ -328,7 +300,11 @@ redis:
   enabled: true
   url: rediss://redis.srv.instrukt.ai:6478
   password: ${REDIS_PASSWORD}
-  max_connections: 30
+  # Transitional monolith-era sizing. Steady-state requirement will shrink
+  # once Increment 2 (STREAM transport) lands and high-volume in-process
+  # events stop touching Redis. Per-service budgets replace this during v2
+  # service extraction. See docs/project/design/architecture-v2/event-bus-transports.md.
+  max_connections: 100
   socket_timeout: 60
   message_stream_maxlen: 10000
   output_stream_maxlen: 10000
