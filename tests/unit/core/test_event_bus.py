@@ -1160,6 +1160,51 @@ class TestEventBusVisibilityAwareDispatch:
         )
 
     @pytest.mark.unit
+    async def test_local_dispatch_counter_increments_on_local_emit(self) -> None:
+        """LOCAL emit must increment ``event_bus.local_dispatch``."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        before = bus.local_dispatch_count
+        await bus.emit(
+            "agent_ready",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
+        )
+        assert bus.local_dispatch_count == before + 1
+
+    @pytest.mark.unit
+    async def test_local_dispatch_counter_increments_on_cluster_emit(self) -> None:
+        """CLUSTER emit must also increment ``event_bus.local_dispatch`` (it dispatches locally too)."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        before = bus.local_dispatch_count
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        assert bus.local_dispatch_count == before + 1
+
+    @pytest.mark.unit
+    async def test_cluster_publish_counter_increments_only_on_cluster_emit(self) -> None:
+        """``event_bus.cluster_publish`` increments on CLUSTER but not LOCAL."""
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        before = bus.cluster_publish_count
+        await bus.emit(
+            "agent_ready",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
+        )
+        assert bus.cluster_publish_count == before, "LOCAL must not increment cluster_publish"
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        assert bus.cluster_publish_count == before + 1, "CLUSTER must increment cluster_publish once per emit"
+
+    @pytest.mark.unit
     async def test_emit_returns_noop_when_redis_unconfigured(self) -> None:
         """``emit`` on a bus with no Redis client must not raise — return a no-op.
 

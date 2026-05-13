@@ -15,6 +15,7 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_server import APIServer
+from teleclaude.core.event_bus import event_bus as _event_bus
 from teleclaude.core.lifecycle import DaemonLifecycle
 from teleclaude.core.task_registry import TaskRegistry
 
@@ -180,6 +181,8 @@ class MonitoringService:
             "tracked_tasks_hwm": self._task_hwm,
             "wal_size_kb": self._get_wal_size_kb(),
             "api_ws_clients": api_ws_clients,
+            "event_bus_local_dispatch": _event_bus.local_dispatch_count,
+            "event_bus_cluster_publish": _event_bus.cluster_publish_count,
         }
         if self._last_loop_lag_ms is not None:
             snapshot["loop_lag_ms"] = self._last_loop_lag_ms

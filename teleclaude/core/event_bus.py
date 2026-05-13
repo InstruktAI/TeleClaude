@@ -293,6 +293,27 @@ class EventBus:
         self._successful_handlers: dict[str, set[int]] = {}
         self._role = role
         self._redis = redis_client
+        # Observability counters per implementation-plan §R8.
+        # local_dispatch_count: increments once per emit (both LOCAL and CLUSTER
+        #   dispatch locally). cluster_publish_count: increments once per CLUSTER
+        #   emit when the Redis publish task is scheduled — intent, not outcome,
+        #   so failed publishes still increment.
+        # Ratio cluster_publish_count / local_dispatch_count is the operational
+        # signal for how much steady-state Redis traffic is attributable to
+        # cross-context fan-out, surfacing the impact of the Increment 2
+        # STREAM audit.
+        self._local_dispatch_count: int = 0
+        self._cluster_publish_count: int = 0
+
+    @property
+    def local_dispatch_count(self) -> int:
+        """Total in-process dispatches (LOCAL + CLUSTER local leg) since startup."""
+        return self._local_dispatch_count
+
+    @property
+    def cluster_publish_count(self) -> int:
+        """Total CLUSTER emit attempts scheduled for Redis publish since startup."""
+        return self._cluster_publish_count
 
     def subscribe(self, event: EventType, handler: EventHandler) -> EventHandler:
         """Subscribe a handler to an event. Returns the registered (wrapped) handler.
@@ -373,6 +394,7 @@ class EventBus:
             return future
 
         envelope = self._build_envelope(event, context, visibility)
+        self._local_dispatch_count += 1
         local_task = loop.create_task(
             self._dispatch_local(event, context, envelope.idempotency_key),
             name=f"event-bus-local-{event}",
@@ -383,6 +405,7 @@ class EventBus:
         if visibility == EventVisibility.LOCAL:
             return local_task
 
+        self._cluster_publish_count += 1
         publish_task = loop.create_task(
             self._publish_envelope(envelope),
             name=f"event-bus-publish-{event}",
