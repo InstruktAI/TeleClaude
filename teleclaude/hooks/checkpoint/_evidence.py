@@ -650,7 +650,15 @@ def _pytest_selectors(command: str) -> set[tuple[str, str]]:
             rest = rest[2:]
         elif head != "pytest":
             continue
-        selectors.update(_extract_option_values(rest, {"-k", "-m", "--deselect"}))
+        selectors.update(_direct_pytest_selectors(rest))
+    return selectors
+
+
+def _direct_pytest_selectors(args: list[str]) -> set[tuple[str, str]]:
+    """Return selectors for direct pytest invocations, including repo pytest defaults."""
+    selectors = _extract_option_values(args, {"-k", "-m", "--deselect"})
+    if not any(option == "-m" for option, _value in selectors):
+        selectors.add(("-m", "not expensive"))
     return selectors
 
 
@@ -684,7 +692,7 @@ def _extract_option_values(args: list[str], option_names: set[str]) -> set[tuple
 
 def _pytest_selectors_cover(error_selectors: set[tuple[str, str]], later_selectors: set[tuple[str, str]]) -> bool:
     """Return True when a later pytest run is broad enough for the failed selector."""
-    return not later_selectors or later_selectors == error_selectors
+    return later_selectors.issubset(error_selectors)
 
 
 def _targets_cover(later_targets: set[str], error_targets: set[str]) -> bool:
@@ -703,9 +711,11 @@ def _target_covers_failure(later_target: str, failed_target: str) -> bool:
     """Return True when a later validation target covers a failed target."""
     if later_target == failed_target:
         return True
-    if "::" in later_target:
-        return False
-    return failed_target.startswith(f"{later_target}/") or failed_target.startswith(f"{later_target}::")
+    return (
+        failed_target.startswith(f"{later_target}/")
+        or failed_target.startswith(f"{later_target}::")
+        or failed_target.startswith(f"{later_target}[")
+    )
 
 
 def _commands_overlap(cmd_a: str, cmd_b: str) -> bool:

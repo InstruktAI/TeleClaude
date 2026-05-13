@@ -149,7 +149,7 @@ class TestEvidenceChecks:
                     had_error=True,
                     result_snippet="FAILED tests/unit/a_test.py",
                 ),
-                _shell_record("pytest tests/unit/a_test.py", result_snippet="1 passed"),
+                _shell_record("pytest -m slow tests/unit", result_snippet="1 passed"),
             ]
         )
 
@@ -201,6 +201,21 @@ class TestEvidenceChecks:
         assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
 
     @pytest.mark.unit
+    def test_check_error_state_does_not_clear_expensive_failure_with_default_pytest(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest -m expensive tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py",
+                ),
+                _shell_record("pytest tests/unit/a_test.py", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
+
+    @pytest.mark.unit
     def test_check_error_state_clears_expensive_failure_with_expensive_telec_test(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[
@@ -210,6 +225,21 @@ class TestEvidenceChecks:
                     result_snippet="FAILED tests/unit/a_test.py",
                 ),
                 _shell_record("telec code test --expensive tests/unit/a_test.py", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_failed_pytest_selector_with_broader_default_pytest(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest -k special tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py",
+                ),
+                _shell_record("pytest tests/unit/a_test.py", result_snippet="1 passed"),
             ]
         )
 
@@ -240,6 +270,36 @@ class TestEvidenceChecks:
                     result_snippet="FAILED tests/unit/a_test.py::test_a",
                 ),
                 _shell_record("pytest tests/unit/a_test.py", result_snippet="2 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_node_failure_with_broader_node_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/a_test.py::TestA::test_a",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py::TestA::test_a",
+                ),
+                _shell_record("pytest tests/unit/a_test.py::TestA", result_snippet="2 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_parametrized_node_failure_with_base_node_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/a_test.py::test_a[param]",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py::test_a[param]",
+                ),
+                _shell_record("pytest tests/unit/a_test.py::test_a", result_snippet="2 passed"),
             ]
         )
 
