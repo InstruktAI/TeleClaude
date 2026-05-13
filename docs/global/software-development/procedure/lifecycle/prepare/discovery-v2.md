@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/discovery-v2'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Discovery procedure (v2) for the prepare phase. Two agents work named lanes in parallel under a deterministic flow: blind inhalation, meta-questioning iteration, consolidation, tailor-fit, and reframe for user confirmation.'
+description: 'Discovery procedure (v2) for the prepare phase. Orchestrator and cross-model peer work named lanes through a turn-based discussion in their own sessions; orchestrator coordinates dispatch and tailing; output is a tailor-fit synthesis and an inspectable reframe for user confirmation.'
 status: 'draft'
 ---
 
@@ -30,40 +30,37 @@ The agents are enterprise specialists. They hear the customer's intent, build th
 
 ## Steps
 
-The procedure follows the deterministic flow defined in `docs/project/design/architecture-v2/prepare-discovery-flow.md`. Ten ordered steps. Steps 2, 3, and 4 fork (orchestrator and peer work in parallel); all other steps are orchestrator-driven. No step is skipped, no order is reordered.
+The procedure follows the deterministic flow defined in `docs/project/design/architecture-v2/prepare-discovery-flow.md`. The orchestrator drives every step. Steps 2 and 3 fork (orchestrator and peer work in parallel for Turn 1); from Step 4 onward the orchestrator coordinates a turn-based discussion via dispatch and tailing.
 
-### Lanes (worked across Steps 3 and 4)
+### Lanes worked across Turn 1 and the discussion turns
 
-Discovery work is organized into named lanes. Each lane has a stated objective and anchor questions. Both agents work every lane in Turn 1 (one pass each) and revisit every lane in Turn 2 (meta-questioning).
+Discovery is organized into eight named lanes. Each lane has an objective and anchor questions. Both agents work every lane in Turn 1. From Turn 2 onward, contributions to any lane are welcome whenever engagement with the other's material surfaces them — agents are not required to revisit every lane in every later turn.
 
 | Lane | Objective | Anchor questions |
 | --- | --- | --- |
-| **Intent unpacking** | Surface every plausible reading of what the user actually wants. Apply **5 Whys** to drill from surface request to root need. | What is the user really hiring this work to do? What's the underlying job behind the surface ask? What different goals would each plausible reading serve? |
-| **Actor / stakeholder map** | Identify every party affected, deciding, benefiting, or bearing cost. | Who acts on the system? Who decides what's correct? Who benefits when this works? Who pays when it doesn't? Who has standing to veto? |
-| **Impact map** | Apply **Impact Mapping**: for each actor, what behavioral change would deliver value, and what deliverables produce it. | What would each actor do differently if this work succeeded? What outcomes would they experience? What concrete things must exist to produce those outcomes? |
-| **Adjacent need surface** | What does the user probably also need but didn't say? | What naturally comes with what they asked for? What will they be back asking for next month? What's the unstated prerequisite? |
-| **Approach options** | Multiple ways to deliver, with their trade-offs. | What are the genuinely different shapes this could take? Short-term hack vs. long-term build? Existing pattern vs. new pattern? What does each cost in time, complexity, reversibility, risk? |
-| **Dependency surface** | What else must be true / exist / change for this to work? | What does this touch? What does it depend on? What other in-flight work blocks or enables it? |
-| **Constraint map** | What limits us? | Existing patterns, prior decisions, policy, capacity, expertise gaps, performance, security boundaries — what's hard-edged and what's negotiable? |
-| **Risk surface** | Apply **Pre-mortem**: imagine this shipped and failed; why? | What goes wrong technically? What goes wrong with adoption? What gets fragile? What's irreversible? What surprises us in six months? |
+| **Intent** | Surface the underlying job behind the surface request. Apply **5 Whys** to drill past the stated ask, **Jobs To Be Done** to reframe as "the user wants this to do X under conditions Y." | What is the user really hiring this work to do? What's the underlying goal behind the surface ask? What different goals would each plausible reading of the input serve? |
+| **Impact map** | Apply **Impact Mapping**: actors affected by this work → behavioral changes each should experience → deliverables that produce those changes. | Who acts on or is affected by this? What would each actor do differently if this succeeded? What outcomes would they experience? What concrete things must exist? |
+| **Approach options** | Generate genuinely different shapes the work could take, with their trade-offs. | What are the genuinely different shapes this could take? Short-term hack vs long-term build? Existing pattern vs new pattern? What does each cost in time, complexity, reversibility, risk? |
+| **Constraints** | What limits the solution space? | Existing patterns, prior decisions, policy, capacity, expertise gaps, performance, security boundaries — what's hard-edged and what's negotiable? |
+| **Dependencies** | What else must be true / exist / change for this to work? | What does this touch? What does it depend on? What other in-flight work blocks or enables it? |
+| **Risks** | Apply **Pre-mortem**: imagine this shipped and failed; why? | What goes wrong technically? What goes wrong with adoption? What gets fragile? What's irreversible? What surprises us in six months? |
 | **Success criteria** | What does "this is working" observably look like? Express in **Gherkin** form where possible. | What behavior proves it works? What metric moves? What user moment changes? What test would fail before and pass after? |
-| **Scope boundaries** | Natural in/out lines. | Where does the work begin? Where does it stop? What's clearly adjacent but separate? What would over-stretch this work item? |
-| **Coverage / drift trace** | Are we still in service of the user's stated intent, or wandering? | Does each lane's material trace back to what the user asked for? What contributions are speculative beyond user intent? Have we forgotten anything the user explicitly said? |
+| **Scope boundaries** | Natural in/out lines for this work item. | Where does the work begin? Where does it stop? What's clearly adjacent but separate? What would over-stretch this work item? |
 
-Lane weights vary by context but every lane is touched. Greenfield emphasizes impact, actor map, approach options, risk. Brownfield emphasizes dependency, constraint, scope boundary. Routine feature emphasizes intent unpacking, adjacent needs, success criteria. The orchestrator allocates emphasis; it does not skip lanes.
+Each contribution to any lane carries a citation marker: `[from-input]` (grounded in the user's text), `[from-source]` with a `file:lines` or spec section reference (grounded in codebase or docs), or `[speculative]` (reaching beyond grounded source). Speculation is welcome — drift handling happens in tailor-fit.
 
 ### 1. Establish context
 
 Orchestrator-only.
 
 - Read `telec todo artifacts read {slug} input` in full.
-- Determine **greenfield or brownfield** by inspecting the codebase area the input references. Greenfield = no prior implementation. Brownfield = existing patterns to align with.
+- Determine **greenfield or brownfield** by inspecting the codebase area the input references.
 - Load relevant domain specs: `telec docs index --domains <domains>`, then `telec docs get <ids>`.
 - Read the roadmap: `telec roadmap list` — adjacent in-flight or delivered work that constrains or enables this.
 
-Output: a context block (`greenfield | brownfield`, list of loaded specs, list of relevant roadmap entries) that is included in the dispatch to the peer.
+The context block (greenfield or brownfield, loaded specs, relevant roadmap entries) is included in the dispatch to the peer.
 
-### 2. Dispatch peer
+### 2. Dispatch peer for Turn 1
 
 Orchestrator-only.
 
@@ -75,95 +72,61 @@ telec sessions run \
   --detach
 ```
 
-Cross-model preferred for cognitive diversity. Use `codex` or `gemini`; default to `codex`. The peer receives the same `input`, the same context block, and the same lane set. The peer does not see the orchestrator's working artifact.
+Cross-model preferred. Use `codex` or `gemini`; default to `codex`. The peer brief contains: the user's input, the orchestrator's context block, the eight-lane question set, and the instruction to produce Turn 1 in its own session output (no peer reads).
 
-### 3. Inhalation 1 (parallel, blind)
+### 3. Turn 1 — parallel, blind inhalation
 
-Both agents (orchestrator and dispatched peer) execute this step in parallel.
-
-Each agent:
-
-- Reads `input` and the context references in full.
-- Writes Turn 1 to its own discovery artifact (`discovery-a` for orchestrator, `discovery-b` for peer) via `telec todo artifacts write {slug} discovery-{a|b} <content>`.
-- Answers the full lane question set in one pass.
-- Cites source (file:lines, input quotes, spec sections) where grounded.
-- Marks `[speculative]` where reaching beyond source — speculation is welcome at this stage.
-- Marks `[from-user-input]` where directly grounded in the user's text.
-- Closes Turn 1 with status: `STATUS: Turn 1 complete. Lanes worked: <list>. Outstanding questions: <count>.`
-
-**Critical constraint for Turn 1:** neither agent reads the other's artifact. Both work blind from the same source. This pins independent positions in writing before either is influenced by the other.
-
-### 4. Inhalation 2 (meta-questioning)
-
-Both agents execute this step in parallel.
+Both agents work in their own sessions, blind to each other.
 
 Each agent:
 
-- Reads its own Turn 1.
-- Reads the other agent's Turn 1.
-- Re-passes the full lane question set, focused on: what was missed between us? What newly surfaces from reading both?
-- Appends Turn 2 to its own discovery artifact.
-- Builds on the other's material in **yes-and** register — adds adjacent angles, surfaces what the other's lens prompted to notice, names connections between lanes, raises questions the other might answer.
-- Verifying the other's claims is **not** part of Turn 2. Source-verification belongs in the reviewer phase, not in discovery. Discovery surfaces; review verifies.
-- Closes Turn 2 with status: `STATUS: Turn 2 complete. New material added in: <lane list>. Questions surfaced for peer: <count>.`
+- Reads the input, context references, and any cited domain specs.
+- Produces Turn 1 in its own session: a structured pass through all eight lanes, each contribution carrying a citation marker.
+- Optionally writes a discovery-scratch artifact for structured consumption later (`telec todo artifacts write {slug} discovery-{a|b} <content>`). The artifact, if used, is the agent's own working document — append-only, free-form within. The session output and the artifact carry the same content; the artifact exists to make consolidation cheaper to consume, not as the channel of the discussion.
+- Closes Turn 1 with status: `STATUS: Turn 1 complete. More to surface: yes/no.`
 
-Turn 2 is the iteration-improves-quality pass. One iteration suffices in the default case. The orchestrator may run a third inhalation if Turn 2 surfaced major new material; default is to proceed to consolidation.
+**Critical constraint for Turn 1:** neither agent reads the other's session or artifact. Both work blind from the same source. Independence at Turn 1 is the structural defeat of mirroring.
 
-### 5. Consolidation
+### 4. Meta-discussion — turn-based, orchestrator-conducted
 
-Orchestrator-only.
+After Turn 1, the orchestrator conducts a discussion through alternating turns. The discussion runs until both consecutive turns close exhausted.
 
-- Read both discovery artifacts in full.
-- Merge per-lane content into a single consolidated view:
-  - **Actor map** — deduplicated actor list with each actor's role, concern, and standing.
-  - **Impact map** — tree of actors → impacts → deliverables, with both agents' contributions integrated.
-  - **Approach options** — matrix: rows are options; columns are cost, speed, complexity, risk, reversibility.
-  - **Adjacent needs** — categorized list with rationale per item.
-  - **Dependency surface** — list of dependencies, each with reference and notes.
-  - **Constraint map** — categorized constraints (technical, policy, capacity, etc.).
-  - **Pre-mortem failure modes** — categorized list of imagined failures.
-  - **Success criteria** — deduplicated list of observable indicators, Gherkin-formatted where possible.
-  - **Scope boundaries** — explicit in/out lines.
-- Write `telec todo artifacts write {slug} discovery-consolidated <content>`.
+**Each turn (N ≥ 2)** is the agent doing this work in discussion register, not interview register:
 
-### 6. Drift check
+- **Engagement with the other's prior turn.** Process what they surfaced. For each contribution that matters, articulate what it makes you think. Where your reading agrees with reasoning (not "yes, agreed"). Where it diverges or extends with reasoning. The other's material must *land* in your thinking before you respond.
+- **Reasoning building from their material.** "You pointed at X; that makes me think Y matters because Z." Generative response, not Q&A.
+- **New material from cross-reading.** What surfaces only because both contributions are now present together — lane connections, gaps, implications visible only from the combined view.
+- **Residual uncertainty.** Honest open thinking, not as questions for the peer to satisfy.
+- **Genuine questions when they arise.** Questions are welcome when they emerge from real engagement ("how does W connect to the constraint you raised?"). They are not the structural backbone — they are an artifact of engagement.
+- **Status close.** `STATUS: more to surface: yes/no. Reason: <brief>.`
 
-Orchestrator-only.
+**Round structure:**
 
-- For each consolidated lane, trace each item back to the user's input.
-- Items that trace cleanly are unmarked.
-- Items that don't trace are flagged `[drift]` — surfaced material that may not serve the user's stated intent.
+1. **Orchestrator writes its Turn N** in its own session (tailing the peer's prior turn to engage). If using a discovery-scratch artifact, the same content is appended.
+2. **Self-check:** if the orchestrator's Turn N is exhausted AND the peer's prior turn was exhausted, the discussion is done — skip dispatch and proceed to Step 5. Otherwise:
+3. **Orchestrator dispatches the peer for Turn N** with brief: "Tail my session at marker `[Turn N]` (or read my Turn N from discovery-a). Engage with my Turn N — process it, respond with your reasoning, do not interview-answer. Discussion register. Output to your session (and optionally append to discovery-b). Close with status."
+4. **Peer writes Turn N** in its own session.
+5. **Orchestrator tails the peer's Turn N.**
+6. **Termination check:** if both Turn N (orchestrator and peer) closed exhausted, discussion is done — proceed to Step 5. Otherwise, increment N and return to step 1.
 
-Drift isn't a defect; it's a signal that tailor-fit needs to consider these items carefully. Some drift items become real Should or Could entries (the user wants more than they said); others become Won't (over-reach by the agents).
+**Peer failure recovery:** if the peer dispatch fails or returns unusable output, the orchestrator continues solo. It conducts a single meta-pass on its own Turn 1 (re-reading and self-engaging) and notes the missing peer perspective in the final reframe.
 
-### 7. Tailor-fit
+**No fixed turn cap.** Termination is by structural exhaustion. If the discussion runs longer than feels productive (no convergence after many rounds), that is a signal something is wrong with the input or context — surface to the user.
 
-Orchestrator (or a separate dispatched critic agent, cross-model preferred) applies **MoSCoW** to every surfaced item across all lanes:
+### 5. Tailor-fit synthesis
 
-- **Must** — required for the user's stated intent to be satisfied.
-- **Should** — strongly serves the intent but not strictly required.
-- **Could** — adjacent value, optional.
-- **Won't** — surfaced but rejected for this work item, with reasoning.
+Orchestrator-only. Reads both agents' discovery output (session transcripts and/or discovery-scratch artifacts).
 
-Each classification carries a one-sentence rationale. Drift-flagged items default to Could or Won't unless rationale upgrades them.
+- **Synthesize per lane**: merge contributions from both agents into a single view per lane (actors deduplicated, impact map tree-merged, approach options as a comparison matrix with cost / speed / complexity / risk / reversibility columns, etc.).
+- **Classify every item with MoSCoW**: Must / Should / Could / Won't, each with a one-sentence rationale.
+- **Drift handling**: items whose rationale shows they don't trace to user input default to Could or Won't unless rationale promotes them. Drift is named in the rationale, not as a separate step.
+- **Surface unresolved intent questions**: items that cannot be classified without the user's intent input are listed in an "open for user" section with the question phrased at the user's proficiency level.
 
 Write `telec todo artifacts write {slug} discovery-tailor-fit <content>`.
 
-### 8. Open-intent check
+### 6. Reframe
 
-Some questions accumulated during discovery require user judgment to resolve — intent, scope, or value calls that source cannot determine.
-
-For each open question:
-
-- Can the agents resolve it among themselves through additional source investigation (codebase trace, doc lookup, third-party research, empirical test)? If yes, resolve it now and update the consolidation. Do not surface to the user.
-- Does it block tailor-fit (the agents cannot classify items dependent on it)? If yes, surface to the user now. Phrase at the user's proficiency level per `general/principle/calibration`.
-- If it does not block tailor-fit but is still genuinely a user-intent call, hold for the reframe step.
-
-When questions are surfaced to the user mid-process, present them batched (not one at a time), and re-run consolidation after receiving answers.
-
-### 9. Reframe
-
-Orchestrator authors the inspectable artifact the user reads. Structure:
+Orchestrator authors the inspectable artifact the user reads:
 
 ```
 ## What we think you want
@@ -188,38 +151,39 @@ Orchestrator authors the inspectable artifact the user reads. Structure:
 
 ## Open questions for you
 
-<Non-blocking intent questions that remain, phrased at the user's proficiency level>
+<Intent calls that need your judgment, phrased at your proficiency level>
 ```
 
 Write `telec todo artifacts write {slug} discovery-reframe <content>`.
 
-### 10. User confirm or refine
+### 7. User confirm or refine
 
 Present the reframe to the user. The user either:
 
 - **Confirms** — discovery is complete. Proceed to author the requirements artifact from the confirmed reframe.
-- **Refines** — captures the user's delta (additional intent, correction, missed need, rejection of a Won't classification). Incorporate the refinement into the consolidation (Step 5), then re-run drift check, tailor-fit, open-intent check, and reframe. The user sees the revised reframe.
+- **Refines** — captures the user's delta (additional intent, correction, missed need, rejection of a Won't classification, answer to an open intent question). Incorporate the delta into a re-run of Step 5 (tailor-fit synthesis with the new info), regenerate the reframe (Step 6), present again.
+
+If the refinement opens substantial new territory not surfaced during discovery, the orchestrator may decide to re-open the meta-discussion (return to Step 4) with the delta as additional input — but routine refinements stay in the tailor-fit/reframe loop.
 
 ### Stewardship and proficiency
 
 - The agents lead the technical work. The user is not asked technical questions the agents can resolve from source.
-- When the user is consulted (open-intent check or reframe step), questions are phrased at their proficiency level. Novice = goals and outcomes ("should this be visible to anyone, or only people who've signed in?"). Expert = compressed technical terms.
+- When the user is consulted (open intent questions in the reframe, or refinements), questions and content are phrased at their proficiency level. Novice = goals and outcomes. Expert = compressed technical terms.
 - Per `general/principle/stewardship`: the user holds intent, the agents hold craft. Discovery is craft work that serves the user's intent.
 
 ## Outputs
 
-- `discovery-a.md`, `discovery-b.md` — turn-marked, append-only working artifacts.
-- `discovery-consolidated.md` — merged per-lane synthesis.
-- `discovery-tailor-fit.md` — MoSCoW classification of every surfaced item.
+- `discovery-tailor-fit.md` — synthesized per-lane content with MoSCoW classification and rationale per item.
 - `discovery-reframe.md` — user-facing inspectable artifact.
-- Confirmed reframe is the input to the next phase: writing the requirements artifact.
+- Optionally `discovery-a.md` and `discovery-b.md` as agent working scratchpads, append-only, used to make consolidation cheaper to consume.
+- The confirmed reframe is the handoff input to the next phase: writing the requirements artifact.
 
 ## Recovery
 
-- If the peer dispatch fails or returns unusable output, the orchestrator continues solo. The reframe notes the missing second perspective.
-- If discovery exhausts after Turn 1 (both agents agree the input is small and nothing more surfaces), the orchestrator may skip Turn 2 and proceed directly to consolidation. Short discoveries are valid for small intents.
-- If the user's input is too sparse to discover against, surface this immediately as a single clarifying question to the user, at their proficiency level. Do not invent material.
-- If a third inhalation round is run and produces minimal new material, terminate inhalation and proceed.
+- If the peer dispatch fails or returns unusable output, the orchestrator continues solo, conducts a single self-engagement meta-pass on its own Turn 1, and notes the missing peer perspective in the reframe.
+- If discovery exhausts at Turn 1 (both agents report nothing more to surface), the orchestrator may skip the meta-discussion and proceed directly to tailor-fit. Short discoveries are valid for small intents.
+- If the discussion runs unusually long without exhaustion, treat it as a non-convergence signal and surface to the user — the input or context may be ambiguous in a way the agents can't resolve.
+- If the user's input is too sparse to discover against, surface a single clarifying question to the user immediately at their proficiency level. Do not invent material.
 
 ## See Also
 

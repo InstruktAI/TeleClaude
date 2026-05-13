@@ -129,7 +129,7 @@ async def test_create_channel_persists_forum_thread_metadata() -> None:
 
 
 @pytest.mark.asyncio
-async def test_update_channel_title_renames_thread_and_persists_synced_title() -> None:
+async def test_update_channel_title_renames_thread() -> None:
     adapter = DummyChannelOperations()
     thread = SimpleNamespace(edit=AsyncMock())
     adapter._get_channel = AsyncMock(return_value=thread)
@@ -143,77 +143,7 @@ async def test_update_channel_title_renames_thread_and_persists_synced_title() -
         origin_metadata={"discord": DiscordAdapterMetadata(thread_id=999, channel_id=400).to_dict()},
     )
 
-    with patch("teleclaude.adapters.discord.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-
-        result = await adapter.update_channel_title(session, "Renamed title")
+    result = await adapter.update_channel_title(session, "Renamed title")
 
     assert result is True
     thread.edit.assert_awaited_once_with(name="Renamed title")
-    mock_db.update_origin_metadata.assert_awaited_once()
-    persisted = mock_db.update_origin_metadata.call_args.args[2]
-    assert persisted.get("last_synced_title") == "Renamed title"
-
-
-@pytest.mark.asyncio
-async def test_ensure_channel_renames_existing_thread_when_title_drifts() -> None:
-    adapter = DummyChannelOperations()
-    thread = SimpleNamespace(edit=AsyncMock())
-    adapter._get_channel = AsyncMock(return_value=thread)
-
-    session = Session(
-        session_id="sess-discord-3",
-        computer_name="machine",
-        tmux_session_name="tmux",
-        title="Fresh title",
-        project_path="proj",
-        origin_metadata={
-            "discord": DiscordAdapterMetadata(
-                thread_id=999,
-                channel_id=400,
-                last_synced_title="Stale title",
-            ).to_dict()
-        },
-    )
-
-    with patch("teleclaude.adapters.discord.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-
-        await adapter.ensure_channel(session)
-
-    thread.edit.assert_awaited_once_with(name="Fresh title")
-    persisted = mock_db.update_origin_metadata.call_args.args[2]
-    assert persisted.get("last_synced_title") == "Fresh title"
-
-
-@pytest.mark.asyncio
-async def test_ensure_channel_skips_rename_when_last_synced_title_matches() -> None:
-    adapter = DummyChannelOperations()
-    thread = SimpleNamespace(edit=AsyncMock())
-    adapter._get_channel = AsyncMock(return_value=thread)
-
-    session = Session(
-        session_id="sess-discord-4",
-        computer_name="machine",
-        tmux_session_name="tmux",
-        title="Stable title",
-        project_path="proj",
-        origin_metadata={
-            "discord": DiscordAdapterMetadata(
-                thread_id=999,
-                channel_id=400,
-                last_synced_title="Stable title",
-            ).to_dict()
-        },
-    )
-
-    with patch("teleclaude.adapters.discord.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-
-        await adapter.ensure_channel(session)
-
-    thread.edit.assert_not_awaited()
-    mock_db.update_origin_metadata.assert_not_awaited()

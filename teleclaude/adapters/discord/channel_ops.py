@@ -61,16 +61,14 @@ class ChannelOperationsMixin:
     # =========================================================================
 
     async def ensure_channel(self, session: Session) -> Session:
-        """Reconcile the Discord channel/thread state with the session.
-
-        Creates the thread when missing, renames it when the session's display
-        title has drifted from what was last persisted. Idempotent.
-        """
+        """Ensure a session has its Discord destination channel or thread provisioned."""
         fresh = await db.get_session(session.session_id)
         if fresh:
             session = fresh
 
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
+        if discord_meta.thread_id is not None:
+            return session
 
         if discord_meta.channel_id is not None and discord_meta.channel_id in self._team_channel_map:
             return session
@@ -79,51 +77,10 @@ class ChannelOperationsMixin:
         if target_forum_id is None:
             return session
 
-        desired_title = self._build_thread_title(session, target_forum_id)
-
-        if discord_meta.thread_id is None:
-            await self.create_channel(session, desired_title, ChannelMetadata())
-            await self._persist_synced_title(session.session_id, desired_title)
-            refreshed = await db.get_session(session.session_id)
-            return refreshed or session
-
-        if discord_meta.last_synced_title == desired_title:
-            return session
-
-        renamed = await self._rename_thread(discord_meta.thread_id, desired_title)
-        if renamed:
-            await self._persist_synced_title(session.session_id, desired_title)
-            refreshed = await db.get_session(session.session_id)
-            return refreshed or session
-        return session
-
-    async def _persist_synced_title(self, session_id: str, title: str) -> None:
-        """Record the title last successfully synced to Discord."""
-        current = await db.get_session(session_id)
-        if current is None:
-            return
-        meta = DiscordAdapterMetadata.from_dict(current.get_origin_section("discord"))
-        if meta.last_synced_title == title:
-            return
-        meta.last_synced_title = title
-        await db.update_origin_metadata(session_id, "discord", meta.to_dict())
-
-    async def _rename_thread(self, thread_id: int, title: str) -> bool:
-        """Rename a Discord thread; return True on success, False on recoverable failure."""
-        thread = await self._get_channel(thread_id)
-        if thread is None:
-            return False
-        raw_edit_fn = getattr(thread, "edit", None)
-        if raw_edit_fn is None:
-            return False
-        edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
-        recoverable_errors = recoverable_operation_errors(self._discord)
-        try:
-            await edit_fn(name=title)
-            return True
-        except recoverable_errors as exc:
-            logger.warning("Failed to rename Discord thread %s: %s", thread_id, exc)
-            return False
+        title = self._build_thread_title(session, target_forum_id)
+        await self.create_channel(session, title, ChannelMetadata())
+        refreshed = await db.get_session(session.session_id)
+        return refreshed or session
 
     def _resolve_target_forum(self, session: Session) -> int | None:
         """Determine which Discord forum this session's thread belongs in."""
@@ -279,14 +236,24 @@ class ChannelOperationsMixin:
         raise AdapterError("Discord session has no mapped destination channel")
 
     async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Rename an existing Discord thread to the given title."""
+        """Rename an existing Discord thread to match the current session title."""
         discord_meta = DiscordAdapterMetadata.from_dict(session.get_origin_section("discord"))
         if discord_meta.thread_id is None:
             return False
-        if not await self._rename_thread(discord_meta.thread_id, title):
+        thread = await self._get_channel(discord_meta.thread_id)
+        if thread is None:
             return False
-        await self._persist_synced_title(session.session_id, title)
-        return True
+        raw_edit_fn = getattr(thread, "edit", None)
+        if raw_edit_fn is None:
+            return False
+        edit_fn = cast_async_callable(self._require_async_callable, raw_edit_fn, label="Discord thread edit")
+        recoverable_errors = recoverable_operation_errors(self._discord)
+        try:
+            await edit_fn(name=title)
+            return True
+        except recoverable_errors as exc:
+            logger.warning("Failed to rename Discord thread %s: %s", discord_meta.thread_id, exc)
+            return False
 
     async def close_channel(self, session: Session) -> bool:
         """Delete the Discord thread for a closed session."""

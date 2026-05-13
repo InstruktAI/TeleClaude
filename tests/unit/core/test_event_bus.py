@@ -49,7 +49,6 @@ from teleclaude.core.events import (
     SessionEscalatedPayload,
     SessionLifecycleContext,
     SessionStatusContext,
-    SessionTitleChangedContext,
     SessionUpdatedContext,
     SystemCommandContext,
     ToolUseActivityEvent,
@@ -563,13 +562,6 @@ class TestEventBusContextRoundTripSpecs:
             delivery_scope="CTRL",
         )
         rebuilt = await self._emit_and_reconstruct("session_status", original, SessionStatusContext)
-        assert rebuilt == original
-
-    @pytest.mark.unit
-    async def test_round_trip_session_title_changed_context(self) -> None:
-        """``SessionTitleChangedContext`` round-trip preserves session_id and title."""
-        original = SessionTitleChangedContext(session_id="sess-title-1", title="A meaningful title")
-        rebuilt = await self._emit_and_reconstruct("session_title_changed", original, SessionTitleChangedContext)
         assert rebuilt == original
 
     @pytest.mark.unit

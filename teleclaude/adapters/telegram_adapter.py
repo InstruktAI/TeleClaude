@@ -223,30 +223,23 @@ class TelegramAdapter(
             session = fresh
 
         tg = self._tg(session)
-        desired_title = await get_display_title_for_session(session)
         logger.debug(
-            "[TG_ENSURE] session=%s topic_id=%s desired_title=%s",
+            "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
             session.session_id,
             tg.topic_id if tg.topic_id else "N/A",
-            desired_title,
         )
-
         if tg.topic_id:
-            if tg.last_synced_title == desired_title:
-                return session
-            renamed = await self.update_channel_title(session, desired_title)
-            if not renamed:
-                return session
-            refreshed = await db.get_session(session.session_id)
-            return refreshed or session
+            logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id)
+            return session
 
+        title = await get_display_title_for_session(session)
         logger.info(
             "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
             session.session_id,
-            desired_title,
+            title,
         )
         try:
-            await self.create_channel(session, desired_title, metadata=ChannelMetadata())
+            await self.create_channel(session, title, metadata=ChannelMetadata())
             logger.info("[TG_ENSURE] Channel created successfully for session %s", session.session_id)
         except Exception as exc:
             logger.error(
@@ -263,10 +256,10 @@ class TelegramAdapter(
                 reset_section["topic_id"] = None
                 reset_section["output_message_id"] = None
                 await db.update_origin_metadata(current.session_id, "telegram", reset_section)
-            await self.create_channel(current or session, desired_title, metadata=ChannelMetadata())
+            await self.create_channel(current or session, title, metadata=ChannelMetadata())
 
-        await self._persist_synced_title(session.session_id, desired_title)
         refreshed = await db.get_session(session.session_id)
+        logger.debug("[TG_ENSURE] Refreshed session from DB for %s", session.session_id)
         return refreshed or session
 
     async def recover_lane_error(

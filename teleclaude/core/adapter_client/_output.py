@@ -502,19 +502,45 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         return str(result) if result else ""
 
     async def update_channel_title(self, session: "Session", title: str) -> bool:
-        """Update channel title in all UI adapters.
+        """Push a channel title rename through the dual lane: origin UI + Discord admin copy.
 
-        Args:
-            session: Session object (caller already fetched it)
-            title: New channel title
+        Mirrors send_output_update's routing — the origin UI adapter receives
+        the rename, Discord also receives it when origin is not already Discord
+        (Discord is the hardcoded admin reflection target). Adapters that are
+        neither origin nor admin for this session are never touched.
 
-        Returns:
-            True if update succeeded
+        Returns True when at least one lane succeeded.
         """
         fresh_session = await db.get_session(session.session_id)
         session_to_use = fresh_session or session
-        result = await self._route_to_ui(session_to_use, "update_channel_title", title)
-        return bool(result)
+
+        origin_adapter = self._resolve_origin_ui_adapter(session_to_use)
+        admin_target = self._resolve_admin_output_target(session_to_use, origin_adapter)
+
+        if origin_adapter is None and admin_target is None:
+            logger.debug(
+                "Skipping channel title push: session=%s origin=%s",
+                session_to_use.session_id,
+                (session_to_use.last_input_origin or "").strip() or "<none>",
+            )
+            return False
+
+        succeeded = False
+        if origin_adapter is not None:
+            origin_result = await self._route_to_ui(
+                session_to_use, "update_channel_title", title, include_adapters={origin_adapter}
+            )
+            if origin_result:
+                succeeded = True
+
+        if admin_target is not None:
+            admin_result = await self._route_to_ui(
+                session_to_use, "update_channel_title", title, include_adapters={admin_target}
+            )
+            if admin_result:
+                succeeded = True
+
+        return succeeded
 
     async def delete_channel(self, session: "Session") -> bool:
         """Delete channel from all UI adapters.

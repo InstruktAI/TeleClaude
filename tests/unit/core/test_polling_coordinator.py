@@ -13,7 +13,6 @@ import teleclaude.core.polling_coordinator as pc
 import teleclaude.core.session_title as session_title
 from teleclaude.core.models import Session
 from teleclaude.core.polling_coordinator import (
-    _assistant_projection_signature,
     _build_transcript_output_update,
     _cleanup_codex_input_state,
     _percentile,
@@ -619,18 +618,20 @@ class TestProjectSessionFromTranscript:
         )
 
     @pytest.mark.unit
-    async def test_skips_output_delivery_when_transcript_render_digest_is_unchanged(self):
+    async def test_projection_always_calls_send_output_update_when_transcript_has_content(self):
+        """Projection is a pure executor — no in-function dedup. Adapter-level
+        idempotency (output_message_id + char_offset) handles same-content re-sends.
+        """
         session = Session(
-            session_id="sess-output-dedupe-1",
+            session_id="sess-output-passthrough-1",
             computer_name="local",
-            tmux_session_name="tmux-output-dedupe-1",
-            title="Old title",
+            tmux_session_name="tmux-output-passthrough-1",
+            title="Title",
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="telegram",
         )
         delivery_ts = datetime(2026, 4, 7, 12, 3, 0, tzinfo=UTC)
-        session.last_projected_output_digest = _assistant_projection_signature("assistant text", delivery_ts)
         adapter_client = AsyncMock()
 
         with (
@@ -646,10 +647,12 @@ class TestProjectSessionFromTranscript:
         ):
             mock_db.update_session = AsyncMock()
             mock_db.get_session = AsyncMock(return_value=session)
-            result = await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
+            await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
+            # Second invocation with identical state — projection still fires; the
+            # adapter is the layer that dedupes same-content delivery.
+            await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
 
-        adapter_client.send_output_update.assert_not_awaited()
-        assert result is session
+        assert adapter_client.send_output_update.await_count == 2
 
     @pytest.mark.unit
     async def test_generate_session_title_preserves_slash_prefixed_titles(self):
@@ -661,6 +664,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
         )
+        adapter_client = AsyncMock()
 
         with (
             patch(
@@ -674,10 +678,11 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            result = await session_title.generate_session_title_from_transcript(session)
+            result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_generate.assert_not_awaited()
         mock_db.update_session.assert_not_awaited()
+        adapter_client.update_channel_title.assert_not_awaited()
         assert result is session
 
     @pytest.mark.unit
@@ -690,6 +695,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
         )
+        adapter_client = AsyncMock()
         with (
             patch(
                 "teleclaude.core.session_title.extract_last_user_message_with_timestamp",
@@ -709,18 +715,14 @@ class TestProjectSessionFromTranscript:
                 "teleclaude.core.session_title.generate_session_title",
                 AsyncMock(return_value="New title"),
             ) as mock_generate,
-            patch("teleclaude.core.session_title.event_bus") as mock_bus,
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            result = await session_title.generate_session_title_from_transcript(session)
+            result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_generate.assert_awaited_once_with([("user", "latest request"), ("assistant", "first part\n\nsecond part")])
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="New title")
-        mock_bus.emit.assert_called_once()
-        emitted = mock_bus.emit.call_args.args[1]
-        assert emitted.session_id == session.session_id
-        assert emitted.title == "New title"
+        adapter_client.update_channel_title.assert_awaited_once_with(session, "New title")
         assert result.title == "New title"
 
     @pytest.mark.unit
@@ -733,6 +735,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
         )
+        adapter_client = AsyncMock()
 
         with (
             patch(
@@ -750,16 +753,15 @@ class TestProjectSessionFromTranscript:
                 "teleclaude.core.session_title.generate_session_title",
                 AsyncMock(return_value="Stable title"),
             ) as mock_generate,
-            patch("teleclaude.core.session_title.event_bus") as mock_bus,
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            await session_title.generate_session_title_from_transcript(session)
-            await session_title.generate_session_title_from_transcript(session)
+            await session_title.generate_session_title_from_transcript(session, adapter_client)
+            await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_generate.assert_awaited_once()
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Stable title")
-        mock_bus.emit.assert_called_once()
+        adapter_client.update_channel_title.assert_awaited_once_with(session, "Stable title")
 
     @pytest.mark.unit
     async def test_project_session_does_not_update_title_during_live_output_projection(self):
@@ -803,6 +805,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
         )
+        adapter_client = AsyncMock()
 
         with (
             patch(
@@ -820,9 +823,10 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            result = await session_title.generate_session_title_from_transcript(session)
+            result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Generated title")
+        adapter_client.update_channel_title.assert_awaited_once_with(session, "Generated title")
         assert result.title == "Generated title"
         assert result is session
 

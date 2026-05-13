@@ -10,11 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from teleclaude.adapters.base_adapter import AdapterError
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.core.events import SessionStatusContext, SessionTitleChangedContext
+from teleclaude.core.events import SessionStatusContext
 from teleclaude.core.models import ChannelMetadata, CleanupTrigger, MessageMetadata, PeerInfo, Session
 
 # ---------------------------------------------------------------------------
@@ -355,86 +354,6 @@ class TestHandleSessionStatus:
 
         send_typing_indicator.assert_not_awaited()
         send_session_badge.assert_awaited_once_with(session)
-
-
-class TestHandleSessionTitleChanged:
-    @pytest.mark.unit
-    async def test_managed_session_reconciles_via_ensure_channel(self, adapter: _ConcreteAdapter) -> None:
-        session = _make_session(session_id="sess-managed")
-        session.lifecycle_status = "active"
-
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch.object(adapter, "ensure_channel", AsyncMock(return_value=session)) as ensure_channel,
-        ):
-            await adapter._handle_session_title_changed(
-                "session_title_changed",
-                SessionTitleChangedContext(session_id=session.session_id, title="Renamed"),
-            )
-
-        ensure_channel.assert_awaited_once_with(session)
-
-    @pytest.mark.unit
-    async def test_headless_session_schedules_projection(self, adapter: _ConcreteAdapter) -> None:
-        """Regression: title change on a headless session must flow through the projection
-        cadence so the channel gets provisioned (or its title reconciled) without racing
-        the post-stop projection.
-        """
-        session = _make_session(session_id="sess-headless")
-        session.lifecycle_status = "headless"
-
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch(
-                "teleclaude.adapters.ui_adapter.polling_coordinator.schedule_headless_projection",
-                AsyncMock(return_value=True),
-            ) as schedule,
-            patch.object(adapter, "ensure_channel", AsyncMock()) as ensure_channel,
-        ):
-            await adapter._handle_session_title_changed(
-                "session_title_changed",
-                SessionTitleChangedContext(session_id=session.session_id, title="Summarized"),
-            )
-
-        schedule.assert_awaited_once_with(session.session_id, adapter.client)
-        ensure_channel.assert_not_awaited()
-
-    @pytest.mark.unit
-    async def test_managed_session_swallows_adapter_error(self, adapter: _ConcreteAdapter) -> None:
-        session = _make_session(session_id="sess-managed-error")
-        session.lifecycle_status = "active"
-
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch.object(
-                adapter,
-                "ensure_channel",
-                AsyncMock(side_effect=AdapterError("Discord not started")),
-            ),
-        ):
-            # Must not raise; reconcile failures are logged and dropped.
-            await adapter._handle_session_title_changed(
-                "session_title_changed",
-                SessionTitleChangedContext(session_id=session.session_id, title="Whatever"),
-            )
-
-    @pytest.mark.unit
-    async def test_missing_session_is_a_noop(self, adapter: _ConcreteAdapter) -> None:
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=None)),
-            patch.object(adapter, "ensure_channel", AsyncMock()) as ensure_channel,
-            patch(
-                "teleclaude.adapters.ui_adapter.polling_coordinator.schedule_headless_projection",
-                AsyncMock(),
-            ) as schedule,
-        ):
-            await adapter._handle_session_title_changed(
-                "session_title_changed",
-                SessionTitleChangedContext(session_id="ghost", title="X"),
-            )
-
-        ensure_channel.assert_not_awaited()
-        schedule.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

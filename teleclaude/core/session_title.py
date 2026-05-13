@@ -10,13 +10,11 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionTitleChangedContext, TeleClaudeEvents
 from teleclaude.core.summarizer import generate_session_title
-from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils.transcript import collect_transcript_messages, extract_last_user_message_with_timestamp
 
 if TYPE_CHECKING:
+    from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
 
 logger = get_logger(__name__)
@@ -38,8 +36,14 @@ def clear_title_projection_state(session_id: str) -> None:
     _title_projection_signatures.pop(session_id, None)
 
 
-async def generate_session_title_from_transcript(session: Session) -> Session:
-    """Update semantic title from the last completed transcript turn, if allowed."""
+async def generate_session_title_from_transcript(session: Session, adapter_client: AdapterClient) -> Session:
+    """Update semantic title from the last completed transcript turn, if allowed.
+
+    Title is a UI surface, not a transcript surface. When the value actually
+    changes (dedup at this emit site), the new title is written to DB and
+    pushed straight to the adapter via the routed update_channel_title call.
+    No event broadcast, no projection: this is not a transcript projection.
+    """
     current_title = (session.title or "").strip()
     if current_title.startswith("/"):
         return session
@@ -97,10 +101,6 @@ async def generate_session_title_from_transcript(session: Session) -> Session:
 
     await db.update_session(session.session_id, title=new_title)
     session.title = new_title
-    event_bus.emit(
-        TeleClaudeEvents.SESSION_TITLE_CHANGED,
-        SessionTitleChangedContext(session_id=session.session_id, title=new_title),
-        visibility=EventVisibility.CLUSTER,
-    )
     logger.info("Updated session title from transcript: %s", new_title)
+    await adapter_client.update_channel_title(session, new_title)
     return session

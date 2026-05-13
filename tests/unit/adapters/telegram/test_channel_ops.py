@@ -160,15 +160,10 @@ async def test_update_channel_title_returns_true_on_success():
     session = _make_session(topic_id=91)
     ops._edit_forum_topic_with_retry = AsyncMock()
 
-    with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-        result = await ops.update_channel_title(session, "Renamed")
+    result = await ops.update_channel_title(session, "Renamed")
 
     ops._edit_forum_topic_with_retry.assert_awaited_once_with(91, "Renamed")
     assert result is True
-    persisted = mock_db.update_origin_metadata.call_args.args[2]
-    assert persisted.get("last_synced_title") == "Renamed"
 
 
 async def test_update_channel_title_returns_false_on_telegram_error():
@@ -176,13 +171,9 @@ async def test_update_channel_title_returns_false_on_telegram_error():
     session = _make_session(topic_id=42)
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=TelegramError("boom"))
 
-    with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-        result = await ops.update_channel_title(session, "Broken")
+    result = await ops.update_channel_title(session, "Broken")
 
     assert result is False
-    mock_db.update_origin_metadata.assert_not_awaited()
 
 
 async def test_update_channel_title_treats_topic_not_modified_as_noop_success():
@@ -191,14 +182,9 @@ async def test_update_channel_title_treats_topic_not_modified_as_noop_success():
     session = _make_session(topic_id=42)
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Topic_not_modified"))
 
-    with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-        result = await ops.update_channel_title(session, "Same Title")
+    result = await ops.update_channel_title(session, "Same Title")
 
     assert result is True
-    persisted = mock_db.update_origin_metadata.call_args.args[2]
-    assert persisted.get("last_synced_title") == "Same Title"
 
 
 async def test_update_channel_title_returns_false_on_other_bad_request():
@@ -207,13 +193,9 @@ async def test_update_channel_title_returns_false_on_other_bad_request():
     session = _make_session(topic_id=42)
     ops._edit_forum_topic_with_retry = AsyncMock(side_effect=BadRequest("Chat not found"))
 
-    with patch("teleclaude.adapters.telegram.channel_ops.db") as mock_db:
-        mock_db.get_session = AsyncMock(return_value=session)
-        mock_db.update_origin_metadata = AsyncMock()
-        result = await ops.update_channel_title(session, "Any Title")
+    result = await ops.update_channel_title(session, "Any Title")
 
     assert result is False
-    mock_db.update_origin_metadata.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -18,16 +18,15 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.adapters.base_adapter import AdapterError, BaseAdapter
+from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui.output_delivery import _delivery_options_from_kwargs
 from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan, ThreadDelivery
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
-from teleclaude.core import polling_coordinator
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionStatusContext, SessionTitleChangedContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript import extract_last_turn_boundary_timestamp
@@ -448,7 +447,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         self._action_throttler = AdapterActionThrottler()
 
         event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_TITLE_CHANGED, self._handle_session_title_changed)
 
     # === Adapter Metadata Helpers ===
 
@@ -714,30 +712,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
             session: Session object
         """
         # No-op default implementation
-
-    async def _handle_session_title_changed(self, _event: str, context: SessionTitleChangedContext) -> None:
-        """Reconcile the adapter's channel when a session's semantic title changes.
-
-        Headless sessions route through the projection cadence so channel
-        provisioning and title reconciliation share one code path with output
-        delivery. Managed sessions reconcile inline because their channel
-        already exists from session startup.
-        """
-        session = await db.get_session(context.session_id)
-        if not session:
-            return
-        if session.lifecycle_status == "headless":
-            await polling_coordinator.schedule_headless_projection(session.session_id, self.client)
-            return
-        try:
-            await self.ensure_channel(session)
-        except AdapterError as exc:
-            logger.warning(
-                "Channel reconcile failed for adapter=%s session=%s: %s",
-                self.ADAPTER_KEY,
-                session.session_id,
-                exc,
-            )
 
     def get_action_throttle_interval_s(self, action_kind: str) -> float:
         """Return the minimum interval between adapter control actions."""

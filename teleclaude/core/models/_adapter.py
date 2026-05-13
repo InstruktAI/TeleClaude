@@ -69,7 +69,6 @@ class TelegramAdapterMetadata:
     char_offset: int = 0
     user_id: int | None = None
     badge_sent: bool = False
-    last_synced_title: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "TelegramAdapterMetadata":  # guard: loose-dict
@@ -84,7 +83,6 @@ class TelegramAdapterMetadata:
             char_offset=int(raw.get("char_offset", 0)),
             user_id=_int_or_none(raw.get("user_id")),
             badge_sent=bool(raw.get("badge_sent", False)),
-            last_synced_title=_str_or_none(raw.get("last_synced_title")),
         )
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output
@@ -106,7 +104,6 @@ class DiscordAdapterMetadata:
     status_message_id: str | None = None
     badge_sent: bool = False
     char_offset: int = 0
-    last_synced_title: str | None = None
 
     @classmethod
     def from_dict(cls, raw: dict[str, object]) -> "DiscordAdapterMetadata":  # guard: loose-dict
@@ -122,7 +119,6 @@ class DiscordAdapterMetadata:
             status_message_id=_str_or_none(raw.get("status_message_id")),
             badge_sent=bool(raw.get("badge_sent", False)),
             char_offset=int(raw.get("char_offset", 0)),
-            last_synced_title=_str_or_none(raw.get("last_synced_title")),
         )
 
     def to_dict(self) -> dict[str, object]:  # guard: loose-dict - JSON serialization output

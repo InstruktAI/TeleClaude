@@ -439,7 +439,7 @@ class AgentCoordinator(
 
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
-        await generate_session_title_from_transcript(session)
+        await generate_session_title_from_transcript(session, self.client)
 
         await self._finalize_agent_stop(
             session_id,

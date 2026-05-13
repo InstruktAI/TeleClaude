@@ -2,15 +2,15 @@
 id: 'project/design/architecture-v2/prepare-discovery-flow'
 type: 'design'
 scope: 'project'
-description: 'Discovery flow for the prepare phase v2. Meticulous deterministic process with parallel agent dispatch, full lane coverage, meta-question iteration, consolidation, tailor-fit, and reframe for user confirmation.'
-status: 'draft v1'
+description: 'Discovery flow for the prepare phase v2. Orchestrator and cross-model peer conduct a turn-based discussion through session output and tailing; synthesize via tailor-fit with MoSCoW classification; reframe for user confirmation.'
+status: 'draft v2'
 ---
 
 # Prepare Discovery Flow — Design
 
 ## Purpose
 
-Codify the prepare-phase discovery as a deterministic process the orchestrator follows every time. Not an agent-chosen sequence — a meticulous flow that guarantees exhaustive coverage of the discovery lanes, paired meta-questioning to surface what initial production missed, consolidation, tailor-fit, and reframe for user confirmation.
+Codify the prepare-phase discovery as a deterministic process the orchestrator follows every time. The agents discuss through their own sessions (orchestrator coordinates dispatch and tailing); blind Turn 1 pins independent perspectives; structured exhaustion terminates the discussion; synthesis + tailor-fit + reframe produce the inspectable handoff to the user.
 
 Discovery operates as enterprise-specialist intake: hear the customer's intent, build the complete picture of what serving that intent means, trim ruthlessly to what fits, present back for confirmation. The agents lead the technical work; the user is the source of intent.
 
@@ -19,50 +19,50 @@ Discovery operates as enterprise-specialist intake: hear the customer's intent, 
 **Inputs:**
 
 - `telec todo artifacts read {slug} input` — user-provided intent for the work item.
-- Codebase state: greenfield or brownfield context inferred by the orchestrator from the area the input touches.
-- Domain specs loaded via `telec docs index` / `telec docs get` for the domains the input references.
-- Roadmap (`telec roadmap list`) for adjacent in-flight or delivered work that constrains or enables this.
-- User proficiency level from PersonDTO injection (or asked once at session start).
+- Codebase state: greenfield or brownfield, inferred by the orchestrator from the area the input touches.
+- Domain specs loaded via `telec docs index` / `telec docs get`.
+- Roadmap (`telec roadmap list`) for adjacent in-flight or delivered work.
+- User proficiency from PersonDTO injection (or asked once at session start).
 
 **Outputs:**
 
 | Artifact | Owner | Purpose |
 | --- | --- | --- |
-| `discovery-a.md` | orchestrator | turn-marked, append-only, working artifact for orchestrator's discovery |
-| `discovery-b.md` | peer | turn-marked, append-only, working artifact for peer's discovery |
-| `discovery-consolidated.md` | orchestrator | merged per-lane synthesis from both working artifacts |
-| `discovery-tailor-fit.md` | orchestrator (or separate critic agent) | MoSCoW classification of every surfaced item |
+| `discovery-tailor-fit.md` | orchestrator | synthesized per-lane content with MoSCoW classification and rationale per item |
 | `discovery-reframe.md` | orchestrator | user-facing inspectable artifact for confirmation |
+| `discovery-a.md` (optional) | orchestrator | working scratchpad, append-only, free-form |
+| `discovery-b.md` (optional) | peer | working scratchpad, append-only, free-form |
 
-The confirmed reframe is the handoff input to the next phase: authoring the requirements artifact.
+The discussion itself lives in the orchestrator's and peer's session outputs. Scratchpad artifacts are optional and exist only to make consolidation cheaper to consume — they are not the channel of the discussion. The confirmed reframe is the handoff input to the next phase: authoring the requirements artifact.
 
 ## Invariants
 
-**Deterministic flow (no agent choice on sequence):**
+**Deterministic structure (no agent choice on sequencing):**
 
-- Context establishment is performed before peer dispatch.
-- Peer is dispatched in parallel with the same input + context + lane set.
-- Both agents answer the full lane set in Turn 1 (blind to each other).
-- Both agents perform the meta-questioning pass in Turn 2 (each sees the other's Turn 1).
-- Consolidation, drift check, tailor-fit run in order.
-- Reframe is authored before the user is shown anything.
-- No step is skipped, no order is reordered.
+- Context establishment happens before peer dispatch.
+- Turn 1 is parallel and blind — both agents work without reading each other.
+- From Turn 2 onward the orchestrator conducts the discussion: writes its turn first, then dispatches the peer with a brief that references its turn's content.
+- Discussion terminates when both consecutive turns close `exhausted`.
+- Tailor-fit synthesis and reframe are authored by the orchestrator.
+- The reframe is the user's first sight of the discovery output.
+- The flow is not skipped or reordered.
 
 **Adaptive within steps (informed by context):**
 
-- Lane weights — greenfield emphasizes impact and risk; brownfield emphasizes dependency and constraint.
-- Whether a third inhalation round runs (default no; only if Turn 2 surfaced major material).
-- Whether blocking intent questions exist that require interim user input.
-- Cross-model peer selection (Codex vs. Gemini) based on what's available and what cognitive style suits the work.
+- Lane emphasis — greenfield emphasizes impact, approach options, risk; brownfield emphasizes constraints, dependencies, scope.
+- Cross-model peer selection (Codex / Gemini) based on availability and cognitive-style fit.
+- Whether to use working scratchpad artifacts or operate purely from session output. Either works; the scratchpad simplifies consumption during synthesis.
+- Number of meta-discussion turns: bounded by structural exhaustion, not by a fixed cap.
 
 **Guarantees the flow provides:**
 
-- **Coverage.** Every lane is answered, twice (initial pass + meta-questioning).
-- **Independence.** Peer's Turn 1 is blind; cross-model preferred for cognitive diversity.
-- **Iteration.** The second turn catches what the first missed, without endless rounds.
-- **Trim discipline.** MoSCoW forces explicit classification rather than implicit promotion of everything surfaced.
-- **User stewardship.** The user sees a coherent reframe, not the messy process; they confirm or refine; they don't get pulled into the agents' working surface.
-- **Replayability.** Every output is an artifact; the discovery can be inspected, audited, or re-run from any node.
+- **Coverage.** Every lane is touched in Turn 1; discussion extends and connects across lanes.
+- **Independence.** Turn 1 is blind; cross-model preferred for cognitive diversity.
+- **Discussion register.** Turn structure enforces engagement and reasoning rather than interview Q&A.
+- **Convergence is earned.** Termination by structural exhaustion, not by either side capitulating to fatigue.
+- **Trim discipline.** MoSCoW classification with rationale per item forces explicit need-fitness reasoning.
+- **User stewardship.** The user sees the reframe, not the discussion. They confirm or refine; the agents handle the iteration loop.
+- **Replayability.** Session transcripts persist; the tailor-fit and reframe artifacts are the durable record.
 
 ## Primary flows
 
@@ -70,86 +70,86 @@ The confirmed reframe is the handoff input to the next phase: authoring the requ
 
 ```mermaid
 flowchart TD
-    Start([User input received]) --> Context[Establish context<br/>greenfield or brownfield<br/>load domain specs via telec docs<br/>read roadmap for adjacent work<br/>read user input in full]
+    Start([User input received]) --> Context[Orchestrator establishes context<br/>greenfield or brownfield, load domain specs,<br/>read roadmap, read user input in full]
 
-    Context --> Dispatch[Dispatch peer in parallel<br/>cross-model preferred Codex or Gemini<br/>same input plus same context references<br/>same lane question set]
+    Context --> Dispatch[Orchestrator dispatches peer for Turn 1<br/>cross-model preferred — Codex or Gemini<br/>brief: input + context + 8-lane question set<br/>--detach]
 
-    Dispatch --> Inhale1{Inhalation 1<br/>parallel, blind}
+    Dispatch --> T1{Turn 1 — parallel, blind}
+    T1 --> OT1[Orchestrator Turn 1 in own session<br/>full lane set, blind to peer<br/>each contribution carries<br/>from-input / from-source / speculative<br/>optional append to discovery-a.md]
+    T1 --> PT1[Peer Turn 1 in own session<br/>full lane set, blind to orchestrator<br/>same citation discipline<br/>optional append to discovery-b.md]
+    OT1 --> Sync((Both Turn 1 complete))
+    PT1 --> Sync
 
-    Inhale1 --> A1[Orchestrator answers full lane set<br/>in one pass<br/>writes discovery-a.md Turn 1]
-    Inhale1 --> B1[Peer answers full lane set<br/>in one pass<br/>writes discovery-b.md Turn 1]
+    Sync --> OTN[Orchestrator Turn N — N starts at 2<br/>tails peer Turn N-1<br/>discussion register:<br/>• engagement with peer's contributions<br/>• reasoning building from their material<br/>• new material from cross-reading<br/>• residual uncertainty<br/>• genuine questions if they emerge<br/>• status — more or exhausted]
 
-    A1 --> Sync1((Sync))
-    B1 --> Sync1
+    OTN --> Gate{Dispatch peer for Turn N?<br/>defer if orchestrator Turn N exhausted<br/>AND peer prior turn was exhausted}
+    Gate -->|defer — discussion done| TailorFit
+    Gate -->|continue — material flowing| Disp
 
-    Sync1 --> Inhale2{Inhalation 2<br/>meta-questioning}
+    Disp[Orchestrator dispatches peer for Turn N<br/>brief: 'engage with my Turn N,<br/>respond with reasoning,<br/>discussion register — NOT interview']
 
-    Inhale2 --> A2[Orchestrator reads peer Turn 1<br/>and own Turn 1<br/>re-asks lane set focused on<br/>what was missed, what newly surfaces<br/>writes discovery-a.md Turn 2]
-    Inhale2 --> B2[Peer reads orchestrator Turn 1<br/>and own Turn 1<br/>re-asks lane set focused on<br/>what was missed, what newly surfaces<br/>writes discovery-b.md Turn 2]
+    Disp -.dispatch or response fails.-> Solo[Orchestrator continues solo<br/>conducts self-engagement meta-pass<br/>notes missing peer in reframe]
+    Solo --> TailorFit
 
-    A2 --> Sync2((Sync))
-    B2 --> Sync2
+    Disp --> PTN[Peer Turn N in own session<br/>tails orchestrator Turn N<br/>same five-element turn structure<br/>closes with status]
 
-    Sync2 --> Consolidate[Consolidation<br/>orchestrator merges both artifacts<br/>per-lane synthesis:<br/>actor map, impact map,<br/>approach options, dependency surface,<br/>constraint map, pre-mortem,<br/>success criteria, scope boundaries<br/>writes discovery-consolidated.md]
+    PTN --> Tail[Orchestrator tails peer Turn N]
 
-    Consolidate --> DriftCheck{Drift check<br/>each lane traces<br/>back to user input?}
+    Tail --> Ex{Orchestrator Turn N exhausted<br/>AND peer Turn N exhausted?}
+    Ex -->|no — material still flowing| OTN
+    Ex -->|yes — discussion done| TailorFit
 
-    DriftCheck -->|drift items found| FlagDrift[Mark drift items<br/>for tailor-fit trim]
-    DriftCheck -->|clean| TailorFit
-    FlagDrift --> TailorFit
+    TailorFit[Orchestrator tailor-fit synthesis<br/>merge per-lane content from both agents<br/>MoSCoW classify every item with rationale<br/>drift handled inline via rationale<br/>open intent questions surfaced for user<br/>write discovery-tailor-fit.md]
 
-    TailorFit[Tailor-fit<br/>MoSCoW classification<br/>every surfaced item<br/>Must, Should, Could, Won't<br/>with one-sentence rationale per item<br/>writes discovery-tailor-fit.md]
+    TailorFit --> Reframe[Orchestrator authors reframe<br/>JTBD-shaped statement,<br/>Must / Should / Won't with reasoning,<br/>Success criteria in Gherkin form,<br/>open intent questions at user's level<br/>write discovery-reframe.md]
 
-    TailorFit --> IntentCheck{Open intent questions<br/>that block tailor-fit?}
-
-    IntentCheck -->|yes| UserInterim[Surface batched intent questions<br/>to user at proficiency level<br/>collect answers]
-    IntentCheck -->|no| Reframe
-    UserInterim --> Consolidate
-
-    Reframe[Author reframe artifact<br/>JTBD-shaped statement,<br/>Must items in user language,<br/>Should items with rationale,<br/>Won't items with reasoning,<br/>success criteria in Gherkin form,<br/>any remaining open questions<br/>writes discovery-reframe.md]
-
-    Reframe --> UserConfirm{User confirms reframe?}
-
-    UserConfirm -->|yes| Done([Discovery complete<br/>proceed to requirements artifact])
-    UserConfirm -->|no, refine| Refine[Capture refinement<br/>incorporate user delta<br/>identify which lanes need re-work]
-
-    Refine --> Consolidate
+    Reframe --> Conf{User confirms reframe?}
+    Conf -->|yes| Done([Discovery complete<br/>→ requirements phase])
+    Conf -->|refine| Delta[Capture user delta]
+    Delta --> TailorFit
 ```
 
-### Node responsibilities
+### Round structure inside the meta-discussion
 
-**Establish context.** Orchestrator-only. Read user input in full. Determine greenfield vs brownfield by inspecting the codebase area the input references. Load relevant domain specs via `telec docs index` and `telec docs get`. Read roadmap for adjacent in-flight or delivered work. Output: context block used in both subsequent dispatches.
+Each round of the meta-discussion (one orchestrator turn + one peer turn) is conducted by the orchestrator in this order:
 
-**Dispatch peer.** Cross-model preferred (Codex or Gemini). Fire-and-forget with `--detach`. Peer receives the same user input, the same context references, and the same lane question set. Peer does not see the orchestrator's working artifact.
+1. **Orchestrator writes its Turn N** in its own session (after tailing the peer's prior turn). Five-element structure: engagement, reasoning, new material, residual, status.
+2. **Self-check:** if orchestrator Turn N is exhausted AND peer's prior turn was exhausted, the discussion is over — skip dispatch.
+3. **Dispatch peer for Turn N** with brief referencing the orchestrator's Turn N.
+4. **Peer writes Turn N** in its own session — same five-element structure.
+5. **Orchestrator tails** the peer's Turn N.
+6. **Termination check:** if both Turn N closed exhausted, discussion ends. Otherwise increment N and continue.
 
-**Inhalation 1 (parallel, blind).** Both agents answer every lane question in one pass against the input and context. The full lane set is presented at once. One pass each, no inter-agent reads yet. Output: two independent artifacts.
+The orchestrator's role across rounds: it is both a participant in the discussion (contributing engagement and reasoning) and the conductor (deciding when to dispatch, tailing the peer's output, deciding when termination has been reached).
 
-**Inhalation 2 (meta-questioning).** Each agent reads the other's Turn 1 and its own Turn 1, then re-passes the lane question set focused on "what did we miss between us; what newly surfaces from reading both." Output: Turn 2 appended in each artifact. Termination after Turn 2 is the default; a third round only if Turn 2 surfaced major new material.
+### Discussion register vs interview register
 
-**Consolidation.** Orchestrator-only step. Read both discovery artifacts. Merge per-lane content into a single consolidated view: actor map deduplicated, impact map tree-merged, approach options matrix, and so on per lane. Output: `discovery-consolidated.md`.
+Critical to the meta-discussion: agents engage with each other's material, not interview each other.
 
-**Drift check.** For each consolidated lane, trace back to user input. Items that don't trace get flagged `[drift]`. Tailor-fit considers them for trimming.
+- Interview register: "You raised X. Question for you: what is Y?" Peer dutifully answers. Output is structurally complete and substantively thin.
+- Discussion register: "You raised X. That makes me think Y matters because Z, and connects to what I surfaced about W. Where I'm uncertain is V." Peer reads, responds with its own reasoning that builds on this. Output is generative.
 
-**Tailor-fit (MoSCoW).** Every surfaced item across all lanes is classified Must / Should / Could / Won't with a one-sentence rationale. Drift-flagged items default to Could or Won't unless rationale upgrades them. Output: `discovery-tailor-fit.md`.
-
-**Open-intent check.** Questions surfaced in discovery that require user judgment are classified: resolvable from source (resolve and update consolidation), blocking tailor-fit (surface to user now, batched, at proficiency level), or non-blocking (hold for reframe).
-
-**Reframe.** Orchestrator authors the inspectable artifact the user reads. Includes JTBD-shaped statement, Must items articulated in the user's register, Should items with rationale, Won't items with reasoning, success criteria in Gherkin form, any non-blocking open questions. Output: `discovery-reframe.md`.
-
-**User confirm.** User reads reframe. Confirms (discovery complete) or refines (delta incorporated; consolidation re-runs with the new input).
+The brief enforces discussion register explicitly. Questions are welcome when they emerge from real engagement — they are not the backbone of a turn.
 
 ## Failure modes
 
-- **Peer dispatch fails or returns unusable output.** Orchestrator continues solo; the reframe notes the missing second perspective.
-- **Discovery exhausts after Turn 1.** When both agents agree the input is small and nothing more surfaces, the orchestrator may skip Turn 2 and proceed directly to consolidation. Short discoveries are valid for small intents.
-- **User input is too sparse.** Orchestrator surfaces this immediately as a single clarifying question to the user, at their proficiency level. Does not invent material.
-- **Refine loop reveals a missed lane or wrong frame.** Current v1 routes refinement back to consolidation. If the refinement reveals a structural gap that consolidation cannot fill, a focused re-inhalation may be needed; this branch is not yet codified — see open items below.
-- **Endless inhalation churn.** If a third inhalation round is run and produces minimal new material, terminate inhalation and proceed to consolidation regardless.
-- **Mid-process user interaction over-engineered.** The flow includes an optional interim user step when intent questions block tailor-fit. This may turn out to be over-engineered in practice — alternative is to push all intent questions to the reframe step and let the user resolve them there.
-- **Tailor-fit ownership undecided.** Draft has the orchestrator doing tailor-fit. Alternative: a separate dispatched critic agent (cross-model) does it for additional independence. Worth deciding before this hardens.
+- **Peer dispatch fails or returns unusable output.** Orchestrator continues solo, runs a single self-engagement meta-pass on its own Turn 1, and notes the missing peer perspective in the reframe.
+- **Discussion exhausts at Turn 1.** When both agents report nothing more to surface after Turn 1, the orchestrator skips the meta-discussion and proceeds directly to tailor-fit. Short discoveries are valid for small intents.
+- **User input is too sparse.** Orchestrator surfaces a single clarifying question at the user's proficiency level immediately; does not invent material.
+- **Discussion runs unusually long without exhaustion.** Treat as a non-convergence signal. The input or context may be ambiguous in a way the agents can't resolve. Surface the state and the apparent disagreement to the user; do not force convergence by exhaustion.
+- **Refine loop reveals a missed lane or wrong frame.** Routine refinements re-run tailor-fit only. If the delta opens genuinely new territory the discussion didn't surface, the orchestrator may decide to re-open the meta-discussion with the delta as additional input.
+- **Speculative items dominating tailor-fit.** If most contributions are `[speculative]` rather than `[from-input]` or `[from-source]`, the discussion may have over-extended. Tailor-fit's MoSCoW rationale should classify speculative items as Could or Won't unless they're clearly grounded by implication.
+
+### Design choices still being prototyped
+
+- **Pure session output vs. light scratchpads.** The discussion lives in session output + tailing; scratchpad artifacts (`discovery-a.md`, `discovery-b.md`) are optional working documents. Whether they earn their place across many discovery sessions is still open. If session-only proves sufficient, scratchpads can be dropped entirely.
+- **Round structure granularity.** The current draft has a single decision gate after orchestrator Turn N (dispatch or defer). Whether more decision points (e.g., explicit early-termination after Turn 1, or a per-lane check at each round) earn their place is open.
+- **Drift handling as discipline vs. step.** v1 had a separate drift-check step. v2 folds drift handling into tailor-fit's MoSCoW rationale. Whether this loses important visibility is open.
+- **Tailor-fit ownership.** Orchestrator-authored vs. a separate dispatched critic agent (cross-model) for additional independence. Current draft has orchestrator; if practice shows orchestrator's discussion participation biases its tailor-fit, separate the critic.
+- **Cap on meta-discussion turns.** v2 has no fixed cap, trusting structural exhaustion. If pathological non-convergence is observed in practice, add a soft cap (e.g., 6 turns each) with a non-convergence flag rather than silent forcing.
 
 ## See Also
 
-- docs/global/software-development/procedure/lifecycle/prepare/discovery-v2.md
-- docs/global/software-development/concept/intake-frameworks.md
-- docs/global/software-development/policy/preparation-artifact-quality.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discovery-v2.md
+- ~/.teleclaude/docs/software-development/concept/intake-frameworks.md
+- ~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
