@@ -28,7 +28,7 @@ from ._iterators import (
     _iter_gemini_entries,
     _start_index_after_timestamp_or_rotation,
 )
-from ._parsers import normalize_transcript_entry_message
+from ._user_turns import find_turn_start_idx
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _format_thinking, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -137,15 +137,9 @@ def parse_gemini_transcript(
         return f"Error parsing transcript: {e}"
 
 
-def _last_user_boundary_start(entries: list[JsonDict]) -> int:
+def _last_user_boundary_start(entries: list[JsonDict], agent_name: AgentName | None = None) -> int:
     """Return the index after the last user message."""
-    last_user_idx = -1
-    for i in range(len(entries) - 1, -1, -1):
-        message = normalize_transcript_entry_message(entries[i])
-        if isinstance(message, dict) and message.get("role") == "user":
-            last_user_idx = i
-            break
-    return last_user_idx + 1
+    return find_turn_start_idx(entries, full_session=False, agent_name=agent_name)
 
 
 def _resolve_render_start_index(
@@ -158,7 +152,7 @@ def _resolve_render_start_index(
 ) -> int | None:
     """Resolve the starting entry index for incremental rendering."""
     if since_timestamp is None:
-        return _last_user_boundary_start(entries)
+        return _last_user_boundary_start(entries, agent_name)
     return _start_index_after_timestamp_or_rotation(
         entries,
         since_timestamp,

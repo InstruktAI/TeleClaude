@@ -234,6 +234,7 @@ CHECKPOINT_RESTART_EVIDENCE = ["make restart"]
 CHECKPOINT_AGENT_RESTART_EVIDENCE = ["telec sessions restart", "/agent-restart", "agent_restart"]
 CHECKPOINT_RELOAD_EVIDENCE = ["pkill -SIGUSR2", "kill -USR2"]
 CHECKPOINT_LOG_CHECK_EVIDENCE = ["instrukt-ai-logs"]
+CHECKPOINT_COMMIT_EVIDENCE = ["telec code commit"]
 
 # File categories ordered by action precedence (R2, R9).
 # Evidence substrings are matched against Bash tool call commands (R4).
@@ -345,7 +346,7 @@ CHECKPOINT_ERROR_ENRICHMENT: list[tuple[str, str]] = [
     ("ImportError", "Import errors remain — check dependencies or module paths"),
     ("ModuleNotFoundError", "Import errors remain — check dependencies or module paths"),
 ]
-CHECKPOINT_TEST_ERROR_COMMANDS = ["pytest", "make test"]
+CHECKPOINT_TEST_ERROR_COMMANDS = ["pytest", "make test", "telec code test"]
 CHECKPOINT_TEST_ERROR_MESSAGE = "Test failures remain — re-run tests after fixes"
 CHECKPOINT_GENERIC_ERROR_MESSAGE = "A command returned errors — verify the issue is resolved"
 

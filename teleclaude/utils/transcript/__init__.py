@@ -12,6 +12,12 @@ from teleclaude.utils.transcript._block_renderers import (
     _should_skip_entry,
     iter_assistant_blocks,
 )
+from teleclaude.utils.transcript._checkpoint_anchors import (
+    CheckpointAnchor,
+    find_checkpoint_scope_start_idx,
+    find_last_checkpoint_anchor,
+    is_checkpoint_anchor_entry,
+)
 from teleclaude.utils.transcript._extraction import (
     _extract_last_message_by_role,
     _extract_text_from_content,
@@ -65,6 +71,13 @@ from teleclaude.utils.transcript._tool_calls import (
     extract_structured_messages,
     extract_tool_calls_current_turn,
 )
+from teleclaude.utils.transcript._user_turns import (
+    RealUserTurn,
+    extract_real_user_text_from_entry,
+    find_last_real_user_turn,
+    find_turn_start_idx,
+    is_real_user_turn_entry,
+)
 from teleclaude.utils.transcript._utils import (
     CHECKPOINT_JSONL_TAIL_ENTRIES,
     CHECKPOINT_JSONL_TAIL_READ_BYTES,
@@ -85,6 +98,8 @@ __all__ = [
     "CHECKPOINT_JSONL_TAIL_ENTRIES",
     "CHECKPOINT_JSONL_TAIL_READ_BYTES",
     # _tool_calls
+    "CheckpointAnchor",
+    "RealUserTurn",
     "StructuredMessage",
     "ToolCallRecord",
     "TranscriptParserInfo",
@@ -135,12 +150,19 @@ __all__ = [
     "extract_last_user_message",
     "extract_last_user_message_with_timestamp",
     "extract_messages_from_chain",
+    "extract_real_user_text_from_entry",
     "extract_recent_transcript_turns",
     "extract_structured_messages",
     "extract_tool_calls_current_turn",
     "extract_workdir_from_transcript",
+    "find_checkpoint_scope_start_idx",
+    "find_last_checkpoint_anchor",
+    "find_last_real_user_turn",
+    "find_turn_start_idx",
     "get_assistant_messages_since",
     "get_transcript_parser_info",
+    "is_checkpoint_anchor_entry",
+    "is_real_user_turn_entry",
     "iter_assistant_blocks",
     "normalize_transcript_entry_message",
     "parse_claude_transcript",

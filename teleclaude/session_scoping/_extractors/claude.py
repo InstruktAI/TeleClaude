@@ -54,7 +54,7 @@ def collect_claude_paths(
         return set(), "claude_structured_fallback"
 
     entries = _get_entries_for_agent(transcript_path, AgentName.CLAUDE) or []
-    turn_start_idx = _find_turn_start_idx(entries, scope_mode == "session_dirty")
+    turn_start_idx = _find_turn_start_idx(entries, scope_mode == "session_dirty", AgentName.CLAUDE)
 
     previous_snapshot_paths: set[str] = set()
     current_snapshot_paths: set[str] = set()

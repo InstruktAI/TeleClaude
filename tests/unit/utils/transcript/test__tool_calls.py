@@ -4,32 +4,30 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 
 import pytest
 
 import teleclaude.utils.transcript._tool_calls as transcript_tool_calls
 from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import CodexTranscriptMeta
+from teleclaude.core.models import JsonDict
 
 pytestmark = pytest.mark.unit
 
 
 class TestFunctionCallParsing:
-    @pytest.mark.parametrize(
-        ("raw_arguments", "expected"),
-        [
-            ({"path": "/tmp/demo"}, {"path": "/tmp/demo"}),
-            ('{"path": "/tmp/demo"}', {"path": "/tmp/demo"}),
-            ("not-json", {"raw_arguments": "not-json"}),
-        ],
-    )
-    def test_parse_function_call_arguments_normalizes_supported_shapes(
-        self,
-        raw_arguments: object,
-        expected: dict[str, Any],  # guard: loose-dict - Test helper payloads intentionally vary by scenario.
-    ) -> None:
-        assert dict(transcript_tool_calls._parse_function_call_arguments(raw_arguments)) == expected
+    def test_parse_function_call_arguments_accepts_mapping_payload(self) -> None:
+        assert dict(transcript_tool_calls._parse_function_call_arguments({"path": "/tmp/demo"})) == {
+            "path": "/tmp/demo"
+        }
+
+    def test_parse_function_call_arguments_decodes_json_object_string(self) -> None:
+        assert dict(transcript_tool_calls._parse_function_call_arguments('{"path": "/tmp/demo"}')) == {
+            "path": "/tmp/demo"
+        }
+
+    def test_parse_function_call_arguments_preserves_invalid_json_string(self) -> None:
+        assert dict(transcript_tool_calls._parse_function_call_arguments("not-json")) == {"raw_arguments": "not-json"}
 
     def test_find_turn_start_idx_skips_user_tool_result_only_messages(self) -> None:
         entries = [
@@ -162,9 +160,7 @@ class TestCurrentTurnExtraction:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        def raise_error(
-            transcript_path: str, agent_name: AgentName, tail_entries: int | None = None
-        ) -> list[dict[str, Any]]:  # guard: loose-dict - Test helper payloads intentionally vary by scenario.
+        def raise_error(transcript_path: str, agent_name: AgentName, tail_entries: int | None = None) -> list[JsonDict]:
             raise RuntimeError("boom")
 
         monkeypatch.setattr(transcript_tool_calls, "_get_entries_for_agent", raise_error)
@@ -223,7 +219,9 @@ class TestEffectiveToolCallExtraction:
         monkeypatch.setattr(
             transcript_tool_calls,
             "_extract_tool_calls_for_scope",
-            lambda transcript_path, agent_name, full_session=False: timelines[(transcript_path, full_session)],
+            lambda transcript_path, agent_name, full_session=False, boundary="real_user": timelines[
+                (transcript_path, full_session)
+            ],
         )
 
         timeline = transcript_tool_calls.extract_effective_tool_calls(
@@ -272,6 +270,16 @@ class TestEffectiveToolCallExtraction:
                 has_data=True,
                 turn_start_at=parent_turn_start,
             ),
+            ("/tmp/old-child.jsonl", True): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="apply_patch",
+                        input_data={"path": "old-child.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 4, 58, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+            ),
             ("/tmp/new-child.jsonl", True): transcript_tool_calls.TurnTimeline(
                 tool_calls=[
                     transcript_tool_calls.ToolCallRecord(
@@ -292,7 +300,9 @@ class TestEffectiveToolCallExtraction:
         monkeypatch.setattr(
             transcript_tool_calls,
             "_extract_tool_calls_for_scope",
-            lambda transcript_path, agent_name, full_session=False: timelines[(transcript_path, full_session)],
+            lambda transcript_path, agent_name, full_session=False, boundary="real_user": timelines[
+                (transcript_path, full_session)
+            ],
         )
 
         timeline = transcript_tool_calls.extract_effective_tool_calls(
@@ -307,6 +317,79 @@ class TestEffectiveToolCallExtraction:
             {"path": "new-child.py"},
         ]
         assert timeline.turn_start_at == parent_turn_start
+
+    def test_extract_effective_tool_calls_filters_codex_children_before_checkpoint(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        checkpoint_start = datetime(2026, 3, 20, 7, 10, tzinfo=UTC)
+        parent_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/parent.jsonl",
+            thread_id="parent-thread",
+            parent_thread_id=None,
+            session_started_at=datetime(2026, 3, 20, 7, 0, tzinfo=UTC),
+        )
+        child_meta = CodexTranscriptMeta(
+            transcript_path="/tmp/child.jsonl",
+            thread_id="child-thread",
+            parent_thread_id="parent-thread",
+            session_started_at=datetime(2026, 3, 20, 7, 1, tzinfo=UTC),
+        )
+
+        timelines = {
+            ("/tmp/parent.jsonl", False): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="exec_command",
+                        input_data={"cmd": "pytest tests/unit/utils/transcript/test__tool_calls.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 10, 1, tzinfo=UTC),
+                    )
+                ],
+                has_data=True,
+                turn_start_at=checkpoint_start,
+            ),
+            ("/tmp/child.jsonl", True): transcript_tool_calls.TurnTimeline(
+                tool_calls=[
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="apply_patch",
+                        input_data={"path": "old-child.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 9, 59, tzinfo=UTC),
+                    ),
+                    transcript_tool_calls.ToolCallRecord(
+                        tool_name="apply_patch",
+                        input_data={"path": "new-child.py"},
+                        timestamp=datetime(2026, 3, 20, 7, 10, 2, tzinfo=UTC),
+                    ),
+                ],
+                has_data=True,
+            ),
+        }
+
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "discover_codex_transcript_family_meta",
+            lambda **kwargs: [parent_meta, child_meta],
+        )
+        monkeypatch.setattr(
+            transcript_tool_calls,
+            "_extract_tool_calls_for_scope",
+            lambda transcript_path, agent_name, full_session=False, boundary="real_user": timelines[
+                (transcript_path, full_session)
+            ],
+        )
+
+        timeline = transcript_tool_calls.extract_effective_tool_calls(
+            "/tmp/parent.jsonl",
+            AgentName.CODEX,
+            native_session_id="parent-thread",
+            scope="checkpoint",
+        )
+
+        assert [record.input_data for record in timeline.tool_calls] == [
+            {"cmd": "pytest tests/unit/utils/transcript/test__tool_calls.py"},
+            {"path": "new-child.py"},
+        ]
+        assert timeline.turn_start_at == checkpoint_start
 
 
 class TestStructuredMessageExtraction:

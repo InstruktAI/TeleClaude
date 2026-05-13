@@ -16,7 +16,7 @@ All checkpoint payload variants use the canonical prefix `"[TeleClaude Checkpoin
 Two signal axes feed a shared checkpoint builder (`checkpoint.py`):
 
 1. **File-based** — `git diff --name-only HEAD` maps changed files to file categories and action instructions (e.g., daemon code changed → "Run `make restart`").
-2. **Transcript-based** — Tool call timeline from the current turn provides suppression evidence (action already taken), error state detection, and edit hygiene observations.
+2. **Transcript-based** — Tool call timeline from the current checkpoint cycle provides file attribution, suppression evidence (action already taken), error state detection, and edit hygiene observations.
 
 One delivery path exists:
 
@@ -33,7 +33,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 - `tool_use` hook event — Agent finished reasoning. Tracked for other uses but not used in checkpoint decisions.
 - Agent restart via API — Triggers unconditional checkpoint injection after a delay.
 - `git diff --name-only HEAD` — Uncommitted files relative to HEAD, categorized into action instructions.
-- `TurnTimeline` — Ordered tool calls from the current turn, extracted from the agent transcript via `extract_tool_calls_current_turn()`.
+- `TurnTimeline` — Ordered tool calls from the current checkpoint cycle, extracted from the agent transcript via `extract_effective_tool_calls(..., scope="checkpoint")`.
 - `CheckpointContext` — Session context: project path, working slug, agent name.
 
 **Outputs:**
@@ -53,7 +53,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 4. **Per-turn clearing**: `handle_user_prompt_submit` clears `last_checkpoint_at` and `last_tool_use_at` on real user input so each turn starts fresh.
 
-5. **Stop-hook re-entry protection**: When a checkpoint blocks `agent_stop`, the next `Stop` re-enters through the same hook path. The receiver's clear-marker and recheck-limit logic prevents infinite checkpoint loops while still allowing one follow-up validation pass.
+5. **Atomic checkpoint-cycle scope**: Files, evidence, and errors are all scoped from the latest TeleClaude checkpoint emitted by the `Stop` hook. Before any checkpoint exists in the work, the scope falls back to the latest real user input. Dirty files from the broader user turn are filtered through this checkpoint-cycle transcript slice, so old dirty files cannot trigger new checkpoint actions after a reset.
 
 6. **TTS dedup**: Agent output extracted at `agent_stop` is compared against `last_output_raw` in the session. If identical, summarization and TTS are skipped. This prevents double-speaking when a checkpoint-induced `agent_stop` re-extracts the same output.
 
@@ -61,11 +61,11 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 8. **Post-restart unconditional injection**: After an agent restart via the API, checkpoint injection bypasses the 30-second threshold but still waits for agent prompt readiness before sending the continuation prompt or checkpoint.
 
-9. **Session-scoped hook escape hatch (Claude/Gemini hook route)**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, it is consumed and `agent_stop` passes through immediately. For Claude re-entry (`stop_hook_active=true`), the receiver allows at most one extra block by using a per-session `teleclaude_checkpoint_recheck` marker; subsequent re-entry passes through (consumed) to avoid infinite loops. State is reset on real `user_prompt_submit`.
+9. **Session-scoped hook escape hatch**: The receiver honors a per-session clear marker file (`teleclaude_checkpoint_clear`) in the session temp directory. If present, it is consumed and `agent_stop` passes through immediately. Otherwise, every `agent_stop` evaluates the current checkpoint-cycle scope; repeated stop events are acceptable because the latest checkpoint prompt resets files, evidence, and errors together.
 
-10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
+10. **Hook stop suppression**: When `_maybe_checkpoint_output` fires for Claude/Gemini/Codex, the receiver prints blocking JSON and exits without enqueuing the `agent_stop` event. The daemon never sees the blocked stop, so no output extraction, TTS, or listener notifications fire for checkpoint turns.
 
-11. **Suppressibility**: Every heuristic checks for positive evidence in the tool call timeline. If the expected action was already performed (e.g., `make restart` found in Bash commands), the instruction is suppressed. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
+11. **Suppressibility**: Every heuristic checks for positive evidence in the checkpoint-cycle tool call timeline. If the expected action was already performed in that same cycle (e.g., `make restart` found in Bash commands), the instruction is suppressed. `telec code commit` output that reaches the main-branch classification gate is evidence that the commit-options step was performed, even though no approved commit occurred. When all instructions are suppressed and no observations remain, the checkpoint is "all-clear".
 
 12. **Two-layer error detection**: Layer 1 (structural gate) only fires for tool results with `is_error: true`. Layer 2 (content enrichment) pattern-matches the result snippet to produce targeted feedback. Successful commands with error-like output (e.g., log viewers showing tracebacks) never trigger observations.
 
@@ -75,7 +75,7 @@ All agents call the same `get_checkpoint_content()` entry point, ensuring parity
 
 15. **Dynamic log-check window**: The required `instrukt-ai-logs teleclaude --since <window>` action is derived from elapsed time since the turn start (`max(last_message_sent_at, last_checkpoint_at)`), rounded up to minutes with a minimum of `2m`.
 
-16. **Commit-neutral checkpoint policy**: Checkpoints are verification and safety prompts, not commit triggers. They must not require commits at `agent_stop`; commit decisions belong to task-completion flow.
+16. **Commit-options checkpoint policy**: Checkpoints may require running `telec code commit` to surface the commit classification/options flow, but they must not force an approved commit at `agent_stop`. Documentation checks are required before the commit-options step so each commit remains atomic. Commit decisions belong to task-completion flow and human/review gates.
 
 17. **Silent housekeeping + short debrief policy**: Checkpoint payloads instruct agents to execute checkpoint-required housekeeping silently, then provide a short user-relevant debrief focused on task outcome, blocker, or decision request. Checkpoint chore details are omitted from user-facing messages.
 

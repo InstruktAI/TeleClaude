@@ -6,8 +6,10 @@ import shlex
 from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     CHECKPOINT_BLAST_RADIUS_THRESHOLD,
+    CHECKPOINT_COMMIT_EVIDENCE,
     CHECKPOINT_ERROR_ENRICHMENT,
     CHECKPOINT_GENERIC_ERROR_MESSAGE,
+    CHECKPOINT_LOG_CHECK_EVIDENCE,
     CHECKPOINT_STATUS_EVIDENCE,
     CHECKPOINT_TEST_ERROR_COMMANDS,
     CHECKPOINT_TEST_ERROR_MESSAGE,
@@ -38,6 +40,7 @@ __all__ = [
     "_dedupe_strings",
     "_enrich_error",
     "_extract_plan_file_paths",
+    "_has_commit_evidence",
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
@@ -63,6 +66,22 @@ def _has_evidence(timeline: TurnTimeline, substrings: list[str]) -> bool:
             continue
         command = _extract_shell_command(record.input_data)
         if _command_has_evidence(command, substrings):
+            return True
+    return False
+
+
+def _has_commit_evidence(timeline: TurnTimeline) -> bool:
+    """Return True when the commit-options command ran in this checkpoint cycle."""
+    if not timeline.has_data:
+        return False
+    for record in timeline.tool_calls:
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            continue
+        command = _extract_shell_command(record.input_data)
+        if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
+            continue
+        if not record.had_error or _is_expected_commit_classification(record):
             return True
     return False
 
@@ -173,6 +192,10 @@ def _segment_matches_evidence(segment: str, evidence: str) -> bool:
         return head == "make" and "status" in rest
     if evidence == "make test":
         return head == "make" and "test" in rest
+    if evidence == "telec code test":
+        return head == "telec" and rest[:2] == ["code", "test"]
+    if evidence == "telec code commit":
+        return head == "telec" and rest[:2] == ["code", "commit"]
     if evidence == "uv sync":
         return head == "uv" and "sync" in rest
     if evidence == "telec projects init":
@@ -273,6 +296,12 @@ def _is_non_actionable_error(record: ToolCallRecord) -> bool:
     """Ignore expected non-zero exits for search commands with no matches."""
     command = _extract_shell_command(record.input_data).strip().lower()
     snippet = (record.result_snippet or "").lower()
+    if _is_user_aborted_command_error(snippet):
+        return True
+    if _is_expected_commit_classification(record):
+        return True
+    if _is_global_python_stdin_probe(command):
+        return True
     if _command_invokes_search(command):
         if "process exited with code 1" in snippet:
             # `rg`/`grep` use exit code 1 for "no matches"; this is informational.
@@ -281,18 +310,60 @@ def _is_non_actionable_error(record: ToolCallRecord) -> bool:
     return False
 
 
+def _is_user_aborted_command_error(snippet: str) -> bool:
+    """User-cancelled commands are interaction control, not unresolved work."""
+    return any(
+        marker in snippet
+        for marker in (
+            "aborted by user",
+            "interrupted by user",
+            "cancelled by user",
+            "canceled by user",
+        )
+    )
+
+
+def _is_global_python_stdin_probe(command: str) -> bool:
+    """Bare/global Python heredoc probes are invalid for this repo and do not carry signal."""
+    for segment in _split_shell_segments(command):
+        tokens = _segment_tokens(segment)
+        if len(tokens) < 2 or tokens[1] != "-":
+            continue
+        executable = tokens[0].replace("\\", "/")
+        basename = executable.rsplit("/", 1)[-1]
+        if basename not in {"python", "python3"}:
+            continue
+        if executable in {"python", "python3"} or ("/.venv/" not in executable and not executable.startswith(".venv/")):
+            return "<<" in segment
+    return False
+
+
+def _is_expected_commit_classification(record: ToolCallRecord) -> bool:
+    """The main-branch commit gate is the expected output of the checkpoint commit step."""
+    command = _extract_shell_command(record.input_data)
+    if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
+        return False
+    snippet = (record.result_snippet or "").lower()
+    return "commits on main require classification" in snippet
+
+
 def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRecord]) -> bool:
     """Check if a subsequent action addressed the error."""
     error_command = _extract_shell_command(error_record.input_data)
     error_file = str(error_record.input_data.get("file_path", ""))
+    error_families = _command_validation_families(error_command)
 
     for later in subsequent:
         # Re-invocation of the same command
         later_tool_name = _canonical_tool_name(later.tool_name)
         if later_tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            if later.had_error and not _is_non_actionable_error(later):
+                continue
             later_command = _extract_shell_command(later.input_data)
             # Same command re-run (e.g., second pytest after first failed)
             if error_command and _commands_overlap(error_command, later_command):
+                return True
+            if error_families and error_families & _command_validation_families(later_command):
                 return True
             # Bash command referencing same file area
             if error_file and _command_references_file(later_command, error_file):
@@ -300,6 +371,8 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
 
         # Edit/Write targeting same file path
         if _canonical_tool_name(later.tool_name) in {"edit", "write"}:
+            if later.had_error:
+                continue
             later_file = str(later.input_data.get("file_path", ""))
             if error_file and later_file == error_file:
                 return True
@@ -308,6 +381,34 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
                 return True
 
     return False
+
+
+def _command_validation_families(command: str) -> set[str]:
+    """Classify validation commands so later successful checks clear stale errors."""
+    families: set[str] = set()
+    if _command_has_evidence(command, CHECKPOINT_TEST_ERROR_COMMANDS):
+        families.add("tests")
+    if _command_has_evidence(command, CHECKPOINT_LOG_CHECK_EVIDENCE):
+        families.add("logs")
+    if _command_has_evidence(command, CHECKPOINT_STATUS_EVIDENCE):
+        families.add("status")
+    if _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
+        families.add("commit")
+
+    for segment in _split_shell_segments(command):
+        tokens = _segment_tokens(segment)
+        if not tokens:
+            continue
+        head = tokens[0].rsplit("/", 1)[-1]
+        rest = tokens[1:]
+        if head == "uv" and len(rest) >= 2 and rest[0] == "run":
+            head = rest[1].rsplit("/", 1)[-1]
+            rest = rest[2:]
+        if head == "ruff" and (not rest or "check" in rest):
+            families.add("lint")
+        if head == "pyright":
+            families.add("typecheck")
+    return families
 
 
 def _commands_overlap(cmd_a: str, cmd_b: str) -> bool:

@@ -18,8 +18,8 @@ from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.events import AgentHookEvents
 from teleclaude.hooks.receiver import (
     _handle_user_prompt_submit,
+    _is_system_injected_user_prompt,
     _maybe_checkpoint_output,
-    _reset_checkpoint_flags,
     _resolve_checkpoint_project_path,
     enqueue_hook_event,
 )
@@ -109,8 +109,6 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
 
     with (
         patch("teleclaude.hooks.receiver.is_checkpoint_disabled", return_value=False),
-        patch("teleclaude.hooks.receiver.has_checkpoint_flag", return_value=False),
-        patch("teleclaude.hooks.receiver.set_checkpoint_flag"),
         patch("teleclaude.hooks.receiver._load_checkpoint_row", return_value=row),
         patch("teleclaude.hooks.receiver.get_checkpoint_content", return_value="checkpoint") as checkpoint_mock,
         patch("teleclaude.hooks.receiver.enqueue_checkpoint_seen"),
@@ -126,12 +124,10 @@ def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:
     assert checkpoint_mock.call_args.kwargs["session_id"] == "session-1"
 
 
-def test_checkpoint_fires_once_per_turn_then_subsequent_stops_skip(
+def test_checkpoint_reevaluates_each_stop_for_checkpoint_compliance(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Once a checkpoint payload is emitted, subsequent stop_hook_active re-entries
-    in the same turn must skip without re-evaluating until user_prompt_submit
-    resets the per-turn marker."""
+    """Every stop re-evaluates against the latest checkpoint transcript anchor."""
     monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
 
     row = SimpleNamespace(
@@ -156,6 +152,12 @@ def test_checkpoint_fires_once_per_turn_then_subsequent_stops_skip(
             {"stop_hook_active": False},
             outbox_db="/tmp/outbox.sqlite",
         )
+        codex_style_second = _maybe_checkpoint_output(
+            "session-1",
+            "codex",
+            {},
+            outbox_db="/tmp/outbox.sqlite",
+        )
         second = _maybe_checkpoint_output(
             "session-1",
             "claude",
@@ -169,22 +171,11 @@ def test_checkpoint_fires_once_per_turn_then_subsequent_stops_skip(
             outbox_db="/tmp/outbox.sqlite",
         )
 
-        # New turn: user_prompt_submit clears the marker, the next stop must
-        # fire again. Without this assertion, a regression that no-ops
-        # _reset_checkpoint_flags would silently mute checkpoints forever.
-        _reset_checkpoint_flags("session-1")
-        next_turn = _maybe_checkpoint_output(
-            "session-1",
-            "claude",
-            {"stop_hook_active": False},
-            outbox_db="/tmp/outbox.sqlite",
-        )
-
     assert first == "checkpoint"
-    assert second is None
-    assert third is None
-    assert next_turn == "checkpoint"
-    assert checkpoint_mock.call_count == 2
+    assert codex_style_second == "checkpoint"
+    assert second == "checkpoint"
+    assert third == "checkpoint"
+    assert checkpoint_mock.call_count == 4
 
 
 class TestResolveCheckpointProjectPath:
@@ -233,6 +224,14 @@ def test_handle_user_prompt_submit_drops_xml_wrapped_internal_prompt() -> None:
     )
 
     assert dropped is True
+
+
+def test_system_injected_user_prompt_contract_is_agent_specific() -> None:
+    assert _is_system_injected_user_prompt("codex", '<hook_prompt hook_run_id="stop:2">checkpoint') is True
+    assert _is_system_injected_user_prompt("claude", "Stop hook feedback:\nblocked") is True
+    assert _is_system_injected_user_prompt("claude", "<task-notification>done</task-notification>") is True
+    assert _is_system_injected_user_prompt("gemini", "[TeleClaude Notification]\n\nSession abc finished") is True
+    assert _is_system_injected_user_prompt("gemini", "real prompt") is False
 
 
 def test_codex_subagent_event_drops_before_session_resolution(tmp_path: Path) -> None:

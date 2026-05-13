@@ -19,6 +19,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _compute_log_since_window,
     _dedupe_strings,
     _extract_plan_file_paths,
+    _has_commit_evidence,
     _has_evidence,
     _has_status_evidence,
     _segment_matches_evidence,
@@ -80,6 +81,133 @@ class TestEvidenceChecks:
         )
 
         assert len(_check_error_state(timeline)) == 1
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_failed_tests_after_later_successful_test_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/hooks/checkpoint/test__init__.py tests/unit/utils/transcript/test__tool_calls.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/hooks/checkpoint/test__init__.py",
+                ),
+                _shell_record(
+                    "pytest tests/unit/hooks/checkpoint/test__init__.py::TestGetCheckpointContent::"
+                    "test_checkpoint_cycle_suppresses_docs_only_no_action_changes "
+                    "tests/unit/utils/transcript/test__tool_calls.py::TestEffectiveToolCallExtraction::"
+                    "test_extract_effective_tool_calls_filters_codex_children_before_checkpoint",
+                    result_snippet="2 passed",
+                ),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_failed_typecheck_after_later_successful_typecheck(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record("pyright teleclaude/hooks/checkpoint/__init__.py", had_error=True),
+                _shell_record(
+                    "pyright teleclaude/hooks/checkpoint/__init__.py teleclaude/utils/transcript/_tool_calls.py",
+                    result_snippet="0 errors, 0 warnings",
+                ),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_ignores_user_aborted_commands(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "instrukt-ai-logs teleclaude --since 2m --grep Checkpoint",
+                    had_error=True,
+                    result_snippet="aborted by user after 2.2s",
+                )
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_commit_error_after_classification_gate(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "telec code commit -m 'Fix checkpoint message ordering'",
+                    had_error=True,
+                    result_snippet="ERROR: partially staged files detected.",
+                ),
+                _shell_record(
+                    "telec code commit -m 'Fix checkpoint message ordering'",
+                    had_error=True,
+                    result_snippet="ERROR: Commits on main require classification.",
+                ),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_telec_code_test_counts_as_test_evidence_and_failed_test_command(self) -> None:
+        successful_timeline = TurnTimeline(tool_calls=[_shell_record("telec code test tests/unit/demo.py")])
+        failed_timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "telec code test tests/unit/demo.py",
+                    had_error=True,
+                    result_snippet="failed",
+                )
+            ]
+        )
+
+        assert _has_evidence(successful_timeline, ["telec code test"]) is True
+        assert _check_error_state(failed_timeline) == ["Test failures remain — re-run tests after fixes"]
+
+    @pytest.mark.unit
+    def test_commit_classification_gate_counts_as_commit_evidence_not_error(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "telec code commit -m 'Fix checkpoint compliance scoping'",
+                    had_error=True,
+                    result_snippet="ERROR: Commits on main require classification.",
+                )
+            ]
+        )
+
+        assert _has_commit_evidence(timeline) is True
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_global_python_stdin_probe_error_is_not_counted(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "python - <<'PY'\nprint('ok')\nPY",
+                    had_error=True,
+                    result_snippet="ModuleNotFoundError: No module named 'instrukt_ai_logging'",
+                ),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_venv_python_stdin_probe_error_is_counted(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    ".venv/bin/python - <<'PY'\nprint('ok')\nPY",
+                    had_error=True,
+                    result_snippet="Traceback (most recent call last)",
+                ),
+            ]
+        )
+
+        assert _check_error_state(timeline) == ["Python errors remain unresolved — verify they are fixed"]
 
 
 class TestEditHygieneAndSlugAlignment:

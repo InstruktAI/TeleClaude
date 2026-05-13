@@ -15,8 +15,17 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.codex_transcript import CodexTranscriptMeta, discover_codex_transcript_family_meta
 from teleclaude.core.models import JsonDict
 
+from ._checkpoint_anchors import (
+    find_checkpoint_scope_start_idx as _find_checkpoint_scope_start_idx,
+)
 from ._iterators import _get_entries_for_agent
 from ._parsers import normalize_transcript_entry_message
+from ._user_turns import (
+    find_turn_start_idx as _find_real_user_turn_start_idx,
+)
+from ._user_turns import (
+    is_user_tool_result_only_message as _is_user_tool_result_only_message,
+)
 from ._utils import CHECKPOINT_JSONL_TAIL_ENTRIES, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -98,31 +107,6 @@ def _infer_function_call_output_error(output_text: str) -> bool:
     return False
 
 
-def _is_user_tool_result_only_message(message: Mapping[str, object]) -> bool:
-    """Return True when a user message only carries tool_result blocks.
-
-    Claude writes tool outputs as role=user messages. Those entries are part
-    of the assistant turn and must not reset current-turn boundaries.
-    """
-    if message.get("role") != "user":
-        return False
-
-    content = message.get("content")
-    if isinstance(content, str):
-        return False
-    if not isinstance(content, list) or not content:
-        return False
-
-    saw_block = False
-    for block in content:
-        if not isinstance(block, dict):
-            return False
-        saw_block = True
-        if block.get("type") != "tool_result":
-            return False
-    return saw_block
-
-
 def _tool_call_tail_entries(agent_name: AgentName, full_session: bool) -> int | None:
     """Resolve tail-scoping policy for tool-call extraction."""
     if full_session:
@@ -132,18 +116,22 @@ def _tool_call_tail_entries(agent_name: AgentName, full_session: bool) -> int | 
     return None
 
 
-def _find_turn_start_idx(entries: list[JsonDict], full_session: bool) -> int:
+def _find_turn_start_idx(
+    entries: list[JsonDict],
+    full_session: bool,
+    agent_name: AgentName | None = None,
+) -> int:
     """Find the first entry to inspect for the current turn."""
-    if full_session:
-        return 0
+    return _find_real_user_turn_start_idx(entries, full_session, agent_name)
 
-    for i in range(len(entries) - 1, -1, -1):
-        message = normalize_transcript_entry_message(entries[i])
-        if isinstance(message, dict) and message.get("role") == "user":
-            if _is_user_tool_result_only_message(message):
-                continue
-            return i + 1
-    return 0
+
+def _find_checkpoint_start_idx(
+    entries: list[JsonDict],
+    full_session: bool,
+    agent_name: AgentName | None = None,
+) -> int:
+    """Find the first entry to inspect for checkpoint compliance."""
+    return _find_checkpoint_scope_start_idx(entries, full_session, agent_name)
 
 
 def _resolve_turn_start_timestamp(
@@ -403,6 +391,7 @@ def _extract_tool_calls_for_scope(
     agent_name: AgentName,
     *,
     full_session: bool = False,
+    boundary: Literal["real_user", "checkpoint"] = "real_user",
 ) -> TurnTimeline:
     """Extract tool calls and expose the effective turn boundary timestamp."""
     try:
@@ -411,7 +400,10 @@ def _extract_tool_calls_for_scope(
         if entries is None:
             return TurnTimeline(tool_calls=[], has_data=False)
 
-        turn_start_idx = _find_turn_start_idx(entries, full_session)
+        if boundary == "checkpoint":
+            turn_start_idx = _find_checkpoint_start_idx(entries, full_session, agent_name)
+        else:
+            turn_start_idx = _find_turn_start_idx(entries, full_session, agent_name)
         turn_start_at = _resolve_turn_start_timestamp(entries, turn_start_idx, full_session)
 
         state = _ToolCallExtractionState()
@@ -471,15 +463,34 @@ def _merge_timelines(
     )
 
 
+def _filter_timeline_since(
+    timeline: TurnTimeline,
+    *,
+    since: datetime,
+    fallback_timestamp: datetime | None,
+) -> TurnTimeline:
+    """Keep only records that belong to the active parent boundary."""
+    records: list[ToolCallRecord] = []
+    for record in timeline.tool_calls:
+        effective_timestamp = record.timestamp or fallback_timestamp
+        if effective_timestamp is None:
+            continue
+        normalized = effective_timestamp if effective_timestamp.tzinfo else effective_timestamp.replace(tzinfo=UTC)
+        if normalized.astimezone(UTC) >= since.astimezone(UTC):
+            records.append(record)
+    return TurnTimeline(tool_calls=records, has_data=timeline.has_data, turn_start_at=timeline.turn_start_at)
+
+
 def extract_effective_tool_calls(
     transcript_path: str | None,
     agent_name: AgentName,
     *,
     native_session_id: str | None = None,
-    scope: Literal["turn", "session"] = "turn",
+    scope: Literal["turn", "session", "checkpoint"] = "turn",
 ) -> TurnTimeline:
     """Extract the effective tool timeline for a session, flattening Codex descendants."""
     full_session = scope == "session"
+    boundary: Literal["real_user", "checkpoint"] = "checkpoint" if scope == "checkpoint" else "real_user"
     if not transcript_path:
         if agent_name != AgentName.CODEX or not native_session_id:
             return TurnTimeline(tool_calls=[], has_data=False)
@@ -495,27 +506,45 @@ def extract_effective_tool_calls(
         family_meta = []
 
     if agent_name != AgentName.CODEX:
-        return _extract_tool_calls_for_scope(transcript_path, agent_name, full_session=full_session)
+        return _extract_tool_calls_for_scope(
+            transcript_path,
+            agent_name,
+            full_session=full_session,
+            boundary=boundary,
+        )
 
     if not family_meta:
-        return _extract_tool_calls_for_scope(transcript_path, agent_name, full_session=full_session)
+        return _extract_tool_calls_for_scope(
+            transcript_path,
+            agent_name,
+            full_session=full_session,
+            boundary=boundary,
+        )
 
     parent_meta = family_meta[0]
-    parent_timeline = _extract_tool_calls_for_scope(parent_meta.transcript_path, agent_name, full_session=full_session)
+    parent_timeline = _extract_tool_calls_for_scope(
+        parent_meta.transcript_path,
+        agent_name,
+        full_session=full_session,
+        boundary=boundary,
+    )
     timeline_sources: list[tuple[CodexTranscriptMeta | None, TurnTimeline]] = [(parent_meta, parent_timeline)]
 
-    if scope == "turn" and parent_timeline.turn_start_at is None:
+    boundary_scoped = scope in {"turn", "checkpoint"}
+    if boundary_scoped and parent_timeline.turn_start_at is None:
         return parent_timeline
 
     for child_meta in family_meta[1:]:
-        if scope == "turn":
-            if (
-                child_meta.session_started_at is None
-                or parent_timeline.turn_start_at is None
-                or child_meta.session_started_at < parent_timeline.turn_start_at
-            ):
-                continue
         child_timeline = _extract_tool_calls_for_scope(child_meta.transcript_path, agent_name, full_session=True)
+        if boundary_scoped:
+            assert parent_timeline.turn_start_at is not None
+            child_timeline = _filter_timeline_since(
+                child_timeline,
+                since=parent_timeline.turn_start_at,
+                fallback_timestamp=child_meta.session_started_at,
+            )
+            if not child_timeline.tool_calls:
+                continue
         timeline_sources.append((child_meta, child_timeline))
 
     if len(timeline_sources) == 1:

@@ -27,6 +27,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _dedupe_strings,
     _enrich_error,
     _extract_plan_file_paths,
+    _has_commit_evidence,
     _has_evidence,
     _has_evidence_after_index,
     _has_status_evidence,
@@ -48,6 +49,7 @@ from teleclaude.hooks.checkpoint._git import (
     _is_docs_only,
     _looks_like_path_token,
     _normalize_repo_path,
+    _scope_git_files_to_current_turn,
     _segment_tokens,
     _split_shell_segments,
     _transcript_observability,
@@ -85,6 +87,7 @@ __all__ = [
     "_extract_shell_touched_paths",
     "_extract_turn_file_signals",
     "_file_matches_category",
+    "_has_commit_evidence",
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
@@ -94,6 +97,7 @@ __all__ = [
     "_last_category_mutation_index",
     "_looks_like_path_token",
     "_normalize_repo_path",
+    "_scope_git_files_to_current_turn",
     "_segment_matches_evidence",
     "_segment_tokens",
     "_split_shell_segments",
@@ -118,6 +122,7 @@ def run_heuristics(
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
+    result.commit_action_required = not _has_commit_evidence(timeline)
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
@@ -228,6 +233,11 @@ def _commit_instruction(on_main: bool) -> str:
     return "Commit your changes with `telec code commit`"
 
 
+def _docs_check_instruction() -> str:
+    """Instruction that documentation updates must happen before commit."""
+    return "Docs check: if relevant, update existing docs or add a new doc"
+
+
 def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) -> str:
     """Compose checkpoint text from precomputed heuristic output."""
     response_policy = (
@@ -242,21 +252,26 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         "Re-enable by removing that file."
     )
     commit_line = _commit_instruction(result.on_main)
+    commit_lines = [commit_line] if result.commit_action_required else []
 
     # Special case: docs only
     if not git_files or _is_docs_only(git_files):
+        body = " ".join(commit_lines)
         return (
             f"{CHECKPOINT_PREFIX}No code changes detected this turn. Did you run `telec sync`?\n"
-            f"{commit_line}\n\n{response_policy}\n\n{escape_hatch}"
+            f"{body}\n\n{response_policy}\n\n{escape_hatch}"
         )
 
     # Special case: all clear
     if result.is_all_clear:
-        return (
-            f"{CHECKPOINT_PREFIX}All expected validations were observed. "
-            "Docs check: if relevant, update existing docs or add a new doc. "
-            f"{commit_line}\n\n{response_policy}\n\n{escape_hatch}"
+        body = " ".join(
+            [
+                "All expected validations were observed.",
+                f"{_docs_check_instruction()}.",
+                *commit_lines,
+            ]
         )
+        return f"{CHECKPOINT_PREFIX}{body}\n\n{response_policy}\n\n{escape_hatch}"
 
     lines: list[str] = [f"{CHECKPOINT_PREFIX}Context-aware checkpoint"]
 
@@ -271,8 +286,13 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         lines.append("Required actions (BLOCKING — do not resume user-facing work until all complete):")
         for i, action in enumerate(result.required_actions, 1):
             lines.append(f"{i}. {action}")
-        lines.append(f"{len(result.required_actions) + 1}. {commit_line}")
-        lines.append(f"{len(result.required_actions) + 2}. All steps done — only then proceed")
+        next_index = len(result.required_actions) + 1
+        lines.append(f"{next_index}. {_docs_check_instruction()}")
+        next_index += 1
+        if result.commit_action_required:
+            lines.append(f"{next_index}. {commit_line}")
+            next_index += 1
+        lines.append(f"{next_index}. All steps done — only then proceed")
 
     # Observations (bullet points)
     if result.observations:
@@ -281,11 +301,11 @@ def _compose_checkpoint_message(git_files: list[str], result: CheckpointResult) 
         for obs in result.observations:
             lines.append(f"- {obs}")
 
-    # Capture reminder
     lines.append("")
-    lines.append("Docs check: If relevant, update existing docs or add a new doc.")
-    lines.append("")
-    lines.append("Execute every required action above before responding to the user.")
+    if result.required_actions:
+        lines.append("Execute every required action above before responding to the user.")
+    else:
+        lines.append("Review and resolve the observations before responding to the user.")
     lines.append("")
     lines.append(response_policy)
     lines.append("")
@@ -341,7 +361,7 @@ def get_checkpoint_content(
             transcript_path,
             agent_name,
             native_session_id=native_session_id,
-            scope="turn",
+            scope="checkpoint",
         )
 
         scoped_paths = resolve_scoped_paths(
@@ -354,19 +374,16 @@ def get_checkpoint_content(
             turn_anchor_sha=turn_anchor_sha,
         )
         effective_files = list(scoped_paths.paths)
+        effective_files = _scope_git_files_to_current_turn(
+            effective_files,
+            timeline,
+            project_path,
+        )
 
         # Intentionally no full-session fallback:
         # checkpoint attribution must stay strictly turn-local.
         used_session_fallback = False
 
-        context = CheckpointContext(
-            project_path=project_path,
-            working_slug=working_slug,
-            agent_name=agent_name,
-        )
-        log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
-
-        result = run_heuristics(effective_files, timeline, context, log_since_window=log_since_window)
         if not effective_files:
             logger.info(
                 "Checkpoint payload skipped (no turn-local changes)",
@@ -378,15 +395,42 @@ def get_checkpoint_content(
                     "workspace_kind": scoped_paths.workspace_kind,
                     "strategy": scoped_paths.strategy,
                     "ledger_updated": scoped_paths.ledger_updated,
-                    "categories": result.categories,
-                    "required_actions": len(result.required_actions),
-                    "observations": len(result.observations),
+                    "categories": [],
+                    "required_actions": 0,
+                    "observations": 0,
                     "mode": "silent_no_changes",
                     "message_len": 0,
                     "used_session_fallback": used_session_fallback,
                 },
             )
             return None
+
+        if _is_docs_only(effective_files):
+            logger.info(
+                "Checkpoint payload skipped (docs/no-action changes only)",
+                extra={
+                    **base_extra,
+                    "timeline_has_data": timeline.has_data,
+                    "timeline_records": len(timeline.tool_calls),
+                    "changed_files": len(effective_files),
+                    "workspace_kind": scoped_paths.workspace_kind,
+                    "strategy": scoped_paths.strategy,
+                    "ledger_updated": scoped_paths.ledger_updated,
+                    "mode": "silent_docs_only",
+                    "message_len": 0,
+                    "used_session_fallback": used_session_fallback,
+                },
+            )
+            return None
+
+        context = CheckpointContext(
+            project_path=project_path,
+            working_slug=working_slug,
+            agent_name=agent_name,
+        )
+        log_since_window = _compute_log_since_window(elapsed_since_turn_start_s)
+
+        result = run_heuristics(effective_files, timeline, context, log_since_window=log_since_window)
 
         message = _compose_checkpoint_message(effective_files, result)
         mode = "docs_only" if _is_docs_only(effective_files) else ("all_clear" if result.is_all_clear else "actionable")

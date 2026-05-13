@@ -17,6 +17,7 @@ from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
 
 from ._parsers import normalize_transcript_entry_message
+from ._user_turns import is_real_user_turn_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
 logger = get_logger(__name__)
@@ -330,13 +331,17 @@ def _entry_role(entry: Mapping[str, object]) -> str | None:
     return None
 
 
-def _is_rotation_fallback_candidate(entries: Sequence[Mapping[str, object]]) -> bool:
+def _is_rotation_fallback_candidate(
+    entries: Sequence[Mapping[str, object]],
+    agent_name: AgentName | None = None,
+) -> bool:
     """Detect transcript rotation window with assistant output but no user boundary."""
     saw_user = False
     saw_assistant = False
     for entry in entries:
+        entry_dict = cast(JsonDict, entry) if isinstance(entry, dict) else {}
         role = _entry_role(entry)
-        if role == "user":
+        if is_real_user_turn_entry(entry_dict, agent_name):
             saw_user = True
         elif role == "assistant":
             saw_assistant = True
@@ -365,7 +370,7 @@ def _start_index_after_timestamp_or_rotation(
                 if entry_dt > since_timestamp:
                     return i
 
-    if _is_rotation_fallback_candidate(entries):
+    if _is_rotation_fallback_candidate(entries, agent_name):
         logger.info(
             "Rotation fallback in transcript extraction: mode=%s agent=%s path=%s entries=%d since=%s",
             mode,

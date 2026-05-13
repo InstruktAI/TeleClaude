@@ -10,7 +10,6 @@ from pathlib import Path
 
 from teleclaude.core.agents import AgentName
 from teleclaude.core.models import JsonDict
-from teleclaude.output_projection.visibility import is_internal_user_text
 
 from ._iterators import (
     _get_entries_for_agent,
@@ -21,7 +20,12 @@ from ._iterators import (
 )
 from ._parsers import normalize_transcript_entry_message
 from ._rendering import _render_transcript_from_entries
-from ._tool_calls import _is_user_tool_result_only_message
+from ._user_turns import (
+    extract_real_user_text_from_entry,
+    extract_text_from_message_content,
+    find_last_real_user_turn,
+    find_turn_start_idx,
+)
 from ._utils import _apply_tail_limit, _apply_tail_limit_codex, _escape_triple_backticks, _parse_timestamp
 
 
@@ -57,16 +61,7 @@ def get_assistant_messages_since(
         if start_idx is None:
             return []
     else:
-        # If no since_timestamp, find the last user boundary
-        last_user_idx = -1
-        for i in range(len(entries) - 1, -1, -1):
-            entry = entries[i]
-            message = normalize_transcript_entry_message(entry)
-            if isinstance(message, dict) and message.get("role") == "user":
-                if not _is_user_tool_result_only_message(message):
-                    last_user_idx = i
-                    break
-        start_idx = last_user_idx + 1
+        start_idx = find_turn_start_idx(entries, full_session=False, agent_name=agent_name)
 
     assistant_messages = []
     for entry in entries[start_idx:]:
@@ -112,32 +107,11 @@ def count_renderable_assistant_blocks(
 def _extract_text_from_content(content: object, role: str) -> str | None:
     """Extract text from message content based on role.
 
-    System-injected user messages (``[TeleClaude …]``, ``<task-notification>``,
-    ``<system-reminder>``) are filtered at this level so every extraction
-    consumer receives only real user input.
-
-    guard: allow-string-compare
+    User-turn filtering needs the full transcript entry and agent-specific
+    envelope. Call ``extract_real_user_text_from_entry`` for user messages
+    when turn semantics matter.
     """
-    if isinstance(content, str):
-        if not content.strip() or (role == "user" and is_internal_user_text(content)):
-            return None
-        return content
-
-    if isinstance(content, list):
-        # User messages use "input_text" or "text", assistant uses "text" or "output_text"
-        valid_types = ("input_text", "text") if role == "user" else ("text", "output_text")
-
-        for block in content:
-            if isinstance(block, dict) and block.get("type") in valid_types:
-                text = str(block.get("text", ""))
-                normalized = text.strip()
-                if not normalized:
-                    return None
-                if role == "user" and is_internal_user_text(text):
-                    return None
-                return text
-
-    return None
+    return extract_text_from_message_content(content, role)
 
 
 def _extract_last_message_by_role(
@@ -173,8 +147,10 @@ def _extract_last_message_by_role(
             role = message.get("role")
             if not isinstance(role, str) or role != target_role:
                 continue
-            content = message.get("content")
-            text = _extract_text_from_content(content, target_role)
+            if target_role == "user":
+                text = extract_real_user_text_from_entry(entry, agent_name)
+            else:
+                text = _extract_text_from_content(message.get("content"), target_role)
             if text is not None:
                 collected.append(text)
                 if len(collected) >= count:
@@ -220,16 +196,7 @@ def extract_last_user_message_with_timestamp(
             return None
 
         for entry in reversed(entries):
-            message = normalize_transcript_entry_message(entry)
-
-            if not isinstance(message, dict):
-                continue
-            role = message.get("role")
-            if not isinstance(role, str) or role != "user":
-                continue
-
-            content = message.get("content")
-            text = _extract_text_from_content(content, "user")
+            text = extract_real_user_text_from_entry(entry, agent_name)
             if text is None:
                 continue
 
@@ -265,17 +232,8 @@ def extract_last_turn_boundary_timestamp(
     if not entries:
         return None
 
-    for entry in reversed(entries):
-        message = normalize_transcript_entry_message(entry)
-        if not isinstance(message, dict) or message.get("role") != "user":
-            continue
-        if _is_user_tool_result_only_message(message):
-            continue
-        entry_ts = entry.get("timestamp")
-        if isinstance(entry_ts, str):
-            return _parse_timestamp(entry_ts)
-        return None
-    return None
+    turn = find_last_real_user_turn(entries, agent_name)
+    return turn.timestamp if turn is not None else None
 
 
 def extract_last_agent_message(
@@ -315,8 +273,10 @@ def collect_transcript_messages(
         role = message.get("role")
         if not isinstance(role, str):
             continue
-        content = message.get("content")
-        text = _extract_text_from_content(content, role)
+        if role == "user":
+            text = extract_real_user_text_from_entry(entry, agent_name)
+        else:
+            text = _extract_text_from_content(message.get("content"), role)
         if text:
             messages.append((role, text))
     return messages

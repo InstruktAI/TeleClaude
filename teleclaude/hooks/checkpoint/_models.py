@@ -31,4 +31,5 @@ class CheckpointResult:
     required_actions: list[str] = field(default_factory=list)
     observations: list[str] = field(default_factory=list)
     is_all_clear: bool = False
+    commit_action_required: bool = True
     on_main: bool = False
