@@ -48,6 +48,29 @@ def test_claude_task_notification_origin_does_not_reset_turn_boundary() -> None:
     assert extract_real_user_text_from_entry(entry, AgentName.CLAUDE) is None
 
 
+def test_claude_plain_hook_feedback_does_not_reset_turn_boundary() -> None:
+    assert (
+        is_real_user_turn_entry(
+            {"message": {"role": "user", "content": "Stop hook feedback:\ncheckpoint"}},
+            AgentName.CLAUDE,
+        )
+        is False
+    )
+    assert (
+        is_real_user_turn_entry(
+            {"message": {"role": "user", "content": "PreToolUse hook feedback:\ncheckpoint"}},
+            AgentName.CLAUDE,
+        )
+        is False
+    )
+
+
+def test_claude_system_reminder_does_not_reset_turn_boundary() -> None:
+    entry = {"message": {"role": "user", "content": "<system-reminder>internal</system-reminder>"}}
+
+    assert is_real_user_turn_entry(entry, AgentName.CLAUDE) is False
+
+
 def test_codex_hook_prompt_wrapper_does_not_reset_turn_boundary() -> None:
     entries = [
         {

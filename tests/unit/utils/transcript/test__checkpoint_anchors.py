@@ -63,10 +63,43 @@ def _stop_checkpoint(timestamp: str = "2026-05-13T10:01:00Z") -> JsonDict:
     )
 
 
+def _claude_user_text(text: str, timestamp: str = "2026-05-13T10:01:00Z") -> JsonDict:
+    return {
+        "timestamp": timestamp,
+        "type": "user",
+        "message": {"role": "user", "content": text},
+    }
+
+
+def _gemini_user_text(text: str, timestamp: str = "2026-05-13T10:01:00Z") -> JsonDict:
+    return {
+        "timestamp": timestamp,
+        "message": {"role": "user", "content": [{"type": "input_text", "text": text}]},
+    }
+
+
 def test_codex_stop_checkpoint_prompt_is_checkpoint_anchor() -> None:
     entry = _stop_checkpoint()
 
     assert is_checkpoint_anchor_entry(entry, AgentName.CODEX) is True
+
+
+def test_claude_stop_hook_feedback_is_checkpoint_anchor() -> None:
+    entry = _claude_user_text("Stop hook feedback:\n[TeleClaude Checkpoint] - Context-aware checkpoint")
+
+    assert is_checkpoint_anchor_entry(entry, AgentName.CLAUDE) is True
+
+
+def test_claude_pretool_feedback_is_not_checkpoint_anchor() -> None:
+    entry = _claude_user_text("PreToolUse hook feedback:\n[TeleClaude Checkpoint] - Context-aware checkpoint")
+
+    assert is_checkpoint_anchor_entry(entry, AgentName.CLAUDE) is False
+
+
+def test_gemini_plain_checkpoint_prompt_is_checkpoint_anchor() -> None:
+    entry = _gemini_user_text("[TeleClaude Checkpoint] - Context-aware checkpoint")
+
+    assert is_checkpoint_anchor_entry(entry, AgentName.GEMINI) is True
 
 
 def test_codex_non_stop_hook_prompt_is_not_checkpoint_anchor() -> None:

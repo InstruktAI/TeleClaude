@@ -20,6 +20,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _dedupe_strings,
     _extract_plan_file_paths,
     _has_commit_evidence,
+    _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_status_evidence,
     _segment_matches_evidence,
@@ -104,6 +105,36 @@ class TestEvidenceChecks:
         assert _check_error_state(timeline) == []
 
     @pytest.mark.unit
+    def test_check_error_state_does_not_clear_failed_tests_with_unrelated_test_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/a_test.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/a_test.py",
+                ),
+                _shell_record("pytest tests/unit/b_test.py", result_snippet="1 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == ["Test failures remain — re-run tests after fixes"]
+
+    @pytest.mark.unit
+    def test_check_error_state_clears_failed_tests_with_broader_later_test_run(self) -> None:
+        timeline = TurnTimeline(
+            tool_calls=[
+                _shell_record(
+                    "pytest tests/unit/hooks/checkpoint/test__init__.py",
+                    had_error=True,
+                    result_snippet="FAILED tests/unit/hooks/checkpoint/test__init__.py",
+                ),
+                _shell_record("pytest tests/unit/hooks", result_snippet="10 passed"),
+            ]
+        )
+
+        assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
     def test_check_error_state_clears_failed_typecheck_after_later_successful_typecheck(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[
@@ -180,6 +211,50 @@ class TestEvidenceChecks:
 
         assert _has_commit_evidence(timeline) is True
         assert _check_error_state(timeline) == []
+
+    @pytest.mark.unit
+    def test_commit_evidence_must_follow_last_relevant_mutation(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                _shell_record("telec code commit -m 'checkpoint'"),
+                ToolCallRecord(
+                    tool_name="edit",
+                    input_data={"file_path": "/repo/teleclaude/hooks/checkpoint/__init__.py"},
+                ),
+            ],
+        )
+
+        assert (
+            _has_commit_evidence_after_last_mutation(
+                timeline,
+                ["teleclaude/hooks/checkpoint/__init__.py"],
+                "/repo",
+            )
+            is False
+        )
+
+    @pytest.mark.unit
+    def test_commit_evidence_after_last_relevant_mutation_counts(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                ToolCallRecord(
+                    tool_name="edit",
+                    input_data={"file_path": "/repo/teleclaude/hooks/checkpoint/__init__.py"},
+                ),
+                _shell_record("telec code commit -m 'checkpoint'"),
+            ],
+        )
+
+        assert (
+            _has_commit_evidence_after_last_mutation(
+                timeline,
+                ["teleclaude/hooks/checkpoint/__init__.py"],
+                "/repo",
+            )
+            is True
+        )
 
     @pytest.mark.unit
     def test_global_python_stdin_probe_error_is_not_counted(self) -> None:

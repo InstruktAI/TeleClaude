@@ -19,6 +19,7 @@ _CODEX_STOP_HOOK_PROMPT_RE = re.compile(
     r"^\s*<hook_prompt\b(?=[^>]*\bhook_run_id=[\"']stop:)[^>]*>",
     re.DOTALL,
 )
+_CLAUDE_STOP_HOOK_FEEDBACK_PREFIX = "Stop hook feedback:"
 
 
 @dataclass(frozen=True)
@@ -55,21 +56,36 @@ def _is_codex_stop_checkpoint_prompt(text: str) -> bool:
     return _is_checkpoint_body(text[match.end() :])
 
 
+def _is_claude_stop_checkpoint_feedback(text: str) -> bool:
+    stripped = text.lstrip()
+    if not stripped.startswith(_CLAUDE_STOP_HOOK_FEEDBACK_PREFIX):
+        return False
+    return _is_checkpoint_body(stripped[len(_CLAUDE_STOP_HOOK_FEEDBACK_PREFIX) :])
+
+
 def is_checkpoint_anchor_entry(
     entry: Mapping[str, object],
     agent_name: AgentName | str | None = None,
 ) -> bool:
     """Return True when an entry starts a checkpoint-compliance round."""
-    agent = _agent_value(agent_name)
-    if agent != AgentName.CODEX.value:
-        return False
-
     message = normalize_transcript_entry_message(entry)
     if not isinstance(message, dict) or message.get("role") != "user":
         return False
 
     text = extract_text_from_message_content(message.get("content"), "user")
-    return bool(text and _is_codex_stop_checkpoint_prompt(text))
+    if not text:
+        return False
+
+    agent = _agent_value(agent_name)
+    if agent == AgentName.CODEX.value:
+        return _is_codex_stop_checkpoint_prompt(text)
+    if agent == AgentName.CLAUDE.value:
+        return _is_claude_stop_checkpoint_feedback(text)
+    if agent == AgentName.GEMINI.value:
+        return _is_checkpoint_body(text)
+    return (
+        _is_codex_stop_checkpoint_prompt(text) or _is_claude_stop_checkpoint_feedback(text) or _is_checkpoint_body(text)
+    )
 
 
 def find_last_checkpoint_anchor(

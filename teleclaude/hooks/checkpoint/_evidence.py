@@ -41,11 +41,13 @@ __all__ = [
     "_enrich_error",
     "_extract_plan_file_paths",
     "_has_commit_evidence",
+    "_has_commit_evidence_after_last_mutation",
     "_has_evidence",
     "_has_evidence_after_index",
     "_has_status_evidence",
     "_iter_shell_command_records",
     "_last_category_mutation_index",
+    "_last_git_file_mutation_index",
     "_segment_matches_evidence",
 ]
 
@@ -84,6 +86,36 @@ def _has_commit_evidence(timeline: TurnTimeline) -> bool:
         if not record.had_error or _is_expected_commit_classification(record):
             return True
     return False
+
+
+def _has_commit_evidence_after_index(timeline: TurnTimeline, after_index: int) -> bool:
+    """Return True when commit-options evidence follows a timeline index."""
+    if not timeline.has_data:
+        return False
+    for idx, record in enumerate(timeline.tool_calls):
+        if idx <= after_index:
+            continue
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            continue
+        command = _extract_shell_command(record.input_data)
+        if not _command_has_evidence(command, CHECKPOINT_COMMIT_EVIDENCE):
+            continue
+        if not record.had_error or _is_expected_commit_classification(record):
+            return True
+    return False
+
+
+def _has_commit_evidence_after_last_mutation(
+    timeline: TurnTimeline,
+    git_files: list[str],
+    project_path: str,
+) -> bool:
+    """Return True only when commit-options evidence follows the last relevant mutation."""
+    last_mutation_idx = _last_git_file_mutation_index(timeline, git_files, project_path)
+    if last_mutation_idx is None:
+        return _has_commit_evidence(timeline)
+    return _has_commit_evidence_after_index(timeline, last_mutation_idx)
 
 
 def _iter_shell_command_records(timeline: TurnTimeline) -> list[tuple[int, ToolCallRecord, str]]:
@@ -151,6 +183,52 @@ def _last_category_mutation_index(
                     touched.update(_extract_apply_patch_paths(value, project_path))
 
         if any(_file_matches_category(path, category) for path in touched):
+            last_index = idx
+
+    return last_index
+
+
+def _last_git_file_mutation_index(
+    timeline: TurnTimeline,
+    git_files: list[str],
+    project_path: str,
+) -> int | None:
+    """Return the last timeline index that mutated one of the effective git files."""
+    if not timeline.has_data or not git_files:
+        return None
+
+    effective_files = {path.strip().replace("\\", "/") for path in git_files if path.strip()}
+    if not effective_files:
+        return None
+
+    last_index: int | None = None
+    for idx, record in enumerate(timeline.tool_calls):
+        tool_name = _canonical_tool_name(record.tool_name)
+        if tool_name not in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
+            continue
+
+        touched: set[str] = set()
+        for key in ("file_path", "path", "filepath", "target_file"):
+            value = record.input_data.get(key)
+            if isinstance(value, str):
+                normalized = _normalize_repo_path(value, project_path)
+                if normalized:
+                    touched.add(normalized)
+        for key in ("file_paths", "paths"):
+            value = record.input_data.get(key)
+            if isinstance(value, list):
+                for entry in value:
+                    if isinstance(entry, str):
+                        normalized = _normalize_repo_path(entry, project_path)
+                        if normalized:
+                            touched.add(normalized)
+        if tool_name == "apply_patch":
+            for key in ("input", "patch", "raw_arguments", "command", "cmd"):
+                value = record.input_data.get(key)
+                if isinstance(value, str):
+                    touched.update(_extract_apply_patch_paths(value, project_path))
+
+        if touched & effective_files:
             last_index = idx
 
     return last_index
@@ -363,7 +441,7 @@ def _is_error_resolved(error_record: ToolCallRecord, subsequent: list[ToolCallRe
             # Same command re-run (e.g., second pytest after first failed)
             if error_command and _commands_overlap(error_command, later_command):
                 return True
-            if error_families and error_families & _command_validation_families(later_command):
+            if _validation_family_resolves(error_command, later_command, error_families):
                 return True
             # Bash command referencing same file area
             if error_file and _command_references_file(later_command, error_file):
@@ -409,6 +487,91 @@ def _command_validation_families(command: str) -> set[str]:
         if head == "pyright":
             families.add("typecheck")
     return families
+
+
+def _validation_family_resolves(error_command: str, later_command: str, error_families: set[str]) -> bool:
+    """Return True when a later validation command is broad enough to resolve an earlier error."""
+    later_families = _command_validation_families(later_command)
+    for family in error_families & later_families:
+        if family in {"commit", "logs", "status"}:
+            return True
+        error_targets = _validation_targets(error_command, family)
+        later_targets = _validation_targets(later_command, family)
+        if _targets_cover(later_targets, error_targets):
+            return True
+    return False
+
+
+def _validation_targets(command: str, family: str) -> set[str]:
+    """Extract path-like validation targets for scope-aware stale-error clearing."""
+    targets: set[str] = set()
+    for segment in _split_shell_segments(command):
+        tokens = _segment_tokens(segment)
+        if not tokens:
+            continue
+        head = tokens[0].rsplit("/", 1)[-1]
+        rest = tokens[1:]
+        if head == "uv" and len(rest) >= 2 and rest[0] == "run":
+            head = rest[1].rsplit("/", 1)[-1]
+            rest = rest[2:]
+        if family == "tests":
+            if head == "telec" and rest[:2] == ["code", "test"]:
+                targets.update(_path_like_args(rest[2:]))
+            elif head == "make" and "test" in rest:
+                targets.update(_path_like_args(rest[rest.index("test") + 1 :]))
+            elif head == "pytest":
+                targets.update(_path_like_args(rest))
+            elif head in {"python", "python3"} and rest[:2] == ["-m", "pytest"]:
+                targets.update(_path_like_args(rest[2:]))
+        elif family == "lint" and head == "ruff":
+            args = rest[1:] if rest[:1] == ["check"] else rest
+            targets.update(_path_like_args(args))
+        elif family == "typecheck" and head == "pyright":
+            targets.update(_path_like_args(rest))
+    return targets
+
+
+def _path_like_args(args: list[str]) -> set[str]:
+    """Return validation arguments that identify files or directories."""
+    targets: set[str] = set()
+    skip_next = False
+    option_values = {
+        "--config",
+        "-c",
+        "--rootdir",
+        "--cov",
+        "--cov-config",
+        "--junitxml",
+        "--basetemp",
+        "--pythonpath",
+        "--project",
+        "-p",
+    }
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in option_values:
+            skip_next = True
+            continue
+        if arg.startswith("-"):
+            continue
+        target = arg.split("::", 1)[0].strip().replace("\\", "/")
+        if target and not target.startswith("-"):
+            targets.add(target.rstrip("/"))
+    return targets
+
+
+def _targets_cover(later_targets: set[str], error_targets: set[str]) -> bool:
+    """Return True when later validation targets cover the failed validation targets."""
+    if not later_targets:
+        return True
+    if not error_targets:
+        return False
+    for failed in error_targets:
+        if not any(failed == target or failed.startswith(f"{target}/") for target in later_targets):
+            return False
+    return True
 
 
 def _commands_overlap(cmd_a: str, cmd_b: str) -> bool:

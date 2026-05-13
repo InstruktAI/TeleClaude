@@ -11,6 +11,7 @@ from teleclaude.constants import CHECKPOINT_PREFIX
 from teleclaude.core.agents import AgentName
 from teleclaude.core.conversation_messages import is_machine_originated_user_text
 from teleclaude.core.models import JsonDict
+from teleclaude.output_projection.visibility import is_agent_cli_internal_text
 
 from ._parsers import normalize_transcript_entry_message
 from ._utils import _parse_timestamp
@@ -97,6 +98,8 @@ def _is_teleclaude_control_text(text: str) -> bool:
     if is_machine_originated_user_text(stripped):
         return True
     if stripped.startswith("[TeleClaude Linked output"):
+        return True
+    if is_agent_cli_internal_text(stripped):
         return True
     return False
 

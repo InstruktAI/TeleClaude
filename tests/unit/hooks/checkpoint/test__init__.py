@@ -359,6 +359,28 @@ class TestRunHeuristics:
         assert result.commit_action_required is False
         assert "telec code commit" not in message
 
+    @pytest.mark.unit
+    def test_commit_evidence_before_later_edit_does_not_suppress_commit_instruction(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                ToolCallRecord(
+                    tool_name="functions.exec_command",
+                    input_data={"cmd": "telec code commit -m 'Fix checkpoint compliance scoping'"},
+                ),
+                ToolCallRecord(
+                    tool_name="edit",
+                    input_data={"file_path": "/repo/teleclaude/hooks/checkpoint/__init__.py"},
+                ),
+            ],
+        )
+        context = CheckpointContext(agent_name=AgentName.CODEX, project_path="/repo")
+
+        with patch("teleclaude.hooks.checkpoint._current_branch", return_value="main"):
+            result = run_heuristics(["teleclaude/hooks/checkpoint/__init__.py"], timeline, context)
+
+        assert result.commit_action_required is True
+
 
 class TestCommitInstruction:
     @pytest.mark.unit

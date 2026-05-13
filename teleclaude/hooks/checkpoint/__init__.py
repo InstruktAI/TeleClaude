@@ -28,6 +28,7 @@ from teleclaude.hooks.checkpoint._evidence import (
     _enrich_error,
     _extract_plan_file_paths,
     _has_commit_evidence,
+    _has_commit_evidence_after_last_mutation,
     _has_evidence,
     _has_evidence_after_index,
     _has_status_evidence,
@@ -122,7 +123,11 @@ def run_heuristics(
     """Run all checkpoint heuristics and return structured result."""
     result = CheckpointResult()
     result.on_main = _current_branch(context.project_path) == "main"
-    result.commit_action_required = not _has_commit_evidence(timeline)
+    result.commit_action_required = not _has_commit_evidence_after_last_mutation(
+        timeline,
+        git_files,
+        context.project_path,
+    )
 
     def append_required_action(action: str) -> None:
         if action not in result.required_actions:
