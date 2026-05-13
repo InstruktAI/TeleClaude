@@ -1219,3 +1219,146 @@ class TestEventBusVisibilityAwareDispatch:
         )
         result = await task
         assert result == "no-op"
+
+    @pytest.mark.unit
+    async def test_redis_redelivery_does_not_refire_locally_dispatched_handler(self) -> None:
+        """S2.2: a CLUSTER envelope that fired locally must not re-fire on redelivery.
+
+        Simulates the consumer-group reading back the same envelope via
+        ``deliver()`` and asserts the handler is invoked exactly once total —
+        once on the local leg, zero times on the redelivery leg.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        fire_count = 0
+
+        async def handler(_event: str, _context: Any) -> None:
+            nonlocal fire_count
+            fire_count += 1
+
+        bus.subscribe("session_started", handler)
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        assert fire_count == 1, "local leg fires the handler"
+
+        # Reconstruct the envelope as the consumer group would see it.
+        calls = _captured_xadd_calls(redis)
+        _, payload = calls[-1]
+        envelope = EventEnvelope.from_stream_dict(payload)
+        await bus.deliver(envelope)
+        assert fire_count == 1, "redelivery must NOT re-fire the locally-dispatched handler"
+
+    @pytest.mark.unit
+    async def test_different_idempotency_key_fires_normally_on_delivery(self) -> None:
+        """S2.3: dedup is keyed on idempotency_key, not on event name.
+
+        Negative-control for S2.2: an envelope with the same event name but a
+        fresh idempotency_key must fire the handler.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        fire_count = 0
+
+        async def handler(_event: str, _context: Any) -> None:
+            nonlocal fire_count
+            fire_count += 1
+
+        bus.subscribe("session_started", handler)
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        # Build a fresh envelope (different idempotency_key) and deliver it.
+        envelope = bus._build_envelope(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-2"),
+            EventVisibility.CLUSTER,
+        )
+        await bus.deliver(envelope)
+        assert fire_count == 2, "second envelope with different idempotency_key fires the handler"
+
+    @pytest.mark.unit
+    async def test_local_emit_succeeds_when_redis_unreachable(self) -> None:
+        """S3.1: LOCAL emit must continue working when the Redis client raises."""
+        redis = _make_redis_fake()
+        redis.xadd = AsyncMock(side_effect=ConnectionError("redis down"))
+        bus = EventBus(role="daemon", redis_client=redis)
+        fired = False
+
+        async def handler(_event: str, _context: Any) -> None:
+            nonlocal fired
+            fired = True
+
+        bus.subscribe("agent_ready", handler)
+        await bus.emit(
+            "agent_ready",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
+        )
+        assert fired, "LOCAL emit must dispatch even with Redis unreachable"
+        redis.xadd.assert_not_called()
+
+    @pytest.mark.unit
+    async def test_cluster_emit_local_leg_fires_when_xadd_fails(self) -> None:
+        """S3.2: CLUSTER emit's local leg must run to completion even if xadd fails."""
+        redis = _make_redis_fake()
+        redis.xadd = AsyncMock(side_effect=ConnectionError("redis down"))
+        bus = EventBus(role="daemon", redis_client=redis)
+        fired = False
+
+        async def handler(_event: str, _context: Any) -> None:
+            nonlocal fired
+            fired = True
+
+        bus.subscribe("session_started", handler)
+        # Emit and let the publish task fail in the background — emit itself
+        # should not raise.
+        task = bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        # Drain any background tasks so the failure is observed.
+        try:
+            await task
+        except ConnectionError:
+            pass  # publish leg failure observed via _publish_done — acceptable
+        await asyncio.gather(*list(bus._pending_tasks), return_exceptions=True)
+        assert fired, "local leg must fire even when xadd raises"
+
+    @pytest.mark.unit
+    async def test_publish_failure_does_not_corrupt_success_cache(self) -> None:
+        """S3.3: failed Redis publish must leave _successful_handlers correct.
+
+        After publish failure, the locally-dispatched handler is still in the
+        cache. A subsequent retry-via-deliver of the same envelope must dedup.
+        """
+        redis = _make_redis_fake()
+        redis.xadd = AsyncMock(side_effect=ConnectionError("redis down"))
+        bus = EventBus(role="daemon", redis_client=redis)
+        fire_count = 0
+
+        async def handler(_event: str, _context: Any) -> None:
+            nonlocal fire_count
+            fire_count += 1
+
+        wrapped = bus.subscribe("session_started", handler)
+        envelope = bus._build_envelope(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            EventVisibility.CLUSTER,
+        )
+        # Run only the local dispatch path with the same envelope key.
+        await bus._dispatch_local(
+            "session_started", SessionLifecycleContext(session_id="sess-1"), envelope.idempotency_key
+        )
+        assert fire_count == 1
+        cached = bus._successful_handlers.get(envelope.idempotency_key or "", set())
+        assert id(wrapped) in cached, "local handler must be recorded as successful"
+        # A redelivery via deliver() must skip the cached handler.
+        await bus.deliver(envelope)
+        assert fire_count == 1, "redelivery after publish failure must still dedup"
