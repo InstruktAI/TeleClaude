@@ -140,32 +140,57 @@ same-process subscribers, so the only cost of a false CLUSTER is a Redis XADD
 that nobody consumes off-process. A false LOCAL silently drops cross-context
 delivery and that lie is invisible until production breaks.
 
-### Bounded-context audit for current daemon events
+### Where per-event scope is declared
 
-This table fixes the v2-correct visibility for the events the v1 daemon currently
-emits. The Increment 1 implementation tags each event in code per this table.
-Events not listed here keep their existing default until they are reviewed.
+The doc never enumerates events. The visibility of any given event is declared
+in exactly one place — the code — and that declaration is the single source of
+truth. A prose registry duplicated here would go stale the moment a new event
+is added, and an out-of-date doc on a load-bearing contract is worse than no
+doc.
 
-| Event                                                                  | v2 emitter context | v2 subscriber contexts                              | Scope                       |
-| ---------------------------------------------------------------------- | ------------------ | --------------------------------------------------- | --------------------------- |
-| `AGENT_READY`                                                          | Session Runtime    | Session Runtime (launcher coroutine)                | `LOCAL`                     |
-| `agent_activity`, `tool_use`, `user_prompt_submit`                     | Session Runtime    | Session Runtime (WS bridge), Session Ledger         | `STREAM` (Increment 2)      |
-| `session_started`, `session_updated`, `session_closed`, `session_status`| Session Runtime    | Session Runtime (WS bridge), Workflow, Session Ledger| `STREAM` (Increment 2)      |
-| `agent_availability`                                                   | Session Runtime    | Session Runtime (WS bridge), Workflow               | `STREAM` (Increment 2)      |
-| `operation.todo_create.completed`                                      | Workflow           | Workflow                                            | `CLUSTER`                   |
-| `operation.todo_prepare.completed`                                     | Workflow           | Workflow                                            | `CLUSTER`                   |
-| `operation.todo_work.completed`                                        | Workflow           | Workflow, Integration & Events                      | `CLUSTER`                   |
-| `operation.todo_integrate.completed`                                   | Workflow           | Workflow, Integration & Events                      | `CLUSTER`                   |
-| `operation.todo_remove.completed`                                      | Workflow           | Workflow                                            | `CLUSTER`                   |
-| `system_command`                                                       | cross-cutting      | many                                                | `CLUSTER`                   |
-| `error`                                                                | cross-cutting      | Presentation, Session Ledger                        | `CLUSTER`                   |
-| `notification_*`, `session_escalated`                                  | Integration & Events| Presentation                                        | `CLUSTER`                   |
+Two declaration sites are valid:
 
-The audit identifies STREAM-eligible events but they remain `CLUSTER` in
-Increment 1 because the STREAM transport ships in Increment 2. That keeps
-correctness intact at the cost of continued Redis traffic for these events
-during the transitional window. The `max_connections` bump in Increment 1
-absorbs that load.
+- **`EventCatalog.default_visibility`** for events with a registered schema in
+  `teleclaude/events/schemas/`. The schema declares the event's correct scope
+  once; producers and the bus honor it.
+- **Explicit `event_bus.emit(event, ctx, visibility=…)`** at the call site for
+  internal events that do not have a schema entry. This is the path most
+  current daemon-internal events take.
+
+No event remains at the bus's hardcoded default after Increment 1. Reviewers
+reject PRs that add or modify an `event_bus.emit` call without an explicit
+visibility, and PRs that register a new schema without a `default_visibility`.
+
+### Worked examples — the rule in action
+
+**Example 1: `AGENT_READY`** — emitted by Session Runtime's coordinator when
+an agent's `session_start` hook fires; awaited by the launcher coroutine in
+the same process. Apply the rule:
+
+- Question 1: same-coroutine completion signal with a single waiter? **Yes.**
+  → `LOCAL`.
+
+The launcher's `event_bus.subscribe(AGENT_READY, …)` and the coordinator's
+`event_bus.emit(AGENT_READY, ctx, visibility=EventVisibility.LOCAL)` traverse
+the InProcess transport only. No Redis hop.
+
+**Example 2: `operation.todo_integrate.completed`** — emitted by a Workflow
+worker when an integration operation succeeds; consumed by the orchestrator
+session (also Workflow) and by Integration & Events bookkeeping. Apply the
+rule:
+
+- Question 1: same-coroutine completion signal with a single waiter? No (the
+  orchestrator and the worker live in different sessions, possibly on
+  different computers).
+- Question 2: crosses a v2 bounded-context boundary? **Yes** — Workflow worker
+  → Workflow orchestrator (which may run on another host) and → Integration &
+  Events.
+  → `CLUSTER`.
+
+`event_bus.emit(operation.todo_integrate.completed, ctx,
+visibility=EventVisibility.CLUSTER)` dispatches locally to any same-process
+subscriber and additionally publishes via Redis Streams for cross-host
+consumers.
 
 ### Increment plan
 
@@ -187,8 +212,12 @@ Lands the LOCAL and CLUSTER transports plus the contract above.
 - The consumer-group side (`deliver` in `EventBus`) keeps its current dedup
   check; same-process redelivery of a locally-already-fired envelope is a
   no-op per handler.
-- The per-event audit table above is encoded by passing the correct visibility
-  at every existing `event_bus.emit` call site.
+- Every existing `event_bus.emit` call site is visited and given an explicit
+  `visibility` via the tagging rule. Every schema in
+  `teleclaude/events/schemas/` is verified to carry a correct
+  `default_visibility`. No event remains at the bus's hardcoded default. The
+  implementation PR's review checklist enumerates the emit sites touched, and
+  the reviewer rejects on any missing site.
 - `config.yml:redis.max_connections` is raised from 30 to 100 as transitional
   monolith-era sizing. The change is documented as transitional and is
   expected to shrink once services split.
@@ -212,9 +241,10 @@ Requires a separate design pass. The decisions to settle:
 - Does STREAM carry an `idempotency_key` and per-handler dedup, given there
   is no durability guarantee?
 
-Once that design lands, the STREAM-eligible events from the audit table move
-from CLUSTER to STREAM in a follow-up implementation increment, and Redis
-traffic drops to the CLUSTER-only steady state.
+Once that design lands, events identified as STREAM-eligible during the
+Increment 2 audit move from CLUSTER to STREAM at their declaration site
+(schema or emit kwarg), and Redis traffic drops to the CLUSTER-only steady
+state.
 
 **Increment 3+ — service extraction per the v2 reconstruction order.**
 
