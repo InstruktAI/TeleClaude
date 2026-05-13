@@ -1101,3 +1101,76 @@ class TestEventBusVisibilityAwareDispatch:
         await bus.emit("session_started", SessionLifecycleContext(session_id="sess-1"))
         calls = _captured_xadd_calls(redis)
         assert calls, "default visibility must still publish to Redis"
+
+    @pytest.mark.unit
+    async def test_emit_cluster_also_dispatches_locally(self) -> None:
+        """CLUSTER emit must invoke same-process handlers in addition to xadd.
+
+        Pins R2 from implementation-plan: in-process dispatch happens for both
+        LOCAL and CLUSTER envelopes; the difference is only whether the Redis
+        leg additionally fires. Without this, same-process subscribers pay a
+        Redis round-trip via consumer redelivery.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+        received: list[str] = []
+
+        async def handler(event: str, _context: Any) -> None:
+            received.append(event)
+
+        bus.subscribe("session_started", handler)
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        assert received == ["session_started"], "CLUSTER emit must dispatch to same-process subscribers at emit time"
+        # Redis leg still ran.
+        redis.xadd.assert_awaited()
+
+    @pytest.mark.unit
+    async def test_emit_cluster_populates_success_cache_for_local_handlers(self) -> None:
+        """CLUSTER local dispatch must record handler success keyed by idempotency_key.
+
+        Pins R4 dedup precondition: when the Redis consumer-group redelivers the
+        same envelope to this process, the existing dedup check at deliver() must
+        find the handler already recorded as successful and skip re-firing.
+        """
+        redis = _make_redis_fake()
+        bus = EventBus(role="daemon", redis_client=redis)
+
+        async def handler(_event: str, _context: Any) -> None:
+            return None
+
+        wrapped = bus.subscribe("session_started", handler)
+        await bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.CLUSTER,
+        )
+        # Exactly one envelope was published; pull its idempotency_key.
+        calls = _captured_xadd_calls(redis)
+        assert calls, "CLUSTER emit must xadd"
+        _, payload = calls[-1]
+        idempotency_key = payload.get("idempotency_key")
+        assert idempotency_key, "envelope must carry a non-empty idempotency_key"
+        recorded = bus._successful_handlers.get(idempotency_key, set())
+        assert id(wrapped) in recorded, (
+            "local dispatch must record handler success against the same idempotency_key the Redis leg published with"
+        )
+
+    @pytest.mark.unit
+    async def test_emit_returns_noop_when_redis_unconfigured(self) -> None:
+        """``emit`` on a bus with no Redis client must not raise — return a no-op.
+
+        CLI helpers import the module-level ``event_bus`` singleton without
+        going through ``configure_event_bus``. Before this guard, every such
+        emit produced a logged ``RuntimeError`` from the publish task.
+        """
+        bus = EventBus()  # no redis_client
+        task = bus.emit(
+            "session_started",
+            SessionLifecycleContext(session_id="sess-1"),
+        )
+        result = await task
+        assert result == "no-op"

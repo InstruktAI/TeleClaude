@@ -339,42 +339,105 @@ class EventBus:
     ) -> Awaitable[str]:
         """Publish an internal event and return the scheduled task.
 
-        ``visibility=LOCAL`` dispatches handlers in-process and never touches
-        Redis. Use it for intra-process signalling (e.g. ``AGENT_READY`` between
-        coordinator and launcher) so that high-volume same-process events do
-        not consume the Redis connection pool.
+        Both visibilities dispatch in-process at emit time to registered
+        same-process subscribers; the difference is whether the Redis leg
+        additionally fires.
 
-        ``visibility=CLUSTER`` (default) publishes the envelope to Redis Streams
-        for cross-host fan-out via the EventProcessor consumer-group path —
-        existing behavior preserved for back-compat.
+        - ``LOCAL`` — in-process dispatch only. No Redis hop. Use for
+          intra-process signalling (e.g. ``AGENT_READY`` between coordinator
+          and launcher) so high-volume same-process events do not consume the
+          Redis connection pool.
+        - ``CLUSTER`` (default) — in-process dispatch **and** Redis Streams
+          xadd for cross-host fan-out. The same envelope (and its
+          ``idempotency_key``) is shared across both legs so that when the
+          consumer-group redelivers the envelope back to this process, the
+          existing dedup at ``_subscriber_process`` skips handlers already
+          fired by the local leg.
+
+        When the bus has no Redis client configured (CLI helpers that import
+        the singleton without going through ``configure_event_bus``), emit
+        returns a resolved no-op task instead of raising. This prevents the
+        recurring ``EventBus.emit requires a configured Redis client`` errors
+        from CLI processes that have no handlers to dispatch anyway.
         """
         loop = asyncio.get_running_loop()
-        if visibility == EventVisibility.LOCAL:
-            task = loop.create_task(
-                self._dispatch_local(event, context),
-                name=f"event-bus-local-{event}",
-            )
-        else:
-            task = loop.create_task(self._publish(event, context), name=f"event-bus-publish-{event}")
-        self._pending_tasks.add(task)
-        task.add_done_callback(self._publish_done)
-        return task
 
-    async def _dispatch_local(self, event: str, context: EventContext) -> str:
+        if self._redis is None and visibility != EventVisibility.LOCAL:
+            logger.debug(
+                "EventBus.emit no-op (no Redis configured) event=%s visibility=%s",
+                event,
+                visibility,
+            )
+            future: asyncio.Future[str] = loop.create_future()
+            future.set_result("no-op")
+            return future
+
+        envelope = self._build_envelope(event, context, visibility)
+        local_task = loop.create_task(
+            self._dispatch_local(event, context, envelope.idempotency_key),
+            name=f"event-bus-local-{event}",
+        )
+        self._pending_tasks.add(local_task)
+        local_task.add_done_callback(self._publish_done)
+
+        if visibility == EventVisibility.LOCAL:
+            return local_task
+
+        publish_task = loop.create_task(
+            self._publish_envelope(envelope),
+            name=f"event-bus-publish-{event}",
+        )
+        self._pending_tasks.add(publish_task)
+        publish_task.add_done_callback(self._publish_done)
+        return publish_task
+
+    def _build_envelope(
+        self,
+        event: str,
+        context: EventContext,
+        visibility: EventVisibility,
+    ) -> EventEnvelope:
+        """Build the envelope shared across local and Redis dispatch legs."""
+        return EventEnvelope(
+            event=self._wire_event_name(event),
+            source=f"{_INTERNAL_EVENT_SOURCE}:{self._role}",
+            level=EventLevel.WORKFLOW,
+            domain="internal",
+            visibility=visibility,
+            payload=self._context_payload(context),
+            idempotency_key=str(uuid.uuid4()),
+        )
+
+    async def _dispatch_local(
+        self,
+        event: str,
+        context: EventContext,
+        idempotency_key: str | None,
+    ) -> str:
         """Synchronously dispatch the event to in-process subscribers.
 
-        Mirrors the same (event_name, context) call shape that the Redis
-        consumer-group path produces via ``_subscriber_process``. Errors in
-        individual handlers are logged and do not propagate, matching the
-        existing event-guard contract for cluster delivery.
+        Mirrors the same ``(event_name, context)`` call shape that the Redis
+        consumer-group path produces via ``_subscriber_process``. On handler
+        success, records the (idempotency_key, handler_id) pair into
+        ``_successful_handlers`` so the consumer-side redelivery dedup
+        (lines below in ``_subscriber_process``) skips handlers that already
+        fired locally. Handler exceptions are logged; they do not propagate
+        and do not record success, mirroring the existing event-guard
+        contract for cluster delivery.
         """
         handlers = list(self._handlers.get(event, []))
         for handler in handlers:
+            handler_id = id(handler)
+            if idempotency_key is not None and handler_id in self._successful_handlers.get(idempotency_key, ()):
+                continue
             try:
                 await handler(event, context)
             except Exception:
                 logger.exception("EventBus local dispatch handler failed event=%s", event)
-        return "local"
+                continue
+            if idempotency_key is not None:
+                self._record_handler_success(idempotency_key, handler_id)
+        return idempotency_key or "local"
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
         """Consume internal events through the shared EventProcessor loop."""
@@ -417,19 +480,16 @@ class EventBus:
             self._successful_handlers.pop(envelope.idempotency_key, None)
         return results.get(_INTERNAL_DOMAIN_NAME)
 
-    async def _publish(self, event: str, context: EventContext) -> str:
+    async def _publish_envelope(self, envelope: EventEnvelope) -> str:
+        """Publish a pre-built envelope to the internal event stream.
+
+        Envelope is built once at emit time so both the local and Redis legs
+        share the same ``idempotency_key`` — that is the precondition the
+        consumer-side redelivery dedup relies on to avoid double-firing
+        handlers that already ran on the local leg.
+        """
         if self._redis is None:
             raise RuntimeError("EventBus.emit requires a configured Redis client")
-
-        envelope = EventEnvelope(
-            event=self._wire_event_name(event),
-            source=f"{_INTERNAL_EVENT_SOURCE}:{self._role}",
-            level=EventLevel.WORKFLOW,
-            domain="internal",
-            visibility=EventVisibility.CLUSTER,
-            payload=self._context_payload(context),
-            idempotency_key=str(uuid.uuid4()),
-        )
         entry_id = await self._redis.xadd(INTERNAL_EVENT_STREAM, envelope.to_stream_dict(), maxlen=10000)
         return entry_id.decode() if isinstance(entry_id, bytes) else str(entry_id)
 
