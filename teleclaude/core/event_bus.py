@@ -437,29 +437,44 @@ class EventBus:
         context: EventContext,
         idempotency_key: str | None,
     ) -> str:
-        """Synchronously dispatch the event to in-process subscribers.
+        """Concurrently dispatch the event to in-process subscribers.
 
         Mirrors the same ``(event_name, context)`` call shape that the Redis
-        consumer-group path produces via ``_subscriber_process``. On handler
-        success, records the (idempotency_key, handler_id) pair into
-        ``_successful_handlers`` so the consumer-side redelivery dedup
-        (lines below in ``_subscriber_process``) skips handlers that already
-        fired locally. Handler exceptions are logged; they do not propagate
-        and do not record success, mirroring the existing event-guard
-        contract for cluster delivery.
+        consumer-group path produces via ``_subscriber_process``. Handlers are
+        awaited concurrently via ``asyncio.gather`` so independent subscribers
+        do not serialize on each other's latency. Total loop occupancy is
+        unchanged; the dispatch task's wall-time becomes
+        ``max(handler_durations)`` instead of ``sum(handler_durations)``,
+        which matters when multiple subscribers attach to high-volume events
+        (e.g. session_updated fan-out to WS push + Session Ledger).
+
+        On handler success, records the ``(idempotency_key, handler_id)``
+        pair into ``_successful_handlers`` so the consumer-side redelivery
+        dedup in ``_subscriber_process`` skips handlers that already fired
+        locally. Handler exceptions are logged; they do not propagate and do
+        not record success, mirroring the existing event-guard contract for
+        cluster delivery.
         """
         handlers = list(self._handlers.get(event, []))
-        for handler in handlers:
+        if not handlers:
+            return idempotency_key or "local"
+        cached: set[int] | tuple[int, ...] = (
+            self._successful_handlers.get(idempotency_key, set()) if idempotency_key is not None else ()
+        )
+
+        async def _run_one(handler: EventHandler) -> None:
             handler_id = id(handler)
-            if idempotency_key is not None and handler_id in self._successful_handlers.get(idempotency_key, ()):
-                continue
+            if handler_id in cached:
+                return
             try:
                 await handler(event, context)
             except Exception:
                 logger.exception("EventBus local dispatch handler failed event=%s", event)
-                continue
+                return
             if idempotency_key is not None:
                 self._record_handler_success(idempotency_key, handler_id)
+
+        await asyncio.gather(*(_run_one(h) for h in handlers))
         return idempotency_key or "local"
 
     async def start(self, shutdown_event: asyncio.Event) -> None:
