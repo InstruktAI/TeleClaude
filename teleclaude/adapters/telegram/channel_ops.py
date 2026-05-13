@@ -162,7 +162,7 @@ class ChannelOperationsMixin:
         return await self.bot.create_forum_topic(chat_id=self.supergroup_id, name=title)
 
     async def update_channel_title(self, session: Session, title: str) -> bool:
-        """Update topic title."""
+        """Update topic title and record the synced value on success."""
         self._ensure_started()
 
         topic_id = TelegramAdapterMetadata.from_dict(session.get_origin_section("telegram")).topic_id
@@ -171,16 +171,29 @@ class ChannelOperationsMixin:
 
         try:
             await self._edit_forum_topic_with_retry(topic_id, title)
-            return True
         except BadRequest as e:
             if "topic_not_modified" in str(e).lower():
                 logger.debug("Topic %s title already matches %r; treating as no-op", topic_id, title)
+                await self._persist_synced_title(session.session_id, title)
                 return True
             logger.error("Failed to update topic title: %s", e)
             return False
         except TelegramError as e:
             logger.error("Failed to update topic title: %s", e)
             return False
+        await self._persist_synced_title(session.session_id, title)
+        return True
+
+    async def _persist_synced_title(self, session_id: str, title: str) -> None:
+        """Record the title last successfully synced to Telegram."""
+        current = await db.get_session(session_id)
+        if current is None:
+            return
+        meta = TelegramAdapterMetadata.from_dict(current.get_origin_section("telegram"))
+        if meta.last_synced_title == title:
+            return
+        meta.last_synced_title = title
+        await db.update_origin_metadata(session_id, "telegram", meta.to_dict())
 
     @command_retry(max_retries=3, max_timeout=15.0)
     async def _edit_forum_topic_with_retry(self, topic_id: int, title: str) -> None:

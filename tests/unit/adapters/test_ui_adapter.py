@@ -359,59 +359,82 @@ class TestHandleSessionStatus:
 
 class TestHandleSessionTitleChanged:
     @pytest.mark.unit
-    async def test_title_event_queues_latest_title(self, adapter: _ConcreteAdapter) -> None:
-        with patch.object(adapter, "request_title_sync", AsyncMock()) as request_title_sync:
-            await adapter._handle_session_title_changed(
-                "session_title_changed",
-                SessionTitleChangedContext(session_id="sess-abc", title="Renamed"),
-            )
-
-        request_title_sync.assert_awaited_once_with("sess-abc", "Renamed")
-
-    @pytest.mark.unit
-    async def test_title_lane_coalesces_to_latest_pending_title(self, adapter: _ConcreteAdapter) -> None:
-        session = _make_session(session_id="sess-title-lane")
-        started = asyncio.Event()
-        release = asyncio.Event()
-
-        async def update_title(_session: Session, _title: str) -> bool:
-            started.set()
-            await release.wait()
-            return True
+    async def test_managed_session_reconciles_via_ensure_channel(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(session_id="sess-managed")
+        session.lifecycle_status = "active"
 
         with (
             patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch.object(adapter, "update_channel_title", AsyncMock(side_effect=update_title)) as update_channel_title,
+            patch.object(adapter, "ensure_channel", AsyncMock(return_value=session)) as ensure_channel,
         ):
-            await adapter.request_title_sync(session.session_id, "First")
-            await started.wait()
-            await adapter.request_title_sync(session.session_id, "Final")
-            release.set()
-            task = adapter._title_sync_tasks[session.session_id]
-            await task
+            await adapter._handle_session_title_changed(
+                "session_title_changed",
+                SessionTitleChangedContext(session_id=session.session_id, title="Renamed"),
+            )
 
-        assert update_channel_title.await_args_list[0].args == (session, "First")
-        assert update_channel_title.await_args_list[1].args == (session, "Final")
+        ensure_channel.assert_awaited_once_with(session)
 
     @pytest.mark.unit
-    async def test_title_lane_handles_adapter_error(self, adapter: _ConcreteAdapter) -> None:
-        session = _make_session(session_id="sess-title-error")
+    async def test_headless_session_schedules_projection(self, adapter: _ConcreteAdapter) -> None:
+        """Regression: title change on a headless session must flow through the projection
+        cadence so the channel gets provisioned (or its title reconciled) without racing
+        the post-stop projection.
+        """
+        session = _make_session(session_id="sess-headless")
+        session.lifecycle_status = "headless"
+
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
+            patch(
+                "teleclaude.adapters.ui_adapter.polling_coordinator.schedule_headless_projection",
+                AsyncMock(return_value=True),
+            ) as schedule,
+            patch.object(adapter, "ensure_channel", AsyncMock()) as ensure_channel,
+        ):
+            await adapter._handle_session_title_changed(
+                "session_title_changed",
+                SessionTitleChangedContext(session_id=session.session_id, title="Summarized"),
+            )
+
+        schedule.assert_awaited_once_with(session.session_id, adapter.client)
+        ensure_channel.assert_not_awaited()
+
+    @pytest.mark.unit
+    async def test_managed_session_swallows_adapter_error(self, adapter: _ConcreteAdapter) -> None:
+        session = _make_session(session_id="sess-managed-error")
+        session.lifecycle_status = "active"
 
         with (
             patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
             patch.object(
                 adapter,
-                "update_channel_title",
-                AsyncMock(side_effect=AdapterError("Session missing telegram topic_id")),
-            ) as update_channel_title,
+                "ensure_channel",
+                AsyncMock(side_effect=AdapterError("Discord not started")),
+            ),
         ):
-            await adapter.request_title_sync(session.session_id, "Renamed")
-            task = adapter._title_sync_tasks[session.session_id]
-            await task
+            # Must not raise; reconcile failures are logged and dropped.
+            await adapter._handle_session_title_changed(
+                "session_title_changed",
+                SessionTitleChangedContext(session_id=session.session_id, title="Whatever"),
+            )
 
-        update_channel_title.assert_awaited_once_with(session, "Renamed")
-        assert session.session_id not in adapter._title_sync_tasks
-        assert adapter._title_last_synced.get(session.session_id) is None
+    @pytest.mark.unit
+    async def test_missing_session_is_a_noop(self, adapter: _ConcreteAdapter) -> None:
+        with (
+            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=None)),
+            patch.object(adapter, "ensure_channel", AsyncMock()) as ensure_channel,
+            patch(
+                "teleclaude.adapters.ui_adapter.polling_coordinator.schedule_headless_projection",
+                AsyncMock(),
+            ) as schedule,
+        ):
+            await adapter._handle_session_title_changed(
+                "session_title_changed",
+                SessionTitleChangedContext(session_id="ghost", title="X"),
+            )
+
+        ensure_channel.assert_not_awaited()
+        schedule.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
