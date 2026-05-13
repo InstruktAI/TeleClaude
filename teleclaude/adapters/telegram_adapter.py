@@ -223,16 +223,20 @@ class TelegramAdapter(
             session = fresh
 
         tg = self._tg(session)
-        logger.debug(
-            "[TG_ENSURE] session=%s telegram_meta=present topic_id=%s",
-            session.session_id,
-            tg.topic_id if tg.topic_id else "N/A",
-        )
         if tg.topic_id:
-            logger.debug("[TG_ENSURE] Topic exists, returning session %s", session.session_id)
+            logger.debug(
+                "[TG_ENSURE] session=%s topic_id=%s — topic exists, no provisioning needed",
+                session.session_id,
+                tg.topic_id,
+            )
             return session
 
         title = await get_display_title_for_session(session)
+        logger.debug(
+            "[TG_ENSURE] session=%s topic_id=None desired_title=%s",
+            session.session_id,
+            title,
+        )
         logger.info(
             "[TG_ENSURE] No topic_id for session %s, creating channel (title=%s)",
             session.session_id,
@@ -307,7 +311,6 @@ class TelegramAdapter(
         await db.update_session(
             recovery_session.session_id,
             last_output_digest=None,
-            last_projected_output_digest=None,
         )
 
         try:

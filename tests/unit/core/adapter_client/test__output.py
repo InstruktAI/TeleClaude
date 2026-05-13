@@ -523,13 +523,16 @@ class TestResolveAdminOutputTarget:
 class TestChannelUpdates:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_update_channel_title_routes_to_all_ui_adapters(self):
+    async def test_update_channel_title_routes_origin_and_admin_lanes_for_telegram_origin(self):
+        """Telegram-origin: rename goes to Telegram (origin) and Discord (admin reflection) only."""
         client = AdapterClient()
         session = _make_session(last_input_origin="telegram")
         telegram = _make_ui_adapter()
         discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
         client.register_adapter("telegram", telegram)
         client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
 
         with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
             result = await client.update_channel_title(session, "New title")
@@ -537,18 +540,47 @@ class TestChannelUpdates:
         assert result is True
         telegram.update_channel_title.assert_awaited_once_with(session, "New title")
         discord.update_channel_title.assert_awaited_once_with(session, "New title")
+        whatsapp.update_channel_title.assert_not_awaited()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_update_channel_title_uses_fresh_session_for_all_adapters(self):
+    async def test_update_channel_title_skips_non_origin_non_admin_adapters_for_discord_origin(self):
+        """Discord-origin: rename goes to Discord only — Telegram and other adapters MUST NOT be touched.
+
+        Regression guard for the original bug: a Discord-origin session causing
+        Telegram.update_channel_title to be invoked and raise AdapterError.
+        """
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
+
+        with patch("teleclaude.core.adapter_client._channels.db.get_session", AsyncMock(return_value=session)):
+            result = await client.update_channel_title(session, "New title")
+
+        assert result is True
+        discord.update_channel_title.assert_awaited_once_with(session, "New title")
+        telegram.update_channel_title.assert_not_awaited()
+        whatsapp.update_channel_title.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_update_channel_title_uses_fresh_session_on_origin_and_admin_lanes(self):
+        """Stale session passed in is re-read; both lanes receive the fresh instance."""
         client = AdapterClient()
         stale = _make_session(last_input_origin="telegram")
         fresh = _make_session(last_input_origin="telegram")
         fresh.title = "Fresh title"
         telegram = _make_ui_adapter()
         discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
         client.register_adapter("telegram", telegram)
         client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
 
         with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=fresh)):
             result = await client.update_channel_title(stale, "New title")
@@ -556,6 +588,7 @@ class TestChannelUpdates:
         assert result is True
         telegram.update_channel_title.assert_awaited_once_with(fresh, "New title")
         discord.update_channel_title.assert_awaited_once_with(fresh, "New title")
+        whatsapp.update_channel_title.assert_not_awaited()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
