@@ -26,6 +26,7 @@ from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
@@ -627,7 +628,7 @@ class OperationsService:
         if not completion_event:
             return
         context = OperationCompletedContext(operation_id=operation_id, error=error)
-        event_bus.emit(completion_event, context)  # type: ignore[arg-type]
+        event_bus.emit(completion_event, context, visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
 
     def _serialize_operation(self, operation: Operation) -> SerializedOperation:
         payload: SerializedOperation = {

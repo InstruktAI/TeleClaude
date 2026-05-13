@@ -92,6 +92,7 @@ class AgentCoordinator(
                                 "message": f"Failed to update session title: {exc}",
                                 "severity": "warning",
                             },  # type: ignore[arg-type]
+                            visibility=EventVisibility.CLUSTER,
                         )
                     except Exception:
                         pass
@@ -154,6 +155,7 @@ class AgentCoordinator(
                     message_intent=canonical.message_intent if canonical else None,
                     delivery_scope=canonical.delivery_scope if canonical else None,
                 ),
+                visibility=EventVisibility.CLUSTER,
             )
         except Exception as exc:
             logger.error(
@@ -252,6 +254,7 @@ class AgentCoordinator(
                     message_intent=canonical.message_intent,
                     delivery_scope=canonical.delivery_scope,
                 ),
+                visibility=EventVisibility.CLUSTER,
             )
             logger.debug(
                 "status transition: session=%s %s (reason=%s)",

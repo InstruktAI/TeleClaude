@@ -25,6 +25,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.session_listeners import cleanup_caller_listeners, cleanup_session_links, pop_listeners
 from teleclaude.core.session_utils import OUTPUT_DIR, get_session_output_dir
+from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -115,6 +116,7 @@ async def _end_escalation_if_active(session: "Session") -> None:
     event_bus.emit(
         "session.escalation_ended",  # type: ignore[arg-type]
         SessionEscalatedPayload(session_id=session.session_id),
+        visibility=EventVisibility.CLUSTER,
     )
     logger.info("Escalation ended (session close) for %s", session.session_id)
 
@@ -273,6 +275,7 @@ async def emit_recently_closed_session_events(
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
         emitted += 1
         logger.info(

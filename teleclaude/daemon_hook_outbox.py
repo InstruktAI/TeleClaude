@@ -39,6 +39,7 @@ from teleclaude.core.models import Session, SessionLaunchIntent, SessionLaunchKi
 from teleclaude.core.models._adapter import TerminalOriginMetadata
 from teleclaude.core.origins import InputOrigin
 from teleclaude.core.session_utils import split_project_path_and_subdir
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.transport.redis_transport import RedisTransport
 from teleclaude.types.commands import CreateSessionCommand
 
@@ -407,6 +408,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         event_bus.emit(
             TeleClaudeEvents.SESSION_STARTED,
             SessionLifecycleContext(session_id=created_session_id),
+            visibility=EventVisibility.CLUSTER,
         )
         return session
 
@@ -566,7 +568,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 retryable=retryable if isinstance(retryable, bool) else False,
                 code=code if isinstance(code, str) else None,
             )
-            event_bus.emit(TeleClaudeEvents.ERROR, context)
+            event_bus.emit(TeleClaudeEvents.ERROR, context, visibility=EventVisibility.CLUSTER)
         else:
             context = AgentEventContext(  # type: ignore[assignment]
                 session_id=session_id,

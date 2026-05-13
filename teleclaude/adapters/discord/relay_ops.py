@@ -19,6 +19,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.models import MessageMetadata, Session
 from teleclaude.core.tmux_bridge import send_keys_existing_tmux
+from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -135,6 +136,7 @@ class RelayOperationsMixin:
         event_bus.emit(
             "session.escalation_ended",  # type: ignore[arg-type]
             SessionEscalatedPayload(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
 
         logger.info("Agent handback completed for session %s (thread %s)", session.session_id, thread_id)

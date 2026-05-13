@@ -22,6 +22,7 @@ from teleclaude.core.events import (
 )
 from teleclaude.core.models import AgentResumeArgs, AgentStartArgs, Session, ThinkingMode
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import RestartAgentCommand, ResumeAgentCommand, RunAgentCommand, StartAgentCommand
 
 from ._keys import _ensure_tmux_for_headless
@@ -269,6 +270,7 @@ async def agent_restart(
         event_bus.emit(
             TeleClaudeEvents.ERROR,
             ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+            visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
         return False, error
@@ -279,6 +281,7 @@ async def agent_restart(
         event_bus.emit(
             TeleClaudeEvents.ERROR,
             ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+            visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
         return False, error
@@ -326,6 +329,7 @@ async def agent_restart(
         event_bus.emit(
             TeleClaudeEvents.ERROR,
             ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+            visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
         return False, error
@@ -346,6 +350,7 @@ async def agent_restart(
         event_bus.emit(
             TeleClaudeEvents.ERROR,
             ErrorEventContext(session_id=session.session_id, message=error, source="agent_restart"),
+            visibility=EventVisibility.CLUSTER,
         )
         await client.send_message(session, f"❌ {error}")
         return False, error
@@ -383,6 +388,7 @@ async def agent_restart(
                     event_bus.emit(
                         TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
                         SessionLifecycleContext(session_id=session.session_id),
+                        visibility=EventVisibility.LOCAL,
                     )
                     await client.send_message(
                         session,
@@ -402,6 +408,7 @@ async def agent_restart(
     event_bus.emit(
         cmd.completion_event,  # type: ignore[arg-type]
         AgentRestartDispatchedPayload(session_id=session.session_id),
+        visibility=EventVisibility.CLUSTER,
     )
 
     return True, None

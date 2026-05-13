@@ -27,6 +27,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.session_utils import get_session_output_dir
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand
 
 if TYPE_CHECKING:
@@ -442,6 +443,7 @@ class InputHandlersMixin:
             event_bus.emit(
                 "session_closed",
                 SessionLifecycleContext(session_id=session.session_id),
+                visibility=EventVisibility.CLUSTER,
             )
             return
 
@@ -466,6 +468,7 @@ class InputHandlersMixin:
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
 
     async def _emit_session_closed_for_topic(self, topic_id: int) -> bool:
@@ -494,6 +497,7 @@ class InputHandlersMixin:
         event_bus.emit(
             "session_closed",
             SessionLifecycleContext(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
         return True
 

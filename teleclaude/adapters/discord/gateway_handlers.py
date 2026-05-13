@@ -17,6 +17,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.models import DiscordAdapterMetadata, SessionLaunchIntent, SessionLaunchKind
+from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -577,6 +578,7 @@ class GatewayHandlersMixin:
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSE_REQUESTED,
             SessionLifecycleContext(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
 
     async def _handle_thread_delete(self, payload: object) -> None:

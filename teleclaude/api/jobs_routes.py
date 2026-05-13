@@ -12,6 +12,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import JobCompletedPayload, JobFailedPayload, JobStartedPayload
 from teleclaude.cron import runner as cron_runner_module
 from teleclaude.cron import state as cron_state_module
+from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
 
@@ -87,14 +88,16 @@ async def run_job(
     """Run a scheduled job immediately (fire-and-forget)."""
 
     def _run_sync() -> None:
-        event_bus.emit("job.started", JobStartedPayload(job_name=name))  # type: ignore[arg-type]
+        event_bus.emit("job.started", JobStartedPayload(job_name=name), visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
         try:
             logger.info("Background job triggered: %s", name)
             cron_runner_module.run_due_jobs(force=True, job_filter=name)
-            event_bus.emit("job.completed", JobCompletedPayload(job_name=name))  # type: ignore[arg-type]
+            event_bus.emit("job.completed", JobCompletedPayload(job_name=name), visibility=EventVisibility.CLUSTER)  # type: ignore[arg-type]
         except (OSError, RuntimeError, ValueError) as exc:
             logger.error("Background job failed (job=%s): %s", name, exc, exc_info=True)
-            event_bus.emit("job.failed", JobFailedPayload(job_name=name, error=str(exc)))  # type: ignore[arg-type]
+            event_bus.emit(
+                "job.failed", JobFailedPayload(job_name=name, error=str(exc)), visibility=EventVisibility.CLUSTER
+            )  # type: ignore[arg-type]
 
     background_tasks.add_task(run_in_threadpool, _run_sync)
     return {"status": "accepted", "job": name, "completion_event": "job.completed"}

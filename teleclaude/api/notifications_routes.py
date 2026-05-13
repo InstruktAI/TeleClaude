@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request
 
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import NotificationClaimedPayload, NotificationResolvedPayload
+from teleclaude.events.envelope import EventVisibility
 
 if TYPE_CHECKING:
     from teleclaude.events.db import EventDB
@@ -107,6 +108,7 @@ async def claim_notification(
     event_bus.emit(
         "notification.claimed",  # type: ignore[arg-type]
         NotificationClaimedPayload(notification_id=notification_id, agent_id=agent_id),
+        visibility=EventVisibility.CLUSTER,
     )
     return {"ok": True}
 
@@ -141,5 +143,6 @@ async def resolve_notification(
     event_bus.emit(
         "notification.resolved",  # type: ignore[arg-type]
         NotificationResolvedPayload(notification_id=notification_id),
+        visibility=EventVisibility.CLUSTER,
     )
     return {"ok": True}

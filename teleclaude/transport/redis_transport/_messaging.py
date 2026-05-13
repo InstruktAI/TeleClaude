@@ -25,6 +25,7 @@ from teleclaude.core.events import (
     parse_command_string,
 )
 from teleclaude.core.models import JsonDict, JsonValue, MessageMetadata, RedisInboundMessage, SessionLaunchIntent
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.types.commands import CommandType, InternalCommand, ResponseMode
 
 if TYPE_CHECKING:
@@ -418,4 +419,5 @@ class _MessagingMixin:  # pyright: ignore[reportUnusedClass]
                 command=command,
                 from_computer=from_computer or "unknown",
             ),
+            visibility=EventVisibility.CLUSTER,
         )

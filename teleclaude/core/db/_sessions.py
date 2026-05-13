@@ -12,6 +12,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from teleclaude.core.event_bus import event_bus
+from teleclaude.events.envelope import EventVisibility
 
 from .. import db_models
 from ..events import SessionLifecycleContext, SessionUpdatedContext, TeleClaudeEvents
@@ -147,6 +148,7 @@ class DbSessionsMixin:
             event_bus.emit(
                 TeleClaudeEvents.SESSION_STARTED,
                 SessionLifecycleContext(session_id=session_id),
+                visibility=EventVisibility.CLUSTER,
             )
 
         return session
@@ -429,6 +431,7 @@ class DbSessionsMixin:
         event_bus.emit(
             TeleClaudeEvents.SESSION_UPDATED,
             SessionUpdatedContext(session_id=session_id, updated_fields=updates),
+            visibility=EventVisibility.CLUSTER,
         )
 
     async def close_session(self, session_id: str) -> None:
@@ -447,6 +450,7 @@ class DbSessionsMixin:
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSED,
             SessionLifecycleContext(session_id=session_id),
+            visibility=EventVisibility.CLUSTER,
         )
 
     async def update_origin_metadata(
@@ -580,6 +584,7 @@ class DbSessionsMixin:
             event_bus.emit(
                 TeleClaudeEvents.SESSION_CLOSED,
                 SessionLifecycleContext(session_id=session_id),
+                visibility=EventVisibility.CLUSTER,
             )
 
     async def count_sessions(self, computer_name: str | None = None) -> int:

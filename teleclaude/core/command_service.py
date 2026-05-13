@@ -57,6 +57,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionEscalatedPayload
 from teleclaude.core.inbound_queue import init_inbound_queue_manager
 from teleclaude.core.models import MessageMetadata
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils.markdown import telegramify_markdown
 
 logger = get_logger(__name__)
@@ -340,6 +341,7 @@ class CommandService:
         event_bus.emit(
             "session.escalation_started",  # type: ignore[arg-type]
             SessionEscalatedPayload(session_id=session_id),
+            visibility=EventVisibility.CLUSTER,
         )
 
         return {"status": "accepted", "thread_id": thread_id}

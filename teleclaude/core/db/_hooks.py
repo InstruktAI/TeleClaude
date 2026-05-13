@@ -10,6 +10,7 @@ from sqlmodel import select
 
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import AgentAvailabilityContext, TeleClaudeEvents
+from teleclaude.events.envelope import EventVisibility
 
 from .. import db_models
 from ..dates import parse_iso_datetime
@@ -47,6 +48,7 @@ class DbHooksMixin:
                 reason=reason,
                 error=error,
             ),
+            visibility=EventVisibility.CLUSTER,
         )
 
     async def get_agent_availability(self, agent: str) -> dict[str, bool | str | None] | None:

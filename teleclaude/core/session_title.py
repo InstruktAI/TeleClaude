@@ -13,6 +13,7 @@ from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionTitleChangedContext, TeleClaudeEvents
 from teleclaude.core.summarizer import generate_session_title
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.utils.transcript import collect_transcript_messages, extract_last_user_message_with_timestamp
 
 if TYPE_CHECKING:
@@ -99,6 +100,7 @@ async def generate_session_title_from_transcript(session: Session) -> Session:
     event_bus.emit(
         TeleClaudeEvents.SESSION_TITLE_CHANGED,
         SessionTitleChangedContext(session_id=session.session_id, title=new_title),
+        visibility=EventVisibility.CLUSTER,
     )
     logger.info("Updated session title from transcript: %s", new_title)
     return session

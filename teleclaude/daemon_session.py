@@ -32,6 +32,7 @@ from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.status_contract import serialize_status_event
 from teleclaude.core.voice_assignment import get_voice_env_vars
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.mirrors.event_handlers import handle_agent_stop as handle_mirror_agent_stop
 from teleclaude.mirrors.event_handlers import handle_session_closed as handle_mirror_session_closed
 from teleclaude.types.commands import ResumeAgentCommand, StartAgentCommand
@@ -196,6 +197,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                             message_intent=canonical.message_intent,
                             delivery_scope=canonical.delivery_scope,
                         ),
+                        visibility=EventVisibility.CLUSTER,
                     )
 
     async def _handle_session_started(self, _event: str, _context: SessionLifecycleContext) -> None:
@@ -386,6 +388,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 event_bus.emit(
                     TeleClaudeEvents.AGENT_READINESS_TIMEOUT,
                     SessionLifecycleContext(session_id=session_id),
+                    visibility=EventVisibility.LOCAL,
                 )
                 return {
                     "status": "error",

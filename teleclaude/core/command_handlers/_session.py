@@ -25,6 +25,7 @@ from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_sessi
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_title import initial_session_title
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.events.envelope import EventVisibility
 from teleclaude.types import CpuStats, DiskStats, MemoryStats, SystemStats
 from teleclaude.types.commands import CloseSessionCommand, CreateSessionCommand, GetSessionDataCommand, InternalCommand
 from teleclaude.utils import strip_ansi_codes
@@ -601,6 +602,7 @@ async def close_session(
         event_bus.emit(
             _cmd.completion_event,  # type: ignore[arg-type]
             SessionCloseCompletedPayload(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
         return
 
@@ -613,6 +615,7 @@ async def close_session(
     event_bus.emit(
         _cmd.completion_event,  # type: ignore[arg-type]
         SessionCloseCompletedPayload(session_id=session.session_id),
+        visibility=EventVisibility.CLUSTER,
     )
 
 
@@ -642,6 +645,7 @@ async def end_session(
         event_bus.emit(
             TeleClaudeEvents.SESSION_CLOSED,
             SessionLifecycleContext(session_id=session.session_id),
+            visibility=EventVisibility.CLUSTER,
         )
         return {
             "status": "success",
