@@ -134,6 +134,20 @@ def test_checkpoint_scope_start_uses_latest_stop_checkpoint_occurrence() -> None
     assert find_checkpoint_scope_start_idx(entries, full_session=False, agent_name=AgentName.CODEX) == 5
 
 
+def test_checkpoint_scope_start_uses_newer_real_user_turn_after_checkpoint() -> None:
+    entries = [
+        _codex_user_text("first prompt", "2026-05-13T10:00:00Z"),
+        _stop_checkpoint("2026-05-13T10:01:00Z"),
+        _codex_call("pytest tests/unit/old.py", "call-old", "2026-05-13T10:01:20Z"),
+        _codex_output("call-old"),
+        _codex_user_text("new prompt", "2026-05-13T10:02:00Z"),
+        _codex_call("pytest tests/unit/new.py", "call-new", "2026-05-13T10:02:20Z"),
+        _codex_output("call-new"),
+    ]
+
+    assert find_checkpoint_scope_start_idx(entries, full_session=False, agent_name=AgentName.CODEX) == 5
+
+
 def test_checkpoint_scope_extracts_evidence_after_latest_stop_checkpoint(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

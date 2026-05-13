@@ -575,6 +575,11 @@ def _path_like_args(args: list[str]) -> set[str]:
         "--basetemp",
         "--pythonpath",
         "--project",
+        "--root",
+        "--tb",
+        "--timeout",
+        "-k",
+        "-m",
         "-p",
     }
     for arg in args:
