@@ -313,7 +313,11 @@ async def test_handle_session_close_requested_restores_active_status_after_failu
         "serialize_status_event",
         lambda **_kwargs: SimpleNamespace(message_intent="status", delivery_scope="session"),
     )
-    monkeypatch.setattr(daemon_session.event_bus, "emit", lambda event, context: emitted.append((event, context)))
+    monkeypatch.setattr(
+        daemon_session.event_bus,
+        "emit",
+        lambda event, context, **_kwargs: emitted.append((event, context)),
+    )
 
     await daemon_instance._handle_session_close_requested(
         "session_close_requested",

@@ -363,19 +363,23 @@ async def agent_restart(
         profile=_get_session_profile(session),
     )
 
-    await execute_terminal_command(session.session_id, restart_cmd, None, True)
-
     if cmd.self_restart:
+        # Subscribe BEFORE the restart paste — the agent's SessionStart hook
+        # can race execute_terminal_command and emit AGENT_READY before the
+        # wait task runs. event_bus has no replay; subscribing after the
+        # launch loses the event.
+        loop = asyncio.get_running_loop()
+        ready_future: asyncio.Future[None] = loop.create_future()
+
+        async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
+            if ctx.session_id == session.session_id and not ready_future.done():
+                ready_future.set_result(None)
+
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
+
+        await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
         async def _inject_after_restart() -> None:
-            loop = asyncio.get_running_loop()
-            ready_future: asyncio.Future[None] = loop.create_future()
-
-            async def _on_ready(_event_type: str, ctx: SessionLifecycleContext) -> None:
-                if ctx.session_id == session.session_id and not ready_future.done():
-                    ready_future.set_result(None)
-
-            ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
             try:
                 try:
                     await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
@@ -404,6 +408,8 @@ async def agent_restart(
             )
 
         asyncio.create_task(_inject_after_restart(), name="send-restart-stimulus")
+    else:
+        await execute_terminal_command(session.session_id, restart_cmd, None, True)
 
     event_bus.emit(
         cmd.completion_event,  # type: ignore[arg-type]

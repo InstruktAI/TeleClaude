@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Generator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, patch
@@ -824,3 +825,85 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(session.session_id, title="Generated title")
         assert result.title == "Generated title"
         assert result is session
+
+
+class TestScheduleHeadlessProjection:
+    @pytest.fixture(autouse=True)
+    def _reset_projection_state(self) -> Generator[None]:
+        pc._active_headless_projections.clear()
+        pc._pending_headless_projections.clear()
+        yield
+        pc._active_headless_projections.clear()
+        pc._pending_headless_projections.clear()
+
+    @pytest.mark.unit
+    async def test_signal_during_projection_triggers_one_rerun(self) -> None:
+        """A signal that lands while a projection is in flight must cause exactly
+        one re-run. This guarantees a title update emitted concurrently with
+        post-stop output projection is not dropped.
+        """
+        session = _make_session(session_id="sess-headless-coalesce")
+        session.lifecycle_status = "headless"
+
+        first_started = asyncio.Event()
+        release_first = asyncio.Event()
+        adapter_client = AsyncMock()
+        call_count = {"value": 0}
+
+        async def fake_project(*_args: object, **_kwargs: object) -> Session:
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                first_started.set()
+                await release_first.wait()
+            return session
+
+        with (
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch(
+                "teleclaude.core.polling_coordinator.project_session_from_transcript",
+                AsyncMock(side_effect=fake_project),
+            ) as project,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+
+            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+            await first_started.wait()
+
+            # Signal lands while the first projection pass is still running.
+            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is False
+            assert session.session_id in pc._pending_headless_projections
+
+            release_first.set()
+
+            # Wait for the inflight task to finish (it should re-run once).
+            for _ in range(50):
+                if call_count["value"] >= 2 and session.session_id not in pc._active_headless_projections:
+                    break
+                await asyncio.sleep(0.01)
+
+        assert project.await_count == 2
+        assert session.session_id not in pc._active_headless_projections
+        assert session.session_id not in pc._pending_headless_projections
+
+    @pytest.mark.unit
+    async def test_signal_with_no_active_projection_runs_once(self) -> None:
+        session = _make_session(session_id="sess-headless-single")
+        session.lifecycle_status = "headless"
+        adapter_client = AsyncMock()
+
+        with (
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+            patch(
+                "teleclaude.core.polling_coordinator.project_session_from_transcript",
+                AsyncMock(return_value=session),
+            ) as project,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+
+            for _ in range(50):
+                if session.session_id not in pc._active_headless_projections:
+                    break
+                await asyncio.sleep(0.01)
+
+        assert project.await_count == 1

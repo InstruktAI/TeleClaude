@@ -240,25 +240,10 @@ class MaintenanceService:
                 exec=False,
                 native_session_id=session.native_session_id,
             )
-            if not await tmux_bridge.send_keys_existing_tmux(
-                session_name=session.tmux_session_name,
-                text=cmd,
-                active_agent=session.active_agent,
-            ):
-                logger.warning(
-                    "Failed to restore agent %s for session %s",
-                    session.active_agent,
-                    session.session_id,
-                )
-                return
 
-            logger.info(
-                "Restored agent %s for session %s (native=%s)",
-                session.active_agent,
-                session.session_id,
-                session.native_session_id,
-            )
-
+            # Subscribe BEFORE the restore paste — the agent's SessionStart
+            # hook can race the paste pipeline and emit AGENT_READY before
+            # this coroutine subscribes. event_bus has no replay.
             loop = asyncio.get_running_loop()
             ready_future: asyncio.Future[None] = loop.create_future()
 
@@ -268,6 +253,25 @@ class MaintenanceService:
 
             ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]
             try:
+                if not await tmux_bridge.send_keys_existing_tmux(
+                    session_name=session.tmux_session_name,
+                    text=cmd,
+                    active_agent=session.active_agent,
+                ):
+                    logger.warning(
+                        "Failed to restore agent %s for session %s",
+                        session.active_agent,
+                        session.session_id,
+                    )
+                    return
+
+                logger.info(
+                    "Restored agent %s for session %s (native=%s)",
+                    session.active_agent,
+                    session.session_id,
+                    session.native_session_id,
+                )
+
                 try:
                     await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
                 except TimeoutError:

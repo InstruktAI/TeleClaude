@@ -346,27 +346,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         logger.debug("agent_then_message: agent=%s mode=%s msg=%s", agent_name, thinking_mode, message[:50])
 
-        # Fire-and-forget start command (don't wait for 1s driver sleep)
-        t0 = time.time()
-        await self.command_service.start_agent(
-            StartAgentCommand(
-                session_id=session_id,
-                agent_name=agent_name,
-                thinking_mode=thinking_mode,
-                args=[],
-            )
-        )
-        logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)
-
-        session = await db.get_session(session_id)
-        if not session:
-            return {"status": "error", "message": "Session not found after creation"}
-
-        # Step 1: Await the agent's own session_start hook (re-emitted as
-        # AGENT_READY by the coordinator). The hook is the authoritative
-        # "stdin loop is live" signal; the prior pane-quiet heuristic was a
-        # visual proxy that produced false positives during heavy startup.
-        logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
+        # Subscribe BEFORE issuing start_agent. The agent's SessionStart hook
+        # can race the daemon's command-dispatch overhead and emit AGENT_READY
+        # before this coroutine resumes — subscribing after the launch loses
+        # the event (event_bus does not replay).
         loop = asyncio.get_running_loop()
         ready_future: asyncio.Future[None] = loop.create_future()
 
@@ -374,8 +357,24 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             if ctx.session_id == session_id and not ready_future.done():
                 ready_future.set_result(None)
 
-        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]  # noqa: I dont know
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]
         try:
+            t0 = time.time()
+            await self.command_service.start_agent(
+                StartAgentCommand(
+                    session_id=session_id,
+                    agent_name=agent_name,
+                    thinking_mode=thinking_mode,
+                    args=[],
+                )
+            )
+            logger.debug("agent_then_message: agent_start took %.3fs", time.time() - t0)
+
+            session = await db.get_session(session_id)
+            if not session:
+                return {"status": "error", "message": "Session not found after creation"}
+
+            logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
             try:
                 await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)

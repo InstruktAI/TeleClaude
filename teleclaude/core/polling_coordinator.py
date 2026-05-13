@@ -209,6 +209,7 @@ async def _try_bind_codex_transcript(session: "Session") -> bool:
 _active_pollers: set[str] = set()
 _poller_lock = asyncio.Lock()
 _active_headless_projections: set[str] = set()
+_pending_headless_projections: set[str] = set()
 _headless_projection_lock = asyncio.Lock()
 
 
@@ -244,17 +245,34 @@ async def _unregister_polling(session_id: str) -> None:
 
 
 async def _register_headless_projection(session_id: str) -> bool:
-    """Register a headless projection task if one isn't active."""
+    """Claim the projection slot or queue a follow-up.
+
+    Returns True when the caller should start a new projection task. Returns
+    False when one is already in flight; the slot is marked pending so the
+    running task will re-run after it finishes.
+    """
     async with _headless_projection_lock:
         if session_id in _active_headless_projections:
+            _pending_headless_projections.add(session_id)
             return False
         _active_headless_projections.add(session_id)
         return True
 
 
-async def _unregister_headless_projection(session_id: str) -> None:
-    """Unregister a headless projection task."""
+async def _consume_pending_projection(session_id: str) -> bool:
+    """At end of a projection pass, decide whether to loop or release."""
     async with _headless_projection_lock:
+        if session_id in _pending_headless_projections:
+            _pending_headless_projections.discard(session_id)
+            return True
+        _active_headless_projections.discard(session_id)
+        return False
+
+
+async def _release_headless_projection(session_id: str) -> None:
+    """Release the projection slot unconditionally (used in error paths)."""
+    async with _headless_projection_lock:
+        _pending_headless_projections.discard(session_id)
         _active_headless_projections.discard(session_id)
 
 
@@ -351,18 +369,27 @@ async def project_session_from_transcript(
 
 
 async def schedule_headless_projection(session_id: str, adapter_client: "AdapterClient") -> bool:
-    """Schedule one transcript projection pass for a headless session."""
+    """Schedule a transcript projection pass for a headless session.
+
+    Coalesces overlapping signals: while a projection is in flight, additional
+    calls mark the slot pending and the running task re-runs once on completion.
+    This guarantees state changes that land during a projection (e.g. a session
+    title update) are reflected on the next pass without needing a fresh signal.
+    """
     if not await _register_headless_projection(session_id):
         return False
 
     async def _run() -> None:
         try:
-            session = await db.get_session(session_id)
-            if not session or session.lifecycle_status != "headless":
-                return
-            await project_session_from_transcript(session, adapter_client)
+            while True:
+                session = await db.get_session(session_id)
+                if not session or session.lifecycle_status != "headless":
+                    return
+                await project_session_from_transcript(session, adapter_client)
+                if not await _consume_pending_projection(session_id):
+                    return
         finally:
-            await _unregister_headless_projection(session_id)
+            await _release_headless_projection(session_id)
 
     task = asyncio.create_task(_run(), name=f"project-headless-{session_id}")
     task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))  # type: ignore[misc]
