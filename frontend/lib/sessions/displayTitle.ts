@@ -9,17 +9,13 @@
 type SessionTitleFields = {
   title?: string | null;
   lifecycle_status?: string | null;
-  session_id?: string;
 };
 
 export function headlessPrefix(session: SessionTitleFields): string {
   return session.lifecycle_status === "headless" ? "[HEADLESS] " : "";
 }
 
-export function displayTitle(session: SessionTitleFields, fallback?: string): string {
-  const body =
-    (session.title && session.title.trim()) ||
-    fallback ||
-    (session.session_id ? session.session_id.slice(0, 8) : "Untitled");
+export function displayTitle(session: SessionTitleFields, fallback: string = "Untitled"): string {
+  const body = (session.title && session.title.trim()) || fallback;
   return `${headlessPrefix(session)}${body}`;
 }
