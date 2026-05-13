@@ -28,6 +28,7 @@ __all__ = [
     "_get_uncommitted_files",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
+    "_is_no_action_only",
     "_looks_like_path_token",
     "_normalize_repo_path",
     "_scope_git_files_to_current_turn",
@@ -180,7 +181,7 @@ def _command_likely_mutates_files(command: str) -> bool:
     patterns = (
         r"\bapply_patch\b",
         r"\bgit\s+(add|mv|rm|restore|checkout|apply)\b",
-        r"\bsed\s+-i\b",
+        r"\bsed\s+.*-i(?:\s|$)",
         r"\bperl\s+-pi\b",
         r"\btouch\b",
         r"\bmkdir\b",
@@ -446,5 +447,15 @@ def _is_docs_only(git_files: list[str]) -> bool:
     """Check if all changed files are non-code (docs, todos, markdown)."""
     for filepath in git_files:
         if not any(fnmatch(filepath, pat) for pat in CHECKPOINT_NO_ACTION_PATTERNS):
+            return False
+    return True
+
+
+def _is_no_action_only(git_files: list[str]) -> bool:
+    """Return True when every changed file is non-actionable and uncategorized."""
+    for filepath in git_files:
+        if not any(fnmatch(filepath, pat) for pat in CHECKPOINT_NO_ACTION_PATTERNS):
+            return False
+        if _categorize_files([filepath]):
             return False
     return True

@@ -257,6 +257,25 @@ class TestEvidenceChecks:
         )
 
     @pytest.mark.unit
+    def test_commit_evidence_must_follow_last_shell_mutation(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                _shell_record("telec code commit -m 'checkpoint'"),
+                _shell_record("sed -i '' 's/old/new/' teleclaude/hooks/checkpoint/__init__.py"),
+            ],
+        )
+
+        assert (
+            _has_commit_evidence_after_last_mutation(
+                timeline,
+                ["teleclaude/hooks/checkpoint/__init__.py"],
+                "/repo",
+            )
+            is False
+        )
+
+    @pytest.mark.unit
     def test_global_python_stdin_probe_error_is_not_counted(self) -> None:
         timeline = TurnTimeline(
             tool_calls=[

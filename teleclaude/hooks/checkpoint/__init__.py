@@ -48,6 +48,7 @@ from teleclaude.hooks.checkpoint._git import (
     _file_matches_category,
     _is_checkpoint_project_supported,
     _is_docs_only,
+    _is_no_action_only,
     _looks_like_path_token,
     _normalize_repo_path,
     _scope_git_files_to_current_turn,
@@ -94,6 +95,7 @@ __all__ = [
     "_has_status_evidence",
     "_is_checkpoint_project_supported",
     "_is_docs_only",
+    "_is_no_action_only",
     "_iter_shell_command_records",
     "_last_category_mutation_index",
     "_looks_like_path_token",
@@ -410,7 +412,7 @@ def get_checkpoint_content(
             )
             return None
 
-        if _is_docs_only(effective_files):
+        if _is_no_action_only(effective_files):
             logger.info(
                 "Checkpoint payload skipped (docs/no-action changes only)",
                 extra={

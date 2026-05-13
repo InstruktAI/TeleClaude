@@ -127,6 +127,24 @@ def test_gemini_teleclaude_notification_does_not_reset_turn_boundary() -> None:
     assert turn.timestamp == datetime(2026, 4, 2, 3, 38, 18, tzinfo=UTC)
 
 
+def test_teleclaude_linked_output_variant_does_not_reset_turn_boundary() -> None:
+    entries = [
+        {"timestamp": "2026-04-02T03:38:18Z", "message": {"role": "user", "content": "real prompt"}},
+        {
+            "timestamp": "2026-04-02T03:45:45Z",
+            "message": {
+                "role": "user",
+                "content": "[TeleClaude - Linked output (sess-peer) on remote]\n\nbridge body",
+            },
+        },
+    ]
+
+    turn = find_last_real_user_turn(entries, AgentName.CLAUDE)
+
+    assert turn is not None
+    assert turn.entry_index == 0
+
+
 def test_gemini_real_user_prompt_counts_as_turn_boundary() -> None:
     entry = {"message": {"role": "user", "content": [{"type": "input_text", "text": "continue please"}]}}
 

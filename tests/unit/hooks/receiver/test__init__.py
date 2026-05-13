@@ -231,6 +231,7 @@ def test_system_injected_user_prompt_contract_is_agent_specific() -> None:
     assert _is_system_injected_user_prompt("claude", "Stop hook feedback:\nblocked") is True
     assert _is_system_injected_user_prompt("claude", "<task-notification>done</task-notification>") is True
     assert _is_system_injected_user_prompt("gemini", "[TeleClaude Notification]\n\nSession abc finished") is True
+    assert _is_system_injected_user_prompt("gemini", "[TeleClaude - Linked output (sess-peer) on remote]") is True
     assert _is_system_injected_user_prompt("gemini", "real prompt") is False
 
 

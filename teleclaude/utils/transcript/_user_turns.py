@@ -97,7 +97,7 @@ def _is_teleclaude_control_text(text: str) -> bool:
         return True
     if is_machine_originated_user_text(stripped):
         return True
-    if stripped.startswith("[TeleClaude Linked output"):
+    if stripped.startswith("[TeleClaude Linked output") or stripped.startswith("[TeleClaude - Linked output"):
         return True
     if is_agent_cli_internal_text(stripped):
         return True

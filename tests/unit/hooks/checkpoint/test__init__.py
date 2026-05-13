@@ -215,6 +215,50 @@ class TestGetCheckpointContent:
 
         assert checkpoint_text is None
 
+    @pytest.mark.unit
+    def test_checkpoint_cycle_does_not_suppress_markdown_agent_artifacts_as_docs_only(self) -> None:
+        timeline = TurnTimeline(
+            has_data=True,
+            tool_calls=[
+                ToolCallRecord(
+                    tool_name="apply_patch",
+                    input_data={"paths": ["agents/commands/next-work.md"]},
+                    had_error=False,
+                )
+            ],
+        )
+        scoped_paths = ScopedPathsResult(
+            paths=("agents/commands/next-work.md",),
+            scope_mode="turn_delta",
+            workspace_kind="git_shared",
+            strategy="codex_structured",
+            ledger_updated=False,
+        )
+        result = CheckpointResult(
+            categories=["agent artifacts"],
+            required_actions=["Reload artifacts: `telec sessions restart self`"],
+            observations=[],
+            is_all_clear=False,
+        )
+
+        with (
+            patch("teleclaude.hooks.checkpoint._is_checkpoint_project_supported", return_value=True),
+            patch("teleclaude.hooks.checkpoint.extract_effective_tool_calls", return_value=timeline),
+            patch("teleclaude.hooks.checkpoint.resolve_scoped_paths", return_value=scoped_paths),
+            patch("teleclaude.hooks.checkpoint.run_heuristics", return_value=result) as run_heuristics_mock,
+        ):
+            checkpoint_text = get_checkpoint_content(
+                session_id="session-1",
+                transcript_path="/tmp/parent.jsonl",
+                agent_name=AgentName.CODEX,
+                project_path="/repo",
+                native_session_id="parent-thread",
+                working_slug="demo-slug",
+            )
+
+        assert checkpoint_text is not None
+        assert run_heuristics_mock.call_args.args[0] == ["agents/commands/next-work.md"]
+
 
 class TestRunHeuristics:
     @pytest.mark.unit

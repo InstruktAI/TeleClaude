@@ -683,7 +683,7 @@ def _is_teleclaude_system_prompt(prompt_text: str) -> bool:
         return True
     if stripped.startswith("[TeleClaude Input Request]"):
         return True
-    if stripped.startswith("[TeleClaude Linked output"):
+    if stripped.startswith("[TeleClaude Linked output") or stripped.startswith("[TeleClaude - Linked output"):
         return True
     return is_machine_originated_user_text(stripped)
 

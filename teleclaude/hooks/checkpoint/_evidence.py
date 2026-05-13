@@ -18,8 +18,10 @@ from teleclaude.constants import (
 from teleclaude.core.todos_db import get_todos_db_sync
 from teleclaude.hooks.checkpoint._git import (
     _canonical_tool_name,
+    _command_likely_mutates_files,
     _extract_apply_patch_paths,
     _extract_shell_command,
+    _extract_shell_touched_paths,
     _file_matches_category,
     _normalize_repo_path,
     _segment_tokens,
@@ -158,7 +160,19 @@ def _last_category_mutation_index(
     last_index: int | None = None
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
-        if tool_name not in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
+        mutator_tools = {
+            "edit",
+            "write",
+            "multiedit",
+            "apply_patch",
+            "notebookedit",
+            "bash",
+            "shell",
+            "terminal",
+            "run_shell_command",
+            "exec_command",
+        }
+        if tool_name not in mutator_tools:
             continue
 
         touched: set[str] = set()
@@ -204,7 +218,19 @@ def _last_git_file_mutation_index(
     last_index: int | None = None
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
-        if tool_name not in {"edit", "write", "multiedit", "apply_patch", "notebookedit"}:
+        mutator_tools = {
+            "edit",
+            "write",
+            "multiedit",
+            "apply_patch",
+            "notebookedit",
+            "bash",
+            "shell",
+            "terminal",
+            "run_shell_command",
+            "exec_command",
+        }
+        if tool_name not in mutator_tools:
             continue
 
         touched: set[str] = set()
@@ -227,6 +253,10 @@ def _last_git_file_mutation_index(
                 value = record.input_data.get(key)
                 if isinstance(value, str):
                     touched.update(_extract_apply_patch_paths(value, project_path))
+        if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
+            command = _extract_shell_command(record.input_data)
+            if _command_likely_mutates_files(command):
+                touched.update(_extract_shell_touched_paths(command, project_path))
 
         if touched & effective_files:
             last_index = idx
