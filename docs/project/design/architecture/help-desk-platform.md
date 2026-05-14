@@ -349,10 +349,10 @@ The admin tags `@agent` (Discord bot mention or text convention) to hand back to
 
 **Relay lifecycle:**
 
-- Relay channels persist for the lifetime of the session (72h max)
+- Relay channels persist for the lifetime of the session (7d max)
 - Multiple escalation/handback cycles can occur within one session
 - Each `@agent` tag collects only messages since the previous `@agent` (or relay start)
-- When the session dies (72h sweep), the relay thread can be archived in Discord
+- When the session dies (7d sweep), the relay thread can be archived in Discord
 
 ### Customer-Facing Agent Behavior
 
@@ -417,7 +417,7 @@ The hook receiver resolves the session's identity (from adapter metadata via the
 
 ### Customer Session Lifecycle
 
-Customer sessions have a distinct lifecycle from admin sessions. They stay alive indefinitely — there is no idle timeout that kills a customer session. The 72h inactivity sweep is the only natural death.
+Customer sessions have a distinct lifecycle from admin sessions. They stay alive indefinitely — there is no idle timeout that kills a customer session. The 7d inactivity sweep is the only natural death.
 
 **Idle compaction sequence.** After a configurable idle threshold (e.g., 30 minutes of no customer input), the daemon:
 
@@ -788,9 +788,9 @@ flowchart TD
 
 10. **Help desk workspace is standalone**: The help desk is its own git repo, not a subdirectory of TeleClaude. The bootstrap routine is idempotent — if the directory exists, it skips. Organization-global docs are symlinked via the standard `docs/global/` mechanism.
 
-11. **Customer sessions stay alive**: No idle timeout kills a customer session. Only the 72h inactivity sweep ends sessions. Idle compaction keeps sessions lean without terminating them.
+11. **Customer sessions stay alive**: No idle timeout kills a customer session. Only the 7d inactivity sweep ends sessions. Idle compaction keeps sessions lean without terminating them.
 
-12. **Relay is session-scoped**: The admin relay channel is a state of the session, not a separate entity. When the session dies (72h sweep), the relay state dies with it. The Discord relay thread can be archived.
+12. **Relay is session-scoped**: The admin relay channel is a state of the session, not a separate entity. When the session dies (7d sweep), the relay state dies with it. The Discord relay thread can be archived.
 
 13. **Relay diverts, not duplicates**: When relay is active, customer messages go to the relay channel ONLY, not to both relay and AI. The AI session is fully paused during relay.
 

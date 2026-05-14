@@ -158,7 +158,7 @@ If restart is not enough, use:
 **Fast checks**
 
 1. `make status`
-2. `instrukt-ai-logs teleclaude --since 10m --grep "cleanup|inactive_72h|orphan|workspace|voice"`
+2. `instrukt-ai-logs teleclaude --since 10m --grep "cleanup|inactive_7d|orphan|workspace|voice"`
 
 **Recover**
 

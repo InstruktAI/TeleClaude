@@ -61,7 +61,7 @@ description: 'Complete lifecycle of a terminal session from creation to cleanup.
     - Receiver still supports legacy TMPDIR marker reads in TeleClaude-managed temp dirs.
     - For true headless identity resolution, native-session mapping is authoritative.
 - **Pipeline**: Hook events flow through the normal outbox → daemon → summarization → TTS pipeline. Output polling is skipped (no tmux to poll).
-- **Cleanup**: Headless sessions are cleaned up by the 72h inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
+- **Cleanup**: Headless sessions are cleaned up by the 7d inactivity sweep, same as regular sessions. They are excluded from stale-tmux detection (no tmux to check) but **are visible in UI listings** for observability.
 - **Adoption boundary**: Transparent adoption is reserved for true `headless` sessions. Closed sessions are not reopened by normal message flow, and non-headless sessions with missing tmux require explicit recovery rather than passive background healing.
 
 ```mermaid
@@ -72,7 +72,7 @@ stateDiagram-v2
     Creating --> Failed: Tmux failed
     Active --> Active: Messages exchanged
     Active --> Closing: Close command
-    Headless --> Closing: 72h inactivity
+    Headless --> Closing: 7d inactivity
     Closing --> Closed: Cleanup complete
     Failed --> [*]
     Closed --> [*]
