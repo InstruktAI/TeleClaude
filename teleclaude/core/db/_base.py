@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.constants import DB_IN_MEMORY
 from teleclaude.core.migrations.runner import run_pending_migrations
+from teleclaude.paths import EVENTS_DB_PATH
 
 from .. import db_models
 from ..dates import ensure_utc, parse_iso_datetime
@@ -26,6 +28,30 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
 
 logger = get_logger(__name__)
+
+RUNTIME_COMPACTION_MIN_FREELIST_RATIO = 0.20
+RUNTIME_COMPACTION_MIN_FREE_BYTES = 16 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class SqliteDatabaseStats:
+    """SQLite file-size statistics used by runtime compaction decisions."""
+
+    page_count: int
+    freelist_count: int
+    page_size: int
+
+    @property
+    def freelist_ratio(self) -> float:
+        """Return the fraction of allocated pages currently on the freelist."""
+        if self.page_count <= 0:
+            return 0.0
+        return self.freelist_count / self.page_count
+
+    @property
+    def free_bytes(self) -> int:
+        """Return the estimated bytes reclaimable by VACUUM."""
+        return self.freelist_count * self.page_size
 
 
 class DbBase:
@@ -183,6 +209,81 @@ class DbBase:
             row = result.first()
             if row:
                 logger.debug("WAL checkpoint: busy=%s, log=%s, checkpointed=%s", *row)
+
+    @staticmethod
+    async def get_sqlite_database_stats(path: str | Path) -> SqliteDatabaseStats:
+        """Return page/freelist statistics for a SQLite database file."""
+        async with aiosqlite.connect(str(Path(path).expanduser())) as conn:
+            page_count = await DbBase._pragma_int(conn, "PRAGMA page_count")
+            freelist_count = await DbBase._pragma_int(conn, "PRAGMA freelist_count")
+            page_size = await DbBase._pragma_int(conn, "PRAGMA page_size")
+        return SqliteDatabaseStats(page_count=page_count, freelist_count=freelist_count, page_size=page_size)
+
+    @staticmethod
+    async def _pragma_int(conn: aiosqlite.Connection, statement: str) -> int:
+        cursor = await conn.execute(statement)  # guard: raw-sql
+        row = await cursor.fetchone()
+        return int(row[0]) if row else 0
+
+    async def compact_sqlite_database_if_needed(
+        self,
+        path: str | Path,
+        *,
+        min_freelist_ratio: float = RUNTIME_COMPACTION_MIN_FREELIST_RATIO,
+        min_free_bytes: int = RUNTIME_COMPACTION_MIN_FREE_BYTES,
+    ) -> bool:
+        """VACUUM a SQLite file only when retained freelist space crosses thresholds."""
+        db_path = Path(path).expanduser()
+        if not db_path.is_file():
+            return False
+
+        stats = await self.get_sqlite_database_stats(db_path)
+        if stats.freelist_ratio < min_freelist_ratio or stats.free_bytes < min_free_bytes:
+            return False
+
+        try:
+            await self._compact_sqlite_database(db_path)
+        except aiosqlite.Error:
+            logger.warning("SQLite runtime compaction skipped for %s", db_path, exc_info=True)
+            return False
+        return True
+
+    @staticmethod
+    async def _compact_sqlite_database(path: Path) -> None:
+        async with aiosqlite.connect(str(path)) as conn:
+            await conn.execute("PRAGMA busy_timeout = 5000")  # guard: raw-sql
+            await conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")  # guard: raw-sql
+            await conn.commit()
+            await conn.execute("VACUUM")  # guard: raw-sql
+            await conn.commit()
+
+    def _runtime_main_db_path(self) -> Path | None:
+        target = self._temp_db_path if self._temp_db_path is not None else self.db_path
+        if target == DB_IN_MEMORY or str(target).startswith("file:"):
+            return None
+        return Path(target).expanduser()
+
+    async def compact_runtime_databases_if_needed(self) -> int:
+        """Compact bounded runtime SQLite files while leaving history databases untouched."""
+        main_path = self._runtime_main_db_path()
+        if main_path is None:
+            return 0
+
+        runtime_paths = (
+            main_path,
+            get_outbox_db_path(main_path.parent),
+            main_path.with_name(EVENTS_DB_PATH.name),
+        )
+        compacted = 0
+        seen_paths: set[Path] = set()
+        for runtime_path in runtime_paths:
+            db_path = runtime_path.expanduser()
+            if db_path in seen_paths:
+                continue
+            seen_paths.add(db_path)
+            if await self.compact_sqlite_database_if_needed(db_path):
+                compacted += 1
+        return compacted
 
     async def close(self) -> None:
         """Close database connection."""

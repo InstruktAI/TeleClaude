@@ -230,3 +230,47 @@ async def test_stale_helpers_mark_only_nonterminal_or_old_running_operations(db:
     assert expired is not None
     assert expired.state == "stale"
     assert expired.error_text == "timeout"
+
+
+async def test_cleanup_terminal_operations_deletes_only_expired_terminal_rows(db: Db) -> None:
+    await db.create_operation(
+        operation_id="op-old-done",
+        kind="build",
+        caller_session_id="sess-001",
+        client_request_id=None,
+        cwd="/repo",
+        slug=None,
+        payload_json="{}",
+        state="running",
+    )
+    await db.create_operation(
+        operation_id="op-recent-done",
+        kind="build",
+        caller_session_id="sess-001",
+        client_request_id=None,
+        cwd="/repo",
+        slug=None,
+        payload_json="{}",
+        state="running",
+    )
+    await db.create_operation(
+        operation_id="op-running",
+        kind="build",
+        caller_session_id="sess-001",
+        client_request_id=None,
+        cwd="/repo",
+        slug=None,
+        payload_json="{}",
+        state="running",
+    )
+    old_iso = (datetime.now(UTC) - timedelta(days=8)).isoformat()
+    recent_iso = datetime.now(UTC).isoformat()
+    await db.complete_operation("op-old-done", "done", now_iso=old_iso)
+    await db.complete_operation("op-recent-done", "done", now_iso=recent_iso)
+
+    deleted = await db.cleanup_terminal_operations(older_than_iso=(datetime.now(UTC) - timedelta(days=7)).isoformat())
+
+    assert deleted == 1
+    assert await db.get_operation("op-old-done") is None
+    assert await db.get_operation("op-recent-done") is not None
+    assert await db.get_operation("op-running") is not None

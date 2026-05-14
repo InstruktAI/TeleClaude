@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
@@ -11,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from teleclaude.core.models import Session
+from teleclaude.services import maintenance_service
 from teleclaude.services.maintenance_service import COMPACTION_IDLE_THRESHOLD_S, MaintenanceService
 
 
@@ -220,3 +222,154 @@ class TestMaintenanceService:
 
         with patch("teleclaude.services.maintenance_service.UiAdapter", _FakeUiAdapter):
             await service._cleanup_adapter_resources()
+
+    @pytest.mark.unit
+    async def test_periodic_cleanup_runs_session_map_pruning(self) -> None:
+        service = _make_service()
+        to_thread = AsyncMock(return_value=1)
+        cleanup_inbound = AsyncMock()
+        cleanup_orphan_inbound = AsyncMock()
+        cleanup_terminal_operations = AsyncMock()
+        cleanup_webhook_outbox = AsyncMock()
+        cleanup_hook_outbox = AsyncMock()
+        cleanup_orphan_session_tokens = AsyncMock()
+        cleanup_orphan_session_listeners = AsyncMock()
+        compact_runtime_databases_if_needed = AsyncMock()
+        event_db = SimpleNamespace(cleanup_runtime_events=AsyncMock())
+
+        with (
+            patch(
+                "teleclaude.services.maintenance_service.asyncio.sleep",
+                new=AsyncMock(side_effect=asyncio.CancelledError),
+            ),
+            patch("teleclaude.services.maintenance_service.asyncio.to_thread", new=to_thread),
+            patch(
+                "teleclaude.services.maintenance_service.session_cleanup.emit_recently_closed_session_events",
+                new=AsyncMock(),
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_tmux_sessions",
+                new=AsyncMock(),
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces",
+                new=AsyncMock(),
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_session_tmpdirs",
+                new=AsyncMock(),
+            ),
+            patch("teleclaude.services.maintenance_service.db.cleanup_stale_voice_assignments", new=AsyncMock()),
+            patch("teleclaude.services.maintenance_service.db.cleanup_inbound", new=cleanup_inbound),
+            patch("teleclaude.services.maintenance_service.db.cleanup_orphan_inbound", new=cleanup_orphan_inbound),
+            patch(
+                "teleclaude.services.maintenance_service.db.cleanup_terminal_operations",
+                new=cleanup_terminal_operations,
+            ),
+            patch("teleclaude.services.maintenance_service.db.cleanup_webhook_outbox", new=cleanup_webhook_outbox),
+            patch("teleclaude.services.maintenance_service.db.cleanup_hook_outbox", new=cleanup_hook_outbox),
+            patch(
+                "teleclaude.services.maintenance_service.db.cleanup_orphan_session_tokens",
+                new=cleanup_orphan_session_tokens,
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.db.cleanup_orphan_session_listeners",
+                new=cleanup_orphan_session_listeners,
+            ),
+            patch(
+                "teleclaude.services.maintenance_service.db.compact_runtime_databases_if_needed",
+                new=compact_runtime_databases_if_needed,
+            ),
+            patch("teleclaude.services.maintenance_service.get_operations_service") as operations_factory,
+            patch("teleclaude.services.maintenance_service.get_event_db", new=AsyncMock(return_value=event_db)),
+            patch.object(service, "_cleanup_inactive_sessions", new=AsyncMock()),
+            patch.object(service, "_check_idle_compaction", new=AsyncMock()),
+            patch.object(service, "_cleanup_adapter_resources", new=AsyncMock()),
+        ):
+            operations_factory.return_value.expire_stale_operations = AsyncMock()
+
+            await service.periodic_cleanup()
+
+        to_thread.assert_awaited_once()
+        assert to_thread.await_args.args == (maintenance_service.prune_session_map,)
+        cleanup_inbound.assert_awaited_once()
+        cleanup_orphan_inbound.assert_awaited_once()
+        cleanup_terminal_operations.assert_awaited_once()
+        cleanup_webhook_outbox.assert_awaited_once()
+        cleanup_hook_outbox.assert_awaited_once()
+        cleanup_orphan_session_tokens.assert_awaited_once()
+        cleanup_orphan_session_listeners.assert_awaited_once()
+        event_db.cleanup_runtime_events.assert_awaited_once()
+        compact_runtime_databases_if_needed.assert_awaited_once()
+
+    @pytest.mark.unit
+    async def test_periodic_cleanup_surfaces_runtime_maintenance_failures_as_warnings(self) -> None:
+        service = _make_service()
+        event_db = SimpleNamespace(cleanup_runtime_events=AsyncMock(side_effect=RuntimeError("event cleanup failed")))
+
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.asyncio.sleep",
+                    new=AsyncMock(side_effect=asyncio.CancelledError),
+                )
+            )
+            stack.enter_context(patch("teleclaude.services.maintenance_service.asyncio.to_thread", new=AsyncMock()))
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.emit_recently_closed_session_events",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_tmux_sessions",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_workspaces",
+                    new=AsyncMock(),
+                )
+            )
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.session_cleanup.cleanup_orphan_session_tmpdirs",
+                    new=AsyncMock(),
+                )
+            )
+            for target in (
+                "db.cleanup_stale_voice_assignments",
+                "db.cleanup_inbound",
+                "db.cleanup_orphan_inbound",
+                "db.cleanup_terminal_operations",
+                "db.cleanup_webhook_outbox",
+                "db.cleanup_hook_outbox",
+                "db.cleanup_orphan_session_tokens",
+                "db.cleanup_orphan_session_listeners",
+            ):
+                stack.enter_context(patch(f"teleclaude.services.maintenance_service.{target}", new=AsyncMock()))
+            stack.enter_context(
+                patch(
+                    "teleclaude.services.maintenance_service.db.compact_runtime_databases_if_needed",
+                    new=AsyncMock(side_effect=RuntimeError("compaction failed")),
+                )
+            )
+            operations_factory = stack.enter_context(
+                patch("teleclaude.services.maintenance_service.get_operations_service")
+            )
+            stack.enter_context(
+                patch("teleclaude.services.maintenance_service.get_event_db", new=AsyncMock(return_value=event_db))
+            )
+            warning_mock = stack.enter_context(patch("teleclaude.services.maintenance_service.logger.warning"))
+            debug_mock = stack.enter_context(patch("teleclaude.services.maintenance_service.logger.debug"))
+            stack.enter_context(patch.object(service, "_cleanup_inactive_sessions", new=AsyncMock()))
+            stack.enter_context(patch.object(service, "_check_idle_compaction", new=AsyncMock()))
+            stack.enter_context(patch.object(service, "_cleanup_adapter_resources", new=AsyncMock()))
+            operations_factory.return_value.expire_stale_operations = AsyncMock()
+
+            await service.periodic_cleanup()
+
+        assert warning_mock.call_count == 2
+        debug_mock.assert_not_called()

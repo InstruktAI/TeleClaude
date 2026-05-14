@@ -1,6 +1,6 @@
 """Mixin: DbSettingsMixin."""
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -118,28 +118,30 @@ class DbSettingsMixin:
             result = await db_session.exec(stmt)
             return {(row[0], row[1] or "") for row in result.all()}
 
-    async def cleanup_stale_voice_assignments(self, max_age_days: int = 7) -> int:
-        """Delete voice assignments older than max_age_days.
-
-        Args:
-            max_age_days: Maximum age in days before cleanup (default: 7)
-
-        Returns:
-            Number of records deleted
-        """
-
-        cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
-        stmt = delete(db_models.VoiceAssignment).where(db_models.VoiceAssignment.assigned_at < cutoff)
+    async def cleanup_stale_voice_assignments(self) -> int:
+        """Delete voice assignments that do not belong to an open session."""
+        live_conditions = (
+            db_models.Session.closed_at.is_(None),
+            or_(
+                db_models.Session.lifecycle_status.is_(None),
+                db_models.Session.lifecycle_status != "closed",
+            ),
+        )
+        live_session_ids = select(db_models.Session.session_id).where(*live_conditions)
+        live_native_ids = select(db_models.Session.native_session_id).where(
+            *live_conditions,
+            db_models.Session.native_session_id.is_not(None),
+        )
+        stmt = delete(db_models.VoiceAssignment).where(
+            db_models.VoiceAssignment.id.notin_(live_session_ids),
+            db_models.VoiceAssignment.id.notin_(live_native_ids),
+        )
         async with self._session() as db_session:
             result = await db_session.exec(stmt)
             await db_session.commit()
             deleted = result.rowcount or 0
         if deleted > 0:
-            logger.info(
-                "Cleaned up %d stale voice assignments (older than %d days)",
-                deleted,
-                max_age_days,
-            )
+            logger.info("Cleaned up %d stale voice assignments", deleted)
         return deleted
 
     # Agent availability methods (for next-machine workflow)
