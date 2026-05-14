@@ -358,6 +358,8 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
     """Enforce that every test file has a corresponding source module.
 
     Convention: tests/unit/foo/test_bar.py must have teleclaude/foo/bar.py.
+    Repository scripts are mapped directly:
+    tests/unit/scripts/foo/test_bar.py must have scripts/foo/bar.py.
     Orphaned tests (testing deleted/renamed modules) are caught here.
 
     Exclusions: classify intentional orphans in [tool.test-mapping].orphan-exclude.
@@ -396,8 +398,8 @@ def _check_test_companions(repo_root: Path, selected_paths: set[str] | None = No
         expected_source = _test_to_source_path(test_path, tests_root)
         if expected_source is None:
             continue
-        if not (source_root / expected_source).exists():
-            full_expected = f"teleclaude/{expected_source}"
+        expected_path, full_expected = _resolve_companion_source(repo_root, source_root, expected_source)
+        if not expected_path.exists():
             orphans.append((rel_test, full_expected))
 
     if not orphans:
@@ -457,6 +459,12 @@ def _test_to_source_path(test_path: Path, tests_root: Path) -> str | None:
     source_filename = filename.removeprefix("test_")
     parts[-1] = source_filename
     return "/".join(parts)
+
+
+def _resolve_companion_source(repo_root: Path, source_root: Path, expected_source: str) -> tuple[Path, str]:
+    if expected_source.startswith("scripts/"):
+        return repo_root / expected_source, expected_source
+    return source_root / expected_source, f"teleclaude/{expected_source}"
 
 
 def _find_no_companion_markers(repo_root: Path, test_paths: Iterable[Path]) -> list[str]:

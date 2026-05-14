@@ -145,6 +145,25 @@ class TestCompanionGuardrail:
         assert "orphan-exclude" in result
         assert "65" in result
 
+    @pytest.mark.unit
+    def test_scripts_tests_map_to_scripts_source_root(self, tmp_path: Path) -> None:
+        """Script tests mirror the repository scripts tree, not the package tree."""
+        _write_file(tmp_path, "pyproject.toml", "[tool.test-mapping]\norphan-exclude = []\n")
+        _write_file(tmp_path, "teleclaude/__init__.py", "")
+        _write_file(tmp_path, "scripts/helpers/git_repo_helper.py", "from __future__ import annotations\n")
+        _write_file(
+            tmp_path,
+            "tests/unit/scripts/helpers/test_git_repo_helper.py",
+            "from __future__ import annotations\n",
+        )
+
+        result = _run_test_companion_check(
+            tmp_path,
+            selected_paths={"tests/unit/scripts/helpers/test_git_repo_helper.py"},
+        )
+
+        assert result is None
+
 
 def _run_no_companion_marker_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
     """Run test-file no-companion marker guardrail and return failure text if any."""
