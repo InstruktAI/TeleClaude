@@ -29,6 +29,7 @@ def test_home_defaults_to_user_teleclaude_dir_when_env_unset() -> None:
     env = os.environ.copy()
     env.pop("TELECLAUDE_HOME", None)
 
+    # Child interpreter required: teleclaude.paths resolves constants at import time.
     result = subprocess.run(
         [
             sys.executable,

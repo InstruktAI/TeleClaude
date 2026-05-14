@@ -111,8 +111,10 @@ def _load_checkout_root() -> Path:
         return DEFAULT_CHECKOUT_ROOT
     try:
         loaded_config: object = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    except Exception:
-        return DEFAULT_CHECKOUT_ROOT
+    except OSError as exc:
+        raise SystemExit(f"ERROR: unable to read TeleClaude config at {config_path}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise SystemExit(f"ERROR: invalid YAML in TeleClaude config at {config_path}: {exc}") from exc
     raw_obj = loaded_config if loaded_config is not None else {}
     if not isinstance(raw_obj, dict):
         return DEFAULT_CHECKOUT_ROOT

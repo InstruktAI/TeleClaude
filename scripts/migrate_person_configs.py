@@ -5,7 +5,7 @@
 #     "pyyaml",
 # ]
 # ///
-"""Migrate person configs from legacy notifications format to subscription model.
+"""Durable operator migration command for person subscription config upgrades.
 
 Migrations performed:
 - notifications.telegram_chat_id -> creds.telegram.chat_id
@@ -14,6 +14,8 @@ Migrations performed:
 - notifications block removed after migration
 
 Idempotent: skips configs already in the new format.
+This lives in scripts because operators may need the same maintenance command
+across machines during upgrade or recovery.
 """
 
 import argparse
