@@ -794,7 +794,7 @@ def main() -> None:
     """Parse a hook event and enqueue it for daemon processing."""
     args = _parse_args()
 
-    logger.trace(
+    logger.debug(
         "Hook receiver start",
         argv=sys.argv,
         cwd=os.getcwd(),
