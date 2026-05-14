@@ -2,11 +2,36 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_PREFIX
 
+if TYPE_CHECKING:
+    from teleclaude.core.models._session import Session
+
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
 _MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
+
+
+def transcript_expected_to_exist(session: "Session") -> bool:
+    """Return True when the agent's transcript file is expected to exist on disk.
+
+    Codex CLI doesn't write its session transcript until the first user prompt
+    is submitted. Our synthetic `session_start` (used to bridge Codex's broken
+    cold-launch hook) fires before the file exists, so `native_log_file` stays
+    None until Codex's real `session_start` arrives — which it does combined
+    with `user_prompt_submit`. Until that back-fill happens, any code that
+    tries to read the transcript must gracefully degrade instead of failing.
+
+    Claude and Gemini emit `session_start` correctly on agent launch and the
+    daemon records `native_log_file` immediately, so this returns True for them
+    as soon as the session_start hook has been processed.
+
+    Callers should use this as a precondition check: when False, return empty
+    or skip the cycle silently. When True but the file is genuinely missing,
+    that is a real anomaly worth logging.
+    """
+    return session.native_log_file is not None
 
 
 @dataclass
