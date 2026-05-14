@@ -336,10 +336,10 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         # it is routed directly via adapter_client.agent_event_handler above.
         # Other events (AGENT_ACTIVITY, AGENT_AVAILABILITY, SESSION_UPDATED, etc.)
         # are owned by their respective components (api_server, adapters).
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
-        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, self._handle_session_close_requested)
-        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)  # type: ignore[arg-type]
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)  # type: ignore[arg-type]
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, self._handle_session_close_requested)  # type: ignore[arg-type]
+        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error)  # type: ignore[arg-type]
         event_bus.subscribe("system_command", self._handle_system_command)  # type: ignore[arg-type]
 
         # Note: Adapters are loaded in client.start(), not here

@@ -43,7 +43,10 @@ from teleclaude.output_projection.models import ProjectedBlock, VisibilityPolicy
 from teleclaude.output_projection.visibility import is_agent_cli_internal_text
 from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 from teleclaude.utils.transcript._parsers import normalize_transcript_entry_message
-from teleclaude.utils.transcript._tool_calls import _is_compaction_entry, _is_user_tool_result_only_message
+from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
+    _is_compaction_entry,
+    _is_user_tool_result_only_message,
+)
 from teleclaude.utils.transcript._utils import _parse_timestamp
 
 logger = get_logger(__name__)

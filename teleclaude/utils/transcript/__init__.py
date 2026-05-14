@@ -59,7 +59,7 @@ from teleclaude.utils.transcript._rendering import (
     render_agent_output,
     render_clean_agent_output,
 )
-from teleclaude.utils.transcript._tool_calls import (
+from teleclaude.utils.transcript._tool_calls import (  # type: ignore[attr-defined]
     StructuredMessage,
     ToolCallRecord,
     TurnTimeline,

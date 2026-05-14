@@ -148,6 +148,56 @@ def _has_evidence_after_index(timeline: TurnTimeline, substrings: list[str], aft
     return False
 
 
+_MUTATOR_TOOLS = {
+    "edit",
+    "write",
+    "multiedit",
+    "apply_patch",
+    "notebookedit",
+    "bash",
+    "shell",
+    "terminal",
+    "run_shell_command",
+    "exec_command",
+}
+_SHELL_TOOLS = {"bash", "shell", "terminal", "run_shell_command", "exec_command"}
+
+
+def _record_touched_paths(
+    record: ToolCallRecord,
+    tool_name: str,
+    project_path: str,
+    *,
+    include_shell_inference: bool,
+) -> set[str]:
+    """Collect repo-relative paths touched by a single tool call record."""
+    touched: set[str] = set()
+    for key in ("file_path", "path", "filepath", "target_file"):
+        value = record.input_data.get(key)
+        if isinstance(value, str):
+            normalized = _normalize_repo_path(value, project_path)
+            if normalized:
+                touched.add(normalized)
+    for key in ("file_paths", "paths"):
+        value = record.input_data.get(key)
+        if isinstance(value, list):
+            for entry in value:
+                if isinstance(entry, str):
+                    normalized = _normalize_repo_path(entry, project_path)
+                    if normalized:
+                        touched.add(normalized)
+    if tool_name == "apply_patch":
+        for key in ("input", "patch", "raw_arguments", "command", "cmd"):
+            value = record.input_data.get(key)
+            if isinstance(value, str):
+                touched.update(_extract_apply_patch_paths(value, project_path))
+    if include_shell_inference and tool_name in _SHELL_TOOLS:
+        command = _extract_shell_command(record.input_data)
+        if _command_likely_mutates_files(command):
+            touched.update(_extract_shell_touched_paths(command, project_path))
+    return touched
+
+
 def _last_category_mutation_index(
     timeline: TurnTimeline,
     category: FileCategory,
@@ -160,42 +210,9 @@ def _last_category_mutation_index(
     last_index: int | None = None
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
-        mutator_tools = {
-            "edit",
-            "write",
-            "multiedit",
-            "apply_patch",
-            "notebookedit",
-            "bash",
-            "shell",
-            "terminal",
-            "run_shell_command",
-            "exec_command",
-        }
-        if tool_name not in mutator_tools:
+        if tool_name not in _MUTATOR_TOOLS:
             continue
-
-        touched: set[str] = set()
-        for key in ("file_path", "path", "filepath", "target_file"):
-            value = record.input_data.get(key)
-            if isinstance(value, str):
-                normalized = _normalize_repo_path(value, project_path)
-                if normalized:
-                    touched.add(normalized)
-        for key in ("file_paths", "paths"):
-            value = record.input_data.get(key)
-            if isinstance(value, list):
-                for entry in value:
-                    if isinstance(entry, str):
-                        normalized = _normalize_repo_path(entry, project_path)
-                        if normalized:
-                            touched.add(normalized)
-        if tool_name == "apply_patch":
-            for key in ("input", "patch", "raw_arguments", "command", "cmd"):
-                value = record.input_data.get(key)
-                if isinstance(value, str):
-                    touched.update(_extract_apply_patch_paths(value, project_path))
-
+        touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=False)
         if any(_file_matches_category(path, category) for path in touched):
             last_index = idx
 
@@ -218,46 +235,9 @@ def _last_git_file_mutation_index(
     last_index: int | None = None
     for idx, record in enumerate(timeline.tool_calls):
         tool_name = _canonical_tool_name(record.tool_name)
-        mutator_tools = {
-            "edit",
-            "write",
-            "multiedit",
-            "apply_patch",
-            "notebookedit",
-            "bash",
-            "shell",
-            "terminal",
-            "run_shell_command",
-            "exec_command",
-        }
-        if tool_name not in mutator_tools:
+        if tool_name not in _MUTATOR_TOOLS:
             continue
-
-        touched: set[str] = set()
-        for key in ("file_path", "path", "filepath", "target_file"):
-            value = record.input_data.get(key)
-            if isinstance(value, str):
-                normalized = _normalize_repo_path(value, project_path)
-                if normalized:
-                    touched.add(normalized)
-        for key in ("file_paths", "paths"):
-            value = record.input_data.get(key)
-            if isinstance(value, list):
-                for entry in value:
-                    if isinstance(entry, str):
-                        normalized = _normalize_repo_path(entry, project_path)
-                        if normalized:
-                            touched.add(normalized)
-        if tool_name == "apply_patch":
-            for key in ("input", "patch", "raw_arguments", "command", "cmd"):
-                value = record.input_data.get(key)
-                if isinstance(value, str):
-                    touched.update(_extract_apply_patch_paths(value, project_path))
-        if tool_name in {"bash", "shell", "terminal", "run_shell_command", "exec_command"}:
-            command = _extract_shell_command(record.input_data)
-            if _command_likely_mutates_files(command):
-                touched.update(_extract_shell_touched_paths(command, project_path))
-
+        touched = _record_touched_paths(record, tool_name, project_path, include_shell_inference=True)
         if touched & effective_files:
             last_index = idx
 
