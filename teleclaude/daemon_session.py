@@ -458,7 +458,12 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 AGENT_START_STABILIZE_QUIET_S,
             )
         )
-        hook_task = asyncio.create_task(asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S))
+        # Shield ready_future from cancellation: when pane_task wins and we cancel
+        # hook_task in the finally, `asyncio.wait_for` would otherwise cancel the
+        # underlying ready_future too, which then breaks our post-synthesis re-wait.
+        hook_task = asyncio.create_task(
+            asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+        )
         try:
             done, _pending = await asyncio.wait(
                 {pane_task, hook_task},
@@ -471,12 +476,18 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
         if hook_won:
+            logger.debug("codex readiness: native hook won the race session=%s", session_id)
             return
 
         pane_won = False
         if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
             ready, _tail = pane_task.result()
             pane_won = ready
+            logger.debug(
+                "codex readiness: pane task completed ready=%s session=%s",
+                ready,
+                session_id,
+            )
 
         if not pane_won:
             raise TimeoutError("codex readiness: pane and hook both failed within timeout")
@@ -496,11 +507,17 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             event_type=AgentHookEvents.AGENT_SESSION_START,
         )
         await self.agent_coordinator.handle_session_start(synthetic_ctx)
+        # Wait briefly for the bootstrap subscriber (set up in _handle_agent_then_message)
+        # to observe the AGENT_READY emitted by handle_session_start. Catch both
+        # TimeoutError (no emission) and CancelledError (future was previously
+        # cancelled by a cancelled wrapper) and proceed — pane readiness is verified.
         try:
-            await asyncio.wait_for(ready_future, timeout=2.0)
-        except TimeoutError:
+            await asyncio.wait_for(asyncio.shield(ready_future), timeout=2.0)
+            logger.debug("codex readiness: synthetic AGENT_READY observed session=%s", session_id)
+        except (TimeoutError, asyncio.CancelledError) as exc:
             logger.debug(
-                "agent_then_message: synthetic AGENT_READY didn't resolve future — proceeding anyway session=%s",
+                "codex readiness: synthetic AGENT_READY not observed (%s) — proceeding session=%s",
+                type(exc).__name__,
                 session_id,
             )
 

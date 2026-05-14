@@ -73,7 +73,10 @@ async def _await_restart_readiness(
             _RESTART_QUIET_S,
         )
     )
-    hook_task = asyncio.create_task(asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S))
+    # Shield ready_future from cancellation when hook_task is cancelled.
+    hook_task = asyncio.create_task(
+        asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+    )
     try:
         done, _pending = await asyncio.wait(
             {pane_task, hook_task},
