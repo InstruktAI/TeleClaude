@@ -99,7 +99,8 @@ class TestNotificationsRoutes:
         """
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with patch.object(event_bus, "emit", side_effect=capture_emit):
@@ -118,7 +119,8 @@ class TestNotificationsRoutes:
         """resolve_notification emits NotificationResolvedPayload with the notification ID."""
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with patch.object(event_bus, "emit", side_effect=capture_emit):

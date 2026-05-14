@@ -64,17 +64,16 @@ def test_title_with_crlf_newline_renders_first_line_only(monkeypatch: pytest.Mon
 
 
 @pytest.mark.unit
-def test_title_that_is_only_newline_renders_empty_first_line(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Edge case: title=\\n yields an empty first line (not '(untitled)')."""
+def test_title_that_is_only_newline_renders_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Edge case: a whitespace-only title falls back to '(untitled)' via session_display_title."""
     row = _make_row("\n")
     monkeypatch.setattr(type(row), "_content_width", property(lambda _: 80))
 
     text = row._build_title_line()
     plain = text.plain
 
-    # splitlines()[0] on "\n" returns "" — document this behavior
     assert "\n" not in plain
-    assert "(untitled)" not in plain
+    assert "(untitled)" in plain
 
 
 @pytest.mark.unit

@@ -82,7 +82,8 @@ class TestJobsRoutes:
         background_tasks = BackgroundTasks()
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with (
@@ -112,7 +113,8 @@ class TestJobsRoutes:
         background_tasks = BackgroundTasks()
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with (

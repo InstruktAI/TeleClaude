@@ -62,7 +62,8 @@ class TestAgentRestartEventEmission:
 
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         def capture_task(coro: object, *, name: str | None = None) -> MagicMock:
@@ -150,7 +151,8 @@ class TestSessionEscalationEventEmission:
 
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with (
@@ -248,7 +250,8 @@ class TestSessionCloseCompletedEventEmission:
 
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with (
@@ -280,7 +283,8 @@ class TestSessionCloseCompletedEventEmission:
 
         emitted: list[tuple[str, object]] = []
 
-        def capture_emit(event: str, context: object) -> None:
+        def capture_emit(event: str, context: object, *, visibility: object = None) -> None:
+            del visibility
             emitted.append((event, context))
 
         with (
