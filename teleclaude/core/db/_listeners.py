@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, func, update
+from sqlalchemy import delete, func, or_, update
 from sqlalchemy import select as sqlalchemy_select
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
@@ -143,5 +143,25 @@ class DbListenersMixin:
         )
         async with self._session() as db_session:
             return list((await db_session.exec(stmt)).all())
+
+    async def cleanup_orphan_session_listeners(self) -> int:
+        """Delete listeners whose target or caller session is closed or missing."""
+        live_session_ids = select(db_models.Session.session_id).where(
+            db_models.Session.closed_at.is_(None),
+            or_(
+                db_models.Session.lifecycle_status.is_(None),
+                db_models.Session.lifecycle_status != "closed",
+            ),
+        )
+        stmt = delete(db_models.SessionListenerRow).where(
+            or_(
+                db_models.SessionListenerRow.target_session_id.notin_(live_session_ids),
+                db_models.SessionListenerRow.caller_session_id.notin_(live_session_ids),
+            )
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return result.rowcount or 0
 
     # ── Conversation links (direct + gathering) ──────────────────────

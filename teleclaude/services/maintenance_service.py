@@ -22,6 +22,8 @@ from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
+from teleclaude.events import get_event_db
+from teleclaude.hooks.receiver._session import prune_session_map
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
@@ -61,9 +63,28 @@ class MaintenanceService:
                 await session_cleanup.emit_recently_closed_session_events()
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
+                await session_cleanup.cleanup_orphan_session_tmpdirs()
+                await asyncio.to_thread(prune_session_map)
+                now = datetime.now(UTC)
+                runtime_cutoff_iso = (now - timedelta(days=7)).isoformat()
+                now_iso = now.isoformat()
                 await db.cleanup_stale_voice_assignments()
-                cutoff_iso = (datetime.now(UTC) - timedelta(hours=72)).isoformat()
-                await db.cleanup_inbound(cutoff_iso)
+                await db.cleanup_inbound(runtime_cutoff_iso)
+                await db.cleanup_orphan_inbound(now_iso)
+                await db.cleanup_terminal_operations(runtime_cutoff_iso)
+                await db.cleanup_webhook_outbox(runtime_cutoff_iso)
+                await db.cleanup_hook_outbox(runtime_cutoff_iso)
+                await db.cleanup_orphan_session_tokens()
+                await db.cleanup_orphan_session_listeners()
+                try:
+                    event_db = await get_event_db()
+                    await event_db.cleanup_runtime_events(older_than=now - timedelta(days=7))
+                except Exception:
+                    logger.warning("Event DB runtime cleanup skipped", exc_info=True)
+                try:
+                    await db.compact_runtime_databases_if_needed()
+                except Exception:
+                    logger.warning("SQLite runtime compaction skipped", exc_info=True)
                 try:
                     await get_operations_service().expire_stale_operations()
                 except Exception:

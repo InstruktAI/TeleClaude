@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import and_, delete, or_, update
+from sqlalchemy import and_, delete, or_, true, update
 from sqlmodel import select
 
 from teleclaude.core.event_bus import event_bus
@@ -381,5 +381,30 @@ class DbHooksMixin:
         async with self._outbox_session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
+
+    async def cleanup_hook_outbox(self, older_than_iso: str) -> int:
+        """Delete expired hook outbox rows or rows whose session is no longer live."""
+        live_stmt = select(db_models.Session.session_id).where(
+            db_models.Session.closed_at.is_(None),
+            or_(
+                db_models.Session.lifecycle_status.is_(None),
+                db_models.Session.lifecycle_status != "closed",
+            ),
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(live_stmt)
+            live_session_ids = set(result.all())
+
+        orphan_condition = db_models.HookOutbox.session_id.notin_(live_session_ids) if live_session_ids else true()
+        stmt = delete(db_models.HookOutbox).where(
+            or_(
+                db_models.HookOutbox.created_at < older_than_iso,
+                orphan_condition,
+            )
+        )
+        async with self._outbox_session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return result.rowcount or 0
 
     # ── Inbound queue — durable message delivery ─────────────────────────

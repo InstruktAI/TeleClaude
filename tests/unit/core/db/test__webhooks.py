@@ -96,3 +96,61 @@ async def test_mark_webhook_failed_schedules_retry_without_making_non_pending_ro
     assert terminal is not None
     assert terminal.status == "failed"
     assert terminal.last_error == "permanent"
+
+
+async def test_cleanup_webhook_outbox_deletes_only_expired_terminal_rows(db: Db) -> None:
+    old_delivered_id = await db.enqueue_webhook(
+        "contract-1",
+        event_json='{"event":"old-delivered"}',
+        target_url="https://example.test/old",
+    )
+    recent_delivered_id = await db.enqueue_webhook(
+        "contract-1",
+        event_json='{"event":"recent-delivered"}',
+        target_url="https://example.test/recent",
+    )
+    pending_id = await db.enqueue_webhook(
+        "contract-1",
+        event_json='{"event":"pending"}',
+        target_url="https://example.test/pending",
+    )
+    rejected_id = await db.enqueue_webhook(
+        "contract-1",
+        event_json='{"event":"rejected"}',
+        target_url="https://example.test/rejected",
+    )
+    old_iso = (datetime.now(UTC) - timedelta(days=8)).isoformat()
+    recent_iso = datetime.now(UTC).isoformat()
+    await db.mark_webhook_delivered(old_delivered_id)
+    await db.mark_webhook_delivered(recent_delivered_id)
+    await db.mark_webhook_failed(rejected_id, error="gone", attempt_count=1, next_attempt_at=None, status="rejected")
+
+    async with db._session() as session:
+        for row_id in [old_delivered_id, rejected_id]:
+            row = await session.get(db_models.WebhookOutbox, row_id)
+            assert row is not None
+            row.created_at = old_iso
+            session.add(row)
+        recent = await session.get(db_models.WebhookOutbox, recent_delivered_id)
+        assert recent is not None
+        recent.created_at = recent_iso
+        session.add(recent)
+        pending = await session.get(db_models.WebhookOutbox, pending_id)
+        assert pending is not None
+        pending.created_at = old_iso
+        session.add(pending)
+        await session.commit()
+
+    deleted = await db.cleanup_webhook_outbox(older_than_iso=(datetime.now(UTC) - timedelta(days=7)).isoformat())
+
+    async with db._session() as session:
+        old_delivered = await session.get(db_models.WebhookOutbox, old_delivered_id)
+        rejected = await session.get(db_models.WebhookOutbox, rejected_id)
+        recent_delivered = await session.get(db_models.WebhookOutbox, recent_delivered_id)
+        pending_row = await session.get(db_models.WebhookOutbox, pending_id)
+
+    assert deleted == 2
+    assert old_delivered is None
+    assert rejected is None
+    assert recent_delivered is not None
+    assert pending_row is not None

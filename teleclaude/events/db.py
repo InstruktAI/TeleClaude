@@ -405,6 +405,25 @@ class EventDB:
         rows = await cursor.fetchall()
         return [cast(QuarantinedEventRow, dict(r)) for r in rows]
 
+    async def cleanup_runtime_events(self, *, older_than: datetime) -> int:
+        """Delete expired resolved/reviewed runtime event rows."""
+        cutoff = older_than.isoformat()
+        notifications_cursor = await self._db().execute(
+            (
+                "DELETE FROM notifications "
+                "WHERE agent_status = 'resolved' AND resolved_at IS NOT NULL AND resolved_at < ?"
+            ),
+            (cutoff,),
+        )
+        quarantine_cursor = await self._db().execute(
+            "DELETE FROM quarantined_events WHERE reviewed = 1 AND received_at < ?",
+            (cutoff,),
+        )
+        await self._db().commit()
+        notifications_deleted = max(notifications_cursor.rowcount, 0)
+        quarantine_deleted = max(quarantine_cursor.rowcount, 0)
+        return notifications_deleted + quarantine_deleted
+
     # --- Enrichment query helpers ---
 
     async def count_events_by_entity(
