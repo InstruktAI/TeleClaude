@@ -31,8 +31,14 @@ from scripts.distribute import (
 
 pytestmark = pytest.mark.unit
 
-MARKER_START = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->"
-MARKER_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
+_SNAPSHOT_DIR = Path(__file__).with_name("__snapshots__") / "test_distribute"
+
+
+def _assert_text_snapshot(name: str, content: str) -> None:
+    expected = (_SNAPSHOT_DIR / f"{name}.txt").read_text(encoding="utf-8")
+    if expected.endswith("\n") and not content.endswith("\n"):
+        expected = expected[:-1]
+    assert content == expected
 
 
 # ---------------------------------------------------------------------------
@@ -40,57 +46,19 @@ MARKER_END = "<!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->"
 # ---------------------------------------------------------------------------
 
 
-def test_markdown_wrapped_content_contains_start_marker() -> None:
-    """wrap_with_context_markers adds the start marker to markdown output."""
+def test_markdown_wrapped_content_matches_snapshot() -> None:
+    """wrap_with_context_markers wraps markdown at the final write boundary."""
     result = wrap_with_context_markers("# Hello\n\nBody.", is_markdown=True)
 
-    assert MARKER_START in result
+    _assert_text_snapshot("markdown_wrapped_content", result)
 
 
-def test_markdown_wrapped_content_contains_end_marker() -> None:
-    """wrap_with_context_markers adds the end marker to markdown output."""
-    result = wrap_with_context_markers("# Hello\n\nBody.", is_markdown=True)
-
-    assert MARKER_END in result
-
-
-def test_start_marker_precedes_content_body() -> None:
-    """Start marker must appear before the document body."""
-    content = "# My Heading"
-    result = wrap_with_context_markers(content, is_markdown=True)
-
-    start_pos = result.index(MARKER_START)
-    content_pos = result.index("# My Heading")
-    assert start_pos < content_pos, "Start marker must precede the document body"
-
-
-def test_end_marker_follows_content_body() -> None:
-    """End marker must appear after the document body."""
-    content = "# My Heading"
-    result = wrap_with_context_markers(content, is_markdown=True)
-
-    content_pos = result.index("# My Heading")
-    end_pos = result.index(MARKER_END)
-    assert content_pos < end_pos, "End marker must follow the document body"
-
-
-def test_toml_content_not_wrapped_with_markers() -> None:
-    """wrap_with_context_markers passes TOML content through unmodified."""
+def test_toml_content_passthrough_matches_snapshot() -> None:
+    """wrap_with_context_markers passes non-markdown content through unmodified."""
     toml_content = "description = \"\"\"A prompt.\"\"\"\nprompt = '''\nDo something.\n'''\n"
     result = wrap_with_context_markers(toml_content, is_markdown=False)
 
-    assert MARKER_START not in result, "TOML output must not contain start marker"
-    assert MARKER_END not in result, "TOML output must not contain end marker"
-
-
-def test_original_content_preserved_inside_markers() -> None:
-    """wrap_with_context_markers preserves the original body exactly and adds only the outer markers."""
-    content = "# Title\n\nParagraph one.\n\nParagraph two.\n\n"
-    result = wrap_with_context_markers(content, is_markdown=True)
-
-    assert result == f"{MARKER_START}\n{content}{MARKER_END}\n", (
-        "Markdown wrapping must preserve the original body exactly and add only the outer markers"
-    )
+    _assert_text_snapshot("toml_content_passthrough", result)
 
 
 # ---------------------------------------------------------------------------
@@ -98,26 +66,20 @@ def test_original_content_preserved_inside_markers() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_codex_transform_output_keeps_single_quoted_frontmatter_scalars() -> None:
+def test_codex_transform_output_matches_snapshot() -> None:
     """transform_to_codex normalizes frontmatter scalar strings to single-quoted YAML."""
     post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
     output = transform_to_codex(post)
 
-    assert "name: 'test-cmd'" in output
-    assert "description: 'Test.'" in output
+    _assert_text_snapshot("codex_transform_output", output)
 
 
-def test_gemini_transform_output_does_not_contain_preservation_markers() -> None:
-    """Gemini TOML output from the distribution pipeline must NOT be wrapped.
-
-    HTML comments are invalid TOML — this constraint must hold both before and after
-    the markdown wrapping feature is implemented.
-    """
+def test_gemini_transform_output_matches_snapshot() -> None:
+    """Gemini TOML output from the distribution pipeline is not markdown-wrapped."""
     post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
     output = transform_to_gemini(post)
 
-    assert MARKER_START not in output, "Gemini TOML output must not contain start marker"
-    assert MARKER_END not in output, "Gemini TOML output must not contain end marker"
+    _assert_text_snapshot("gemini_transform_output", output)
 
 
 def test_expand_exec_directives_prepends_repo_venv_to_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -136,4 +98,4 @@ def test_expand_exec_directives_prepends_repo_venv_to_path(monkeypatch: pytest.M
 
     rendered = expand_exec_directives("<!-- @exec: telec -h -->", project_root=tmp_path)
 
-    assert "telec help" in rendered
+    _assert_text_snapshot("exec_directive_expansion", rendered)

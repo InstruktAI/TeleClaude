@@ -11,8 +11,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
+from teleclaude.core.agent_readiness import wait_for_agent_ready
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
-from teleclaude.core.codex_readiness import wait_for_codex_prompt
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
+_RESTART_QUIET_S = 1.0
 
 
 def _get_session_profile(session: Session) -> str:
@@ -46,15 +47,16 @@ def _get_session_profile(session: Session) -> str:
 async def _await_restart_readiness(
     *,
     agent: str,
-    tmux_session_name: str,
+    session: Session,
     ready_future: asyncio.Future[None],
 ) -> None:
     """Wait for an agent restart to become ready, racing pane-quiet for Codex.
 
     Codex CLI v0.130+ doesn't fire its native SessionStart hook on cold launch
     or resume, so the hook-only path times out for ~55% of dispatches. For
-    Codex, race the pane-quiet detector against the hook; for Claude and
-    Gemini, keep the existing single-path AGENT_READY subscription.
+    Codex, race the proven `wait_for_agent_ready` pane-quiet detector against
+    the hook subscription; for Claude and Gemini, keep the existing single-path
+    AGENT_READY subscription.
 
     Raises TimeoutError when neither detector wins within
     ``AGENT_PROMPT_READY_TIMEOUT_S``.
@@ -63,7 +65,14 @@ async def _await_restart_readiness(
         await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
         return
 
-    pane_task = asyncio.create_task(wait_for_codex_prompt(tmux_session_name, timeout_s=AGENT_PROMPT_READY_TIMEOUT_S))
+    pane_task = asyncio.create_task(
+        wait_for_agent_ready(
+            AgentName.CODEX.value,
+            session,
+            AGENT_PROMPT_READY_TIMEOUT_S,
+            _RESTART_QUIET_S,
+        )
+    )
     hook_task = asyncio.create_task(asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S))
     try:
         done, _pending = await asyncio.wait(
@@ -75,9 +84,10 @@ async def _await_restart_readiness(
             if not task.done():
                 task.cancel()
     hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
-    pane_won = (
-        pane_task in done and not pane_task.cancelled() and pane_task.exception() is None and pane_task.result() is True
-    )
+    pane_won = False
+    if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
+        ready, _tail = pane_task.result()
+        pane_won = ready
     if not (hook_won or pane_won):
         raise TimeoutError("codex restart readiness: pane and hook both failed within timeout")
 
@@ -424,7 +434,7 @@ async def agent_restart(
                 try:
                     await _await_restart_readiness(
                         agent=target_agent,
-                        tmux_session_name=session.tmux_session_name or "",
+                        session=session,
                         ready_future=ready_future,
                     )
                 except TimeoutError:
