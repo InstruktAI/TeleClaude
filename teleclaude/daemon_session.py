@@ -15,12 +15,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge, tmux_io
+from teleclaude.core.agents import AgentName
+from teleclaude.core.codex_readiness import wait_for_codex_prompt
 from teleclaude.core.db import db
 from teleclaude.core.error_feedback import get_user_facing_error_message
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import (
     AgentEventContext,
     AgentHookEvents,
+    AgentSessionStartPayload,
     ErrorEventContext,
     SessionLifecycleContext,
     SessionStatusContext,
@@ -377,7 +380,10 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             logger.debug("agent_then_message: awaiting AGENT_READY (session=%s)", session_id)
             t1 = time.time()
             try:
-                await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+                if agent_name == AgentName.CODEX.value:
+                    await self._await_codex_readiness(session, session_id, ready_future)
+                else:
+                    await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
             except TimeoutError:
                 logger.warning(
                     "agent_then_message readiness timeout: session=%s timeout_s=%.1f — session kept alive",
@@ -420,6 +426,87 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
 
         logger.info("agent_then_message: completed in %.3fs", time.time() - start_time)
         return {"status": "success", "message": "Message injected after agent start"}
+
+    async def _await_codex_readiness(
+        self,
+        session: Session,
+        session_id: str,
+        ready_future: asyncio.Future[None],
+    ) -> None:
+        """Race Codex's broken native SessionStart hook against a pane-quiet detector.
+
+        Codex CLI v0.130+ does not fire its native `SessionStart` hook on cold
+        thread_spawn (the hook arrives combined with the first `user_prompt_submit`),
+        so the hook-only `ready_future` would time out for ~55% of dispatches. The
+        pane-quiet detector watches the tmux pane for Codex's live prompt marker
+        and races the hook subscription.
+
+        When the pane detector wins, synthesize a `session_start` event with
+        `source="startup"` (matching Codex's real-shape contract) but with empty
+        native fields — `native_session_id` and `native_log_file` get back-filled
+        idempotently when the real hook eventually arrives along with the first
+        user prompt.
+
+        Raises TimeoutError if both detectors fail within `AGENT_PROMPT_READY_TIMEOUT_S`.
+        """
+        pane_task = asyncio.create_task(
+            wait_for_codex_prompt(
+                session.tmux_session_name,
+                timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+            )
+        )
+        hook_task = asyncio.create_task(asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S))
+        try:
+            done, _pending = await asyncio.wait(
+                {pane_task, hook_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            for task in (pane_task, hook_task):
+                if not task.done():
+                    task.cancel()
+
+        hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
+        if hook_won:
+            return
+
+        pane_won = (
+            pane_task in done
+            and not pane_task.cancelled()
+            and pane_task.exception() is None
+            and pane_task.result() is True
+        )
+        if not pane_won:
+            raise TimeoutError("codex readiness: pane and hook both failed within timeout")
+
+        logger.info(
+            "Synthetic session_start emitted for Codex (pane-quiet detector) session=%s",
+            session_id,
+        )
+        synthetic_payload = AgentSessionStartPayload(
+            raw={"cwd": session.project_path or "", "source": "startup"},
+            transcript_path=None,
+            session_id=None,
+        )
+        synthetic_ctx = AgentEventContext(
+            session_id=session_id,
+            data=synthetic_payload,
+            event_type=AgentHookEvents.AGENT_SESSION_START,
+        )
+        await self.agent_coordinator.handle_session_start(synthetic_ctx)
+        # handle_session_start emits AGENT_READY; the ready_future subscriber
+        # resolves on the next loop tick. A short wait keeps the contract that
+        # AGENT_READY has resolved before we proceed to inject the message.
+        try:
+            await asyncio.wait_for(ready_future, timeout=2.0)
+        except TimeoutError:
+            # AGENT_READY emission is fire-and-forget; if the future didn't resolve,
+            # the bootstrap subscriber was already unsubscribed in an earlier path.
+            # Pane readiness has been verified, so proceed.
+            logger.debug(
+                "agent_then_message: synthetic AGENT_READY didn't resolve future — proceeding anyway session=%s",
+                session_id,
+            )
 
     async def _pane_output_snapshot(self, session: Session) -> tuple[str, str]:
         output = await tmux_bridge.capture_pane(session.tmux_session_name)
