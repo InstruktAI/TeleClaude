@@ -42,19 +42,25 @@ def _find_codex_prompt_line(output: str) -> int | None:
     """Return the 0-based line index of the live Codex prompt marker, or None.
 
     Scans bottom-up for the last line whose first non-whitespace ANSI-stripped
-    character is ``›``. Returns the index only when that line is within
-    ``CODEX_PROMPT_LIVE_DISTANCE`` of the bottom — otherwise the marker is
-    historical, not the live input prompt.
+    character is ``›``. Returns the index only when fewer than
+    ``CODEX_PROMPT_LIVE_DISTANCE`` non-blank lines appear below it — otherwise
+    the marker is historical (a previous turn's input still visible above
+    fresh agent output), not the live input prompt.
+
+    Trailing blank lines from a partially-filled tmux pane are ignored so a
+    prompt rendered near the top of a tall pane still counts as live.
     """
     lines = output.split("\n")
+    non_blank_below = 0
     for idx in range(len(lines) - 1, -1, -1):
         stripped = strip_ansi_codes(lines[idx]).strip()
         if not stripped:
             continue
         if stripped.startswith(CODEX_PROMPT_MARKER):
-            if (len(lines) - 1 - idx) >= CODEX_PROMPT_LIVE_DISTANCE:
+            if non_blank_below >= CODEX_PROMPT_LIVE_DISTANCE:
                 return None
             return idx
+        non_blank_below += 1
     return None
 
 

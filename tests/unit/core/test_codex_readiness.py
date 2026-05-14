@@ -26,8 +26,14 @@ class TestFindCodexPromptLine:
         pane = "› \nstatus line 1\nstatus line 2"
         assert _find_codex_prompt_line(pane) == 0
 
+    def test_returns_index_when_marker_above_blank_trailing_lines(self) -> None:
+        # Tmux pane is taller than content — many trailing blank lines below
+        # the prompt should not count toward the buried-too-deep distance.
+        pane = "› live prompt\n" + ("\n" * 30)
+        assert _find_codex_prompt_line(pane) == 0
+
     def test_returns_none_when_marker_buried_too_deep(self) -> None:
-        # Marker is buried beyond CODEX_PROMPT_LIVE_DISTANCE — historical, not live.
+        # CODEX_PROMPT_LIVE_DISTANCE non-blank lines below — historical, not live.
         below = "\n".join(f"line {i}" for i in range(CODEX_PROMPT_LIVE_DISTANCE + 1))
         pane = f"› old prompt\n{below}"
         assert _find_codex_prompt_line(pane) is None
