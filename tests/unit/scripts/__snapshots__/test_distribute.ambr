@@ -1,0 +1,46 @@
+# serializer version: 1
+# name: test_codex_transform_output_matches_snapshot
+  '''
+  ---
+  name: 'test-cmd'
+  description: 'Test.'
+  ---
+  
+  Do the thing.
+  '''
+# ---
+# name: test_expand_exec_directives_prepends_repo_venv_to_path
+  '''
+  ```
+  telec help
+  ```
+  '''
+# ---
+# name: test_gemini_transform_output_matches_snapshot
+  '''
+  description = """Test."""
+  prompt = '''
+  Do the thing.
+  '''
+  
+  '''
+# ---
+# name: test_markdown_wrapped_content_matches_snapshot
+  '''
+  <!-- TELECLAUDE_CONTEXT_PRESERVATION_START -->
+  # Hello
+  
+  Body.
+  <!-- TELECLAUDE_CONTEXT_PRESERVATION_END -->
+  
+  '''
+# ---
+# name: test_toml_content_passthrough_matches_snapshot
+  '''
+  description = """A prompt."""
+  prompt = '''
+  Do something.
+  '''
+  
+  '''
+# ---

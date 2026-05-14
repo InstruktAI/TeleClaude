@@ -15,6 +15,7 @@ from types import SimpleNamespace
 
 import frontmatter
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 # scripts/ is not a package; add repo root to sys.path for import
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -31,34 +32,25 @@ from scripts.distribute import (
 
 pytestmark = pytest.mark.unit
 
-_SNAPSHOT_DIR = Path(__file__).with_name("__snapshots__") / "test_distribute"
-
-
-def _assert_text_snapshot(name: str, content: str) -> None:
-    expected = (_SNAPSHOT_DIR / f"{name}.txt").read_text(encoding="utf-8")
-    if expected.endswith("\n") and not content.endswith("\n"):
-        expected = expected[:-1]
-    assert content == expected
-
 
 # ---------------------------------------------------------------------------
 # R5 — wrap_with_context_markers helper contract
 # ---------------------------------------------------------------------------
 
 
-def test_markdown_wrapped_content_matches_snapshot() -> None:
+def test_markdown_wrapped_content_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     """wrap_with_context_markers wraps markdown at the final write boundary."""
     result = wrap_with_context_markers("# Hello\n\nBody.", is_markdown=True)
 
-    _assert_text_snapshot("markdown_wrapped_content", result)
+    assert result == snapshot
 
 
-def test_toml_content_passthrough_matches_snapshot() -> None:
+def test_toml_content_passthrough_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     """wrap_with_context_markers passes non-markdown content through unmodified."""
     toml_content = "description = \"\"\"A prompt.\"\"\"\nprompt = '''\nDo something.\n'''\n"
     result = wrap_with_context_markers(toml_content, is_markdown=False)
 
-    _assert_text_snapshot("toml_content_passthrough", result)
+    assert result == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -66,23 +58,27 @@ def test_toml_content_passthrough_matches_snapshot() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_codex_transform_output_matches_snapshot() -> None:
+def test_codex_transform_output_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     """transform_to_codex normalizes frontmatter scalar strings to single-quoted YAML."""
     post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
     output = transform_to_codex(post)
 
-    _assert_text_snapshot("codex_transform_output", output)
+    assert output == snapshot
 
 
-def test_gemini_transform_output_matches_snapshot() -> None:
+def test_gemini_transform_output_matches_snapshot(snapshot: SnapshotAssertion) -> None:
     """Gemini TOML output from the distribution pipeline is not markdown-wrapped."""
     post = frontmatter.loads("---\nname: test-cmd\ndescription: Test.\n---\nDo the thing.\n")
     output = transform_to_gemini(post)
 
-    _assert_text_snapshot("gemini_transform_output", output)
+    assert output == snapshot
 
 
-def test_expand_exec_directives_prepends_repo_venv_to_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_expand_exec_directives_prepends_repo_venv_to_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    snapshot: SnapshotAssertion,
+) -> None:
     project_bin = str(tmp_path / ".venv" / "bin")
     repo_bin = str(_REPO_ROOT / ".venv" / "bin")
 
@@ -98,4 +94,4 @@ def test_expand_exec_directives_prepends_repo_venv_to_path(monkeypatch: pytest.M
 
     rendered = expand_exec_directives("<!-- @exec: telec -h -->", project_root=tmp_path)
 
-    _assert_text_snapshot("exec_directive_expansion", rendered)
+    assert rendered == snapshot

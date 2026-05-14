@@ -1,6 +1,0 @@
----
-name: 'test-cmd'
-description: 'Test.'
----
-
-Do the thing.

@@ -1,4 +1,0 @@
-description = """Test."""
-prompt = '''
-Do the thing.
-'''
