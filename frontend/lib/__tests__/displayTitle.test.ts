@@ -3,31 +3,31 @@ import { displayTitle, headlessPrefix } from "@/lib/sessions/displayTitle";
 
 describe("headlessPrefix", () => {
   it("returns [HEADLESS] marker for headless sessions", () => {
-    expect(headlessPrefix({ lifecycle_status: "headless" })).toBe("[HEADLESS] ");
+    expect(headlessPrefix({ status: "headless" })).toBe("[HEADLESS] ");
   });
 
   it("returns empty string for non-headless sessions", () => {
-    expect(headlessPrefix({ lifecycle_status: "active" })).toBe("");
+    expect(headlessPrefix({ status: "active" })).toBe("");
   });
 
-  it("returns empty string when lifecycle_status is missing", () => {
+  it("returns empty string when status is missing", () => {
     expect(headlessPrefix({})).toBe("");
   });
 });
 
 describe("displayTitle", () => {
   it("prepends the headless marker to the title for headless sessions", () => {
-    expect(displayTitle({ lifecycle_status: "headless", title: "My session" })).toBe(
+    expect(displayTitle({ status: "headless", title: "My session" })).toBe(
       "[HEADLESS] My session",
     );
   });
 
   it("returns the bare title for non-headless sessions", () => {
-    expect(displayTitle({ lifecycle_status: "active", title: "My session" })).toBe("My session");
+    expect(displayTitle({ status: "active", title: "My session" })).toBe("My session");
   });
 
   it("uses the explicit fallback string when title is missing", () => {
-    expect(displayTitle({ lifecycle_status: "active" }, "Custom fallback")).toBe("Custom fallback");
+    expect(displayTitle({ status: "active" }, "Custom fallback")).toBe("Custom fallback");
   });
 
   it("defaults the fallback to 'Untitled' when none is provided", () => {
@@ -35,6 +35,6 @@ describe("displayTitle", () => {
   });
 
   it("applies the headless marker even when title falls back", () => {
-    expect(displayTitle({ lifecycle_status: "headless" })).toBe("[HEADLESS] Untitled");
+    expect(displayTitle({ status: "headless" })).toBe("[HEADLESS] Untitled");
   });
 });

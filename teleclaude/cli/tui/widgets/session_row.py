@@ -21,6 +21,7 @@ from teleclaude.cli.tui.theme import (
 )
 from teleclaude.cli.tui.utils.formatters import format_time, truncate_text
 from teleclaude.constants import WORKTREE_DIR
+from teleclaude.core.session_utils import session_display_title
 
 _DETAIL_PREFIX_OVERHEAD = 18  # │ + space + [HH:MM:SS] + label (" in: " / "out: ")
 
@@ -181,8 +182,9 @@ class SessionRow(TelecMixin, Widget):
                 slug_style = resolve_style(self.agent, self._tier("highlight"))
             line.append(f" {slug}", style=slug_style)
 
-        # Title in quotes — strip newlines then truncate to fit available width
-        title = (self.session.title or "(untitled)").splitlines()[0]
+        # Title in quotes — strip newlines then truncate to fit available width.
+        # session_display_title applies the universal [HEADLESS] marker.
+        title = session_display_title(self.session, fallback="(untitled)").splitlines()[0]
         content_w = self._content_width
         avail = content_w - line.cell_len - 4  # 4 = '  "' prefix + '"' suffix
         if 0 < avail < len(title):

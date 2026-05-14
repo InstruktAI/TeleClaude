@@ -20,6 +20,7 @@ from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.modals import ConfirmModal, NewProjectModal, NewProjectResult, StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.session_row import SessionRow
+from teleclaude.core.session_utils import session_display_title
 
 if TYPE_CHECKING:
     from textual.widget import Widget
@@ -270,7 +271,7 @@ class SessionsViewActionsMixin:
 
         session_id = row.session_id
         computer = row.session.computer or "local"
-        title = row.session.title or "(untitled)"
+        title = session_display_title(row.session, fallback="(untitled)")
 
         modal = ConfirmModal(
             title="Kill Session",

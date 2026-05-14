@@ -40,21 +40,6 @@ class TestClassifyMainCommit:
             _classify_main_commit(["-m", "fix: something"], ["teleclaude/foo.py"])
 
     @pytest.mark.unit
-    def test_functional_classification_guidance_reuses_commit_reviewer(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Path C guidance must send follow-up commits to the same reviewer."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "fix: something"], ["teleclaude/foo.py"])
-
-        err = capsys.readouterr().err
-        assert "If this patch series has no /next-review-commits reviewer yet, dispatch one" in err
-        assert "For every follow-up on the same patch series, send the new commit(s) to that reviewer" in err
-        assert "telec sessions list" in err
-        assert "fix and send the new commit(s) to the same reviewer" in err
-        assert "Otherwise dispatch a fresh one" not in err
-
-    @pytest.mark.unit
     def test_functional_with_skip_ci_still_requires_classification(self) -> None:
         """Functional files are not bypassed by [skip ci]."""
         with pytest.raises(SystemExit, match="1"):

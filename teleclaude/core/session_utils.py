@@ -350,3 +350,26 @@ async def get_display_title_for_session(session: "Session") -> str:
         initiator_agent=initiator_agent,
         initiator_mode=initiator_mode,
     )
+
+
+def session_display_title(session: object, *, fallback: str = "Untitled") -> str:
+    """Return the user-facing session title for non-adapter rendering surfaces.
+
+    Mirrors UiAdapter.display_title for callers outside the adapter hierarchy
+    (TUI widgets, CLI views). Prepends the universal [HEADLESS] marker when
+    the session is headless and falls back to ``fallback`` when the canonical
+    semantic title is empty.
+
+    Accepts both core Session objects (which carry ``lifecycle_status``) and
+    DTO snapshots (which serialize the same field as ``status`` on the wire).
+    The helper reads whichever attribute is present.
+
+    UI adapters MUST NOT call this helper — they go through their own
+    display_title method which composes the same marker with platform-specific
+    decoration (e.g. Discord's catch-all forum project prefix).
+    """
+    title = getattr(session, "title", None) or ""
+    body = title.strip() or fallback
+    lifecycle = getattr(session, "lifecycle_status", None) or getattr(session, "status", None)
+    marker = "[HEADLESS] " if lifecycle == "headless" else ""
+    return f"{marker}{body}"
