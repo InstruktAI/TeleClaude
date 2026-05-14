@@ -348,9 +348,6 @@ orphan-exclude = [
     "tests/unit/resource_validation/test__init__.py",  # Package-boundary: resource_validation package export contract has no single module companion.
     "tests/unit/resource_validation/test_activation_trigger_validation_spec.py",  # Cross-module: activation trigger validation spans package models and snippet validator.
     "tests/unit/resource_validation/test_unified_severity_spec.py",  # Cross-module: severity contract spans resource_validation and sync-facing model usage.
-    "tests/unit/scripts/test_distribute.py",  # Mapper-gap: scripts/distribute.py is outside current teleclaude/** mapper roots.
-    "tests/unit/scripts/test_release_changelog.py",  # Mapper-gap: scripts/release_changelog.py is outside current teleclaude/** mapper roots.
-    "tests/unit/scripts/test_release_consolidator.py",  # Mapper-gap: scripts/release_consolidator.py is outside current teleclaude/** mapper roots.
     "tests/unit/session_scoping/test__extractors.py",  # Package-boundary: _extractors package dispatch spans claude, codex, and gemini extractors.
     "tests/unit/session_scoping/test__init__.py",  # Package-boundary: session_scoping public API re-exports _api and _types contracts.
     "tests/unit/test_asyncio_task_naming.py",  # Cross-module: asyncio task naming checks runtime task creation policy across daemon flows.
