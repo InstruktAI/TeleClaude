@@ -1,16 +1,43 @@
 """Codex transcript discovery helpers.
 
-Core-owned utility for resolving Codex native transcript paths.
+Load-bearing defense for Codex's asymmetric subagent model.
+
+Codex writes each subagent thread to its OWN ``rollout-*-<thread_id>.jsonl``
+file under ``~/.codex/sessions/YYYY/MM/DD/``. The parent linkage lives only
+inside the file's first line (``session_meta.payload.source.subagent.thread_spawn.parent_thread_id``).
+The hook payload tells us nothing about parent/child relationships, and the
+TeleClaude session row only carries the parent's ``native_session_id`` —
+because the receiver deliberately drops subagent ``SessionStart`` events to
+preserve parent identity.
+
+That makes this module the ONLY source of truth for:
+
+- ``thread_id → transcript_path`` (used by ``todo_scaffold`` when running
+  inside a subagent shell, via ``$CODEX_THREAD_ID``).
+- ``parent_thread_id → descendants`` (used by the session-view tool-call
+  timeline in ``utils/transcript/_tool_calls.py`` to merge subagent activity
+  into the parent view — a hard requirement for session-touched-files to
+  include children).
+
+Claude and Gemini do not have this problem: subagent activity folds into the
+parent transcript (Claude via ``file-history-snapshot`` entries, Gemini via a
+single flat ``messages`` document). The machinery here is Codex-specific.
+
+Do not delete this index in favor of "session row carries the path" or
+"the hook payload always provides it." It does not, for the subagent case.
+The recent ``cd5dee2d4`` / ``bf7eba39b`` incident (Codex stopped firing
+``SessionStart`` on cold launch despite documenting otherwise) is a standing
+reminder that Codex's documented contracts are not reliable. This module is
+intentional defensive infrastructure, not technical debt.
 """
 
 from __future__ import annotations
 
 import json
 import os
-import re
 import threading
 from collections import deque
-from collections.abc import Collection, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from functools import lru_cache
@@ -21,10 +48,6 @@ from instrukt_ai_logging import get_logger
 logger = get_logger(__name__)
 
 _RECENT_DISCOVERY_DAYS = 7
-_ROLLOUT_FILENAME_RE = re.compile(
-    r"^rollout-(?P<stamp>.+)-"
-    r"(?P<native_session_id>[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$"
-)
 
 
 @dataclass(frozen=True)
@@ -45,14 +68,6 @@ class CodexTranscriptMeta:
     thread_id: str | None
     parent_thread_id: str | None
     session_started_at: datetime | None
-
-
-@dataclass(frozen=True)
-class CodexRecentTranscriptCandidate:
-    """Candidate transcript discovered before native metadata is bound."""
-
-    transcript_path: str
-    native_session_id: str
 
 
 class _CodexTranscriptIndex:
@@ -271,26 +286,6 @@ def _iter_codex_transcript_paths(sessions_dir: Path) -> Iterator[Path]:
     yield from sessions_dir.rglob("rollout-*.jsonl")
 
 
-def _iter_candidate_date_dirs(started_at: datetime, now: datetime) -> Iterator[Path]:
-    """Yield day directories spanning session creation through current time."""
-    sessions_dir = _codex_sessions_dir()
-    started = started_at.astimezone(UTC).date()
-    finished = now.astimezone(UTC).date()
-    day_span = max(0, (finished - started).days)
-    bounded_span = min(day_span, _RECENT_DISCOVERY_DAYS)
-    for days_offset in range(bounded_span + 1):
-        current = started + timedelta(days=days_offset)
-        yield sessions_dir / f"{current.year}" / f"{current.month:02d}" / f"{current.day:02d}"
-
-
-def _parse_native_session_id_from_rollout_name(path: Path) -> str | None:
-    """Extract the native Codex thread id from a rollout filename."""
-    match = _ROLLOUT_FILENAME_RE.match(path.name)
-    if not match:
-        return None
-    return match.group("native_session_id")
-
-
 def _parse_codex_meta_timestamp(raw_timestamp: object) -> datetime | None:
     """Parse Codex session_meta timestamps into UTC-aware datetimes."""
     if not isinstance(raw_timestamp, str) or not raw_timestamp:
@@ -396,78 +391,6 @@ def discover_codex_transcript_path(native_session_id: str) -> str | None:
 
     logger.debug("Codex transcript not found", native_session_id=native_session_id)
     return None
-
-
-def discover_recent_unclaimed_codex_transcript(
-    *,
-    session_created_at: datetime | None,
-    claimed_native_session_ids: Collection[str],
-) -> CodexRecentTranscriptCandidate | None:
-    """Resolve a unique recent Codex transcript candidate for an unbound session.
-
-    The search is intentionally cheap:
-    - only day directories spanning session creation through now
-    - only rollout files newer than the TeleClaude session creation time
-    - only native ids not already claimed by another TeleClaude session
-    - only returns a result when exactly one candidate remains
-    """
-    if session_created_at is None:
-        return None
-
-    created_at = session_created_at
-    if created_at.tzinfo is None:
-        created_at = created_at.replace(tzinfo=UTC)
-    else:
-        created_at = created_at.astimezone(UTC)
-
-    cutoff_ts = created_at.timestamp()
-    claimed_ids = {value.strip() for value in claimed_native_session_ids if value.strip()}
-    now = datetime.now(UTC)
-
-    discovered: dict[str, tuple[float, Path]] = {}
-    for date_dir in _iter_candidate_date_dirs(created_at, now):
-        if not date_dir.exists():
-            continue
-        try:
-            rollout_files = sorted(
-                (path for path in date_dir.glob("rollout-*.jsonl") if path.is_file()),
-                key=lambda path: path.stat().st_mtime,
-                reverse=True,
-            )
-        except OSError:
-            continue
-
-        for transcript_path in rollout_files:
-            native_session_id = _parse_native_session_id_from_rollout_name(transcript_path)
-            if not native_session_id or native_session_id in claimed_ids:
-                continue
-            try:
-                mtime = transcript_path.stat().st_mtime
-            except OSError:
-                continue
-            if mtime < cutoff_ts:
-                continue
-            existing = discovered.get(native_session_id)
-            if existing is None or mtime > existing[0]:
-                discovered[native_session_id] = (mtime, transcript_path)
-
-    if len(discovered) != 1:
-        logger.debug(
-            "Codex recent transcript candidate discovery did not resolve uniquely",
-            candidate_count=len(discovered),
-        )
-        return None
-
-    native_session_id, (_, transcript_path) = next(iter(discovered.items()))
-    logger.debug(
-        "Codex recent transcript candidate resolved",
-        native_session_id=native_session_id,
-        path=str(transcript_path),
-    )
-    return CodexRecentTranscriptCandidate(
-        transcript_path=str(transcript_path),
-        native_session_id=native_session_id,
-    )
 
 
 def discover_current_codex_transcript_path() -> str | None:

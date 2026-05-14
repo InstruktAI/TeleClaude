@@ -16,7 +16,7 @@ from teleclaude.cli.session_auth import read_current_session_email
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_CUSTOMER
 from teleclaude.core.agents import AgentName
-from teleclaude.core.codex_transcript import discover_codex_transcript_path, is_codex_subagent_transcript
+from teleclaude.core.codex_transcript import is_codex_subagent_transcript
 from teleclaude.core.command_registry import get_command_service
 from teleclaude.core.db import HookOutboxRow, db
 from teleclaude.core.event_bus import event_bus
@@ -481,46 +481,7 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
         has_transcript_path = isinstance(transcript_path, str) and bool(transcript_path)
         has_native_log = isinstance(native_log_file, str) and bool(native_log_file)
         is_subagent = None
-        if (
-            not has_transcript_path
-            and not has_native_log
-            and normalized_agent_name == AgentName.CODEX.value
-            and isinstance(native_session_id, str)
-            and native_session_id
-        ):
-            discovered_path = discover_codex_transcript_path(native_session_id)
-            if not discovered_path:
-                logger.trace(
-                    "Codex hook sub-agent probe",
-                    session_id=session_id,
-                    native_session_id=native_session_id,
-                    event_type=event_type,
-                    transcript_exists=False,
-                    is_subagent=None,
-                    source=None,
-                )
-            if discovered_path:
-                native_log_file = discovered_path
-                data["native_log_file"] = discovered_path
-                data["transcript_path"] = discovered_path
-                transcript_path = discovered_path
-                has_transcript_path = True
-                logger.debug(
-                    "Resolved Codex transcript in hook worker",
-                    session_id=session_id,
-                    native_session_id=native_session_id,
-                    path=discovered_path,
-                )
-                is_subagent = is_codex_subagent_transcript(discovered_path)
-                logger.trace(
-                    "Codex hook sub-agent probe",
-                    session_id=session_id,
-                    native_session_id=native_session_id,
-                    event_type=event_type,
-                    transcript_exists=True,
-                    is_subagent=is_subagent,
-                )
-        elif not has_transcript_path and has_native_log and isinstance(native_log_file, str):
+        if not has_transcript_path and has_native_log and isinstance(native_log_file, str):
             transcript_path = native_log_file
             data["transcript_path"] = native_log_file
             has_transcript_path = True
