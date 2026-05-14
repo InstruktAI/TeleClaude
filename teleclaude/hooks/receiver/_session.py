@@ -40,7 +40,6 @@ _SESSION_EXPORTS = [
     "_is_tmux_contract_session_compatible",
     "_load_session_map",
     "_persist_session_map",
-    "prune_session_map",
     "_resolve_hook_session_id",
     "_resolve_or_refresh_session_id",
     "_session_map_key",
@@ -65,7 +64,6 @@ __all__ = [
     "_session_map_key",
     "_write_session_map_atomic",
     "get_outbox_session",
-    "prune_session_map",
 ]
 
 
@@ -351,56 +349,6 @@ def _persist_session_map(agent: str, native_session_id: str | None, session_id: 
             )
     except OSError as exc:
         logger.warning("Failed to persist session map: %s", exc)
-
-
-def _session_map_row_matches(row: object | None, *, agent: str, native_session_id: str) -> bool:
-    """Return whether a cached session-map row still matches DB truth."""
-    if row is None:
-        return False
-    if getattr(row, "closed_at", None):
-        return False
-    if (getattr(row, "lifecycle_status", None) or "active") == "closed":
-        return False
-    row_agent = str(getattr(row, "active_agent", "") or "").strip().lower()
-    if row_agent != agent.strip().lower():
-        return False
-    return getattr(row, "native_session_id", None) == native_session_id
-
-
-def prune_session_map() -> int:
-    """Prune stale native-to-TeleClaude session mappings against DB truth."""
-    path = _get_session_map_path()
-    lock_path = path.with_suffix(".lock")
-    try:
-        with open(lock_path, "w", encoding="utf-8") as lock_file:
-            if fcntl is not None:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            data = _load_session_map(path)
-            if not data:
-                return 0
-
-            sqlmodel_module = _get_sqlmodel_module()
-            kept: dict[str, str] = {}
-            with sqlmodel_module.Session(_create_sync_engine()) as session:
-                for key, session_id in data.items():
-                    agent, separator, native_session_id = key.partition(":")
-                    if not separator or not agent or not native_session_id:
-                        continue
-                    row = session.get(db_models.Session, session_id)
-                    if _session_map_row_matches(row, agent=agent, native_session_id=native_session_id):
-                        kept[key] = session_id
-
-            removed = len(data) - len(kept)
-            if removed:
-                _write_session_map_atomic(path, kept)
-                logger.info("Pruned %d stale session-map entries", removed)
-            return removed
-    except OSError as exc:
-        logger.warning("Failed to prune session map: %s", exc)
-        return 0
-    except SQLAlchemyError as exc:
-        logger.debug("Session map pruning skipped (db unavailable): %s", exc)
-        return 0
 
 
 def _resolve_hook_session_id(

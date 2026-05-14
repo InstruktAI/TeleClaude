@@ -16,13 +16,11 @@ description: 'SQLite persistence for sessions, hook outbox, memory, UX state, an
 
 ## Invariants
 
-- **Database Location**: All databases live under `~/.teleclaude/`. Main DB is `teleclaude.db`, events are `events.db`, mirrors are `mirrors.db`, and hook delivery uses `hook_outbox.db`.
+- **Database Location**: All databases live under `~/.teleclaude/`. Main DB is `teleclaude.db`, mirrors are `mirrors.db`.
 - **Fail Before Serve**: Migrations run before interfaces are considered ready.
 - **Headless Compatibility**: Sessions may have `tmux_session_name = NULL` and still be valid (`lifecycle_status='headless'`).
 - **Durable Hook Queue**: Hook events are persisted before daemon processing. Processed events are hard-deleted (no soft-delete retention).
 - **Best-effort Exactly-once Effects**: Outbox uses lock + idempotent handlers to tolerate retries.
-- **Bounded Runtime State**: Operational rows are retained only while live or within the runtime retention window. Closed sessions, terminal queue rows, stale mappings, resolved event notifications, reviewed quarantines, session scratch directories, and session-owned workspaces are pruned by daemon maintenance.
-- **Durable History Exclusion**: `mirrors.db`, memory tables, todo/project artifact databases, and other history domains are not pruned by runtime maintenance.
 - Schema bootstraps from `teleclaude/core/schema.sql`.
 - Incremental schema changes run through numbered migrations (`teleclaude/core/migrations/*.py`) tracked in `schema_migrations`.
 
@@ -145,21 +143,10 @@ erDiagram
 2. FTS virtual table/trigger path indexes observation text when available.
 3. Context builder reads `memory_observations` + `memory_summaries` to render startup context.
 
-### 4. Runtime maintenance
-
-1. Closed sessions older than the runtime retention window are purged.
-2. Session TMPDIRs and session-owned workspace directories are reconciled against live DB session truth.
-3. `session_map.json` is pruned as a cache; mappings survive only when the matching DB row is open or recoverable.
-4. Operational DB tables prune terminal or orphan rows after the retention window:
-   `operations`, `inbound_queue`, `webhook_outbox`, `hook_outbox.db`, `session_tokens`,
-   `session_listeners`, and `voice_assignments`.
-5. `events.db` prunes resolved notifications and reviewed quarantined events after the retention window while preserving unresolved work.
-6. Runtime SQLite files (`teleclaude.db`, `hook_outbox.db`, `events.db`) are compacted only when freelist ratio and free-byte thresholds are exceeded. `mirrors.db` is excluded.
-
 ## Failure modes
 
 - **Lock contention**: SQLite write conflicts delay/deny writes under pressure.
 - **Migration failure**: Daemon startup aborts until schema issue is fixed.
 - **Outbox backlog growth**: If worker path is unhealthy, undelivered rows accumulate.
-- **Disk pressure**: WAL/table/freelist growth can degrade performance or fail writes; daemon maintenance checkpoints WAL and threshold-compacts runtime SQLite files.
+- **Disk pressure**: WAL/table growth can degrade performance or fail writes.
 - **Corrupt row payload**: Outbox row is deleted (with error logging) to avoid infinite retry loops.

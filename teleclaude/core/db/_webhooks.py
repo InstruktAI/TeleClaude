@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import delete, update
+from sqlalchemy import update
 from sqlmodel import select
 
 from .. import db_models
@@ -153,17 +153,5 @@ class DbWebhooksMixin:
         async with self._session() as db_session:
             await db_session.exec(stmt)
             await db_session.commit()
-
-    async def cleanup_webhook_outbox(self, older_than_iso: str) -> int:
-        """Delete expired terminal webhook outbox rows."""
-        stmt = (
-            delete(db_models.WebhookOutbox)
-            .where(db_models.WebhookOutbox.status.in_(["delivered", "rejected", "dead_letter"]))
-            .where(db_models.WebhookOutbox.created_at < older_than_iso)
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return result.rowcount or 0
 
     # ── Session listeners (durable PUB-SUB) ──────────────────────────

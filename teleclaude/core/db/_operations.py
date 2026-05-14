@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
-from sqlalchemy import and_, delete, or_, update
+from sqlalchemy import or_, update
 from sqlmodel import select
 
 from .. import db_models
@@ -228,26 +228,6 @@ class DbOperationsMixin:
                 error_text=error_text,
                 updated_at=now_iso,
                 completed_at=now_iso,
-            )
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return result.rowcount or 0
-
-    async def cleanup_terminal_operations(self, older_than_iso: str) -> int:
-        """Delete terminal operation receipts older than runtime retention."""
-        stmt = (
-            delete(db_models.Operation)
-            .where(db_models.Operation.state.in_(["completed", "failed", "stale", "cancelled"]))
-            .where(
-                or_(
-                    db_models.Operation.completed_at < older_than_iso,
-                    and_(
-                        db_models.Operation.completed_at.is_(None),
-                        db_models.Operation.updated_at < older_than_iso,
-                    ),
-                )
             )
         )
         async with self._session() as db_session:

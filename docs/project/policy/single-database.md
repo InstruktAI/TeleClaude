@@ -17,13 +17,7 @@ description: 'Database boundaries follow domain boundaries. Each domain owns its
   FTS search — separate domain with large payloads and independent lifecycle.
 - **Event platform database** (`~/.teleclaude/events.db`): notification projections,
   trust state, mesh peer data — event domain storage with its own lifecycle.
-- **Hook outbox database** (`~/.teleclaude/hook_outbox.db`): hook receiver ingress
-  queue — operational hook delivery state owned by daemon maintenance.
 - Each domain owns its database file. Tables within a domain belong together.
-- Runtime maintenance may prune or compact operational domains
-  (`teleclaude.db`, `hook_outbox.db`, `events.db`) according to retention policy,
-  but must not prune durable/history domains such as `mirrors.db`, memory data,
-  todo databases, or project artifact stores.
 - Git worktrees use isolated database files for test isolation and must not touch
   production state.
 - The daemon must not create ad-hoc database files outside recognized domain boundaries.

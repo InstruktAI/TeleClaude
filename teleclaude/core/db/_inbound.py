@@ -233,29 +233,4 @@ class DbInboundMixin:
             await db_session.commit()
             return result.rowcount or 0
 
-    async def cleanup_orphan_inbound(self, now_iso: str) -> int:
-        """Expire pending inbound rows whose target session is closed or missing."""
-        live_session_ids = select(db_models.Session.session_id).where(
-            db_models.Session.closed_at.is_(None),
-            or_(
-                db_models.Session.lifecycle_status.is_(None),
-                db_models.Session.lifecycle_status != "closed",
-            ),
-        )
-        stmt = (
-            update(db_models.InboundQueue)
-            .where(db_models.InboundQueue.status.in_(["pending", "failed", "processing"]))
-            .where(db_models.InboundQueue.session_id.notin_(live_session_ids))
-            .values(
-                status="expired",
-                processed_at=now_iso,
-                locked_at=None,
-                last_error="target session closed or missing",
-            )
-        )
-        async with self._session() as db_session:
-            result = await db_session.exec(stmt)
-            await db_session.commit()
-            return result.rowcount or 0
-
     # ── Durable operations CRUD ────────────────────────────────────────

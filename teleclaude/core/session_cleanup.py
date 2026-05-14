@@ -13,9 +13,7 @@ This can happen when:
 import asyncio
 import shutil
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-from uuid import UUID
 
 from instrukt_ai_logging import get_logger
 
@@ -44,94 +42,10 @@ TMUX_TUI_SESSION_NAME = "tc_tui"
 # Only sessions with unresolved channel references (e.g. topic_id still set) are replayed.
 # One minute covers the restart window without replaying hours of old sessions.
 RECENTLY_CLOSED_SESSION_SECONDS = 60
-SESSION_TMPDIR_RACE_SAFETY = timedelta(minutes=10)
 
 # Concurrency guard: session IDs whose cleanup is currently in flight.
 # Prevents duplicate terminate_session calls from parallel SESSION_CLOSE_REQUESTED events.
 _cleanup_in_flight: set[str] = set()
-
-
-def _is_uuid_name(value: str) -> bool:
-    """Return whether a directory name is a canonical UUID."""
-    try:
-        parsed = UUID(value)
-    except ValueError:
-        return False
-    return str(parsed) == value.lower()
-
-
-def _path_is_under_base(path: Path, base: Path) -> bool:
-    try:
-        resolved_path = path.resolve()
-        resolved_base = base.resolve()
-    except OSError:
-        return False
-    return resolved_path == resolved_base or resolved_base in resolved_path.parents
-
-
-def _session_tmpdir_path(session_id: str) -> Path:
-    safe_id = tmux_bridge.safe_session_tmp_component(session_id)
-    return tmux_bridge.get_session_tmpdir_base() / safe_id
-
-
-async def cleanup_session_tmpdir(session_id: str) -> bool:
-    """Delete the configured per-session TMPDIR for a closed session."""
-    base_dir = tmux_bridge.get_session_tmpdir_base()
-    session_tmpdir = _session_tmpdir_path(session_id)
-    if not session_tmpdir.exists():
-        return False
-    if session_tmpdir.is_symlink() or not session_tmpdir.is_dir():
-        logger.warning("Skipping unsafe session TMPDIR cleanup path: %s", session_tmpdir)
-        return False
-    if not _path_is_under_base(session_tmpdir, base_dir):
-        logger.warning("Skipping session TMPDIR outside configured base: %s", session_tmpdir)
-        return False
-    await asyncio.to_thread(shutil.rmtree, session_tmpdir)
-    logger.debug("Deleted session TMPDIR for %s", session_id)
-    return True
-
-
-async def cleanup_orphan_session_tmpdirs(
-    *,
-    race_safety_age: timedelta = SESSION_TMPDIR_RACE_SAFETY,
-) -> int:
-    """Reconcile per-session TMPDIRs against DB truth."""
-    base_dir = tmux_bridge.get_session_tmpdir_base()
-    if not base_dir.exists() or not base_dir.is_dir() or base_dir.is_symlink():
-        return 0
-
-    now = datetime.now(UTC)
-    sessions = await db.get_all_sessions()
-    live_session_ids = {
-        session.session_id
-        for session in sessions
-        if not session.closed_at and (session.lifecycle_status or "active") != "closed"
-    }
-
-    removed_count = 0
-    for candidate in base_dir.iterdir():
-        if candidate.is_symlink() or not candidate.is_dir():
-            continue
-        if not _is_uuid_name(candidate.name):
-            continue
-        try:
-            modified_at = datetime.fromtimestamp(candidate.stat().st_mtime, tz=UTC)
-        except OSError:
-            continue
-        if now - modified_at < race_safety_age:
-            continue
-        if candidate.name in live_session_ids:
-            continue
-        if not _path_is_under_base(candidate, base_dir):
-            continue
-        try:
-            await asyncio.to_thread(shutil.rmtree, candidate)
-            removed_count += 1
-            logger.info("Removed orphan session TMPDIR: %s", candidate)
-        except OSError as exc:
-            logger.warning("Failed to remove orphan session TMPDIR %s: %s", candidate, exc)
-
-    return removed_count
 
 
 async def cleanup_session_resources(
@@ -294,7 +208,6 @@ async def _terminate_session_inner(
             logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
 
     await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
-    await cleanup_session_tmpdir(session.session_id)
 
     # Expire any pending inbound messages before marking the session closed.
     try:
@@ -515,16 +428,14 @@ async def cleanup_orphan_workspaces() -> int:
 
     removed_count = 0
     for workspace_dir in OUTPUT_DIR.iterdir():
-        if workspace_dir.is_symlink() or not workspace_dir.is_dir():
-            continue
-        if not _is_uuid_name(workspace_dir.name):
+        if not workspace_dir.is_dir():
             continue
 
         session_id = workspace_dir.name
         if session_id not in known_session_ids:
             logger.warning("Found orphan workspace: %s (not active in DB), removing", session_id)
             try:
-                await asyncio.to_thread(shutil.rmtree, workspace_dir)
+                shutil.rmtree(workspace_dir)
                 removed_count += 1
                 logger.info("Removed orphan workspace: %s", session_id)
             except Exception as e:

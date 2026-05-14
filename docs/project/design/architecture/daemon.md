@@ -117,7 +117,7 @@ sequenceDiagram
 | Resource Monitor      | 60s                | Emit runtime resource snapshots                                    |
 | WAL Checkpoint        | 300s               | Prevent unbounded SQLite WAL growth                                |
 | Launchd Watch         | 300s (optional)    | Log launchd state transitions on macOS                             |
-| Runtime Maintenance   | 1h                 | Prune stale sessions, scratch dirs, caches, operational rows, event runtime rows, and compact runtime SQLite files |
+| Session Cleanup       | 1h                 | Periodic stale-session cleanup via maintenance loop                |
 | Closed Session Replay | 1h                 | Re-emit `session_closed` for recently closed sessions (12h window) |
 
 An operator can force the same behavior on demand with:

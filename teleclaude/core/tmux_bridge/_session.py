@@ -39,21 +39,11 @@ def _get_session_tmp_basedir() -> Path:
     return TMP_SESSIONS_DIR
 
 
-def get_session_tmpdir_base() -> Path:
-    """Return the configured base directory for per-session TMPDIRs."""
-    return _get_session_tmp_basedir()
-
-
 def _safe_path_component(value: str) -> str:
     """Return a filesystem-safe path component derived from value."""
     if re.fullmatch(r"[A-Za-z0-9._-]{1,128}", value):
         return value
     return hashlib.sha256(value.encode("utf-8")).hexdigest()[:32]
-
-
-def safe_session_tmp_component(session_id: str) -> str:
-    """Return the path component used for a session TMPDIR."""
-    return _safe_path_component(session_id)
 
 
 def _prepare_session_tmp_dir(session_id: str) -> Path:
@@ -149,7 +139,7 @@ async def _create_tmux_session(
         # Claude Code can crash on macOS if TMPDIR contains unix sockets (fs.watch EOPNOTSUPP/UNKNOWN).
         # Use a per-session, empty TMPDIR to avoid inheriting sockets from global temp directories.
         if session_id:
-            session_tmp_dir = await asyncio.to_thread(_prepare_session_tmp_dir, session_id)
+            session_tmp_dir = _prepare_session_tmp_dir(session_id)
             effective_env_vars["TMPDIR"] = str(session_tmp_dir)
             effective_env_vars["TMP"] = str(session_tmp_dir)
             effective_env_vars["TEMP"] = str(session_tmp_dir)

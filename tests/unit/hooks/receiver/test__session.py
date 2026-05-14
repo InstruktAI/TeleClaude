@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import sys
 import types
-from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -50,20 +49,6 @@ class _SqlSessionStub:
 
     def exec(self, _statement: object) -> SimpleNamespace:
         return SimpleNamespace(first=lambda: self.first_value)
-
-
-class _SessionMapSqlSessionStub:
-    def __init__(self, rows: Mapping[str, object]) -> None:
-        self.rows = rows
-
-    def __enter__(self) -> _SessionMapSqlSessionStub:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        return None
-
-    def get(self, _model: object, session_id: str) -> object | None:
-        return self.rows.get(session_id)
 
 
 def _install_sqlmodel_stub(
@@ -135,82 +120,6 @@ class TestMemoryAndSessionMap:
 
         assert session_module._load_session_map(session_map_path) == {"claude:native-1": "session-1"}
         assert session_module._get_cached_session_id("claude", "native-1") == "session-1"
-
-    @pytest.mark.unit
-    def test_prune_session_map_keeps_only_db_truth_mappings(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path,
-    ) -> None:
-        agent = "claude"
-        other_agent = "gemini"
-        kept_native = "native-kept"
-        current_native = "native-current"
-        missing_native = "native-missing"
-        closed_native = "native-closed"
-        wrong_agent_native = "native-wrong-agent"
-        stale_native = "native-stale"
-        kept_session = "session-kept"
-        current_session = "session-current"
-        missing_session = "session-missing"
-        closed_session = "session-closed"
-        wrong_agent_session = "session-wrong-agent"
-        session_map_path = tmp_path / "session-map.json"
-        session_map_path.write_text(
-            json.dumps(
-                {
-                    session_module._session_map_key(agent, kept_native): kept_session,
-                    session_module._session_map_key(agent, missing_native): missing_session,
-                    session_module._session_map_key(agent, closed_native): closed_session,
-                    session_module._session_map_key(other_agent, wrong_agent_native): wrong_agent_session,
-                    session_module._session_map_key(agent, stale_native): current_session,
-                    session_module._session_map_key(agent, current_native): current_session,
-                }
-            ),
-            encoding="utf-8",
-        )
-        rows = {
-            kept_session: SimpleNamespace(
-                closed_at=None,
-                lifecycle_status="active",
-                active_agent=agent,
-                native_session_id=kept_native,
-            ),
-            closed_session: SimpleNamespace(
-                closed_at="2026-01-01T00:00:00+00:00",
-                lifecycle_status="closed",
-                active_agent=agent,
-                native_session_id=closed_native,
-            ),
-            wrong_agent_session: SimpleNamespace(
-                closed_at=None,
-                lifecycle_status="active",
-                active_agent=agent,
-                native_session_id=wrong_agent_native,
-            ),
-            current_session: SimpleNamespace(
-                closed_at=None,
-                lifecycle_status="active",
-                active_agent=agent,
-                native_session_id=current_native,
-            ),
-        }
-        sql_session = _SessionMapSqlSessionStub(rows)
-        monkeypatch.setattr(session_module, "_get_session_map_path", lambda: session_map_path)
-        monkeypatch.setattr(
-            session_module,
-            "_get_sqlmodel_module",
-            lambda: SimpleNamespace(Session=lambda _engine: sql_session),
-        )
-        monkeypatch.setattr(session_module, "_create_sync_engine", lambda: object())
-
-        removed = session_module.prune_session_map()
-
-        assert removed == 4
-        assert session_module._load_session_map(session_map_path) == {
-            session_module._session_map_key(agent, kept_native): kept_session,
-            session_module._session_map_key(agent, current_native): current_session,
-        }
 
 
 class TestTmuxContractResolution:
