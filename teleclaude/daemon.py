@@ -9,7 +9,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import TextIO, cast
+from typing import TextIO
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -98,7 +98,7 @@ from teleclaude.core.event_bus import event_bus
 _record_import_timing("teleclaude.core.event_bus", _t)
 
 _t = time.perf_counter()
-from teleclaude.core.events import EventType, TeleClaudeEvents
+from teleclaude.core.events import TeleClaudeEvents
 
 _record_import_timing("teleclaude.core.events", _t)
 
@@ -332,30 +332,14 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.client.agent_event_handler = self._handle_agent_event_direct
         self.client.agent_coordinator = self.agent_coordinator
 
-        # Auto-discover and register event handlers (SESSION_*, ERROR only —
-        # AGENT_EVENT is routed directly via adapter_client.agent_event_handler)
-        for attr_name in dir(TeleClaudeEvents):
-            if attr_name.startswith("_"):
-                continue
-
-            event_value = getattr(TeleClaudeEvents, attr_name)
-            if not isinstance(event_value, str):
-                continue
-
-            # AGENT_EVENT bypasses event bus — routed directly
-            if event_value == TeleClaudeEvents.AGENT_EVENT:
-                continue
-
-            handler_name = f"_handle_{event_value}"
-            handler = getattr(self, handler_name, None)
-
-            if handler and callable(handler):
-                event_bus.subscribe(cast(EventType, event_value), handler)
-                logger.debug("Auto-registered handler: %s → %s", event_value, handler_name)
-            else:
-                logger.debug("No handler for event: %s (skipped)", event_value)
-
-        # Register non-TeleClaudeEvents handlers
+        # Daemon-owned event subscriptions. AGENT_EVENT bypasses the bus —
+        # it is routed directly via adapter_client.agent_event_handler above.
+        # Other events (AGENT_ACTIVITY, AGENT_AVAILABILITY, SESSION_UPDATED, etc.)
+        # are owned by their respective components (api_server, adapters).
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STARTED, self._handle_session_started)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSED, self._handle_session_closed)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_CLOSE_REQUESTED, self._handle_session_close_requested)
+        event_bus.subscribe(TeleClaudeEvents.ERROR, self._handle_error)
         event_bus.subscribe("system_command", self._handle_system_command)  # type: ignore[arg-type]
 
         # Note: Adapters are loaded in client.start(), not here
@@ -661,7 +645,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                 self.maintenance_service.periodic_cleanup(), name="periodic-cleanup"
             )
             self.cleanup_task.add_done_callback(self._log_background_task_exception("periodic_cleanup"))
-            logger.info("Periodic cleanup task started (closed sessions purged after 7d, inbound queue trimmed at 72h)")
+            logger.info("Periodic cleanup task started (closed sessions purged after 7d, inbound queue trimmed at 7d)")
 
             # Start polling watcher (keeps pollers aligned with tmux foreground state)
             self.poller_watch_task = asyncio.create_task(
