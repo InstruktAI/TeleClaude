@@ -1,10 +1,14 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run
+# /// script
+# requires-python = ">=3.12"
+# dependencies = []
+# ///
 """One-shot migration: merge mirror rows from main DB into mirrors.db, then drop mirror tables from main DB.
 
 Run after deploying the hardcode-db-paths code changes. Safe to re-run (idempotent).
 
 Usage:
-    python scripts/migrate_mirrors_to_separate_db.py [--dry-run]
+    uv run scripts/migrate_mirrors_to_separate_db.py [--dry-run]
 """
 
 from __future__ import annotations

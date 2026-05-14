@@ -30,7 +30,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from teleclaude.paths import TELECLAUDE_HOME
+from teleclaude.paths import GLOBAL_CONFIG_PATH
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -106,7 +106,7 @@ def _ensure_repo(repo_url: str, repo_path: Path) -> tuple[list[str], list[str]]:
 
 
 def _load_checkout_root() -> Path:
-    config_path = TELECLAUDE_HOME / "config" / "teleclaude.yml"
+    config_path = GLOBAL_CONFIG_PATH
     if not config_path.exists():
         return DEFAULT_CHECKOUT_ROOT
     try:

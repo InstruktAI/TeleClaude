@@ -29,6 +29,7 @@ _spec.loader.exec_module(_mod)
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
 _check_import_outside_toplevel_policy = _mod._check_import_outside_toplevel_policy
+_collect_runtime_path_bypasses = _mod._collect_runtime_path_bypasses
 _check_runtime_path_bypasses = _mod._check_runtime_path_bypasses
 _check_test_companions = _mod._check_test_companions
 _check_no_companion_markers = _mod._check_no_companion_markers
@@ -171,11 +172,9 @@ class TestRuntimePathAuthorityRule:
             'from pathlib import Path\n\nDB = Path("~/.teleclaude/teleclaude.db").expanduser()\n',
         )
 
-        result = _run_runtime_path_bypass_check(tmp_path)
+        result = _collect_runtime_path_bypasses(tmp_path)
 
-        assert result is not None
-        assert "teleclaude-runtime-path-bypass" in result
-        assert "teleclaude/example.py" in result
+        assert [(match.rel_path, match.line_number) for match in result] == [("teleclaude/example.py", 3)]
 
     @pytest.mark.unit
     def test_catches_path_home_teleclaude_join(self, tmp_path: Path) -> None:
@@ -186,11 +185,9 @@ class TestRuntimePathAuthorityRule:
             'from pathlib import Path\n\nruntime = Path.home() / ".teleclaude" / "teleclaude.db"\n',
         )
 
-        result = _run_runtime_path_bypass_check(tmp_path)
+        result = _collect_runtime_path_bypasses(tmp_path)
 
-        assert result is not None
-        assert "teleclaude-runtime-path-bypass" in result
-        assert "tests/unit/test_example.py" in result
+        assert [(match.rel_path, match.line_number) for match in result] == [("tests/unit/test_example.py", 3)]
 
     @pytest.mark.unit
     def test_allows_paths_module_as_runtime_authority(self, tmp_path: Path) -> None:

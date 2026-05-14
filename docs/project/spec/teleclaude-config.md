@@ -107,6 +107,7 @@ environment_variables:
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY
+  - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   - TELECLAUDE_LOG_LEVEL
   - REDIS_URL
   - SMTP_HOST
@@ -115,6 +116,12 @@ environment_variables:
   - SMTP_PASS
   - EMAIL_FROM
 ```
+
+`TELECLAUDE_HOME` is consumed by `teleclaude.paths` before path constants are
+created. It changes the root for runtime state files such as databases, logs,
+global docs, commands, people configs, and session temp directories. Tests set it
+before importing TeleClaude so runtime state cannot fall through to the real
+`~/.teleclaude` tree.
 
 ### Daemon runtime config keys (`config.yml`)
 

@@ -47,6 +47,14 @@ MODULE_SIZE_EXCEPTIONS = frozenset(
 )
 
 
+class RuntimePathBypass(NamedTuple):
+    """Structured runtime path bypass diagnostic before rendering."""
+
+    rel_path: str
+    line_number: int
+    source_line: str
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run repo-wide or selected-file guardrails."""
     parser = argparse.ArgumentParser(description="Run TeleClaude lint guardrails.")
@@ -678,7 +686,15 @@ def _iter_rule_candidate_paths(
 
 def _check_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | None = None) -> None:
     """Reject TeleClaude runtime state paths that bypass teleclaude.paths."""
-    matches: list[str] = []
+    matches = _collect_runtime_path_bypasses(repo_root, selected_paths)
+    if matches:
+        formatted = "\n".join(f"- {match.rel_path}:{match.line_number}: {match.source_line}" for match in matches)
+        _fail(f"teleclaude-runtime-path-bypass: use teleclaude.paths as the single runtime path authority\n{formatted}")
+
+
+def _collect_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | None = None) -> list[RuntimePathBypass]:
+    """Collect TeleClaude runtime state paths that bypass teleclaude.paths."""
+    matches: list[RuntimePathBypass] = []
     candidates: Iterable[Path]
     if selected_paths is None:
         candidates = (
@@ -709,11 +725,8 @@ def _check_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | Non
             if _is_teleclaude_home_bypass(node):
                 lineno = getattr(node, "lineno", 0)
                 line = lines[lineno - 1].strip() if 0 < lineno <= len(lines) else ""
-                matches.append(f"{rel}:{lineno}: {line}")
-
-    if matches:
-        formatted = "\n".join(f"- {item}" for item in matches)
-        _fail(f"teleclaude-runtime-path-bypass: use teleclaude.paths as the single runtime path authority\n{formatted}")
+                matches.append(RuntimePathBypass(rel_path=rel, line_number=lineno, source_line=line))
+    return matches
 
 
 def _is_teleclaude_home_bypass(node: ast.AST) -> bool:

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from teleclaude import paths
@@ -21,3 +23,29 @@ def test_home_relative_paths_share_expected_bases() -> None:
     assert paths.SESSION_MAP_PATH == paths.STATE_DIR / "session_map.json"
     assert paths.CHIPTUNES_FAVORITES_PATH == paths.STATE_DIR / "chiptunes-favorites.json"
     assert paths.RUNTIME_SETTINGS_PATH == paths.STATE_DIR / "runtime-settings.json"
+
+
+def test_home_defaults_to_user_teleclaude_dir_when_env_unset() -> None:
+    env = os.environ.copy()
+    env.pop("TELECLAUDE_HOME", None)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path\n"
+                "from teleclaude import paths\n"
+                "print(paths.TELECLAUDE_HOME)\n"
+                "print(Path('~/.teleclaude').expanduser())"
+            ),
+        ],
+        cwd=paths.REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    actual, expected = [Path(line) for line in result.stdout.splitlines()]
+    assert actual == expected
