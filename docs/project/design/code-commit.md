@@ -84,8 +84,10 @@ the staged files.
    classified:
    - **Path A:** all staged files non-functional + message contains `[skip ci]` → autonomous.
    - **Path B:** small functional change, human-approved → commit directly (`--approved`).
-   - **Path C:** functional change + review → commit with `--approved`, then dispatch
-     `telec sessions run --command /next-review-commits --args '<shas>'`.
+   - **Path C:** functional change + review → commit with `--approved`. If
+     this patch series has no `/next-review-commits` reviewer yet, dispatch
+     one. Follow-up commits for the same patch series are sent to that same
+     reviewer with `telec sessions send`.
 
 6. **Orchestrator restriction.** Orchestrators cannot commit on any branch.
 
@@ -162,8 +164,9 @@ the agent to fix and retry.
 
 **Path B/C gate.** Functional files on main without human approval. Exit
 with guidance. Path B: human approves with `--approved`. Path C: human
-approves the commit and the agent dispatches `/next-review-commits` with
-the resulting SHAs.
+approves the commit; the agent dispatches `/next-review-commits` only when
+the patch series has no reviewer yet. Follow-up commits for that patch series
+are sent to the same reviewer.
 
 ## See also
 
