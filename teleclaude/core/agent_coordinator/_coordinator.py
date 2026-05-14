@@ -231,6 +231,12 @@ class AgentCoordinator(
             reason: Reason code for this transition.
             last_activity_at: ISO 8601 UTC timestamp of last known activity (optional).
         """
+        # Idempotency: suppress redundant emit when status is unchanged. Synthetic
+        # session_start (Codex) and the real native session_start both transition
+        # to `active`/`agent_session_started`; without this guard the second call
+        # double-fires the cache notification and WebSocket broadcast.
+        if self._last_emitted_status.get(session_id) == status:
+            return
         try:
             timestamp = datetime.now(UTC).isoformat()
             canonical = serialize_status_event(
@@ -333,7 +339,14 @@ class AgentCoordinator(
         if not session or session.lifecycle_status != "headless":
             self._emit_status_event(context.session_id, "active", "agent_session_started")
 
-        await self._speak_session_start(context.session_id)
+        # Speak only on the first session_start for this session. Codex's real
+        # native session_start arrives after our synthetic one (combined with
+        # user_prompt_submit); by then session.native_session_id is already set,
+        # which we use as the "first time" sentinel — synthetic enters with
+        # native_session_id=None so it speaks; real arrives second and is skipped.
+        already_started_before = bool(session and session.native_session_id)
+        if not already_started_before:
+            await self._speak_session_start(context.session_id)
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
