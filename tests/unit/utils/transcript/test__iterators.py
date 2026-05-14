@@ -69,6 +69,52 @@ class TestAgentSpecificIterators:
         assert len(entries) == 1
         assert entries[0]["type"] == "response_item"
 
+    def test_iter_gemini_entries_normalizes_jsonl_meta_set_and_info_records(self, tmp_path: Path) -> None:
+        """Gemini 0.41+ writes JSONL: one record per line, no `messages` envelope,
+        interspersed `$set` mutation records, `info` system records, and a session-meta
+        header lacking a `type` field. The iterator must skip non-message records and
+        normalize the rest the same way as the legacy single-doc format.
+        """
+        transcript = tmp_path / "gemini.jsonl"
+        transcript.write_text(
+            "\n".join(
+                [
+                    '{"sessionId":"d287d6f7-4d1f-4272-a8c5-499d0e04c42e","projectHash":"abc","startTime":"2026-05-14T17:57:25.785Z","kind":"main"}',
+                    '{"id":"u1","timestamp":"2024-01-01T00:00:00Z","type":"user","content":[{"text":"Question"}]}',
+                    '{"$set":{"lastUpdated":"2024-01-01T00:00:00Z"}}',
+                    '{"id":"g1","timestamp":"2024-01-01T00:00:01Z","type":"gemini","thoughts":[{"description":"Think"}],"content":"Answer","toolCalls":[{"displayName":"search","args":{"q":"demo"},"result":[{"functionResponse":{"response":{"output":"Hit"}}}]},{"name":"fetch","args":{"url":"https://example.com"},"resultDisplay":"Fallback"}]}',
+                    '{"$set":{"lastUpdated":"2024-01-01T00:00:01Z"}}',
+                    '{"id":"i1","timestamp":"2024-01-01T00:00:02Z","type":"info","content":"Gemini CLI update available! 0.41.2 -> 0.42.0"}',
+                ]
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+        entries = list(transcript_iterators._iter_gemini_entries(transcript))
+
+        assert entries[0] == {
+            "type": "user",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "message": {"role": "user", "content": [{"type": "input_text", "text": "Question"}]},
+        }
+        assistant_message = cast(Mapping[str, object], entries[1]["message"])
+        assistant_content = cast(list[Mapping[str, object]], assistant_message["content"])
+
+        assert assistant_message["role"] == "assistant"
+        assert [block["type"] for block in assistant_content] == [
+            "thinking",
+            "text",
+            "tool_use",
+            "tool_result",
+            "tool_use",
+            "tool_result",
+        ]
+        assert assistant_content[3]["content"] == "Hit"
+        assert assistant_content[5]["content"] == "Fallback"
+        # The session-meta header, two `$set` mutation records, and the `info` record must be ignored.
+        assert len(entries) == 2
+
     def test_iter_gemini_entries_normalizes_user_assistant_and_tool_results(self, tmp_path: Path) -> None:
         transcript = tmp_path / "gemini.json"
         transcript.write_text(

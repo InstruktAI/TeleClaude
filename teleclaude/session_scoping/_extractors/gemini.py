@@ -65,13 +65,37 @@ def collect_gemini_paths(
     if not transcript_path:
         return set(), "gemini_structured"
 
-    raw_document = json.loads(Path(transcript_path).read_text(encoding="utf-8"))
-    if not isinstance(raw_document, dict):
-        return set(), "gemini_structured"
-    raw_messages = raw_document.get("messages")
-    if not isinstance(raw_messages, list):
-        return set(), "gemini_structured"
-    messages = [message for message in raw_messages if isinstance(message, dict)]
+    # Gemini CLI switched session files from single-doc JSON to JSONL around May 2026
+    # and bumped the extension from `.json` to `.jsonl`. Branch on extension so both
+    # formats parse — legacy `.json` keeps its envelope, current `.jsonl` reads per line.
+    path_obj = Path(transcript_path)
+    messages: list[Mapping[str, object]] = []
+    if path_obj.suffix == ".jsonl":
+        try:
+            with open(path_obj, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict):
+                        messages.append(record)
+        except OSError:
+            return set(), "gemini_structured"
+    else:
+        try:
+            raw_document = json.loads(path_obj.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return set(), "gemini_structured"
+        if not isinstance(raw_document, dict):
+            return set(), "gemini_structured"
+        raw_messages = raw_document.get("messages")
+        if not isinstance(raw_messages, list):
+            return set(), "gemini_structured"
+        messages = [message for message in raw_messages if isinstance(message, dict)]
 
     start_index = 0
     if scope_mode == "turn_delta":

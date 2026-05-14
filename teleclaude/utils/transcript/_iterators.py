@@ -14,13 +14,55 @@ from typing import cast
 from instrukt_ai_logging import get_logger
 
 from teleclaude.core.agents import AgentName
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import TeleClaudeEvents
 from teleclaude.core.models import JsonDict
+from teleclaude.events.envelope import EventVisibility
 
 from ._parsers import normalize_transcript_entry_message
 from ._user_turns import is_real_user_turn_entry
 from ._utils import CHECKPOINT_JSONL_TAIL_READ_BYTES, _parse_timestamp
 
 logger = get_logger(__name__)
+
+_REPORTED_TRANSCRIPT_FORMAT_MISMATCHES: set[tuple[str, str]] = set()
+
+
+def _report_transcript_format_mismatch(agent: str, path: Path, exc: json.JSONDecodeError) -> None:
+    """Surface third-party transcript shape drift to the TUI exactly once per (agent, path).
+
+    External agent CLIs (Gemini, Codex) change their on-disk session-state format without
+    a stability contract. When our reader can't parse a transcript, that is a high-signal
+    integration-drift event: the agent shipped a new shape and our parser is now stale.
+    Emit an `ERROR` event so the TUI surfaces a toast; the user sees the breakage live
+    instead of having to dig through daemon logs.
+    """
+    key = (agent, str(path))
+    if key in _REPORTED_TRANSCRIPT_FORMAT_MISMATCHES:
+        return
+    _REPORTED_TRANSCRIPT_FORMAT_MISMATCHES.add(key)
+    logger.warning(
+        "Transcript format mismatch — third-party CLI may have changed shape",
+        agent=agent,
+        path=str(path),
+        error=str(exc),
+    )
+    try:
+        event_bus.emit(
+            TeleClaudeEvents.ERROR,
+            {
+                "message": (
+                    f"Transcript parser can't read {agent} session file "
+                    f"{path.name} — file shape may have changed in the agent CLI. "
+                    "Output/summary/title for this session will be empty until the parser is updated."
+                ),
+                "severity": "warning",
+            },  # type: ignore[arg-type]
+            visibility=EventVisibility.CLUSTER,
+        )
+    except Exception as emit_exc:
+        logger.debug("ERROR event emission failed (non-fatal): %s", emit_exc)
+
 
 __all__ = [
     "_entry_role",
@@ -200,13 +242,38 @@ def _coerce_dict_list(raw_items: object) -> list[JsonDict]:
     return [cast(JsonDict, item) for item in raw_items if isinstance(item, dict)]
 
 
-def _load_gemini_document(path: Path) -> JsonDict:
-    """Load Gemini session JSON as a dict when possible."""
-    with open(path, encoding="utf-8") as f:
-        raw_document: object = json.load(f)
-    if isinstance(raw_document, dict):
-        return cast(JsonDict, raw_document)
-    return {}
+def _iter_gemini_records(path: Path) -> Iterable[JsonDict]:
+    """Yield raw Gemini message records from either JSONL (0.41+) or legacy JSON sessions.
+
+    Gemini CLI switched its session-state file from a single JSON document with
+    ``{"messages": [...]}`` to JSONL with no envelope around May 2026 (and bumped the
+    file extension from ``.json`` to ``.jsonl``). Branch on extension so both shapes
+    keep working — legacy ``.json`` fixtures stay valid, current ``.jsonl`` files parse.
+    """
+    if path.suffix == ".jsonl":
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record: object = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    _report_transcript_format_mismatch("gemini", path, exc)
+                    continue
+                if isinstance(record, dict):
+                    yield cast(JsonDict, record)
+        return
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw_document: object = json.load(f)
+    except json.JSONDecodeError as exc:
+        _report_transcript_format_mismatch("gemini", path, exc)
+        return
+    if not isinstance(raw_document, dict):
+        return
+    yield from _coerce_dict_list(raw_document.get("messages", []))
 
 
 def _normalize_gemini_user_entry(message: JsonDict) -> JsonDict:
@@ -288,13 +355,12 @@ def _build_gemini_assistant_blocks(
 def _iter_gemini_entries(
     path: Path,
 ) -> Iterable[JsonDict]:
-    """Yield normalized entries from Gemini JSON session files.
+    """Yield normalized entries from Gemini session files (JSONL or legacy JSON).
 
     guard: allow-string-compare
     """
 
-    document = _load_gemini_document(path)
-    for message in _coerce_dict_list(document.get("messages", [])):
+    for message in _iter_gemini_records(path):
         msg_type = message.get("type")
 
         if msg_type == "user":
