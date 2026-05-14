@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+import teleclaude.paths as tc_paths
+
 # Ensure test config path is set (respects CI env var if already set).
 _worktree_root = Path(__file__).resolve().parents[2]
 os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_worktree_root / "tests" / "integration" / "config.yml"))
@@ -20,11 +22,13 @@ os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_worktree_root / "tests" / "
 
 @pytest.fixture(autouse=True)
 def _isolate_test_environment(tmp_path, monkeypatch):
-    """No-op override for unit tests — no DB access needed."""
+    """Unit tests inherit the suite-level TeleClaude runtime root."""
+    assert tc_paths.TELECLAUDE_HOME == Path(os.environ["TELECLAUDE_HOME"])
     yield
 
 
 @pytest.fixture(autouse=True)
 def _isolate_tui_state(tmp_path, monkeypatch):
-    """No-op override for unit tests — no TUI state needed."""
+    """Unit tests inherit TUI state from the suite-level TeleClaude runtime root."""
+    assert tc_paths.TUI_STATE_PATH == tc_paths.STATE_DIR / "tui_state.json"
     yield

@@ -39,6 +39,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from teleclaude.docs_index import write_third_party_index_yaml
+from teleclaude.paths import COMMANDS_DIR, GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads, normalize_required_refs
 from teleclaude.resource_validation import resolve_ref_path, validate_artifact
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
@@ -775,13 +776,13 @@ def main() -> None:  # noqa: C901
         "codex": {
             "check_dir": os.path.expanduser("~/.codex"),
             "prefix": "~/.teleclaude/commands/",
-            "master_dest": os.path.join(dist_dir, "codex", "CODEX.md"),
+            "master_dest": os.path.join(dist_dir, "codex", "AGENTS.md"),
             "commands_dest_dir": os.path.join(dist_dir, "codex", "prompts"),
             "agents_dest_dir": os.path.join(dist_dir, "codex", "agents"),
             "skills_dest_dir": os.path.join(dist_dir, "codex", "skills"),
             "skills_ext": ".md",
-            "deploy_master_dest": os.path.join(os.path.expanduser("~/.codex"), "CODEX.md"),
-            "deploy_commands_dest": os.path.join(os.path.expanduser("~/.teleclaude"), "commands"),
+            "deploy_master_dest": os.path.join(os.path.expanduser("~/.codex"), "AGENTS.md"),
+            "deploy_commands_dest": str(COMMANDS_DIR),
             "deploy_agents_dest": os.path.join(os.path.expanduser("~/.codex"), "agents"),
             "deploy_skills_dest": os.path.join(os.path.expanduser("~/.codex"), "skills"),
             "ext": ".md",
@@ -1123,13 +1124,13 @@ def main() -> None:  # noqa: C901
 
             print("Deployment complete.")
 
-    def _deploy_documentation(source_dir: str, deploy_root: str) -> None:
+    def _deploy_documentation(source_dir: str) -> None:
         """Robustly deploy documentation using atomic symlink replacement."""
         if not os.path.isdir(source_dir):
             return
 
         print("\nDeploying documentation...")
-        deploy_docs_root = Path(deploy_root).expanduser() / ".teleclaude" / "docs"
+        deploy_docs_root = GLOBAL_SNIPPETS_DIR
         source_docs_root = Path(source_dir).resolve()
 
         if source_docs_root == deploy_docs_root.resolve():
@@ -1197,7 +1198,7 @@ def main() -> None:  # noqa: C901
                 )
 
         # Deploy docs exactly once after all agent transpilation
-        _deploy_documentation(docs_source_dir, os.path.expanduser("~"))
+        _deploy_documentation(docs_source_dir)
     else:
         if global_sources:
             _run_phase(

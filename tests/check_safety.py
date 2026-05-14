@@ -3,10 +3,11 @@
 
 import sqlite3
 import sys
-from pathlib import Path
+
+from teleclaude.paths import MAIN_DB_PATH
 
 # Check production database
-db_path = Path("~/.teleclaude/teleclaude.db").expanduser()
+db_path = MAIN_DB_PATH
 if db_path.exists():
     conn = sqlite3.connect(str(db_path))
     cursor = conn.execute("SELECT COUNT(*) FROM sessions")

@@ -18,6 +18,12 @@ from typing import cast
 
 import yaml
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from teleclaude.paths import PEOPLE_DIR
+
 type YamlPrimitive = str | int | float | bool | None
 type YamlValue = YamlPrimitive | list[YamlValue] | dict[str, YamlValue]
 type YamlDict = dict[str, YamlValue]
@@ -39,7 +45,7 @@ def _ensure_dict(parent: YamlDict, key: str) -> YamlDict:
 
 
 def _people_dir() -> Path:
-    return Path.home() / ".teleclaude" / "people"
+    return PEOPLE_DIR
 
 
 def _is_new_format(data: YamlDict) -> bool:

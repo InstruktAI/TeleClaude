@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from teleclaude import paths
@@ -12,7 +13,7 @@ def test_repo_root_is_derived_from_module_location() -> None:
 
 
 def test_home_relative_paths_share_expected_bases() -> None:
-    assert paths.TELECLAUDE_HOME == Path("~/.teleclaude").expanduser()
+    assert paths.TELECLAUDE_HOME == Path(os.environ["TELECLAUDE_HOME"])
     assert paths.STATE_DIR == paths.TELECLAUDE_HOME / "state"
     assert paths.GLOBAL_SNIPPETS_DIR == paths.TELECLAUDE_HOME / "docs"
     assert paths.TUI_STATE_PATH == paths.STATE_DIR / "tui_state.json"

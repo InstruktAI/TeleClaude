@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import teleclaude.paths as tc_paths
 from teleclaude.core.tmux_bridge import _session
 
 
@@ -63,7 +64,7 @@ class TestShellGuardrails:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_apply_shell_guardrails_sends_text_then_enter(self) -> None:
-        teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        teleclaude_bin = str(tc_paths.BIN_DIR)
         wrapper_path = f"{teleclaude_bin}/git"
         expected_guardrail = (
             f"TELECLAUDE_GIT_WRAPPER={wrapper_path}; "
@@ -128,7 +129,7 @@ class TestCreateAndEnsureSession:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_create_tmux_session_injects_env_overrides_and_guardrails(self) -> None:
-        teleclaude_bin = str(Path.home() / ".teleclaude" / "bin")
+        teleclaude_bin = str(tc_paths.BIN_DIR)
         session_tmp = Path("/tmp/tmux-alpha")
 
         with (

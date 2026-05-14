@@ -2,10 +2,21 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
+
+
+def _resolve_teleclaude_home() -> Path:
+    """Resolve the runtime state root from configuration."""
+    configured = os.environ.get("TELECLAUDE_HOME")
+    if configured:
+        return Path(configured).expanduser()
+    return Path("~/.teleclaude").expanduser()
+
+
+TELECLAUDE_HOME = _resolve_teleclaude_home()
 STATE_DIR = TELECLAUDE_HOME / "state"
 LOGS_DIR = TELECLAUDE_HOME / "logs"
 GLOBAL_SNIPPETS_DIR = TELECLAUDE_HOME / "docs"

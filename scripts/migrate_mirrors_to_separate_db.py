@@ -14,8 +14,14 @@ import sqlite3
 import sys
 from pathlib import Path
 
-MAIN_DB = Path("~/.teleclaude/teleclaude.db").expanduser()
-MIRRORS_DB = Path("~/.teleclaude/mirrors.db").expanduser()
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from teleclaude.paths import MAIN_DB_PATH, MIRRORS_DB_PATH
+
+MAIN_DB = MAIN_DB_PATH
+MIRRORS_DB = MIRRORS_DB_PATH
 
 MIRROR_TABLES = ["mirrors_fts", "mirror_tombstones", "mirrors"]
 

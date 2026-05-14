@@ -89,6 +89,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     # Source pattern guardrails (table-driven)
     _check_source_patterns(repo_root, selected_paths)
+    _check_runtime_path_bypasses(repo_root, selected_paths)
     _check_import_outside_toplevel_policy(repo_root, selected_paths)
 
     # Existing guardrails
@@ -673,6 +674,107 @@ def _iter_rule_candidate_paths(
         if not any(fnmatch.fnmatch(path.name, glob) for glob in globs):
             continue
         yield path
+
+
+def _check_runtime_path_bypasses(repo_root: Path, selected_paths: set[str] | None = None) -> None:
+    """Reject TeleClaude runtime state paths that bypass teleclaude.paths."""
+    matches: list[str] = []
+    candidates: Iterable[Path]
+    if selected_paths is None:
+        candidates = (
+            path
+            for root_name in ("teleclaude", "tests", "scripts", "tools")
+            for path in (repo_root / root_name).rglob("*.py")
+            if path.is_file()
+        )
+    else:
+        candidates = _iter_selected_files(
+            repo_root,
+            selected_paths,
+            prefixes=("teleclaude/", "tests/", "scripts/", "tools/"),
+            suffixes=(".py",),
+        )
+
+    for path in candidates:
+        rel = path.relative_to(repo_root).as_posix()
+        if rel in {"teleclaude/paths.py", "tools/lint/guardrails.py"}:
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source, filename=rel)
+        except (OSError, UnicodeDecodeError, SyntaxError):
+            continue
+        lines = source.splitlines()
+        for node in ast.walk(tree):
+            if _is_teleclaude_home_bypass(node):
+                lineno = getattr(node, "lineno", 0)
+                line = lines[lineno - 1].strip() if 0 < lineno <= len(lines) else ""
+                matches.append(f"{rel}:{lineno}: {line}")
+
+    if matches:
+        formatted = "\n".join(f"- {item}" for item in matches)
+        _fail(f"teleclaude-runtime-path-bypass: use teleclaude.paths as the single runtime path authority\n{formatted}")
+
+
+def _is_teleclaude_home_bypass(node: ast.AST) -> bool:
+    """Return True when a syntax node constructs ~/.teleclaude without teleclaude.paths."""
+    if isinstance(node, ast.Call):
+        if _is_name_call(node, "Path") and _first_string_arg_startswith(node, "~/.teleclaude"):
+            return True
+        if _is_attr_call(node, "expanduser") and _first_string_arg_startswith(node, "~/.teleclaude"):
+            return True
+        if isinstance(node.func, ast.Attribute) and node.func.attr == "joinpath":
+            return _is_path_home_call(node.func.value) and _first_string_arg_equals(node, ".teleclaude")
+        return False
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        return _is_path_home_call(node.left) and _is_string_constant(node.right, ".teleclaude")
+    return False
+
+
+def _is_name_call(node: ast.Call, name: str) -> bool:
+    """Return True when a call target is a bare function/class name."""
+    return isinstance(node.func, ast.Name) and node.func.id == name
+
+
+def _is_attr_call(node: ast.Call, attr: str) -> bool:
+    """Return True when a call target is an attribute with the given name."""
+    return isinstance(node.func, ast.Attribute) and node.func.attr == attr
+
+
+def _is_path_home_call(node: ast.AST) -> bool:
+    """Return True for ``Path.home()`` syntax."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "home"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "Path"
+    )
+
+
+def _first_string_arg_startswith(node: ast.Call, prefix: str) -> bool:
+    """Return True when the first positional argument is a matching string literal."""
+    return bool(
+        node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value.startswith(prefix)
+    )
+
+
+def _first_string_arg_equals(node: ast.Call, value: str) -> bool:
+    """Return True when the first positional argument is the exact string literal."""
+    return bool(
+        node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+        and node.args[0].value == value
+    )
+
+
+def _is_string_constant(node: ast.AST, value: str) -> bool:
+    """Return True when a node is the exact string literal."""
+    return isinstance(node, ast.Constant) and isinstance(node.value, str) and node.value == value
 
 
 def _check_import_outside_toplevel_policy(repo_root: Path, selected_paths: set[str] | None = None) -> None:

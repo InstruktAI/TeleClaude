@@ -29,6 +29,7 @@ _spec.loader.exec_module(_mod)
 _SOURCE_PATTERN_RULES: list[Any] = _mod.SOURCE_PATTERN_RULES
 _check_source_patterns = _mod._check_source_patterns
 _check_import_outside_toplevel_policy = _mod._check_import_outside_toplevel_policy
+_check_runtime_path_bypasses = _mod._check_runtime_path_bypasses
 _check_test_companions = _mod._check_test_companions
 _check_no_companion_markers = _mod._check_no_companion_markers
 _warn_for_loose_dicts = _mod._warn_for_loose_dicts
@@ -88,6 +89,15 @@ def _run_import_outside_toplevel_policy_check(tmp_path: Path, *, selected_paths:
         return str(e)
 
 
+def _run_runtime_path_bypass_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
+    """Run runtime path authority guardrail and return failure text if any."""
+    try:
+        _check_runtime_path_bypasses(tmp_path, selected_paths)
+        return None
+    except SystemExit as e:
+        return str(e)
+
+
 def _run_test_companion_check(tmp_path: Path, *, selected_paths: set[str] | None = None) -> str | None:
     """Run test companion guardrail and return failure text if any."""
     try:
@@ -142,6 +152,58 @@ def _run_no_companion_marker_check(tmp_path: Path, *, selected_paths: set[str] |
         return None
     except SystemExit as e:
         return str(e)
+
+
+# ---------------------------------------------------------------------------
+# runtime path authority rule tests
+# ---------------------------------------------------------------------------
+
+
+class TestRuntimePathAuthorityRule:
+    """Tests for the TeleClaude runtime path authority guardrail."""
+
+    @pytest.mark.unit
+    def test_catches_direct_expanduser_teleclaude_home_path(self, tmp_path: Path) -> None:
+        """A direct ~/.teleclaude path is rejected in source."""
+        _write_file(
+            tmp_path,
+            "teleclaude/example.py",
+            'from pathlib import Path\n\nDB = Path("~/.teleclaude/teleclaude.db").expanduser()\n',
+        )
+
+        result = _run_runtime_path_bypass_check(tmp_path)
+
+        assert result is not None
+        assert "teleclaude-runtime-path-bypass" in result
+        assert "teleclaude/example.py" in result
+
+    @pytest.mark.unit
+    def test_catches_path_home_teleclaude_join(self, tmp_path: Path) -> None:
+        """Path.home() joins to .teleclaude are rejected in tests."""
+        _write_file(
+            tmp_path,
+            "tests/unit/test_example.py",
+            'from pathlib import Path\n\nruntime = Path.home() / ".teleclaude" / "teleclaude.db"\n',
+        )
+
+        result = _run_runtime_path_bypass_check(tmp_path)
+
+        assert result is not None
+        assert "teleclaude-runtime-path-bypass" in result
+        assert "tests/unit/test_example.py" in result
+
+    @pytest.mark.unit
+    def test_allows_paths_module_as_runtime_authority(self, tmp_path: Path) -> None:
+        """Consumers may import teleclaude.paths instead of constructing runtime roots."""
+        _write_file(
+            tmp_path,
+            "teleclaude/example.py",
+            "import teleclaude.paths as tc_paths\n\nDB = tc_paths.MAIN_DB_PATH\n",
+        )
+
+        result = _run_runtime_path_bypass_check(tmp_path)
+
+        assert result is None
 
 
 # ---------------------------------------------------------------------------

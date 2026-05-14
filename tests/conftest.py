@@ -3,13 +3,25 @@
 # pylint: disable=import-outside-toplevel,too-many-positional-arguments
 # Pytest fixture modules intentionally use dynamic imports and callback signatures.
 
+import atexit
 import logging
 import os
+import shutil
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+
+_repo_root = Path(__file__).resolve().parents[1]
+_test_runtime_root = Path(tempfile.mkdtemp(prefix="teleclaude-pytest-")).resolve()
+atexit.register(shutil.rmtree, _test_runtime_root, ignore_errors=True)
+
+os.environ["TELECLAUDE_HOME"] = str(_test_runtime_root / ".teleclaude")
+os.environ["TELECLAUDE_TEST_MODE"] = "1"
+os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
+os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
 
 import teleclaude.paths as tc_paths
 from teleclaude import paths
@@ -17,14 +29,9 @@ from teleclaude.cli.tui import state_store
 from teleclaude.config import config as tc_config
 from teleclaude.core import db as db_module
 from teleclaude.core import session_cleanup, session_utils
-from teleclaude.runtime import binaries as binaries_mod
-
-_repo_root = Path(__file__).resolve().parents[1]
-os.environ.setdefault("TELECLAUDE_CONFIG_PATH", str(_repo_root / "tests" / "integration" / "config.yml"))
-os.environ.setdefault("TELECLAUDE_ENV_PATH", str(_repo_root / "tests" / "integration" / ".env"))
-
 from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus
+from teleclaude.runtime import binaries as binaries_mod
 
 try:
     import instrukt_ai_logging
@@ -83,18 +90,7 @@ def _isolate_test_environment(tmp_path: "Path", monkeypatch: pytest.MonkeyPatch)
     # Force teleclaude.yml lookups to use the test config.
     monkeypatch.setenv("TELECLAUDE_PROJECT_CONFIG_PATH", str(config_path))
 
-    # Ensure any fallback DB usage is isolated from production.
-    temp_db_path = tmp_path / "teleclaude.db"
-
-    try:
-        monkeypatch.setattr(tc_paths, "MAIN_DB_PATH", temp_db_path)
-    except Exception:
-        pass
-
-    try:
-        db_module.db.db_path = str(temp_db_path)
-    except Exception:
-        pass
+    db_module.db.db_path = str(tc_paths.MAIN_DB_PATH)
 
     # Isolate session workspaces for polling-related cleanup and file storage.
     try:

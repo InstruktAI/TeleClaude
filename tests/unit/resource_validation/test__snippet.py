@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude import paths as tc_paths
 from teleclaude.resource_validation import _models as resource_models
 from teleclaude.resource_validation import _snippet
 
@@ -87,7 +88,7 @@ class TestSeeAlsoValidation:
         target.parent.mkdir(parents=True)
         target.write_text("body", encoding="utf-8")
 
-        smudged_ref = str(Path.home() / ".teleclaude" / "docs" / "general" / "concept" / "other.md")
+        smudged_ref = str(tc_paths.GLOBAL_SNIPPETS_DIR / "general" / "concept" / "other.md")
 
         _snippet._validate_see_also_ref(smudged_ref, path, tmp_path)
 

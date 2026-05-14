@@ -9,7 +9,7 @@ This folder harbors agent artifact definitions and tooling to build and distribu
 
 ## Artifact Editing Rule (Non-Negotiable)
 
-- Never edit generated artifacts directly: `AGENTS.md`, `CLAUDE.md`, `CODEX.md`.
+- Never edit generated artifacts directly: `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`.
 - Edit source artifact files under `agents/` (or other declared source paths) only, and run `telec sync`.
 - New policy/instruction text belongs in source addenda, not generated files.
 
