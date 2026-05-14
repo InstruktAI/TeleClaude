@@ -352,7 +352,6 @@ orphan-exclude = [
     "tests/unit/session_scoping/test__init__.py",  # Package-boundary: session_scoping public API re-exports _api and _types contracts.
     "tests/unit/test_asyncio_task_naming.py",  # Cross-module: asyncio task naming checks runtime task creation policy across daemon flows.
     "tests/unit/test_daemon_headless_pipeline.py",  # Cross-module: headless daemon pipeline spans config CLI, hook outbox, docs handler, and identity.
-    "tests/unit/test_distribute.py",  # Mapper-gap: legacy importlib coverage for scripts/distribute.py remains outside mapper roots.
     "tests/unit/test_no_stale_todo_fs_refs.py",  # Cross-module: stale todo filesystem reference guard scans repository markdown artifacts.
     "tests/unit/test_pydantic_to_typescript_codegen.py",  # Deferred decision: unsafe move; codegen spec currently fails when run directly.
     "tests/unit/tools/lint/test_guardrails.py",  # Mapper-gap: tools/lint/guardrails.py is outside current teleclaude/** mapper roots.

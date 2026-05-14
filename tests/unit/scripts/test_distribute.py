@@ -8,8 +8,10 @@ Covers:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import frontmatter
 import pytest
@@ -19,7 +21,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from scripts.distribute import transform_to_codex, transform_to_gemini, wrap_with_context_markers
+from scripts import distribute
+from scripts.distribute import (
+    expand_exec_directives,
+    transform_to_codex,
+    transform_to_gemini,
+    wrap_with_context_markers,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -110,3 +118,22 @@ def test_gemini_transform_output_does_not_contain_preservation_markers() -> None
 
     assert MARKER_START not in output, "Gemini TOML output must not contain start marker"
     assert MARKER_END not in output, "Gemini TOML output must not contain end marker"
+
+
+def test_expand_exec_directives_prepends_repo_venv_to_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    project_bin = str(tmp_path / ".venv" / "bin")
+    repo_bin = str(_REPO_ROOT / ".venv" / "bin")
+
+    def fake_run(_cmd: str, **kwargs: object) -> SimpleNamespace:
+        env = kwargs.get("env")
+        assert isinstance(env, dict)
+        assert isinstance(env.get("PATH"), str)
+        path_entries = env["PATH"].split(os.pathsep)
+        assert path_entries[:2] == [project_bin, repo_bin]
+        return SimpleNamespace(returncode=0, stdout="telec help", stderr="")
+
+    monkeypatch.setattr(distribute.subprocess, "run", fake_run)
+
+    rendered = expand_exec_directives("<!-- @exec: telec -h -->", project_root=tmp_path)
+
+    assert "telec help" in rendered
