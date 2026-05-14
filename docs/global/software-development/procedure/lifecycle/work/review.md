@@ -181,7 +181,9 @@ If you cannot answer those questions concretely, the test is weak and does not c
 - Edge cases and error paths must have coverage.
 - Browser-based frontend or web UI changes must include Playwright smoke verification evidence from build.
 - Tests must verify behavior, not implementation details.
-- Reject tests whose primary assertion is prose, wording, formatting, or other human-facing text unless the exact token is execution-significant.
+- Reject tests whose primary assertion is prose, wording, formatting, or any string content asserted by literal/substring/prefix/suffix/pattern. Snapshots are the only sanctioned path for any rendered text. No execution-significant carve-out — protocol identifiers go through named constants whose values are snapshot-governed at the schema layer.
+- Reject substring/`startswith`/`endswith`/regex assertions against string content, including `assert "x" in s`, `s.startswith(...)`, `expect(s).toContain(...)`, and regex matches.
+- Reject error-message text assertions (`exc.message`, `.args[0]`, rendered error prose). Test the exception type and structured fields; snapshot the rendered prose at the renderer's boundary.
 - Reject tests whose primary assertion is shape, signatures, keys, properties, constants, configuration echoes, or literal structure checks without proving decision logic or behavior.
 - Reject tests that merely reconstruct an expected literal, structure, or payload from values already visible in the implementation or fixture and compare it back without proving semantics.
 - Reject tests that only confirm a primitive side effect or passthrough occurred when no application-owned branch, validation rule, guard, or failure path was exercised.
@@ -192,7 +194,8 @@ If you cannot answer those questions concretely, the test is weak and does not c
 - Reject truthy or non-specific assertions that a trivially wrong implementation could satisfy.
 - Reject redundant duplicate coverage across files when one test home is sufficient.
 - Reject `@pytest.mark.parametrize`, fixture `params=`, and equivalent table-driven patterns. The unit of testing is the code-coverage path, not the input row — most parametrize tables are N redundant runs through one path. When fixing a parametrize finding, the cleanup is **not** "split into N tests, one per row": identify the distinct paths exercised, keep one test per path with one representative input, delete every redundant run. There is no legitimate exception.
-- Allow exact-string assertions only for execution-significant tokens/contracts.
+- Review snapshot deltas in the PR with the same weight as code deltas. Read each snapshot diff and confirm it matches the change's stated intent. An unreviewed or unjustified snapshot update is a finding.
+- A test file appearing on the project's string-assertion exemption list is acceptable only if the current PR does not touch that file. If the PR touches a listed test file, the file must be migrated to snapshots in the same change and removed from the exemption list.
 
 Treat the following as common weak-test patterns:
 

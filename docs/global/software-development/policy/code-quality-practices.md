@@ -79,7 +79,7 @@ type: 'policy'
 ### Testing Alignment
 
 - In tests, assert observable behavior and contracts, not narrative documentation wording.
-- Exact-string test assertions are acceptable only when runtime behavior depends on exact tokens (protocol markers, schema keys, command literals, or reference prefixes).
+- String content is asserted via snapshots, never literal/substring/pattern comparison. Protocol identifiers go through named constants whose values are snapshot-governed at the schema layer. See `software-development/policy/testing` → "String Assertions — One Paradigm".
 
 ## Rationale
 

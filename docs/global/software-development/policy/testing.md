@@ -19,7 +19,7 @@ type: 'policy'
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
 4. **Test behavioral contracts, not human-facing text**
-5. **Literal string assertions on any human-facing output are forbidden unless the exact text is execution-significant**
+5. **String content assertions go through snapshots. Literal, substring, prefix, suffix, and pattern comparisons against string content are forbidden in tests. No carve-outs — protocol markers, schema keys, and command tokens are governed by named constants and schema-level snapshots, never by inline literals.**
 6. **Write failing tests before production code — no exceptions** (for new/modified code; see Characterization Testing for existing untested code)
 7. **Tests-only scope is binding** — when the request or checkpoint scopes the work to tests only, production files are out of scope unless the human explicitly expands scope. If failing tests reflect a changed production contract, update the tests to the current public contract or stop and ask to broaden scope. Do not rewrite production code under a tests-only request.
 8. In uv-managed Python repositories, run pytest through the uv-managed tool entrypoint: `uv run pytest ...`.
@@ -102,7 +102,7 @@ A test that survives production mutations pins nothing.
 **Characterization tests follow all other policy rules:**
 
 - Behavioral contracts, not implementation details.
-- No string assertions on human-facing text.
+- String content is snapshot-covered or asserted via named constants — never by literal, substring, or pattern. See "String Assertions — One Paradigm".
 - Maximum 5 mock patches per test.
 - Descriptive names that serve as behavioral specifications.
 - One clear expectation per test.
@@ -124,13 +124,53 @@ stable code. These are complementary, not competing — an agent doing coverage 
 OBSERVE-ASSERT-VERIFY; an agent building new features follows RED-GREEN-REFACTOR. The distinction
 is temporal: if the code exists, characterize; if it doesn't, TDD.
 
-### Output Text Assertion Guardrail
+### String Assertions — One Paradigm
 
-Assert on data, structure, and behavior — never on how text reads. If the exact string could be reworded without changing what the system does, it is not a valid assertion target. Test the function that _produces_ the output, not the rendered text itself.
+Strings are never asserted by literal comparison, substring, `startswith`/`endswith`, regex, or any pattern match against inline copy. There are no carve-outs. Tests have **three permitted moves** on strings, and only three.
 
-- **Allowed:** exact-string assertions for execution-significant text (parser markers, schema keys, command tokens, protocol identifiers, required reference prefixes) where runtime behavior depends on exact text.
-- **Forbidden:** exact-string assertions on any human-facing output — composed messages, CLI help text, formatted reports, notification content, error prose, checkpoint messages, status output, agent artifacts, documentation. If the wording can change without changing behavior, the assertion is a prose-lock.
-- **Preferred:** assert on the data structure the composer receives (action lists, category sets, flag values), return types, error codes/classes, presence of required fields — not on the string that gets rendered from them.
+**1. Snapshot — for any string the system emits.**
+
+Use the runner's native snapshot mechanism (Python: `syrupy`; TypeScript: vitest's `toMatchSnapshot` / `toMatchInlineSnapshot`). Inline snapshots by default; file snapshots when the captured output exceeds ~20 lines. The snapshot is the contract.
+
+This applies uniformly to:
+
+- Human-facing copy — composed messages, CLI help text, formatted reports, notifications, error prose, checkpoint messages, status output.
+- Contract-shaped strings — protocol markers, schema keys, command tokens, identifier prefixes, serialized payloads, schema dumps.
+- Artifact and documentation strings — agent artifacts, generated docs.
+
+A snapshot delta in a test run is the moment of intent. The developer reviews the diff (`pytest --snapshot-update`, `vitest -u`, watch-mode `u`) and accepts deliberately. CI runs without the update flag and fails on any delta — unreviewed deltas cannot land.
+
+**2. Non-empty guard — `assert s` / `expect(s).toBeTruthy()` — narrowly scoped.**
+
+The single sanctioned shape check on a string. Used at boundaries where accidental erasure is the failure mode (an i18n key returns `""`, a refactor drops the title field, a template emits blank). One canonical helper per language. The guard asserts only that something was produced — never content.
+
+This is the **only** permitted assertion on a string that does not go through a snapshot or a named constant.
+
+**3. Symbol comparison through a named constant — when behavior depends on identity.**
+
+When a test cares about identity rather than text — `assert response.header == Headers.SESSION_ID`, `assert command == Commands.START_SESSION` — the production code and test both import a named constant. Tests never see the literal value. The constant's value is governed by the schema-level snapshot, one place.
+
+If you find yourself writing `assert s == "some-literal"` and the literal is a protocol/schema identifier, the fix is to introduce a named constant, not to claim a carve-out.
+
+### Snapshot Discipline
+
+- **Snapshot at outward-facing surfaces** — full rendered message, full CLI output, full error envelope. Never at internal string fragments. One snapshot per surface.
+- **Redact non-deterministic values** — UUIDs, timestamps, generated paths. Python: syrupy matchers (`PathSerializer`, custom `Matcher`). TypeScript: vitest asymmetric matchers (`expect.any(String)`, `expect.stringMatching(...)`).
+- **Inline by default, file when long** — inline snapshots keep expected output next to the assertion and reduce review friction. Switch to file snapshots when the captured output exceeds ~20 lines.
+- **Snapshot deltas are PR review surface** — reviewers read each snapshot diff in the PR and confirm it matches the change's stated intent. Unreviewed snapshot updates are a finding.
+- **CI never updates snapshots** — `--snapshot-update` / `-u` is local-only. CI fails on diff.
+
+### Behavior Assertions Stay Structural
+
+Snapshots cover *presentation*. Behavior is asserted via structured values, not via strings:
+
+- Errors: `with pytest.raises(SessionNotFoundError):` or `expect(...).toThrow(SessionNotFoundError)` — never against `.message`.
+- States: enum values, typed fields, exception types.
+- Wiring (e.g. "the diagnostic carries the field name"): structure the diagnostic — `raise FieldMissingError(field="email")` — assert on `.field`. The prose that renders from `.field` is snapshot-covered separately.
+
+### Migration
+
+A project-level exemption file lists test files that still contain forbidden string assertions. Files on the list bypass the lint rule. Adding a new file to the list is forbidden. Agents touching a listed test file must convert that file's string assertions to snapshots in the same change, then remove the file from the exemption list. The list drains over time as touched files migrate.
 
 ### Literal Echo and Primitive Side-Effect Guardrail
 
@@ -198,16 +238,18 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 11. **Mega tests** — one test that validates many behaviors; split into focused assertions
 12. **No assertions** — tests that execute code but don't verify outcomes
 13. **Commented-out tests** — either fix or delete them
-14. **Prose-lock tests** — asserting on rendered text (messages, help output, reports, notifications) instead of on the data that produced it. These break when wording changes while behavior stays the same. Always assert on the underlying structure, never the composed string
+14. **Prose-lock tests** — asserting on rendered text by literal, substring, prefix, suffix, or regex against inline copy. Snapshots are the only sanctioned path for any rendered text, human-facing or contract-shaped. See "String Assertions — One Paradigm"
 15. **Testing third-party code** — never test that a library works. YAML round-trips, JSON serialization, `hashlib` output, ORM queries returning rows — these are the library's responsibility
 16. **Testing informational side-effects** — audit timestamps, event emissions, log entries, metrics. If the system behaves identically when the side-effect is absent, the test has no value. Test the observability system, not every callsite that emits into it
 17. **Tautological assertions** — asserting that a data literal contains keys visible in the source. The code that consumes the structure catches missing keys — that is the real test
-18. **Truthy-check assertions** — `assert value` passes for any non-empty value. If a trivially wrong implementation satisfies the assertion, the assertion is worthless. Assert on specific expected values
+18. **Truthy-check assertions used as content proxies** — `assert value` standing in for "the right thing was produced" is forbidden. The sanctioned use of `assert s` is the narrow non-empty boundary guard against accidental erasure (one canonical helper, one purpose). Anywhere else, snapshot the output or assert on the structured field that drives it
 19. **Redundant coverage across files** — a function has one test home. Do not test the same function from multiple test files. Redundant tests multiply maintenance without adding safety
 20. **Literal-echo tests** — reconstructing an expected literal from source-visible values and asserting equality without proving semantics, branching, validation, or failure handling
 21. **Primitive side-effect tests** — only proving that a file/path/object/record was created or copied after a direct library call, without exercising application-owned logic
 22. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
 23. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
+24. **String fragment / substring / pattern assertions** — `assert "x" in s`, `s.startswith(...)`, `s.endswith(...)`, regex matches against string content, partial-string `expect(s).toContain(...)`. Snapshot the full output, or assert on the structured field that drives the relevant fragment. Asserting on a fragment is the same prose-lock as asserting on the whole — it just hides the brittleness behind a smaller surface area
+25. **Error-message text assertions** — asserting on exception `.message`, `.args[0]`, or rendered error prose. Test the exception *type* (`pytest.raises(SessionNotFoundError)`, `expect(...).toThrow(SessionNotFoundError)`) and the structured fields on it. The rendered prose is snapshot-covered separately, at the renderer's boundary
 
 23. All tests run on every commit
 24. Tests must pass before merging to main branch
@@ -251,6 +293,13 @@ assertions.
 This policy is framework-agnostic. Test framework, runner commands, expected-failure markers, and
 file patterns are project concerns — discover them from the codebase (package config, Makefile,
 existing tests).
+
+**Snapshot library per language:**
+
+- **Python (pytest):** `syrupy`. Inline assertions via `assert value == snapshot`. Update with `uv run pytest --snapshot-update`. Redaction via `Matcher` / property paths.
+- **TypeScript (vitest):** built-in `toMatchInlineSnapshot()` and `toMatchSnapshot()`. Update with `vitest -u` or watch-mode `u`. Redaction via asymmetric matchers (`expect.any(String)`, `expect.stringMatching(...)`).
+
+The choice is canonical per runner — do not introduce alternative snapshot libraries.
 
 You MUST use `telec docs index | grep '{language}'` to surface language-specific doc snippets,
 and use `telec docs get {snippet_id}` to read them ALL — they contain mandatory language idioms

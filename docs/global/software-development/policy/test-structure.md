@@ -16,7 +16,7 @@ type: 'policy'
 5. New source files must have a corresponding test file before merge. The test file may start as a stub, but the mapping must exist.
 6. Tests are behavioral contracts, not implementation snapshots:
    - Assert behavior and outcomes, not internal state or call counts.
-   - No string assertions on any human-facing text — composed messages, CLI output, formatted reports, notifications, error prose, agent artifacts, documentation. Assert on the data structure that produces the output, not the rendered string. Exception: execution-significant text (parser tokens, schema keys, command names, protocol markers).
+   - No literal/substring/pattern assertions on string content — composed messages, CLI output, formatted reports, notifications, error prose, agent artifacts, documentation, protocol markers, schema keys, command names. Use snapshots for rendered text and named constants for protocol identity. See `software-development/policy/testing` → "String Assertions — One Paradigm".
    - Reject tests that merely restate literals, keys, or values already visible in the source or fixture without proving any transformation, validation, or decision logic.
    - Reject tests that only confirm primitive effects such as create/copy/write/existence/pass-through when no application-owned behavior, branching, or failure handling was exercised.
    - Maximum 5 mock patches per test. More indicates the code under test has too many dependencies.
