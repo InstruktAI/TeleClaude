@@ -16,6 +16,7 @@ from teleclaude.core.integration.step_functions import (
     ScannedCandidate,
     _get_candidate_key,
     _run_git,
+    _step_delivery_bookkeeping,
     _sweep_stale_artifacts,
 )
 
@@ -123,6 +124,31 @@ def test_scanned_candidate_is_frozen() -> None:
     sc = ScannedCandidate(key=key, ready_at="2024-01-01T12:00:00+00:00")
     with pytest.raises(AttributeError):
         sc.key = CandidateKey(slug="s2", branch="b", sha="x")  # pyright: ignore[reportAttributeAccessIssue]
+
+
+# ---------------------------------------------------------------------------
+# _step_delivery_bookkeeping — distinguishes missing-entry from already-delivered
+# ---------------------------------------------------------------------------
+
+
+def test_delivery_bookkeeping_fails_fast_when_roadmap_entry_is_missing(tmp_path: Path) -> None:
+    """deliver_sync returns False for both 'already delivered' and 'row missing'.
+    The missing case must surface as a DELIVERY_FAILED error, not a silent pass-through.
+    """
+    db = MagicMock()
+    db.deliver_sync.return_value = False
+    db.delivered_slugs_sync.return_value = set()  # slug is NOT in roadmap at all
+    checkpoint = _make_checkpoint(slug="ghost-slug", branch="b", sha="x")
+    checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
+    with patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=db):
+        progressed, message = _step_delivery_bookkeeping(
+            checkpoint=checkpoint,
+            checkpoint_path=tmp_path / "checkpoint.yaml",
+            cwd=str(tmp_path),
+        )
+    assert progressed is False
+    assert "DELIVERY_FAILED" in message
+    assert "ghost-slug" in message
 
 
 # ---------------------------------------------------------------------------

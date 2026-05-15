@@ -658,15 +658,21 @@ def _step_delivery_bookkeeping(
     todos_db = get_todos_db_sync(cwd)
     delivered = todos_db.deliver_sync(key.slug, commit=checkpoint.candidate_sha)
     if not delivered:
-        # Idempotent: a prior worker-side delivery (worker finalize commits the
-        # branch tip into delivered_commit) leaves the row already in
-        # 'delivered'. The integrator still owns the post-delivery cleanup
-        # (dependency unlinking + cleanup commit + push), so we proceed rather
-        # than bailing. Missing entries surface in the cleanup query below.
-        logger.info(
-            "integration.delivery.already_delivered",
-            extra={"slug": key.slug, "candidate_sha": checkpoint.candidate_sha},
-        )
+        # `deliver_sync` returns False for two distinct reasons: the row is
+        # already in 'delivered' (idempotent, expected after a worker-side
+        # finalize that wrote delivered_commit), or the slug doesn't exist in
+        # the roadmap at all (genuine bug — typo, race with roadmap_remove,
+        # schema drift). Probe to distinguish; fail fast on the missing case.
+        if key.slug in todos_db.delivered_slugs_sync():
+            logger.info(
+                "integration.delivery.already_delivered",
+                extra={"slug": key.slug, "candidate_sha": checkpoint.candidate_sha},
+            )
+        else:
+            return False, _format_error(
+                "DELIVERY_FAILED",
+                f"todos_db.deliver_sync returned False for {key.slug} and the slug is not in delivered_slugs — roadmap entry is missing",
+            )
 
     # --- Clean dependency references in DB ---
     todos_db = get_todos_db_sync(cwd)
