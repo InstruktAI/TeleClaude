@@ -1,3 +1,4 @@
 # TeleClaude minimal interactive bashrc. Mirror of zshrc for bash users.
-[ -f "$BASH_ENV" ] && source "$BASH_ENV"
+TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
+[ -f "$TC_HOME/shell/.bashenv" ] && source "$TC_HOME/shell/.bashenv"
 PS1='\u@\h:\w\$ '

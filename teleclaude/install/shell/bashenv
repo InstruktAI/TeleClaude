@@ -1,6 +1,10 @@
 # TeleClaude minimal bash env. Read by `bash -c` when $BASH_ENV points
 # here. Same PATH-pin contract as the zsh equivalent.
+#
+# Honors $TELECLAUDE_HOME (matches teleclaude.paths.TELECLAUDE_HOME),
+# falling back to ~/.teleclaude when the override is unset.
+TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 case ":$PATH:" in
-  ":$HOME/.teleclaude/bin:"*) ;;
-  *) export PATH="$HOME/.teleclaude/bin:$PATH" ;;
+  ":$TC_HOME/bin:"*) ;;
+  *) export PATH="$TC_HOME/bin:$PATH" ;;
 esac

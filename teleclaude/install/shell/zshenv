@@ -1,8 +1,13 @@
 # TeleClaude minimal zsh env. Read by every zsh invocation (interactive,
-# login, non-interactive `zsh -c`). Ensures ~/.teleclaude/bin is first in
-# PATH so the agent-session git wrapper wins for every subshell an agent
-# CLI spawns, regardless of parent state or platform-specific path_helper.
+# login, non-interactive `zsh -c`). Ensures the teleclaude bin is first
+# in PATH so the agent-session git wrapper wins for every subshell an
+# agent CLI spawns, regardless of parent state or platform-specific
+# path_helper.
+#
+# Honors $TELECLAUDE_HOME (matches teleclaude.paths.TELECLAUDE_HOME),
+# falling back to ~/.teleclaude when the override is unset.
+TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 case ":$PATH:" in
-  ":$HOME/.teleclaude/bin:"*) ;;
-  *) export PATH="$HOME/.teleclaude/bin:$PATH" ;;
+  ":$TC_HOME/bin:"*) ;;
+  *) export PATH="$TC_HOME/bin:$PATH" ;;
 esac

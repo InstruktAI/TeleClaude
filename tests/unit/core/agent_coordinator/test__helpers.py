@@ -183,3 +183,30 @@ class TestWaitForTranscriptReady:
                 poll_interval_s=0.02,
             )
         assert result is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_returns_false_when_transcript_expected_but_active_agent_missing(self):
+        """Contract violation: native_log_file set but active_agent is None.
+        Downstream extraction has no iterator to pick — fail loud instead
+        of falsely signalling 'ready' and letting silent skips propagate."""
+        session = _session_ns(native_log_file="/tmp/x.jsonl", active_agent=None)
+        result = await wait_for_transcript_ready(
+            session,
+            content_predicate=transcript_has_assistant_entry,
+            timeout_s=0.05,
+        )
+        assert result is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_returns_false_when_transcript_expected_but_active_agent_invalid(self):
+        """Same fail-loud surface for an active_agent string that doesn't
+        resolve to a known AgentName."""
+        session = _session_ns(native_log_file="/tmp/x.jsonl", active_agent="not-a-real-agent")
+        result = await wait_for_transcript_ready(
+            session,
+            content_predicate=transcript_has_assistant_entry,
+            timeout_s=0.05,
+        )
+        assert result is False

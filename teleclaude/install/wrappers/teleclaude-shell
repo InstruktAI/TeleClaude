@@ -7,12 +7,18 @@
 # wrapper exports the env vars our minimal rc tree relies on, then execs
 # /bin/zsh so all subsequent shells (interactive panes, agent tool
 # subshells via `zsh -c`) read the same rc files.
+#
+# Resolves the teleclaude runtime root via $TELECLAUDE_HOME (matching
+# teleclaude.paths.TELECLAUDE_HOME), falling back to ~/.teleclaude when
+# the override is absent. Tests and ops that point TELECLAUDE_HOME at a
+# tmp tree get a self-consistent shell environment in that tree.
+TC_HOME="${TELECLAUDE_HOME:-$HOME/.teleclaude}"
 case ":$PATH:" in
-  ":$HOME/.teleclaude/bin:"*) ;;
-  *) PATH="$HOME/.teleclaude/bin:$PATH" ;;
+  ":$TC_HOME/bin:"*) ;;
+  *) PATH="$TC_HOME/bin:$PATH" ;;
 esac
-ZDOTDIR="$HOME/.teleclaude/shell"
-BASH_ENV="$HOME/.teleclaude/shell/.bashenv"
-ENV="$HOME/.teleclaude/shell/.profile"
+ZDOTDIR="$TC_HOME/shell"
+BASH_ENV="$TC_HOME/shell/.bashenv"
+ENV="$TC_HOME/shell/.profile"
 export PATH ZDOTDIR BASH_ENV ENV
 exec /bin/zsh "$@"

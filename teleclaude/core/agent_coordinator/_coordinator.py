@@ -544,19 +544,26 @@ class AgentCoordinator(
 
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
+            # Persist raw output regardless of summary success — the fallback
+            # display path uses raw_output when summary is absent, so dropping
+            # it on summarizer failure regresses output visibility.
+            persist_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
+                "last_output_raw": raw_output,
+                "last_output_at": datetime.now(UTC).isoformat(),
+            }
             if summary:
-                await db.update_session(
-                    session_id,
-                    last_output_raw=raw_output,
-                    last_output_summary=summary,
-                    last_output_at=datetime.now(UTC).isoformat(),
-                )
-                logger.debug(
-                    "Stored agent output: session=%s raw_len=%d summary_len=%d",
-                    session_id,
-                    len(raw_output),
-                    len(summary),
-                )
+                persist_kwargs["last_output_summary"] = summary
+            await db.update_session(session_id, **persist_kwargs)
+            logger.debug(
+                "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                session_id,
+                len(raw_output),
+                len(summary) if summary else 0,
+            )
+            # TUI summary emit + TTS gate on summary content only — empty
+            # summary surfaces should not paint stale or blank state on the
+            # downstream UI lanes.
+            if summary:
                 self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
                 await self._speak_agent_stop_summary(session_id, summary)
 

@@ -1006,9 +1006,43 @@ class TestRunAgentStopSlowWork:
         coord._prepare_agent_stop_output.assert_awaited_once()
         update_kwargs = mock_db.update_session.call_args.kwargs
         assert update_kwargs["last_output_raw"] == "Late content."
+        assert update_kwargs["last_output_summary"] == "Short summary."
         coord._emit_activity_event.assert_called_once_with(
             "sess-001", AgentHookEvents.AGENT_STOP, summary="Short summary."
         )
+
+    @pytest.mark.unit
+    async def test_raw_output_persists_even_when_summary_fails(self):
+        """Regression: summarize returning None must not drop the raw
+        output. Raw is the fallback display path when LLM summary is
+        unavailable; persisting only on summary success silently regresses
+        output visibility for any turn where the summarizer errors or
+        produces empty text."""
+        coord = _make_coordinator()
+        coord._summarize_output = AsyncMock(return_value=None)
+        coord._speak_agent_stop_summary = AsyncMock()
+        coord._emit_activity_event = MagicMock()
+        payload = MagicMock()
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.generate_session_title_from_transcript",
+                AsyncMock(),
+            ),
+        ):
+            mock_db.get_session = AsyncMock(return_value=_make_session())
+            mock_db.update_session = AsyncMock()
+            await coord._run_agent_stop_slow_work("sess-001", payload, "Raw agent text.")
+
+        update_kwargs = mock_db.update_session.call_args.kwargs
+        assert update_kwargs["last_output_raw"] == "Raw agent text."
+        assert "last_output_at" in update_kwargs
+        # Summary key absent when no summary was produced.
+        assert "last_output_summary" not in update_kwargs
+        # Summary-gated lanes do not fire when there is no summary.
+        coord._emit_activity_event.assert_not_called()
+        coord._speak_agent_stop_summary.assert_not_called()
 
 
 class TestSpeakAgentStopSummary:

@@ -80,15 +80,38 @@ async def wait_for_transcript_ready(
 
     transcript_path = session.native_log_file
     if transcript_path is None:
-        return True
+        # transcript_expected_to_exist was True but native_log_file is now
+        # None — torn read between predicate and field access; treat as a
+        # contract failure surface caller can degrade against.
+        logger.warning(
+            "transcript expected but native_log_file missing",
+            session_id=session.session_id,
+        )
+        return False
 
     active_agent = session.active_agent
     if not active_agent:
-        return True
+        # transcript_expected_to_exist gates on native_log_file presence —
+        # a present log file with no active_agent means we cannot pick a
+        # transcript iterator, so downstream extraction is guaranteed to
+        # silently fail. Fail loudly here instead of returning a false
+        # "ready" signal.
+        logger.warning(
+            "transcript expected but active_agent missing",
+            session_id=session.session_id,
+            transcript_path=transcript_path,
+        )
+        return False
     try:
         agent_name = AgentName.from_str(active_agent)
     except ValueError:
-        return True
+        logger.warning(
+            "transcript expected but active_agent invalid",
+            session_id=session.session_id,
+            transcript_path=transcript_path,
+            active_agent=active_agent,
+        )
+        return False
 
     deadline = time.monotonic() + timeout_s
     while True:

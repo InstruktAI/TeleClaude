@@ -92,6 +92,30 @@ def test_install_shell_environment_is_idempotent(tmp_path: Path) -> None:
         assert link.is_symlink(), f"{link} must remain a symlink after a second run"
 
 
+def test_shell_templates_resolve_root_via_teleclaude_home(tmp_path: Path) -> None:
+    """Each shell rc and the teleclaude-shell wrapper must derive paths from
+    $TELECLAUDE_HOME (falling back to $HOME/.teleclaude), not hardcode the
+    default. Pins the agreement with teleclaude.paths.TELECLAUDE_HOME so
+    tests/ops can point the override at a tmp tree and have the shell
+    environment follow.
+    """
+    _ = tmp_path  # not used; assertion is over repo-tracked sources
+    template_dir = configure_agent_cli.SHELL_TEMPLATE_DIR
+    wrapper_src = configure_agent_cli.WRAPPER_TEMPLATE_DIR / "teleclaude-shell"
+
+    expected_token = '"${TELECLAUDE_HOME:-$HOME/.teleclaude}"'
+    for source_name in ("zshenv", "zshrc", "bashenv", "bashrc", "profile"):
+        path = template_dir / source_name
+        content = path.read_text(encoding="utf-8")
+        assert expected_token in content, f"{path} must derive TC_HOME from $TELECLAUDE_HOME; got:\n{content}"
+        assert '$HOME/.teleclaude/bin"' not in content.replace(expected_token, ""), (
+            f"{path} must not hardcode $HOME/.teleclaude — use $TC_HOME after the fallback assignment"
+        )
+
+    wrapper_content = wrapper_src.read_text(encoding="utf-8")
+    assert expected_token in wrapper_content, f"{wrapper_src} must derive TC_HOME from $TELECLAUDE_HOME"
+
+
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:
     """configure_codex copies the repo-owned compaction prompt to ~/.codex/CODEX.compaction.md."""
     codex_dir = tmp_path / ".codex"
