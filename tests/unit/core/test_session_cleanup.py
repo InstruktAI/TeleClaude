@@ -163,30 +163,38 @@ class TestSessionTmpdirCleanup:
         """Regression: Node's compile-cache deletes files while shutil.rmtree walks.
 
         The cleanup must treat FileNotFoundError as benign — otherwise the surrounding
-        terminate_session call strands the session at lifecycle=closing.
+        terminate_session call strands the session at lifecycle=closing. This test
+        forces a real FileNotFoundError from inside rmtree's walk (via os.unlink) to
+        ensure the production onexc handler swallows it; without that handler the
+        exception would propagate.
         """
         session_id = str(uuid4())
         monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
         session_tmpdir = tmp_path / session_id
         nested = session_tmpdir / "node-compile-cache" / "v26"
         nested.mkdir(parents=True)
-        victim = nested / "abc.cache"
-        victim.write_text("x", encoding="utf-8")
+        victim_name = "abc.cache"
+        (nested / victim_name).write_text("x", encoding="utf-8")
 
-        real_rmtree = session_cleanup.shutil.rmtree
-        first_call = {"done": False}
+        real_unlink = os.unlink
+        raised = {"done": False}
 
-        def _racy_rmtree(path: object, **kwargs: object) -> None:
-            # Simulate a sibling process deleting one file just before rmtree reaches it.
-            if not first_call["done"]:
-                first_call["done"] = True
-                if victim.exists():
-                    victim.unlink()
-            real_rmtree(path, **kwargs)
+        def _racy_unlink(target: object, /, **kwargs: object) -> None:
+            # Mimic Node deleting the file just before rmtree's _rmtree_safe_fd
+            # unlinks it: actually remove the file first, then raise FileNotFoundError
+            # the way the kernel would have. rmtree must accept that the file is gone
+            # so the parent rmdir still succeeds.
+            name = target if isinstance(target, str) else getattr(target, "name", "")
+            if not raised["done"] and name == victim_name:
+                raised["done"] = True
+                real_unlink(target, **kwargs)
+                raise FileNotFoundError(2, "No such file or directory", str(target))
+            real_unlink(target, **kwargs)
 
-        with patch.object(session_cleanup.shutil, "rmtree", side_effect=_racy_rmtree):
+        with patch("os.unlink", side_effect=_racy_unlink):
             removed = await cleanup_session_tmpdir(session_id)
 
+        assert raised["done"], "test setup failed: victim unlink was not intercepted"
         assert removed is True
         assert not session_tmpdir.exists()
 

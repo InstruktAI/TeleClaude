@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -31,6 +32,8 @@ def _make_session_record(
     human_role: str | None = None,
     tmux_session_name: str | None = "tmux-sess-001",
     system_role: str | None = None,
+    closed_at: object = None,
+    lifecycle_status: str = "active",
 ) -> MagicMock:
     session = MagicMock()
     session.session_id = session_id
@@ -38,6 +41,8 @@ def _make_session_record(
     session.tmux_session_name = tmux_session_name
     session.system_role = system_role
     session.human_email = None
+    session.closed_at = closed_at
+    session.lifecycle_status = lifecycle_status
     return session
 
 
@@ -225,6 +230,8 @@ class TestVerifyCallerLifecycle:
         session.tmux_session_name = f"tmux-{record.session_id}"
         session.system_role = None
         session.human_email = None
+        session.closed_at = None
+        session.lifecycle_status = "active"
 
         with (
             patch("teleclaude.api.auth._get_cached_token", return_value=None),
@@ -258,9 +265,41 @@ class TestVerifyCallerLifecycle:
 
         assert exc_info.value.status_code == 401
 
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_token_for_session_stuck_in_closing_is_rejected(self) -> None:
+        """Defense-in-depth: a token whose owning session is mid-teardown must be
+        rejected, even if revoke_session_tokens never ran and left the token in the
+        ledger. This is the exact failure mode where a cleanup hiccup during close
+        previously stranded the session — without this check, the token would
+        outlive the session's authority.
+        """
+        token_record = _make_token_record(session_id="sess-stale")
+        session = _make_session_record(
+            session_id="sess-stale",
+            closed_at=datetime.now(UTC),
+            lifecycle_status="closing",
+        )
+
+        with (
+            patch("teleclaude.api.auth._get_cached_token", return_value=None),
+            patch("teleclaude.api.auth._get_cached_session", return_value=None),
+            patch("teleclaude.api.auth._put_cached_token"),
+            patch("teleclaude.api.auth._put_cached_session"),
+            patch("teleclaude.api.auth.db") as mock_db,
+        ):
+            mock_db.validate_session_token = AsyncMock(return_value=token_record)
+            mock_db.get_session = AsyncMock(return_value=session)
+
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_caller(x_session_token=token_record.token)
+
+        assert exc_info.value.status_code == 401
+
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+# guard: parametrize-cleanup-pending
 @pytest.mark.parametrize(
     "clearance_dependency",
     [clearance_sessions_start, clearance_sessions_run],

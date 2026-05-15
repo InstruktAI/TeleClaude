@@ -310,12 +310,22 @@ async def _terminate_session_inner(
         try:
             await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
         except Exception as exc:
-            logger.error("cleanup_session_resources failed for %s: %s", session.session_id, exc, exc_info=True)
+            logger.error(
+                "session_close_resource_cleanup_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
 
         try:
             await cleanup_session_tmpdir(session.session_id)
         except Exception as exc:
-            logger.error("cleanup_session_tmpdir failed for %s: %s", session.session_id, exc, exc_info=True)
+            logger.error(
+                "session_close_tmpdir_cleanup_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
 
         # Expire any pending inbound messages before marking the session closed.
         try:
@@ -323,12 +333,22 @@ async def _terminate_session_inner(
         except RuntimeError:
             pass  # Queue manager not initialized (e.g. tests) — skip
         except Exception as exc:
-            logger.error("expire_session failed for %s: %s", session.session_id, exc, exc_info=True)
+            logger.error(
+                "session_close_inbound_expire_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
 
         try:
             await _end_escalation_if_active(session)
         except Exception as exc:
-            logger.error("_end_escalation_if_active failed for %s: %s", session.session_id, exc, exc_info=True)
+            logger.error(
+                "session_close_end_escalation_failed",
+                session_id=session.session_id,
+                error=str(exc),
+                exc_info=True,
+            )
     finally:
         if delete_db:
             await db.delete_session(session.session_id)

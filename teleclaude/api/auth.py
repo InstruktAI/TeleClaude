@@ -180,6 +180,11 @@ async def _verify_token_identity(x_session_token: str) -> CallerIdentity:
         raise HTTPException(status_code=401, detail="invalid or expired session token")
 
     session = await _get_verified_session(token_record.session_id)
+    # Defense-in-depth: a revoke_session_tokens hiccup during close must not let
+    # tokens outlive their session. Reject any token whose owner is closed/closing
+    # regardless of ledger state (which is the primary revocation barrier).
+    if session.closed_at is not None or session.lifecycle_status in ("closed", "closing"):
+        raise HTTPException(status_code=401, detail="session no longer active")
     return CallerIdentity(
         session_id=token_record.session_id,
         system_role=_derive_session_system_role(session),
