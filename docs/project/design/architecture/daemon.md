@@ -157,7 +157,7 @@ sequenceDiagram
 - **SQLite Lock Failure**: Another daemon instance is running. Refuses to start. Indicates configuration or deployment issue.
 - **Migration Failure**: Database schema incompatible. Manual intervention required. No automatic rollback.
 - **Interface Startup Failure (API/Adapter)**: Daemon fails startup (fail-fast) rather than running in partial mode.
-- **Redis Unavailable**: Multi-computer features disabled. Local operations continue. Redis transport retries via a single reconnect loop; tasks wait on readiness.
+- **Redis Unavailable at Startup**: Daemon fails startup (fail-fast). Redis is required by the event platform; downstream code (operations, integration, signals) emits events unconditionally and cannot tolerate a missing producer. systemd/launchd restarts with backoff until Redis returns. Adapter and event-platform startup complete before the API socket opens so no `/todos/*` operation can land before the producer is registered.
 - **Cache Warmup Timeout**: Daemon fails to start. Indicates database corruption or resource exhaustion.
 - **Unclean Shutdown (SIGKILL)**: Hooks and commands may be partially processed. Next startup recovers from outbox.
 - **Worker Task Crash**: Background worker stops. Dependent features stall (for example, no output polling means frozen sessions). Daemon logs error but continues.

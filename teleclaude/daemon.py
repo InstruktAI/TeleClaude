@@ -380,6 +380,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             runtime_settings=self.runtime_settings,
             log_background_task_exception=self._log_background_task_exception,
             init_voice_handler=init_voice_handler,
+            event_platform_init=self._start_event_platform,
             api_restart_max=API_RESTART_MAX,
             api_restart_window_s=API_RESTART_WINDOW_S,
             api_restart_backoff_s=API_RESTART_BACKOFF_S,
@@ -663,8 +664,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self._track_background_task(self.mirror_worker_task, "mirror-worker")
             logger.info("Mirror worker started")
 
-            # Initialize event platform
-            await self._start_event_platform()
+            # Event platform was initialized inside lifecycle.startup() before
+            # the API server began accepting traffic, so the producer is ready
+            # by the time any /todos/* operation can be submitted.
 
             # Initialize webhook service subsystem
             try:

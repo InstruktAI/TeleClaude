@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -45,6 +45,7 @@ class DaemonLifecycle:
         runtime_settings: RuntimeSettings | None = None,
         log_background_task_exception: Callable[[str], Callable[[asyncio.Task[object]], None]],
         init_voice_handler: Callable[[], None],
+        event_platform_init: Callable[[], Awaitable[None]],
         api_restart_max: int,
         api_restart_window_s: float,
         api_restart_backoff_s: float,
@@ -56,6 +57,7 @@ class DaemonLifecycle:
         self.task_registry = task_registry
         self._log_background_task_exception = log_background_task_exception
         self._init_voice_handler = init_voice_handler
+        self._event_platform_init = event_platform_init
 
         self._api_restart_lock = asyncio.Lock()
         self._api_restart_attempts = 0
@@ -90,12 +92,28 @@ class DaemonLifecycle:
         await self._warm_local_sessions_cache()
         logger.info("Local session cache warm completed in %.3fs", time.perf_counter() - session_warm_started_at)
 
+        # Construct the API server early so the event platform's websocket push
+        # callback can wire into it, but DO NOT start it yet — adapters and the
+        # event producer must be ready before any /todos/* operation can land.
         self.api_server = APIServer(
             self.client,
             cache=self.cache,
             task_registry=self.task_registry,
             runtime_settings=self.runtime_settings,
         )
+
+        adapter_start_started_at = time.perf_counter()
+        logger.info("[STARTUP] Starting adapters (usually 3-12s total)")
+        await self.client.start()
+        logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
+
+        event_platform_started_at = time.perf_counter()
+        logger.info("[STARTUP] Initializing event platform (usually <1s)")
+        await self._event_platform_init()
+        logger.info("Event platform initialized in %.3fs", time.perf_counter() - event_platform_started_at)
+
+        await self._complete_startup_after_adapters()
+
         api_started_at = time.perf_counter()
         logger.info("[STARTUP] Starting API server (usually 1-3s)")
         await self.api_server.start()
@@ -106,12 +124,6 @@ class DaemonLifecycle:
         logger.info("[STARTUP] Warming local project cache (usually 2-5s)")
         await self._warm_local_projects_cache()
         logger.info("Local project cache warm completed in %.3fs", time.perf_counter() - project_warm_started_at)
-
-        adapter_start_started_at = time.perf_counter()
-        logger.info("[STARTUP] Starting adapters (usually 3-12s total)")
-        await self.client.start()
-        logger.info("Adapter startup completed in %.3fs", time.perf_counter() - adapter_start_started_at)
-        await self._complete_startup_after_adapters()
 
         self._started = True
         logger.info("Lifecycle startup completed in %.3fs", time.perf_counter() - startup_started_at)

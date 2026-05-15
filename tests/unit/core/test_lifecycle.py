@@ -11,8 +11,8 @@ from teleclaude.core.lifecycle import DaemonLifecycle
 
 
 @pytest.mark.asyncio
-async def test_startup_binds_api_before_project_warm_and_adapter_start():
-    """The API socket must come up before slower cache/adaptor startup work."""
+async def test_startup_starts_api_after_adapters_and_event_platform():
+    """The API server must not accept traffic until adapters and the event platform are wired."""
     client = MagicMock()
     cache = MagicMock()
     shutdown_event = asyncio.Event()
@@ -37,6 +37,9 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
     async def start_client() -> None:
         order.append("client_start")
 
+    async def init_event_platform() -> None:
+        order.append("event_platform_init")
+
     async def start_inbound_queue() -> None:
         order.append("inbound_queue")
 
@@ -52,6 +55,7 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
         runtime_settings=None,
         log_background_task_exception=lambda _name: lambda _task: None,
         init_voice_handler=init_voice_handler,
+        event_platform_init=init_event_platform,
         api_restart_max=5,
         api_restart_window_s=60.0,
         api_restart_backoff_s=1.0,
@@ -63,6 +67,7 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
     inbound_queue_manager.startup = AsyncMock(side_effect=start_inbound_queue)
 
     with (
+        patch("teleclaude.core.lifecycle.migrate_outbox_on_startup"),
         patch("teleclaude.core.lifecycle.db.initialize", AsyncMock()),
         patch("teleclaude.core.lifecycle.db.set_client"),
         patch("teleclaude.core.lifecycle.OperationsService", return_value=operations_service),
@@ -78,7 +83,14 @@ async def test_startup_binds_api_before_project_warm_and_adapter_start():
     ):
         await lifecycle.startup()
 
-    assert order == ["warm_sessions", "api_start", "warm_projects", "client_start", "inbound_queue"]
+    assert order == [
+        "warm_sessions",
+        "client_start",
+        "event_platform_init",
+        "inbound_queue",
+        "api_start",
+        "warm_projects",
+    ]
     api_server.set_on_server_exit.assert_called_once_with(lifecycle.handle_api_server_exit)
     init_voice_handler.assert_called_once_with()
 
@@ -105,6 +117,7 @@ async def test_startup_repairs_outstanding_final_output_after_adapter_start():
         runtime_settings=None,
         log_background_task_exception=lambda _name: lambda _task: None,
         init_voice_handler=init_voice_handler,
+        event_platform_init=AsyncMock(),
         api_restart_max=5,
         api_restart_window_s=60.0,
         api_restart_backoff_s=1.0,
@@ -116,6 +129,7 @@ async def test_startup_repairs_outstanding_final_output_after_adapter_start():
     inbound_queue_manager.startup = AsyncMock()
 
     with (
+        patch("teleclaude.core.lifecycle.migrate_outbox_on_startup"),
         patch("teleclaude.core.lifecycle.db.initialize", AsyncMock()),
         patch("teleclaude.core.lifecycle.db.set_client"),
         patch("teleclaude.core.lifecycle.OperationsService", return_value=operations_service),
