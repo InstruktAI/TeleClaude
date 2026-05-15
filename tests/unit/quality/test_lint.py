@@ -491,14 +491,14 @@ class TestTypeScriptLintPipeline:
 
     def test_typescript_pipeline_has_eslint_and_tsc(self, tmp_path: Path) -> None:
         """TypeScript pipeline contains eslint and tsc steps."""
-        pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
+        pipeline = TypeScriptLintPipeline(tmp_path, tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
         assert "eslint" in step_names, f"eslint not found in TS pipeline: {step_names}"
         assert "tsc" in step_names, f"tsc not found in TS pipeline: {step_names}"
 
     def test_typescript_pipeline_eslint_before_tsc(self, tmp_path: Path) -> None:
         """eslint runs before tsc in the TypeScript pipeline."""
-        pipeline = TypeScriptLintPipeline(project_root=tmp_path, frontend_root=tmp_path / "frontend")
+        pipeline = TypeScriptLintPipeline(tmp_path, tmp_path / "frontend")
         step_names = [step.name for step in pipeline.steps]
         assert step_names.index("eslint") < step_names.index("tsc"), "eslint must run before tsc"
 

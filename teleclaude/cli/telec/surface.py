@@ -1036,6 +1036,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--expensive", desc="Include expensive/slow tests"),
                     Flag("--all", desc="Run all tests, skip workspace scoping"),
+                    Flag(
+                        "--update-snapshots",
+                        desc=(
+                            "Update snapshot files after reading diffs. Use only when test failures show "
+                            "snapshot deltas that match your intended change."
+                        ),
+                    ),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

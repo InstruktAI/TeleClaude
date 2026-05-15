@@ -17,6 +17,12 @@ repos:
     entry: uv run python -m teleclaude.cli.telec code lint --step guardrails
     language: system
     pass_filenames: true
+  - id: snapshot-testing
+    name: Snapshot testing assertions (telec code lint --step snapshot_testing)
+    entry: uv run python -m teleclaude.cli.telec code lint --step snapshot_testing
+    language: system
+    files: ^(tests/.*\.py|frontend/.*\.(ts|tsx))$
+    pass_filenames: true
   - id: ruff-check
     name: Ruff check (telec code lint --step ruff_check)
     entry: uv run python -m teleclaude.cli.telec code lint --step ruff_check

@@ -19,7 +19,7 @@ type: 'policy'
 2. **Do not run full suites by default** - Run targeted tests only when developing, debugging, or when hooks fail
 3. Never commit code with failing hooks, lint violations, or type errors
 4. **Test behavioral contracts, not human-facing text**
-5. **String content assertions go through snapshots. Literal, substring, prefix, suffix, and pattern comparisons against string content are forbidden in tests. No carve-outs — protocol markers, schema keys, and command tokens are governed by named constants and schema-level snapshots, never by inline literals.**
+5. **String content assertions go through snapshots, named constants, or a narrow non-empty guard.** Literal, substring, prefix, suffix, and pattern comparisons against string content are forbidden in tests — no carve-outs. See "String Assertions — One Paradigm".
 6. **Write failing tests before production code — no exceptions** (for new/modified code; see Characterization Testing for existing untested code)
 7. **Tests-only scope is binding** — when the request or checkpoint scopes the work to tests only, production files are out of scope unless the human explicitly expands scope. If failing tests reflect a changed production contract, update the tests to the current public contract or stop and ask to broaden scope. Do not rewrite production code under a tests-only request.
 8. In uv-managed Python repositories, run pytest through the uv-managed tool entrypoint: `uv run pytest ...`.
@@ -126,51 +126,38 @@ is temporal: if the code exists, characterize; if it doesn't, TDD.
 
 ### String Assertions — One Paradigm
 
-Strings are never asserted by literal comparison, substring, `startswith`/`endswith`, regex, or any pattern match against inline copy. There are no carve-outs. Tests have **three permitted moves** on strings, and only three.
+Strings are never asserted by literal comparison, substring, `startswith`/`endswith`,
+regex, or any pattern match against inline copy. No carve-outs.
 
-**1. Snapshot — for any string the system emits.**
+Tests have **three permitted moves** on strings:
 
-Use the runner's native snapshot mechanism (Python: `syrupy`; TypeScript: vitest's `toMatchSnapshot` / `toMatchInlineSnapshot`). Inline snapshots by default; file snapshots when the captured output exceeds ~20 lines. The snapshot is the contract.
+1. **Snapshot** — for any string the system emits. The snapshot is the contract.
+2. **Non-empty guard** (`assert s` / `expect(s).toBeTruthy()`) — narrowly scoped to
+   boundaries where accidental erasure is the failure mode. Asserts that *something*
+   was produced, never *what*.
+3. **Named-constant identity comparison** — when behavior depends on identity
+   (e.g. `assert header == Headers.SESSION_ID`). Production and tests both import
+   the constant; the constant's value is governed by a schema-level snapshot.
 
-This applies uniformly to:
+This applies uniformly to human-facing copy, contract-shaped strings (protocol
+markers, schema keys, command tokens), and artifact/documentation strings. If
+you find yourself writing `assert s == "some-literal"` against a protocol
+identifier, the fix is a named constant — not a carve-out.
 
-- Human-facing copy — composed messages, CLI help text, formatted reports, notifications, error prose, checkpoint messages, status output.
-- Contract-shaped strings — protocol markers, schema keys, command tokens, identifier prefixes, serialized payloads, schema dumps.
-- Artifact and documentation strings — agent artifacts, generated docs.
+**Behavior stays structural.** Snapshots cover *presentation*. Errors are asserted
+by exception type, states by enum/typed fields, diagnostics by their structured
+fields. The rendered prose is snapshot-covered at the renderer's boundary.
 
-A snapshot delta in a test run is the moment of intent. The developer reviews the diff (`pytest --snapshot-update`, `vitest -u`, watch-mode `u`) and accepts deliberately. CI runs without the update flag and fails on any delta — unreviewed deltas cannot land.
+**Exemption ledger.** A project-level file lists legacy test files that still
+contain forbidden string assertions. Adding a new file is forbidden. Touching a
+listed file means migrating its assertions in the same change and removing the
+file from the ledger. The list drains over time.
 
-**2. Non-empty guard — `assert s` / `expect(s).toBeTruthy()` — narrowly scoped.**
+**CI never updates snapshots.** Unreviewed snapshot deltas cannot land.
 
-The single sanctioned shape check on a string. Used at boundaries where accidental erasure is the failure mode (an i18n key returns `""`, a refactor drops the title field, a template emits blank). One canonical helper per language. The guard asserts only that something was produced — never content.
-
-This is the **only** permitted assertion on a string that does not go through a snapshot or a named constant.
-
-**3. Symbol comparison through a named constant — when behavior depends on identity.**
-
-When a test cares about identity rather than text — `assert response.header == Headers.SESSION_ID`, `assert command == Commands.START_SESSION` — the production code and test both import a named constant. Tests never see the literal value. The constant's value is governed by the schema-level snapshot, one place.
-
-If you find yourself writing `assert s == "some-literal"` and the literal is a protocol/schema identifier, the fix is to introduce a named constant, not to claim a carve-out.
-
-### Snapshot Discipline
-
-- **Snapshot at outward-facing surfaces** — full rendered message, full CLI output, full error envelope. Never at internal string fragments. One snapshot per surface.
-- **Redact non-deterministic values** — UUIDs, timestamps, generated paths. Python: syrupy matchers (`PathSerializer`, custom `Matcher`). TypeScript: vitest asymmetric matchers (`expect.any(String)`, `expect.stringMatching(...)`).
-- **Inline by default, file when long** — inline snapshots keep expected output next to the assertion and reduce review friction. Switch to file snapshots when the captured output exceeds ~20 lines.
-- **Snapshot deltas are PR review surface** — reviewers read each snapshot diff in the PR and confirm it matches the change's stated intent. Unreviewed snapshot updates are a finding.
-- **CI never updates snapshots** — `--snapshot-update` / `-u` is local-only. CI fails on diff.
-
-### Behavior Assertions Stay Structural
-
-Snapshots cover *presentation*. Behavior is asserted via structured values, not via strings:
-
-- Errors: `with pytest.raises(SessionNotFoundError):` or `expect(...).toThrow(SessionNotFoundError)` — never against `.message`.
-- States: enum values, typed fields, exception types.
-- Wiring (e.g. "the diagnostic carries the field name"): structure the diagnostic — `raise FieldMissingError(field="email")` — assert on `.field`. The prose that renders from `.field` is snapshot-covered separately.
-
-### Migration
-
-A project-level exemption file lists test files that still contain forbidden string assertions. Files on the list bypass the lint rule. Adding a new file to the list is forbidden. Agents touching a listed test file must convert that file's string assertions to snapshots in the same change, then remove the file from the exemption list. The list drains over time as touched files migrate.
+For framework-specific idioms, redaction patterns, inline-vs-file heuristics,
+review workflow, and migration mechanics: see
+`software-development/procedure/snapshot-testing`.
 
 ### Literal Echo and Primitive Side-Effect Guardrail
 

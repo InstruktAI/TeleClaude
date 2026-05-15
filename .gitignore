@@ -74,7 +74,9 @@ AGENTS.md
 CLAUDE.md
 
 # TeleClaude worktree infrastructure state (changes with every prep cycle)
-.teleclaude/
+.teleclaude/*
+!.teleclaude/
+!.teleclaude/snapshot-testing-exemptions.txt
 
 # Generated build artifacts (never tracked)
 **/index.yaml

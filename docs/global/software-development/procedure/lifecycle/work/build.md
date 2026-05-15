@@ -44,6 +44,15 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
    - When a test or check disagrees with the current code, do the intent-resolution work before fixing either side. Ascertain what is leading for the active objective, then fix the stale side of the mismatch.
    - When adding or updating tests, assert behavioral contracts; avoid exact wording assertions on docs/agent prose unless execution depends on that exact token.
+
+   ### Snapshot acceptance
+
+   When test output shows snapshot diffs, read each diff before accepting it. If
+   the diff matches the task's stated intent, rerun with
+   `telec code test --update-snapshots` and commit the updated snapshot files
+   with the task. If the diff does not match intent, the code change is wrong:
+   fix the code and do not update the snapshot. Concrete idioms and migration
+   patterns live in `software-development/procedure/snapshot-testing`.
 5. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 6. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
    you to build a classifier, scorer, judge, evaluator, or auto-fixer on

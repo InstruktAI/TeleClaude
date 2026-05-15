@@ -126,6 +126,51 @@ class _ResourceValidationStep:
         _run_tool(cmd, self._project_root, self.name)
 
 
+def _resolve_frontend_root(project_root: Path) -> Path:
+    """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
+    config_path = project_root / "teleclaude.yml"
+    if config_path.exists():
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if isinstance(data, dict):
+            fr = data.get("frontend_root")
+            if fr:
+                return project_root / str(fr)
+    return project_root / "frontend"
+
+
+def _frontend_relative_targets(paths: list[str], project_root: Path, frontend_root: Path) -> list[str]:
+    resolved_targets: list[str] = []
+    for path in paths:
+        file_path = Path(path)
+        if file_path.is_absolute():
+            try:
+                relative = file_path.relative_to(frontend_root)
+            except ValueError:
+                continue
+        else:
+            relative_to_project = (project_root / file_path).resolve()
+            try:
+                relative = relative_to_project.relative_to(frontend_root.resolve())
+            except ValueError:
+                continue
+        resolved_targets.append(str(relative))
+    return resolved_targets
+
+
+@dataclass
+class _SnapshotTestingStep:
+    """Snapshot-testing assertion policy enforcement."""
+
+    name: str = "snapshot_testing"
+    _project_root: Path = field(default_factory=Path)
+
+    def run(self, targets: list[str]) -> None:
+        """Run Python snapshot assertion checks. TypeScript coverage is handled by _EslintStep."""
+        script = str(REPO_ROOT / "tools" / "lint" / "snapshot_testing.py")
+        _run_tool([sys.executable, script, *targets], self._project_root, self.name)
+
+
 @dataclass
 class _RuffCheckStep:
     """Ruff lint check with auto-fix step."""
@@ -243,6 +288,7 @@ class PythonLintPipeline:
             GuardrailsStep(_project_root=root),
             _MarkdownStep(_project_root=root),
             _ResourceValidationStep(_project_root=root),
+            _SnapshotTestingStep(_project_root=root),
             _RuffCheckStep(_project_root=root),
             _RuffFormatStep(_project_root=root),
             _PyrightStep(_project_root=root),
@@ -287,7 +333,7 @@ class _TscStep:
 class TypeScriptLintPipeline:
     """TypeScript lint pipeline with eslint and tsc steps."""
 
-    def __init__(self, project_root: Path, frontend_root: Path) -> None:
+    def __init__(self, _project_root: Path, frontend_root: Path) -> None:
         self.steps: list[PipelineStep] = [
             _EslintStep(_frontend_root=frontend_root),
             _TscStep(_frontend_root=frontend_root),
@@ -472,38 +518,14 @@ class LintRunner:
 
     def _resolve_frontend_root(self) -> Path:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
-        config_path = self._project_root / "teleclaude.yml"
-        if config_path.exists():
-            with open(config_path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            if isinstance(data, dict):
-                fr = data.get("frontend_root")
-                if fr:
-                    return self._project_root / str(fr)
-        return self._project_root / "frontend"
+        return _resolve_frontend_root(self._project_root)
 
     def _resolve_typescript_targets(self, files: list[str], frontend_root: Path) -> list[str]:
         """Return frontend-relative TS/JS targets for explicit-file linting."""
         root_relative = typescript_files(files)
         if not root_relative:
             return []
-
-        resolved_targets: list[str] = []
-        for path in root_relative:
-            file_path = Path(path)
-            if file_path.is_absolute():
-                try:
-                    relative = file_path.relative_to(frontend_root)
-                except ValueError:
-                    continue
-            else:
-                relative_to_project = (self._project_root / file_path).resolve()
-                try:
-                    relative = relative_to_project.relative_to(frontend_root.resolve())
-                except ValueError:
-                    continue
-            resolved_targets.append(str(relative))
-        return resolved_targets
+        return _frontend_relative_targets(root_relative, self._project_root, frontend_root)
 
     def describe_pipeline(self) -> list[str]:
         """Return the pipeline step names (for diagnostics/help text)."""

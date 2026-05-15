@@ -149,9 +149,15 @@ class TestRunner:
     and shared branches session-scope to companion-mapped test files.
     """
 
-    def __init__(self, project_root: Path, include_expensive: bool = False) -> None:
+    def __init__(
+        self,
+        project_root: Path,
+        include_expensive: bool = False,
+        update_snapshots: bool = False,
+    ) -> None:
         self._project_root = project_root
         self._include_expensive = include_expensive
+        self._update_snapshots = update_snapshots
         self._is_full_suite = True
         self._scoped_files: set[str] = set()
 
@@ -212,6 +218,8 @@ class TestRunner:
     def build_pytest_args(self, targets: list[str]) -> list[str]:
         """Construct pytest CLI arguments from targets and configuration."""
         args = list(targets)
+        if self._update_snapshots:
+            args.append("--snapshot-update")
         if not self._include_expensive:
             args.extend(["-m", "not expensive"])
         args.append("-q")
@@ -255,7 +263,8 @@ class TestRunner:
             return
         logger.info("Running vitest from %s", frontend_root)
         # Justified subprocess: vitest is an external Node.js tool with no Python API
-        result = subprocess.run(["npx", "--yes", "vitest", "run"], cwd=str(frontend_root), check=False)
+        vitest_args = ["-u", "--run"] if self._update_snapshots else ["run"]
+        result = subprocess.run(["npx", "--yes", "vitest", *vitest_args], cwd=str(frontend_root), check=False)
         if result.returncode != 0:
             logger.error("vitest failed (exit %d)", result.returncode)
             sys.exit(result.returncode)
