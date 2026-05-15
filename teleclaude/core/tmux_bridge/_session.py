@@ -10,7 +10,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.paths import BIN_DIR, SHELL_DIR, TMP_SESSIONS_DIR
+from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -129,7 +129,15 @@ async def _create_tmux_session(
         # This is the single mechanism for PATH ordering — no parallel tmux -e
         # PATH injection, no duplicate entries when a child (e.g. codex)
         # rewrites PATH and our .zshenv re-prepends in its subshell.
+        #
+        # TELECLAUDE_HOME is propagated explicitly so the wrapper and rc
+        # files (which all read it with a `${HOME}/.teleclaude` fallback)
+        # resolve to the same root the daemon is configured for. Without
+        # this, an override-rooted daemon would launch the correctly-pathed
+        # wrapper only to have the wrapper reset PATH/ZDOTDIR/etc. back to
+        # the default root via the fallback.
         shell_dir = str(SHELL_DIR)
+        effective_env_vars["TELECLAUDE_HOME"] = str(TELECLAUDE_HOME)
         effective_env_vars["SHELL"] = str(BIN_DIR / "teleclaude-shell")
         effective_env_vars["ZDOTDIR"] = shell_dir
         effective_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"

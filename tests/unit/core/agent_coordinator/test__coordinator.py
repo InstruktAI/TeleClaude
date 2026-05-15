@@ -1038,8 +1038,11 @@ class TestRunAgentStopSlowWork:
         update_kwargs = mock_db.update_session.call_args.kwargs
         assert update_kwargs["last_output_raw"] == "Raw agent text."
         assert "last_output_at" in update_kwargs
-        # Summary key absent when no summary was produced.
-        assert "last_output_summary" not in update_kwargs
+        # last_output_summary must be written as None when summarize fails,
+        # so any stale summary from a prior turn is cleared instead of
+        # being left to bleed into this turn's display.
+        assert "last_output_summary" in update_kwargs
+        assert update_kwargs["last_output_summary"] is None
         # Summary-gated lanes do not fire when there is no summary.
         coord._emit_activity_event.assert_not_called()
         coord._speak_agent_stop_summary.assert_not_called()

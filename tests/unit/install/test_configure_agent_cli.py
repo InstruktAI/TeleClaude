@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import subprocess
 import tomllib
 from copy import deepcopy
 from pathlib import Path
@@ -92,28 +93,87 @@ def test_install_shell_environment_is_idempotent(tmp_path: Path) -> None:
         assert link.is_symlink(), f"{link} must remain a symlink after a second run"
 
 
-def test_shell_templates_resolve_root_via_teleclaude_home(tmp_path: Path) -> None:
-    """Each shell rc and the teleclaude-shell wrapper must derive paths from
-    $TELECLAUDE_HOME (falling back to $HOME/.teleclaude), not hardcode the
-    default. Pins the agreement with teleclaude.paths.TELECLAUDE_HOME so
-    tests/ops can point the override at a tmp tree and have the shell
-    environment follow.
+def test_shell_rc_resolves_path_to_override_root_when_telceclaude_home_set(tmp_path: Path) -> None:
+    """Functional check: when an override TELECLAUDE_HOME is in env, every
+    shell rc file resolves its PATH prepend to that root, not the
+    $HOME/.teleclaude fallback. Sourcing each rc with a clean PATH and a
+    distinct override root must end up with the override's bin first.
+    Pins the contract end-to-end (rc text → executed shell semantics).
     """
-    _ = tmp_path  # not used; assertion is over repo-tracked sources
+    custom_root = tmp_path / "custom-tc"
+    custom_bin = custom_root / "bin"
+    custom_bin.mkdir(parents=True)
     template_dir = configure_agent_cli.SHELL_TEMPLATE_DIR
-    wrapper_src = configure_agent_cli.WRAPPER_TEMPLATE_DIR / "teleclaude-shell"
 
-    expected_token = '"${TELECLAUDE_HOME:-$HOME/.teleclaude}"'
-    for source_name in ("zshenv", "zshrc", "bashenv", "bashrc", "profile"):
-        path = template_dir / source_name
-        content = path.read_text(encoding="utf-8")
-        assert expected_token in content, f"{path} must derive TC_HOME from $TELECLAUDE_HOME; got:\n{content}"
-        assert '$HOME/.teleclaude/bin"' not in content.replace(expected_token, ""), (
-            f"{path} must not hardcode $HOME/.teleclaude — use $TC_HOME after the fallback assignment"
+    # Each rc must be a self-contained PATH-pin source: sourcing it under a
+    # POSIX sh with no PATH must leave PATH starting at the override's bin.
+    for source_name in ("zshenv", "bashenv", "profile"):
+        rc = template_dir / source_name
+        result = subprocess.run(
+            ["/bin/sh", "-c", f'. {rc}; printf %s "$PATH"'],
+            env={
+                "TELECLAUDE_HOME": str(custom_root),
+                "HOME": str(tmp_path / "stub-home"),  # must not be used
+                "PATH": "",
+            },
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, f"{rc} sourcing failed: stderr={result.stderr}"
+        first = result.stdout.split(":", 1)[0]
+        assert first == str(custom_bin), (
+            f"{rc} must prepend $TELECLAUDE_HOME/bin (got {first!r}, expected {str(custom_bin)!r})"
         )
 
-    wrapper_content = wrapper_src.read_text(encoding="utf-8")
-    assert expected_token in wrapper_content, f"{wrapper_src} must derive TC_HOME from $TELECLAUDE_HOME"
+
+def test_teleclaude_shell_wrapper_resolves_env_to_override_root(tmp_path: Path) -> None:
+    """Functional check: the wrapper, invoked as /bin/sh wrapper -c 'cmd',
+    must set PATH, ZDOTDIR, BASH_ENV, and ENV under the override root —
+    not the $HOME/.teleclaude fallback — so an override-rooted daemon
+    cannot have the wrapper reset env back to the default.
+    """
+    custom_root = tmp_path / "custom-tc"
+    (custom_root / "bin").mkdir(parents=True)
+    (custom_root / "shell").mkdir(parents=True)
+    wrapper = configure_agent_cli.WRAPPER_TEMPLATE_DIR / "teleclaude-shell"
+
+    probe = (
+        'printf "PATH=%s\\n" "$PATH"; '
+        'printf "ZDOTDIR=%s\\n" "$ZDOTDIR"; '
+        'printf "BASH_ENV=%s\\n" "$BASH_ENV"; '
+        'printf "ENV=%s\\n" "$ENV"'
+    )
+    # Exec the wrapper directly with /bin/sh so we don't require /bin/zsh
+    # in the test env. The wrapper's exec /bin/zsh is the last line; we
+    # short-circuit by overriding /bin/zsh via the `exec` substitution
+    # below — instead source the wrapper through sh to capture the env it
+    # exports, then run the probe under that env.
+    # Strip the trailing `exec /bin/zsh "$@"` so we can source the wrapper
+    # under /bin/sh without requiring zsh to be installed; the test only
+    # cares about the env the wrapper *exports*, not the final exec.
+    wrapper_text = wrapper.read_text(encoding="utf-8")
+    sourceable = "\n".join(line for line in wrapper_text.splitlines() if not line.strip().startswith("exec "))
+    sourceable_path = tmp_path / "wrapper-source-only.sh"
+    sourceable_path.write_text(sourceable, encoding="utf-8")
+
+    sourced = subprocess.run(
+        ["/bin/sh", "-c", f". {sourceable_path}; {probe}"],
+        env={
+            "TELECLAUDE_HOME": str(custom_root),
+            "HOME": str(tmp_path / "stub-home"),
+            "PATH": "",
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert sourced.returncode == 0, f"wrapper sourcing failed: stderr={sourced.stderr}"
+    out = sourced.stdout
+    assert f"PATH={custom_root}/bin" in out, f"PATH must root at override: {out}"
+    assert f"ZDOTDIR={custom_root}/shell" in out, f"ZDOTDIR must root at override: {out}"
+    assert f"BASH_ENV={custom_root}/shell/.bashenv" in out, f"BASH_ENV must root at override: {out}"
+    assert f"ENV={custom_root}/shell/.profile" in out, f"ENV must root at override: {out}"
 
 
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:

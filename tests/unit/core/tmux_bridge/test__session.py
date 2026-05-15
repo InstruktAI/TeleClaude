@@ -120,6 +120,11 @@ class TestCreateAndEnsureSession:
         assert env_values["ZDOTDIR"] == shell_dir
         assert env_values["BASH_ENV"] == f"{shell_dir}/.bashenv"
         assert env_values["ENV"] == f"{shell_dir}/.profile"
+        # TELECLAUDE_HOME injected so the wrapper + rc files resolve to
+        # the same root the daemon is configured for; otherwise an
+        # override-rooted daemon would have the wrapper reset paths back
+        # to the default via its $HOME/.teleclaude fallback.
+        assert env_values["TELECLAUDE_HOME"] == str(tc_paths.TELECLAUDE_HOME)
 
         assert mock_exec.await_args_list[1].args == (
             _session.config.computer.tmux_binary,

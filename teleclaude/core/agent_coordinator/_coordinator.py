@@ -546,14 +546,16 @@ class AgentCoordinator(
             summary = await self._summarize_output(session_id, raw_output)
             # Persist raw output regardless of summary success — the fallback
             # display path uses raw_output when summary is absent, so dropping
-            # it on summarizer failure regresses output visibility.
-            persist_kwargs: dict[str, object] = {  # guard: loose-dict - Dynamic session updates
-                "last_output_raw": raw_output,
-                "last_output_at": datetime.now(UTC).isoformat(),
-            }
-            if summary:
-                persist_kwargs["last_output_summary"] = summary
-            await db.update_session(session_id, **persist_kwargs)
+            # it on summarizer failure regresses output visibility. Write
+            # last_output_summary unconditionally (None when summarize
+            # failed) so a stale summary from a prior turn cannot bleed
+            # into this turn's display.
+            await db.update_session(
+                session_id,
+                last_output_raw=raw_output,
+                last_output_summary=summary,
+                last_output_at=datetime.now(UTC).isoformat(),
+            )
             logger.debug(
                 "Stored agent output: session=%s raw_len=%d summary_len=%d",
                 session_id,
