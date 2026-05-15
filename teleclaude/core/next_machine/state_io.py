@@ -250,7 +250,6 @@ def _validate_prepare_mark_phase(
     model: TodoState,
     target: LifecyclePhase,
     *,
-    worktree_cwd: str | None,
     artifact_presence: dict[str, bool] | None,
 ) -> str | None:
     if target in (LifecyclePhase.DRAFT, LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
@@ -297,8 +296,6 @@ def _validate_prepare_mark_phase(
         "skipped",
     ):
         return f"Cannot mark {target.value}: missing approved plan review"
-    if target == LifecyclePhase.PREPARED and not model.grounding.valid:
-        return f"Cannot mark {target.value}: missing valid grounding state"
     return None
 
 
@@ -352,7 +349,6 @@ def _validate_mark_phase_target(
         return _validate_prepare_mark_phase(
             model,
             target,
-            worktree_cwd=worktree_cwd,
             artifact_presence=artifact_presence,
         )
     return _validate_work_mark_phase(model, target, worktree_cwd=worktree_cwd)
