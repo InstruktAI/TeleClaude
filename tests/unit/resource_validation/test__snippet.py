@@ -14,6 +14,18 @@ pytestmark = pytest.mark.unit
 
 
 class TestResolveRefPath:
+    def test_rejects_partials_traversal_to_prevent_escaping_anchor(self, tmp_path: Path) -> None:
+        # Traversal must short-circuit to None so validate_artifact_refs_exist
+        # (which only checks existence) cannot follow .. out of agents/_partials/.
+        assert (
+            _snippet.resolve_ref_path(
+                "./_partials/../foo.md",
+                root_path=tmp_path,
+                current_path=tmp_path / "agents" / "commands" / "next-build.md",
+            )
+            is None
+        )
+
     def test_falls_back_to_project_docs_when_plain_docs_target_is_missing(self, tmp_path: Path) -> None:
         project_root = tmp_path
         current_path = project_root / "docs" / "project" / "policy" / "current.md"

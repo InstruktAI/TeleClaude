@@ -12,6 +12,17 @@ from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 ALLOWED_TAXONOMIES = frozenset(TAXONOMY_TYPES)
 _DOMAINS = frozenset(DOMAIN_SCOPES)
 
+PARTIALS_PREFIX = "./_partials/"
+
+
+def partial_ref_violation(tail: str) -> str | None:
+    """Return an error code when a ``./_partials/`` tail is malformed."""
+    if not tail or not tail.endswith(".md") or "//" in tail or tail.startswith("/"):
+        return "invalid_partial_ref"
+    if ".." in tail.split("/"):
+        return "invalid_partial_ref"
+    return None
+
 
 @dataclass(frozen=True)
 class SnippetIdParts:
@@ -176,13 +187,8 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         return "missing_ref"
     if not ref.startswith("@"):
         return "missing_at_prefix"
-    if ref.startswith("@./_partials/"):
-        tail = ref[len("@./_partials/") :]
-        if not tail or not tail.endswith(".md") or "//" in tail or tail.startswith("/"):
-            return "invalid_partial_ref"
-        if ".." in tail.split("/"):
-            return "invalid_partial_ref"
-        return None
+    if ref.startswith(f"@{PARTIALS_PREFIX}"):
+        return partial_ref_violation(ref[len(f"@{PARTIALS_PREFIX}") :])
     if ref.startswith("@docs/"):
         return _validate_project_ref(ref[len("@docs/") :], domains)
     abs_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
