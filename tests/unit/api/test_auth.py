@@ -297,17 +297,9 @@ class TestVerifyCallerLifecycle:
         assert exc_info.value.status_code == 401
 
 
-@pytest.mark.unit
-@pytest.mark.asyncio
-# guard: parametrize-cleanup-pending
-@pytest.mark.parametrize(
-    "clearance_dependency",
-    [clearance_sessions_start, clearance_sessions_run],
-)
-async def test_orchestrator_token_identity_passes_session_creation_clearances(
+async def _orchestrator_token_passes_clearance(
     clearance_dependency: Callable[..., Awaitable[CallerIdentity]],
 ) -> None:
-    """A token-authenticated orchestrator identity passes the same clearance checks as any other caller."""
     token_record = _make_token_record(
         session_id="sess-orchestrator",
         principal="system:sess-orchestrator",
@@ -336,6 +328,20 @@ async def test_orchestrator_token_identity_passes_session_creation_clearances(
     assert cleared_identity.session_id == "sess-orchestrator"
     assert cleared_identity.system_role == "orchestrator"
     assert cleared_identity.principal == "system:sess-orchestrator"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_orchestrator_token_passes_clearance_sessions_start() -> None:
+    """clearance_sessions_start admits a token-authenticated orchestrator identity."""
+    await _orchestrator_token_passes_clearance(clearance_sessions_start)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_orchestrator_token_passes_clearance_sessions_run() -> None:
+    """clearance_sessions_run admits a token-authenticated orchestrator identity."""
+    await _orchestrator_token_passes_clearance(clearance_sessions_run)
 
 
 # ---------------------------------------------------------------------------

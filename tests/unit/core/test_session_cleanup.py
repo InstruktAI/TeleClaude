@@ -37,13 +37,20 @@ class TestTerminateSessionRevokesTokens:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_terminate_session_calls_revoke_and_invalidate(self):
-        """terminate_session calls revoke_session_tokens and invalidate_token_cache."""
+    async def test_terminate_session_calls_revoke_and_invalidates_both_caches(self):
+        """terminate_session revokes tokens and invalidates both auth caches.
+
+        Token cache is cleared so the next request misses cache and re-queries the
+        (now token-less) DB. Session cache is cleared so the next request reads the
+        fresh closing/closed lifecycle, preventing a stale active session record
+        from outliving its tokens within the auth cache TTL.
+        """
         session = _make_session(session_id="sess-lifecycle")
 
         with (
             patch("teleclaude.core.session_cleanup.db") as mock_db,
-            patch("teleclaude.core.session_cleanup.invalidate_token_cache") as mock_invalidate,
+            patch("teleclaude.core.session_cleanup.invalidate_token_cache") as mock_tok_inv,
+            patch("teleclaude.core.session_cleanup.invalidate_session_cache") as mock_sess_inv,
             patch("teleclaude.core.session_cleanup.tmux_bridge") as mock_tmux,
             patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock),
             patch("teleclaude.core.session_cleanup.event_bus") as mock_event_bus,
@@ -58,7 +65,8 @@ class TestTerminateSessionRevokesTokens:
             await _terminate_session_inner("sess-lifecycle", MagicMock(), reason="test")
 
         mock_db.revoke_session_tokens.assert_called_once_with("sess-lifecycle")
-        mock_invalidate.assert_called_once_with("sess-lifecycle")
+        mock_tok_inv.assert_called_with("sess-lifecycle")
+        mock_sess_inv.assert_called_with("sess-lifecycle")
 
     @pytest.mark.unit
     @pytest.mark.asyncio
