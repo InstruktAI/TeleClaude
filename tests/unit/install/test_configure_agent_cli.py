@@ -157,23 +157,36 @@ def test_teleclaude_shell_wrapper_resolves_env_to_override_root(tmp_path: Path) 
     sourceable_path = tmp_path / "wrapper-source-only.sh"
     sourceable_path.write_text(sourceable, encoding="utf-8")
 
+    # Use a non-empty inherited PATH so the contract is exercised under
+    # realistic conditions (no edge-case trailing colon from empty PATH).
+    inherited_path = "/usr/bin"
     sourced = subprocess.run(
         ["/bin/sh", "-c", f". {sourceable_path}; {probe}"],
         env={
             "TELECLAUDE_HOME": str(custom_root),
             "HOME": str(tmp_path / "stub-home"),
-            "PATH": "",
+            "PATH": inherited_path,
         },
         capture_output=True,
         text=True,
         check=False,
     )
     assert sourced.returncode == 0, f"wrapper sourcing failed: stderr={sourced.stderr}"
-    out = sourced.stdout
-    assert f"PATH={custom_root}/bin" in out, f"PATH must root at override: {out}"
-    assert f"ZDOTDIR={custom_root}/shell" in out, f"ZDOTDIR must root at override: {out}"
-    assert f"BASH_ENV={custom_root}/shell/.bashenv" in out, f"BASH_ENV must root at override: {out}"
-    assert f"ENV={custom_root}/shell/.profile" in out, f"ENV must root at override: {out}"
+    # Parse the probe output into exact key=value pairs. Exact match on each
+    # exported variable pins the wrapper's contract; substring containment
+    # would let extra prefixes/suffixes slip through unnoticed.
+    env_out: dict[str, str] = {}
+    for line in sourced.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        env_out[key] = value
+    assert env_out == {
+        "PATH": f"{custom_root}/bin:{inherited_path}",
+        "ZDOTDIR": f"{custom_root}/shell",
+        "BASH_ENV": f"{custom_root}/shell/.bashenv",
+        "ENV": f"{custom_root}/shell/.profile",
+    }, f"wrapper exported env must match override-rooted contract exactly: {env_out!r}"
 
 
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:
