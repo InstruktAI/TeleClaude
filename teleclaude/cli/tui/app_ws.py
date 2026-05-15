@@ -17,6 +17,7 @@ from teleclaude.api_models import (
     ProjectsInitialEventDTO,
     ProjectWithTodosDTO,
     SessionClosedEventDTO,
+    SessionDTO,
     SessionLifecycleStatusEventDTO,
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
@@ -71,10 +72,15 @@ class TelecAppWsMixin:
         if isinstance(event, SessionsInitialEventDTO):
             sessions_view = self.query_one("#sessions-view", SessionsView)  # type: ignore[attr-defined]
             computers, projects = self._get_sessions_view_data(sessions_view)
+            merged = self._merge_sessions_for_computer(
+                existing=getattr(sessions_view, "_sessions", []),
+                incoming=list(event.data.sessions),
+                computer=event.data.computer,
+            )
             sessions_view.update_data(
                 computers=computers,
                 projects=projects,
-                sessions=event.data.sessions,
+                sessions=merged,
             )
             return True
 
@@ -257,6 +263,25 @@ class TelecAppWsMixin:
             getattr(sessions_view, "_computers", []),
             getattr(sessions_view, "_projects", []),
         )
+
+    @staticmethod
+    def _merge_sessions_for_computer(
+        *,
+        existing: list[SessionDTO],
+        incoming: list[SessionDTO],
+        computer: str | None,
+    ) -> list[SessionDTO]:
+        """Replace one computer's sessions while preserving sessions for others.
+
+        A per-computer initial event must not wipe sessions from other computers
+        — each subscribed computer fires its own event on WS reconnect, and a
+        wholesale replace causes panes for any non-matching computer to die.
+        """
+        if computer is None:
+            # No computer label — fall back to the legacy replace semantics.
+            return incoming
+        retained = [session for session in existing if session.computer != computer]
+        return retained + incoming
 
     @staticmethod
     def _apply_pending_session_selection(sessions_view: SessionsView) -> None:

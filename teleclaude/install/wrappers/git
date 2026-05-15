@@ -224,9 +224,33 @@ MSG
     fi
 fi
 
+# ── Detect integration worktree by cwd ───────────────────────────────────────
+# The integration worktree's index and working tree are owned by the
+# integration state machine. Its DELIVERY_BOOKKEEPING step commits whatever
+# is staged with no path filter, so any mutation introduced from outside the
+# state machine can produce a delivery-reverting commit on origin/main.
+case "$PWD" in
+    */trees/_integration|*/trees/_integration/*)
+        _in_integration_wt=1
+        ;;
+    *)
+        _in_integration_wt=0
+        ;;
+esac
+
 # ── PROTECTED: integrator only ────────────────────────────────────────────────
 if [ "$_subcmd" = "stash" ] && [ "$_role" != "integrator" ]; then
     echo "ERROR: 'git stash' is a protected operation. Only the integrator role may use it." >&2
+    exit 1
+fi
+
+if [ "$_subcmd" = "stash" ] && [ "$_in_integration_wt" = "1" ]; then
+    cat >&2 <<'MSG'
+ERROR: 'git stash' inside the integration worktree is prohibited.
+
+DELIVERY_BOOKKEEPING commits whatever is staged. Stash/pop can re-stage
+content into the next bookkeeping commit.
+MSG
     exit 1
 fi
 
@@ -239,8 +263,20 @@ if [ "$_subcmd" = "checkout" ]; then
         echo "ERROR: 'git checkout' (branch switch) is a protected operation. Only file-scoped checkout (with --) is allowed." >&2
         exit 1
     fi
-    # During active merge, file-scoped checkout from a remote ref silently
-    # overwrites the local version. Require --confirmed to proceed.
+    # Inside the integration worktree, file-scoped checkout from a ref is
+    # prohibited absolutely — no --confirmed override. The state machine owns
+    # the worktree's index and working tree.
+    if [ "$_has_separator" -eq 1 ] && [ "$_in_integration_wt" = "1" ]; then
+        cat >&2 <<'MSG'
+ERROR: 'git checkout <ref> -- <files>' inside the integration worktree is prohibited.
+
+DELIVERY_BOOKKEEPING commits whatever is staged with no path filter.
+A checkout here can push a delivery-reverting commit to origin/main.
+MSG
+        exit 1
+    fi
+    # During active merge, file-scoped checkout from a ref silently overwrites
+    # the local version. Require --confirmed to proceed.
     if [ "$_has_separator" -eq 1 ] && [ -f "$(_real_git "${_dir_args[@]}" rev-parse --git-dir 2>/dev/null)/MERGE_HEAD" ]; then
         _has_co_confirmed=0
         for _carg in "$@"; do

@@ -273,8 +273,21 @@ class TmuxPaneManager(PaneLayoutMixin, PaneThemingMixin):
             )
 
     def update_session_catalog(self, sessions: list[SessionDTO]) -> None:
-        """Update the session catalog used for layout lookup."""
-        self._session_catalog = {session.session_id: session for session in sessions}
+        """Update the session catalog used for layout lookup.
+
+        Sessions referenced by current sticky or active specs are retained when
+        absent from the snapshot — eviction happens only via `remove_session`,
+        which is driven by an explicit `SessionClosed` event.
+        """
+        retained_ids: set[str] = {spec.session_id for spec in self._layout_state.sticky_specs}
+        active_spec = self._layout_state.active_spec
+        if active_spec is not None:
+            retained_ids.add(active_spec.session_id)
+        new_catalog = {session.session_id: session for session in sessions}
+        for session_id in retained_ids:
+            if session_id not in new_catalog and session_id in self._session_catalog:
+                new_catalog[session_id] = self._session_catalog[session_id]
+        self._session_catalog = new_catalog
 
     def seed_for_reload(
         self,

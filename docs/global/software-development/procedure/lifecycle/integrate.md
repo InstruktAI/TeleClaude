@@ -28,7 +28,12 @@ each decision point until the queue is drained.
 - Worker worktrees branch from `origin/main` (not local HEAD).
 - **The agent's cwd is the integration worktree.** All git and make commands run from
   there without `-C` prefixes. Commands targeting project root (repo sync, stash recovery)
-  are emitted by the engine with explicit `-C <project_root>` paths.
+  are emitted by the engine with explicit `-C <project_root>` paths. **The worktree's
+  index and working tree belong to the state machine.** Only `telec todo integrate` and
+  the `telec code commit` instructions it emits write to them. Read-only git commands —
+  `status`, `log`, `show`, `diff <ref>..<ref>`, `rev-parse` — are fine. Mutating commands
+  — `stash`, `checkout <ref> -- ...`, `reset <ref>` — are forbidden, because
+  `DELIVERY_BOOKKEEPING` commits whatever is staged.
 
 ## Steps
 

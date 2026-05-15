@@ -13,7 +13,7 @@ from textual.reactive import reactive
 from textual.widget import Widget
 
 from teleclaude.api_models import ComputerDTO, ProjectDTO, SessionDTO
-from teleclaude.cli.tui.messages import PreviewChanged, ReviveSessionRequest, StateChanged, StickyChanged
+from teleclaude.cli.tui.messages import PreviewChanged, ReviveSessionRequest, StateChanged
 from teleclaude.cli.tui.tree import (
     ComputerDisplayInfo,
     SessionDisplayInfo,
@@ -162,20 +162,10 @@ class SessionsView(
         if availability is not None:
             self._availability = availability
 
-        # Prune stale session IDs from sticky/preview state
+        # Sticky/preview state survives transient snapshot diffs. Closure flows
+        # through SessionClosed → confirm_session_closed; the daemon's bootstrap
+        # is not authoritative for pane liveness.
         state_changed = bool(restored_hidden)
-        stale_sticky = [sid for sid in self._sticky_session_ids if sid not in new_ids]
-        if stale_sticky:
-            self._logger.info("Pruning %d stale sticky IDs: %s", len(stale_sticky), stale_sticky)
-            self._sticky_session_ids = [sid for sid in self._sticky_session_ids if sid in new_ids]
-            state_changed = True
-            # Notify bridge so panes for dead sessions are actually removed.
-            self.post_message(StickyChanged(self._sticky_session_ids.copy()))
-        if self.preview_session_id and self.preview_session_id not in new_ids:
-            self._logger.info("Pruning stale preview ID: %s", self.preview_session_id)
-            self.preview_session_id = None
-            state_changed = True
-            self.post_message(PreviewChanged(None, request_focus=False))
         stale_summaries = self._last_output_summary.keys() - new_ids
         if stale_summaries:
             for sid in stale_summaries:
