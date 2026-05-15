@@ -176,6 +176,11 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         return "missing_ref"
     if not ref.startswith("@"):
         return "missing_at_prefix"
+    if ref.startswith("@./_partials/"):
+        tail = ref[len("@./_partials/") :]
+        if not tail or not tail.endswith(".md") or "//" in tail or tail.startswith("/"):
+            return "invalid_partial_ref"
+        return None
     if ref.startswith("@docs/"):
         return _validate_project_ref(ref[len("@docs/") :], domains)
     abs_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"

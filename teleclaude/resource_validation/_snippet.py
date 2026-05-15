@@ -93,9 +93,9 @@ def iter_inline_refs(lines: list[str]) -> list[str]:
     return refs
 
 
-def _get_allowed_ref_prefixes() -> tuple[str, str]:
+def _get_allowed_ref_prefixes() -> tuple[str, ...]:
     home = str(Path.home())
-    return f"@{home}/.teleclaude/docs/", "@docs/"
+    return f"@{home}/.teleclaude/docs/", "@docs/", "@./_partials/"
 
 
 def collect_inline_ref_errors(
@@ -151,6 +151,8 @@ def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Pa
     target = ref[1:]
     if target.startswith("~"):
         return Path(target).expanduser()
+    if target.startswith("./_partials/"):
+        return (project_root / "agents" / "commands" / "_partials" / target[len("./_partials/") :]).resolve()
     if target.startswith("./") or target.startswith("/"):
         return Path(target)
     if target.startswith("../"):
