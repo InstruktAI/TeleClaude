@@ -5,6 +5,8 @@ import hashlib
 import os
 import re
 import shutil
+import subprocess
+from functools import cache
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
@@ -53,6 +55,48 @@ def _safe_path_component(value: str) -> str:
 def safe_session_tmp_component(session_id: str) -> str:
     """Return the path component used for a session TMPDIR."""
     return _safe_path_component(session_id)
+
+
+@cache
+def _resolve_host_path() -> str:
+    """PATH a real user login shell produces.
+
+    launchd/systemd start the daemon with a minimal PATH, so os.environ["PATH"]
+    inside the daemon is not the user's interactive PATH. Agent subshells need
+    brew, user bin, etc. for tool lookups to succeed. Invoke the user's login
+    shell once, interactively, to extract its PATH. Cached for the daemon
+    process lifetime; restart picks up shell-config edits.
+
+    Our .zshenv re-prepends $TC_HOME/bin on top of this so the git wrapper
+    still resolves first in every agent subshell.
+    """
+    candidates: list[str] = []
+    user_shell = os.environ.get("SHELL", "")
+    if user_shell and Path(user_shell).name != "teleclaude-shell":
+        candidates.append(user_shell)
+    for fallback in ("/bin/zsh", "/bin/bash"):
+        if fallback not in candidates and Path(fallback).exists():
+            candidates.append(fallback)
+
+    for shell in candidates:
+        try:
+            result = subprocess.run(
+                [shell, "-lic", 'printf %s "$PATH"'],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("host PATH capture via %s failed: %s", shell, exc)
+            continue
+        captured = result.stdout.strip()
+        if result.returncode == 0 and captured:
+            logger.info("captured host PATH via %s (%d chars)", shell, len(captured))
+            return captured
+
+    logger.warning("falling back to daemon process PATH; agent subshells may miss host PATH entries")
+    return os.environ.get("PATH", "")
 
 
 def _prepare_session_tmp_dir(session_id: str) -> Path:
@@ -126,9 +170,12 @@ async def _create_tmux_session(
         # spawn will land in. SHELL routes any CLI honoring it to our
         # exec-wrapper; ZDOTDIR/BASH_ENV/ENV route every zsh/bash/sh -c
         # through our minimal rc tree, which prepends ~/.teleclaude/bin once.
-        # This is the single mechanism for PATH ordering — no parallel tmux -e
-        # PATH injection, no duplicate entries when a child (e.g. codex)
-        # rewrites PATH and our .zshenv re-prepends in its subshell.
+        #
+        # PATH is captured from a user login shell (brew, user bin, etc.)
+        # because the daemon's own PATH is the launchd/systemd default. The
+        # minimal rc tree's .zshenv re-prepends $TC_HOME/bin on top of this,
+        # guaranteeing the git wrapper resolves first regardless of what the
+        # captured host PATH contains.
         #
         # TELECLAUDE_HOME is propagated explicitly so the wrapper and rc
         # files (which all read it with a `${HOME}/.teleclaude` fallback)
@@ -142,6 +189,7 @@ async def _create_tmux_session(
         effective_env_vars["ZDOTDIR"] = shell_dir
         effective_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"
         effective_env_vars["ENV"] = f"{shell_dir}/.profile"
+        effective_env_vars["PATH"] = _resolve_host_path()
 
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color
