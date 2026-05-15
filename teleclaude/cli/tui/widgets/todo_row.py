@@ -15,7 +15,6 @@ from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     coerce_lifecycle_phase,
-    is_in_prepare_lane,
     is_settled_ok_phase,
 )
 
@@ -49,6 +48,7 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.INPUT_ASSESSMENT: _LIFECYCLE_LABEL_DISCOVERY,
     LifecyclePhase.TRIANGULATION: _LIFECYCLE_LABEL_DISCOVERY,
     LifecyclePhase.REQUIREMENTS_REVIEW: _LIFECYCLE_LABEL_REQUIREMENTS,
+    LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL: _LIFECYCLE_LABEL_REQUIREMENTS,
     LifecyclePhase.TEST_SPEC_BUILD: _LIFECYCLE_LABEL_REQUIREMENTS,
     LifecyclePhase.TEST_SPEC_REVIEW: _LIFECYCLE_LABEL_REQUIREMENTS,
     LifecyclePhase.PLAN_DRAFTING: _LIFECYCLE_LABEL_PLANNING,
@@ -58,6 +58,43 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.RE_GROUNDING: _LIFECYCLE_LABEL_PLANNING,
     LifecyclePhase.PREPARED: _LIFECYCLE_LABEL_READY,
 }
+
+# Work-lane lifecycle_phase → (build_status, review_status) for the B/R columns.
+# This is the renderer's final-stage projection from canonical phase to the
+# legacy two-column display. The backend ships lifecycle_phase as-is; this
+# mapping reproduces the exact UI output without consulting derive_* helpers.
+_PHASE_TO_BUILD_STATUS: dict[LifecyclePhase, str] = {
+    LifecyclePhase.BUILD_STARTED: "started",
+    LifecyclePhase.BUILD_COMPLETE: "complete",
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "complete",
+    LifecyclePhase.REVIEW_APPROVED: "complete",
+    LifecyclePhase.FINALIZE_READY: "complete",
+    LifecyclePhase.HANDED_OFF: "complete",
+}
+_PHASE_TO_REVIEW_STATUS: dict[LifecyclePhase, str] = {
+    LifecyclePhase.BUILD_COMPLETE: "pending",
+    LifecyclePhase.REVIEW_CHANGES_REQUESTED: "changes_requested",
+    LifecyclePhase.REVIEW_APPROVED: "approved",
+    LifecyclePhase.FINALIZE_READY: "approved",
+    LifecyclePhase.HANDED_OFF: "approved",
+}
+
+
+def _phase_build_status(lifecycle_phase: str | None) -> str | None:
+    """Look up the B-column value for the given lifecycle phase."""
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return None
+    return _PHASE_TO_BUILD_STATUS.get(phase)
+
+
+def _phase_review_status(lifecycle_phase: str | None) -> str | None:
+    """Look up the R-column value for the given lifecycle phase."""
+    phase = coerce_lifecycle_phase(lifecycle_phase)
+    if phase is None:
+        return None
+    return _PHASE_TO_REVIEW_STATUS.get(phase)
+
 
 _FINALIZE_LABEL_READY = "ready"
 _FINALIZE_LABEL_QUEUED = "handed_off"
@@ -230,10 +267,10 @@ class TodoRow(TelecMixin, Widget):
             if i_result is not None:
                 i_prefix, i_value, _ = i_result
                 maxes["I"] = max(maxes["I"], len(f"{i_prefix}:{i_value}"))
-            bs = t.build_status
+            bs = _phase_build_status(t.lifecycle_phase)
             if bs and bs != _TODO_STATUS_PENDING:
                 maxes["B"] = max(maxes["B"], len(f"B:{bs}"))
-            rs = t.review_status
+            rs = _phase_review_status(t.lifecycle_phase)
             if rs and rs != _TODO_STATUS_PENDING:
                 maxes["R"] = max(maxes["R"], len(f"R:{rs}"))
             if t.deferrals_status:
@@ -311,13 +348,11 @@ class TodoRow(TelecMixin, Widget):
 
         # Phase detection: top-to-bottom, first match wins.
 
-        bs = self.todo.build_status
-        rs = self.todo.review_status
+        bs = _phase_build_status(self.todo.lifecycle_phase)
+        rs = _phase_review_status(self.todo.lifecycle_phase)
 
         # 1. Active prepare lifecycle phase
-        p_result = (
-            lifecycle_phase_label(self.todo.lifecycle_phase) if is_in_prepare_lane(self.todo.lifecycle_phase) else None
-        )
+        p_result = lifecycle_phase_label(self.todo.lifecycle_phase)
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))

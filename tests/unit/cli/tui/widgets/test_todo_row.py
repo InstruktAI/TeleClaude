@@ -246,9 +246,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=True,
-        lifecycle_phase="build_complete",
-        build_status="complete",
-        review_status="approved",
+        lifecycle_phase="review_approved",
     )
     bare_item = TodoItem(
         slug="bare-item",
@@ -348,9 +346,7 @@ def test_render_work_row_does_not_include_prepare_phase_column() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=True,
-        lifecycle_phase="build_complete",
-        build_status="complete",
-        review_status="approved",
+        lifecycle_phase="review_approved",
     )
     col_widths = TodoRow.compute_col_widths([work_item])
     row = TodoRow(todo=work_item, slug_width=len(work_item.slug), col_widths=col_widths, max_depth=0)

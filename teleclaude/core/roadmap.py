@@ -99,7 +99,16 @@ def assemble_roadmap_from_db(
             state_query_total_dt += time.perf_counter() - state_query_started_at
 
             todo_build_started_at = time.perf_counter()
-            state = upcycle_state_dict(json.loads(state_row[0]) if state_row else {})
+            try:
+                state = upcycle_state_dict(json.loads(state_row[0]) if state_row else {})
+            except ValueError as exc:
+                logger.warning(
+                    "Skipping todo with unreadable state",
+                    slug=slug,
+                    project_path=project_path,
+                    reason=str(exc),
+                )
+                continue
 
             # Check artifact existence from DB (by id)
             artifact_query_started_at = time.perf_counter()
