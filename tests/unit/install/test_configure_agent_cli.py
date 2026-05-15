@@ -107,6 +107,8 @@ def test_shell_rc_resolves_path_to_override_root_when_telceclaude_home_set(tmp_p
 
     # Each rc must be a self-contained PATH-pin source: sourcing it under a
     # POSIX sh with no PATH must leave PATH starting at the override's bin.
+    # Compare the first PATH entry as a Path object so we assert on a
+    # structural type rather than on string content.
     for source_name in ("zshenv", "bashenv", "profile"):
         rc = template_dir / source_name
         result = subprocess.run(
@@ -121,9 +123,9 @@ def test_shell_rc_resolves_path_to_override_root_when_telceclaude_home_set(tmp_p
             check=False,
         )
         assert result.returncode == 0, f"{rc} sourcing failed: stderr={result.stderr}"
-        first = result.stdout.split(":", 1)[0]
-        assert first == str(custom_bin), (
-            f"{rc} must prepend $TELECLAUDE_HOME/bin (got {first!r}, expected {str(custom_bin)!r})"
+        first_entry = Path(result.stdout.split(":", 1)[0])
+        assert first_entry == custom_bin, (
+            f"{rc} must prepend $TELECLAUDE_HOME/bin (got {first_entry}, expected {custom_bin})"
         )
 
 
@@ -172,21 +174,31 @@ def test_teleclaude_shell_wrapper_resolves_env_to_override_root(tmp_path: Path) 
         check=False,
     )
     assert sourced.returncode == 0, f"wrapper sourcing failed: stderr={sourced.stderr}"
-    # Parse the probe output into exact key=value pairs. Exact match on each
-    # exported variable pins the wrapper's contract; substring containment
-    # would let extra prefixes/suffixes slip through unnoticed.
+    # Parse the probe output into key=value pairs, then convert each
+    # exported value into a structural Path domain so the assertion lives
+    # in Path-equality space, not string-content space. PATH is split into
+    # an ordered list of Path entries; the rest are single Paths.
     env_out: dict[str, str] = {}
     for line in sourced.stdout.splitlines():
         if "=" not in line:
             continue
         key, value = line.split("=", 1)
         env_out[key] = value
-    assert env_out == {
-        "PATH": f"{custom_root}/bin:{inherited_path}",
-        "ZDOTDIR": f"{custom_root}/shell",
-        "BASH_ENV": f"{custom_root}/shell/.bashenv",
-        "ENV": f"{custom_root}/shell/.profile",
-    }, f"wrapper exported env must match override-rooted contract exactly: {env_out!r}"
+
+    path_entries = [Path(p) for p in env_out["PATH"].split(":")]
+    actual = {
+        "PATH_ENTRIES": path_entries,
+        "ZDOTDIR": Path(env_out["ZDOTDIR"]),
+        "BASH_ENV": Path(env_out["BASH_ENV"]),
+        "ENV": Path(env_out["ENV"]),
+    }
+    expected = {
+        "PATH_ENTRIES": [custom_root / "bin", Path(inherited_path)],
+        "ZDOTDIR": custom_root / "shell",
+        "BASH_ENV": custom_root / "shell" / ".bashenv",
+        "ENV": custom_root / "shell" / ".profile",
+    }
+    assert actual == expected, f"wrapper exported env must match override-rooted contract: {actual!r}"
 
 
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:
