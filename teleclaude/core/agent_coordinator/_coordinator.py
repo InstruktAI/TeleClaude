@@ -40,7 +40,12 @@ from teleclaude.tts.manager import TTSManager
 from teleclaude.utils import strip_ansi_codes
 
 from ._fanout import _FanoutMixin
-from ._helpers import _is_checkpoint_prompt
+from ._helpers import (
+    _is_checkpoint_prompt,
+    transcript_has_assistant_entry,
+    wait_for_transcript_ready,
+)
+from ._slow_work import schedule as schedule_slow_work
 
 if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
@@ -344,9 +349,16 @@ class AgentCoordinator(
         # user_prompt_submit); by then session.native_session_id is already set,
         # which we use as the "first time" sentinel — synthetic enters with
         # native_session_id=None so it speaks; real arrives second and is skipped.
+        #
+        # TTS is scheduled (debounced, cancelable) so it never blocks the
+        # AGENT_READY emit above or any subsequent event on this session.
         already_started_before = bool(session and session.native_session_id)
         if not already_started_before:
-            await self._speak_session_start(context.session_id)
+            schedule_slow_work(
+                session_id=context.session_id,
+                event_type=AgentHookEvents.AGENT_SESSION_START,
+                runner=lambda: self._speak_session_start(context.session_id),
+            )
 
     async def handle_user_prompt_submit(self, context: AgentEventContext) -> None:
         """Handle user prompt submission.
@@ -421,13 +433,17 @@ class AgentCoordinator(
             self._emit_status_event(session_id, "accepted", "user_prompt_accepted", last_activity_at=now_ts)
 
     async def handle_agent_stop(self, context: AgentEventContext) -> None:
-        """Handle stop event - Agent session stopped."""
+        """Handle stop event - Agent session stopped.
+
+        Fast path only: row mutations, status/activity emit (without summary),
+        headless signal, and stop finalize. The slow summary/title/TTS chain
+        is scheduled via ``_slow_work`` so it never blocks the per-session
+        FIFO drain and gets superseded on the next agent_stop for this
+        session.
+        """
         session_id = context.session_id
         payload = cast(AgentStopPayload, context.data)
         source_computer = payload.source_computer
-
-        # Fetch session early for logic checks
-        session = await db.get_session(session_id)
 
         logger.debug(
             "Agent stop event for session %s (title: %s)",
@@ -442,17 +458,17 @@ class AgentCoordinator(
             last_agent_stop_at=stop_timestamp,
         )
 
-        link_output, summary = await self._record_agent_stop_output(session_id, payload)
+        raw_output, link_output = await self._prepare_agent_stop_output(session_id, payload)
 
-        # Emit activity event for UI updates (summary flows to TUI via event, not DB)
-        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+        # Activity event without summary; the slow runner re-emits with the
+        # computed summary once it lands.
+        self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=None)
 
         # Emit canonical lifecycle status: completed (R2)
         self._emit_status_event(session_id, "completed", "agent_turn_complete", last_activity_at=stop_timestamp)
 
         # Immediate headless pull on stop — final output must be captured.
         await self._signal_headless_activity(session_id)
-        await generate_session_title_from_transcript(session, self.client)
 
         await self._finalize_agent_stop(
             session_id,
@@ -461,11 +477,21 @@ class AgentCoordinator(
             source_computer,
         )
 
-    async def _record_agent_stop_output(
+        schedule_slow_work(
+            session_id=session_id,
+            event_type=AgentHookEvents.AGENT_STOP,
+            runner=lambda: self._run_agent_stop_slow_work(session_id, payload, raw_output),
+        )
+
+    async def _prepare_agent_stop_output(
         self, session_id: str, payload: AgentStopPayload
     ) -> tuple[str | None, str | None]:
-        """Persist stop output, summary, and optional TTS feedback."""
-        feedback_update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
+        """Fast extraction step shared by handler and slow runner.
+
+        Reads the transcript, applies ANSI stripping and checkpoint-prompt
+        rules, and returns the normalized ``(raw_output, link_output)``
+        pair. No LLM, no TTS, no DB writes.
+        """
         raw_output = await self._extract_agent_output(session_id, payload)
         forwarded_output_raw = payload.raw.get("linked_output")
         forwarded_output = forwarded_output_raw if isinstance(forwarded_output_raw, str) else None
@@ -483,27 +509,60 @@ class AgentCoordinator(
         if payload.prompt and _is_checkpoint_prompt(payload.prompt, raw_payload=payload.raw):
             link_output = None
 
-        summary: str | None = None
+        return raw_output, link_output
+
+    async def _run_agent_stop_slow_work(
+        self,
+        session_id: str,
+        payload: AgentStopPayload,
+        raw_output_initial: str | None,
+    ) -> None:
+        """Composite slow runner scheduled by ``handle_agent_stop``.
+
+        Summarizes the raw output, persists feedback fields, re-emits the
+        activity event carrying the summary, speaks the summary via TTS,
+        and generates a session title. Cancelled when a new ``agent_stop``
+        arrives for the same session; ``CancelledError`` propagates
+        through the LLM/TTS awaits.
+
+        If the synchronous extract in the fast path missed (transcript not
+        flushed yet — codex's typical pattern), waits up to 10 s for the
+        assistant message to appear before re-extracting, then proceeds
+        through the rest of the chain. Title generation runs against the
+        now-ready file too, so it benefits from the same wait.
+        """
+        raw_output = raw_output_initial
+        if raw_output is None:
+            session = await db.get_session(session_id)
+            if session is not None:
+                ready = await wait_for_transcript_ready(
+                    session,
+                    content_predicate=transcript_has_assistant_entry,
+                )
+                if ready:
+                    raw_output, _ = await self._prepare_agent_stop_output(session_id, payload)
+
         if raw_output:
             summary = await self._summarize_output(session_id, raw_output)
-            feedback_update_kwargs.update(
-                {
-                    "last_output_raw": raw_output,
-                    "last_output_summary": summary,
-                    "last_output_at": datetime.now(UTC).isoformat(),
-                }
-            )
-            logger.debug(
-                "Stored agent output: session=%s raw_len=%d summary_len=%d",
-                session_id,
-                len(raw_output),
-                len(summary) if summary else 0,
-            )
-            await self._speak_agent_stop_summary(session_id, summary)
+            if summary:
+                await db.update_session(
+                    session_id,
+                    last_output_raw=raw_output,
+                    last_output_summary=summary,
+                    last_output_at=datetime.now(UTC).isoformat(),
+                )
+                logger.debug(
+                    "Stored agent output: session=%s raw_len=%d summary_len=%d",
+                    session_id,
+                    len(raw_output),
+                    len(summary),
+                )
+                self._emit_activity_event(session_id, AgentHookEvents.AGENT_STOP, summary=summary)
+                await self._speak_agent_stop_summary(session_id, summary)
 
-        if feedback_update_kwargs:
-            await db.update_session(session_id, **feedback_update_kwargs)
-        return link_output, summary
+        session = await db.get_session(session_id)
+        if session:
+            await generate_session_title_from_transcript(session, self.client)
 
     async def _speak_agent_stop_summary(self, session_id: str, summary: str | None) -> None:
         """Emit stop-summary TTS when a non-empty summary exists."""

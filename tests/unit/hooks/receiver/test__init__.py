@@ -17,6 +17,7 @@ from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.events import AgentHookEvents
 from teleclaude.hooks.receiver import (
+    _HOOK_COALESCE_WINDOWS_S,
     _handle_user_prompt_submit,
     _is_system_injected_user_prompt,
     _maybe_checkpoint_output,
@@ -95,6 +96,85 @@ def test_enqueue_hook_event_does_not_replace_locked_recent_row(tmp_path: Path) -
     assert len(rows) == 2
     assert json.loads(rows[0].payload) == {"message": "first"}
     assert json.loads(rows[1].payload) == {"message": "latest"}
+
+
+def test_hook_coalesce_windows_policy_table_pins_intent() -> None:
+    """The policy table is the source of truth for which event types coalesce.
+
+    Bursty / idempotent / latest-wins-safe events get a 1 s UPSERT window.
+    Once-per-lifecycle and must-process-each events are absent — they fall
+    through to plain INSERT in the receiver.
+    """
+    assert _HOOK_COALESCE_WINDOWS_S == {
+        AgentHookEvents.TOOL_USE: 1.0,
+        AgentHookEvents.AGENT_STOP: 1.0,
+        AgentHookEvents.NATIVE_METADATA_UPDATE: 1.0,
+    }
+    assert AgentHookEvents.AGENT_SESSION_START not in _HOOK_COALESCE_WINDOWS_S
+    assert AgentHookEvents.USER_PROMPT_SUBMIT not in _HOOK_COALESCE_WINDOWS_S
+    assert AgentHookEvents.AGENT_ERROR not in _HOOK_COALESCE_WINDOWS_S
+    assert AgentHookEvents.CHECKPOINT_SEEN not in _HOOK_COALESCE_WINDOWS_S
+
+
+def test_coalesce_eligible_event_collapses_within_window(tmp_path: Path) -> None:
+    """A coalesce-eligible event type uses its policy window to UPSERT in
+    place. TOOL_USE is the representative — same code path applies to all
+    entries in ``_HOOK_COALESCE_WINDOWS_S``."""
+    outbox_db = _make_outbox_db(tmp_path)
+    window = _HOOK_COALESCE_WINDOWS_S[AgentHookEvents.TOOL_USE]
+
+    enqueue_hook_event(
+        "session-1",
+        AgentHookEvents.TOOL_USE,
+        {"value": "first"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=window,
+    )
+    enqueue_hook_event(
+        "session-1",
+        AgentHookEvents.TOOL_USE,
+        {"value": "latest"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=window,
+    )
+
+    with SqlSession(create_sync_db_engine(outbox_db)) as session:
+        rows = session.exec(select(db_models.HookOutbox)).all()
+
+    assert len(rows) == 1
+    assert json.loads(rows[0].payload) == {"value": "latest"}
+
+
+def test_non_coalesce_event_keeps_separate_rows(tmp_path: Path) -> None:
+    """An event type absent from ``_HOOK_COALESCE_WINDOWS_S`` falls through to
+    plain INSERT — each emit persists as its own row. AGENT_SESSION_START is
+    the representative; same code path covers USER_PROMPT_SUBMIT and other
+    absent types."""
+    outbox_db = _make_outbox_db(tmp_path)
+    window = _HOOK_COALESCE_WINDOWS_S.get(AgentHookEvents.AGENT_SESSION_START)
+    assert window is None
+
+    enqueue_hook_event(
+        "session-1",
+        AgentHookEvents.AGENT_SESSION_START,
+        {"value": "first"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=window,
+    )
+    enqueue_hook_event(
+        "session-1",
+        AgentHookEvents.AGENT_SESSION_START,
+        {"value": "second"},
+        outbox_db=outbox_db,
+        latest_wins_within_s=window,
+    )
+
+    with SqlSession(create_sync_db_engine(outbox_db)) as session:
+        rows = session.exec(select(db_models.HookOutbox).order_by(db_models.HookOutbox.id)).all()
+
+    assert len(rows) == 2
+    assert json.loads(rows[0].payload) == {"value": "first"}
+    assert json.loads(rows[1].payload) == {"value": "second"}
 
 
 def test_checkpoint_wiring_threads_session_id_into_checkpoint_builder() -> None:

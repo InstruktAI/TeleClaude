@@ -95,6 +95,19 @@ HOOK_RECEIVER_EXPORTS = [
 _HANDLED_EVENTS: frozenset[AgentHookEventType] = AgentHookEvents.RECEIVER_HANDLED
 _CODEX_NOTIFY_DEBOUNCE_WINDOW_S = 10.0
 
+# Receiver-side UPSERT coalesce windows. Within the window, a new emit for the
+# same (session_id, event_type) overwrites the prior unclaimed row instead of
+# inserting a new one — payload + timestamp are updated in place. Claimed rows
+# (locked_at NOT NULL) are never replaced; the new emit falls through to INSERT.
+#
+# Event types not in this map insert one row per emit. The codex-specific
+# 10 s window for agent_stop overrides the 1 s baseline below.
+_HOOK_COALESCE_WINDOWS_S: dict[str, float] = {
+    AgentHookEvents.TOOL_USE: 1.0,
+    AgentHookEvents.AGENT_STOP: 1.0,
+    AgentHookEvents.NATIVE_METADATA_UPDATE: 1.0,
+}
+
 
 @dataclass(frozen=True)
 class _ReceiverOutboxContext:
@@ -622,6 +635,7 @@ def _enqueue_native_metadata_update(
         AgentHookEvents.NATIVE_METADATA_UPDATE,
         payload,
         outbox_db=context.outbox_db,
+        latest_wins_within_s=_HOOK_COALESCE_WINDOWS_S.get(AgentHookEvents.NATIVE_METADATA_UPDATE),
     )
 
 
@@ -915,11 +929,10 @@ def main() -> None:
     data["agent_name"] = args.agent
     data["received_at"] = datetime.now(UTC).isoformat()
 
-    debounce_window_s = (
-        _CODEX_NOTIFY_DEBOUNCE_WINDOW_S
-        if args.agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP
-        else None
-    )
+    debounce_window_s = _HOOK_COALESCE_WINDOWS_S.get(event_type)
+    if args.agent == AgentName.CODEX.value and event_type == AgentHookEvents.AGENT_STOP:
+        # Codex emits many stops per turn; the wider window absorbs the burst.
+        debounce_window_s = _CODEX_NOTIFY_DEBOUNCE_WINDOW_S
     enqueue_hook_event(
         teleclaude_session_id,
         event_type,

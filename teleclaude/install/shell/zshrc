@@ -1,0 +1,5 @@
+# TeleClaude minimal interactive zsh rc. Loaded for interactive shells
+# inside teleclaude-managed tmux sessions. Intentionally bare: no
+# oh-my-zsh, no plugins, no completions. Predictable, fast startup.
+[ -f "$ZDOTDIR/.zshenv" ] && source "$ZDOTDIR/.zshenv"
+PS1='%n@%m:%~ %# '

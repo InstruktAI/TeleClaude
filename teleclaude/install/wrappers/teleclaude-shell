@@ -1,0 +1,18 @@
+#!/bin/sh
+# Pinned shell entry point for teleclaude-managed tmux sessions.
+#
+# Installed as $SHELL inside tmux sessions so any agent CLI that respects
+# $SHELL — codex confirmed, others probable — lands here regardless of
+# the user's preferred login shell (zsh, bash, fish, nu, etc.). The
+# wrapper exports the env vars our minimal rc tree relies on, then execs
+# /bin/zsh so all subsequent shells (interactive panes, agent tool
+# subshells via `zsh -c`) read the same rc files.
+case ":$PATH:" in
+  ":$HOME/.teleclaude/bin:"*) ;;
+  *) PATH="$HOME/.teleclaude/bin:$PATH" ;;
+esac
+ZDOTDIR="$HOME/.teleclaude/shell"
+BASH_ENV="$HOME/.teleclaude/shell/.bashenv"
+ENV="$HOME/.teleclaude/shell/.profile"
+export PATH ZDOTDIR BASH_ENV ENV
+exec /bin/zsh "$@"

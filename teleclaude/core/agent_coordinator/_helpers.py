@@ -1,13 +1,23 @@
 """Standalone helper functions for agent_coordinator."""
 
+import asyncio
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from instrukt_ai_logging import get_logger
+
 from teleclaude.constants import CHECKPOINT_MESSAGE, CHECKPOINT_PREFIX
+from teleclaude.core.agents import AgentName
+from teleclaude.core.models import JsonDict
+from teleclaude.utils.transcript._iterators import _get_entries_for_agent
 
 if TYPE_CHECKING:
     from teleclaude.core.models._session import Session
+
+logger = get_logger(__name__)
 
 _NOOP_LOG_INTERVAL_SECONDS = 30.0
 _MAX_FORWARDED_LINK_OUTPUT_CHARS = 12000
@@ -32,6 +42,93 @@ def transcript_expected_to_exist(session: "Session") -> bool:
     that is a real anomaly worth logging.
     """
     return session.native_log_file is not None
+
+
+async def wait_for_transcript_ready(
+    session: "Session",
+    *,
+    content_predicate: Callable[[list[JsonDict]], bool],
+    timeout_s: float = 10.0,
+    poll_interval_s: float = 0.25,
+) -> bool:
+    """Block until the session's native transcript file satisfies a predicate.
+
+    Background work blocks that depend on the agent transcript file (slow
+    runner summary, etc.) call this once at the top of their work, then
+    proceed against the now-ready file via the existing synchronous extract
+    helpers. The point is to gate the entire dependent chain on file
+    readiness in a single place, not to scatter polling into every leaf
+    helper.
+
+    Behavior:
+      - If ``transcript_expected_to_exist(session)`` is False, return True
+        immediately. The absence is semantically expected (e.g. Codex
+        pre-prompt-submit) and the caller's chain typically no-ops.
+      - Otherwise poll ``_get_entries_for_agent`` at ``poll_interval_s``
+        intervals until ``content_predicate(entries)`` returns True or the
+        ``timeout_s`` budget elapses.
+      - Returns True if the predicate held within the budget; False on
+        timeout (caller should log + degrade).
+
+    The predicate is supplied by the caller so the helper stays generic.
+    Examples:
+      - "at least one assistant entry" — for agent_stop summary
+      - "at least one user entry" — for user-prompt projection
+    """
+    if not transcript_expected_to_exist(session):
+        return True
+
+    transcript_path = session.native_log_file
+    if transcript_path is None:
+        return True
+
+    active_agent = session.active_agent
+    if not active_agent:
+        return True
+    try:
+        agent_name = AgentName.from_str(active_agent)
+    except ValueError:
+        return True
+
+    deadline = time.monotonic() + timeout_s
+    while True:
+        entries = await asyncio.to_thread(_get_entries_for_agent, transcript_path, agent_name)
+        if entries is not None and content_predicate(entries):
+            return True
+        if time.monotonic() >= deadline:
+            logger.warning(
+                "transcript not ready within timeout",
+                session_id=session.session_id,
+                transcript_path=transcript_path,
+                timeout_s=timeout_s,
+            )
+            return False
+        await asyncio.sleep(poll_interval_s)
+
+
+def transcript_has_assistant_entry(entries: list[JsonDict]) -> bool:
+    """Predicate: transcript contains at least one assistant message entry.
+
+    Used by ``wait_for_transcript_ready`` to detect *file readiness* — i.e.
+    that the agent has flushed its turn-final response to disk. Content
+    semantics (empty vs non-empty text) are NOT considered here: codex
+    legitimately emits ``final_answer`` with empty text when its turn
+    produced no chat reply (file write, no commentary, exit). That is a
+    completed turn, not a flush-pending state. Downstream extraction
+    decides whether to summarize based on the actual text.
+    """
+    for entry in entries:
+        message_field = entry.get("message")
+        if isinstance(message_field, dict):
+            role = message_field.get("role")
+        else:
+            payload = entry.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            role = payload.get("role")
+        if role == "assistant":
+            return True
+    return False
 
 
 @dataclass
@@ -72,4 +169,7 @@ def _is_checkpoint_prompt(
 
 __all__ = [
     "_is_checkpoint_prompt",
+    "transcript_expected_to_exist",
+    "transcript_has_assistant_entry",
+    "wait_for_transcript_ready",
 ]

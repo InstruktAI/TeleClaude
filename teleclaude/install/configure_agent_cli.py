@@ -26,11 +26,24 @@ from teleclaude.install.codex_hooks_install import (
     merge_codex_hook_trust_state,
     write_codex_hooks_json,
 )
-from teleclaude.paths import BIN_DIR, ENV_PATH
+from teleclaude.paths import BIN_DIR, ENV_PATH, SHELL_DIR
 from teleclaude.project_root import resolve_state_root
 
 SETTINGS_DIR = Path(__file__).parent / "settings"
 WRAPPER_TEMPLATE_DIR = Path(__file__).parent / "wrappers"
+SHELL_TEMPLATE_DIR = Path(__file__).parent / "shell"
+
+# Source filename (in repo) → installed filename (under SHELL_DIR). The
+# installed names carry the leading dot that shells expect; the repo
+# names omit it so the files surface naturally in directory listings
+# and don't pretend to be hidden config in our tree.
+_SHELL_RC_PAIRS: tuple[tuple[str, str], ...] = (
+    ("zshenv", ".zshenv"),
+    ("zshrc", ".zshrc"),
+    ("bashenv", ".bashenv"),
+    ("bashrc", ".bashrc"),
+    ("profile", ".profile"),
+)
 
 
 def _load_settings_overrides(agent: str) -> dict[str, object] | None:  # guard: loose-dict - JSON from disk
@@ -655,6 +668,34 @@ def install_agent_wrapper(repo_root: Path, wrapper_name: str) -> None:
     print(f"{wrapper_name} wrapper linked at {target_path} -> {source_path}")
 
 
+def install_shell_environment() -> None:
+    """Symlink ~/.teleclaude/shell/.{zshenv,zshrc,bashenv,bashrc,profile}
+    onto the repo-tracked source files in teleclaude/install/shell/.
+
+    Mirrors ``install_agent_wrapper``: idempotent (skips if symlink is
+    already correct), replaces stale files or wrong symlinks. The
+    installed tree is the source of truth read by tmux-session shells
+    once ZDOTDIR/BASH_ENV/ENV point at it.
+    """
+    SHELL_DIR.mkdir(parents=True, exist_ok=True)
+    for source_name, target_name in _SHELL_RC_PAIRS:
+        source_path = SHELL_TEMPLATE_DIR / source_name
+        if not source_path.exists():
+            print(f"Warning: shell rc source missing: {source_path}")
+            continue
+        target_path = SHELL_DIR / target_name
+
+        if target_path.is_symlink() and target_path.resolve() == source_path.resolve():
+            print(f"shell rc already linked: {target_path}")
+            continue
+
+        if target_path.exists() or target_path.is_symlink():
+            target_path.unlink()
+
+        target_path.symlink_to(source_path)
+        print(f"shell rc linked: {target_path} -> {source_path}")
+
+
 def install_env_symlink(repo_root: Path) -> None:
     """Symlink ~/.teleclaude/.env to the project .env for MCP server env loading."""
     project_env = repo_root / ".env"
@@ -684,6 +725,8 @@ def main() -> None:
     print(f"Configuring agent CLIs from repo: {repo_root}")
 
     install_agent_wrapper(repo_root, "git")
+    install_agent_wrapper(repo_root, "teleclaude-shell")
+    install_shell_environment()
     install_env_symlink(repo_root)
     configure_claude(repo_root)
     configure_gemini(repo_root)

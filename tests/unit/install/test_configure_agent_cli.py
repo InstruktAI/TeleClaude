@@ -60,6 +60,38 @@ def test_configure_claude_and_gemini_callable_from_renamed_module() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_install_shell_environment_creates_symlinks(tmp_path: Path) -> None:
+    """install_shell_environment symlinks every rc file into SHELL_DIR pointing at the repo source."""
+    shell_dir = tmp_path / "shell"
+    with patch.object(configure_agent_cli, "SHELL_DIR", shell_dir):
+        configure_agent_cli.install_shell_environment()
+
+    expected_links = {
+        ".zshenv": "zshenv",
+        ".zshrc": "zshrc",
+        ".bashenv": "bashenv",
+        ".bashrc": "bashrc",
+        ".profile": "profile",
+    }
+    for installed_name, source_name in expected_links.items():
+        link = shell_dir / installed_name
+        source = configure_agent_cli.SHELL_TEMPLATE_DIR / source_name
+        assert link.is_symlink(), f"{link} must be a symlink"
+        assert link.resolve() == source.resolve(), f"{link} must point at {source}"
+
+
+def test_install_shell_environment_is_idempotent(tmp_path: Path) -> None:
+    """Running install_shell_environment twice leaves the symlinks intact and correct."""
+    shell_dir = tmp_path / "shell"
+    with patch.object(configure_agent_cli, "SHELL_DIR", shell_dir):
+        configure_agent_cli.install_shell_environment()
+        configure_agent_cli.install_shell_environment()
+
+    for installed_name in (".zshenv", ".zshrc", ".bashenv", ".bashrc", ".profile"):
+        link = shell_dir / installed_name
+        assert link.is_symlink(), f"{link} must remain a symlink after a second run"
+
+
 def test_configure_codex_writes_compaction_prompt_to_codex_dir(tmp_path: Path) -> None:
     """configure_codex copies the repo-owned compaction prompt to ~/.codex/CODEX.compaction.md."""
     codex_dir = tmp_path / ".codex"

@@ -1,0 +1,3 @@
+# TeleClaude minimal interactive bashrc. Mirror of zshrc for bash users.
+[ -f "$BASH_ENV" ] && source "$BASH_ENV"
+PS1='\u@\h:\w\$ '

@@ -1,0 +1,6 @@
+# TeleClaude minimal POSIX sh profile. Read by `/bin/sh` when $ENV
+# points here. Same PATH-pin contract as the zsh/bash equivalents.
+case ":$PATH:" in
+  ":$HOME/.teleclaude/bin:"*) ;;
+  *) PATH="$HOME/.teleclaude/bin:$PATH"; export PATH ;;
+esac
