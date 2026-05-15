@@ -67,6 +67,39 @@ class TestCollectInlineRefErrors:
             "snippet_inline_ref_not_file",
         }
 
+    def test_resolves_existing_partial_to_no_errors(self, tmp_path: Path) -> None:
+        project_root = tmp_path
+        snippet_path = project_root / "docs" / "project" / "policy" / "snippet.md"
+        snippet_path.parent.mkdir(parents=True)
+        snippet_path.write_text("body", encoding="utf-8")
+        partial = project_root / "agents" / "_partials" / "foo.md"
+        partial.parent.mkdir(parents=True)
+        partial.write_text("partial", encoding="utf-8")
+
+        errors = _snippet.collect_inline_ref_errors(
+            project_root,
+            snippet_path,
+            ["@./_partials/foo.md"],
+            domains={"software-development"},
+        )
+
+        assert errors == []
+
+    def test_reports_missing_partial(self, tmp_path: Path) -> None:
+        project_root = tmp_path
+        snippet_path = project_root / "docs" / "project" / "policy" / "snippet.md"
+        snippet_path.parent.mkdir(parents=True)
+        snippet_path.write_text("body", encoding="utf-8")
+
+        errors = _snippet.collect_inline_ref_errors(
+            project_root,
+            snippet_path,
+            ["@./_partials/missing.md"],
+            domains={"software-development"},
+        )
+
+        assert [error["code"] for error in errors] == ["snippet_inline_ref_missing"]
+
 
 class TestSeeAlsoValidation:
     def test_global_docs_require_global_prefix(self, tmp_path: Path) -> None:

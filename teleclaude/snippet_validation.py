@@ -180,6 +180,8 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         tail = ref[len("@./_partials/") :]
         if not tail or not tail.endswith(".md") or "//" in tail or tail.startswith("/"):
             return "invalid_partial_ref"
+        if ".." in tail.split("/"):
+            return "invalid_partial_ref"
         return None
     if ref.startswith("@docs/"):
         return _validate_project_ref(ref[len("@docs/") :], domains)

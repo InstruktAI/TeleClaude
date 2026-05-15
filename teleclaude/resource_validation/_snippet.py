@@ -51,6 +51,8 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
     """
     if "://" in ref:
         return None
+    if ref.startswith("./_partials/"):
+        return (root_path / "agents" / "_partials" / ref[len("./_partials/") :]).resolve()
     candidate = Path(ref).expanduser()
     if not candidate.is_absolute():
         if str(candidate).startswith("docs/"):
@@ -152,7 +154,7 @@ def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Pa
     if target.startswith("~"):
         return Path(target).expanduser()
     if target.startswith("./_partials/"):
-        return (project_root / "agents" / "commands" / "_partials" / target[len("./_partials/") :]).resolve()
+        return (project_root / "agents" / "_partials" / target[len("./_partials/") :]).resolve()
     if target.startswith("./") or target.startswith("/"):
         return Path(target)
     if target.startswith("../"):

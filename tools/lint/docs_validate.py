@@ -38,8 +38,6 @@ def _normalize_paths(repo_root: Path, raw_paths: list[str]) -> list[str]:
 
 def _artifact_kind(rel_path: str) -> str | None:
     """Return the artifact kind for a repo-relative agent path."""
-    if rel_path.startswith(("agents/commands/_partials/", ".agents/commands/_partials/")):
-        return None
     if rel_path.startswith(("agents/commands/", ".agents/commands/")) and rel_path.endswith(".md"):
         return "command"
     if rel_path.startswith(("agents/agents/", ".agents/agents/")) and rel_path.endswith(".md"):
