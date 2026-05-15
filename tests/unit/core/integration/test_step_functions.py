@@ -5,10 +5,12 @@ Patches step_functions.get_todos_db_sync (consumer-module local).
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase
 from teleclaude.core.integration.readiness_projection import CandidateKey
@@ -131,7 +133,9 @@ def test_scanned_candidate_is_frozen() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_delivery_bookkeeping_fails_fast_when_roadmap_entry_is_missing(tmp_path: Path) -> None:
+def test_delivery_bookkeeping_fails_fast_when_roadmap_entry_is_missing(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
     """deliver_sync returns False for both 'already delivered' and 'row missing'.
     The missing case must surface as a DELIVERY_FAILED error, not a silent pass-through.
     """
@@ -147,8 +151,39 @@ def test_delivery_bookkeeping_fails_fast_when_roadmap_entry_is_missing(tmp_path:
             cwd=str(tmp_path),
         )
     assert progressed is False
-    assert "DELIVERY_FAILED" in message
-    assert "ghost-slug" in message
+    assert message == snapshot
+
+
+def test_delivery_bookkeeping_idempotently_continues_when_slug_already_delivered(
+    tmp_path: Path,
+) -> None:
+    """When deliver_sync returns False because the row is already delivered,
+    the function must NOT return DELIVERY_FAILED and must progress to the push step.
+    """
+    db = MagicMock()
+    db.deliver_sync.return_value = False
+    db.delivered_slugs_sync.return_value = {"already-delivered-slug"}
+    checkpoint = _make_checkpoint(slug="already-delivered-slug", branch="b", sha="abc123")
+    checkpoint.phase = IntegrationPhase.DELIVERY_BOOKKEEPING.value
+
+    @contextmanager
+    def _noop_lock():
+        yield
+
+    with (
+        patch("teleclaude.core.integration.step_functions.get_todos_db_sync", return_value=db),
+        patch("teleclaude.core.integration.step_functions._run_git", return_value=(0, "", "")),
+        patch("teleclaude.core.integration.step_functions.main_branch_lock", _noop_lock),
+        patch("teleclaude.core.integration.step_functions._get_head_sha", return_value="abc123"),
+        patch("teleclaude.core.integration.step_functions._write_checkpoint"),
+    ):
+        progressed, message = _step_delivery_bookkeeping(
+            checkpoint=checkpoint,
+            checkpoint_path=tmp_path / "checkpoint.yaml",
+            cwd=str(tmp_path),
+        )
+    assert progressed is True
+    assert message == ""
 
 
 # ---------------------------------------------------------------------------
