@@ -1,829 +1,122 @@
-"""Tests for prepare step handlers — phase dispatch behavior."""
+"""Tests for v2 prepare phase dispatch behavior."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from teleclaude.core.next_machine.prepare_grounding_steps import (
-    prepare_step_grounding_check as _prepare_step_grounding_check,
-)
-from teleclaude.core.next_machine.prepare_grounding_steps import prepare_step_re_grounding as _prepare_step_re_grounding
-from teleclaude.core.next_machine.prepare_steps import (
-    _prepare_step_input_assessment,
-    _prepare_step_plan_drafting,
-    _prepare_step_plan_review,
-    _prepare_step_requirements_review,
-    _prepare_step_test_spec_build,
-    _prepare_step_test_spec_review,
-    _prepare_step_triangulation,
-)
-
-
-@dataclass
-class _FakeSession:
-    """Minimal session record matching the attributes the recovery helper reads."""
-
-    session_id: str
-    subdir: str
-    active_agent: str
-    native_session_id: str = ""
-
+from teleclaude.core.next_machine._types import PreparePhase
+from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 _STEPS = "teleclaude.core.next_machine.prepare_steps"
-_GROUNDING = "teleclaude.core.next_machine.prepare_grounding_steps"
 
 
-def _base_state(
-    lifecycle_phase: str = "input_assessment",
-    *,
-    requirements_produced_at: str = "",
-    requirements_digest: str = "",
-    input_digest: str = "",
-    plan_produced_at: str = "",
-    plan_digest: str = "",
-) -> dict:
-    return {
-        "schema_version": 2,
-        "phase": "pending",
-        "lifecycle_phase": lifecycle_phase,
-        "kind": "todo",
+async def _dispatch(phase: PreparePhase) -> tuple[bool, str]:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    with patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")):
+        return await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=phase,
+            state={"lifecycle_phase": phase.value},
+        )
+
+
+async def _assert_dispatches(phase: PreparePhase, command: str) -> None:
+    keep_going, instruction = await _dispatch(phase)
+    payload = json.loads(instruction)
+
+    assert keep_going is False
+    assert payload["recommended_command"] == command
+    assert payload["recommended_args"] == "my-slug"
+
+
+@pytest.mark.asyncio
+async def test_prd_drafting_dispatches_to_intake_without_worktree_subfolder() -> None:
+    await _assert_dispatches(PreparePhase.PRD_DRAFTING, "/next-prepare-intake")
+
+
+@pytest.mark.asyncio
+async def test_architecture_drafting_dispatches_to_architecture_without_worktree_subfolder() -> None:
+    await _assert_dispatches(PreparePhase.ARCHITECTURE_DRAFTING, "/next-prepare-architecture")
+
+
+@pytest.mark.asyncio
+async def test_test_specs_drafting_dispatches_to_specs_without_worktree_subfolder() -> None:
+    await _assert_dispatches(PreparePhase.TEST_SPECS_DRAFTING, "/next-prepare-specs")
+
+
+@pytest.mark.asyncio
+async def test_plan_review_dispatches_to_plan_review_without_worktree_subfolder() -> None:
+    await _assert_dispatches(PreparePhase.PLAN_REVIEW, "/next-review-plan")
+
+
+async def _assert_human_approval_instruction(phase: PreparePhase, artifact: str, stamp: str) -> None:
+    keep_going, instruction = await _dispatch(phase)
+    payload = json.loads(instruction)
+
+    assert keep_going is False
+    assert payload["recommended_command"] == "telec todo stamp"
+    assert payload["recommended_args"] == f"my-slug {stamp}"
+    assert payload["required_reads"] == [f"telec todo artifacts read my-slug {artifact}"]
+
+
+@pytest.mark.asyncio
+async def test_prd_human_approval_returns_prd_stamp_instruction() -> None:
+    await _assert_human_approval_instruction(PreparePhase.PRD_HUMAN_APPROVAL, "prd", "--prd-approved")
+
+
+@pytest.mark.asyncio
+async def test_plan_human_approval_returns_plan_stamp_instruction() -> None:
+    await _assert_human_approval_instruction(PreparePhase.PLAN_HUMAN_APPROVAL, "implementation-plan", "--plan-approved")
+
+
+@pytest.mark.asyncio
+async def test_blocked_pending_drift_dispatches_drift_analyzer() -> None:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {
+        "schema_version": 3,
+        "lifecycle_phase": "blocked",
         "artifacts": {
-            "input": {"digest": input_digest, "produced_at": "", "stale": False, "approved": False, "confirmed": False},
-            "requirements": {
-                "digest": requirements_digest,
-                "produced_at": requirements_produced_at,
-                "stale": False,
-                "approved": False,
-                "confirmed": False,
-            },
-            "test_specs": {"digest": "", "produced_at": "", "stale": False, "approved": False, "confirmed": False},
-            "implementation_plan": {
-                "digest": plan_digest,
-                "produced_at": plan_produced_at,
-                "stale": False,
-                "approved": False,
-                "confirmed": False,
-            },
+            "prd": {
+                "digest": "prd",
+                "codebase_sha_at_write": "base",
+                "referenced_paths": ["src/app.py"],
+            }
         },
-        "requirements_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
-        "test_spec_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
-        "plan_review": {"verdict": "", "reviewed_at": "", "rounds": 0},
-        "grounding": {"valid": False, "base_sha": "", "input_digest": "", "referenced_paths": []},
     }
+    with (
+        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
+        patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.BLOCKED,
+            state=state,
+        )
 
-
-# --- INPUT_ASSESSMENT ---
+    payload = json.loads(instruction)
+    assert keep_going is False
+    assert payload["recommended_command"] == "/next-drift-analyze"
+    assert payload["blockers"] == ["prd drift is pending; run drift analysis before prepared"]
 
 
 @pytest.mark.asyncio
-async def test_input_assessment_dispatches_when_produced_at_empty() -> None:
-    """After mark-phase rewind, produced_at is cleared. The handler must dispatch
-    discovery even when artifacts exist in the DB — produced_at is the sole gate."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(requirements_digest="req-digest", input_digest="input-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-        patch(f"{_STEPS}.prepare_pair_agent_mapping", return_value={"A": "claude", "B": "codex"}),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_input_assessment(db, todos_db, "my-slug", "/repo", state)
+async def test_prepared_delegates_to_terminal_formatter() -> None:
+    with patch(f"{_STEPS}._prepare_step_prepared", new=AsyncMock(return_value=(False, "PREPARED: my-slug"))):
+        keep_going, instruction = await _dispatch(PreparePhase.PREPARED)
 
     assert keep_going is False
-    assert instruction
-
-
-@pytest.mark.asyncio
-async def test_input_assessment_advances_when_produced_at_set() -> None:
-    """When produced_at is set (by a requirements_ready stamp), the handler applies
-    the authoritative signal and advances."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="input-digest")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        requirements_produced_at="2026-01-01T00:00:00+00:00",
-        requirements_digest="req-digest",
-        input_digest="input-digest",
-    )
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_input_assessment(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-# --- TRIANGULATION ---
-
-
-@pytest.mark.asyncio
-async def test_triangulation_dispatches_when_produced_at_empty() -> None:
-    """TRIANGULATION dispatches discovery to the registered pair when requirements is missing."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="triangulation", requirements_digest="req-digest")
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_triangulation(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert instruction
-
-
-@pytest.mark.asyncio
-async def test_triangulation_advances_when_produced_at_set() -> None:
-    """TRIANGULATION advances when produced_at is set (stamp received)."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        lifecycle_phase="triangulation",
-        requirements_produced_at="2026-01-01T00:00:00+00:00",
-        requirements_digest="req-digest",
-    )
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_triangulation(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-# --- PLAN_DRAFTING ---
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_dispatches_when_produced_at_empty() -> None:
-    """PLAN_DRAFTING dispatches drafter to the registered pair when plan is missing."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert instruction
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_advances_when_produced_at_set() -> None:
-    """PLAN_DRAFTING advances when produced_at is set, upstream_digests are
-    populated, and recorded matches current — i.e. the artifact is fresh
-    against its upstreams."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(
-        side_effect=lambda _slug, name: {"requirements": "req", "test-specs": "spec"}.get(name, "")
-    )
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        lifecycle_phase="plan_drafting",
-        plan_produced_at="2026-01-01T00:00:00+00:00",
-        plan_digest="plan-digest",
-    )
-    state["artifacts"]["implementation_plan"]["upstream_digests"] = {
-        "requirements": "req",
-        "test_specs": "spec",
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-# --- RE_GROUNDING ---
-
-
-@pytest.mark.asyncio
-async def test_re_grounding_dispatches_when_produced_at_empty() -> None:
-    """RE_GROUNDING dispatches drafter to the registered pair when plan is missing."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_GROUNDING}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_GROUNDING}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert instruction
-
-
-@pytest.mark.asyncio
-async def test_re_grounding_advances_when_produced_at_set() -> None:
-    """RE_GROUNDING advances when produced_at is set (stamp received)."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        lifecycle_phase="re_grounding",
-        plan_produced_at="2026-01-01T00:00:00+00:00",
-        plan_digest="plan-digest",
-    )
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, _ = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is True
-
-
-# --- GROUNDING_CHECK: worktree-scoped baseline ---
-
-
-def _make_worktree_layout(tmp_path: Path, slug: str) -> tuple[str, str]:
-    """Create a fake parent-root + worktree directory pair under *tmp_path*.
-
-    Returns ``(parent_root, worktree_path)`` so tests can assert which one the
-    grounding step uses for its git baseline.
-    """
-    parent_root = tmp_path / "repo"
-    worktree_path = parent_root / "trees" / slug
-    worktree_path.mkdir(parents=True)
-    return str(parent_root), str(worktree_path)
-
-
-@pytest.mark.asyncio
-async def test_grounding_check_captures_worktree_head_when_worktree_exists(tmp_path: Path) -> None:
-    """First grounding for a slug with a worktree must anchor to the worktree HEAD.
-
-    Anchoring to the parent-root HEAD lets unrelated deliveries on main bump
-    the baseline, which then trips the freshness check on later iterations and
-    re-enters the plan-drafting loop. The grounding baseline must scope to the
-    todo's worktree so progress on this todo is decoupled from main.
-    """
-    parent_root, worktree_path = _make_worktree_layout(tmp_path, "my-slug")
-
-    captured_cwds: list[str] = []
-
-    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
-        captured_cwds.append(cwd)
-        if cwd == worktree_path:
-            return 0, "worktree-head\n", ""
-        return 0, "parent-head\n", ""
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
-
-    state = _base_state(lifecycle_phase="grounding_check")
-
-    with (
-        patch(f"{_GROUNDING}._emit_prepare_event"),
-        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
-    ):
-        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
-
-    assert keep_going is True
-    assert worktree_path in captured_cwds, (
-        f"grounding_check ran git only against {captured_cwds!r}; expected the worktree path"
-    )
-    assert state["grounding"]["base_sha"] == "worktree-head"
-
-
-@pytest.mark.asyncio
-async def test_grounding_check_stays_fresh_when_only_parent_head_advances(tmp_path: Path) -> None:
-    """A delivery on main must not invalidate a todo whose worktree is unchanged.
-
-    Reproduces the production loop: after plan_review approves and base_sha is
-    captured, an unrelated delivery bumps parent-root HEAD. On the next
-    grounding_check the baseline must still match the worktree HEAD, otherwise
-    the step invalidates grounding and re_grounding clears plan_review.verdict
-    via the grounding_invalidated signal.
-    """
-    parent_root, worktree_path = _make_worktree_layout(tmp_path, "my-slug")
-
-    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
-        if cwd == worktree_path:
-            return 0, "worktree-head\n", ""
-        # Parent root advanced because some other todo was delivered.
-        return 0, "parent-head-advanced\n", ""
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
-
-    state = _base_state(lifecycle_phase="grounding_check")
-    state["grounding"] = {
-        "valid": True,
-        "base_sha": "worktree-head",
-        "input_digest": "",
-        "referenced_paths": [],
-        "last_grounded_at": "",
-        "invalidated_at": "",
-        "invalidation_reason": "",
-        "changed_paths": [],
-    }
-    state["plan_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "2026-01-01T00:00:00+00:00",
-        "rounds": 0,
-        "baseline_commit": "",
-        "approved_digest": "plan-digest",
-    }
-
-    with (
-        patch(f"{_GROUNDING}._emit_prepare_event"),
-        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
-    ):
-        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
-
-    assert keep_going is True
-    assert state["grounding"]["valid"] is True
-    assert state["plan_review"]["verdict"] == "approve"
-
-
-@pytest.mark.asyncio
-async def test_grounding_check_falls_back_to_parent_root_when_no_worktree(tmp_path: Path) -> None:
-    """Without a worktree, grounding_check uses the parent root (current contract)."""
-    parent_root = str(tmp_path / "repo")
-    Path(parent_root).mkdir()
-
-    captured_cwds: list[str] = []
-
-    def _run_git_command(_args: list[str], cwd: str) -> tuple[int, str, str]:
-        captured_cwds.append(cwd)
-        return 0, "parent-head\n", ""
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-    todos_db.read_artifact_sync = lambda *_args, **_kwargs: ""
-
-    state = _base_state(lifecycle_phase="grounding_check")
-
-    with (
-        patch(f"{_GROUNDING}._emit_prepare_event"),
-        patch(f"{_GROUNDING}.run_git_command", side_effect=_run_git_command),
-    ):
-        keep_going, _ = await _prepare_step_grounding_check(db, todos_db, "my-slug", parent_root, state)
-
-    assert keep_going is True
-    assert captured_cwds == [parent_root]
-    assert state["grounding"]["base_sha"] == "parent-head"
-
-
-# --- DispatchReason: every dispatch carries an explicit reason header ---
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_dispatch_marks_fresh_when_no_prior_artifact() -> None:
-    """A first plan-drafting dispatch with no produced_at must surface ``fresh``."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "Dispatch reason: fresh" in instruction
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_dispatch_marks_provenance_missing_when_upstream_digests_empty() -> None:
-    """An existing plan with empty upstream_digests must dispatch with
-    ``provenance-missing``. The plan-drafting auto-advance is gated on
-    non-empty upstream_digests so this dispatch path is reachable.
-    """
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="current-req")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        lifecycle_phase="plan_drafting",
-        plan_produced_at="2026-04-25T20:46:12+00:00",
-        plan_digest="plan-digest",
-    )
-    # Explicitly empty upstream_digests — the legacy provenance-missing state.
-    state["artifacts"]["implementation_plan"]["upstream_digests"] = {}
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "Dispatch reason: provenance-missing" in instruction
-
-
-@pytest.mark.asyncio
-async def test_test_spec_build_dispatch_marks_provenance_missing_when_upstream_digests_empty() -> None:
-    """An existing test_specs artifact with empty upstream_digests is the
-    legacy state — ``provenance-missing`` tells the worker to verify alignment
-    against current requirements instead of overwriting valid prior specs.
-
-    Reachable in test_spec_build because that step compares recorded vs current
-    directly: empty recorded != non-empty current → dispatch (not auto-advance).
-    """
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="current-req")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="test_spec_build")
-    state["artifacts"]["test_specs"]["produced_at"] = "2026-04-25T20:46:11+00:00"
-    state["artifacts"]["test_specs"]["digest"] = "specs-digest"
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-        patch(f"{_STEPS}.ensure_worktree_with_policy_async", new_callable=AsyncMock),
-    ):
-        keep_going, instruction = await _prepare_step_test_spec_build(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "Dispatch reason: provenance-missing" in instruction
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_dispatch_marks_upstream_changed_when_recorded_digest_differs() -> None:
-    """Recorded upstream digest != current → upstream-changed."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="current-req")
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(
-        lifecycle_phase="plan_drafting",
-        plan_produced_at="2026-04-25T20:46:12+00:00",
-        plan_digest="plan-digest",
-    )
-    state["artifacts"]["implementation_plan"]["upstream_digests"] = {
-        "requirements": "old-req",
-        "test_specs": "old-spec",
-    }
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "Dispatch reason: upstream-changed" in instruction
-
-
-@pytest.mark.asyncio
-async def test_re_grounding_dispatch_marks_upstream_changed() -> None:
-    """RE_GROUNDING is always reached after grounding invalidation — upstream-changed."""
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.write_state = AsyncMock()
-
-    state = _base_state(lifecycle_phase="re_grounding", plan_digest="plan-digest")
-
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-    with (
-        patch(f"{_GROUNDING}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_GROUNDING}._derive_project_root", return_value="/repo"),
-    ):
-        keep_going, instruction = await _prepare_step_re_grounding(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "Dispatch reason: upstream-changed" in instruction
-
-
-# --- REVIEW NEEDS WORK: direct-link dispatch must be unconditional ---
-
-
-@pytest.mark.asyncio
-async def test_requirements_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
-    """Pair stamp must not redirect needs_work to pair-member send; direct link wins."""
-    state = _base_state(lifecycle_phase="requirements_review")
-    state["requirements_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
-
-    command_lines = [
-        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
-    ]
-    assert keep_going is False
-    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
-    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
-    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
-    assert not command_lines[0].endswith(" --direct")
-    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
-
-
-@pytest.mark.asyncio
-async def test_test_spec_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
-    """Pair stamp must not redirect test-spec needs_work to pair-member send; direct link wins."""
-    state = _base_state(lifecycle_phase="test_spec_review")
-    state["test_spec_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_test_spec_review(db, todos_db, "test-slug", "/repo", state)
-
-    command_lines = [
-        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
-    ]
-    assert keep_going is False
-    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
-    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
-    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
-    assert not command_lines[0].endswith(" --direct")
-    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
-
-
-@pytest.mark.asyncio
-async def test_plan_review_needs_work_emits_direct_link_script_with_pair_stamped() -> None:
-    """Pair stamp must not redirect plan needs_work to pair-member send; direct link wins.
-
-    In plan_review the roles are flipped: B is the writer/fixer, A is the reviewer.
-    """
-    state = _base_state(lifecycle_phase="plan_review")
-    state["plan_review"] = {"verdict": "needs_work", "reviewed_at": "", "rounds": 0}
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},  # A = reviewer in plan_review
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},  # B = worker/fixer in plan_review
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_review(db, todos_db, "test-slug", "/repo", state)
-
-    command_lines = [
-        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
-    ]
-    assert keep_going is False
-    assert instruction.startswith("REVIEW NEEDS WORK: test-slug")
-    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
-    assert "telec sessions send worker-1 '<your findings summary>' --direct" in command_lines[0]
-    assert not command_lines[0].endswith(" --direct")
-    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
-
-
-# --- REVIEW APPROVED: must not end worker/reviewer sessions ---
-#
-# Per docs/global/software-development/procedure/lifecycle/prepare/overview.md
-# the prepare pair is persistent across the entire lifecycle. Sessions are only
-# cleaned up at the PREPARED terminal (or stay alive on BLOCKED). Approved
-# review checkpoints must advance the state machine without killing sessions.
-#
-# Regression: the legacy non-paired branch previously emitted telec sessions end
-# for both worker and reviewer after every approved review, violating the
-# persistent-pair contract whenever the pair stamp was unset.
-
-
-@pytest.mark.asyncio
-async def test_requirements_review_approve_advances_without_ending_sessions() -> None:
-    """Approved requirements review must advance the state machine without killing sessions."""
-    state = _base_state(lifecycle_phase="requirements_review")
-    state["requirements_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "rounds": 0,
-        "approved_digest": "req-digest",
-    }
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="req-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_requirements_review(db, todos_db, "test-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "telec todo prepare test-slug" in instruction
-    assert "telec sessions end" not in instruction
-
-
-@pytest.mark.asyncio
-async def test_test_spec_review_approve_advances_without_ending_sessions() -> None:
-    """Approved test-spec review must advance the state machine without killing sessions."""
-    state = _base_state(lifecycle_phase="test_spec_review")
-    state["test_spec_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "rounds": 0,
-        "approved_digest": "specs-digest",
-    }
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "worker-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "reviewer-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="specs-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_test_spec_review(db, todos_db, "test-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "telec todo prepare test-slug" in instruction
-    assert "telec sessions end" not in instruction
-
-
-@pytest.mark.asyncio
-async def test_plan_review_approve_advances_without_ending_sessions() -> None:
-    """Approved plan review must advance the state machine without killing sessions."""
-    state = _base_state(lifecycle_phase="plan_review")
-    state["plan_review"] = {
-        "verdict": "approve",
-        "reviewed_at": "",
-        "rounds": 0,
-        "approved_digest": "plan-digest",
-    }
-    state["prepare_pair"] = {
-        "slot_a": {"session_id": "reviewer-1", "agent": "claude", "lens": "A"},
-        "slot_b": {"session_id": "worker-1", "agent": "codex", "lens": "B"},
-    }
-
-    db = AsyncMock()
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="plan-digest")
-
-    with (
-        patch(f"{_STEPS}._commit_writer", new_callable=AsyncMock),
-        patch(f"{_STEPS}._emit_prepare_event"),
-    ):
-        keep_going, instruction = await _prepare_step_plan_review(db, todos_db, "test-slug", "/repo", state)
-
-    assert keep_going is False
-    assert "telec todo prepare test-slug" in instruction
-    assert "telec sessions end" not in instruction
-
-
-# --- Auto-recovery: live sessions → stamped pair, survives post-recovery commit ---
-
-
-@pytest.mark.asyncio
-async def test_plan_drafting_auto_recovery_persists_pair_through_post_recovery_commit() -> None:
-    """When prepare_pair state is empty but two live sessions exist for the slug,
-    plan_drafting must auto-recover (stamp the pair from live sessions) AND the
-    subsequent writer.commit must persist that pair instead of overwriting it.
-
-    Regression guard: an earlier shape constructed StateWriter BEFORE recovery,
-    so the post-recovery commit wrote a pre-recovery view back to state and
-    erased the just-stamped pair.
-    """
-    state = _base_state(lifecycle_phase="plan_drafting", plan_digest="plan-digest")
-    # No prepare_pair: forces auto-recovery from db.list_sessions.
-    assert state.get("prepare_pair") is None
-
-    persisted: dict[str, object] = {}  # guard: loose-dict — generic payload capture
-
-    async def _capture_write_state(slug: str, payload: dict[str, object]) -> None:  # guard: loose-dict
-        persisted[slug] = payload
-
-    db = AsyncMock()
-    db.list_sessions = AsyncMock(
-        return_value=[
-            _FakeSession(
-                session_id="claude-sess-1",
-                subdir="trees/my-slug",
-                active_agent="claude",
-                native_session_id="claude-native-1",
-            ),
-            _FakeSession(
-                session_id="codex-sess-1",
-                subdir="trees/my-slug",
-                active_agent="codex",
-                native_session_id="codex-native-1",
-            ),
-        ]
-    )
-    todos_db = AsyncMock()
-    todos_db.artifact_digest = AsyncMock(return_value="")
-    todos_db.write_state = AsyncMock(side_effect=_capture_write_state)
-
-    keep_going, instruction = await _prepare_step_plan_drafting(db, todos_db, "my-slug", "/repo", state)
-
-    assert keep_going is False
-    # Recovery stamped the pair into state and the post-recovery commit preserved it.
-    pair = state["prepare_pair"]
-    assert isinstance(pair, dict)
-    assert pair["slot_a"]["session_id"] == "claude-sess-1"
-    assert pair["slot_b"]["session_id"] == "codex-sess-1"
-    # The most recent persisted payload (written by post-recovery commit) carries the pair.
-    final_persisted = persisted["my-slug"]
-    assert isinstance(final_persisted, dict)
-    final_pair = final_persisted["prepare_pair"]
-    assert isinstance(final_pair, dict)
-    assert final_pair["slot_a"]["session_id"] == "claude-sess-1"
-    assert final_pair["slot_b"]["session_id"] == "codex-sess-1"
-    # The dispatched script targets the recovered slot, not a freshly spawned worker.
-    # PLAN_DRAFTING role mapping is ("B", "A") so the writer is slot_b (codex).
-    assert "codex-sess-1" in instruction
+    assert instruction == "PREPARED: my-slug"

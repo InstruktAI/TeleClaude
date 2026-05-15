@@ -61,7 +61,9 @@ SNIPPET_VISIBILITY_VALUES = (SNIPPET_VISIBILITY_PUBLIC, SNIPPET_VISIBILITY_INTER
 
 # Todo artifact names — canonical values for the `name` column of todo_artifacts.
 ARTIFACT_INPUT = "input"
+ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
+ARTIFACT_ARCHITECTURE = "architecture"
 ARTIFACT_TEST_SPECS = "test-specs"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_BUG = "bug"
@@ -69,13 +71,16 @@ ARTIFACT_QUALITY_CHECKLIST = "quality-checklist"
 ARTIFACT_DESIGN_SPEC = "design-spec"
 ARTIFACT_DEFERRALS = "deferrals"
 ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
+ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
 ARTIFACT_SPEC_REVIEW_FINDINGS = "spec-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
 ARTIFACT_NAMES: frozenset[str] = frozenset(
     {
         ARTIFACT_INPUT,
+        ARTIFACT_PRD,
         ARTIFACT_REQUIREMENTS,
+        ARTIFACT_ARCHITECTURE,
         ARTIFACT_TEST_SPECS,
         ARTIFACT_IMPLEMENTATION_PLAN,
         ARTIFACT_BUG,
@@ -83,6 +88,7 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
         ARTIFACT_DESIGN_SPEC,
         ARTIFACT_DEFERRALS,
         ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+        ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS,
         ARTIFACT_SPEC_REVIEW_FINDINGS,
         ARTIFACT_PLAN_REVIEW_FINDINGS,
         ARTIFACT_REVIEW_FINDINGS,
@@ -117,11 +123,15 @@ class SlashCommand(str, Enum):
     NEXT_BUGS_FIX = "next-bugs-fix"
     NEXT_REVIEW_BUILD = "next-review-build"
     NEXT_REVIEW_PLAN = "next-review-plan"
-    NEXT_REVIEW_REQUIREMENTS = "next-review-requirements"
+    NEXT_REVIEW_ARCHITECTURE = "next-review-architecture"
     NEXT_FIX_REVIEW = "next-fix-review"
     NEXT_FINALIZE = "next-finalize"
-    NEXT_PREPARE_DISCOVERY = "next-prepare-discovery"
-    NEXT_PREPARE_DRAFT = "next-prepare-draft"
+    NEXT_PREPARE_INTAKE = "next-prepare-intake"
+    NEXT_PREPARE_ARCHITECTURE = "next-prepare-architecture"
+    NEXT_PREPARE_SPECS = "next-prepare-specs"
+    NEXT_PREPARE_PLAN = "next-prepare-plan"
+    NEXT_EMULATE_PO = "next-emulate-po"
+    NEXT_DRIFT_ANALYZE = "next-drift-analyze"
     NEXT_PREPARE = "next-prepare"
 
     NEXT_WORK = "next-work"
@@ -139,8 +149,13 @@ class JobRole(str, Enum):
     FIXER = "fixer"
     REVIEWER = "reviewer"
     FINALIZER = "finalizer"
-    DISCOVERER = "discoverer"
-    DRAFTER = "drafter"
+    INTAKER = "intaker"
+    PLANNER = "planner"
+    ARCHITECT = "architect"
+    SPEC_AUTHOR = "spec-author"
+    ARCHITECTURE_REVIEWER = "architecture-reviewer"
+    DRIFT_ANALYZER = "drift-analyzer"
+    PO_EMULATOR = "po-emulator"
     PREPARE_ORCHESTRATOR = "prepare-orchestrator"
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"

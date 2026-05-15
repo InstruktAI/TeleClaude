@@ -5,6 +5,9 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+import json
+from typing import TypedDict
+
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.paths import COMMANDS_DIR
@@ -12,22 +15,17 @@ from teleclaude.paths import COMMANDS_DIR
 __all__ = [
     "ORCHESTRATOR_IDLE_INVARIANT",
     "REVIEW_DIFF_NOTE",
-    "ConvergenceAssessmentScript",
-    "HumanApprovalScript",
-    "PairFormationScript",
-    "PairTurnScript",
+    "PrepareRecommendation",
     "ToolCallRequest",
     "format_command_loader_message",
-    "format_convergence_assessment_script",
     "format_error",
     "format_finalize_handoff_complete",
-    "format_human_approval_script",
-    "format_pair_formation_script",
-    "format_pair_turn_script",
+    "format_prepare_recommendation",
     "format_prepared",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
+    "parse_human_in_loop",
 ]
 
 
@@ -54,20 +52,24 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """
 
 
-class PairFormationScript(dict[str, object]):  # guard: loose-dict - dynamic payload
-    """Structured request for first prepare-pair formation."""
+class PrepareRecommendation(TypedDict):
+    """Structured prepare recommendation payload returned by the state machine."""
+
+    slug: str
+    lifecycle_phase: str
+    stage: str
+    kind: str
+    recommended_command: str
+    recommended_args: str
+    required_reads: list[str]
+    drift: dict[str, str]
+    blockers: list[str]
+    advisory: list[str]
 
 
-class ConvergenceAssessmentScript(dict[str, object]):  # guard: loose-dict - dynamic payload
-    """Structured request for pair discovery convergence assessment."""
-
-
-class PairTurnScript(dict[str, object]):  # guard: loose-dict - dynamic payload
-    """Structured request for a prepare-pair send turn."""
-
-
-class HumanApprovalScript(dict[str, object]):  # guard: loose-dict - dynamic payload
-    """Structured request for the human requirements approval pause."""
+def format_prepare_recommendation(recommendation: PrepareRecommendation) -> str:
+    """Render a prepare recommendation as stable JSON for orchestrators and CLIs."""
+    return json.dumps(recommendation, indent=2, sort_keys=True)
 
 
 def _command_text(value: object) -> str:
@@ -102,6 +104,15 @@ def _format_additional_context(request: ToolCallRequest) -> tuple[str, str]:
         f' --additional-context "{escaped_context}"',
         f"\nADDITIONAL CONTEXT FOR WORKER:\n{additional_context}\n",
     )
+
+
+def parse_human_in_loop(context: str) -> bool:
+    """Return the human-in-loop mode encoded in ``additional_context``."""
+    for line in context.splitlines():
+        key, separator, raw_value = line.partition(":")
+        if separator and key.strip().lower() == "human_in_loop":
+            return raw_value.strip().lower() != "false"
+    return True
 
 
 def format_tool_call(request: ToolCallRequest) -> str:
@@ -175,7 +186,7 @@ FEEDBACK MESSAGES:
 ORCHESTRATION PRINCIPLE:
 You are an orchestrator. Execute the state machine's output verbatim. \
 The state machine owns session lifecycle and dispatch decisions; phase is derived \
-each call from stamped primitives (verdicts, git commits, DOR, grounding). \
+each call from stamped primitives (verdicts, approvals, skip stamps, drift review). \
 Trust the process gates (pre-commit hooks, stamp clerical checks)."""
     note = str(request.get("note", ""))
     if note:
@@ -183,147 +194,12 @@ Trust the process gates (pre-commit hooks, stamp clerical checks)."""
     return result
 
 
-def format_pair_formation_script(script: PairFormationScript) -> str:
-    """Format the dual-dispatch script used to form the prepare pair."""
-    command = _format_slash_command(script["command"])
-    args = str(script["args"])
-    project = str(script["project"])
-    subfolder = str(script["subfolder"])
-    agent_a = str(script["agent_a"])
-    agent_b = str(script["agent_b"])
-    mode_a = str(script.get("mode_a", "slow"))
-    mode_b = str(script.get("mode_b", "slow"))
-    slug = str(script["slug"])
-    return f"""IMPORTANT: This output is a prepare-pair formation script. Follow it verbatim.
-
-{ORCHESTRATOR_IDLE_INVARIANT}
-
-Execute these steps in order:
-
-STEP 1 - DISPATCH INDEPENDENT INTAKE WORKERS:
-telec sessions run --command "{command}" --args "{args}" --project "{project}" --agent "{agent_a}" --mode "{mode_a}" --subfolder "{subfolder}"
-Save the returned session_id as <A_id>.
-
-telec sessions run --command "{command}" --args "{args}" --project "{project}" --agent "{agent_b}" --mode "{mode_b}" --subfolder "{subfolder}"
-Save the returned session_id as <B_id>.
-
-Do not link the workers during intake.
-
-STEP 2 - WAIT FOR BOTH INTAKES:
-Wait for both agent_stop signals. Tail each worker independently until both report idle.
-
-STEP 3 - LINK THE PAIR FOR DISCOVERY:
-Send these two messages (do NOT use --direct yourself):
-
-telec sessions send <A_id> "You are now entering paired discovery with your partner (session <B_id>). Establish a direct link by running: telec sessions send <B_id> 'Starting paired discovery' --direct. Then begin exploring the problem together as described in your briefing."
-
-telec sessions send <B_id> "You are now entering paired discovery. Your partner will establish a direct connection with you shortly. Wait for their message, then begin exploring together as described in your briefing."
-
-STEP 4 - REGISTER PAIR IDENTITY:
-telec todo stamp {slug} --agent-a <A_id> --agent-b <B_id>
-
-The stamp resolves agent and native_session_id from each session record and atomically writes both slots into todo state. Without this step the state machine cannot see the pair on the next re-entry.
-
-STEP 5 - WAIT FOR DISCOVERY IDLENESS:
-After A links the pair (Step 3) the workers begin paired discussion. Wait for BOTH <A_id> AND <B_id> to emit agent_stop after their conversation converges. Do not call the next state-machine step while either is still active.
-
-STEP 6 - RE-ENTER:
-telec todo prepare {slug}"""
-
-
-def format_convergence_assessment_script(script: ConvergenceAssessmentScript) -> str:
-    """Format the pair discovery convergence assessment instruction."""
-    slug = str(script["slug"])
-    slot_a = str(script["slot_a"])
-    slot_b = str(script["slot_b"])
-    return (
-        f"CONVERGENCE ASSESSMENT: {slug}\n\n"
-        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
-        f"Execute in order:\n\n"
-        f"telec sessions tail {slot_a}\n"
-        f"telec sessions tail {slot_b}\n\n"
-        f"Assess whether both workers have converged on what the requirements should contain.\n\n"
-        f"If converged, tell A to close the direct link and write requirements:\n"
-        f'  telec sessions send {slot_a} "Close your direct link by running: '
-        f"telec sessions send {slot_b} --close-link. "
-        f"Then write the agreed requirements with: "
-        f"telec todo artifacts write {slug} requirements <content>. "
-        f'When done, stamp: telec todo stamp {slug} --requirements-ready."\n\n'
-        f"Do NOT message B yet. Wait for A to go idle, then call telec todo prepare {slug}.\n\n"
-        f"If not converged, send concrete feedback to guide further discussion."
-    )
-
-
-def _escaped_session_message(message: object) -> str:
-    """Escape a message for the literal telec sessions send command."""
-    return str(message).replace('"', '\\"')
-
-
-def format_pair_turn_script(script: PairTurnScript) -> str:
-    """Format a writer, reviewer, or continuation send to a stored pair member."""
-    slug = str(script["slug"])
-    session_id = str(script["session_id"])
-    message = _escaped_session_message(script["message"])
-    next_step = str(script["next_step"])
-    turn = str(script.get("turn", "write"))
-
-    if turn == "write":
-        return (
-            f"PAIR WRITE TURN: {slug}\n\n"
-            f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
-            f"Execute in order:\n\n"
-            f'telec sessions send {session_id} "{message}"\n\n'
-            f"Wait for writer agent_stop, then call {next_step}."
-        )
-
-    if turn == "review":
-        return (
-            f"PAIR REVIEW TURN: {slug}\n\n"
-            f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
-            f"Execute in order:\n\n"
-            f'telec sessions send {session_id} "{message}"\n\n'
-            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-            f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-            f"and save the new task_id.\n"
-            f"When the reviewer reports idle, call {next_step}."
-        )
-
-    return (
-        f"PAIR CONTINUATION: {slug}\n\n"
-        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
-        f"Execute in order:\n\n"
-        f'telec sessions send {session_id} "{message}"\n\n'
-        f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
-        f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
-        f"and save the new task_id.\n"
-        f"When the worker reports idle, call {next_step}."
-    )
-
-
-def format_human_approval_script(script: HumanApprovalScript) -> str:
-    """Format the restart-safe human approval pause instruction."""
-    slug = str(script["slug"])
-    return (
-        f"HUMAN APPROVAL: {slug}\n\n"
-        f"{ORCHESTRATOR_IDLE_INVARIANT}\n\n"
-        f"Present the full artifact set to the human:\n"
-        f"  telec todo artifacts read {slug} requirements\n"
-        f"  telec todo artifacts read {slug} implementation-plan\n\n"
-        f"If the human approves, stamp approval and re-enter prepare:\n"
-        f"  telec todo stamp {slug} --verdict approve --phase requirements_human_approval\n"
-        f"  telec todo prepare {slug}\n\n"
-        f"If the human gives feedback, relay it to the appropriate worker in the stored prepare pair. "
-        f"Keep the flow fix-forward; do not return to discovery."
-    )
-
-
 def format_command_loader_message(command_name: str, slug: str) -> str:
-    """Format a Codex-style command loader for a pair member turn.
+    """Format a Codex-style command loader for a dispatched prepare worker.
 
     Produces the same instruction pattern used by ``_build_codex_loader_message``
-    in sessions_actions_routes so that existing pair sessions load the full
-    command artifact (with Required reads, role, and discipline) for their
-    next turn-based role.
+    in sessions_actions_routes so workers load the full command artifact
+    (with Required reads, role, and discipline) for their current phase.
     """
     prompt_path = COMMANDS_DIR / f"{command_name}.md"
     return (

@@ -5,25 +5,73 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import cast
 
 from instrukt_ai_logging import get_logger
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
-from teleclaude.constants import ARTIFACT_DEFERRALS
+from teleclaude.constants import ARTIFACT_DEFERRALS, WORKTREE_DIR
 from teleclaude.types.state_value import StateValue
 
+from ._migration_logs import record_v2_to_v3_migration
 from ._models import ROADMAP_TABLE, TODO_STATE_TABLE, TodoRoadmap, TodoStateModel
-from ._upcycle import canonicalize_state_for_storage, upcycle_state_dict
+from ._upcycle import _detect_schema_version, canonicalize_state_for_storage, upcycle_state_dict
 
 logger = get_logger(__name__)
+
+_V2_PREPARE_PHASES = {
+    "draft",
+    "input_assessment",
+    "triangulation",
+    "requirements_review",
+    "requirements_human_approval",
+    "test_spec_build",
+    "test_spec_review",
+    "plan_drafting",
+    "plan_review",
+    "gate",
+    "grounding_check",
+    "re_grounding",
+    "prepared",
+}
 
 
 class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
     _on_mutation: Callable[[str], None]
+
+    def _project_root(self) -> Path:
+        db_path = cast(Path, self._db_path)  # type: ignore[attr-defined]
+        return db_path.parent.parent if db_path.parent.name == ".teleclaude" else db_path.parent
+
+    def _record_v2_to_v3_if_needed(
+        self,
+        slug: str,
+        raw_state: dict[str, StateValue],
+        payload: dict[str, StateValue],
+    ) -> bool:
+        if _detect_schema_version(raw_state) != 2:
+            return False
+        from_phase = raw_state.get("lifecycle_phase")
+        if not isinstance(from_phase, str) or from_phase not in _V2_PREPARE_PHASES:
+            return False
+
+        project_root = self._project_root()
+        worktree_abandoned = (project_root / WORKTREE_DIR / slug).exists()
+        to_phase = payload.get("lifecycle_phase")
+        kind = payload.get("kind")
+        record_v2_to_v3_migration(
+            slug,
+            from_lifecycle_phase=from_phase,
+            to_lifecycle_phase=to_phase if isinstance(to_phase, str) else "",
+            kind=kind if isinstance(kind, str) else "",
+            worktree_abandoned=worktree_abandoned,
+            project_root=str(project_root),
+        )
+        return True
 
     async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None:
         """Resolve an active or icebox roadmap slug to its stable row id."""
@@ -45,7 +93,15 @@ class TodosDbStateMixin:
             state_model = await session.get(TodoStateModel, row_id)
             if state_model is None:
                 return None
-            return upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state)))
+            raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+            payload = upcycle_state_dict(raw_state)
+            if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                await session.commit()
+                self._on_mutation("todo_updated")
+            return payload
 
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
@@ -180,7 +236,15 @@ class TodosDbStateMixin:
             state_model = session.get(TodoStateModel, str(row_id))
             if state_model is None:
                 return None
-            return upcycle_state_dict(cast(dict[str, StateValue], json.loads(state_model.state)))
+            raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+            payload = upcycle_state_dict(raw_state)
+            if self._record_v2_to_v3_if_needed(slug, raw_state, payload):
+                state_model.state = json.dumps(payload, default=str)
+                state_model.updated_at = datetime.now(UTC).isoformat()
+                session.add(state_model)
+                session.commit()
+                self._on_mutation("todo_updated")
+            return payload
 
     def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
         """Sync version of write_state for use from worker threads."""

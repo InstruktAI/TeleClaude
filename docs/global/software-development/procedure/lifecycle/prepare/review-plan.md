@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/review-plan'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Plan review phase. Validate implementation-plan.md against policies, DoD gates, and review lane expectations.'
+description: 'Plan review phase. Validate implementation-plan against PRD, optional architecture/test-specs, policies, DoD gates, and review lane expectations.'
 ---
 
 # Review Plan — Procedure
@@ -18,22 +18,26 @@ description: 'Plan review phase. Validate implementation-plan.md against policie
 
 ## Goal
 
-Validate `implementation-plan.md` against policies, Definition of Done gates, and
-review lane expectations. The plan must be good enough that a builder can execute
+Validate `implementation-plan` against approved PRD, optional architecture,
+optional test-specs, policies, Definition of Done gates, and review lane expectations. The plan must be good enough that a builder can execute
 it without guessing and a reviewer finds no surprises.
 
 ## Preconditions
 
 - `telec todo artifacts read {slug} implementation-plan` exists.
-- `telec todo artifacts read {slug} requirements` exists and is approved.
+- `telec todo artifacts read {slug} prd` exists and is approved. If this is a
+  legacy todo with no PRD yet, `input` may be used only as a compatibility
+  fallback and must be called out in findings.
 
 ## Steps
 
 ### 1. Read context
 
 - `telec todo artifacts read {slug} implementation-plan` — the artifact under review.
-- `telec todo artifacts read {slug} requirements` — the approved requirements it must satisfy.
-- `telec todo artifacts read {slug} input` — original human thinking.
+- `telec todo artifacts read {slug} prd` — the approved product contract it must satisfy.
+- `telec todo artifacts read {slug} architecture` — when present.
+- `telec todo artifacts read {slug} test-specs` — when present.
+- `telec todo artifacts read {slug} input` — compatibility fallback only when PRD is absent.
 - Relevant codebase files referenced in the plan.
 - The code review procedure — to understand what the reviewer will check.
 - Apply the domain-context loading rule from the preparation artifact quality
@@ -46,7 +50,7 @@ Structural coverage ("a task exists for this requirement") is not sufficient.
 Produce a `Delivery analysis` section in `plan-review-findings.md` with one
 entry per requirement success criterion.
 
-For each success criterion in `requirements.md`:
+For each success criterion in `prd`:
 
 1. Quote the criterion verbatim.
 2. Quote the task body text (or multiple tasks' bodies) that delivers it.
@@ -61,8 +65,8 @@ Findings:
   the requirement's name whose body narrows the criterion is a
   Requirement-Violation regardless of whether the task exists.
 - Task body quotes criteria it does not deliver -> Critical.
-- Orphan task (no requirement) -> Important (gold-plating risk).
-- Task contradicts requirement -> Critical.
+- Orphan task (no PRD criterion, architecture constraint, or test-spec case) -> Important (gold-plating risk).
+- Task contradicts PRD, architecture, or test-specs -> Critical.
 
 The reviewer cannot approve the plan while any criterion lacks a Delivery
 analysis entry that names concrete deliverables.
@@ -71,7 +75,7 @@ analysis entry that names concrete deliverables.
 
 Validate DOR Gate 2 (Scope & size). The plan must fit one builder session.
 Apply the splitting heuristics from the Definition of Ready policy against
-the plan's actual task list, not just the requirements prose.
+the plan's actual task list, not just the PRD prose.
 
 - Plan spans multiple independently shippable workstreams -> Critical.
 - Plan requires multiple phases that could be delivered separately without
@@ -162,9 +166,9 @@ Localized means all of the following are true:
 
 Not allowed — route via `needs_work` instead:
 
-- Adding new tasks not traceable to requirements.
+- Adding new tasks not traceable to PRD, architecture, or test-specs.
 - Changing scope or splitting the todo.
-- Inventing architectural decisions not grounded in requirements or codebase.
+- Inventing architectural decisions not grounded in PRD, architecture, or codebase.
 
 ### 9. Write verdict
 
@@ -209,5 +213,6 @@ Findings artifact: plan-review-findings when NEEDS WORK
 - If unresolved Critical or Important findings remain after auto-remediation,
   mark `needs_work`. The state machine will dispatch the plan drafter again
   with the findings.
-- If requirements themselves are the problem (plan is correct but requirements
-  are wrong), flag as blocker — requirements must be re-reviewed first.
+- If upstream artifacts themselves are the problem (plan is correct but PRD,
+  architecture, or test-specs are wrong), flag as blocker — the affected
+  upstream artifact must be re-reviewed first.

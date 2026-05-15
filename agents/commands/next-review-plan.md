@@ -21,7 +21,9 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} implementation-plan` (the artifact under review)
-- `telec todo artifacts read {slug} requirements` (the requirements it must satisfy)
+- `telec todo artifacts read {slug} prd` (the product contract it must satisfy)
+- `telec todo artifacts read {slug} architecture` when present
+- `telec todo artifacts read {slug} test-specs` when present
 
 ## Outputs
 
@@ -35,7 +37,7 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
   - **`fresh`** — first review of this plan.
   - **`upstream-changed`** — the plan artifact changed since your last approval.
     Run the `Changes since` diff command listed in the dispatch and re-validate against
-    the requirements and specs.
+    the PRD, architecture, and specs.
 - Follow the review-plan procedure.
 - Store artifacts via `telec todo artifacts write`. Stamp verdict via `telec todo stamp`. Go idle.
 

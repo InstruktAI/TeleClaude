@@ -72,6 +72,15 @@ class TestCommandRoleMap:
         assert job_role == JobRole.INTEGRATOR
 
     @pytest.mark.unit
+    def test_prepare_v2_commands_use_semantic_worker_roles(self):
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_PREPARE_INTAKE][1] == JobRole.INTAKER
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_PREPARE_ARCHITECTURE][1] == JobRole.ARCHITECT
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_PREPARE_SPECS][1] == JobRole.SPEC_AUTHOR
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_PREPARE_PLAN][1] == JobRole.PLANNER
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_DRIFT_ANALYZE][1] == JobRole.DRIFT_ANALYZER
+        assert COMMAND_ROLE_MAP[SlashCommand.NEXT_EMULATE_PO][1] == JobRole.PO_EMULATOR
+
+    @pytest.mark.unit
     def test_all_entries_have_two_tuple_shape(self):
         for cmd, role_info in COMMAND_ROLE_MAP.items():
             assert len(role_info) == 2, f"Expected 2-tuple for {cmd}"

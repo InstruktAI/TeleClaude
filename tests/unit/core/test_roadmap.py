@@ -140,7 +140,7 @@ async def test_roadmap_projection_lazy_upcycles_legacy_v1_without_lifecycle_phas
 
     assert len(todos) == 1
     assert todos[0].slug == "legacy-item"
-    assert todos[0].lifecycle_phase == "input_assessment"
+    assert todos[0].lifecycle_phase == "draft"
 
 
 @pytest.mark.asyncio
@@ -207,7 +207,7 @@ async def test_roadmap_normalizes_delivered_stale_integration_phase_to_delivered
 
 
 @pytest.mark.asyncio
-async def test_roadmap_projection_defaults_missing_state_row_to_input_assessment(tmp_path: Path) -> None:
+async def test_roadmap_projection_defaults_missing_state_row_to_draft(tmp_path: Path) -> None:
     """Roadmap assembly must tolerate roadmap entries that have no todo_state row yet."""
     project = tmp_path / "project"
     project.mkdir()
@@ -225,4 +225,4 @@ async def test_roadmap_projection_defaults_missing_state_row_to_input_assessment
 
     assert len(todos) == 1
     assert todos[0].slug == "stateless-item"
-    assert todos[0].lifecycle_phase == "input_assessment"
+    assert todos[0].lifecycle_phase == "draft"

@@ -8,7 +8,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
-from typing import cast
+from typing import Literal, cast
 
 from instrukt_ai_logging import get_logger
 
@@ -19,8 +19,15 @@ from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _WORKTREE_PREP_STATE_REL
 from teleclaude.core.next_machine.file_io import read_text_sync, write_text_sync
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo, no_autostash_env
+from teleclaude.types.todos import ArtifactEntry, DriftReviewedStamp
 
 logger = get_logger(__name__)
+
+ArtifactDriftStatus = Literal["fresh", "pending", "cosmetic", "substantive"]
+DRIFT_FRESH: ArtifactDriftStatus = "fresh"
+DRIFT_PENDING: ArtifactDriftStatus = "pending"
+DRIFT_COSMETIC: ArtifactDriftStatus = "cosmetic"
+DRIFT_SUBSTANTIVE: ArtifactDriftStatus = "substantive"
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +93,101 @@ def run_git_command(args: list[str], cwd: str) -> tuple[int, str, str]:
     except GitCommandError as exc:
         rc = exc.status if isinstance(exc.status, int) else 1
         return rc, exc.stdout or "", exc.stderr or ""
+
+
+def _meaningful_changed_files_between(cwd: str, baseline: str, head: str) -> list[str] | None:
+    """Return non-infrastructure files touched by non-merge commits, or None on git errors."""
+    infra_prefixes = (".teleclaude/",)
+    try:
+        repo = Repo(cwd)
+        log_output = repo.git.log(
+            "--no-merges",
+            "--name-only",
+            "--pretty=format:",
+            f"{baseline}..{head}",
+        )
+    except (GitCommandError, OSError) as exc:
+        logger.warning(
+            "drift file scan failed; treating drift as pending",
+            cwd=cwd,
+            baseline=baseline,
+            head=head,
+            error=str(exc),
+        )
+        return None
+    return sorted(
+        {
+            path.strip()
+            for path in log_output.splitlines()
+            if path.strip() and not any(path.startswith(prefix) for prefix in infra_prefixes)
+        }
+    )
+
+
+def _path_overlaps_reference(path: str, reference: str) -> bool:
+    """Return True when a changed path is inside a referenced path surface."""
+    normalized_path = path.strip().lstrip("./")
+    normalized_reference = reference.strip().lstrip("./").rstrip("/")
+    if not normalized_path or not normalized_reference:
+        return False
+    return normalized_path == normalized_reference or normalized_path.startswith(f"{normalized_reference}/")
+
+
+def extract_referenced_paths(content: str, repo_root: str) -> list[str]:
+    """Return tracked repo paths whose literals are referenced by artifact content."""
+    try:
+        repo = Repo(repo_root, search_parent_directories=True)
+        tracked_output = repo.git.ls_files()
+    except (GitCommandError, InvalidGitRepositoryError, NoSuchPathError, OSError):
+        return []
+    references = {
+        path.strip()
+        for path in tracked_output.splitlines()
+        if path.strip() and path.strip() in content and not path.strip().startswith(".teleclaude/")
+    }
+    return sorted(references)
+
+
+def derive_artifact_drift(
+    artifact_entry: ArtifactEntry,
+    drift_reviewed_stamp: DriftReviewedStamp | None,
+    current_head_sha: str,
+    repo_root: str,
+) -> ArtifactDriftStatus:
+    """Derive artifact drift from recorded provenance and current git state.
+
+    ``pending`` is fail-safe: if an artifact names referenced code but the git
+    comparison cannot prove freshness, a drift-review worker must inspect it.
+    """
+    if drift_reviewed_stamp is not None and drift_reviewed_stamp.verdict == "substantive":
+        return DRIFT_SUBSTANTIVE
+    if not artifact_entry.digest and not artifact_entry.produced_at:
+        return DRIFT_FRESH
+    if not artifact_entry.referenced_paths:
+        return drift_reviewed_stamp.verdict if drift_reviewed_stamp is not None else DRIFT_FRESH
+    if not artifact_entry.codebase_sha_at_write or not current_head_sha:
+        return DRIFT_PENDING
+    if artifact_entry.codebase_sha_at_write == current_head_sha:
+        return DRIFT_FRESH
+
+    changed_files = _meaningful_changed_files_between(
+        repo_root,
+        artifact_entry.codebase_sha_at_write,
+        current_head_sha,
+    )
+    if changed_files is None:
+        return DRIFT_PENDING
+
+    has_overlap = any(
+        _path_overlaps_reference(path, reference)
+        for path in changed_files
+        for reference in artifact_entry.referenced_paths
+    )
+    if not has_overlap:
+        return DRIFT_FRESH
+    if drift_reviewed_stamp is not None:
+        return drift_reviewed_stamp.verdict
+    return DRIFT_PENDING
 
 
 # ---------------------------------------------------------------------------
@@ -383,10 +485,17 @@ async def compose_agent_guidance(db: Db) -> str:
 
 
 __all__ = [
+    "DRIFT_COSMETIC",
+    "DRIFT_FRESH",
+    "DRIFT_PENDING",
+    "DRIFT_SUBSTANTIVE",
+    "ArtifactDriftStatus",
     "_has_meaningful_diff",
     "_merge_origin_main_into_worktree",
     "build_git_hook_env",
     "compose_agent_guidance",
+    "derive_artifact_drift",
+    "extract_referenced_paths",
     "get_stash_entries",
     "has_git_stash_entries",
     "has_uncommitted_changes",

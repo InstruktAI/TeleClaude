@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.constants import WORKTREE_DIR
@@ -34,18 +33,6 @@ def derive_project_root(cwd: str, slug: str) -> str:
     suffix = f"/{WORKTREE_DIR}/{slug}"
     if cwd.endswith(suffix):
         return cwd[: -len(suffix)]
-    return cwd
-
-
-def derive_worktree_cwd(cwd: str, slug: str) -> str:
-    """Return the todo's worktree path when it exists, else the parent root cwd.
-
-    Grounding and HEAD-anchored diffs must scope to the worktree so they don't
-    drift when unrelated deliveries advance parent-root HEAD.
-    """
-    worktree_path = Path(cwd) / WORKTREE_DIR / slug
-    if worktree_path.is_dir():
-        return str(worktree_path)
     return cwd
 
 

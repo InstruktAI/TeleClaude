@@ -54,7 +54,7 @@ def resolve_test_targets(project_root: Path, touched_files: set[str]) -> list[st
     targets: set[str] = set()
 
     for f in touched_files:
-        if f.startswith("tests/"):
+        if f.startswith("tests/") and f.endswith(".py"):
             if (project_root / f).exists():
                 targets.add(f)
         elif f.endswith(".py"):

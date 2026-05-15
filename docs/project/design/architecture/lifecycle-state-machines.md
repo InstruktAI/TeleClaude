@@ -14,7 +14,7 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 | Phase | Name                                      | State Machine                    | Entry Point                   | Purpose                                             |
 | ----- | ----------------------------------------- | -------------------------------- | ----------------------------- | --------------------------------------------------- |
-| **A** | [Prepare](prepare-state-machine.md)       | `lifecycle_phase` (prepare lane) | `telec todo prepare [slug]`   | Define scope, requirements, and implementation plan |
+| **A** | [Prepare](prepare-flow.md)                | `lifecycle_phase` (prepare lane) | `telec todo prepare [slug]`   | Define PRD, architecture, test specs, and implementation plan |
 | **B** | [Work](work-state-machine.md)             | `lifecycle_phase` (work lane)    | `telec todo work [slug]`      | Build, review, fix, and finalize the implementation |
 | **C** | [Integrate](integration-state-machine.md) | `IntegrationPhase` (12 states)   | `telec todo integrate [slug]` | Merge to main, push, deliver                        |
 
@@ -41,7 +41,9 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 
 - `todos.db` roadmap — work item registry with priorities and dependency graph
 - `telec todo artifacts read {slug} input` — human idea or requirement (Phase A entry)
-- `telec todo artifacts read {slug} requirements` — feature requirements (Phase A output, Phase B input)
+- `telec todo artifacts read {slug} prd` — product contract (Phase A output, Phase B input)
+- `telec todo artifacts read {slug} architecture` — optional approved technical brief (Phase A output, Phase B input)
+- `telec todo artifacts read {slug} test-specs` — optional prose behavioral contract (Phase A output, Phase B input)
 - `telec todo artifacts read {slug} implementation-plan` — technical design (Phase A output, Phase B input)
 - `todos.db` state — phase tracking, review verdicts, grounding metadata, finalize state
 - `config.yml` (via `app_config.agents`) — agent availability and strengths
@@ -69,9 +71,11 @@ TeleClaude's software development lifecycle is driven by three deterministic sta
 ```mermaid
 flowchart LR
     subgraph "Phase A — Prepare"
-        Input["input.md"] --> Discovery
-        Discovery --> ReqReview["Requirements<br/>Review"]
-        ReqReview --> PlanDraft["Plan<br/>Drafting"]
+        Input["input"] --> Intake["Intake<br/>PRD"]
+        Intake --> PRDReview["PRD<br/>Review"]
+        PRDReview --> Architecture["Architecture<br/>(or skip)"]
+        Architecture --> Specs["Test Specs<br/>(or skip)"]
+        Specs --> PlanDraft["Plan<br/>Drafting"]
         PlanDraft --> PlanReview["Plan<br/>Review"]
         PlanReview --> Gate["DOR<br/>Gate"]
         Gate --> Grounding["Grounding<br/>Check"]
@@ -112,7 +116,7 @@ sequenceDiagram
     loop Until PREPARED
         Orchestrator->>Prepare: telec todo prepare [slug]
         Prepare-->>Orchestrator: instruction (dispatch worker)
-        Note over Orchestrator: Dispatches discovery, review,<br/>drafting, or gate workers
+        Note over Orchestrator: Dispatches intake, architecture,<br/>specs, plan, review, or gate workers
     end
     Prepare-->>Orchestrator: PREPARED
 
@@ -149,8 +153,8 @@ flowchart TB
 
     subgraph Workers["Workers (Execution)"]
         direction TB
-        W1["Discovery Agent — requirements"]
-        W2["Draft Agent — implementation plan"]
+        W1["Intake Agent — PRD"]
+        W2["Architecture / specs / plan agents"]
         W3["Review Agent — findings + verdict"]
         W4["Builder Agent — code + tests"]
         W5["Fixer Agent — address findings"]
@@ -176,8 +180,9 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 
 | Phase    | Worker Role | Command                                          | Thinking Mode      |
 | -------- | ----------- | ------------------------------------------------ | ------------------ |
-| Prepare  | Architect   | `/next-prepare-discovery`, `/next-prepare-draft` | `slow`             |
-| Prepare  | Reviewer    | `/next-review-requirements`, `/next-review-plan` | `slow`             |
+| Prepare  | Intaker / Architect / Spec Author / Planner | `/next-prepare-intake`, `/next-prepare-architecture`, `/next-prepare-specs`, `/next-prepare-plan` | `slow`             |
+| Prepare  | Drift Analyzer | `/next-drift-analyze`                           | `med`              |
+| Prepare  | Reviewer    | `/next-review-architecture`, `/next-review-specs`, `/next-review-plan` | `slow`             |
 | Build    | Builder     | `/next-build` (or `/next-bugs-fix`)              | `med`              |
 | Review   | Reviewer    | `/next-review-build`                             | `slow` (mandatory) |
 | Fix      | Fixer       | `/next-fix-review`                               | `med`              |
@@ -187,7 +192,7 @@ All workers are dispatched via `telec sessions run`. The machine specifies the c
 
 Each state machine has its own design document with full state diagrams, sequence diagrams, flow diagrams, and command cross-references:
 
-1. **[Prepare State Machine](prepare-state-machine.md)** — Phase A: 10 states, from idea to implementation-ready artifacts
+1. **[Prepare Flow](prepare-flow.md)** — Phase A: PRD → Architecture → Test specs → Plan, from idea to implementation-ready artifacts
 2. **[Work State Machine](work-state-machine.md)** — Phase B: Build/review/fix/finalize routing with quality gates
 3. **[Integration State Machine](integration-state-machine.md)** — Phase C: 12 states, lease-serialized merge-to-main delivery
 
@@ -199,4 +204,4 @@ Each state machine has its own design document with full state diagrams, sequenc
 - **Worker crash**: orchestrator retries once, then escalates.
 - **Phase mark failure**: worker must commit before marking phase.
 - **Integration contention**: serialized by lease; concurrent candidates are queued in FIFO order.
-- **Stale artifacts**: requirements updated but plan not regenerated. Grounding check catches and triggers re-grounding.
+- **Stale artifacts**: PRD, architecture, or test-specs updated but downstream artifacts not regenerated. Grounding check catches and triggers re-grounding.

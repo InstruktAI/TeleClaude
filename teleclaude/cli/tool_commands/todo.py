@@ -6,6 +6,7 @@ Errors go to stderr with exit code 1 (handled by tool_api_call).
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 import uuid
@@ -103,8 +104,8 @@ def handle_todo_prepare(args: list[str]) -> None:
         for idx, arg in enumerate(args):
             if arg == "--changed-paths" and idx + 1 < len(args):
                 changed_paths = [p.strip() for p in args[idx + 1].split(",") if p.strip()]
-        result = invalidate_stale_preparations(cwd, changed_paths)
-        print_json(result)
+        invalidate_result = invalidate_stale_preparations(cwd, changed_paths)
+        print_json(invalidate_result)
         return
 
     body: dict[str, object] = {"cwd": cwd}  # guard: loose-dict - JSON request body
@@ -117,8 +118,19 @@ def handle_todo_prepare(args: list[str]) -> None:
         else:
             i += 1
 
-    data = tool_api_call("POST", "/todos/prepare", json_body=body)
-    print_json(data)
+    receipt = tool_api_call("POST", "/todos/prepare", json_body=body)
+    if not isinstance(receipt, dict):
+        print_json(receipt)
+        return
+
+    status = poll_operation(receipt, estimated_timeout_ms=300_000)
+    result = status.get("result")
+    if isinstance(result, str):
+        try:
+            status["result"] = json.loads(result)
+        except json.JSONDecodeError:
+            pass
+    print_json(status)
 
 
 def handle_todo_work(args: list[str]) -> None:

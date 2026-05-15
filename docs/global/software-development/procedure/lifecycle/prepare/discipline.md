@@ -17,7 +17,7 @@ that effect.
 
 ## Preconditions
 
-- The agent has loaded its role-specific procedure (discovery, draft, review, or gate).
+- The agent has loaded its role-specific procedure (intake, architecture, specs, plan, review, or gate).
 - The preparation-artifact-quality policy is in the required reads.
 
 ## Steps
@@ -26,17 +26,15 @@ that effect.
 
 Re-entry is the default for prepare dispatches — fresh production is the
 special case (first time only). Dispatches that ask a worker to produce or
-review a downstream artifact (build-specs, prepare-draft, review-requirements,
-review-specs, review-plan, regrounding plan-update) carry a
+review a downstream artifact (build-specs, prepare-plan, review-architecture,
+review-specs, review-plan, drift review) carry a
 `Dispatch reason: <reason>` header so the worker knows which behavior to
 pick. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
 `provenance-missing`. Each prescribes a different behavior; do not assume
-fresh write. The requirements-review `needs_work` fallback also dispatches
-`/next-prepare-discovery` with `findings-fix`. Discovery dispatches from
-input-assessment and triangulation do NOT carry the header — those phases
-are gated on the absence of a requirements artifact and are unconditionally
-fresh-or-converge passes; the worker derives behavior from the absence of
-prior artifacts, not from a reason header.
+fresh write. PRD/intake dispatches do NOT carry the header — those phases are
+gated on the absence of a PRD artifact and are unconditionally fresh-or-refine
+passes; the worker derives behavior from the current artifact state, not from a
+reason header.
 
 ### 1. Load domain specs before producing or modifying any artifact
 
@@ -46,7 +44,7 @@ specs. General knowledge is not grounding.
 
 ### 2. Apply the leakage discriminator
 
-For every statement in requirements: could a builder satisfy it using a different
+For every statement in the PRD: could a builder satisfy it using a different
 implementation approach? If the answer is no and there is no justification, you
 are prescribing — fix it.
 

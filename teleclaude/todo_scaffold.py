@@ -74,10 +74,13 @@ def create_draft_skeleton(
     slug: str,
     *,
     after: list[str] | None = None,
+    kind: str = "feature",
 ) -> str:
     """Create a draft todo skeleton with no input artifact."""
     validate_slug(slug)
     slug = slug.strip()
+    if kind not in {"feature", "bug", "refactor", "migration", "prepped"}:
+        raise ValueError(f"Unknown todo kind: {kind!r}")
 
     db = get_todos_db_sync(project_root)
     conn = db._sync_conn()
@@ -110,7 +113,7 @@ def create_draft_skeleton(
         conn.close()
 
     state = default_state()
-    state["kind"] = "draft"
+    state["kind"] = kind
     state["lifecycle_phase"] = "draft"
     db.write_state_sync(slug, state)
     return f"Todo created: {slug}"

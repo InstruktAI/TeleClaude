@@ -10,14 +10,20 @@ import pytest
 from git.exc import GitCommandError
 
 from teleclaude.core.next_machine.git_ops import (
+    DRIFT_COSMETIC,
+    DRIFT_FRESH,
+    DRIFT_PENDING,
+    DRIFT_SUBSTANTIVE,
     _has_meaningful_diff,
     build_git_hook_env,
     compose_agent_guidance,
+    derive_artifact_drift,
     get_stash_entries,
     has_build_commits_beyond_main,
     has_uncommitted_changes,
     review_surface_overlap_files,
 )
+from teleclaude.types.todos import ArtifactEntry, DriftReviewedStamp
 
 
 def test_build_git_hook_env_moves_venv_bin_to_front_and_sets_virtual_env(tmp_path: Path) -> None:
@@ -97,6 +103,46 @@ def test_review_surface_overlap_files_returns_only_meaningful_overlap() -> None:
         overlap = review_surface_overlap_files("/repo", "before", "after")
 
     assert overlap == ["src/feature.py"]
+
+
+def test_derive_artifact_drift_fresh_when_head_matches_baseline() -> None:
+    artifact = ArtifactEntry(digest="digest", codebase_sha_at_write="head", referenced_paths=["src/feature.py"])
+
+    status = derive_artifact_drift(artifact, None, "head", "/repo")
+
+    assert status == DRIFT_FRESH
+
+
+def test_derive_artifact_drift_pending_when_referenced_path_changed_without_review() -> None:
+    artifact = ArtifactEntry(digest="digest", codebase_sha_at_write="base", referenced_paths=["src/feature.py"])
+    mock_repo = MagicMock()
+    mock_repo.git.log.return_value = "src/feature.py\n"
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):
+        status = derive_artifact_drift(artifact, None, "head", "/repo")
+
+    assert status == DRIFT_PENDING
+
+
+def test_derive_artifact_drift_cosmetic_when_overlap_reviewed_cosmetic() -> None:
+    artifact = ArtifactEntry(digest="digest", codebase_sha_at_write="base", referenced_paths=["src/feature.py"])
+    stamp = DriftReviewedStamp(verdict="cosmetic", reason="docs only", stamped_at="now")
+    mock_repo = MagicMock()
+    mock_repo.git.log.return_value = "src/feature.py\n"
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=mock_repo):
+        status = derive_artifact_drift(artifact, stamp, "head", "/repo")
+
+    assert status == DRIFT_COSMETIC
+
+
+def test_derive_artifact_drift_substantive_when_reviewed_substantive() -> None:
+    artifact = ArtifactEntry(digest="digest", codebase_sha_at_write="base", referenced_paths=["src/feature.py"])
+    stamp = DriftReviewedStamp(verdict="substantive", reason="API changed", stamped_at="now")
+
+    status = derive_artifact_drift(artifact, stamp, "head", "/repo")
+
+    assert status == DRIFT_SUBSTANTIVE
 
 
 async def test_compose_agent_guidance_lists_enabled_agents_and_skips_unavailable() -> None:

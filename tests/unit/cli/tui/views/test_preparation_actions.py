@@ -106,7 +106,7 @@ def test_action_start_work_blocks_non_prepared_todo() -> None:
     view._todo_row = SimpleNamespace(
         todo=SimpleNamespace(
             files=["implementation-plan"],
-            lifecycle_phase="grounding_check",
+            lifecycle_phase="plan_review",
         )
     )
 
@@ -115,7 +115,7 @@ def test_action_start_work_blocks_non_prepared_todo() -> None:
     assert view.app.notify.call_count == 1
     call_args, call_kwargs = view.app.notify.call_args
     assert call_kwargs.get("severity") == "warning"
-    assert "grounding_check" in call_args[0]
+    assert "plan_review" in call_args[0]
     assert view.opened_modal is None
 
 

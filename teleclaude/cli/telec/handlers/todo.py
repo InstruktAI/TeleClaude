@@ -23,6 +23,7 @@ from teleclaude.cli.tool_commands import (
 from teleclaude.cli.tool_commands._receipt import poll_operation
 from teleclaude.constants import ARTIFACT_NAMES
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
+from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
 from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
@@ -197,15 +198,19 @@ def _handle_todo(args: list[str]) -> None:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create <slug> [--after <deps>]."""
+    """Handle telec todo create <slug> [--after <deps>] [--kind <kind>]."""
     slug: str | None = None
     after: list[str] | None = None
+    kind = "feature"
 
     i = 0
     while i < len(args):
         arg = args[i]
         if arg == "--after" and i + 1 < len(args):
             after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
+            i += 2
+        elif arg == "--kind" and i + 1 < len(args):
+            kind = args[i + 1]
             i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
@@ -224,7 +229,7 @@ def _handle_todo_create(args: list[str]) -> None:
         raise SystemExit(1)
 
     try:
-        output = create_draft_skeleton(str(resolve_invocation_cwd()), slug, after=after)
+        output = create_draft_skeleton(str(resolve_invocation_cwd()), slug, after=after, kind=kind)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
@@ -574,10 +579,16 @@ def _handle_artifacts_write(args: list[str]) -> None:
         raise SystemExit(1)
 
     _validate_artifact_name(name)
+    cwd = str(resolve_invocation_cwd())
     result = tool_api_request(
         "POST",
         f"/todos/artifacts/{slug}/{name}",
-        json_body={"content": content, "cwd": str(resolve_invocation_cwd())},
+        json_body={
+            "content": content,
+            "cwd": cwd,
+            "codebase_sha_at_write": get_head_commit(cwd),
+            "referenced_paths": extract_referenced_paths(content, cwd),
+        },
     )
     if isinstance(result, dict) and result.get("status") == "ok":
         print(f"Wrote {name} for {slug}")
@@ -590,17 +601,19 @@ def _handle_todo_stamp(args: list[str]) -> None:
 
     Supported flag combinations:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
-      --grounding-invalidated
-      --requirements-ready
-      --plan-ready
-      --specs-built
+      --prd-approved
+      --architecture-approved
+      --test-specs-approved
+      --plan-approved
+      --architecture-skipped <reason>
+      --test-specs-skipped <reason>
+      --drift-reviewed <artifact> <verdict> <reason>
       --deferrals-processed
       --design-spec-confirmed
       --art-approved
       --visuals-approved
       --build-complete
       --finalize-ready
-      --agent-a <session_id> --agent-b <session_id>  (atomic, both required)
     """
     for arg in args:
         if arg == "--build-started":
@@ -614,10 +627,11 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if not stamp_type:
         print(
-            "Missing stamp flag (--verdict, --grounding-invalidated, "
-            "--requirements-ready, --plan-ready, --specs-built, --build-complete, "
+            "Missing stamp flag (--verdict, --prd-approved, --architecture-approved, "
+            "--test-specs-approved, --plan-approved, --architecture-skipped, "
+            "--test-specs-skipped, --drift-reviewed, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
-            "--art-approved, --visuals-approved, --agent-a/--agent-b)"
+            "--art-approved, --visuals-approved)"
         )
         raise SystemExit(1)
     if stamp_type == "verdict" and not phase:
@@ -652,14 +666,33 @@ def _handle_todo_stamp(args: list[str]) -> None:
     print(f"Stamped {label} for {slug}")
 
 
+_STAMP_BOOLEAN_FLAGS = {
+    "--prd-approved": "prd_approved",
+    "--architecture-approved": "architecture_approved",
+    "--test-specs-approved": "test_specs_approved",
+    "--plan-approved": "plan_approved",
+    "--requirements-ready": "requirements_ready",
+    "--plan-ready": "plan_ready",
+    "--specs-built": "specs_built",
+    "--deferrals-processed": "deferrals_processed",
+    "--design-spec-confirmed": "creative_design_spec_confirmed",
+    "--art-approved": "creative_art_approved",
+    "--visuals-approved": "creative_visuals_approved",
+    "--build-complete": "build_complete",
+}
+
+_STAMP_REASON_FLAGS = {
+    "--architecture-skipped": "architecture_skipped",
+    "--test-specs-skipped": "test_specs_skipped",
+}
+
+
 def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str | None, str | None]:
     """Parse ``telec todo stamp`` argv into slug, stamp type, value, and phase."""
     slug: str | None = None
     stamp_type: str | None = None
     value: str | None = None
     phase: str | None = None
-    pair_a: str | None = None
-    pair_b: str | None = None
 
     i = 0
     while i < len(args):
@@ -671,48 +704,18 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
         elif arg == "--phase" and i + 1 < len(args):
             phase = args[i + 1]
             i += 2
-        elif arg == "--agent-a" and i + 1 < len(args):
-            pair_a = args[i + 1]
+        elif arg in _STAMP_BOOLEAN_FLAGS:
+            stamp_type = _STAMP_BOOLEAN_FLAGS[arg]
+            value = "true"
+            i += 1
+        elif arg in _STAMP_REASON_FLAGS and i + 1 < len(args):
+            stamp_type = _STAMP_REASON_FLAGS[arg]
+            value = args[i + 1]
             i += 2
-        elif arg == "--agent-b" and i + 1 < len(args):
-            pair_b = args[i + 1]
-            i += 2
-        elif arg == "--grounding-invalidated":
-            stamp_type = "grounding"
-            value = "invalid"
-            i += 1
-        elif arg == "--requirements-ready":
-            stamp_type = "requirements_ready"
-            value = "true"
-            i += 1
-        elif arg == "--plan-ready":
-            stamp_type = "plan_ready"
-            value = "true"
-            i += 1
-        elif arg == "--specs-built":
-            stamp_type = "specs_built"
-            value = "true"
-            i += 1
-        elif arg == "--deferrals-processed":
-            stamp_type = "deferrals_processed"
-            value = "true"
-            i += 1
-        elif arg == "--design-spec-confirmed":
-            stamp_type = "creative_design_spec_confirmed"
-            value = "true"
-            i += 1
-        elif arg == "--art-approved":
-            stamp_type = "creative_art_approved"
-            value = "true"
-            i += 1
-        elif arg == "--visuals-approved":
-            stamp_type = "creative_visuals_approved"
-            value = "true"
-            i += 1
-        elif arg == "--build-complete":
-            stamp_type = "build_complete"
-            value = "true"
-            i += 1
+        elif arg == "--drift-reviewed" and i + 3 < len(args):
+            stamp_type = "drift_reviewed"
+            value = _json.dumps({"artifact": args[i + 1], "verdict": args[i + 2], "reason": args[i + 3]})
+            i += 4
         elif arg == "--finalize-ready":
             stamp_type = "finalize_ready"
             value = ""
@@ -722,15 +725,6 @@ def _parse_todo_stamp_args(args: list[str]) -> tuple[str | None, str | None, str
             i += 1
         else:
             i += 1
-
-    # Build atomic prepare_pair stamp from --agent-a + --agent-b. Single-slot
-    # stamps are not supported — both must be provided together.
-    if pair_a is not None or pair_b is not None:
-        if pair_a is None or pair_b is None:
-            print("--agent-a and --agent-b must be provided together")
-            raise SystemExit(1)
-        stamp_type = "prepare_pair"
-        value = f"slot_a:{pair_a},slot_b:{pair_b}"
 
     return slug, stamp_type, value, phase
 

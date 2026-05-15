@@ -120,7 +120,7 @@ async def test_build_started_rejects_pre_prepared_lifecycle_phase() -> None:
     """
     state = {
         "kind": "todo",
-        "lifecycle_phase": "grounding_check",
+        "lifecycle_phase": "plan_review",
     }
     blocked = object()
 

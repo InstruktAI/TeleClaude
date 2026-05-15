@@ -1,14 +1,9 @@
 """Canonical lifecycle helpers.
 
-This module owns the only authoritative lifecycle rules:
-
-- ``lifecycle_phase`` is the canonical current pointer.
-- ``mark-phase`` validates and rewinds the pointer while clearing downstream
-  authoritative state.
-- authoritative signals advance the pointer by at most one immediate step.
-
-The state machines must read this pointer and dispatch work; they must not
-derive or auto-advance lifecycle state on their own.
+This module owns lifecycle phase coercion, projection, and the v2 prepare
+derivation table. Prepare no longer persists pair identity or grounding state;
+it derives progress from artifacts, review verdicts, approval stamps, skip
+stamps, and drift-review stamps.
 """
 
 from __future__ import annotations
@@ -16,7 +11,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
-from teleclaude.core.next_machine.git_ops import get_head_commit
+from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
+from teleclaude.core.models import Session
+from teleclaude.core.next_machine.git_ops import (
+    DRIFT_PENDING,
+    DRIFT_SUBSTANTIVE,
+    ArtifactDriftStatus,
+    derive_artifact_drift,
+    get_head_commit,
+)
+from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.types.lifecycle import (
     LIFECYCLE_PHASE_ORDER,
     PREPARE_LIFECYCLE_PHASES,
@@ -24,7 +28,7 @@ from teleclaude.types.lifecycle import (
     LifecyclePhase,
     LifecycleStage,
 )
-from teleclaude.types.todos import ReviewVerdictState, TestSpecReviewState, TodoState
+from teleclaude.types.todos import ApprovalStamp, ReviewVerdictState, TestSpecReviewState, TodoState
 
 __all__ = [
     "LIFECYCLE_PHASE_ORDER",
@@ -32,14 +36,37 @@ __all__ = [
     "WORK_LIFECYCLE_PHASES",
     "LifecyclePhase",
     "LifecycleStage",
-    "derive_build_status",
-    "derive_review_status",
+    "adopt_prepare_handoff_phase",
+    "apply_authoritative_signal",
+    "coerce_lifecycle_phase",
+    "derive_prepare_drift",
+    "infer_lifecycle_stage",
+    "invalidate_downstream_on_refine",
     "is_in_prepare_lane",
+    "is_prepare_lifecycle_phase",
     "is_ready_for_work",
     "is_settled_ok_phase",
+    "is_work_lifecycle_phase",
+    "lifecycle_phase_index",
+    "normalize_mark_phase",
+    "phase_is_complete",
+    "prepare_blockers",
+    "reconcile_lifecycle_phase",
+    "require_lifecycle_phase",
 ]
 
 _ArtifactPresence = Mapping[str, bool]
+_FEATURE_KINDS = {"", "todo", "feature", "draft"}
+_PLAN_ONLY_KINDS = {"refactor", "migration"}
+_DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str], ...] = (
+    ("input", "input"),
+    ("prd", "prd"),
+    ("requirements", "requirements"),
+    ("architecture", "architecture"),
+    ("test_specs", "test_specs"),
+    ("implementation_plan", "implementation_plan"),
+)
+_BLOCKING_DRIFT_STATUSES: frozenset[ArtifactDriftStatus] = frozenset({DRIFT_PENDING, DRIFT_SUBSTANTIVE})
 
 
 def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
@@ -56,8 +83,7 @@ def require_lifecycle_phase(raw: object, *, context: str) -> LifecyclePhase:
     """Return the stored lifecycle phase or raise on invalid canonical state."""
     lifecycle = coerce_lifecycle_phase(raw)
     if lifecycle is None:
-        msg = f"{context}: missing or invalid lifecycle_phase {raw!r}"
-        raise ValueError(msg)
+        raise ValueError(f"{context}: missing or invalid lifecycle_phase {raw!r}")
     return lifecycle
 
 
@@ -83,24 +109,8 @@ def infer_lifecycle_stage(phase: LifecyclePhase) -> LifecycleStage:
     return LifecycleStage.WORK
 
 
-# ── High-level state predicates and projections ─────────────────────────────
-# Callers operating on the raw `lifecycle_phase` string from persisted state or
-# DTOs should use these helpers rather than reading individual fields. They are
-# the single source of truth for "is this slug ready for X?" questions.
-
-
 def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple[bool, str]:
-    """Authoritative gate for entering or resuming the work lane.
-
-    Bugs always pass — they have a separate lifecycle. Regular todos require
-    ``lifecycle_phase`` at-or-beyond ``PREPARED``: this single check subsumes
-    requirements approval, plan approval, and grounding validity, all of which
-    are preconditions for advancing to ``PREPARED``.
-
-    Returns ``(ready, reason)``. ``reason`` is empty on success; non-empty
-    reasons are stable diagnostic strings safe for log emission and error
-    propagation.
-    """
+    """Authoritative gate for entering or resuming the work lane."""
     if kind == "bug":
         return True, ""
     phase = coerce_lifecycle_phase(lifecycle_phase)
@@ -112,25 +122,15 @@ def is_ready_for_work(*, kind: str | None, lifecycle_phase: str | None) -> tuple
 
 
 def is_in_prepare_lane(lifecycle_phase: str | None) -> bool:
-    """At-or-before ``PREPARED`` (the prepare lane plus its terminal pointer).
-
-    Distinct from ``is_prepare_lifecycle_phase``: that predicate checks set
-    membership in ``PREPARE_LIFECYCLE_PHASES`` and operates on enums; this one
-    accepts the raw stored string and uses ordinal comparison so additions to
-    the prepare lane are picked up automatically.
-    """
+    """At-or-before ``PREPARED`` (the prepare lane plus its terminal pointer)."""
     phase = coerce_lifecycle_phase(lifecycle_phase)
     if phase is None:
         return False
-    return lifecycle_phase_index(phase) <= lifecycle_phase_index(LifecyclePhase.PREPARED)
+    return phase in PREPARE_LIFECYCLE_PHASES
 
 
 def is_settled_ok_phase(lifecycle_phase: str | None) -> bool:
-    """Phase represents a settled positive state used for "ok" rendering.
-
-    Currently ``PREPARED`` and ``REVIEW_APPROVED`` — the two phases where
-    pending work has visibly converged but the next stage hasn't started.
-    """
+    """Phase represents a settled positive state used for "ok" rendering."""
     phase = coerce_lifecycle_phase(lifecycle_phase)
     return phase in (LifecyclePhase.PREPARED, LifecyclePhase.REVIEW_APPROVED)
 
@@ -141,11 +141,7 @@ def derive_build_status(
     is_draft: bool,
     is_delivered: bool,
 ) -> str | None:
-    """Project canonical lifecycle pointer to the legacy build_status display string.
-
-    Returns ``None`` when no build-status label applies (drafts, delivered,
-    or pre-build phases).
-    """
+    """Project canonical lifecycle pointer to the legacy build_status display string."""
     if is_draft or is_delivered:
         return None
     phase = coerce_lifecycle_phase(lifecycle_phase)
@@ -198,24 +194,51 @@ def _artifact_exists(model: TodoState, key: str) -> bool:
     return bool(entry.digest or entry.produced_at)
 
 
-def _artifact_present(
-    model: TodoState,
-    key: str,
-    *,
-    artifact_presence: _ArtifactPresence | None = None,
-) -> bool:
+def _artifact_present(model: TodoState, key: str, *, artifact_presence: _ArtifactPresence | None = None) -> bool:
     if artifact_presence is not None and key in artifact_presence:
         return artifact_presence[key]
     return _artifact_exists(model, key)
 
 
-def _has_input_artifact(model: TodoState, *, artifact_presence: _ArtifactPresence | None = None) -> bool:
-    return _artifact_present(model, "input", artifact_presence=artifact_presence)
+def _session_principal(session_id: str) -> str:
+    session = Session(
+        session_id=session_id,
+        computer_name="",
+        tmux_session_name="",
+        title="",
+        principal=_string_session_field(session_id, "principal"),
+        human_email=_string_session_field(session_id, "human_email"),
+        human_role=_string_session_field(session_id, "human_role"),
+        system_role=_string_session_field(session_id, "system_role"),
+    )
+    try:
+        principal, _role = resolve_session_principal(session)
+    except SessionIdentityError:
+        return ""
+    return principal
+
+
+def _string_session_field(session_id: str, field: str) -> str | None:
+    value = get_session_field_sync(str(MAIN_DB_PATH), session_id, field)
+    return value if isinstance(value, str) and value else None
+
+
+def _approval_is_human(stamp: ApprovalStamp) -> bool:
+    if not stamp.approved:
+        return False
+    if not stamp.caller_session_id:
+        return False
+    return _session_principal(stamp.caller_session_id).startswith("human:")
+
+
+def _review_approved(review: ReviewVerdictState | TestSpecReviewState) -> bool:
+    return review.verdict in ("approve", "skipped")
 
 
 def _clear_prepare_review(review: ReviewVerdictState | TestSpecReviewState) -> None:
     review.verdict = ""
     review.reviewed_at = ""
+    review.approved_digest = ""
 
 
 def _clear_build_review(model: TodoState) -> None:
@@ -231,8 +254,6 @@ def _reset_finalize(model: TodoState) -> None:
 
 
 def _reset_dor(model: TodoState) -> None:
-    """Legacy-bridge reset: clears the dor field after a phase rewind so the
-    upcycle phase-derivation hint cannot resurrect a stale 'pass' status."""
     if model.dor is None:
         return
     model.dor.last_assessed_at = None
@@ -240,153 +261,179 @@ def _reset_dor(model: TodoState) -> None:
     model.dor.status = "needs_work"
 
 
-def _reset_grounding(model: TodoState) -> None:
-    model.grounding.valid = False
-    model.grounding.last_grounded_at = ""
-    model.grounding.invalidated_at = ""
-    model.grounding.invalidation_reason = ""
-    model.grounding.changed_paths = []
-
-
-def _reset_after_requirements(model: TodoState) -> None:
-    _clear_prepare_review(model.requirements_review)
-    model.artifacts.requirements.approved = False
-    model.artifacts.test_specs.produced_at = ""
-    _clear_prepare_review(model.test_spec_review)
-    model.artifacts.implementation_plan.produced_at = ""
-    _clear_prepare_review(model.plan_review)
-    _reset_grounding(model)
+def _clear_work_entry_state(model: TodoState) -> None:
     _clear_build_review(model)
     _reset_finalize(model)
     model.build_start_base_sha = ""
     model.build_completed_at = ""
+    model.build_gate_claim_at = ""
 
 
-def _reset_after_test_specs(model: TodoState) -> None:
-    model.artifacts.test_specs.produced_at = ""
-    _clear_prepare_review(model.test_spec_review)
-    model.artifacts.implementation_plan.produced_at = ""
-    _clear_prepare_review(model.plan_review)
-    _reset_grounding(model)
-    _clear_build_review(model)
-    _reset_finalize(model)
-    model.build_start_base_sha = ""
-    model.build_completed_at = ""
+def derive_prepare_drift(model: TodoState, *, repo_root: str | None = None) -> dict[str, ArtifactDriftStatus]:
+    """Return drift status for every present prepare artifact."""
+    current_head_sha = get_head_commit(repo_root) if repo_root else ""
+    drift: dict[str, ArtifactDriftStatus] = {}
+    for artifact_name, state_key in _DRIFT_TRACKED_ARTIFACTS:
+        entry = getattr(model.artifacts, state_key)
+        if not entry.digest and not entry.produced_at:
+            continue
+        drift[artifact_name] = derive_artifact_drift(
+            entry,
+            model.approvals.drift_reviewed.get(artifact_name),
+            current_head_sha,
+            repo_root or "",
+        )
+    return drift
 
 
-def _reset_after_plan(model: TodoState) -> None:
-    model.artifacts.implementation_plan.produced_at = ""
-    _clear_prepare_review(model.plan_review)
-    _reset_grounding(model)
-    _clear_build_review(model)
-    _reset_finalize(model)
-    model.build_start_base_sha = ""
-    model.build_completed_at = ""
+def blocking_prepare_drift(model: TodoState, *, repo_root: str | None = None) -> dict[str, ArtifactDriftStatus]:
+    """Return artifact drift states that prevent the item from becoming PREPARED."""
+    return {
+        artifact: status
+        for artifact, status in derive_prepare_drift(model, repo_root=repo_root).items()
+        if status in _BLOCKING_DRIFT_STATUSES
+    }
 
 
-def _reset_after_gate(model: TodoState) -> None:
-    _reset_grounding(model)
-    _clear_build_review(model)
-    _reset_finalize(model)
-    model.build_start_base_sha = ""
-    model.build_completed_at = ""
+def prepare_blockers(model: TodoState, *, repo_root: str | None = None) -> list[str]:
+    """Return deterministic prepare blockers for advisory payloads and phase derivation."""
+    blockers = _non_drift_prepare_blockers(model)
+    blockers.extend(
+        f"{artifact} drift is {status}; run drift analysis before prepared"
+        for artifact, status in blocking_prepare_drift(model, repo_root=repo_root).items()
+    )
+    return blockers
 
 
-def _reset_after_grounding(model: TodoState) -> None:
-    _reset_grounding(model)
-    _clear_build_review(model)
-    _reset_finalize(model)
-    model.build_start_base_sha = ""
-    model.build_completed_at = ""
+def _non_drift_prepare_blockers(model: TodoState) -> list[str]:
+    blockers: list[str] = []
+    blockers.extend(_missing_upstream_blockers(model))
+    blockers.extend(_review_remediation_blockers(model))
+    blockers.extend(_upcycle_blockers(model))
+    return blockers
 
 
-def phase_is_complete(
+def _missing_upstream_blockers(model: TodoState) -> list[str]:
+    """Return blockers for artifacts whose required upstream artifact is absent."""
+    blockers: list[str] = []
+    if _artifact_exists(model, "architecture") and not _artifact_exists(model, "prd"):
+        blockers.append("architecture artifact is present but required upstream prd is missing")
+    if _artifact_exists(model, "test_specs") and not _artifact_exists(model, "prd"):
+        blockers.append("test-specs artifact is present but required upstream prd is missing")
+    if (
+        _artifact_exists(model, "test_specs")
+        and model.approvals.architecture_skipped is None
+        and not _artifact_exists(model, "architecture")
+    ):
+        blockers.append("test-specs artifact is present but required upstream architecture is missing")
+    if (
+        model.kind in _FEATURE_KINDS
+        and _artifact_exists(model, "implementation_plan")
+        and not _artifact_exists(model, "prd")
+    ):
+        blockers.append("implementation-plan artifact is present but required upstream prd is missing")
+    return blockers
+
+
+def _review_remediation_blockers(model: TodoState) -> list[str]:
+    blockers: list[str] = []
+    review_pairs = (
+        ("architecture", model.architecture_review),
+        ("test_specs", model.test_spec_review),
+        ("implementation_plan", model.plan_review),
+    )
+    for artifact_key, review in review_pairs:
+        if review.verdict not in ("changes_requested", "needs_work"):
+            continue
+        entry = getattr(model.artifacts, artifact_key)
+        if not entry.produced_at or (review.reviewed_at and entry.produced_at <= review.reviewed_at):
+            blockers.append(f"{artifact_key} review requested changes with no newer artifact write")
+    return blockers
+
+
+def _upcycle_blockers(model: TodoState) -> list[str]:
+    if model.schema_version < 3:
+        return ["todo state could not be upcycled to schema_version 3"]
+    return []
+
+
+def _plan_only_phase(
     model: TodoState,
-    phase: LifecyclePhase,
     *,
-    worktree_cwd: str | None = None,
-) -> bool:
-    """Return True when authoritative state says ``phase`` is complete."""
-    _ = worktree_cwd
-    if phase == LifecyclePhase.DRAFT:
-        return False
-    if phase in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
-        return bool(model.artifacts.requirements.produced_at) or model.requirements_review.verdict == "skipped"
-    if phase == LifecyclePhase.REQUIREMENTS_REVIEW:
-        return model.requirements_review.verdict in ("approve", "skipped")
-    if phase == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
-        return model.artifacts.requirements.approved
-    if phase == LifecyclePhase.TEST_SPEC_BUILD:
-        return bool(model.artifacts.test_specs.produced_at)
-    if phase == LifecyclePhase.TEST_SPEC_REVIEW:
-        return model.test_spec_review.verdict in ("approve", "skipped")
-    if phase == LifecyclePhase.PLAN_DRAFTING:
-        return bool(model.artifacts.implementation_plan.produced_at)
-    if phase == LifecyclePhase.PLAN_REVIEW:
-        return model.plan_review.verdict in ("approve", "skipped")
-    if phase == LifecyclePhase.GATE:
-        return model.plan_review.verdict in ("approve", "skipped")
-    if phase == LifecyclePhase.GROUNDING_CHECK:
-        return model.grounding.valid
-    if phase == LifecyclePhase.RE_GROUNDING:
-        return bool(model.artifacts.implementation_plan.produced_at)
-    if phase == LifecyclePhase.PREPARED:
-        return False
-    if phase == LifecyclePhase.BUILD_STARTED:
-        return bool(model.build_completed_at)
-    if phase == LifecyclePhase.BUILD_COMPLETE:
-        return model.build_review.verdict in ("approve", "changes_requested")
-    if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
-        return False
-    if phase == LifecyclePhase.REVIEW_APPROVED:
-        return model.finalize.status in ("ready", "handed_off")
-    if phase == LifecyclePhase.FINALIZE_READY:
-        return model.finalize.status == "handed_off"
-    if phase == LifecyclePhase.HANDED_OFF:
-        return False
-    return False
+    artifact_presence: _ArtifactPresence | None,
+    repo_root: str | None,
+) -> LifecyclePhase:
+    if not _artifact_present(model, "implementation_plan", artifact_presence=artifact_presence):
+        return LifecyclePhase.PLAN_DRAFTING
+    if not _review_approved(model.plan_review):
+        return LifecyclePhase.PLAN_REVIEW
+    if not model.approvals.plan_approved.approved:
+        return LifecyclePhase.PLAN_HUMAN_APPROVAL
+    if prepare_blockers(model, repo_root=repo_root):
+        return LifecyclePhase.BLOCKED
+    return LifecyclePhase.PREPARED
+
+
+def _feature_phase(
+    model: TodoState,
+    *,
+    artifact_presence: _ArtifactPresence | None,
+    repo_root: str | None,
+) -> LifecyclePhase:
+    if not any(
+        _artifact_present(model, key, artifact_presence=artifact_presence)
+        for key in ("input", "prd", "requirements", "architecture", "test_specs", "implementation_plan")
+    ):
+        return LifecyclePhase.DRAFT
+
+    if not _artifact_present(model, "prd", artifact_presence=artifact_presence):
+        return LifecyclePhase.PRD_DRAFTING
+    if not _approval_is_human(model.approvals.prd_approved):
+        return LifecyclePhase.PRD_HUMAN_APPROVAL
+
+    architecture_skipped = model.approvals.architecture_skipped is not None
+    test_specs_skipped = model.approvals.test_specs_skipped is not None
+
+    if architecture_skipped and test_specs_skipped:
+        return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+    if architecture_skipped:
+        if not _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
+            return LifecyclePhase.TEST_SPECS_DRAFTING
+    else:
+        if not _artifact_present(model, "architecture", artifact_presence=artifact_presence):
+            return LifecyclePhase.ARCHITECTURE_DRAFTING
+        if not _review_approved(model.architecture_review):
+            return LifecyclePhase.ARCHITECTURE_REVIEW
+        if not model.approvals.architecture_approved.approved:
+            return LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL
+        if test_specs_skipped:
+            return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+        if not _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
+            return LifecyclePhase.TEST_SPECS_DRAFTING
+
+    if not _review_approved(model.test_spec_review):
+        return LifecyclePhase.TEST_SPECS_REVIEW
+    if not model.approvals.test_specs_approved.approved:
+        return LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL
+    return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
 def adopt_prepare_handoff_phase(
     model: TodoState,
     *,
     artifact_presence: _ArtifactPresence | None = None,
+    repo_root: str | None = None,
 ) -> LifecyclePhase:
-    """Choose the prepare pointer from existing authoritative state and artifacts.
-
-    This is only for the human handoff boundary: when a human starts the prepare
-    machine on a draft item, the machine should adopt the real state of the todo
-    instead of forcing the input-based lane.
-    """
-    if model.grounding.valid:
+    """Choose the prepare pointer from existing authoritative state and artifacts."""
+    if model.kind == "prepped":
         return LifecyclePhase.PREPARED
-    if model.grounding.invalidated_at or model.grounding.invalidation_reason:
-        return LifecyclePhase.RE_GROUNDING
-    if model.plan_review.verdict in ("approve", "skipped"):
-        return LifecyclePhase.GROUNDING_CHECK
-    if model.plan_review.verdict == "needs_work":
-        return LifecyclePhase.PLAN_DRAFTING
-    if _artifact_present(model, "implementation_plan", artifact_presence=artifact_presence):
-        return LifecyclePhase.PLAN_REVIEW
-    if model.test_spec_review.verdict in ("approve", "skipped"):
-        return LifecyclePhase.PLAN_DRAFTING
-    if model.test_spec_review.verdict == "needs_work":
-        return LifecyclePhase.TEST_SPEC_BUILD
-    if _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
-        return LifecyclePhase.TEST_SPEC_REVIEW
-    if _has_input_artifact(model, artifact_presence=artifact_presence):
-        if model.requirements_review.verdict == "needs_work":
-            return LifecyclePhase.TRIANGULATION
-        if model.requirements_review.verdict == "approve" and not model.artifacts.requirements.approved:
-            return LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL
-        if model.artifacts.requirements.approved:
-            return LifecyclePhase.TEST_SPEC_BUILD
-        if _artifact_present(model, "requirements", artifact_presence=artifact_presence):
-            return LifecyclePhase.REQUIREMENTS_REVIEW
-        return LifecyclePhase.INPUT_ASSESSMENT
-    if _artifact_present(model, "requirements", artifact_presence=artifact_presence):
-        return LifecyclePhase.TEST_SPEC_BUILD
-    return LifecyclePhase.INPUT_ASSESSMENT
+    if model.kind == "bug":
+        return LifecyclePhase.PREPARED
+    if _non_drift_prepare_blockers(model):
+        return LifecyclePhase.BLOCKED
+    if model.kind in _PLAN_ONLY_KINDS:
+        return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
+    return _feature_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
 def reconcile_lifecycle_phase(
@@ -397,8 +444,9 @@ def reconcile_lifecycle_phase(
     artifact_presence: _ArtifactPresence | None = None,
 ) -> LifecyclePhase | None:
     """Return the best-matching phase for an explicit stage-scoped reconciliation."""
+    _ = worktree_cwd
     if stage == LifecycleStage.PREPARE:
-        return adopt_prepare_handoff_phase(model, artifact_presence=artifact_presence)
+        return adopt_prepare_handoff_phase(model, artifact_presence=artifact_presence, repo_root=worktree_cwd)
 
     if model.finalize.status == "handed_off":
         return LifecyclePhase.HANDED_OFF
@@ -412,59 +460,52 @@ def reconcile_lifecycle_phase(
         return LifecyclePhase.BUILD_COMPLETE
     if model.lifecycle_phase == LifecyclePhase.BUILD_STARTED.value:
         return LifecyclePhase.BUILD_STARTED
-    if model.lifecycle_phase == LifecyclePhase.PREPARED.value or model.grounding.valid:
+    if model.lifecycle_phase == LifecyclePhase.PREPARED.value:
         return LifecyclePhase.BUILD_STARTED
     return None
 
 
 def _move_to(model: TodoState, target: LifecyclePhase) -> LifecyclePhase:
     model.lifecycle_phase = target.value
-    if target == LifecyclePhase.PREPARED:
-        model.prepare_pair = None
     return target
 
 
-def _apply_authoring_signal(model: TodoState, current: LifecyclePhase, signal: str, now: str) -> LifecyclePhase | None:
-    if signal == "requirements_ready" and current in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
-        _reset_after_requirements(model)
-        model.artifacts.requirements.produced_at = now
-        if not _has_input_artifact(model):
-            model.requirements_review.verdict = "skipped"
-            model.requirements_review.reviewed_at = now
-            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
-        return _move_to(model, LifecyclePhase.REQUIREMENTS_REVIEW)
-
-    if signal == "specs_built" and current == LifecyclePhase.TEST_SPEC_BUILD:
-        _reset_after_test_specs(model)
-        model.artifacts.test_specs.produced_at = now
-        return _move_to(model, LifecyclePhase.TEST_SPEC_REVIEW)
-
-    if signal == "plan_ready" and current in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.RE_GROUNDING):
-        _reset_after_plan(model)
-        model.artifacts.implementation_plan.produced_at = now
-        return _move_to(model, LifecyclePhase.PLAN_REVIEW)
-
-    return None
-
-
-def _apply_prepare_signal(model: TodoState, current: LifecyclePhase, signal: str) -> LifecyclePhase | None:
-    if signal == "grounding" and current == LifecyclePhase.GROUNDING_CHECK and model.grounding.valid:
-        return _move_to(model, LifecyclePhase.PREPARED)
-
-    if signal == "grounding_invalidated" and current == LifecyclePhase.GROUNDING_CHECK:
-        _reset_after_plan(model)
-        return _move_to(model, LifecyclePhase.RE_GROUNDING)
-
-    return None
-
-
-def _apply_build_signal(
+def apply_authoritative_signal(
     model: TodoState,
-    current: LifecyclePhase,
     signal: str,
-    now: str,
-    worktree_cwd: str | None,
-) -> LifecyclePhase | None:
+    *,
+    phase: str | None = None,
+    worktree_cwd: str | None = None,
+) -> LifecyclePhase:
+    """Apply one authoritative signal and advance by at most one step."""
+    current = require_lifecycle_phase(model.lifecycle_phase, context="apply_authoritative_signal")
+    now = _now_iso()
+
+    if signal in {
+        "requirements_ready",
+        "prd_ready",
+        "architecture_ready",
+        "specs_built",
+        "plan_ready",
+        "prd_approved",
+        "architecture_approved",
+        "test_specs_approved",
+        "plan_approved",
+        "architecture_skipped",
+        "test_specs_skipped",
+    }:
+        return _move_to(model, adopt_prepare_handoff_phase(model))
+
+    if signal == "verdict":
+        if phase == "build_review" and current == LifecyclePhase.BUILD_COMPLETE:
+            if model.build_review.verdict == "approve":
+                return _move_to(model, LifecyclePhase.REVIEW_APPROVED)
+            if model.build_review.verdict == "changes_requested":
+                model.build_completed_at = ""
+                model.build_gate_claim_at = ""
+                return _move_to(model, LifecyclePhase.REVIEW_CHANGES_REQUESTED)
+        return _move_to(model, adopt_prepare_handoff_phase(model))
+
     if signal == "build_started" and current == LifecyclePhase.PREPARED:
         model.build_start_base_sha = get_head_commit(worktree_cwd or "")
         model.build_completed_at = ""
@@ -483,51 +524,6 @@ def _apply_build_signal(
         _clear_build_review(model)
         return _move_to(model, LifecyclePhase.BUILD_COMPLETE)
 
-    return None
-
-
-def _apply_verdict_signal(model: TodoState, current: LifecyclePhase, phase: str | None) -> LifecyclePhase | None:
-    if phase == "requirements_review" and current == LifecyclePhase.REQUIREMENTS_REVIEW:
-        if model.requirements_review.verdict in ("approve", "skipped"):
-            if model.requirements_review.verdict == "approve":
-                return _move_to(model, LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL)
-            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
-        if model.requirements_review.verdict == "needs_work":
-            return current
-        return current
-
-    if phase == "requirements_human_approval" and current == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
-        if model.artifacts.requirements.approved:
-            return _move_to(model, LifecyclePhase.TEST_SPEC_BUILD)
-        return current
-
-    if phase == "test_spec_review" and current == LifecyclePhase.TEST_SPEC_REVIEW:
-        if model.test_spec_review.verdict in ("approve", "skipped"):
-            return _move_to(model, LifecyclePhase.PLAN_DRAFTING)
-        if model.test_spec_review.verdict == "needs_work":
-            return current
-        return current
-
-    if phase == "plan_review" and current == LifecyclePhase.PLAN_REVIEW:
-        if model.plan_review.verdict in ("approve", "skipped"):
-            return _move_to(model, LifecyclePhase.GROUNDING_CHECK)
-        if model.plan_review.verdict == "needs_work":
-            return current
-        return current
-
-    if phase == "build_review" and current == LifecyclePhase.BUILD_COMPLETE:
-        if model.build_review.verdict == "approve":
-            return _move_to(model, LifecyclePhase.REVIEW_APPROVED)
-        if model.build_review.verdict == "changes_requested":
-            model.build_completed_at = ""
-            model.build_gate_claim_at = ""
-            return _move_to(model, LifecyclePhase.REVIEW_CHANGES_REQUESTED)
-        return current
-
-    return None
-
-
-def _apply_finalize_signal(model: TodoState, current: LifecyclePhase, signal: str, now: str) -> LifecyclePhase | None:
     if signal == "finalize_ready" and current == LifecyclePhase.REVIEW_APPROVED and model.finalize.status == "ready":
         return _move_to(model, LifecyclePhase.FINALIZE_READY)
 
@@ -537,179 +533,121 @@ def _apply_finalize_signal(model: TodoState, current: LifecyclePhase, signal: st
             model.finalize.handed_off_at = now
         if model.finalize.status == "handed_off":
             return _move_to(model, LifecyclePhase.HANDED_OFF)
-        return current
-
-    return None
-
-
-def apply_authoritative_signal(
-    model: TodoState,
-    signal: str,
-    *,
-    phase: str | None = None,
-    worktree_cwd: str | None = None,
-) -> LifecyclePhase:
-    """Apply one authoritative signal and advance by at most one step.
-
-    The caller mutates any relevant state first (for example a review verdict
-    or DOR value), then this function decides whether the current phase should
-    move to its immediate successor.
-    """
-    current = require_lifecycle_phase(model.lifecycle_phase, context="apply_authoritative_signal")
-    now = _now_iso()
-
-    outcome = _apply_authoring_signal(model, current, signal, now)
-    if outcome is not None:
-        return outcome
-
-    outcome = _apply_prepare_signal(model, current, signal)
-    if outcome is not None:
-        return outcome
-
-    outcome = _apply_build_signal(model, current, signal, now, worktree_cwd)
-    if outcome is not None:
-        return outcome
-
-    outcome = _apply_verdict_signal(model, current, phase)
-    if outcome is not None:
-        return outcome
-
-    outcome = _apply_finalize_signal(model, current, signal, now)
-    if outcome is not None:
-        return outcome
 
     return current
 
 
-def _normalize_prepare_mark_phase(model: TodoState, target: LifecyclePhase) -> None:
+def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: str | None = None) -> bool:
+    """Return True when authoritative state says ``phase`` is complete."""
+    _ = worktree_cwd
+    if phase in (LifecyclePhase.DRAFT, LifecyclePhase.PREPARED, LifecyclePhase.BLOCKED):
+        return False
+    if phase == LifecyclePhase.PRD_DRAFTING:
+        return _artifact_exists(model, "prd")
+    if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
+        return _approval_is_human(model.approvals.prd_approved)
+    if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
+        return _artifact_exists(model, "architecture") or model.approvals.architecture_skipped is not None
+    if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
+        return _review_approved(model.architecture_review)
+    if phase == LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL:
+        return model.approvals.architecture_approved.approved
+    if phase == LifecyclePhase.TEST_SPECS_DRAFTING:
+        return _artifact_exists(model, "test_specs") or model.approvals.test_specs_skipped is not None
+    if phase == LifecyclePhase.TEST_SPECS_REVIEW:
+        return _review_approved(model.test_spec_review)
+    if phase == LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL:
+        return model.approvals.test_specs_approved.approved
+    if phase == LifecyclePhase.PLAN_DRAFTING:
+        return _artifact_exists(model, "implementation_plan")
+    if phase == LifecyclePhase.PLAN_REVIEW:
+        return _review_approved(model.plan_review)
+    if phase == LifecyclePhase.PLAN_HUMAN_APPROVAL:
+        return model.approvals.plan_approved.approved
+    if phase == LifecyclePhase.BUILD_STARTED:
+        return bool(model.build_completed_at)
+    if phase == LifecyclePhase.BUILD_COMPLETE:
+        return model.build_review.verdict in ("approve", "changes_requested")
+    if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
+        return False
+    if phase == LifecyclePhase.REVIEW_APPROVED:
+        return model.finalize.status in ("ready", "handed_off")
+    if phase == LifecyclePhase.FINALIZE_READY:
+        return model.finalize.status == "handed_off"
+    if phase == LifecyclePhase.HANDED_OFF:
+        return False
+    return False
+
+
+def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> None:
+    """Clear downstream approvals and review verdicts after an artifact rewrite."""
+    approvals = model.approvals
+    if refined_artifact == "prd":
+        approvals.prd_approved = ApprovalStamp()
+        approvals.architecture_approved = ApprovalStamp()
+        approvals.test_specs_approved = ApprovalStamp()
+        approvals.plan_approved = ApprovalStamp()
+        approvals.architecture_skipped = None
+        approvals.test_specs_skipped = None
+        _clear_prepare_review(model.architecture_review)
+        _clear_prepare_review(model.test_spec_review)
+        _clear_prepare_review(model.plan_review)
+        for key in ("prd", "architecture", "test-specs", "implementation-plan"):
+            approvals.drift_reviewed.pop(key, None)
+    elif refined_artifact == "architecture":
+        approvals.architecture_approved = ApprovalStamp()
+        approvals.test_specs_approved = ApprovalStamp()
+        approvals.plan_approved = ApprovalStamp()
+        _clear_prepare_review(model.architecture_review)
+        _clear_prepare_review(model.test_spec_review)
+        _clear_prepare_review(model.plan_review)
+        for key in ("architecture", "test-specs", "implementation-plan"):
+            approvals.drift_reviewed.pop(key, None)
+    elif refined_artifact == "test-specs":
+        approvals.test_specs_approved = ApprovalStamp()
+        approvals.plan_approved = ApprovalStamp()
+        _clear_prepare_review(model.test_spec_review)
+        _clear_prepare_review(model.plan_review)
+        for key in ("test-specs", "implementation-plan"):
+            approvals.drift_reviewed.pop(key, None)
+    elif refined_artifact == "implementation-plan":
+        approvals.plan_approved = ApprovalStamp()
+        _clear_prepare_review(model.plan_review)
+        approvals.drift_reviewed.pop("implementation-plan", None)
+
+
+def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
+    _reset_dor(model)
+    _clear_work_entry_state(model)
     if target == LifecyclePhase.DRAFT:
-        model.prepare_pair = None
-        model.artifacts.requirements.produced_at = ""
-        _reset_after_requirements(model)
-        return
-    if target in (LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
-        model.artifacts.requirements.produced_at = ""
-        _reset_after_requirements(model)
-        return
-    if target == LifecyclePhase.REQUIREMENTS_REVIEW:
-        _clear_prepare_review(model.requirements_review)
-        model.artifacts.requirements.approved = False
-        model.artifacts.test_specs.produced_at = ""
+        model.approvals = type(model.approvals)()
+        _clear_prepare_review(model.architecture_review)
         _clear_prepare_review(model.test_spec_review)
-        model.artifacts.implementation_plan.produced_at = ""
         _clear_prepare_review(model.plan_review)
-        _reset_dor(model)
-        _reset_grounding(model)
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        model.build_completed_at = ""
-        return
-    if target == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
-        model.artifacts.requirements.approved = False
-        model.artifacts.test_specs.produced_at = ""
-        _clear_prepare_review(model.test_spec_review)
-        model.artifacts.implementation_plan.produced_at = ""
-        _clear_prepare_review(model.plan_review)
-        _reset_dor(model)
-        _reset_grounding(model)
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        model.build_completed_at = ""
-        return
-    if target == LifecyclePhase.TEST_SPEC_BUILD:
-        _reset_after_test_specs(model)
-        return
-    if target == LifecyclePhase.TEST_SPEC_REVIEW:
-        _clear_prepare_review(model.test_spec_review)
-        model.artifacts.implementation_plan.produced_at = ""
-        _clear_prepare_review(model.plan_review)
-        _reset_dor(model)
-        _reset_grounding(model)
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        model.build_completed_at = ""
-        return
-    if target == LifecyclePhase.PLAN_DRAFTING:
-        _reset_after_plan(model)
-        return
-    if target == LifecyclePhase.PLAN_REVIEW:
-        _clear_prepare_review(model.plan_review)
-        _reset_dor(model)
-        _reset_grounding(model)
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        model.build_completed_at = ""
-        return
-    if target == LifecyclePhase.GATE:
-        _reset_after_gate(model)
-        return
-    if target == LifecyclePhase.GROUNDING_CHECK:
-        _reset_after_grounding(model)
-        return
-    if target == LifecyclePhase.RE_GROUNDING:
-        _reset_after_plan(model)
-        return
-    if target == LifecyclePhase.PREPARED:
-        model.prepare_pair = None
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        model.build_completed_at = ""
+    elif target == LifecyclePhase.PRD_DRAFTING:
+        invalidate_downstream_on_refine(model, "prd")
+    elif target in (LifecyclePhase.ARCHITECTURE_DRAFTING, LifecyclePhase.ARCHITECTURE_REVIEW):
+        invalidate_downstream_on_refine(model, "architecture")
+    elif target in (LifecyclePhase.TEST_SPECS_DRAFTING, LifecyclePhase.TEST_SPECS_REVIEW):
+        invalidate_downstream_on_refine(model, "test-specs")
+    elif target in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
+        invalidate_downstream_on_refine(model, "implementation-plan")
 
 
-def _normalize_work_mark_phase(model: TodoState, target: LifecyclePhase) -> None:
-    if target == LifecyclePhase.BUILD_STARTED:
-        model.build_completed_at = ""
-        _clear_build_review(model)
-        _reset_finalize(model)
-        model.build_start_base_sha = ""
-        return
-    if target == LifecyclePhase.BUILD_COMPLETE:
-        _clear_build_review(model)
-        _reset_finalize(model)
-        return
-    if target == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
-        _reset_finalize(model)
-        return
-    if target == LifecyclePhase.REVIEW_APPROVED:
-        _reset_finalize(model)
-        return
-
-
-def normalize_mark_phase(
-    model: TodoState,
-    target: LifecyclePhase,
-    *,
-    worktree_cwd: str | None = None,
-) -> None:
+def normalize_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None = None) -> None:
     """Clear current/downstream authority and persist ``target`` as the pointer."""
     _ = worktree_cwd
     if is_prepare_lifecycle_phase(target):
-        _normalize_prepare_mark_phase(model, target)
+        _clear_prepare_target(model, target)
     else:
-        _normalize_work_mark_phase(model, target)
+        if target == LifecyclePhase.BUILD_STARTED:
+            model.build_completed_at = ""
+            _clear_build_review(model)
+            _reset_finalize(model)
+            model.build_start_base_sha = ""
+        elif target == LifecyclePhase.BUILD_COMPLETE:
+            _clear_build_review(model)
+            _reset_finalize(model)
+        elif target in (LifecyclePhase.REVIEW_CHANGES_REQUESTED, LifecyclePhase.REVIEW_APPROVED):
+            _reset_finalize(model)
     model.lifecycle_phase = target.value
-
-
-__all__ = [
-    "LIFECYCLE_PHASE_ORDER",
-    "PREPARE_LIFECYCLE_PHASES",
-    "WORK_LIFECYCLE_PHASES",
-    "LifecyclePhase",
-    "LifecycleStage",
-    "adopt_prepare_handoff_phase",
-    "apply_authoritative_signal",
-    "coerce_lifecycle_phase",
-    "infer_lifecycle_stage",
-    "is_prepare_lifecycle_phase",
-    "is_work_lifecycle_phase",
-    "lifecycle_phase_index",
-    "normalize_mark_phase",
-    "phase_is_complete",
-    "reconcile_lifecycle_phase",
-    "require_lifecycle_phase",
-]

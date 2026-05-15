@@ -364,8 +364,6 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
         state.phase = "in_progress"
     elif marker == ".":
         state.dor = DorState(last_assessed_at=now, score=8, status="pass", schema_version=1, blockers=[])
-        state.grounding.valid = True
-        state.grounding.last_grounded_at = now
         if kind == "bug":
             state.requirements_review.verdict = "skipped"
             state.test_spec_review.verdict = "skipped"
@@ -374,6 +372,9 @@ def _build_state(*, kind: str, marker: str, artifacts: dict[str, str], now: str)
             state.requirements_review.verdict = "approve" if ARTIFACT_REQUIREMENTS in artifacts else "skipped"
             state.test_spec_review.verdict = "skipped"
             state.plan_review.verdict = "approve" if ARTIFACT_IMPLEMENTATION_PLAN in artifacts else "skipped"
+            if ARTIFACT_IMPLEMENTATION_PLAN in artifacts:
+                state.approvals.plan_approved.approved = True
+                state.approvals.plan_approved.approved_at = now
         if not state.artifacts.test_specs.produced_at:
             state.artifacts.test_specs.produced_at = now
 

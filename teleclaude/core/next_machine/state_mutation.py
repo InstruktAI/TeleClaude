@@ -1,10 +1,9 @@
 """State mutation boundary — the single validated write path for todo state.
 
-Callers in API routes, lifecycle handlers, prepare steps and event-driven
-invalidation route all persisted mutations through ``StateWriter`` (full-state
-validation against :class:`TodoState`), ``GroundingManager`` (freshness /
-invalidate / refresh / clear_invalidation), and ``ReviewManager`` (verdict and
-findings bookkeeping).
+Callers in API routes, lifecycle handlers, and prepare steps all persist
+mutations through ``StateWriter`` (full-state validation against
+:class:`TodoState`), ``ApprovalsManager`` (approval / skip / drift stamps), and
+``ReviewManager`` (verdict and findings bookkeeping).
 
 No direct :class:`TodosDb` writes happen outside this module in the migrated
 flows — persistence is always driven by ``StateWriter``.
@@ -12,20 +11,20 @@ flows — persistence is always driven by ``StateWriter``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from pydantic import ValidationError
 
 from teleclaude.core.next_machine._types import StateValue
 from teleclaude.types.todos import (
+    ApprovalsState,
+    ApprovalStamp,
     AuditReviewEntry,
     AuditState,
-    GroundingState,
-    PreparePair,
-    PreparePairSlot,
+    DriftReviewedStamp,
     ReviewVerdictState,
+    SkipStamp,
     TestSpecReviewState,
     TodoState,
 )
@@ -37,8 +36,7 @@ if TYPE_CHECKING:
 
 
 __all__ = [
-    "GroundingManager",
-    "PreparePairManager",
+    "ApprovalsManager",
     "ReviewManager",
     "StateMutationError",
     "StateWriter",
@@ -85,19 +83,14 @@ class StateWriter:
         return self._model
 
     @property
-    def grounding(self) -> GroundingState:
-        """Typed grounding sub-state (always non-None after validation)."""
-        return self._model.grounding
+    def approvals(self) -> ApprovalsState:
+        """Typed prepare approval sub-state (always non-None after validation)."""
+        return self._model.approvals
 
     @property
     def audit(self) -> AuditState:
         """Typed audit sub-state (always non-None after validation)."""
         return self._model.audit
-
-    @property
-    def prepare_pair(self) -> PreparePair | None:
-        """Durable prepare pair identity, when one has been formed."""
-        return self._model.prepare_pair
 
     def review(self, review_type: str) -> ReviewVerdictState:
         """Return a `ReviewVerdictState` sub-state by phase name.
@@ -165,155 +158,64 @@ class StateWriter:
         return payload
 
 
-class PreparePairManager:
-    """Typed owner for prepare pair identity mutations."""
+class ApprovalsManager:
+    """Typed owner for prepare approval, skip, and drift review stamps."""
 
     def __init__(self, writer: StateWriter) -> None:
         self._writer = writer
 
     @property
-    def state(self) -> PreparePair | None:
-        """Return the current pair identity, if present."""
-        return self._writer.state.prepare_pair
+    def state(self) -> ApprovalsState:
+        """Typed approvals state under edit."""
+        return self._writer.approvals
 
-    def set_pair(self, *, slot_a: PreparePairSlot, slot_b: PreparePairSlot) -> None:
-        """Store both prepare pair members atomically."""
-        self._writer.state.prepare_pair = PreparePair(slot_a=slot_a, slot_b=slot_b)
-
-    def set_slot(self, slot: PreparePairSlot) -> None:
-        """Create or replace one prepare pair slot."""
-        pair = self._writer.state.prepare_pair or PreparePair()
-        if slot.lens == "A":
-            pair.slot_a = slot
-        else:
-            pair.slot_b = slot
-        self._writer.state.prepare_pair = pair
-
-    def clear(self) -> None:
-        """Clear prepare pair identity."""
-        self._writer.state.prepare_pair = None
-
-
-@dataclass(frozen=True, slots=True)
-class GroundingResult:
-    """Typed result returned by :meth:`GroundingManager.check`.
-
-    ``is_stale`` encodes the freshness decision; ``changed_paths`` records the
-    referenced files that actually diverged (empty for a fresh baseline).
-    """
-
-    is_stale: bool
-    reason: str
-    changed_paths: list[str]
-
-
-class GroundingManager:
-    """Typed grounding lifecycle owner: check / invalidate / refresh.
-
-    Works directly on a :class:`StateWriter`'s typed ``GroundingState`` so the
-    final commit is driven by the writer.
-    """
-
-    def __init__(self, writer: StateWriter) -> None:
-        self._writer = writer
-
-    @property
-    def state(self) -> GroundingState:
-        """Typed grounding state under edit."""
-        return self._writer.grounding
-
-    def check(
-        self,
-        *,
-        current_sha: str,
-        current_input_digest: str,
-        changed_files: set[str] | None = None,
-    ) -> GroundingResult:
-        """Evaluate freshness of the stored baseline against current inputs.
-
-        ``changed_files`` should contain the set of paths that changed between
-        the stored ``base_sha`` and ``current_sha``; the manager computes the
-        intersection with the tracked ``referenced_paths``.
-        """
-        grounding = self.state
-        base_sha = grounding.base_sha
-        stored_digest = grounding.input_digest
-        referenced = list(grounding.referenced_paths)
-
-        if not base_sha:
-            return GroundingResult(is_stale=False, reason="", changed_paths=[])
-
-        if not current_sha:
-            return GroundingResult(is_stale=True, reason="files_changed", changed_paths=[])
-
-        sha_changed = current_sha != base_sha
-        digest_changed = bool(
-            stored_digest
-            and current_input_digest
-            and len(stored_digest) == len(current_input_digest)
-            and current_input_digest != stored_digest
+    def approve(self, field_name: str, *, caller_session_id: str) -> None:
+        """Stamp a human approval field by name."""
+        now = datetime.now(UTC).isoformat()
+        setattr(
+            self.state,
+            field_name,
+            ApprovalStamp(approved=True, approved_at=now, caller_session_id=caller_session_id),
         )
 
-        changed_paths: list[str] = []
-        if sha_changed and referenced and changed_files is not None:
-            changed_paths = [p for p in referenced if p in changed_files]
+    def skip(self, field_name: str, *, reason: str, caller_session_id: str) -> None:
+        """Stamp an optional prepare phase as skipped with a reason."""
+        self._require_reason(field_name, reason)
+        setattr(
+            self.state,
+            field_name,
+            SkipStamp(
+                reason=reason,
+                skipped_at=datetime.now(UTC).isoformat(),
+                caller_session_id=caller_session_id,
+            ),
+        )
 
-        references_known = bool(referenced)
-        paths_stale = bool(changed_paths)
-        sha_fallback_stale = sha_changed and not references_known
+    def drift_reviewed(
+        self,
+        *,
+        artifact: str,
+        verdict: str,
+        reason: str,
+        caller_session_id: str,
+    ) -> None:
+        """Record drift review for one artifact."""
+        if verdict not in ("substantive", "cosmetic"):
+            raise StateMutationError("drift_reviewed verdict must be 'substantive' or 'cosmetic'")
+        if not artifact:
+            raise StateMutationError("drift_reviewed requires an artifact name")
+        typed_verdict: Literal["substantive", "cosmetic"] = "substantive" if verdict == "substantive" else "cosmetic"
+        self.state.drift_reviewed[artifact] = DriftReviewedStamp(
+            verdict=typed_verdict,
+            reason=reason,
+            stamped_at=datetime.now(UTC).isoformat(),
+            caller_session_id=caller_session_id,
+        )
 
-        if digest_changed:
-            return GroundingResult(is_stale=True, reason="input_updated", changed_paths=changed_paths)
-        if paths_stale or sha_fallback_stale:
-            return GroundingResult(is_stale=True, reason="files_changed", changed_paths=changed_paths)
-        return GroundingResult(is_stale=False, reason="", changed_paths=[])
-
-    def capture_fresh(self, *, current_sha: str, current_input_digest: str) -> None:
-        """Record a fresh baseline against current HEAD and input digest."""
-        now = datetime.now(UTC).isoformat()
-        self.state.base_sha = current_sha
-        self.state.input_digest = current_input_digest
-        self.state.last_grounded_at = now
-        self.state.valid = True
-        self.state.invalidated_at = ""
-        self.state.invalidation_reason = ""
-        self.state.changed_paths = []
-
-    def invalidate(self, *, reason: str, changed_paths: list[str]) -> None:
-        """Mark the stored baseline stale with the given reason."""
-        now = datetime.now(UTC).isoformat()
-        self.state.valid = False
-        self.state.invalidated_at = now
-        self.state.invalidation_reason = reason
-        self.state.changed_paths = list(changed_paths)
-
-    def clear_invalidation(self) -> None:
-        """Mark the stored baseline valid again, clearing any invalidation trace.
-
-        Used by the stamp API when an operator explicitly re-grounds a todo
-        out-of-band. Complements :meth:`invalidate` so both sides of the
-        valid/invalid boundary go through the typed manager rather than ad hoc
-        field assignments.
-        """
-        self.state.valid = True
-        self.state.invalidated_at = ""
-        self.state.invalidation_reason = ""
-        self.state.changed_paths = []
-
-    def refresh(self, *, current_sha: str) -> None:
-        """Refresh the stored baseline to ``current_sha`` after re-grounding.
-
-        Concrete fix for the re-grounding loop: once the re-grounding cycle
-        has been dispatched, ``base_sha`` must be advanced so the next
-        freshness check starts from the new commit instead of the old one.
-        """
-        now = datetime.now(UTC).isoformat()
-        self.state.base_sha = current_sha
-        self.state.last_grounded_at = now
-        self.state.valid = True
-        self.state.invalidated_at = ""
-        self.state.invalidation_reason = ""
-        self.state.changed_paths = []
+    @staticmethod
+    def _require_reason(field_name: str, reason: str) -> None:
+        if not reason.strip():
+            raise StateMutationError(f"{field_name} requires a non-empty reason")
 
 
 class ReviewManager:

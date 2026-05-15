@@ -28,13 +28,17 @@ from teleclaude.api.auth import (
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
     ARTIFACT_BUG,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
+    ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    ARTIFACT_TEST_SPECS,
 )
 from teleclaude.core.next_machine._types import default_state
 from teleclaude.core.next_machine.dep_graph import detect_circular_dependency
+from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.state_io import apply_prepared_state
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -253,11 +257,21 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     return await get_todos_db(project_root)
 
 
-async def _sync_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
-    """Refresh only the artifact digest stored in todo state."""
+async def _sync_artifact_digest_state(
+    todos_db: TodosDb,
+    slug: str,
+    artifact_name: str,
+    *,
+    codebase_sha_at_write: str = "",
+    referenced_paths: list[str] | None = None,
+) -> None:
+    """Refresh artifact provenance stored in todo state."""
     key = {
         ARTIFACT_INPUT: "input",
+        ARTIFACT_PRD: "prd",
         ARTIFACT_REQUIREMENTS: "requirements",
+        ARTIFACT_ARCHITECTURE: "architecture",
+        ARTIFACT_TEST_SPECS: "test_specs",
         ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
     }.get(artifact_name)
     if key is None:
@@ -270,6 +284,8 @@ async def _sync_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_nam
     if entry is None:
         return
     entry.digest = await todos_db.artifact_digest(slug, artifact_name)
+    entry.codebase_sha_at_write = codebase_sha_at_write
+    entry.referenced_paths = referenced_paths or []
     await writer.commit(todos_db, slug)
 
 
@@ -293,6 +309,8 @@ async def write_artifact(
     content: Annotated[str, Body()],
     cwd: Annotated[str | None, Body()] = None,
     updated_by: Annotated[str | None, Body()] = None,
+    codebase_sha_at_write: Annotated[str | None, Body()] = None,
+    referenced_paths: Annotated[list[str] | None, Body()] = None,
 ) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
     effective_cwd = cwd or _default_cwd()
@@ -306,8 +324,25 @@ async def write_artifact(
             detail=f"input artifact for '{slug}' is frozen — requirements already exist",
         )
     await todos_db.write_artifact(slug, name, content, updated_by=effective_updated_by)
-    if name in {ARTIFACT_INPUT, ARTIFACT_REQUIREMENTS, ARTIFACT_IMPLEMENTATION_PLAN}:
-        await _sync_artifact_digest_state(todos_db, slug, name)
+    sha_at_write = codebase_sha_at_write if codebase_sha_at_write is not None else get_head_commit(effective_cwd)
+    paths_at_write = (
+        referenced_paths if referenced_paths is not None else extract_referenced_paths(content, effective_cwd)
+    )
+    if name in {
+        ARTIFACT_INPUT,
+        ARTIFACT_PRD,
+        ARTIFACT_REQUIREMENTS,
+        ARTIFACT_ARCHITECTURE,
+        ARTIFACT_TEST_SPECS,
+        ARTIFACT_IMPLEMENTATION_PLAN,
+    }:
+        await _sync_artifact_digest_state(
+            todos_db,
+            slug,
+            name,
+            codebase_sha_at_write=sha_at_write,
+            referenced_paths=paths_at_write,
+        )
     logger.info(
         "todo artifact write route completed",
         slug=slug,

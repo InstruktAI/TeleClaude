@@ -1,7 +1,4 @@
-"""Canonical lifecycle phase contract tests.
-
-Patches state_io.get_todos_db_sync (consumer-module local).
-"""
+"""Canonical lifecycle phase contract tests."""
 
 from __future__ import annotations
 
@@ -18,27 +15,11 @@ from teleclaude.types.todos import TodoState
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
 
-def _prepared_state() -> dict[str, StateValue]:
-    return {
-        "requirements_review": {"verdict": "approve"},
-        "artifacts": {
-            "requirements": {"produced_at": "2026-01-01T00:00:00+00:00"},
-            "test_specs": {"produced_at": "2026-01-01T00:00:00+00:00"},
-            "implementation_plan": {"produced_at": "2026-01-01T00:00:00+00:00"},
-        },
-        "test_spec_review": {"verdict": "approve"},
-        "plan_review": {"verdict": "approve"},
-        "dor": {"score": 8, "status": "pass"},
-        "grounding": {"valid": True},
-        "lifecycle_phase": PreparePhase.PREPARED.value,
-    }
-
-
 def test_todo_state_has_canonical_lifecycle_phase_default() -> None:
     state = TodoState.defaults()
 
-    assert state.lifecycle_phase == PreparePhase.INPUT_ASSESSMENT.value
-    assert state.schema_version == 2
+    assert state.lifecycle_phase == PreparePhase.DRAFT.value
+    assert state.schema_version == 3
 
 
 def test_item_phase_remains_independent_of_lifecycle_phase() -> None:
@@ -60,10 +41,10 @@ def test_todo_state_strips_legacy_current_field_on_validation() -> None:
 
     assert "current" not in dumped
     assert dumped["integration_phase"] == "candidate_delivered"
-    assert dumped["lifecycle_phase"] == PreparePhase.INPUT_ASSESSMENT.value
+    assert dumped["lifecycle_phase"] == PreparePhase.DRAFT.value
 
 
-def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
+def test_apply_prepared_state_writes_lifecycle_phase_prepared_and_plan_approval() -> None:
     captured_state: dict[str, StateValue] = {}
 
     def _fake_write_state_sync(_slug: str, state: dict[str, StateValue]) -> None:
@@ -77,13 +58,19 @@ def test_apply_prepared_state_writes_lifecycle_phase_prepared() -> None:
 
     with (
         patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=db_stub),
-        patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"kind": "bug"}),
+        patch("teleclaude.core.next_machine.state_io.read_phase_state", return_value={"kind": "prepped"}),
         patch("teleclaude.core.next_machine.state_io._has_artifact_content", return_value=True),
+        patch("teleclaude.core.next_machine.state_io._artifact_digest", return_value="plan-digest"),
         patch("teleclaude.core.next_machine.state_io.run_git_command", return_value=(0, "abc1234\n", "")),
     ):
         apply_prepared_state("/tmp/cwd", "slug")
 
     assert captured_state.get("lifecycle_phase") == PreparePhase.PREPARED.value
+    approvals = captured_state.get("approvals")
+    assert isinstance(approvals, dict)
+    plan_approved = approvals.get("plan_approved")
+    assert isinstance(plan_approved, dict)
+    assert plan_approved["approved"] is True
     assert "prepare_phase" not in captured_state
 
 
@@ -118,4 +105,3 @@ def test_mark_phase_cli_rejects_invalid_phase_value_with_listing(
     captured = capsys.readouterr()
     combined = captured.out + captured.err
     assert PreparePhase.PREPARED.value in combined
-    assert WorkPhase.BUILD_STARTED.value in combined

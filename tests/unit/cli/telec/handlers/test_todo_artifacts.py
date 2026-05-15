@@ -51,12 +51,19 @@ class TestHandleTodoArtifactsWrite:
             _handle_todo_artifacts(["write", "my-slug"])
 
     def test_writes_inline_content(self) -> None:
-        with patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
+        with (
+            patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api,
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_head_commit", return_value="head-sha"),
+            patch(f"{_MODULE}.extract_referenced_paths", return_value=["src/app.py"]),
+        ):
             _handle_todo_artifacts(["write", "my-slug", "requirements", "inline-content"])
 
         mock_api.assert_called_once()
         body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
         assert body["content"] == "inline-content"
+        assert body["codebase_sha_at_write"] == "head-sha"
+        assert body["referenced_paths"] == ["src/app.py"]
 
 
 class TestHandleTodoArtifactsDiff:
@@ -96,46 +103,46 @@ class TestHandleTodoStamp:
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
-            _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "requirements_review"])
+            _handle_todo_stamp(["my-slug", "--verdict", "approve", "--phase", "architecture_review"])
 
         mock_stamp.assert_awaited_once_with(
             cwd="/repo",
             slug="my-slug",
             stamp_type="verdict",
             value="approve",
-            phase="requirements_review",
+            phase="architecture_review",
             caller_session_id="sess-1",
         )
 
-    def test_requirements_ready_stamp(self) -> None:
+    def test_prd_approved_stamp(self) -> None:
         with (
             patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
-            _handle_todo_stamp(["my-slug", "--requirements-ready"])
+            _handle_todo_stamp(["my-slug", "--prd-approved"])
 
         mock_stamp.assert_awaited_once_with(
             cwd="/repo",
             slug="my-slug",
-            stamp_type="requirements_ready",
+            stamp_type="prd_approved",
             value="true",
             phase=None,
             caller_session_id="sess-1",
         )
 
-    def test_plan_ready_stamp(self) -> None:
+    def test_plan_approved_stamp(self) -> None:
         with (
             patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
-            _handle_todo_stamp(["my-slug", "--plan-ready"])
+            _handle_todo_stamp(["my-slug", "--plan-approved"])
 
         mock_stamp.assert_awaited_once_with(
             cwd="/repo",
             slug="my-slug",
-            stamp_type="plan_ready",
+            stamp_type="plan_approved",
             value="true",
             phase=None,
             caller_session_id="sess-1",

@@ -1,4 +1,4 @@
-"""Prepare state machine — lifecycle events and grounding invalidation.
+"""Prepare state machine lifecycle events.
 
 No imports from core.py (circular-import guard).
 """
@@ -6,13 +6,9 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-import json as _json
 
-from teleclaude.core.next_machine.state_mutation import GroundingManager, StateWriter
-from teleclaude.core.todos_db import TodosDb
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.producer import emit_event
-from teleclaude.project_root import resolve_state_root
 from teleclaude.session_identity import get_session_id
 
 
@@ -47,47 +43,14 @@ def _emit_prepare_event(event_type: str, payload: dict[str, str | list[str]]) ->
 
 
 def invalidate_stale_preparations(cwd: str, changed_paths: list[str]) -> dict[str, list[str]]:
-    """Scan all active todos and invalidate those with overlapping referenced paths.
+    """Compatibility no-op.
 
-    Reads state from todos.db (sync). When a todo's ``grounding.referenced_paths``
-    overlaps with ``changed_paths``, invalidation routes through the typed
-    :class:`StateWriter` + :class:`GroundingManager` boundary and the final
-    commit uses ``commit_sync`` so malformed persisted state fails fast at load.
+    Prepare v2 derives drift at query time from artifact provenance and
+    drift-review stamps, so changed-path notifications no longer mutate todo
+    state.
     """
-    invalidated: list[str] = []
-    changed_set = set(changed_paths)
-
-    project_root = resolve_state_root(cwd)
-    db = TodosDb(str(project_root / ".teleclaude" / "todos.db"))
-    db.initialize_sync()
-    conn = db._sync_conn()
-
-    try:
-        rows = conn.execute(
-            "SELECT id, slug, state FROM todo_state",  # guard: raw-sql
-        ).fetchall()
-
-        for row in rows:
-            slug = row[1]
-            raw_state = _json.loads(row[2]) if row[2] else {}
-            writer = StateWriter(raw_state)  # fails fast on malformed persisted state
-            referenced = list(writer.grounding.referenced_paths)
-            overlap = [path for path in referenced if path in changed_set]
-            if not overlap:
-                continue
-
-            GroundingManager(writer).invalidate(reason="files_changed", changed_paths=overlap)
-            writer.commit_sync(db, slug)
-
-            _emit_prepare_event(
-                "domain.software-development.prepare.grounding_invalidated",
-                {"slug": slug, "reason": "files_changed", "changed_paths": overlap},
-            )
-            invalidated.append(slug)
-    finally:
-        conn.close()
-
-    return {"invalidated": invalidated}
+    _ = cwd, changed_paths
+    return {"invalidated": []}
 
 
 __all__ = [

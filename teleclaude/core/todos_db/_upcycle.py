@@ -8,23 +8,25 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 2
+LATEST_TODO_STATE_SCHEMA_VERSION = 3
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
+_V2_SCHEMA_VERSION = 2
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
     "draft": LifecyclePhase.DRAFT.value,
-    "pending": LifecyclePhase.INPUT_ASSESSMENT.value,
-    "input_assessment": LifecyclePhase.INPUT_ASSESSMENT.value,
-    "triangulation": LifecyclePhase.TRIANGULATION.value,
-    "requirements_review": LifecyclePhase.REQUIREMENTS_REVIEW.value,
-    "test_spec_build": LifecyclePhase.TEST_SPEC_BUILD.value,
-    "test_spec_review": LifecyclePhase.TEST_SPEC_REVIEW.value,
+    "pending": LifecyclePhase.PRD_DRAFTING.value,
+    "input_assessment": LifecyclePhase.PRD_DRAFTING.value,
+    "triangulation": LifecyclePhase.PRD_DRAFTING.value,
+    "requirements_review": LifecyclePhase.PRD_DRAFTING.value,
+    "requirements_human_approval": LifecyclePhase.PRD_DRAFTING.value,
+    "test_spec_build": LifecyclePhase.TEST_SPECS_DRAFTING.value,
+    "test_spec_review": LifecyclePhase.TEST_SPECS_DRAFTING.value,
     "plan_drafting": LifecyclePhase.PLAN_DRAFTING.value,
-    "plan_review": LifecyclePhase.PLAN_REVIEW.value,
-    "gate": LifecyclePhase.GATE.value,
-    "grounding_check": LifecyclePhase.GROUNDING_CHECK.value,
-    "re_grounding": LifecyclePhase.RE_GROUNDING.value,
+    "plan_review": LifecyclePhase.PLAN_DRAFTING.value,
+    "gate": LifecyclePhase.PREPARED.value,
+    "grounding_check": LifecyclePhase.PREPARED.value,
+    "re_grounding": LifecyclePhase.PREPARED.value,
     "prepared": LifecyclePhase.PREPARED.value,
     "build": LifecyclePhase.BUILD_STARTED.value,
     "build_started": LifecyclePhase.BUILD_STARTED.value,
@@ -35,6 +37,28 @@ _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
     "finalize_handed_off": LifecyclePhase.HANDED_OFF.value,
     "handed_off": LifecyclePhase.HANDED_OFF.value,
     "delivered": LifecyclePhase.HANDED_OFF.value,
+}
+
+_V2_TO_V3_PHASE: dict[str, str] = {
+    "draft": LifecyclePhase.DRAFT.value,
+    "input_assessment": LifecyclePhase.DRAFT.value,
+    "triangulation": LifecyclePhase.DRAFT.value,
+    "requirements_review": LifecyclePhase.PRD_DRAFTING.value,
+    "requirements_human_approval": LifecyclePhase.PRD_DRAFTING.value,
+    "test_spec_build": LifecyclePhase.TEST_SPECS_DRAFTING.value,
+    "test_spec_review": LifecyclePhase.TEST_SPECS_DRAFTING.value,
+    "plan_drafting": LifecyclePhase.PLAN_DRAFTING.value,
+    "plan_review": LifecyclePhase.PLAN_DRAFTING.value,
+    "gate": LifecyclePhase.PREPARED.value,
+    "grounding_check": LifecyclePhase.PREPARED.value,
+    "re_grounding": LifecyclePhase.PREPARED.value,
+    "prepared": LifecyclePhase.PREPARED.value,
+    "build_started": LifecyclePhase.BUILD_STARTED.value,
+    "build_complete": LifecyclePhase.BUILD_COMPLETE.value,
+    "review_changes_requested": LifecyclePhase.REVIEW_CHANGES_REQUESTED.value,
+    "review_approved": LifecyclePhase.REVIEW_APPROVED.value,
+    "finalize_ready": LifecyclePhase.FINALIZE_READY.value,
+    "handed_off": LifecyclePhase.HANDED_OFF.value,
 }
 
 
@@ -71,7 +95,7 @@ def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
 
     for legacy_key in ("work_phase", "prepare_phase"):
         legacy_phase = _text(raw, legacy_key)
-        if legacy_phase and legacy_phase in LifecyclePhase._value2member_map_:
+        if legacy_phase and (legacy_phase in LifecyclePhase._value2member_map_ or legacy_phase in _V2_TO_V3_PHASE):
             return legacy_phase
 
     phase = _text(raw, "phase")
@@ -99,22 +123,22 @@ def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
     if grounding_valid:
         return LifecyclePhase.PREPARED.value
     if dor_status == "pass":
-        return LifecyclePhase.GROUNDING_CHECK.value
+        return "grounding_check"
     if _review_verdict(raw, "plan_review") in {"approve", "skipped"}:
-        return LifecyclePhase.GATE.value
+        return "gate"
     if _artifact_produced(raw, "implementation_plan"):
         return LifecyclePhase.PLAN_REVIEW.value
     if _review_verdict(raw, "test_spec_review") in {"approve", "skipped"}:
         return LifecyclePhase.PLAN_DRAFTING.value
     if _artifact_produced(raw, "test_specs"):
-        return LifecyclePhase.TEST_SPEC_REVIEW.value
+        return "test_spec_review"
     if _review_verdict(raw, "requirements_review") in {"approve", "skipped"}:
-        return LifecyclePhase.TEST_SPEC_BUILD.value
+        return "test_spec_build"
     if _artifact_produced(raw, "requirements"):
-        return LifecyclePhase.REQUIREMENTS_REVIEW.value
+        return "requirements_review"
     if phase == "in_progress":
-        return LifecyclePhase.TRIANGULATION.value
-    return LifecyclePhase.INPUT_ASSESSMENT.value
+        return "triangulation"
+    return "input_assessment"
 
 
 def _normalize_finalize(raw: object) -> dict[str, StateValue]:
@@ -155,7 +179,7 @@ def _upcycle_v0_to_v1(raw: dict[str, StateValue]) -> dict[str, StateValue]:
 
 def _upcycle_v1_to_v2(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated = dict(raw)
-    migrated["schema_version"] = LATEST_TODO_STATE_SCHEMA_VERSION
+    migrated["schema_version"] = _V2_SCHEMA_VERSION
 
     migrated["lifecycle_phase"] = _infer_v1_lifecycle_phase(migrated)
 
@@ -165,6 +189,21 @@ def _upcycle_v1_to_v2(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     # Legacy sub-phase overrides are no longer persisted in v2.
     migrated.pop("prepare_phase", None)
     migrated.pop("work_phase", None)
+    return migrated
+
+
+def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    migrated = dict(raw)
+    old_phase = _text(migrated, "lifecycle_phase")
+    migrated["lifecycle_phase"] = _V2_TO_V3_PHASE.get(
+        old_phase, old_phase if old_phase in LifecyclePhase._value2member_map_ else LifecyclePhase.DRAFT.value
+    )
+    migrated.pop("prepare_pair", None)
+    migrated.pop("grounding", None)
+    migrated.setdefault("approvals", {})
+    if migrated.get("kind") == "todo":
+        migrated["kind"] = "feature"
+    migrated["schema_version"] = LATEST_TODO_STATE_SCHEMA_VERSION
     return migrated
 
 
@@ -181,13 +220,15 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v0_to_v1(migrated)
         elif version == _V1_SCHEMA_VERSION:
             migrated = _upcycle_v1_to_v2(migrated)
+        elif version == _V2_SCHEMA_VERSION:
+            migrated = _upcycle_v2_to_v3(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)
         version = _detect_schema_version(migrated)
 
     if "lifecycle_phase" not in migrated:
-        msg = "todo state schema v2 is missing required lifecycle_phase"
+        msg = "todo state schema v3 is missing required lifecycle_phase"
         raise ValueError(msg)
     return migrated
 
@@ -206,6 +247,7 @@ def canonicalize_state_for_storage(raw: dict[str, StateValue]) -> dict[str, Stat
 
 __all__ = [
     "LATEST_TODO_STATE_SCHEMA_VERSION",
+    "_detect_schema_version",
     "canonicalize_state_for_storage",
     "upcycle_state_dict",
 ]

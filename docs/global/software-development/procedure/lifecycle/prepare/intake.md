@@ -28,7 +28,7 @@ The stakeholder being interviewed is the **Product Owner role**. This IS a separ
 ## Preconditions
 
 - Session has been invoked through `/next-prepare` (with or without slug) OR auto-spawned by the daemon after a non-`--draft` `telec todo dump`.
-- The session's `additional_context` indicates `human-in-loop: true | false`. Default is `true`.
+- The session's `additional_context` indicates `human_in_loop: true | false`. Default is `true`.
 - User proficiency known from PersonDTO injection, or asked once at the top of the session if absent.
 
 ## Steps
@@ -36,7 +36,7 @@ The stakeholder being interviewed is the **Product Owner role**. This IS a separ
 ### 1. Establish mode and orient
 
 - Read the session's `additional_context`. If it indicates **standin mode**, dispatch a Product Owner emulator via `/next-emulate-po {slug}` (cross-model preferred — Codex or Gemini). The command's required reads carry the PO loadout: standing wishes for quality (right-sized, established patterns, sane architecture, off-the-shelf preference), input-artifact handling, the answer-don't-orchestrate boundary.
-- If **human-in-loop**, the human IS the Product Owner. No peer dispatch for this role.
+- If **human_in_loop**, the human IS the Product Owner. No peer dispatch for this role.
 - If no slug exists yet, hold off on creating one until the conversation has produced something concrete enough to commit to.
 - If a slug exists and an `input` artifact is already present (dumped earlier, or partial from a prior session), read it in full before engaging.
 
@@ -138,7 +138,7 @@ The intake session can end; the next phase is invoked separately (or by the same
 - **Conversation stalls / human can't articulate.** BA applies more probing techniques (Socratic questions, "tell me about a similar problem you've solved before," "what would a successful version look like a year from now"). If genuinely stuck, BA captures what is known, marks remaining gaps as Open questions in the PRD, and writes a partial PRD flagged as needing more input. Human approves the partial-with-gaps explicitly.
 - **Input artifact is sparse or contradictory.** BA reads what's there, identifies specific gaps, asks the human (or standin) targeted questions to fill them. Doesn't invent material.
 - **PO contradicts the standing wishes** (e.g., explicitly asks for a hacky one-off solution). BA flags the contradiction in stewardship register: "the platform defaults toward [established pattern]; you're asking for [hack] — confirm you want this override and the reason." Captured in PRD's Constraints section.
-- **Daemon-side `additional_context` is missing or ambiguous about mode.** Default to human-in-loop. Better to underuse standin than to standin-mode a real-human session.
+- **Daemon-side `additional_context` is missing or ambiguous about mode.** Default to human_in_loop. Better to underuse standin than to standin-mode a real-human session.
 
 ## See Also
 

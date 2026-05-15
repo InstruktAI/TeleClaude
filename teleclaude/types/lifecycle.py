@@ -19,18 +19,19 @@ class LifecyclePhase(str, Enum):
     """Ordered software-development lifecycle phases."""
 
     DRAFT = "draft"
-    INPUT_ASSESSMENT = "input_assessment"
-    TRIANGULATION = "triangulation"
-    REQUIREMENTS_REVIEW = "requirements_review"
-    REQUIREMENTS_HUMAN_APPROVAL = "requirements_human_approval"
-    TEST_SPEC_BUILD = "test_spec_build"
-    TEST_SPEC_REVIEW = "test_spec_review"
+    PRD_DRAFTING = "prd_drafting"
+    PRD_HUMAN_APPROVAL = "prd_human_approval"
+    ARCHITECTURE_DRAFTING = "architecture_drafting"
+    ARCHITECTURE_REVIEW = "architecture_review"
+    ARCHITECTURE_HUMAN_APPROVAL = "architecture_human_approval"
+    TEST_SPECS_DRAFTING = "test_specs_drafting"
+    TEST_SPECS_REVIEW = "test_specs_review"
+    TEST_SPECS_HUMAN_APPROVAL = "test_specs_human_approval"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
-    GATE = "gate"
-    GROUNDING_CHECK = "grounding_check"
-    RE_GROUNDING = "re_grounding"
+    PLAN_HUMAN_APPROVAL = "plan_human_approval"
     PREPARED = "prepared"
+    BLOCKED = "blocked"
     BUILD_STARTED = "build_started"
     BUILD_COMPLETE = "build_complete"
     REVIEW_CHANGES_REQUESTED = "review_changes_requested"
@@ -51,18 +52,19 @@ LIFECYCLE_PHASE_ORDER: list[LifecyclePhase] = list(LifecyclePhase)
 PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
     {
         LifecyclePhase.DRAFT,
-        LifecyclePhase.INPUT_ASSESSMENT,
-        LifecyclePhase.TRIANGULATION,
-        LifecyclePhase.REQUIREMENTS_REVIEW,
-        LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL,
-        LifecyclePhase.TEST_SPEC_BUILD,
-        LifecyclePhase.TEST_SPEC_REVIEW,
+        LifecyclePhase.PRD_DRAFTING,
+        LifecyclePhase.PRD_HUMAN_APPROVAL,
+        LifecyclePhase.ARCHITECTURE_DRAFTING,
+        LifecyclePhase.ARCHITECTURE_REVIEW,
+        LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL,
+        LifecyclePhase.TEST_SPECS_DRAFTING,
+        LifecyclePhase.TEST_SPECS_REVIEW,
+        LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL,
         LifecyclePhase.PLAN_DRAFTING,
         LifecyclePhase.PLAN_REVIEW,
-        LifecyclePhase.GATE,
-        LifecyclePhase.GROUNDING_CHECK,
-        LifecyclePhase.RE_GROUNDING,
+        LifecyclePhase.PLAN_HUMAN_APPROVAL,
         LifecyclePhase.PREPARED,
+        LifecyclePhase.BLOCKED,
     }
 )
 
