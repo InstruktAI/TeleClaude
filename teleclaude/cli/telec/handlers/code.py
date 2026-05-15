@@ -198,13 +198,18 @@ def _commit_under_lock(
     commit_args.extend(["--", *staged_for_commit])
 
     # Commit via gitpython (uses real binary, bypasses wrapper). The pre-commit
-    # hook runs format and lint inside git's own atomicity.
+    # hook runs format and lint inside git's own atomicity. Surface git's own
+    # output so callers see the commit summary and any hook output.
     repo = Repo(str(project_root))
     try:
-        repo.git.commit(*commit_args)
+        _, stdout, stderr = repo.git.commit(*commit_args, with_extended_output=True)
     except GitCommandError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
+    if stdout:
+        print(stdout)
+    if stderr:
+        print(stderr, file=sys.stderr)
 
 
 def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:

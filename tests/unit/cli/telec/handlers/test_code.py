@@ -149,6 +149,7 @@ class TestCommitWorkspaceScope:
         ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
@@ -175,6 +176,7 @@ class TestCommitWorkspaceScope:
             "--",
             "teleclaude/changed.py",
             "teleclaude/deleted.py",
+            with_extended_output=True,
         )
 
     @pytest.mark.unit
@@ -195,6 +197,7 @@ class TestCommitWorkspaceScope:
         ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
@@ -223,6 +226,7 @@ class TestCommitWorkspaceScope:
             "--",
             "teleclaude/deleted.py",
             "teleclaude/touched.py",
+            with_extended_output=True,
         )
 
     @pytest.mark.unit
@@ -252,6 +256,7 @@ class TestCommitWorkspaceScope:
         ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
