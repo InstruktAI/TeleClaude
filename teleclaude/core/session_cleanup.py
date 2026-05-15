@@ -74,6 +74,15 @@ def _session_tmpdir_path(session_id: str) -> Path:
     return tmux_bridge.get_session_tmpdir_base() / safe_id
 
 
+def _rmtree_ignore_vanished(func: object, path: str, exc: BaseException) -> None:
+    # Node's compile-cache (and similar) may delete files mid-walk; treat
+    # FileNotFoundError as benign so cleanup doesn't strand the session.
+    del func, path
+    if isinstance(exc, FileNotFoundError):
+        return
+    raise exc
+
+
 async def cleanup_session_tmpdir(session_id: str) -> bool:
     """Delete the configured per-session TMPDIR for a closed session."""
     base_dir = tmux_bridge.get_session_tmpdir_base()
@@ -86,7 +95,7 @@ async def cleanup_session_tmpdir(session_id: str) -> bool:
     if not _path_is_under_base(session_tmpdir, base_dir):
         logger.warning("Skipping session TMPDIR outside configured base: %s", session_tmpdir)
         return False
-    await asyncio.to_thread(shutil.rmtree, session_tmpdir)
+    await asyncio.to_thread(shutil.rmtree, session_tmpdir, onexc=_rmtree_ignore_vanished)
     logger.debug("Deleted session TMPDIR for %s", session_id)
     return True
 
@@ -282,33 +291,49 @@ async def _terminate_session_inner(
     if kill_tmux is None:
         kill_tmux = True
 
-    # Headless sessions have no tmux — skip kill to avoid errors.
-    if kill_tmux and session.tmux_session_name:
-        try:
-            killed = await tmux_bridge.kill_session(session.tmux_session_name)
-            if killed:
-                logger.info("Killed tmux session %s", session.tmux_session_name)
-            else:
-                logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
-        except Exception as exc:  # pragma: no cover - defensive
-            logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
-
-    await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
-    await cleanup_session_tmpdir(session.session_id)
-
-    # Expire any pending inbound messages before marking the session closed.
+    # Once tmux is killed, the session is unrecoverable from the user's view.
+    # Best-effort all subsequent cleanup so a single hiccup (e.g. an rmtree race
+    # on a per-session tmpdir) cannot strand the record at lifecycle=closing —
+    # the DB close at the end must always run.
     try:
-        await get_inbound_queue_manager().expire_session(session.session_id)
-    except RuntimeError:
-        pass  # Queue manager not initialized (e.g. tests) — skip
+        # Headless sessions have no tmux — skip kill to avoid errors.
+        if kill_tmux and session.tmux_session_name:
+            try:
+                killed = await tmux_bridge.kill_session(session.tmux_session_name)
+                if killed:
+                    logger.info("Killed tmux session %s", session.tmux_session_name)
+                else:
+                    logger.warning("Failed to kill tmux session %s", session.tmux_session_name)
+            except Exception as exc:  # pragma: no cover - defensive
+                logger.warning("Failed to kill tmux session %s: %s", session.tmux_session_name, exc)
 
-    await _end_escalation_if_active(session)
+        try:
+            await cleanup_session_resources(session, adapter_client, delete_channel=delete_channel)
+        except Exception as exc:
+            logger.error("cleanup_session_resources failed for %s: %s", session.session_id, exc, exc_info=True)
 
-    if delete_db:
-        await db.delete_session(session.session_id)
-        logger.info("Deleted session %s from database", session.session_id)
-    else:
-        if not already_closed:
+        try:
+            await cleanup_session_tmpdir(session.session_id)
+        except Exception as exc:
+            logger.error("cleanup_session_tmpdir failed for %s: %s", session.session_id, exc, exc_info=True)
+
+        # Expire any pending inbound messages before marking the session closed.
+        try:
+            await get_inbound_queue_manager().expire_session(session.session_id)
+        except RuntimeError:
+            pass  # Queue manager not initialized (e.g. tests) — skip
+        except Exception as exc:
+            logger.error("expire_session failed for %s: %s", session.session_id, exc, exc_info=True)
+
+        try:
+            await _end_escalation_if_active(session)
+        except Exception as exc:
+            logger.error("_end_escalation_if_active failed for %s: %s", session.session_id, exc, exc_info=True)
+    finally:
+        if delete_db:
+            await db.delete_session(session.session_id)
+            logger.info("Deleted session %s from database", session.session_id)
+        elif not already_closed:
             await db.close_session(session.session_id)
             logger.info("Closed session %s in database", session.session_id)
     return not already_closed or delete_db

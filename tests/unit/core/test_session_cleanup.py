@@ -62,6 +62,42 @@ class TestTerminateSessionRevokesTokens:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_terminate_closes_db_even_when_tmpdir_cleanup_raises(self) -> None:
+        """Regression: cleanup_session_tmpdir crashing must not strand session at lifecycle=closing.
+
+        Once tmux is killed the session is unrecoverable from the user's view, so the DB
+        close at the end must always run — otherwise the TUI keeps trying to attach to a
+        dead tmux session and the session never emits SESSION_CLOSED.
+        """
+        session = _make_session(session_id="sess-lifecycle")
+        session.closed_at = None
+
+        async def _boom(_session_id: str) -> bool:
+            raise FileNotFoundError("simulated rmtree race on node-compile-cache")
+
+        with (
+            patch("teleclaude.core.session_cleanup.db") as mock_db,
+            patch("teleclaude.core.session_cleanup.invalidate_token_cache"),
+            patch("teleclaude.core.session_cleanup.tmux_bridge") as mock_tmux,
+            patch("teleclaude.core.session_cleanup.cleanup_session_resources", new_callable=AsyncMock),
+            patch(
+                "teleclaude.core.session_cleanup.cleanup_session_tmpdir",
+                new=AsyncMock(side_effect=_boom),
+            ),
+            patch("teleclaude.core.session_cleanup.event_bus"),
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.revoke_session_tokens = AsyncMock()
+            mock_db.update_session = AsyncMock()
+            mock_db.close_session = AsyncMock()
+            mock_tmux.kill_session = AsyncMock(return_value=True)
+
+            await _terminate_session_inner("sess-lifecycle", MagicMock(), reason="test")
+
+        mock_db.close_session.assert_called_once_with("sess-lifecycle")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_terminate_session_removes_tmpdir_after_resource_cleanup(self) -> None:
         session = _make_session(session_id="sess-lifecycle")
         order: list[str] = []
@@ -113,6 +149,43 @@ class TestSessionTmpdirCleanup:
         (session_tmpdir / "teleclaude_identity.json").write_text("{}", encoding="utf-8")
 
         removed = await cleanup_session_tmpdir(session_id)
+
+        assert removed is True
+        assert not session_tmpdir.exists()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_cleanup_session_tmpdir_tolerates_files_vanishing_mid_walk(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Regression: Node's compile-cache deletes files while shutil.rmtree walks.
+
+        The cleanup must treat FileNotFoundError as benign — otherwise the surrounding
+        terminate_session call strands the session at lifecycle=closing.
+        """
+        session_id = str(uuid4())
+        monkeypatch.setenv("TELECLAUDE_SESSION_TMPDIR_BASE", str(tmp_path))
+        session_tmpdir = tmp_path / session_id
+        nested = session_tmpdir / "node-compile-cache" / "v26"
+        nested.mkdir(parents=True)
+        victim = nested / "abc.cache"
+        victim.write_text("x", encoding="utf-8")
+
+        real_rmtree = session_cleanup.shutil.rmtree
+        first_call = {"done": False}
+
+        def _racy_rmtree(path: object, **kwargs: object) -> None:
+            # Simulate a sibling process deleting one file just before rmtree reaches it.
+            if not first_call["done"]:
+                first_call["done"] = True
+                if victim.exists():
+                    victim.unlink()
+            real_rmtree(path, **kwargs)
+
+        with patch.object(session_cleanup.shutil, "rmtree", side_effect=_racy_rmtree):
+            removed = await cleanup_session_tmpdir(session_id)
 
         assert removed is True
         assert not session_tmpdir.exists()
