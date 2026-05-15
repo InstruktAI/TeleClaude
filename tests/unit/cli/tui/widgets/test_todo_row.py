@@ -45,12 +45,12 @@ def test_prepare_phase_label_returns_none_for_unknown_phase() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_input_assessment_maps_to_discovery() -> None:
-    result = lifecycle_phase_label(LifecyclePhase.INPUT_ASSESSMENT.value)
+def test_lifecycle_phase_label_prd_drafting_maps_to_intake() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.PRD_DRAFTING.value)
     assert result is not None
     prefix, value, _ = result
     assert prefix == "P"
-    assert value == "discovery"
+    assert value == "intake"
 
 
 @pytest.mark.unit
@@ -63,17 +63,17 @@ def test_lifecycle_phase_label_draft_maps_to_draft() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_test_spec_phases_map_to_requirements() -> None:
-    for phase in (LifecyclePhase.TEST_SPEC_BUILD, LifecyclePhase.TEST_SPEC_REVIEW):
+def test_lifecycle_phase_label_test_spec_phases_map_to_specs() -> None:
+    for phase in (LifecyclePhase.TEST_SPECS_DRAFTING, LifecyclePhase.TEST_SPECS_REVIEW):
         result = lifecycle_phase_label(phase.value)
         assert result is not None
         _, value, _ = result
-        assert value == "requirements"
+        assert value == "specs"
 
 
 @pytest.mark.unit
 def test_lifecycle_phase_label_planning_phases_map_to_planning() -> None:
-    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW, LifecyclePhase.GATE):
+    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW, LifecyclePhase.PLAN_HUMAN_APPROVAL):
         result = lifecycle_phase_label(phase.value)
         assert result is not None
         _, value, _ = result
@@ -230,7 +230,7 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
         description=None,
         has_requirements=True,
         has_impl_plan=False,
-        lifecycle_phase="input_assessment",
+        lifecycle_phase="prd_drafting",
     )
     integration_item = TodoItem(
         slug="integ-item",

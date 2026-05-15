@@ -38,6 +38,7 @@ def _workspace_resolution(
 class TestCompanionMapping:
     """Session-touched source files are mapped to their test companions."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize(
         "source_path, expected_companion",
         [
@@ -96,6 +97,18 @@ class TestDirectlyTouchedTestFiles:
             touched_files={"tests/unit/test_foo.py"},
         )
         assert targets.count("tests/unit/test_foo.py") == 1
+
+    def test_touched_snapshot_file_not_included_directly(self, tmp_path: Path) -> None:
+        """Snapshot artifacts are test data, not pytest collection targets."""
+        snapshot_file = tmp_path / "tests" / "unit" / "__snapshots__" / "test_foo.ambr"
+        snapshot_file.parent.mkdir(parents=True)
+        snapshot_file.touch()
+
+        targets = resolve_test_targets(
+            project_root=tmp_path,
+            touched_files={"tests/unit/__snapshots__/test_foo.ambr"},
+        )
+        assert targets == []
 
 
 # ---------------------------------------------------------------------------

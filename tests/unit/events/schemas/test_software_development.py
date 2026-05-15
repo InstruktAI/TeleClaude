@@ -37,8 +37,6 @@ _EXPECTED_TYPES = {
     "domain.software-development.prepare.requirements_approved",
     "domain.software-development.prepare.plan_drafted",
     "domain.software-development.prepare.plan_approved",
-    "domain.software-development.prepare.grounding_invalidated",
-    "domain.software-development.prepare.regrounded",
     "domain.software-development.prepare.completed",
     "domain.software-development.prepare.blocked",
     "domain.software-development.prepare.phase_skipped",

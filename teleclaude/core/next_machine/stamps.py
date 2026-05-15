@@ -13,12 +13,15 @@ factory; nothing is threaded through parameters.
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
     WORKTREE_DIR,
@@ -36,8 +39,7 @@ from teleclaude.core.next_machine.state_io import (
     stamp_verdict,
 )
 from teleclaude.core.next_machine.state_mutation import (
-    GroundingManager,
-    PreparePairManager,
+    ApprovalsManager,
     StateMutationError,
     StateWriter,
 )
@@ -45,7 +47,6 @@ from teleclaude.core.todos_db import get_todos_db
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.state_value import StateValue
-from teleclaude.types.todos import PreparePairSlot
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
@@ -53,6 +54,8 @@ if TYPE_CHECKING:
 _ALL_VERDICT_PHASES = (*_PREPARE_VERDICT_PHASES, _BUILD_VERDICT_PHASE)
 
 _READINESS_ARTIFACT_KEY: dict[str, str] = {
+    ARTIFACT_PRD: "prd",
+    ARTIFACT_ARCHITECTURE: "architecture",
     ARTIFACT_REQUIREMENTS: "requirements",
     ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
     ARTIFACT_TEST_SPECS: "test_specs",
@@ -93,9 +96,7 @@ async def apply_todo_stamp(
 
     writer = StateWriter(raw_state)
 
-    if stamp_type == "grounding":
-        _apply_grounding_stamp(writer, value)
-    elif stamp_type == "deferrals_processed":
+    if stamp_type == "deferrals_processed":
         writer.state.deferrals_processed = True
     elif stamp_type in _CREATIVE_GATE_STAMPS:
         section, flag = _CREATIVE_GATE_STAMPS[stamp_type]
@@ -106,8 +107,26 @@ async def apply_todo_stamp(
         await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_ready")
     elif stamp_type == "specs_built":
         await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_TEST_SPECS, "specs_built")
-    elif stamp_type == "prepare_pair":
-        await _apply_prepare_pair_stamp(writer, value)
+    elif stamp_type == "prd_approved":
+        await _apply_approval_stamp(todos_db, writer, slug, ARTIFACT_PRD, "prd_approved", caller_session_id)
+    elif stamp_type == "architecture_approved":
+        await _apply_approval_stamp(
+            todos_db, writer, slug, ARTIFACT_ARCHITECTURE, "architecture_approved", caller_session_id
+        )
+    elif stamp_type == "test_specs_approved":
+        await _apply_approval_stamp(
+            todos_db, writer, slug, ARTIFACT_TEST_SPECS, "test_specs_approved", caller_session_id
+        )
+    elif stamp_type == "plan_approved":
+        await _apply_approval_stamp(
+            todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_approved", caller_session_id
+        )
+    elif stamp_type == "architecture_skipped":
+        ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
+    elif stamp_type == "test_specs_skipped":
+        ApprovalsManager(writer).skip("test_specs_skipped", reason=value, caller_session_id=caller_session_id or "")
+    elif stamp_type == "drift_reviewed":
+        _apply_drift_reviewed_stamp(writer, value, caller_session_id=caller_session_id or "")
     elif stamp_type == "build_complete":
         await _apply_build_complete_stamp(
             writer,
@@ -162,12 +181,18 @@ async def _apply_readiness_stamp(
                 }
 
 
-def _apply_grounding_stamp(writer: StateWriter, value: str) -> None:
-    grounding_manager = GroundingManager(writer)
-    if value == "valid":
-        grounding_manager.clear_invalidation()
-    else:
-        grounding_manager.invalidate(reason="stamped_invalid", changed_paths=[])
+async def _apply_approval_stamp(
+    todos_db: TodosDb,
+    writer: StateWriter,
+    slug: str,
+    artifact_name: str,
+    field_name: str,
+    caller_session_id: str | None,
+) -> None:
+    if not await todos_db.artifact_exists(slug, artifact_name):
+        raise StateMutationError(f"cannot stamp {field_name}: {artifact_name} artifact missing")
+    await _apply_readiness_stamp(todos_db, writer, slug, artifact_name, field_name)
+    ApprovalsManager(writer).approve(field_name, caller_session_id=caller_session_id or "")
 
 
 def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) -> None:
@@ -182,30 +207,24 @@ def _apply_creative_gate_stamp(writer: StateWriter, *, section: str, flag: str) 
     creative[section] = section_state
 
 
-async def _apply_prepare_pair_stamp(writer: StateWriter, value: str) -> None:
-    """Record the orchestrator's claimed pair slot IDs.
-
-    Slot validation (session liveness, ``active_agent``, ``native_session_id``)
-    runs in the prepare state machine on its next dispatch entry. If a slot
-    fails validation there, the machine emits a fix-relay script for the
-    orchestrator instead of writing garbage canonical pair fields.
-    """
-    sid_a, sid_b = _parse_prepare_pair_value(value)
-    if not sid_a or not sid_b:
-        raise StateMutationError(f"prepare_pair stamp requires both slot_a and slot_b: got {value!r}")
-
-    PreparePairManager(writer).set_pair(
-        slot_a=PreparePairSlot(lens="A", session_id=sid_a, native_session_id="", agent=""),
-        slot_b=PreparePairSlot(lens="B", session_id=sid_b, native_session_id="", agent=""),
+def _apply_drift_reviewed_stamp(writer: StateWriter, value: str, *, caller_session_id: str) -> None:
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise StateMutationError(f"drift_reviewed value must be JSON: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise StateMutationError("drift_reviewed value must be a JSON object")
+    artifact = payload.get("artifact")
+    verdict = payload.get("verdict")
+    reason = payload.get("reason", "")
+    if not isinstance(artifact, str) or not isinstance(verdict, str) or not isinstance(reason, str):
+        raise StateMutationError("drift_reviewed requires string artifact, verdict, and reason fields")
+    ApprovalsManager(writer).drift_reviewed(
+        artifact=artifact,
+        verdict=verdict,
+        reason=reason,
+        caller_session_id=caller_session_id,
     )
-
-
-def _parse_prepare_pair_value(value: str) -> tuple[str, str]:
-    parts: dict[str, str] = {}
-    for chunk in value.split(","):
-        key, _, raw_value = chunk.partition(":")
-        parts[key.strip()] = raw_value.strip()
-    return parts.get("slot_a", ""), parts.get("slot_b", "")
 
 
 async def _apply_build_complete_stamp(

@@ -236,26 +236,6 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
-            event_type="domain.software-development.prepare.grounding_invalidated",
-            description="Preparation artifacts invalidated due to drift",
-            default_level=EventLevel.OPERATIONAL,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(
-                updates=True, group_key="slug", meaningful_fields=["reason", "changed_paths"]
-            ),
-        )
-    )
-    catalog.register(
-        EventSchema(
-            event_type="domain.software-development.prepare.regrounded",
-            description="Preparation artifacts updated against current truth",
-            default_level=EventLevel.WORKFLOW,
-            domain="software-development",
-            lifecycle=NotificationLifecycle(updates=True, group_key="slug", meaningful_fields=["slug"]),
-        )
-    )
-    catalog.register(
-        EventSchema(
             event_type="domain.software-development.prepare.completed",
             description="Preparation complete, todo ready for build",
             default_level=EventLevel.WORKFLOW,

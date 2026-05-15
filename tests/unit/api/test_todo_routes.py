@@ -24,9 +24,12 @@ from teleclaude.core.todos_db import TodosDb
 class _ArtifactSnapshot(TypedDict, total=False):
     digest: str
     produced_at: str
+    codebase_sha_at_write: str
+    referenced_paths: list[str]
 
 
 class _ArtifactsSnapshot(TypedDict, total=False):
+    prd: _ArtifactSnapshot
     requirements: _ArtifactSnapshot
 
 
@@ -216,7 +219,7 @@ class TestTodoRoutes:
         await database.initialize()
         try:
             await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+            await database.write_state("my-slug", {"lifecycle_phase": "prd_drafting"})
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.write_artifact(
                     slug="my-slug",
@@ -230,7 +233,7 @@ class TestTodoRoutes:
             assert response.status == "ok"
             assert state is not None
             snapshot = cast(_TodoStateSnapshot, state)
-            assert snapshot["lifecycle_phase"] == "input_assessment"
+            assert snapshot["lifecycle_phase"] == "prd_drafting"
             requirements = _requirements_artifact(snapshot)
             assert requirements.get("digest", "")
             assert requirements.get("produced_at", "") == ""
@@ -245,7 +248,7 @@ class TestTodoRoutes:
         await database.initialize()
         try:
             await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"lifecycle_phase": "input_assessment"})
+            await database.write_state("my-slug", {"lifecycle_phase": "prd_drafting"})
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.write_artifact(
                     slug="my-slug",
@@ -266,6 +269,36 @@ class TestTodoRoutes:
                 conn.close()
             assert row is not None
             assert row[0] == "api.todo.write_artifact"
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_artifact_records_codebase_provenance_in_state(self, tmp_path: Path) -> None:
+        """Route-level artifact writes sync codebase provenance into the typed state entry."""
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap("my-slug")
+            await database.write_state("my-slug", {"schema_version": 3, "lifecycle_phase": "prd_drafting"})
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.write_artifact(
+                    slug="my-slug",
+                    name="prd",
+                    content="touches src/app.py",
+                    cwd="/repo",
+                    updated_by="tester",
+                    codebase_sha_at_write="head-sha",
+                    referenced_paths=["src/app.py"],
+                )
+
+            state = await database.read_state("my-slug")
+            assert response.status == "ok"
+            assert state is not None
+            artifacts = cast(_TodoStateSnapshot, state)["artifacts"]
+            prd = artifacts["prd"]
+            assert prd["codebase_sha_at_write"] == "head-sha"
+            assert prd["referenced_paths"] == ["src/app.py"]
         finally:
             await database.close()
 

@@ -11,7 +11,7 @@ type: 'design'
 > **Detailed state machine documentation:**
 >
 > - [Lifecycle State Machines — Overview](lifecycle-state-machines.md) — end-to-end flow, roles, how the three phases connect
-> - [Prepare State Machine (Phase A)](prepare-state-machine.md) — 10 states, sequential artifact production with review gates
+> - [Prepare Flow (Phase A)](prepare-flow.md) — PRD → Architecture → Test specs → Plan with review and human approval gates
 > - [Work State Machine (Phase B)](work-state-machine.md) — build/review/fix/finalize routing
 > - [Integration State Machine (Phase C)](integration-state-machine.md) — 12 states, lease-serialized merge-to-main delivery
 

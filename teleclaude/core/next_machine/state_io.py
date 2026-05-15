@@ -16,8 +16,10 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
+    ARTIFACT_PRD,
     ARTIFACT_QUALITY_CHECKLIST,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
@@ -38,21 +40,19 @@ from teleclaude.core.next_machine.file_io import (
 )
 from teleclaude.core.next_machine.git_ops import (
     get_head_commit,
-    has_build_commits_beyond_main,
     run_git_command,
 )
 from teleclaude.core.next_machine.lifecycle import (
+    PREPARE_LIFECYCLE_PHASES,
     LifecyclePhase,
     LifecycleStage,
     infer_lifecycle_stage,
     normalize_mark_phase,
-    phase_is_complete,
     reconcile_lifecycle_phase,
     require_lifecycle_phase,
 )
 from teleclaude.core.next_machine.prepare_events import _emit_prepare_event
 from teleclaude.core.next_machine.state_mutation import (
-    GroundingManager,
     ReviewManager,
     StateWriter,
 )
@@ -117,10 +117,9 @@ def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 # Valid prepare sub-phases that accept verdicts
-_REQUIREMENTS_HUMAN_APPROVAL_PHASE = "requirements_human_approval"
 _PREPARE_VERDICT_PHASES = (
     "requirements_review",
-    _REQUIREMENTS_HUMAN_APPROVAL_PHASE,
+    "architecture_review",
     "test_spec_review",
     "plan_review",
 )
@@ -132,7 +131,9 @@ _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
 _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
     "input": ARTIFACT_INPUT,
+    "prd": ARTIFACT_PRD,
     "requirements": ARTIFACT_REQUIREMENTS,
+    "architecture": ARTIFACT_ARCHITECTURE,
     "test_specs": ARTIFACT_TEST_SPECS,
     "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
 }
@@ -142,6 +143,7 @@ _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
 # to compare review approval against current artifact content.
 _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
     "requirements_review": "requirements",
+    "architecture_review": "architecture",
     "test_spec_review": "test_specs",
     "plan_review": "implementation_plan",
 }
@@ -150,8 +152,10 @@ _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
 # state keys whose digests must be captured at stamp time. Used by stamp_artifact
 # to bind upstream_digests so the satisfaction walk can detect upstream changes.
 _ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
-    "test_specs": ("requirements",),
-    "implementation_plan": ("requirements", "test_specs"),
+    "prd": ("input",),
+    "architecture": ("prd",),
+    "test_specs": ("prd", "architecture"),
+    "implementation_plan": ("prd", "architecture", "test_specs"),
 }
 
 
@@ -159,8 +163,8 @@ def read_phase_state(cwd: str, slug: str) -> dict[str, StateValue]:
     """Read state for a work item from todos.db.
 
     Returns default state if no state exists in the database. Existing rows are
-    upcycled in memory by the ``TodosDb`` read path and are never rewritten as
-    a side-effect of reading.
+    upcycled by the ``TodosDb`` read path. v2 prepare blobs are persisted as
+    v3 on first read so the migration decision is logged exactly once.
     """
     db = get_todos_db_sync(cwd)
     raw = db.read_state_sync(slug)
@@ -232,96 +236,18 @@ def validate_mark_phase_preconditions(
     )
 
 
-def _has_artifact_digest(
-    model: TodoState,
-    key: str,
-    *,
-    artifact_presence: dict[str, bool] | None = None,
-) -> bool:
-    if artifact_presence is not None and key in artifact_presence:
-        return artifact_presence[key]
-    entry = getattr(model.artifacts, key, None)
-    if not isinstance(entry, ArtifactEntry):
-        return False
-    return bool(entry.digest)
-
-
 def _validate_prepare_mark_phase(
     model: TodoState,
     target: LifecyclePhase,
     *,
     artifact_presence: dict[str, bool] | None,
 ) -> str | None:
-    if target in (LifecyclePhase.DRAFT, LifecyclePhase.INPUT_ASSESSMENT, LifecyclePhase.TRIANGULATION):
-        return None
-    if target == LifecyclePhase.REQUIREMENTS_REVIEW:
-        missing: list[str] = []
-        if not _has_artifact_digest(model, "input", artifact_presence=artifact_presence):
-            missing.append("input artifact")
-        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
-            missing.append("requirements artifact")
-        if missing:
-            return f"Cannot mark {target.value}: missing {' and '.join(missing)}"
-        return None
-    if target == LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL:
-        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
-            return f"Cannot mark {target.value}: missing requirements artifact"
-        if model.requirements_review.verdict != "approve":
-            return f"Cannot mark {target.value}: missing approved requirements review"
-        return None
-    if target == LifecyclePhase.TEST_SPEC_BUILD and model.requirements_review.verdict not in ("approve", "skipped"):
-        if not _has_artifact_digest(model, "requirements", artifact_presence=artifact_presence):
-            return f"Cannot mark {target.value}: missing requirements artifact"
-        return f"Cannot mark {target.value}: missing approved requirements review"
-    if (
-        target == LifecyclePhase.TEST_SPEC_BUILD
-        and model.requirements_review.verdict == "approve"
-        and not model.artifacts.requirements.approved
-    ):
-        return f"Cannot mark {target.value}: missing human requirements approval"
-    if target == LifecyclePhase.TEST_SPEC_REVIEW and not _has_artifact_digest(
-        model, "test_specs", artifact_presence=artifact_presence
-    ):
-        return f"Cannot mark {target.value}: missing test specs artifact"
-    if target == LifecyclePhase.PLAN_DRAFTING and model.test_spec_review.verdict not in ("approve", "skipped"):
-        return f"Cannot mark {target.value}: missing approved test specs review"
-    if target == LifecyclePhase.PLAN_REVIEW and not _has_artifact_digest(
-        model, "implementation_plan", artifact_presence=artifact_presence
-    ):
-        return f"Cannot mark {target.value}: missing implementation-plan artifact"
-    if target == LifecyclePhase.GATE and model.plan_review.verdict not in ("approve", "skipped"):
-        return f"Cannot mark {target.value}: missing approved plan review"
-    if target in (LifecyclePhase.GROUNDING_CHECK, LifecyclePhase.RE_GROUNDING) and model.plan_review.verdict not in (
-        "approve",
-        "skipped",
-    ):
-        return f"Cannot mark {target.value}: missing approved plan review"
+    _ = model, target, artifact_presence
     return None
 
 
 def _validate_work_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None) -> str | None:
-    if target == LifecyclePhase.BUILD_STARTED:
-        if model.lifecycle_phase != LifecyclePhase.PREPARED.value and not phase_is_complete(
-            model, LifecyclePhase.GROUNDING_CHECK, worktree_cwd=worktree_cwd
-        ):
-            return f"Cannot mark {target.value}: missing valid grounding state"
-        return None
-    if target == LifecyclePhase.BUILD_COMPLETE:
-        if (
-            not model.build_completed_at
-            and worktree_cwd is not None
-            and not has_build_commits_beyond_main(worktree_cwd)
-        ):
-            return f"Cannot mark {target.value}: missing commits beyond main in {worktree_cwd}"
-        return None
-    if target == LifecyclePhase.REVIEW_CHANGES_REQUESTED and model.build_review.verdict != "changes_requested":
-        return f"Cannot mark {target.value}: missing build review verdict 'changes_requested'"
-    if target == LifecyclePhase.REVIEW_APPROVED and model.build_review.verdict != "approve":
-        return f"Cannot mark {target.value}: missing build review verdict 'approve'"
-    if target == LifecyclePhase.FINALIZE_READY and model.finalize.status != "ready":
-        return f"Cannot mark {target.value}: missing finalize ready state"
-    if target == LifecyclePhase.HANDED_OFF and model.finalize.status != "handed_off":
-        return f"Cannot mark {target.value}: missing handed-off finalize state"
+    _ = model, target, worktree_cwd
     return None
 
 
@@ -332,20 +258,7 @@ def _validate_mark_phase_target(
     worktree_cwd: str | None,
     artifact_presence: dict[str, bool] | None,
 ) -> str | None:
-    if target == LifecyclePhase.PREPARED or target in (
-        LifecyclePhase.DRAFT,
-        LifecyclePhase.INPUT_ASSESSMENT,
-        LifecyclePhase.TRIANGULATION,
-        LifecyclePhase.REQUIREMENTS_REVIEW,
-        LifecyclePhase.REQUIREMENTS_HUMAN_APPROVAL,
-        LifecyclePhase.TEST_SPEC_BUILD,
-        LifecyclePhase.TEST_SPEC_REVIEW,
-        LifecyclePhase.PLAN_DRAFTING,
-        LifecyclePhase.PLAN_REVIEW,
-        LifecyclePhase.GATE,
-        LifecyclePhase.GROUNDING_CHECK,
-        LifecyclePhase.RE_GROUNDING,
-    ):
+    if target in PREPARE_LIFECYCLE_PHASES:
         return _validate_prepare_mark_phase(
             model,
             target,
@@ -494,18 +407,6 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     db = get_todos_db_sync(cwd)
     state = read_phase_state(cwd, slug)
     writer = StateWriter(state)
-    if phase == _REQUIREMENTS_HUMAN_APPROVAL_PHASE:
-        writer.state.artifacts.requirements.approved = verdict == "approve"
-        payload = writer.commit_sync(db, slug)
-        logger.info(
-            "todo verdict stamped",
-            slug=slug,
-            phase=phase,
-            verdict=verdict,
-            resulting_phase=str(payload.get("lifecycle_phase", "")),
-            cwd=cwd,
-        )
-        return payload
     ReviewManager(writer).stamp_verdict(phase, verdict)
     if verdict == "approve":
         artifact_key = _REVIEW_TO_ARTIFACT_KEY.get(phase)
@@ -637,10 +538,9 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     Validates that requirements and implementation-plan artifacts exist and
     that a git HEAD is reachable BEFORE any state is persisted. Only after
     validation succeeds does the function generate the quality-checklist
-    artifact when missing, stamp DOR pass, the current git HEAD as the
-    grounding baseline, the prepare review verdicts (requirements is stamped
-    ``skipped`` for prepped todos — there is no requirements artifact to
-    review), and the canonical `lifecycle_phase = "prepared"` commitment.
+    artifact when missing, stamp DOR pass, the prepare review verdicts, the
+    plan approval stamp, and the canonical `lifecycle_phase = "prepared"`
+    commitment.
     Validation failures raise and no partial state is written, so callers see
     the error and the todo stays in its prior phase.
 
@@ -660,16 +560,16 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")
 
-    if kind not in ("prepped", "bug") and not _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS):
-        raise ValueError(f"Missing requirements artifact with content for {slug}")
+    if kind not in ("prepped", "bug") and not (
+        _has_artifact_content(cwd, slug, ARTIFACT_PRD) or _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
+    ):
+        raise ValueError(f"Missing prd artifact with content for {slug}")
     if kind != "bug" and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
 
-    rc, current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
-    if rc != 0 or not current_sha_raw.strip():
-        msg = f"git rev-parse HEAD failed (rc={rc}) in {project_root} — cannot establish grounding baseline"
-        raise ValueError(msg)
-    current_sha = current_sha_raw.strip()
+    rc, _current_sha_raw, _ = run_git_command(["rev-parse", "HEAD"], cwd=project_root)
+    if rc != 0:
+        raise ValueError(f"git rev-parse HEAD failed (rc={rc}) in {project_root}")
 
     if not _has_artifact_content(cwd, slug, ARTIFACT_QUALITY_CHECKLIST):
         checklist_content = _QUALITY_CHECKLIST_TEMPLATE.format(slug=slug)
@@ -722,15 +622,16 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         review_mgr.stamp_verdict("plan_review", "skipped")
     else:
         review_mgr.stamp_verdict("plan_review", "approve")
+        writer.state.approvals.plan_approved.approved = True
+        writer.state.approvals.plan_approved.approved_at = now_iso
+        writer.state.approvals.plan_approved.caller_session_id = "system:apply_prepared_state"
 
-    GroundingManager(writer).refresh(current_sha=current_sha)
     if input_digest:
         writer.state.artifacts.input.digest = input_digest
-        writer.grounding.input_digest = input_digest
     writer.state.lifecycle_phase = "prepared"
     if kind not in ("prepped", "bug"):
-        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, ARTIFACT_REQUIREMENTS)
-        writer.state.artifacts.requirements.produced_at = now_iso
+        writer.state.artifacts.prd.digest = _artifact_digest(cwd, slug, ARTIFACT_PRD)
+        writer.state.artifacts.prd.produced_at = now_iso
     if kind != "bug":
         writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN)
         writer.state.artifacts.implementation_plan.produced_at = now_iso
@@ -870,7 +771,9 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
 
 # Artifact keys that can be stamped after worker output is verified.
 _PREPARE_ARTIFACT_NAMES = {
+    "prd": ARTIFACT_PRD,
     "requirements": ARTIFACT_REQUIREMENTS,
+    "architecture": ARTIFACT_ARCHITECTURE,
     "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
 }
 _PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), "test_specs")

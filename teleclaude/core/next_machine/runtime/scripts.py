@@ -39,34 +39,10 @@ def format_reviewer_direct_fix_message(
 
 
 def format_pair_missing_error(slug: str, phase_label: str) -> str:
-    """BLOCKED script when no prepare pair can be resolved or recovered.
-
-    Per docs/global/software-development/procedure/lifecycle/prepare/overview.md,
-    the prepare pair is persistent across the entire prepare lifecycle. After
-    formation in INPUT_ASSESSMENT, every subsequent phase operates on the same
-    two sessions. If pair_slots is unset AND no live discovery sessions exist
-    for the slug, the system is in an unrecoverable state. Surface with an
-    actionable recovery path instead of fresh-spawning ghost workers.
-    """
+    """Compatibility BLOCKED script for obsolete callers."""
     return (
-        f"BLOCKED: {slug} {phase_label} cannot proceed — the prepare pair is not "
-        f"registered in todo state and auto-recovery from live sessions failed.\n\n"
-        f"The persistent-pair contract requires both worker A and worker B to "
-        f"be registered. Telec todo prepare cannot re-enter formation from this "
-        f"phase — the lifecycle_phase field already advanced past INPUT_ASSESSMENT.\n\n"
-        f"Operator recovery required. Inspect live sessions:\n"
-        f"  telec sessions list\n\n"
-        f"If two worker sessions for this slug exist (one for each lens, "
-        f"both subdir=trees/{slug}), re-stamp them atomically using the "
-        f"session IDs in lens order:\n"
-        f"  telec todo stamp {slug} --agent-a <slot_a_session_id> --agent-b <slot_b_session_id>\n\n"
-        f"(Slot agents are configurable via TELECLAUDE_PREPARE_PAIR_A_AGENT and "
-        f"TELECLAUDE_PREPARE_PAIR_B_AGENT; default mapping is A=claude, B=codex.)\n\n"
-        f"If sessions are missing, rewind the todo to allow re-formation:\n"
-        f"  telec todo mark-phase {slug} --phase input_assessment\n"
-        f"  telec todo prepare {slug}\n\n"
-        f"The state machine will not advance and will not spawn new workers "
-        f"until the pair is registered. Any live worker sessions are preserved."
+        f"BLOCKED: {slug} {phase_label} cannot proceed because an obsolete prepare orchestration path was called.\n\n"
+        f"Re-enter the v2 prepare state machine:\n  telec todo prepare {slug}"
     )
 
 

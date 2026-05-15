@@ -99,6 +99,7 @@ class LifecycleRouterCartridge:
                 "project_path": project_path,
                 "args": slug,
                 "detach": True,
+                "additional_context": "human_in_loop: false\n",
             }
         else:
             if kind is not None:
@@ -113,6 +114,7 @@ class LifecycleRouterCartridge:
                 "project_path": project_path,
                 "args": slug,
                 "detach": True,
+                "additional_context": "human_in_loop: false\n",
             }
 
         api = TelecAPIClient()

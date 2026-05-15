@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase overview. Pair-based discovery, turn-based artifact production, human approval, and grounding.'
+description: 'Prepare phase overview. PRD intake, optional architecture, prose test specs, implementation planning, and human approval gates.'
 id: 'software-development/procedure/lifecycle/prepare'
 scope: 'domain'
 type: 'procedure'
@@ -9,93 +9,76 @@ type: 'procedure'
 
 ## Goal
 
-Produce reviewed, human-approved, and grounded preparation artifacts for a todo
-through a persistent pair of workers who explore the problem together and then
-produce artifacts in turns.
+Produce reviewed, approved preparation artifacts for a todo without creating a
+worktree or writing source code. Prepare v2 is a staged chain:
 
-The prepare state machine (`telec todo prepare`) owns sequencing. The orchestrator
-calls it in a loop and dispatches what is requested. The detailed orchestrator
-procedure is in `prepare/overview.md`.
+1. PRD intake.
+2. Architecture, unless explicitly skipped.
+3. Prose test specs, unless explicitly skipped.
+4. Implementation plan.
+
+The prepare state machine (`telec todo prepare`) owns sequencing. The
+orchestrator calls it in a loop and dispatches the phase command it returns.
 
 ## Preconditions
 
 - `todos.db` roadmap exists and is readable.
 - Target slug is active (not icebox, not delivered).
+- If auto-spawned from `telec todo dump`, the session may include
+  `additional_context` with `human_in_loop: false`.
 
 ## Steps
 
-### 1. Human handoff
+### 1. Intake
 
-The human provides a work package — a brain dump, existing requirements, or any
-starting state. The human may also edit preparation artifacts directly at any
-time and hand the todo back to the machine with `telec todo reconcile {slug}`.
+The intake worker loads the intake procedure, interviews the Product Owner role
+(the human by default; `/next-emulate-po` in standin mode), and writes the
+`prd` artifact. A real human must approve the PRD before downstream prepare
+phases proceed.
 
-### 2. Discovery (pair-based)
+### 2. Architecture
 
-Both workers are dispatched with the same work package. Each independently
-reads and grounds itself (intake). After both complete intake, the orchestrator
-links them via direct conversation. They explore the problem together — no
-roles assigned. They surface hidden assumptions, check against codebase
-reality, resolve unknowns, and converge on understanding.
+For non-trivial work, the architecture worker grounds the approved PRD in the
+codebase and writes the `architecture` artifact. Small work may stamp
+`architecture_skipped` with a reason.
 
-### 3. Requirements (turn-based)
+### 3. Test Specs
 
-`A` writes `requirements.md` — recording what the pair discussed. `B` reviews:
-did the writer capture everything? Fix-forward if gaps are found.
+The spec worker writes a prose `test-specs` artifact from the approved PRD and
+optional architecture. This artifact is language-agnostic; executable tests are
+created later in the build phase.
 
-### 4. Human approval
+### 4. Plan
 
-The human reviews requirements. The human may talk directly to the pair to
-refine. Both workers see the human's input via the direct link. Fix-forward
-only — no going back to discovery. When satisfied, the orchestrator stamps
-approval.
+The plan worker writes `implementation-plan` from the approved PRD, optional
+architecture, and optional test-specs. If the work is not atomic, the worker
+splits it instead of forcing an oversized plan.
 
-### 5. Test specs (turn-based)
+### 5. Approval Gates
 
-`A` writes expected-failure-marked test specifications. `B` reviews.
-Specs stay close to approved requirements while context is hot.
+The state machine advances only from persisted evidence:
 
-### 6. Implementation plan (turn-based)
+- `prd_approved`
+- `architecture_approved` or `architecture_skipped`
+- `test_specs_approved` or `test_specs_skipped`
+- `plan_approved`
 
-`B` writes the implementation plan. `A` reviews.
-The plan is derived from both requirements and test specs.
+### 6. Drift
 
-### 7. Grounding check (mechanical)
-
-The machine verifies referenced file freshness. If stale, the plan writer
-updates and the reviewer re-reviews. If fresh: PREPARED.
-
-### 8. Split inheritance
-
-When a todo is split via `telec todo split`, children inherit the parent's
-highest approved prepare phase and artifacts. Skipped phases are recorded in
-audit with `reason: "inherited_from_parent"`.
+Grounding is derived, not stamped. When drift is detected, the drift reviewer
+records `drift_reviewed` for the affected artifact. Cosmetic drift may proceed;
+substantive drift blocks until the affected upstream artifact is reworked.
 
 ## Outputs
 
-- `requirements.md` — pair-discovered, human-approved.
-- Test specification files (expected-failure-marked).
-- `implementation-plan.md` — review-aware, rationale-rich.
-- Grounding metadata in `todos.db` state.
-- Events emitted at each phase transition.
-
-### Events
-
-| Phase transition            | Event                           |
-| --------------------------- | ------------------------------- |
-| Discovery dispatched        | `prepare.discovery_started`     |
-| Requirements written        | `prepare.requirements_drafted`  |
-| Requirements human-approved | `prepare.requirements_approved` |
-| Test specs written          | `prepare.test_specs_drafted`    |
-| Test specs reviewed         | `prepare.test_specs_approved`   |
-| Plan written                | `prepare.plan_drafted`          |
-| Plan reviewed               | `prepare.plan_approved`         |
-| Grounding invalidated       | `prepare.grounding_invalidated` |
-| Re-grounding completed      | `prepare.regrounded`            |
-| Preparation complete        | `prepare.completed`             |
-| Preparation blocked         | `prepare.blocked`               |
+- `prd`
+- `architecture` or `architecture_skipped`
+- `test-specs` or `test_specs_skipped`
+- `implementation-plan`
+- Approval, skip, and drift review stamps in todo state
 
 ## Recovery
 
 - If any phase blocks, the state machine records the blocker and stops.
-- Fix-forward only — preserve what has been done, correct from current state.
+- Fix-forward only: preserve valid artifacts, clear downstream approvals when
+  an upstream artifact is refined, and re-enter with `telec todo prepare`.

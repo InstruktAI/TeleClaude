@@ -2,7 +2,7 @@
 id: 'software-development/policy/preparation-artifact-quality'
 type: 'policy'
 scope: 'domain'
-description: 'Quality rules for preparation artifacts (requirements and plans). Shared by creators and reviewers.'
+description: 'Quality rules for preparation artifacts (PRD, architecture, test specs, and plans). Shared by creators and reviewers.'
 ---
 
 # Preparation Artifact Quality — Policy
@@ -11,9 +11,9 @@ description: 'Quality rules for preparation artifacts (requirements and plans). 
 
 ### Quoting upstream intent
 
-Every downstream artifact must carry the upstream requirement text verbatim.
-Plans quote the requirement section(s) that each task delivers. Test specs
-include the requirement criteria they pin, quoted from `requirements.md`.
+Every downstream artifact must carry upstream intent verbatim. Architecture,
+test specs, and plans quote the PRD section(s) they derive from. Plans also
+quote architecture constraints and test-spec cases they deliver.
 Reviews quote the criteria under analysis before analyzing them.
 
 An artifact that paraphrases or summarizes upstream intent without preserving
@@ -39,7 +39,7 @@ review-awareness cannot be evaluated without them.
 
 ### Grounding
 
-Requirements and plans reference codebase patterns, existing APIs, or
+PRD, architecture, test specs, and plans reference codebase patterns, existing APIs, or
 documented conventions — not invented abstractions.
 
 - If the codebase has an established way to do X, the artifact says "using
@@ -50,35 +50,52 @@ documented conventions — not invented abstractions.
 - Artifacts that prescribe approaches contradicting codebase patterns or
   documented specs are defective.
 
-### No implementation leakage in requirements
+### PRD quality
 
-Requirements state what and why, never how. Plans state how. The boundary
-is clear: requirements constrain the solution space; plans fill it.
+The PRD states what and why, never how. Architecture and plans state how. The
+boundary is clear: PRD constrains the solution space; downstream artifacts fill it.
 
-Concrete signals of leakage in requirements — each is a defect:
+Concrete signals of leakage in PRD — each is a defect:
 
 - Enumerating specific directory paths, file names, or file locations.
 - Naming specific config field names, YAML keys, or database columns.
 - Prescribing specific function signatures, class names, or module structure.
 - Specifying counts, minimums, or thresholds that aren't user-facing.
-- Listing specific taxonomy types, schema fields, or internal identifiers
-  when the requirement could instead reference the governing spec.
+- Listing specific taxonomy types, schema fields, or internal identifiers when
+  the PRD could instead reference the governing spec.
 
-The discriminator: could the builder satisfy the requirement using a different
-implementation approach? If the requirement forecloses valid alternatives
+The discriminator: could the builder satisfy the PRD criterion using a different
+implementation approach? If the PRD forecloses valid alternatives
 without justification, it's leakage.
 
-Exception: constraints that narrow the solution space are requirements, not
+Exception: constraints that narrow the solution space are PRD content, not
 leakage. "Must conform to the snippet authoring schema" constrains. "Place
 files under `docs/project/design/`" prescribes.
 
+### Architecture artifact quality
+
+Architecture bridges PRD intent to code reality. It must be technical enough to
+guide specs and plan tasks, but it must not smuggle in product scope that the PRD
+does not contain.
+
+Quality rules:
+
+- Quotes the PRD sections it derives from.
+- Names affected services, modules, events, surfaces, and state ownership when
+  they apply; marks non-applicable sections as N/A rather than omitting them.
+- Grounds claims in existing codebase patterns and loaded domain specs.
+- Names architectural defaults followed or intentionally diverged from, with
+  reason.
+- Records open architectural questions explicitly instead of hiding them in
+  implementation-plan tasks.
+
 ### DoD-driven review-awareness
 
-Requirements and plans must anticipate what the code reviewer will check.
+PRD, architecture, test specs, and plans must anticipate what the code reviewer will check.
 This is an evidence-producing rule, not a mental check.
 
-For each requirement, produce a **DoD-implications block** naming the DoD
-gates triggered and the concrete evidence artifact for each. "Requirement
+For each PRD criterion, produce a **DoD-implications block** naming the DoD
+gates triggered and the concrete evidence artifact for each. "PRD criterion
 implies tests" is not compliance; "Test X at file Y, line Z pins behavior W"
 is compliance. An agent satisfies this rule by producing the block; an agent
 who "considered" DoD mentally has not satisfied it.
@@ -93,24 +110,25 @@ Evidence must be specific:
 - Documentation changes → name the doc file and the section updated.
 - User-visible behavior → name the observable outcome and where it is verified.
 
-A requirement without a concrete evidence statement per triggered gate is
+A PRD criterion without a concrete evidence statement per triggered gate is
 incomplete. A plan task without a named deliverable per triggered gate is
 incomplete.
 
 ### Test specification quality
 
-Test specifications delivered during the prepare phase define the behavioral
-contract the builder must satisfy. Quality rules:
+Test specifications delivered during the prepare phase are prose behavioral
+contracts. They do not create source files or executable tests during prepare.
+Quality rules:
 
 - **Behavioral focus**: test specs encode observable behavior (inputs, outputs,
   side effects), not implementation structure. A test that asserts a specific
   internal function call is implementation leakage.
-- **No implementation leakage in test structure**: test organization (file names,
-  class names, helper functions) must not prescribe internal architecture. Test
-  what the code does, not how it is structured.
-- **Expected-failure convention**: all spec-delivered tests must be marked with
-  the project's expected-failure convention so they fail cleanly before
-  implementation. The builder removes the marker as the first action per task.
+- **No source code**: specs may name existing test surfaces or expected
+  assertions, but must not include executable test code, helper function bodies,
+  or expected-failure markers. The builder writes or updates tests during work.
+- **No implementation leakage in test structure**: test organization, helper
+  names, and fixture details must not prescribe internal architecture. Test what
+  the code does, not how it is structured.
 - **Grounding against existing test patterns**: new test specs must follow the
   existing test conventions in the codebase (naming, fixtures, assertion style).
   A test spec that introduces a novel testing pattern without justification is
@@ -120,19 +138,20 @@ contract the builder must satisfy. Quality rules:
 
 Plans must provide enough detail for a builder to execute without guessing:
 
-- **Every task begins with a verbatim quote of the requirement criteria it
-  delivers**, sourced from `requirements.md`, including the full success-criteria
-  bullet list. The task body then describes the work and must reference each
-  quoted criterion in its delivery description — showing which change satisfies
-  which criterion. A task that quotes criteria it does not deliver, or delivers
-  work not traceable to any quoted criterion, is defective.
+- **Every task begins with a verbatim quote of the PRD criteria it delivers**,
+  including the full success-criteria bullet list. When present, the task also
+  quotes the architecture constraints and test-spec cases it delivers. The task
+  body then describes the work and must reference each quoted criterion in its
+  delivery description — showing which change satisfies which criterion. A task
+  that quotes criteria it does not deliver, or delivers work not traceable to any
+  quoted upstream artifact, is defective.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
-- Every task has a verification step that references specific expected-failure
-  tests it makes GREEN: a test to satisfy, behavior to observe, or check to run.
+- Every task has a verification step that references specific test-spec cases,
+  existing tests, or direct checks: a test to satisfy, behavior to observe, or check to run.
   "Tests" as an abstract category is not compliance — name the specific test
   file and assertions.
-- Tasks trace to requirements. No orphan tasks (gold-plating) and no orphan
-  requirements (coverage gaps).
+- Tasks trace to PRD, architecture, or test-specs. No orphan tasks
+  (gold-plating) and no orphan PRD criteria (coverage gaps).
 - Referenced file paths are explicit in the plan tasks for grounding and
   staleness review.
 
@@ -140,9 +159,9 @@ Plans must provide enough detail for a builder to execute without guessing:
 
 - Preparation artifacts flow through a chain: creator → reviewer → gate →
   builder → code reviewer. Quality failures in early stages compound
-  downstream. A requirement that prescribes implementation detail confuses
-  the builder. A plan that misses a DoD gate produces review findings that
-  cost more to fix than to prevent.
+  downstream. A PRD that prescribes implementation detail confuses the builder.
+  A plan that misses a DoD gate produces review findings that cost more to fix
+  than to prevent.
 - Domain-context loading prevents the most common failure mode: validating
   structure without substance. Checking "grounding" without loading the
   actual specs is checking against air.
@@ -152,11 +171,10 @@ Plans must provide enough detail for a builder to execute without guessing:
 
 ## Scope
 
-- Applies to all preparation artifacts: `requirements.md`,
-  `implementation-plan.md` and `dor-report.md`.
-- Applies to all agents creating or reviewing these artifacts: discovery
-  workers, draft workers, requirements reviewers, plan reviewers, and
-  gate assessors.
+- Applies to all preparation artifacts: `prd`, `architecture`, `test-specs`,
+  `implementation-plan`, and readiness reports.
+- Applies to all agents creating or reviewing these artifacts: intake,
+  architecture, specs, plan, reviewers, and gate assessors.
 
 ## Enforcement
 

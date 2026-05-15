@@ -125,14 +125,21 @@ class TestHandleTodoCreate:
             _handle_todo_create(["my-slug"])
 
         assert "Todo created: my-slug" in capsys.readouterr().out
-        mock_create.assert_called_once_with("/repo", "my-slug", after=None)
+        mock_create.assert_called_once_with("/repo", "my-slug", after=None, kind="feature")
 
     def test_passes_after_deps(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
         with patch(f"{_MODULE}.create_draft_skeleton", return_value="Todo created: my-slug") as mock_create:
             _handle_todo_create(["my-slug", "--after", "dep-a,dep-b"])
 
-        mock_create.assert_called_once_with("/repo", "my-slug", after=["dep-a", "dep-b"])
+        mock_create.assert_called_once_with("/repo", "my-slug", after=["dep-a", "dep-b"], kind="feature")
+
+    def test_passes_kind(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
+        with patch(f"{_MODULE}.create_draft_skeleton", return_value="Todo created: my-slug") as mock_create:
+            _handle_todo_create(["my-slug", "--kind", "migration"])
+
+        mock_create.assert_called_once_with("/repo", "my-slug", after=None, kind="migration")
 
     def test_missing_slug_exits(self) -> None:
         with pytest.raises(SystemExit):
@@ -216,40 +223,54 @@ class TestHandleTodoSplit:
             _handle_todo_split(["parent"])
 
 
-class TestHandleTodoStampPreparePair:
-    """telec todo stamp <slug> --agent-a <id> --agent-b <id>."""
+class TestHandleTodoStampPrepareV2:
+    """telec todo stamp v2 prepare flags."""
 
-    def test_atomic_pair_stamp_posts_compound_value(self) -> None:
-        """Both flags together produce a single prepare_pair stamp with comma-joined value."""
+    def test_prd_approved_posts_stamp(self) -> None:
         with (
             patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
-            _handle_todo_stamp(["my-slug", "--agent-a", "sid-a", "--agent-b", "sid-b"])
+            _handle_todo_stamp(["my-slug", "--prd-approved"])
 
         mock_stamp.assert_awaited_once_with(
             cwd="/repo",
             slug="my-slug",
-            stamp_type="prepare_pair",
-            value="slot_a:sid-a,slot_b:sid-b",
+            stamp_type="prd_approved",
+            value="true",
             phase=None,
             caller_session_id="sess-1",
         )
 
-    def test_only_agent_a_exits_with_error(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Single-flag stamps are not supported — both --agent-a and --agent-b are required."""
-        with pytest.raises(SystemExit):
-            _handle_todo_stamp(["my-slug", "--agent-a", "sid-a"])
+    def test_skip_flag_posts_reason(self) -> None:
+        with (
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
+            _handle_todo_stamp(["my-slug", "--architecture-skipped", "single file"])
 
-        assert "must be provided together" in capsys.readouterr().out
+        mock_stamp.assert_awaited_once_with(
+            cwd="/repo",
+            slug="my-slug",
+            stamp_type="architecture_skipped",
+            value="single file",
+            phase=None,
+            caller_session_id="sess-1",
+        )
 
-    def test_only_agent_b_exits_with_error(self, capsys: pytest.CaptureFixture[str]) -> None:
-        """Single-flag stamps are not supported — both --agent-a and --agent-b are required."""
-        with pytest.raises(SystemExit):
-            _handle_todo_stamp(["my-slug", "--agent-b", "sid-b"])
+    def test_drift_reviewed_posts_json_payload(self) -> None:
+        with (
+            patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+            patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
+        ):
+            _handle_todo_stamp(["my-slug", "--drift-reviewed", "prd", "cosmetic", "comments"])
 
-        assert "must be provided together" in capsys.readouterr().out
+        kwargs = mock_stamp.await_args.kwargs
+        assert kwargs["stamp_type"] == "drift_reviewed"
+        assert kwargs["value"] == '{"artifact": "prd", "verdict": "cosmetic", "reason": "comments"}'
 
 
 class TestHandleTodoStampEnsureProducer:

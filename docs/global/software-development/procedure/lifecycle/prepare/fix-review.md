@@ -16,7 +16,7 @@ scope: 'domain'
 
 Read the relevant findings artifact:
 
-- Requirements phase: `telec todo artifacts read {slug} requirements-review-findings`
+- PRD phase: `telec todo artifacts read {slug} requirements-review-findings`
 - Test spec phase: `telec todo artifacts read {slug} spec-review-findings`
 - Plan phase: `telec todo artifacts read {slug} plan-review-findings`
 
@@ -66,8 +66,8 @@ Report summary and readiness for re-review.
    message requires only action.
 6. **Before reporting FIX COMPLETE, close the direct link with:**
    `telec sessions send <reviewer_session_id> --close-link`
-   This is mandatory in prepare because three review phases run sequentially against
-   the same pair — a stale link from one phase corrupts the next phase's dispatch.
+   This is mandatory in prepare because review phases run sequentially against
+   the same conversation lane — a stale link from one phase corrupts the next phase's dispatch.
 7. Commit all files in the worktree. Everything in the worktree belongs to the task.
 
 ## Outputs

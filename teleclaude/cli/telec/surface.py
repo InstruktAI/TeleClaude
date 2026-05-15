@@ -409,8 +409,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "create": CommandDef(
                 desc="Create a draft todo skeleton with no input artifact",
-                args="<slug> [--after <deps>]",
-                flags=[_H, Flag("--after", desc="Comma-separated dependency slugs")],
+                args="<slug> [--after <deps>] [--kind <feature|bug|refactor|migration|prepped>]",
+                flags=[
+                    _H,
+                    Flag("--after", desc="Comma-separated dependency slugs"),
+                    Flag("--kind", desc="Work item kind; defaults to feature"),
+                ],
                 notes=[
                     "Creates only the roadmap entry and canonical draft state.",
                     "Use this when humans are fleshing out artifacts directly and there is no braindump input yet.",
@@ -463,8 +467,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> --phase <value>",
                 flags=[_H, Flag("--phase", desc="Phase value matching the canonical lifecycle phase enum")],
                 notes=[
-                    "Validates the target step's prerequisites, then persists lifecycle_phase. "
-                    "Use `--phase prepared` when you intentionally want to fast-track a todo into work-ready state."
+                    "Operator escape hatch; downstream phases will see whatever you set without re-deriving from evidence."
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -509,7 +512,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Use --draft to stage an idea without triggering autonomous pickup.",
                     "Use --prepped when content is a complete implementation plan: content becomes "
                     "the implementation-plan artifact, kind=prepped, plan_review=approve, "
-                    "requirements_review=skipped, ready for build.",
+                    "plan_approved=true, ready for build.",
                     "POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. "
                     "Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, "
                     "where an autonomous orchestrator can spawn builders against it. Agents must present "
@@ -546,21 +549,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "read": CommandDef(
                         desc="Read a todo artifact",
-                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings>",
+                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>",
                         flags=[_H],
                         examples=["telec todo artifacts read my-slug requirements"],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),
                     "diff": CommandDef(
                         desc="Show a unified diff between two artifact versions",
-                        args="<slug> <name: input|requirements|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
+                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <old-digest> <new-digest>",
                         flags=[_H],
                         notes=[
                             "Looks up both versions by digest in the artifact version history "
@@ -584,10 +587,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "stamp": CommandDef(
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
-                    "<slug> [--verdict <v> --phase <p>] [--grounding-invalidated]"
-                    " [--requirements-ready] [--plan-ready]"
-                    " [--specs-built] [--finalize-ready]"
-                    " [--agent-a <session_id> --agent-b <session_id>]"
+                    "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
+                    " [--architecture-approved] [--test-specs-approved] [--plan-approved]"
+                    " [--architecture-skipped <reason>] [--test-specs-skipped <reason>]"
+                    " [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]"
                 ),
                 flags=[
                     _H,
@@ -596,22 +599,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--phase",
                         desc=(
                             "Review phase the verdict belongs to "
-                            "(requirements_review, test_spec_review, plan_review, build_review)"
+                            "(architecture_review, test_spec_review, plan_review, build_review)"
                         ),
                     ),
-                    Flag("--grounding-invalidated", desc="Mark grounding as invalid"),
-                    Flag("--requirements-ready", desc="Mark requirements as produced and ready for review"),
-                    Flag("--plan-ready", desc="Mark implementation plan as produced and ready for review"),
-                    Flag("--specs-built", desc="Mark test specifications as delivered"),
+                    Flag("--prd-approved", desc="Mark PRD as approved by the human"),
+                    Flag("--architecture-approved", desc="Mark architecture as approved by the human"),
+                    Flag("--test-specs-approved", desc="Mark test specs as approved by the human"),
+                    Flag("--plan-approved", desc="Mark implementation plan as approved by the human"),
+                    Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
+                    Flag("--test-specs-skipped", desc="Skip test-specs phase with a reason"),
+                    Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
-                    Flag("--agent-a", desc="Prepare pair slot A session_id (atomic with --agent-b)"),
-                    Flag("--agent-b", desc="Prepare pair slot B session_id (atomic with --agent-a)"),
                 ],
                 examples=[
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
-                    "telec todo stamp my-slug --agent-a <A_id> --agent-b <B_id>",
+                    "telec todo stamp my-slug --plan-approved",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

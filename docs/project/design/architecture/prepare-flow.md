@@ -1,9 +1,8 @@
 ---
-id: 'project/design/architecture-v2/prepare-flow'
+id: 'project/design/architecture/prepare-flow'
 type: 'design'
 scope: 'project'
 description: 'Prepare phase flow for v2. PRD → Architecture → Test specs → Plan → Prepared, with size-based phase skipping, standin-mode support, and a lean drift-analysis worker on drift detection.'
-status: 'draft, uncommitted'
 ---
 
 # Prepare Flow — Design
@@ -12,14 +11,14 @@ status: 'draft, uncommitted'
 
 Codify the prepare phase as a deterministic chain of artifact-derivation steps with explicit human approval gates between them, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode when no human is in the loop.
 
-The flow replaces the prior pair-driven discovery model. The orchestrator is the agent the user (or the standin) talks to; one cross-model peer is dispatched per derivation phase for independent verification; existing reviewer agents validate each artifact; the human approves at each gate.
+The flow replaces the prior pair-driven prepare model. The orchestrator is the agent the user (or the standin) talks to; one cross-model peer is dispatched per derivation phase for independent verification; existing reviewer agents validate each artifact; the human approves at each gate.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
 - A todo slug, with or without an existing `input` artifact (dumped earlier or written in-session).
-- Session `additional_context`, carrying `human-in-loop: true | false`. Default `true`.
+- Session `additional_context`, carrying `human_in_loop: true | false`. Default `true`.
 - User proficiency from PersonDTO injection (or asked at session start when absent).
 - Codebase HEAD for drift detection.
 - The platform-quality-flavors set (where applicable to architecture phase).
@@ -48,7 +47,7 @@ The confirmed plan is the handoff input to the work phase.
 
 **Standin mode:**
 
-- When session `additional_context` indicates `human-in-loop: false`, intake dispatches a Product Owner emulator via `/next-emulate-po {slug}`.
+- When session `additional_context` indicates `human_in_loop: false`, intake dispatches a Product Owner emulator via `/next-emulate-po {slug}`.
 - A standin-produced PRD cannot be stamped `prd_approved` — that gate requires the real human.
 - Downstream phases do not begin until the real human approves the standin-produced PRD.
 
@@ -132,13 +131,13 @@ flowchart TD
 
 Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare skill.
 
-Mode: human-in-loop.
+Mode: human_in_loop.
 
 Flow: agent talks with human; fills PRD template; writes PRD; presents for approval. Human approves. BA assesses size and stamps skip decisions for downstream phases as warranted. Each surviving phase runs through draft → reviewer verdict → human approval. Reaches PREPARED.
 
 **Use case 2 — dumped work, auto-spawned, no human present.**
 
-Trigger: `telec todo dump <description>` without `--draft`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human-in-loop: false`.
+Trigger: `telec todo dump <description>` without `--draft`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
 
 Mode: standin.
 
@@ -165,12 +164,11 @@ Also covers the `--draft` dump case: human comes back to a slug with an `input` 
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Uses `telec todo split` to spawn children. Each child gets its own track through the chain. Parent becomes a container.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; proceed with explicit human approval to hack a one-off documented as tech debt.
 - **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the orchestrator surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
-- **No `additional_context` mode marker.** Default to `human-in-loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
+- **No `additional_context` mode marker.** Default to `human_in_loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
 
 ### Open design choices still being prototyped
 
 - **Cross-model peer rotation across phases.** Currently the persistent peer is one model across all phases. Whether to rotate models per phase (Codex for architecture, Gemini for specs, etc.) for additional cognitive diversity is open. May add cost; may add value.
-- **Lean drift worker formalization.** The pattern (dispatch a small focused worker on drift detection) is named here but the worker command itself isn't fully specified. The implementation TODO covers writing `next-drift-analyze`.
 - **Standin-mode coverage of downstream phases.** Currently standin mode applies only to intake. Whether standin can also run architecture or specs autonomously (with the real human approving the cumulative chain at the end) is an open question. Conservative default: standin produces PRD only; everything downstream requires human approval gate by gate.
 - **Brownfield code-intelligence dependency.** Architecture phase ideally uses a code-intelligence blueprint (graph of services, events, dependencies). When that blueprint doesn't exist yet, the agents fall back to manual grounding. The architecture procedure notes this fallback explicitly.
 

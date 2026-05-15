@@ -131,6 +131,7 @@ class RunSessionArgs(TypedDict, total=False):
     agent: NotRequired[str]
     thinking_mode: NotRequired[str]
     detach: NotRequired[bool]
+    additional_context: NotRequired[str]
 
 
 class APIError(Exception):
@@ -585,6 +586,7 @@ class _TelecSessionAPI:
             agent=kwargs.get("agent", "claude"),  # type: ignore[arg-type]
             thinking_mode=kwargs.get("thinking_mode", "slow"),  # type: ignore[arg-type]
             detach=kwargs.get("detach", False),
+            additional_context=kwargs.get("additional_context", ""),
         )
         resp = await self._request(
             "POST",

@@ -1,4 +1,4 @@
-"""Pydantic models for Todo state management (schema v2)."""
+"""Pydantic models for Todo state management (schema v3)."""
 
 from __future__ import annotations
 
@@ -10,18 +10,19 @@ from teleclaude.types.state_value import StateValue
 
 LifecyclePhaseValue = Literal[
     "draft",
-    "input_assessment",
-    "triangulation",
-    "requirements_review",
-    "requirements_human_approval",
-    "test_spec_build",
-    "test_spec_review",
+    "prd_drafting",
+    "prd_human_approval",
+    "architecture_drafting",
+    "architecture_review",
+    "architecture_human_approval",
+    "test_specs_drafting",
+    "test_specs_review",
+    "test_specs_human_approval",
     "plan_drafting",
     "plan_review",
-    "gate",
-    "grounding_check",
-    "re_grounding",
+    "plan_human_approval",
     "prepared",
+    "blocked",
     "build_started",
     "build_complete",
     "review_changes_requested",
@@ -74,39 +75,41 @@ class FinalizeModel(BaseModel):
     worker_session_id: str = ""
 
 
-class GroundingState(BaseModel):
-    """Grounding / freshness state."""
+class ApprovalStamp(BaseModel):
+    """Human approval stamp for a prepare artifact."""
 
-    valid: bool = False
-    base_sha: str = ""
-    input_digest: str = ""
-    referenced_paths: list[str] = Field(default_factory=list)
-    changed_paths: list[str] = Field(default_factory=list)
-    last_grounded_at: str = ""
-    invalidated_at: str = ""
-    invalidation_reason: str = ""
+    approved: bool = False
+    approved_at: str = ""
+    caller_session_id: str = ""
 
 
-class PreparePairSlot(BaseModel):
-    """Durable identity for one prepare pair member.
+class SkipStamp(BaseModel):
+    """Skip stamp for an optional prepare phase."""
 
-    Stores both the TC ``session_id`` (used for tail/send while the row exists)
-    and ``native_session_id`` + ``agent`` (used for ``telec sessions revive``
-    after the TC row is purged — closed sessions are removed after the 7-day
-    retention window in ``maintenance_service._cleanup_inactive_sessions``).
-    """
-
-    session_id: str
-    native_session_id: str = ""
-    agent: str
-    lens: Literal["A", "B"]
+    reason: str = ""
+    skipped_at: str = ""
+    caller_session_id: str = ""
 
 
-class PreparePair(BaseModel):
-    """Durable prepare pair identity stored across pair-owned phases."""
+class DriftReviewedStamp(BaseModel):
+    """Drift review verdict for one prepare artifact."""
 
-    slot_a: PreparePairSlot | None = None
-    slot_b: PreparePairSlot | None = None
+    verdict: Literal["substantive", "cosmetic"]
+    reason: str = ""
+    stamped_at: str = ""
+    caller_session_id: str = ""
+
+
+class ApprovalsState(BaseModel):
+    """Prepare v2 gate, skip, and drift review stamps."""
+
+    prd_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    architecture_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    test_specs_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    plan_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
+    architecture_skipped: SkipStamp | None = None
+    test_specs_skipped: SkipStamp | None = None
+    drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 
 
 class ReviewVerdictState(BaseModel):
@@ -162,13 +165,17 @@ class ArtifactEntry(BaseModel):
     approved: bool = False
     confirmed: bool = False
     upstream_digests: dict[str, str] = Field(default_factory=dict)
+    codebase_sha_at_write: str = ""
+    referenced_paths: list[str] = Field(default_factory=list)
 
 
 class ArtifactsState(BaseModel):
     """Artifact lifecycle stamps."""
 
     input: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    prd: ArtifactEntry = Field(default_factory=ArtifactEntry)
     requirements: ArtifactEntry = Field(default_factory=ArtifactEntry)
+    architecture: ArtifactEntry = Field(default_factory=ArtifactEntry)
     test_specs: ArtifactEntry = Field(default_factory=ArtifactEntry)
     implementation_plan: ArtifactEntry = Field(default_factory=ArtifactEntry)
     art: ArtifactEntry = Field(default_factory=ArtifactEntry)
@@ -196,18 +203,18 @@ class AuditReviewEntry(BaseModel):
 class AuditState(BaseModel):
     """Audit trail for prepare lifecycle phases."""
 
-    input_assessment: AuditTimestamp = Field(default_factory=AuditTimestamp)
-    triangulation: AuditTimestamp = Field(default_factory=AuditTimestamp)
+    prd_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     requirements_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
-    test_spec_build: AuditTimestamp = Field(default_factory=AuditTimestamp)
+    architecture_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
+    architecture_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
+    test_specs_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     test_spec_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     plan_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     plan_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
-    gate: AuditTimestamp = Field(default_factory=AuditTimestamp)
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (schema v2).
+    """Canonical state for a TeleClaude work item (schema v3).
 
     ``lifecycle_phase`` is the only authoritative software-development phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
@@ -220,22 +227,22 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     phase: str = "pending"
-    lifecycle_phase: LifecyclePhaseValue = "input_assessment"
+    lifecycle_phase: LifecyclePhaseValue = "draft"
     prepare_phase: str = Field(default="", exclude=True)
     work_phase: str = Field(default="", exclude=True)
     build_start_base_sha: str = ""
     build_completed_at: str = ""
     build_gate_claim_at: str = ""
-    kind: str = "todo"  # "todo" | "bug" | "draft" | "prepped"
+    kind: str = "todo"  # "feature" | "todo" | "bug" | "draft" | "prepped" | "refactor" | "migration"
     deferrals_processed: bool = False
     finalize: FinalizeModel = Field(default_factory=FinalizeModel)
     breakdown: BreakdownState = Field(default_factory=BreakdownState)
-    grounding: GroundingState = Field(default_factory=GroundingState)
+    approvals: ApprovalsState = Field(default_factory=ApprovalsState)
     dor: DorState | None = None  # legacy-bridge; populated only by import/upcycle of old state
-    prepare_pair: PreparePair | None = None
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
+    architecture_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)
     plan_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     build_review: BuildReviewState = Field(default_factory=BuildReviewState)
