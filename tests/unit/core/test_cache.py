@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.api_models import TodoDTO
 from teleclaude.core.cache import CachedItem, DaemonCache
 
 
@@ -106,3 +107,21 @@ class TestDaemonCache:
         computers = cache.get_interested_computers("sessions")
         assert "raspi" in computers
         assert "macbook" in computers
+
+    @pytest.mark.unit
+    def test_apply_todos_snapshot_propagates_lifecycle_phase_changes(self):
+        """Reconcile-only phase changes must invalidate the cache so the TUI re-renders."""
+        cache = DaemonCache()
+        before = TodoDTO(
+            slug="t1",
+            status="pending",
+            has_requirements=False,
+            has_impl_plan=False,
+            lifecycle_phase="draft",
+        )
+        after = before.model_copy(update={"lifecycle_phase": "prd_drafting"})
+
+        assert cache.apply_todos_snapshot("local", {"/p": [before]}) is True
+        assert cache.apply_todos_snapshot("local", {"/p": [after]}) is True
+        cached = cache.get_todos("local", "/p")
+        assert cached[0].lifecycle_phase == "prd_drafting"

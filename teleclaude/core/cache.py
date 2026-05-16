@@ -14,7 +14,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.config import config
-from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER
+from teleclaude.constants import CACHE_KEY_SEPARATOR, LOCAL_COMPUTER, CacheEvent
 from teleclaude.core import command_handlers
 from teleclaude.core.models import ComputerInfo, ProjectInfo, SessionSnapshot
 
@@ -333,7 +333,7 @@ class DaemonCache:
         )
         # Notify cache subscribers (state changes only).
         # Activity events (user input, tool use, agent output) flow through AgentActivityEvent.
-        event = "session_started" if is_new else "session_updated"
+        event = CacheEvent.SESSION_STARTED.value if is_new else CacheEvent.SESSION_UPDATED.value
         self._notify(event, session)
 
     def remove_session(self, session_id: str) -> None:
@@ -494,6 +494,9 @@ class DaemonCache:
                             todo.review_status or "",
                             todo.deferrals_status or "",
                             ",".join(todo.files),
+                            todo.lifecycle_phase or "",
+                            todo.integration_phase or "",
+                            todo.finalize_status or "",
                         ]
                     )
                 )
