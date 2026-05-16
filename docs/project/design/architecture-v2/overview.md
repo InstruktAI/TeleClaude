@@ -9,11 +9,11 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture/system-overview.md
-- @docs/project/design/architecture-v2/journey.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture/system-overview.md
+- docs/project/design/architecture-v2/journey.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
@@ -252,12 +252,12 @@ architectural benefits are structural and weigh more.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/journey.md — why v2
-- @docs/project/design/architecture-v2/services.md — service breakdown
-- @docs/project/design/architecture-v2/transport-rules.md — the load-bearing rule
-- @docs/project/design/architecture-v2/file-layout.md — on-disk structure
-- @docs/project/design/architecture-v2/redesign-list.md — anti-patterns to fix
-- @docs/project/design/architecture-v2/auth-model.md — identity model
-- @docs/project/design/architecture-v2/observability-model.md — logging model
-- @docs/project/design/architecture-v2/event-bus-transports.md — event bus contract
-- @docs/project/design/architecture-v2/reconstruction-order.md — migration approach
+- docs/project/design/architecture-v2/journey.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/redesign-list.md
+- docs/project/design/architecture-v2/auth-model.md
+- docs/project/design/architecture-v2/observability-model.md
+- docs/project/design/architecture-v2/event-bus-transports.md
+- docs/project/design/architecture-v2/reconstruction-order.md

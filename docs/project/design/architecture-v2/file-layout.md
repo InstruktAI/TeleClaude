@@ -9,8 +9,8 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
 
 ## Purpose
 
@@ -458,15 +458,15 @@ After v2 reaches full parity and v1 is retired, `teleclaude/` deletes.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/transport-rules.md — the architectural
+- docs/project/design/architecture-v2/transport-rules.md
   rule this layout implements.
-- @docs/project/design/architecture-v2/services.md — the services that live in
+- docs/project/design/architecture-v2/services.md
   this layout.
-- @docs/project/design/architecture-v2/observability-model.md — the
+- docs/project/design/architecture-v2/observability-model.md
   observability crate's role.
-- @docs/project/design/architecture-v2/auth-model.md — the identity crate's
+- docs/project/design/architecture-v2/auth-model.md
   role.
-- @~/.teleclaude/docs/software-development/policy/rust/core.md —
+- ~/.teleclaude/docs/software-development/policy/rust/core.md
   Rust language usage rules.
-- @~/.teleclaude/docs/software-development/policy/rust/testing.md —
+- ~/.teleclaude/docs/software-development/policy/rust/testing.md
   Rust testing patterns.

@@ -9,11 +9,11 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/file-layout.md
-- @docs/project/design/architecture-v2/reconstruction-order.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/reconstruction-order.md
 
 ## Purpose
 
@@ -332,14 +332,14 @@ moment. Atomic. No transitional dual-mode.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/transport-rules.md — Redis
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/transport-rules.md
   bridge pattern
-- @docs/project/design/architecture-v2/services.md — workflow service
+- docs/project/design/architecture-v2/services.md
   ownership
-- @docs/project/design/architecture-v2/file-layout.md — concrete crate
+- docs/project/design/architecture-v2/file-layout.md
   shapes
-- @docs/project/design/architecture-v2/reconstruction-order.md — where
+- docs/project/design/architecture-v2/reconstruction-order.md
   MVP sits in the broader wave plan
-- @~/.teleclaude/docs/software-development/policy/rust/testing.md
-- @~/.teleclaude/docs/software-development/policy/rust/core.md
+- ~/.teleclaude/docs/software-development/policy/rust/testing.md
+- ~/.teleclaude/docs/software-development/policy/rust/core.md

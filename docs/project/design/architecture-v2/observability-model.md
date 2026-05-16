@@ -9,8 +9,8 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
@@ -183,7 +183,7 @@ second Rust project at InstruktAI wants the same standard.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/file-layout.md — where the
+- docs/project/design/architecture-v2/file-layout.md
   observability crate lives in the workspace.
-- @docs/project/design/architecture-v2/transport-rules.md — observability is
+- docs/project/design/architecture-v2/transport-rules.md
   infrastructure, used by every binary, not a service.

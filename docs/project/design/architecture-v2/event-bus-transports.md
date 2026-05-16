@@ -9,9 +9,9 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
 
 ## Purpose
 
@@ -257,10 +257,10 @@ For services consuming other services' events:
 
 ## See Also
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/redesign-list.md — dual-transport bus
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/redesign-list.md
   is on the anti-pattern list.
-- @docs/project/design/architecture-v2/file-layout.md — `crates/event_bus/` is
+- docs/project/design/architecture-v2/file-layout.md
   the infrastructure crate.

@@ -9,8 +9,8 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
 
 ## Purpose
 
@@ -269,8 +269,8 @@ incrementally.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/transport-rules.md — why auth is a crate.
-- @docs/project/design/architecture-v2/services.md — identity is one of the v2
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
   services.
-- @docs/project/spec/identity-and-auth.md — v1 auth spec for transitional
+- docs/project/spec/identity-and-auth.md
   reference.

@@ -9,9 +9,9 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
@@ -455,10 +455,10 @@ Single Postgres, clean ownership, no fragmentation.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/file-layout.md
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/auth-model.md
-- @docs/project/design/architecture-v2/observability-model.md
-- @docs/project/design/architecture-v2/event-bus-transports.md
-- @docs/project/design/architecture-v2/redesign-list.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/auth-model.md
+- docs/project/design/architecture-v2/observability-model.md
+- docs/project/design/architecture-v2/event-bus-transports.md
+- docs/project/design/architecture-v2/redesign-list.md

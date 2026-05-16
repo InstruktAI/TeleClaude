@@ -9,9 +9,9 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
@@ -386,8 +386,8 @@ Python.
 
 ## See Also
 
-- @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/file-layout.md
-- @docs/project/design/architecture-v2/redesign-list.md
-- @docs/project/design/architecture-v2/journey.md
+- docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/file-layout.md
+- docs/project/design/architecture-v2/redesign-list.md
+- docs/project/design/architecture-v2/journey.md

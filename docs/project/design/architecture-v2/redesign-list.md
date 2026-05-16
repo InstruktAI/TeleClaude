@@ -9,8 +9,8 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
 
 ## Purpose
 
@@ -350,9 +350,28 @@ into path resolution.**
   workaround code simply doesn't exist. `std::env::current_dir()` is
   authoritative; binaries are self-contained.
 
+## Failure modes
+
+The meta-failure modes that produced this list in the first place:
+
+- **Porting v1 patterns wholesale.** Treating v2 as a "rewrite in
+  Rust" instead of "redesign that drops the anti-patterns we know."
+  Each entry above is a pattern that must NOT be reproduced.
+- **Pattern matching to v1 because it exists.** "v1 does X so v2 should
+  do X" without asking "is X right, or is X what v1 happened to do?"
+  The change-axis heuristic (transport-rules.md) is the discipline that
+  catches this.
+- **Silent re-introduction.** A pattern from the list gets
+  re-introduced because the agent didn't read this doc. Reviewers must
+  reference this list during PR review; new code reproducing any entry
+  is rejected.
+- **Adding to the list without acting on it.** Identifying an
+  anti-pattern is not the same as fixing it. Each entry must have a v2
+  correction; entries without a correction are incomplete.
+
 ## See Also
 
-- @docs/project/design/architecture-v2/transport-rules.md
-- @docs/project/design/architecture-v2/services.md
-- @docs/project/design/architecture-v2/event-bus-transports.md
-- @docs/project/design/architecture-v2/journey.md
+- docs/project/design/architecture-v2/transport-rules.md
+- docs/project/design/architecture-v2/services.md
+- docs/project/design/architecture-v2/event-bus-transports.md
+- docs/project/design/architecture-v2/journey.md

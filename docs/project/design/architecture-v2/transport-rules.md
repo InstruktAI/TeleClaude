@@ -9,7 +9,7 @@ type: 'design'
 
 ## Required reads
 
-- @docs/project/design/architecture-v2/overview.md
+- docs/project/design/architecture-v2/overview.md
 
 ## Purpose
 
@@ -48,12 +48,14 @@ v1 accumulated.
 - **The smell test.** If a proposal introduces a transport between local
   same-language code, the proposal is wrong. The transport is the smell.
 
-## Placement heuristic — library vs binary ownership
+## Primary flows
+
+### Placement heuristic — library vs binary ownership
 
 Two ownership questions, often conflated. They resolve differently and
 must not be merged.
 
-### Library crate ownership = change-axis
+#### Library crate ownership = change-axis
 
 **Question:** When does this code change? What triggers the change?
 
@@ -74,7 +76,7 @@ The library crate owns the logic by domain. "Same change axis" → same
 crate. "Different change axes" → different crates, even if the code
 superficially looks similar.
 
-### Binary crate ownership = deployment shape
+#### Binary crate ownership = deployment shape
 
 **Question:** What kind of entry point is this? Which library crates does
 it embed?
@@ -94,7 +96,7 @@ The binary's identity is "what's the entry point shape" — subprocess,
 long-running daemon, HTTP server, CLI dispatcher. Not "which service does
 this belong to."
 
-### The split applied to hooks
+#### The split applied to hooks
 
 - **Hook payload parsing/normalization/emission** → library crate
   `integration` (change-axis: external CLI protocols change).
@@ -170,8 +172,6 @@ the surface pattern.
 Pattern similarity is a hint to look for shared infrastructure, not proof
 of shared ownership. Always come back to: "when this code changes, what
 triggered the change?"
-
-## Primary flows
 
 ### The default: services as SDK
 
@@ -299,11 +299,11 @@ These are common shapes that look like they need a transport but don't:
 
 ## See Also
 
-- @docs/project/design/architecture-v2/file-layout.md — directory structure that
+- docs/project/design/architecture-v2/file-layout.md
   implements this rule.
-- @docs/project/design/architecture-v2/services.md — the services that exist as
+- docs/project/design/architecture-v2/services.md
   crates.
-- @docs/project/design/architecture-v2/event-bus-transports.md — the single-
+- docs/project/design/architecture-v2/event-bus-transports.md
   transport Redis event bus.
-- @docs/project/design/architecture-v2/redesign-list.md — the v1 transport
+- docs/project/design/architecture-v2/redesign-list.md
   anti-patterns that v2 must not port.
