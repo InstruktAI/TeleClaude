@@ -420,6 +420,96 @@ Single Postgres, clean ownership, no fragmentation.
   question; usually a new service or a cleaner ownership split. Don't
   paper over with shared-schema access.
 
+### Complete v1 footprint per service (for cutover safety)
+
+Before any service's authoritative cutover, the build worker MUST verify
+every v1 path that touches that service's data is migrated together. See
+`reconstruction-order.md` "What makes a cutover safe" for the trap and
+checklist. This section maintains the per-service footprint inventory.
+
+**Add a service's footprint to this section when planning its cutover.**
+Future service migrations grep here first. Incomplete footprint blocks
+authoritative cutover; defer to parallel-capable instead.
+
+#### `workflow` (mapped 2026-05-16 during MVP I1)
+
+Complete v1 footprint for workflow data (todos, roadmap, artifacts,
+state machines):
+
+- **CLI handlers** — `teleclaude/cli/telec/handlers/todo.py`,
+  `teleclaude/cli/telec/handlers/roadmap.py`
+- **HTTP API** — `teleclaude/api/todo_routes.py` (~25 calls to
+  `todos_db.*` functions; backs the browser-facing API)
+- **TUI direct reads** — `teleclaude/cli/tui/widgets/todo_row.py`,
+  `teleclaude/cli/tui/views/preparation_actions.py`
+- **Internal service callers** —
+  - `teleclaude/core/integration/*`
+  - `teleclaude/core/operations/service.py`
+  - `teleclaude/core/roadmap.py`
+- **Orchestrator** — all 20+ files under `teleclaude/core/next_machine/`
+  (drives `/next-prepare`, `/next-build`, `/next-finalize` etc. — the
+  build session running ANY workflow todo references these)
+- **Storage** — `teleclaude/core/todos_db/` (all of it),
+  `{project}/.teleclaude/todos.db` (SQLite, one per project)
+
+**MVP cutover status:** deferred (parallel-capable shipped). Authoritative
+cutover requires migrating ALL of the above together. Likely sequence:
+agent_runtime + integration + knowledge migrate first; the orchestrator
+becomes v2-callable; THEN workflow can cut over because the orchestrator
+won't depend on v1 paths anymore.
+
+#### `identity` (to map during v2-spine-completion)
+
+Initial inventory from grep (refine during spine-completion):
+
+- **Resolution sources** — `teleclaude/session_identity.py`,
+  `teleclaude/core/session_bootstrap.py`, `teleclaude/api_server.py`,
+  `teleclaude/cli/telec/auth.py` (if exists)
+- **Token storage** — `teleclaude/core/db/_tokens.py`,
+  `teleclaude/core/db/_sessions.py`
+- **Models** — `teleclaude/core/db_models.py`,
+  `teleclaude/core/models/_session.py`
+- **Per-person config** — `~/.teleclaude/people/<name>/teleclaude.yml`
+- **CLI auth surface** — `teleclaude/cli/telec/handlers/auth.py` (if
+  exists), `telec auth login/whoami/logout` commands
+- **HTTP middleware** — `teleclaude/api/session_access.py` (header
+  parsing: `x-session-token`, `x-caller-session-id`, `x-tmux-session`,
+  `x-telec-email`)
+- **Schema** — `teleclaude/core/schema.sql` (identity-related tables)
+- **Storage** — `~/.teleclaude/teleclaude.db` (principals, tokens),
+  `~/.teleclaude/people/` (per-person config files)
+
+**Spine-completion approach:** identity v2 service is built and exists
+parallel to v1. Authoritative cutover is its own future todo with the
+full footprint above migrated together.
+
+#### `config` (to map during v2-spine-completion)
+
+Initial inventory:
+
+- **Loader** — `teleclaude/config/__init__.py` (and submodules)
+- **Schema** — `teleclaude/config/schema.py` (Pydantic models for
+  validation)
+- **Consumers** — broad surface; ~30+ files import `teleclaude.config`
+  for various settings (database paths, redis URL, daemon socket path,
+  etc.). Examples: `daemon.py`, `api_server.py`,
+  `transport/redis_transport/`, `core/cache.py`, `core/identity.py`,
+  `core/conversation_delivery.py`, etc.
+- **Storage** — YAML files: `~/.teleclaude/teleclaude.yml` (global),
+  `<project>/teleclaude.yml` (per-project), `~/.teleclaude/people/<name>/teleclaude.yml`
+  (per-person overlays), `.env` for secrets
+
+**Spine-completion approach:** config v2 service is built and exists
+parallel. v1 consumers continue to use `teleclaude.config`. Future
+cutover migrates v1 consumers to read effective config from v2 service.
+
+#### Remaining services — footprint mapping deferred to each migration
+
+`agent_runtime`, `session_ledger`, `knowledge`, `integration`,
+`agent_artifacts` — full v1 footprints get mapped here during planning
+of each service's migration. The cutover safety checklist in
+`reconstruction-order.md` references this section.
+
 ### What's intentionally left out
 
 - **Presentation context.** The v2 docs originally listed a Presentation

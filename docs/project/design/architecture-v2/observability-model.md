@@ -44,9 +44,9 @@ custom subscriber emitting the `instrukt_ai_logging` JSON format.
 - **Same destination as v1.** Output goes to
   `/var/log/instrukt-ai/teleclaude/<source>.log`. The directory and the
   source-name convention match v1.
-- **Same format as v1.** JSON Lines with the schema the `instrukt_ai_logging`
-  Python lib produces. Field names match. `instrukt-ai-logs` reads Rust and
-  Python output indistinguishably.
+- **Same format as v1.** `logfmt` lines (key=value pairs) matching the
+  `instrukt_ai_logging` Python lib's output. Field names match.
+  `instrukt-ai-logs` reads Rust and Python output indistinguishably.
 - **Per-binary source name.** Each binary picks a source name at startup.
   `telec`, `telec-daemon`, `telec-tui`, `telec-api`, and worker binaries each
   get their own log file. `instrukt-ai-logs teleclaude` merges across files.
@@ -61,7 +61,8 @@ custom subscriber emitting the `instrukt_ai_logging` JSON format.
 every binary). It exposes:
 
 - `init(source: &str)` — binary `main` calls this first. Configures
-  `tracing-subscriber` to write JSON Lines in the `instrukt_ai_logging`
+  `tracing-subscriber` to write `logfmt` lines (`ts=… level=… logger=…
+  msg=… <structured fields>`) matching the `instrukt_ai_logging` Python
   schema to `/var/log/instrukt-ai/teleclaude/<source>.log`. Honors
   `TELECLAUDE_LOG_LEVEL` env var.
 - Optional: re-export `tracing` macros for convenience, or have callers
@@ -123,18 +124,20 @@ JSON format to the configured log file. Structured fields (`slug`, `id`,
 
 ### On-disk format
 
-JSON Lines — one log event per line, one JSON object. Schema matches the
-`instrukt_ai_logging` Python lib's output. Fields include at minimum:
+`logfmt` — one log event per line, key=value pairs space-separated.
+Schema matches the `instrukt_ai_logging` Python lib's output. Standard
+fields:
 
-- `timestamp` — ISO 8601 with timezone
+- `ts` — ISO 8601 timestamp with timezone
 - `level` — `DEBUG | INFO | WARN | ERROR`
 - `logger` — module path or service name
-- `message` — the human-readable message
-- additional structured fields from the call site
+- `msg` — the human-readable message (quoted if it contains spaces)
+- additional `key=value` structured fields from the call site
 
-Exact field names and types follow the Python lib's schema. v2's first
-implementation task is to document the Python lib's exact format (read its
-source) and have Rust emit matching JSON.
+Exact field names and value formatting follow the Python lib's schema.
+v2's `crates/observability/` reads `instrukt_ai_logging`'s Python source
+to match formatting byte-for-byte where it matters (timestamp format,
+field ordering, quoting rules).
 
 ### Query
 

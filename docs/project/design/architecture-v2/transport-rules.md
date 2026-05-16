@@ -276,6 +276,121 @@ These are common shapes that look like they need a transport but don't:
   Rust binary that embeds the workflow crate. It calls workflow functions
   directly, then serializes the result for HTTP. No internal HTTP hop.
 
+### Emit failure handling (commit-then-emit and three postures)
+
+State mutations and event publishing cannot be atomic — Postgres and
+Redis are separate systems. Every event-driven mutation must pick how to
+handle the partial-failure case (DB committed but emit failed, or vice
+versa). Two universal rules and three postures by boundary.
+
+**Universal rule 1: commit-then-emit ordering.**
+
+- Emit-then-commit can produce orphan events (emit succeeded, commit
+  failed → event refers to nonexistent state). Never do this.
+- Commit-then-emit can produce missed events (commit succeeded, emit
+  failed → state changed but no one was told). Recoverable per the
+  posture below.
+
+**Universal rule 2: callers must be idempotent.**
+
+Retry-safe operations are required regardless of emit posture. Callers
+that aren't idempotent will produce double-writes on any retry.
+
+**Three postures, by boundary:**
+
+#### 1. Internal events (within v2 services) — loud-fail
+
+Service mutations that emit events for other v2 services or the v1
+bridge use **commit-then-emit with loud failure**.
+
+```
+Tx: write state
+COMMIT
+try: publish event to Redis
+  success → return Ok(())
+  fail    → return Err(EmitFailed { state_committed: true })
+```
+
+Caller sees the error. The error explicitly indicates that state IS
+durable (`state_committed: true`) but the event was lost. Caller may
+retry the operation; idempotency means the retry detects the existing
+state and only re-attempts the emit.
+
+**Why:** single-machine setup, Redis-on-localhost is treated as
+critical infrastructure. Redis-down is an operational outage that
+should surface loudly, not be swallowed. Consumers can always refresh
+from DB if they missed an event.
+
+**Used by:** workflow, identity, agent_runtime, knowledge,
+session_ledger, config — every service that emits internal events.
+
+**Future:** per-service upgrade to outbox (below) when multi-machine
+or business-critical event-loss tolerance demands it. Don't default
+to outbox; add it when a specific service needs it.
+
+#### 2. Inbound external events (hooks, webhooks) — inbox pattern
+
+External systems (Claude Code subprocess hooks, Telegram webhooks,
+etc.) fire events ONCE and don't retry on failure. Loud-failing
+would lose the event entirely. Inbox pattern guarantees capture.
+
+```
+Receiving binary (telec-hook or telec-api) calls integration::ingest_*
+
+[integration service]
+Tx: INSERT INTO integration.inbox
+    (received_at, source, payload, status='received') RETURNING id
+COMMIT  ← durable capture done
+try: publish 'integration.inbox.<type>_received' to Redis
+  success → UPDATE integration.inbox SET status='published'
+  fail    → log loudly, leave status='received'
+            (dispatcher worker retries when Redis is back)
+return Ok(()) to receiving binary
+
+Receiving binary returns success to external system regardless.
+```
+
+The external system always gets a success response because we
+durably captured what they sent. Internal fanout happens when Redis
+is healthy; recovers when Redis returns.
+
+**Owned by:** `integration` service. The only service that handles
+inbound external events.
+
+#### 3. Outbound external delivery — outbox pattern
+
+Services that send to external systems (Telegram messages, Discord
+posts, email) need at-least-once delivery semantics. Loud-failing
+would mean "the message just didn't go" which is unacceptable.
+
+```
+[some service operation]
+Tx: write state change AND INSERT INTO integration.outbox
+    (target, payload, status='pending') in same transaction
+COMMIT  ← state + delivery commitment atomic
+return Ok(())
+
+[integration outbox dispatcher worker]
+loop:
+  SELECT FROM integration.outbox WHERE status='pending'
+  for each row: deliver to external target
+    success → UPDATE outbox SET status='delivered'
+    transient fail → leave status='pending', exponential backoff
+    permanent fail → UPDATE outbox SET status='dead_letter'
+```
+
+**Owned by:** `integration` service. The legitimate home of the
+outbox pattern (see redesign-list #13 on why the hook outbox was
+NOT a legitimate use of this pattern).
+
+### Summary of emit-posture decisions
+
+| Boundary | Pattern | Service |
+|---|---|---|
+| Internal service → internal subscriber | Commit-then-emit, loud-fail | Every service except integration |
+| External system → us (inbound) | Inbox + dispatcher retry | integration |
+| Us → external system (outbound) | Outbox + dispatcher delivery | integration |
+
 ## Failure modes
 
 - **Inventing transports for local calls.** Adding HTTP, gRPC, or Unix

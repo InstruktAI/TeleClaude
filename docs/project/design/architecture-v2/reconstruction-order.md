@@ -60,6 +60,97 @@ block feature work.
 
 ## Primary flows
 
+### What makes a cutover safe — the dual-source-of-truth trap
+
+Each service migration ends with a **cutover** moment that flips
+authority from v1 to v2 for that service's data. The MVP exposed (via
+the I1 scope catch on 2026-05-16) that the cutover line is the most
+dangerous part of a service migration. The trap is real and named here
+so every subsequent service migration confronts it upfront.
+
+#### The trap
+
+"Authoritative cutover" means: after the cutover PR merges, all writes
+to this service's data go to v2 Postgres; v1 SQLite is no longer
+written; v1 paths that wrote to SQLite are deleted.
+
+The trap is that **v1 typically has many write paths into a service's
+data**, not just the CLI. For workflow:
+- `teleclaude/api/todo_routes.py` (HTTP API → daemon writes)
+- `teleclaude/cli/tui/widgets/todo_row.py` + `views/preparation_actions.py`
+  (TUI mutations)
+- `teleclaude/core/integration/*`, `teleclaude/core/operations/service.py`,
+  `teleclaude/core/roadmap.py` (internal service callers)
+- `teleclaude/core/next_machine/*` (the orchestrator running EVERY
+  in-flight todo, including the build session attempting the cutover)
+- `teleclaude/cli/telec/handlers/todo.py` + `roadmap.py` (CLI handlers)
+
+A "CLI-only cutover" — switching just `telec todo` to v2 while leaving
+the other write paths on SQLite — creates **dual source of truth**: v2
+Postgres has todos created via CLI; v1 SQLite has todos created via API
+or TUI or internal services. They diverge. Different access paths see
+different data. This is the failure mode v2 exists to eliminate.
+
+#### The safety checklist
+
+Before a service's cutover PR is dispatched, the build worker MUST
+verify ALL of these. If any is unmet: defer the cutover, ship v2 as
+parallel-capable, and add a follow-up todo for the prerequisites.
+
+1. **Complete v1 footprint mapped.** Every v1 file that READS or WRITES
+   the service's data is enumerated (not just the CLI). The services.md
+   doc maintains this list per service.
+2. **Every v1 write path is being migrated in the same cutover.** Not
+   just the CLI handlers — the HTTP API routes, the TUI mutation paths,
+   the internal service callers, the orchestrator code that uses the
+   service. ALL must move together OR the cutover is a dual-truth bug.
+3. **Every v1 read path either migrates with the cutover or is wired
+   to read from v2.** Read-only paths can keep using v1 SQLite if v2 is
+   not yet authoritative, but reads MUST NOT see stale data after
+   cutover. Most read paths share files with write paths and migrate
+   together.
+4. **The cutover does NOT break the running orchestrator.** If the
+   service's code includes the orchestrator (`next_machine`, build
+   worker dispatch, etc.) — as workflow does — the cutover cannot
+   delete those paths during execution. Cutover must be staged so the
+   orchestrator continues to function until the new orchestrator code
+   takes over.
+5. **The dispatcher knows the cutover is happening.** v1's daemon must
+   not be polling SQLite during/after cutover. Either it switches to
+   subscribing to v2 events, or it shuts down its workflow-related
+   surfaces before the cutover.
+6. **The data migration has been tested against a copy of real v1 data.**
+   The migration tool was used against a non-production v1 SQLite to
+   verify shape parity. Run-against-real happens during the cutover PR.
+7. **Rollback path exists.** If cutover fails, `git revert` the merge
+   commit recovers v1; the v2 Postgres state may be incomplete but is
+   not destructive. The data migration is idempotent so rerun is safe.
+
+#### When the checklist fails
+
+Defer the authoritative cutover. Ship v2 as **parallel-capable** (the
+v2 service exists, works against its own Postgres, is reachable via the
+v2 CLI binary, but v1 remains authoritative for the service's data).
+The remaining work — migrating the v1 read/write paths to v2 — becomes
+its own dedicated todo that lands when prerequisites are in place
+(usually: other services that the unmigrated v1 paths depend on are
+themselves migrated).
+
+This is what happened with the v2 MVP for workflow. The cutover was
+deferred; v2 ships parallel-capable. The future `v2-workflow-cutover`
+todo will execute the full migration once dependencies (agent_runtime,
+integration, knowledge) are themselves migrated and the orchestrator
+can run on v2 paths.
+
+#### The deferral is not failure
+
+Shipping parallel-capable is a successful migration outcome. The
+service exists in v2, the pattern is proven, every subsequent service
+benefits from the foundation. The authoritative cutover is a SEPARATE
+concern that can land when conditions allow. Defer is the right move
+when the checklist fails; aggressive cutover that breaks v1 is the
+wrong move always.
+
 ### Phase 0 — Lock the architecture (done when these docs are stable)
 
 **Deliverables:**

@@ -4,8 +4,7 @@ id: 'project/design/architecture-v2/future-cutover'
 scope: 'project'
 type: 'design'
 ---
-
-# Future Cutover — Design Note
+# Future Cutover — Design
 
 ## Required reads
 
