@@ -32,14 +32,11 @@ The orchestrator drives. The state machine reports current state and recommends 
 
 ### 1. Orient
 
-Call `telec todo prepare {slug}` (or query the state machine equivalently). The machine returns the current state — what stamps exist, which artifacts are present, what's outstanding, and a recommended next step with required reads.
+Call `telec todo prepare {slug}` (or query the state machine equivalently). The machine returns a verbatim execution script for the current phase — the same shape the work state machine emits via `format_tool_call`. The script describes either a dispatch (STEP 1 / STEP 2 / STEP 3) or a non-dispatch resolution (approval gate, blocker resolution, terminal).
 
-The orchestrator reads the recommendation. When `recommended_command` is non-empty, that is the next autonomous action — dispatch it via `telec sessions run`. The recommendation's flexibility belongs to in-conversation moments with the user: fresh questions, refinements, scope clarifications. Between user turns, the agent acts on the recommendation.
+The orchestrator executes the script verbatim between user turns. The script's flexibility belongs to in-conversation moments with the user: fresh questions, refinements, scope clarifications.
 
-When blockers are present, the payload decides the action:
-
-- `recommended_command` non-empty: dispatch it.
-- `recommended_command` empty: each blocker names a concrete gap. Resolve it by writing the missing artifact, re-dispatching the responsible draft worker with the review findings, or surfacing a state-machine error to the user.
+When a phase produces a blocker the state machine cannot dispatch a worker for (missing upstream artifact, schema upcycle failure, review remediation), the script's NEXT ACTION names the concrete resolution: write the missing artifact, re-dispatch the responsible draft worker with the review findings, or surface a state-machine error to the user.
 
 ### 2. Run the recommended next step
 
@@ -79,7 +76,7 @@ The state machine respects skips when deriving the current layer.
 When the state machine reports drift (codebase changed in artifact-referenced paths since the artifact was authored), the orchestrator dispatches a lean drift-analysis worker:
 
 ```
-telec sessions run --command /next-drift-analyze --agent codex --args {slug} --detach
+telec sessions run --command /next-drift-analyze --agent codex --args {slug}
 ```
 
 The worker reads the diffs scoped to referenced paths, assesses impact per affected artifact, and reports findings. The `/next-drift-analyze` worker is the sole author of `--drift-reviewed`. Substantive verdicts trigger re-derivation of the affected layer; cosmetic verdicts allow the chain to continue.

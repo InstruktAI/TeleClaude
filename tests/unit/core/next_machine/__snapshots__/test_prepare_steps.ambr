@@ -1,0 +1,364 @@
+# serializer version: 1
+# name: test_architecture_drafting_dispatches_to_architecture
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  Dispatch metadata: command="/next-prepare-architecture" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-prepare-architecture" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces an `architecture` artifact or an `architecture_skipped` stamp recommendation.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-prepare-architecture.md
+  '''
+# ---
+# name: test_blocked_no_drift_emits_blocker_resolution
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  BLOCKERS:
+  - architecture artifact is present but required upstream prd is missing
+  
+  NEXT ACTION:
+  Each blocker above names a concrete gap. Resolve it by:
+  - writing the missing artifact, or
+  - re-dispatching the responsible draft worker with the review findings, or
+  - surfacing a state-machine error to the user.
+  
+  Then call `telec todo prepare my-slug` to re-derive the lifecycle phase.
+  '''
+# ---
+# name: test_blocked_pending_drift_dispatches_drift_analyzer
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  Dispatch metadata: command="/next-drift-analyze" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-drift-analyze" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces drift_reviewed stamps for every pending artifact.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
+  '''
+# ---
+# name: test_plan_human_approval_emits_stamp_instruction
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  A real human must approve the artifact before this stamp is valid.
+  
+  NEXT ACTION:
+  1. Read the artifact:
+     telec todo artifacts read my-slug implementation-plan
+  
+  2. Present the artifact to the real human and wait for confirmation.
+  
+  3. When the human confirms, stamp:
+     telec todo stamp my-slug --plan-approved
+  
+  4. Call `telec todo prepare my-slug` to advance the lifecycle.
+  '''
+# ---
+# name: test_plan_review_dispatches_to_plan_review
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  Dispatch metadata: command="/next-review-plan" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-review-plan" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces a plan review verdict and findings when needed.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-review-plan.md
+  '''
+# ---
+# name: test_prd_drafting_dispatches_to_intake
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  Dispatch metadata: command="/next-prepare-intake" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-prepare-intake" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces a `prd` artifact or an explicit blocker.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-prepare-intake.md
+  '''
+# ---
+# name: test_prd_human_approval_emits_stamp_instruction
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  A real human must approve the artifact before this stamp is valid.
+  
+  NEXT ACTION:
+  1. Read the artifact:
+     telec todo artifacts read my-slug prd
+  
+  2. Present the artifact to the real human and wait for confirmation.
+  
+  3. When the human confirms, stamp:
+     telec todo stamp my-slug --prd-approved
+  
+  4. Call `telec todo prepare my-slug` to advance the lifecycle.
+  '''
+# ---
+# name: test_test_specs_drafting_dispatches_to_specs
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  Dispatch metadata: command="/next-prepare-specs" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-prepare-specs" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces a prose `test-specs` artifact or a `test_specs_skipped` stamp recommendation.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-prepare-specs.md
+  '''
+# ---

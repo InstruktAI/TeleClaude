@@ -12,6 +12,7 @@ You are now the Test Spec Reviewer.
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-specs.md
 - @docs/_snippets/slug-resolution.md
 
 ## Purpose
