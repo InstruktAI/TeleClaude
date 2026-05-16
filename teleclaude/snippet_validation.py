@@ -178,10 +178,17 @@ def validate_inline_ref_format(ref: str, *, domains: Iterable[str]) -> str | Non
         return "missing_at_prefix"
     if ref.startswith("@docs/"):
         return _validate_project_ref(ref[len("@docs/") :], domains)
-    abs_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
-    if ref.startswith(abs_prefix):
-        return _validate_global_ref(ref[len(abs_prefix) :], domains)
+    for abs_prefix in _global_ref_prefixes():
+        if ref.startswith(abs_prefix):
+            return _validate_global_ref(ref[len(abs_prefix) :], domains)
     return "invalid_prefix"
+
+
+def _global_ref_prefixes() -> tuple[str, ...]:
+    """Return valid absolute prefixes for global documentation refs."""
+    configured_prefix = f"@{GLOBAL_SNIPPETS_DIR}/"
+    home_prefix = f"@{Path.home()}/.teleclaude/docs/"
+    return tuple(dict.fromkeys((configured_prefix, home_prefix)))
 
 
 def _validate_project_ref(rel: str, domains: Iterable[str]) -> str | None:

@@ -71,11 +71,13 @@ async def _await_restart_readiness(
             session,
             AGENT_PROMPT_READY_TIMEOUT_S,
             _RESTART_QUIET_S,
-        )
+        ),
+        name=f"agent-restart-readiness-pane:{session.session_id}",
     )
     # Shield ready_future from cancellation when hook_task is cancelled.
     hook_task = asyncio.create_task(
-        asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+        asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S),
+        name=f"agent-restart-readiness-hook:{session.session_id}",
     )
     try:
         done, _pending = await asyncio.wait(

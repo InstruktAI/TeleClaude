@@ -98,6 +98,7 @@ def migrate_outbox_on_startup(main_db_path: str, outbox_db_path: str) -> None:
     interrupted startups where the receiver may have already written rows to
     hook_outbox.db with IDs that collide with the legacy integer PKs.
     """
+    Path(main_db_path).parent.mkdir(parents=True, exist_ok=True)
     main_conn = sqlite3.connect(main_db_path)
     try:
         if not _has_legacy_outbox_table(main_conn):

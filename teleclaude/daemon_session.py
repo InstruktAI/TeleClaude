@@ -456,13 +456,15 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
                 session,
                 AGENT_PROMPT_READY_TIMEOUT_S,
                 AGENT_START_STABILIZE_QUIET_S,
-            )
+            ),
+            name=f"agent-start-readiness-pane:{session_id}",
         )
         # Shield ready_future from cancellation: when pane_task wins and we cancel
         # hook_task in the finally, `asyncio.wait_for` would otherwise cancel the
         # underlying ready_future too, which then breaks our post-synthesis re-wait.
         hook_task = asyncio.create_task(
-            asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S)
+            asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S),
+            name=f"agent-start-readiness-hook:{session_id}",
         )
         try:
             done, _pending = await asyncio.wait(
