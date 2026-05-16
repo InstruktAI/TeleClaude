@@ -1,0 +1,37 @@
+# Local development infrastructure for v2 Rust workspace.
+# Brought up via `make pg-up`, torn down via `make pg-down`.
+services:
+  postgres:
+    image: postgres:17
+    container_name: teleclaude-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: teleclaude
+    ports:
+      - "5432:5432"
+    volumes:
+      - teleclaude-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d teleclaude"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: teleclaude-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - teleclaude-redisdata:/data
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  teleclaude-pgdata:
+  teleclaude-redisdata:

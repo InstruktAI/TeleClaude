@@ -122,6 +122,29 @@ make init
 
 For AI-driven project analysis and quality-config assessment, run `telec projects onboard` (or `telec projects analyze` / `telec projects assess` individually) after `telec projects init`.
 
+### v2 Rust workspace (parallel, not yet authoritative)
+
+A v2 Rust workspace lives under `crates/` and ships alongside the Python codebase. It is **parallel-capable**, not v1-replacing: v1 remains authoritative for all workflow data (todos, roadmap, artifacts) used by the daemon, HTTP API, TUI, and `/next-*` orchestrators.
+
+What v2 currently delivers:
+
+- A Cargo workspace with `shared`, `observability`, `storage`, `event-bus`, `identity`, `workflow`, and `telec-cli` crates (see `docs/project/design/architecture-v2/`).
+- A Postgres-backed `WorkflowService` with full CRUD, roadmap operations, artifact versioning, and a lifecycle state machine.
+- A `telec-cli` binary that mirrors v1's `telec todo` and `telec roadmap` CRUD against the v2 schema. Orchestrator-level subcommands (`design`, `prepare`, `work`, `integrate`, …) intentionally defer to the v1 Python handlers.
+- A `migrate-workflow-v1` subcommand that can copy v1 SQLite todos into the v2 Postgres schema (tool only — **not run automatically**).
+- A Python bridge in the v1 daemon (`teleclaude/transport/workflow_bridge.py`) that subscribes to `workflow.*` Redis events and refreshes the existing cache. It's a no-op until someone uses the v2 CLI.
+
+Local v2 infrastructure:
+
+```bash
+make pg-up         # start Postgres 17 + Redis 7 via docker compose
+psql … -f crates/workflow/migrations/0001_init.sql  # apply schema
+cargo build --release --workspace
+cargo test --workspace
+```
+
+The authoritative cutover (deleting v1 SQLite paths, replacing v1 dispatch) is deferred to a future dedicated todo (`v2-workflow-cutover`). It depends on coordinated migration of v1's HTTP API, TUI widgets, integration service, operations service, and `next_machine/` orchestrator off SQLite onto Postgres — work that's intentionally not in the MVP.
+
 ---
 
 ## Explore the Depth

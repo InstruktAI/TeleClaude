@@ -21,7 +21,17 @@ The TUI is instrumented by the dotfiles repository at `~/Sync/dotfiles/terminal/
 
 - **Daemon DB:** `~/.teleclaude/teleclaude.db` (resolved from `config.database.path`) — sessions, operations, tokens, availability.
 - **Mirrors DB:** `~/.teleclaude/mirrors.db` — transcript mirrors, used by `telec history search`. Separate database.
-- **Todos DB:** `{project_root}/.teleclaude/todos.db` — per-project todo state, artifacts, and roadmap. One per project.
+- **Todos DB:** `{project_root}/.teleclaude/todos.db` — per-project todo state, artifacts, and roadmap. One per project. **Authoritative for v1 workflow surfaces** (API, TUI, `/next-*` orchestrators, integration).
+
+## v2 workspace (Rust, parallel-capable)
+
+A v2 Rust workspace lives alongside v1 under `crates/`. It exposes a parallel `WorkflowService` plus a `telec-cli` binary that mirrors v1's `telec todo` and `telec roadmap` CRUD against a Postgres-backed schema. As of the `v2-mvp-bootstrap` delivery:
+
+- **v1 remains authoritative for all workflow data.** The Rust binary writes to its own `workflow` Postgres schema and emits `workflow.*` Redis events. It is **not** wired into v1 dispatch.
+- **The v1 daemon subscribes to `workflow.*` Redis channels** (`teleclaude/transport/workflow_bridge.py`) and invalidates its cache when events arrive. The subscription is a no-op while nobody uses the v2 CLI.
+- **`make pg-up` / `make pg-down` / `make pg-reset`** bring local Postgres 17 + Redis 7 up via `docker-compose.yml`.
+- **`cargo build/test/clippy --workspace`** are the v2 quality gates. Pre-commit hooks run `cargo fmt --check` and `cargo clippy --workspace --all-targets -- -D warnings` on Rust changes.
+- **Authoritative cutover is a future dedicated todo** (`v2-workflow-cutover`). It will migrate v1's HTTP API, TUI, integration, operations, and `next_machine/` orchestrator off SQLite onto the v2 Postgres schema in one coordinated step. Until then, do not delete v1 paths and do not run `telec migrate-workflow-v1` against real project data.
 
 ## TUI work
 

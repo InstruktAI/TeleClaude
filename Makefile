@@ -1,4 +1,4 @@
-.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types
+.PHONY: help install init link certs format lint check-test-mapping test-unit test-e2e test coverage coverage-html coverage-report diagrams clean dev start stop restart kill status generate-types pg-up pg-down pg-reset cargo-build cargo-test cargo-lint cargo-fmt
 
 CRON_SMOKE_SINCE ?= 15m
 
@@ -176,3 +176,53 @@ build-artifacts:
 
 generate-types:
 	@uv run -m teleclaude.codegen.pydantic_to_typescript
+
+# ---------------------------------------------------------------------------
+# v2 Rust workspace targets
+# ---------------------------------------------------------------------------
+
+pg-up:
+	@echo "Starting Postgres + Redis via docker compose..."
+	@docker compose up -d postgres redis
+	@echo "✓ Postgres + Redis are up"
+
+pg-down:
+	@echo "Stopping Postgres + Redis..."
+	@docker compose down
+	@echo "✓ Containers stopped"
+
+pg-reset:
+	@echo "Tearing down Postgres + Redis WITH volumes..."
+	@docker compose down -v
+	@echo "✓ Containers and volumes destroyed"
+
+cargo-build:
+	@echo "Building Rust workspace..."
+	@cargo build --workspace
+	@echo "✓ cargo build --workspace succeeded"
+
+cargo-test:
+	@echo "Running Rust workspace tests..."
+	@cargo test --workspace
+	@echo "✓ cargo test --workspace succeeded"
+
+test-rust-integration:
+	@echo "Running Rust integration suite against docker-compose Postgres + Redis..."
+	@$(MAKE) pg-up
+	@PGPASSWORD=postgres psql -U postgres -h localhost -d teleclaude -c "DROP SCHEMA IF EXISTS workflow CASCADE;" >/dev/null 2>&1 || true
+	@PGPASSWORD=postgres psql -U postgres -h localhost -d teleclaude -f crates/workflow/migrations/0001_init.sql >/dev/null
+	@DATABASE_URL=postgres://postgres:postgres@localhost:5432/teleclaude \
+	 REDIS_URL=redis://localhost:6379 \
+	 TELECLAUDE_OWNER_EMAIL=ci@example.com \
+	 cargo test --workspace -- --ignored --test-threads=1
+	@echo "✓ Rust integration suite passed"
+
+cargo-lint:
+	@echo "Running cargo clippy..."
+	@cargo clippy --workspace --all-targets -- -D warnings
+	@echo "✓ cargo clippy succeeded"
+
+cargo-fmt:
+	@echo "Formatting Rust code..."
+	@cargo fmt --all
+	@echo "✓ cargo fmt complete"

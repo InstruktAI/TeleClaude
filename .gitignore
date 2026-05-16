@@ -81,6 +81,12 @@ CLAUDE.md
 # Generated build artifacts (never tracked)
 **/index.yaml
 
+# Rust (v2 workspace) — target/ is build output, never tracked.
+# Cargo.lock IS tracked at workspace root (binary workspace policy).
+target/
+*.rs.bk
+**/*.rs.bk
+
 # Generated diagrams (regenerated via `make diagrams`)
 docs/diagrams/
 # Local AI config artifacts

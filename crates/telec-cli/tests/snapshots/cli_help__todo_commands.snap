@@ -1,0 +1,20 @@
+---
+source: crates/telec-cli/tests/cli_help.rs
+expression: extracted
+---
+  create      Create a new todo backed by its required `input` artifact
+  design      Run the creative state machine (deferred to v1)
+  co-create   Deprecated alias for `telec todo design` (deferred to v1)
+  remove      Remove a todo and its roadmap entry
+  prepare     Run the Phase A (prepare) state machine (deferred to v1)
+  work        Run the Phase B (work) state machine (deferred to v1)
+  integrate   Run the Phase C (integrate) state machine (deferred to v1)
+  mark-phase  Operator override: write the authoritative `lifecycle_phase` (deferred to v1)
+  reconcile   Re-evaluate evidence and align `lifecycle_phase` (deferred to v1)
+  set-deps    Set dependencies for a work item in the roadmap
+  dump        Fire-and-forget brain dump (deferred to v1)
+  split       Split a todo into child items (deferred to v1)
+  stamp       Stamp a verdict or readiness marker (deferred to v1)
+  show        Show the full state payload for a todo
+  artifacts   Manage todo artifacts in the database
+  help        Print this message or the help of the given subcommand(s)

@@ -1,6 +1,7 @@
 project_name: TeleClaude
 languages:
   - python
+  - rust
 frontend_root: frontend
 
 business:

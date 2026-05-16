@@ -9,7 +9,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from dotenv import load_dotenv
 from instrukt_ai_logging import get_logger
@@ -182,6 +182,11 @@ _t = time.perf_counter()
 from teleclaude.tts.manager import TTSManager
 
 _record_import_timing("teleclaude.tts.manager", _t)
+
+_t = time.perf_counter()
+from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
+
+_record_import_timing("teleclaude.transport.workflow_bridge", _t)
 
 init_voice_handler = voice_message_handler.init_voice_handler
 
@@ -370,6 +375,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self.webhook_delivery_task: asyncio.Task[object] | None = None
         self.channel_subscription_worker_task: asyncio.Task[object] | None = None
         self._ingest_scheduler_task: asyncio.Task[object] | None = None
+        self._workflow_bridge_task: asyncio.Task[object] | None = None
+        self._workflow_bridge: WorkflowBridge | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
         self.lifecycle = DaemonLifecycle(
@@ -682,6 +689,9 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
 
                 if isinstance(redis_adapter, _RT):
                     set_redis_transport(redis_adapter)
+
+            await self._start_workflow_bridge()
+
             self.resource_monitor_task = asyncio.create_task(
                 self.monitoring_service.resource_monitor_loop(), name="resource-monitor"
             )
@@ -724,6 +734,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await self._cancel_task_attr(attr_name, log_message)
 
         await self._stop_session_outbox_workers()
+
+        workflow_bridge = getattr(self, "_workflow_bridge", None)
+        if workflow_bridge is not None:
+            await workflow_bridge.stop()
+        await self._await_task_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
 
         await self._await_task_attr("webhook_delivery_task", "Webhook delivery worker stopped", timeout=5.0)
         await self._await_task_attr(
@@ -884,6 +899,63 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             await self._ensure_output_polling(session)
             return
         await self._poll_and_send_output(session_id, tmux_session_name)
+
+    async def _start_workflow_bridge(self) -> None:
+        """Attach the v2 ``workflow.*`` Redis subscriber to the daemon loop.
+
+        The bridge is best-effort: a missing or empty ``REDIS_URL`` simply
+        skips startup with a warning. The subscriber's internal reconnect
+        loop handles transient Redis outages once it is running.
+        """
+        # startup boundary lazy imports to keep cold import cheap
+        from teleclaude.transport.redis_client import create_redis_client  # startup boundary
+
+        redis_url = os.getenv("REDIS_URL") or getattr(config.redis, "url", "") or "redis://localhost:6379"
+        password = getattr(config.redis, "password", None)
+        max_connections = int(getattr(config.redis, "max_connections", 10) or 10)
+        socket_timeout_raw = getattr(config.redis, "socket_timeout", None)
+        socket_timeout = float(socket_timeout_raw) if socket_timeout_raw else None
+
+        def _factory() -> Any:
+            return create_redis_client(
+                redis_url,
+                password=password,
+                max_connections=max_connections,
+                socket_timeout=socket_timeout,
+            )
+
+        bridge = WorkflowBridge(
+            redis_factory=_factory,
+            dispatch=self._dispatch_workflow_event,
+        )
+        self._workflow_bridge = bridge
+        self._workflow_bridge_task = asyncio.create_task(bridge.run(), name="workflow-bridge")
+        self._workflow_bridge_task.add_done_callback(self._log_background_task_exception("workflow_bridge"))
+        logger.info("Workflow Redis bridge started", redis_url=redis_url)
+
+    def _dispatch_workflow_event(self, envelope: WorkflowEnvelope) -> None:
+        """Translate a decoded v2 workflow envelope into v1 cache invalidation.
+
+        Cache invalidation drives a ``todos_updated``/``projects_updated``
+        notification through the existing subscriber pipeline, which the WS
+        layer fans out to connected TUIs and web clients.
+        """
+        category = envelope.category
+        if category is None:
+            return
+
+        payload = envelope.payload
+        computer_raw = payload.get("computer")
+        computer = computer_raw if isinstance(computer_raw, str) and computer_raw else config.computer.name
+        project_path_raw = payload.get("project_path")
+        project_path = project_path_raw if isinstance(project_path_raw, str) and project_path_raw else None
+
+        if category == "todo":
+            self.cache.publish_workflow_change("todos", computer=computer, project_path=project_path)
+        elif category == "artifact":
+            self.cache.publish_workflow_change("artifacts", computer=computer, project_path=project_path)
+        elif category == "roadmap":
+            self.cache.publish_workflow_change("roadmap", computer=computer)
 
 
 def _install_event_wait_tracer() -> None:

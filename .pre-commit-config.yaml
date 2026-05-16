@@ -61,3 +61,23 @@ repos:
     language: system
     pass_filenames: false
     files: ^teleclaude/(core/db\.py|hooks/receiver/__main__\.py)$
+- repo: local
+  hooks:
+  - id: cargo-fmt
+    name: cargo fmt --check (Rust)
+    entry: cargo fmt --all -- --check
+    language: system
+    files: \.rs$
+    pass_filenames: false
+  - id: cargo-clippy
+    name: cargo clippy (Rust)
+    entry: cargo clippy --workspace --all-targets -- -D warnings
+    language: system
+    files: (\.rs|Cargo\.toml|Cargo\.lock)$
+    pass_filenames: false
+  - id: cargo-test
+    name: cargo test --workspace --lib (Rust unit tests)
+    entry: cargo test --workspace --lib --quiet
+    language: system
+    files: (\.rs|Cargo\.toml|Cargo\.lock)$
+    pass_filenames: false

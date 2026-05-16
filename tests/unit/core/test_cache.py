@@ -109,6 +109,39 @@ class TestDaemonCache:
         assert "macbook" in computers
 
     @pytest.mark.unit
+    def test_publish_workflow_change_todos_invalidates_and_notifies(self):
+        cache = DaemonCache()
+        todo = TodoDTO(slug="t1", status="pending", has_requirements=False, has_impl_plan=False)
+        cache.set_todos("local", "/p", [todo])
+        events: list[tuple[str, object]] = []
+        cache.subscribe(lambda e, d: events.append((e, d)))
+
+        cache.publish_workflow_change("todos", computer="local", project_path="/p")
+
+        assert cache.get_todos("local", "/p") == []
+        assert ("todos_updated", {"computer": "local", "project_path": "/p"}) in events
+
+    @pytest.mark.unit
+    def test_publish_workflow_change_roadmap_notifies_projects_updated(self):
+        cache = DaemonCache()
+        events: list[tuple[str, object]] = []
+        cache.subscribe(lambda e, d: events.append((e, d)))
+
+        cache.publish_workflow_change("roadmap", computer="local")
+
+        assert ("projects_updated", {"computer": "local"}) in events
+
+    @pytest.mark.unit
+    def test_publish_workflow_change_skips_todo_scope_without_project_path(self):
+        cache = DaemonCache()
+        events: list[tuple[str, object]] = []
+        cache.subscribe(lambda e, d: events.append((e, d)))
+
+        cache.publish_workflow_change("todos", computer="local")
+
+        assert events == []
+
+    @pytest.mark.unit
     def test_apply_todos_snapshot_propagates_lifecycle_phase_changes(self):
         """Reconcile-only phase changes must invalidate the cache so the TUI re-renders."""
         cache = DaemonCache()

@@ -145,6 +145,48 @@ class DaemonCache:
         self._todos.clear()
         logger.info("Cleared all cache data")
 
+    def publish_workflow_change(
+        self,
+        scope: str,
+        *,
+        computer: str,
+        project_path: str | None = None,
+    ) -> None:
+        """Invalidate caches and notify subscribers about a v2 workflow event.
+
+        Used by the v2 ``workflow.*`` Redis bridge to keep the v1 daemon's view
+        coherent without doing field-level cache surgery. The bridge classifies
+        the channel; this method translates the classification into the right
+        cache eviction + the right subscriber notification so the existing
+        WebSocket refresh pipeline can fan it out.
+
+        Args:
+            scope: One of ``"todos"``, ``"artifacts"``, ``"roadmap"``. Todos
+                and artifacts both invalidate the per-project todos cache and
+                fire ``todos_updated``; roadmap invalidates the project digest
+                and fires ``projects_updated``.
+            computer: Computer name whose caches should be invalidated.
+            project_path: Project path required for todo/artifact scopes; the
+                call is a no-op if missing for those scopes.
+        """
+        if scope in ("todos", "artifacts"):
+            if not project_path:
+                logger.debug("publish_workflow_change(%s) skipped: project_path missing", scope)
+                return
+            key = f"{computer}:{project_path}"
+            self._todos.pop(key, None)
+            self._todos_digest.pop(computer, None)
+            self._notify(
+                "todos_updated",
+                {"computer": computer, "project_path": project_path},
+            )
+            return
+        if scope == "roadmap":
+            self._projects_digest.pop(computer, None)
+            self._notify("projects_updated", {"computer": computer})
+            return
+        logger.warning("publish_workflow_change: unknown scope=%s", scope)
+
     # ==================== Data Access ====================
 
     def get_computers(self) -> list[ComputerInfo]:
