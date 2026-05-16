@@ -30,7 +30,24 @@ The orchestrator drives. The state machine reports current state and recommends 
 
 ## Steps
 
-### 1. Orient
+### 1. Pre-flight input viability
+
+Before calling the state machine, the orchestrator reads the `input` artifact and decides whether intake can proceed at all. This gate exists because intake — especially in standin mode — will otherwise invent scope from a sparse or accidental input, producing artifacts that look real but encode nothing.
+
+Read the input via `telec todo artifacts read {slug} input`. Apply the viability check:
+
+- **Hard-stop signals** (any one disqualifies the input as-is):
+  - Input is a single short phrase or noun phrase with no goal, no actor, no outcome — fewer than ~10 meaningful words.
+  - Slug carries a raw timestamp suffix (e.g., `…-1778958052`) indicating an auto-generated dump, with no companion context from a prior session.
+  - Input is empty, placeholder text, or matches a known smoke-test pattern.
+
+- **Mode-dependent resolution:**
+  - `human_in_loop: false` (standin) → **hard-stop and escalate.** Do not dispatch intake. The PO emulator has no way to fill the gap and a human cannot sanity-check the result. Surface to the user: "Input too sparse for standin mode; needs human elaboration or removal." Stop the prepare flow.
+  - `human_in_loop: true` → **soft-stop and elicit from the user before dispatch.** Quote the input back, name the gap, ask one direct question to surface the goal/actor/outcome. Update the input artifact with the elaborated text, then proceed.
+
+Substantive inputs (clear intent, concrete outcome, identifiable actor — even if short) pass the gate and proceed to Step 2.
+
+### 2. Orient
 
 Call `telec todo prepare {slug}` (or query the state machine equivalently). The machine returns a verbatim execution script for the current phase — the same shape the work state machine emits via `format_tool_call`. The script describes either a dispatch (STEP 1 / STEP 2 / STEP 3) or a non-dispatch resolution (approval gate, blocker resolution, terminal).
 
@@ -38,7 +55,7 @@ The orchestrator executes the script verbatim between user turns. The script's f
 
 When a phase produces a blocker the state machine cannot dispatch a worker for (missing upstream artifact, schema upcycle failure, review remediation), the script's NEXT ACTION names the concrete resolution: write the missing artifact, re-dispatch the responsible draft worker with the review findings, or surface a state-machine error to the user.
 
-### 2. Run the recommended next step
+### 3. Run the recommended next step
 
 The recommendation maps to one of the phase skills. The orchestrator loads the relevant skill, which inlines its required reads. Phase skills:
 
@@ -56,13 +73,13 @@ Three lifecycle stamps are authored by the actor producing the judgment they cap
 - `--drift-reviewed` is the deliverable of the `/next-drift-analyze` worker.
 - `--architecture-skipped` and `--test-specs-skipped` are the deliverables of the BA during intake.
 
-### 3. Honor the approval gates
+### 4. Honor the approval gates
 
 Each artifact has a human approval gate. The orchestrator stamps the approval only after the real human (not a standin) confirms. In standin mode, the orchestrator may produce artifacts but cannot stamp human-approval — the chain pauses at the approval gate until the real human engages.
 
 When the real human re-engages a standin-paused todo via `/next-prepare {slug}`, the state machine recognizes the situation and recommends presenting the standin-produced artifact for approval. Standard refinement loop applies from there.
 
-### 4. Skip phases that don't earn their place
+### 5. Skip phases that don't earn their place
 
 At intake, and at each phase boundary thereafter, the orchestrator assesses whether the next phase earns its place for this specific work. When it doesn't, the orchestrator stamps the skip with reason:
 
@@ -71,7 +88,7 @@ At intake, and at each phase boundary thereafter, the orchestrator assesses whet
 
 The state machine respects skips when deriving the current layer.
 
-### 5. Handle drift
+### 6. Handle drift
 
 When the state machine reports drift (codebase changed in artifact-referenced paths since the artifact was authored), the orchestrator dispatches a lean drift-analysis worker:
 
@@ -81,7 +98,7 @@ telec sessions run --command /next-drift-analyze --agent codex --args {slug}
 
 The worker reads the diffs scoped to referenced paths, assesses impact per affected artifact, and reports findings. The `/next-drift-analyze` worker is the sole author of `--drift-reviewed`. Substantive verdicts trigger re-derivation of the affected layer; cosmetic verdicts allow the chain to continue.
 
-### 6. Handle refinement
+### 7. Handle refinement
 
 When the human refines (proposes changes to an artifact at any layer), the orchestrator classifies the refinement scope:
 
@@ -92,7 +109,7 @@ When the human refines (proposes changes to an artifact at any layer), the orche
 
 The orchestrator clears the relevant approval stamps and re-runs the affected phases.
 
-### 7. Terminal state
+### 8. Terminal state
 
 When all required phases have approval stamps and grounding is fresh, the state machine derives `PREPARED`. The orchestrator reports to the user and hands off to the work phase.
 
@@ -109,6 +126,8 @@ If reviewer verdicts cannot be resolved through normal revision rounds, or if dr
 
 ## Recovery
 
+- **Input fails the viability gate in standin mode.** Orchestrator does not dispatch intake. Surfaces the gap to the user with the input quoted back, and recommends either elaboration (re-dump with substance) or removal (`telec todo remove {slug}`). The prepare flow stops until the input is fixed or the todo is removed.
+- **Input fails the viability gate in human-in-loop mode.** Orchestrator stops before dispatch, quotes the input, and asks one direct question to surface the missing goal/actor/outcome. Updates the input artifact with the human's elaboration, then proceeds from Step 2.
 - **State machine returns an unfamiliar recommendation.** Orchestrator surfaces this to the user; doesn't improvise.
 - **Phase skill loading fails.** Orchestrator reports the failure; doesn't proceed without the skill loaded.
 - **Reviewer dispatch fails repeatedly.** Surface as a blocker; don't grind without reviewer verification.

@@ -59,8 +59,6 @@ workspace/
 
 *.local.json
 trees/
-.state.json
-todos/.finalize-lock
 
 .playwright-mcp
 

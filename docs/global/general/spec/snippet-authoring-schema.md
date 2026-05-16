@@ -48,7 +48,9 @@ Document structure:
 | design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
 | spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
 
-Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`.
+Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
+
+The `Discipline` section is the behavioral anchor — 3–5 sentences naming the specific failure mode this procedure guards against. Commands are thin wrappers that delegate to their procedure's discipline (`Follow the <procedure>'s discipline.`); the section must live on the procedure so the delegation resolves.
 
 The `Required tools` section lists `telec` commands the agent must use during this procedure. Commands listed here are mandatory — agents must not improvise alternatives (direct file reads, custom scripts). Each entry is a concrete command pattern. Globally expanded commands (available to all agents via the CLI surface) are listed by their top-level signature. Procedure-scoped commands are listed with full invocation patterns.
 
