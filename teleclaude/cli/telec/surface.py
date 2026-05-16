@@ -7,6 +7,17 @@ from .surface_types import (
     CommandDef,
     Flag,
     TelecCommand,
+    _FLAG_AFTER_DEPS,
+    _FLAG_AGENT,
+    _FLAG_COMPUTER,
+    _FLAG_DETACH,
+    _FLAG_LIMIT_20,
+    _FLAG_MODE,
+    _FLAG_PROJECT_FILTER,
+    _FLAG_PROJECT_PATH,
+    _FLAG_PROJECT_TRUSTED,
+    _FLAG_SESSION,
+    _FLAG_THINKING,
     _H,
     _SYS_ALL,
     _SYS_INTG,
@@ -17,6 +28,7 @@ from .surface_types import (
     _HR_MEMBER,
     _HR_MEMBER_CONTRIB,
     _HR_MEMBER_CONTRIB_NEWCOMER,
+    strip_hidden_flag_tokens,
 )
 
 __all__ = ["CLI_SURFACE", "CommandAuth", "CommandDef", "Flag", "TelecCommand", "export_surface_markdown"]
@@ -42,8 +54,9 @@ def _render_command(lines: list[str], path: str, cmd: CommandDef, depth: int) ->
     lines.append(cmd.desc)
     lines.append("")
 
-    if cmd.args:
-        lines.append(f"**Usage:** `telec {path} {cmd.args}`")
+    cleaned_args = strip_hidden_flag_tokens(cmd.args, cmd.flags)
+    if cleaned_args:
+        lines.append(f"**Usage:** `telec {path} {cleaned_args}`")
         lines.append("")
 
     visible_flags = cmd.visible_flags
@@ -91,13 +104,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ),
                 flags=[
                     _H,
-                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
-                    Flag("--project", desc="Project directory path (optional; defaults to cwd)"),
-                    Flag("--agent", desc="Agent: claude, gemini, codex"),
-                    Flag("--mode", desc="Thinking mode: fast, med, slow"),
+                    _FLAG_COMPUTER,
+                    _FLAG_PROJECT_PATH,
+                    _FLAG_AGENT,
+                    _FLAG_MODE,
                     Flag("--message", desc="Initial message to send"),
                     Flag("--direct", desc="Conversation mode: create direct link with caller and bypass listeners"),
-                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
+                    _FLAG_DETACH,
                 ],
                 notes=[
                     (
@@ -105,8 +118,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "instead of worker supervision notifications."
                     ),
                     (
-                        "Use --detach for fire-and-forget dispatch: child inherits identity but caller "
-                        "receives no notifications."
+                        "--detach: do not use unless explicitly instructed. Sanctioned only for a "
+                        "personal-assistant dispatching an orchestrator to a project. --detach disables "
+                        "notifications — you will not learn when the child finishes, so omit it whenever "
+                        "your next step depends on the result."
                     ),
                 ],
                 examples=[
@@ -144,10 +159,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id> [--since <ts>] [--tools] [--thinking]",
                 flags=[
                     _H,
-                    Flag("--session", "-s", "Session ID"),
+                    _FLAG_SESSION,
                     Flag("--since", desc="ISO8601 timestamp filter"),
                     Flag("--tools", desc="Include tool use entries"),
-                    Flag("--thinking", desc="Include thinking blocks"),
+                    _FLAG_THINKING,
                 ],
                 auth=CommandAuth(system=_SYS_ALL | _SYS_INTG, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -161,21 +176,23 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--command", desc="Slash command (e.g. /next-build)"),
-                    Flag("--project", desc="Project directory path (optional; defaults to cwd)"),
+                    _FLAG_PROJECT_PATH,
                     Flag("--args", desc="Command arguments"),
-                    Flag("--agent", desc="Agent: claude, gemini, codex"),
-                    Flag("--mode", desc="Thinking mode: fast, med, slow"),
-                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
+                    _FLAG_AGENT,
+                    _FLAG_MODE,
+                    _FLAG_COMPUTER,
                     Flag("--subfolder", desc="Subdirectory within the project"),
-                    Flag("--detach", desc="Fire-and-forget: inherit context but skip listener registration"),
+                    _FLAG_DETACH,
                     Flag("--additional-context", desc="Additional context for the worker, appended to startup message"),
                 ],
                 notes=[
                     "Creates a fresh session and runs the slash command as the first agent message.",
                     "Worker lifecycle commands: /next-build, /next-review-build, /next-fix-review, /next-finalize.",
                     (
-                        "Use --detach for fire-and-forget dispatch: child inherits identity but caller "
-                        "receives no notifications."
+                        "--detach: do not use unless explicitly instructed. Sanctioned only for a "
+                        "personal-assistant dispatching an orchestrator to a project. --detach disables "
+                        "notifications — you will not learn when the child finishes, so omit it whenever "
+                        "your next step depends on the result."
                     ),
                 ],
                 examples=[
@@ -207,8 +224,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<session_id> [--computer <host>]",
                 flags=[
                     _H,
-                    Flag("--session", "-s", "Session ID"),
-                    Flag("--computer", "-c", "Target computer (optional; defaults to local)"),
+                    _FLAG_SESSION,
+                    _FLAG_COMPUTER,
                 ],
                 auth=CommandAuth(system=_SYS_ORCH | _SYS_INTG, human=_HR_MEMBER),
             ),
@@ -340,7 +357,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
             "list": CommandDef(
                 desc="List active channels",
                 args="[--project <name>]",
-                flags=[_H, Flag("--project", desc="Filter by project name")],
+                flags=[_H, _FLAG_PROJECT_FILTER],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER),
             ),
             "publish": CommandDef(
@@ -412,7 +429,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> [--after <deps>] [--kind <feature|bug|refactor|migration|prepped>]",
                 flags=[
                     _H,
-                    Flag("--after", desc="Comma-separated dependency slugs"),
+                    _FLAG_AFTER_DEPS,
                     Flag("--kind", desc="Work item kind; defaults to feature"),
                 ],
                 notes=[
@@ -495,7 +512,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Fire-and-forget brain dump with notification trigger",
                 args="<slug> <content> [--after <deps>] [--draft] [--prepped]",
                 flags=[
-                    Flag("--after", desc="Comma-separated dependency slugs"),
+                    _FLAG_AFTER_DEPS,
                     Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
                     Flag(
                         "--prepped",
@@ -641,7 +658,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> [--group <label>] [--after <slugs>] [--before <slug>] [--description <text>]",
                 flags=[
                     Flag("--group", desc="Visual grouping label"),
-                    Flag("--after", desc="Comma-separated dependency slugs"),
+                    _FLAG_AFTER_DEPS,
                     Flag("--before", desc="Insert before this slug (default: append)"),
                     Flag("--description", desc="Summary description"),
                 ],
@@ -666,7 +683,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Set dependencies for an entry",
                 args="<slug> [--after <slugs>]",
                 flags=[
-                    Flag("--after", desc="Comma-separated dependency slugs"),
+                    _FLAG_AFTER_DEPS,
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
@@ -707,7 +724,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     Flag("--body", desc="Detailed description body for bug.md"),
-                    Flag("--project", desc="Project name (from trusted_dirs)"),
+                    _FLAG_PROJECT_TRUSTED,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
@@ -715,7 +732,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work",
                 args="<slug> [--project <name>]",
                 flags=[
-                    Flag("--project", desc="Project name (from trusted_dirs)"),
+                    _FLAG_PROJECT_TRUSTED,
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),
             ),
@@ -900,8 +917,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[
                     _H,
                     Flag("--identity", desc="Filter by human identity (email or key)"),
-                    Flag("--project", desc="Filter by project name"),
-                    Flag("--limit", desc="Max results (default: 20)"),
+                    _FLAG_PROJECT_FILTER,
+                    _FLAG_LIMIT_20,
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
@@ -928,7 +945,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--agent", "-a", "Agent name or 'all' (default: all)"),
                     Flag("--computer", "-c", "Fetch from a remote computer"),
-                    Flag("--thinking", desc="Include thinking blocks"),
+                    _FLAG_THINKING,
                     Flag("--raw", desc="Show raw transcript instead of mirror text"),
                     Flag("--tail", desc="Limit output to last N chars (0=unlimited)"),
                 ],
@@ -954,7 +971,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--type",
                         desc="Filter by type: preference, decision, discovery, gotcha, pattern, friction, context",
                     ),
-                    Flag("--project", desc="Filter by project name"),
+                    _FLAG_PROJECT_FILTER,
                 ],
                 examples=[
                     "telec memories list",
@@ -967,12 +984,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<query> [--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
-                    Flag("--limit", desc="Max results (default: 20)"),
+                    _FLAG_LIMIT_20,
                     Flag(
                         "--type",
                         desc="Filter by type: preference, decision, discovery, gotcha, pattern, friction, context",
                     ),
-                    Flag("--project", desc="Filter by project name"),
+                    _FLAG_PROJECT_FILTER,
                 ],
                 examples=[
                     'telec memories search "session reason"',
@@ -1011,7 +1028,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--before", desc="Observations before anchor (default: 3)"),
                     Flag("--after", desc="Observations after anchor (default: 3)"),
-                    Flag("--project", desc="Filter by project name"),
+                    _FLAG_PROJECT_FILTER,
                 ],
                 examples=["telec memories timeline 42 --before 3 --after 3"],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),

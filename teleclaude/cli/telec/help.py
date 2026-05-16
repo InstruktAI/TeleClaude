@@ -6,6 +6,7 @@ import os
 import shlex
 
 from teleclaude.cli.telec.surface import CLI_SURFACE, CommandDef, Flag
+from teleclaude.cli.telec.surface_types import strip_hidden_flag_tokens
 
 # Derived constants for completion (from schema)
 _COMMANDS = [name for name, cmd in CLI_SURFACE.items() if not cmd.hidden]
@@ -97,7 +98,8 @@ def _iter_subcommand_entries_for(prefix: str, node: CommandDef, col: int) -> lis
 def _usage_node_leaf(path: list[str], node: CommandDef) -> str:
     """Render leaf-style help for a node without children."""
     prefix = " ".join(path)
-    args_str = f" {node.args}" if node.args else ""
+    cleaned_args = strip_hidden_flag_tokens(node.args, node.flags)
+    args_str = f" {cleaned_args}" if cleaned_args else ""
     visible = _visible_flags(node.flags)
     lines = ["Usage:", f"  telec {prefix}{args_str}", f"\n  {node.desc}"]
 
@@ -144,8 +146,14 @@ def _maybe_show_help(cmd: str, args: list[str]) -> bool:
 
 
 def _inline_flags(flags: list[Flag]) -> str:
-    """Format visible flags compactly for inline display in usage lines."""
-    visible = [f for f in flags if f.long != "--help"]
+    """Format visible flags compactly for inline display in usage lines.
+
+    Honors ``flag.hidden`` so hidden flags (including ``--help`` and
+    ``--detach``) never surface in the trailing usage summary. The leaf
+    Options/Notes/Examples sections remain unaffected — only the inline
+    overview is suppressed.
+    """
+    visible = [f for f in flags if not f.hidden]
     if not visible:
         return ""
     names = " ".join(f.long for f in visible)
@@ -170,7 +178,8 @@ def _usage_main_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
         parts = [flag.short if flag.short else flag.long for flag in visible_flags]
         flag_str = " [" + "|".join(parts) + "]"
 
-    args_str = f" {cmd.args}" if cmd.args else ""
+    cleaned_args = strip_hidden_flag_tokens(cmd.args, cmd.flags)
+    args_str = f" {cleaned_args}" if cleaned_args else ""
     if not cmd.subcommands:
         entry = f"telec {cmd_name}{args_str}{flag_str}"
         return [f"  {entry:<{col}}# {cmd.desc}"]
@@ -201,7 +210,8 @@ def _format_usage_entry(
     desc: str,
     col: int,
 ) -> str:
-    args_str = f" {args_spec}" if args_spec else ""
+    cleaned_args = strip_hidden_flag_tokens(args_spec, flags)
+    args_str = f" {cleaned_args}" if cleaned_args else ""
     entry = f"telec {' '.join(command_parts)}{args_str}{_inline_flags(flags)}"
     return f"  {entry:<{col}}# {desc}"
 
@@ -218,7 +228,7 @@ def _usage_subcmd(cmd_name: str) -> str:
 
 
 def _visible_flags(flags: list[Flag] | None) -> list[Flag]:
-    return [f for f in flags or [] if f.long != "--help"]
+    return [f for f in flags or [] if not f.hidden]
 
 
 def _append_flag_section(lines: list[str], label: str, flags: list[Flag]) -> None:

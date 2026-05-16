@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -117,6 +118,47 @@ class CommandDef(_CommandPresentation):
 
 
 _H = Flag("--help", "-h", "Show usage information", hidden=True)
+
+# Shared flag definitions reused across multiple CommandDef entries.
+# When the same `Flag(...)` literal appears in more than one command, define it
+# here and reference the constant — keep the surface single-source-of-truth.
+_FLAG_COMPUTER = Flag("--computer", "-c", "Target computer (optional; defaults to local)")
+_FLAG_AGENT = Flag("--agent", desc="Agent: claude, gemini, codex")
+_FLAG_MODE = Flag("--mode", desc="Thinking mode: fast, med, slow")
+_FLAG_DETACH = Flag(
+    "--detach",
+    desc="Fire-and-forget: inherit context but skip listener registration",
+    hidden=True,
+)
+_FLAG_PROJECT_PATH = Flag("--project", desc="Project directory path (optional; defaults to cwd)")
+_FLAG_PROJECT_FILTER = Flag("--project", desc="Filter by project name")
+_FLAG_PROJECT_TRUSTED = Flag("--project", desc="Project name (from trusted_dirs)")
+_FLAG_SESSION = Flag("--session", "-s", "Session ID")
+_FLAG_THINKING = Flag("--thinking", desc="Include thinking blocks")
+_FLAG_LIMIT_20 = Flag("--limit", desc="Max results (default: 20)")
+_FLAG_AFTER_DEPS = Flag("--after", desc="Comma-separated dependency slugs")
+
+
+def strip_hidden_flag_tokens(args: str, flags: list[Flag]) -> str:
+    """Remove ``[--<long>]`` and ``[--<long> <value>]`` tokens for hidden flags
+    from a hand-written usage args string.
+
+    The args field on ``CommandDef`` is currently a literal string maintained
+    alongside the ``flags`` list. ``hidden=True`` on a flag must also suppress
+    that flag from the rendered usage line — this helper performs the strip
+    so both renderers (``help.py`` and ``surface.py::_render_command``) honor
+    the contract uniformly.
+    """
+    if not args:
+        return args
+    result = args
+    for flag in flags:
+        if not flag.hidden:
+            continue
+        pattern = rf"\s*\[{re.escape(flag.long)}(?:\s+<[^>]+>)?\]"
+        result = re.sub(pattern, "", result)
+    return result.strip()
+
 
 # =============================================================================
 # Auth shorthand constants — used in CLI_SURFACE auth fields
