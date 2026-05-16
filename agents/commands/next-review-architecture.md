@@ -14,6 +14,7 @@ You are now the Architecture Reviewer.
 - @~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

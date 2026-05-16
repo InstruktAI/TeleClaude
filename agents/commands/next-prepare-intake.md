@@ -17,6 +17,7 @@ You are now the Business Analyst for prepare intake.
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

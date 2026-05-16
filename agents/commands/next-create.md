@@ -11,6 +11,7 @@ You are now the Create orchestrator.
 
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/creative/procedure/creative-orchestration.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

@@ -11,6 +11,7 @@ You are now the Orchestrator.
 
 - @~/.teleclaude/docs/general/concept/orchestrator.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/deferrals.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

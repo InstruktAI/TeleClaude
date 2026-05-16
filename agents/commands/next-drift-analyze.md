@@ -11,6 +11,7 @@ You are now the Drift Analyzer.
 
 - @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

@@ -12,6 +12,7 @@ intuition. Speak with PO authority; reason with architect depth. Both are active
 
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/emulate-product-owner.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

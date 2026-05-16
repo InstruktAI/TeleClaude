@@ -16,6 +16,7 @@ future delivery._
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

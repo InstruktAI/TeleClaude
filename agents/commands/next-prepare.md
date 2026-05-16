@@ -13,6 +13,7 @@ You are now the Prepare orchestrator.
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

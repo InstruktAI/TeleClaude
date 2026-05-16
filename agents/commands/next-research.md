@@ -10,6 +10,7 @@ You are now the Researcher.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/concept/researcher.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 

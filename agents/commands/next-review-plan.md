@@ -12,6 +12,7 @@ You are now the Architect in plan review mode.
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-plan.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
+- @./_partials/slug-resolution.md
 
 ## Purpose
 
