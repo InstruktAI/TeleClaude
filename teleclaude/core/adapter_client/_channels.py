@@ -1,7 +1,7 @@
 """Channel provisioning, command handlers, and UI lane management for AdapterRuntime."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, cast
 
 from instrukt_ai_logging import get_logger
@@ -9,6 +9,8 @@ from instrukt_ai_logging import get_logger
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.db import db
+from teleclaude.core.event_bus import event_bus
+from teleclaude.core.events import SessionStatusContext, SessionUpdatedContext, TeleClaudeEvents
 from teleclaude.core.models import ChannelMetadata, MessageMetadata
 from teleclaude.core.session_utils import get_display_title_for_session
 
@@ -26,10 +28,23 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
     _session_updated_subscribed: bool = False
 
     def subscribe_session_events(self) -> None:
-        """Adapter client does not consume lifecycle title events."""
+        """Subscribe to session lifecycle events at the routing layer.
+
+        UI adapters do not subscribe themselves — origin resolution belongs
+        here. ``dispatch_session_status`` and ``dispatch_session_update`` then
+        route only to the responsible adapter(s).
+        """
         if self._session_updated_subscribed:
             return
         self._session_updated_subscribed = True
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._on_session_status)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._on_session_updated)
+
+    async def _on_session_status(self, _event: str, context: SessionStatusContext) -> None:
+        await self.dispatch_session_status(context.session_id, context.status)
+
+    async def _on_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
+        await self.dispatch_session_update(context.session_id, context.updated_fields)
 
     if TYPE_CHECKING:
         adapters: dict[str, BaseAdapter]
@@ -45,6 +60,10 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
             *,
             exclude: str | None = None,
         ) -> None: ...
+
+        async def dispatch_session_status(self, session_id: str, status: str) -> bool: ...
+
+        async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> bool: ...
 
     async def _run_ui_lane(
         self,

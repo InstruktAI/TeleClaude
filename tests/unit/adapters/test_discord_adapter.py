@@ -11,7 +11,6 @@ from teleclaude.adapters.base_adapter import AdapterError, ChannelNotProvisioned
 from teleclaude.adapters.discord_adapter import DISCORD_TYPING_INTERVAL_S, DiscordAdapter
 from teleclaude.adapters.qos.action_throttler import AdapterActionThrottler
 from teleclaude.adapters.ui.threaded_output import OverflowContext
-from teleclaude.core.events import SessionUpdatedContext
 from teleclaude.core.models import DiscordAdapterMetadata, Session
 
 pytestmark = pytest.mark.unit
@@ -205,14 +204,10 @@ async def test_session_updated_refreshes_thread_topper_when_agent_fields_change(
     session.thinking_mode = "slow"
 
     with (
-        patch("teleclaude.adapters.discord_adapter.db.get_session", AsyncMock(return_value=session)),
         patch.object(adapter, "edit_message", AsyncMock(return_value=True)) as edit_message,
         patch.object(adapter, "_build_thread_topper", return_value="project: TeleClaude | agent: codex/slow"),
     ):
-        await adapter._handle_session_updated(
-            "session_updated",
-            SessionUpdatedContext(session_id=session.session_id, updated_fields={"active_agent": "codex"}),
-        )
+        await adapter.on_session_updated(session, {"active_agent": "codex"})
 
     edit_message.assert_awaited_once_with(
         session,

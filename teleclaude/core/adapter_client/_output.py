@@ -1,7 +1,7 @@
 """Message and output delivery methods for AdapterRuntime."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal, cast
 
@@ -545,6 +545,53 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
                 succeeded = True
 
         return succeeded
+
+    async def dispatch_session_status(self, session_id: str, status: str) -> bool:
+        """Route a status transition to the session's origin UI adapter.
+
+        Routing layer responsibility: resolve origin, dispatch. The adapter
+        decides which status values it cares about and what to do with them.
+
+        Returns True when the origin adapter's lane ran (regardless of whether
+        the adapter chose to act on the status).
+        """
+        session = await db.get_session(session_id)
+        if session is None:
+            return False
+        origin_adapter = self._resolve_origin_ui_adapter(session)
+        if origin_adapter is None:
+            return False
+        return bool(
+            await self._route_to_ui(
+                session,
+                "on_session_status",
+                status,
+                include_adapters={origin_adapter},
+            )
+        )
+
+    async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> bool:
+        """Route a session field-update to the session's origin UI adapter.
+
+        Routing layer responsibility: resolve origin, dispatch. The adapter
+        decides which field changes it cares about and what to do with them.
+
+        Returns True when the origin adapter's lane ran.
+        """
+        session = await db.get_session(session_id)
+        if session is None:
+            return False
+        origin_adapter = self._resolve_origin_ui_adapter(session)
+        if origin_adapter is None:
+            return False
+        return bool(
+            await self._route_to_ui(
+                session,
+                "on_session_updated",
+                updated_fields,
+                include_adapters={origin_adapter},
+            )
+        )
 
     async def delete_channel(self, session: "Session") -> bool:
         """Delete channel from all UI adapters.

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Literal
@@ -25,8 +25,7 @@ from teleclaude.adapters.ui.threaded_output import OverflowContext, OverflowPlan
 from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.core.agents import AgentName
 from teleclaude.core.db import db
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import SessionStatusContext, TeleClaudeEvents, UiCommands
+from teleclaude.core.events import UiCommands
 from teleclaude.core.models import MessageMetadata
 from teleclaude.core.voice_message_handler import handle_voice
 from teleclaude.utils.transcript import extract_last_turn_boundary_timestamp
@@ -445,8 +444,6 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         # Set client (BaseAdapter has no __init__, just requires this attribute)
         self.client = client
         self._action_throttler = AdapterActionThrottler()
-
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._handle_session_status)
 
     # === Adapter Metadata Helpers ===
 
@@ -871,50 +868,58 @@ class UiAdapter(  # pyright: ignore[reportIncompatibleMethodOverride]  # type: i
         if badge_text:
             await self.send_message(session, badge_text, metadata=MessageMetadata(parse_mode=None))
 
-    async def _handle_session_status(self, _event: str, context: SessionStatusContext) -> None:
-        """Handle lifecycle status transitions.
+    async def on_session_status(self, session: Session, status: str) -> None:
+        """React to a lifecycle status transition for this adapter's session.
 
-        Fires throttled typing on 'accepted' and 'active'. Session badges are
-        emitted once on 'accepted'. 'active_output' is observer-only and does
-        not trigger direct adapter API calls.
+        Dispatched by ``AdapterClient.dispatch_session_status`` after origin
+        resolution — only the responsible adapter is invoked. The adapter owns
+        its own status-filter policy: typing fires on ``active`` / ``accepted``
+        for non-headless sessions; badge fires only on ``accepted``.
         """
-        if context.status in ("active", "accepted"):
-            session = await db.get_session(context.session_id)
-            if session and session.lifecycle_status != "headless":
-                logger.debug(
-                    "Typing trigger: session=%s status=%s adapter=%s",
-                    context.session_id,
-                    context.status,
-                    self.ADAPTER_KEY,
+        if status not in ("active", "accepted"):
+            return
+        if session.lifecycle_status == "headless":
+            logger.debug(
+                "Typing skipped (headless): session=%s adapter=%s",
+                session.session_id,
+                self.ADAPTER_KEY,
+            )
+            return
+        logger.debug(
+            "Typing trigger: session=%s status=%s adapter=%s",
+            session.session_id,
+            status,
+            self.ADAPTER_KEY,
+        )
+        try:
+            await self._run_throttled_action(
+                session,
+                "typing",
+                lambda: self.send_typing_indicator(session),
+            )
+        except (OSError, RuntimeError, ValueError):
+            logger.debug(
+                "Typing indicator failed for session %s on status %s",
+                session.session_id,
+                status,
+            )
+        if status == "accepted":
+            try:
+                await self._run_throttled_action(
+                    session,
+                    "session_badge",
+                    lambda: self._send_session_badge(session),
                 )
-                try:
-                    await self._run_throttled_action(
-                        session,
-                        "typing",
-                        lambda: self.send_typing_indicator(session),
-                    )
-                except (OSError, RuntimeError, ValueError):
-                    logger.debug(
-                        "Typing indicator failed for session %s on status %s",
-                        context.session_id,
-                        context.status,
-                    )
-                if context.status == "accepted":
-                    try:
-                        await self._run_throttled_action(
-                            session,
-                            "session_badge",
-                            lambda: self._send_session_badge(session),
-                        )
-                    except (OSError, RuntimeError, ValueError):
-                        logger.debug(
-                            "Session badge failed for session %s",
-                            context.session_id,
-                        )
-            else:
+            except (OSError, RuntimeError, ValueError):
                 logger.debug(
-                    "Typing skipped: session=%s found=%s lifecycle=%s",
-                    context.session_id,
-                    session is not None,
-                    getattr(session, "lifecycle_status", None),
+                    "Session badge failed for session %s",
+                    session.session_id,
                 )
+
+    async def on_session_updated(self, session: Session, updated_fields: Mapping[str, object]) -> None:
+        """React to a session-field update for this adapter's session.
+
+        Default no-op. Subclasses override when they have UI state that
+        depends on session metadata (e.g. Discord thread-topper).
+        """
+        _ = session, updated_fields

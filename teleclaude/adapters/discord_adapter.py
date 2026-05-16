@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import importlib
 import os
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from types import ModuleType
 from typing import TYPE_CHECKING, Protocol, cast
 
@@ -28,7 +28,6 @@ from teleclaude.adapters.ui.threaded_output import OverflowContext
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
 from teleclaude.core.db import db
-from teleclaude.core.events import SessionUpdatedContext
 from teleclaude.core.models import DiscordAdapterMetadata
 from teleclaude.utils.markdown import (
     GFM_MARKDOWN_INITIAL_STATE,
@@ -43,8 +42,6 @@ if TYPE_CHECKING:
     from teleclaude.core.adapter_client import AdapterClient
     from teleclaude.core.models import Session
     from teleclaude.core.task_registry import TaskRegistry
-from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import TeleClaudeEvents
 
 logger = get_logger(__name__)
 
@@ -128,8 +125,6 @@ class DiscordAdapter(
         super().__init__(client)
         self.client = client
         self.task_registry = task_registry
-        # Discord-specific: refresh thread topper on native_session_id changes.
-        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._handle_session_updated)
         self._discord: ModuleType = importlib.import_module("discord")
         configured_token = config.discord.token.strip() if config.discord.token else ""
         self._token = configured_token or os.getenv("DISCORD_BOT_TOKEN", "").strip()
@@ -307,14 +302,13 @@ class DiscordAdapter(
 
     # send_threaded_output: inherited from UiAdapter base class.
 
-    async def _handle_session_updated(self, _event: str, context: SessionUpdatedContext) -> None:
-        """Refresh Discord thread topper when native session ID is bound."""
-        updated_fields = context.updated_fields or {}
-        if not {"native_session_id", "active_agent", "thinking_mode"} & set(updated_fields):
-            return
+    async def on_session_updated(self, session: Session, updated_fields: Mapping[str, object]) -> None:
+        """Refresh Discord thread topper when topper-relevant fields change.
 
-        session = await db.get_session(context.session_id)
-        if not session:
+        Dispatched by ``AdapterClient.dispatch_session_update`` only for the
+        session's origin adapter. Discord owns its own topper-field policy.
+        """
+        if not {"native_session_id", "active_agent", "thinking_mode"} & set(updated_fields):
             return
 
         dc = self._dc(session)

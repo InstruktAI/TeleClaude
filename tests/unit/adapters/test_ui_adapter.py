@@ -113,8 +113,7 @@ def client() -> MagicMock:
 
 @pytest.fixture
 def adapter(client: MagicMock) -> _ConcreteAdapter:
-    with patch("teleclaude.adapters.ui_adapter.event_bus"):
-        inst = _ConcreteAdapter(client)
+    inst = _ConcreteAdapter(client)
     inst._action_throttler = AdapterActionThrottler()
     return inst
 
@@ -294,10 +293,9 @@ class TestDisplayTitle:
 class TestGetCharOffset:
     @pytest.mark.unit
     def test_unknown_adapter_returns_zero(self) -> None:
-        with patch("teleclaude.adapters.ui_adapter.event_bus"):
-            adapter = _ConcreteAdapter.__new__(_ConcreteAdapter)
-            adapter.ADAPTER_KEY = "unknown"
-            adapter.client = MagicMock()
+        adapter = _ConcreteAdapter.__new__(_ConcreteAdapter)
+        adapter.ADAPTER_KEY = "unknown"
+        adapter.client = MagicMock()
         session = _make_session()
         assert adapter._get_char_offset(session) == 0
 
@@ -347,7 +345,7 @@ class TestHandleSessionStatus:
             patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
             patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
         ):
-            await adapter._handle_session_status("session_status", context)
+            await adapter.on_session_status(session, context.status)
 
         send_typing_indicator.assert_awaited_once_with(session)
 
@@ -365,7 +363,7 @@ class TestHandleSessionStatus:
             patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
             patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
         ):
-            await adapter._handle_session_status("session_status", context)
+            await adapter.on_session_status(session, context.status)
 
         send_typing_indicator.assert_not_awaited()
 
@@ -390,7 +388,7 @@ class TestHandleSessionStatus:
             patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
             patch.object(adapter, "_send_session_badge", AsyncMock()) as send_session_badge,
         ):
-            await adapter._handle_session_status("session_status", context)
+            await adapter.on_session_status(session, context.status)
 
         send_typing_indicator.assert_not_awaited()
         send_session_badge.assert_awaited_once_with(session)
