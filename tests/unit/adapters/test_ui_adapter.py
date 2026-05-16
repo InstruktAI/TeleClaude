@@ -341,10 +341,7 @@ class TestHandleSessionStatus:
             timestamp="2026-04-11T00:00:00+00:00",
         )
 
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
-        ):
+        with patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator:
             await adapter.on_session_status(session, context.status)
 
         send_typing_indicator.assert_awaited_once_with(session)
@@ -359,10 +356,7 @@ class TestHandleSessionStatus:
             timestamp="2026-04-11T00:00:00+00:00",
         )
 
-        with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
-            patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
-        ):
+        with patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator:
             await adapter.on_session_status(session, context.status)
 
         send_typing_indicator.assert_not_awaited()
@@ -383,7 +377,6 @@ class TestHandleSessionStatus:
         )
 
         with (
-            patch("teleclaude.adapters.ui_adapter.db.get_session", AsyncMock(return_value=session)),
             patch("teleclaude.adapters.ui_adapter.time.monotonic", return_value=101.0),
             patch.object(adapter, "send_typing_indicator", AsyncMock()) as send_typing_indicator,
             patch.object(adapter, "_send_session_badge", AsyncMock()) as send_session_badge,

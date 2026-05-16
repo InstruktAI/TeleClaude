@@ -546,52 +546,59 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
 
         return succeeded
 
-    async def dispatch_session_status(self, session_id: str, status: str) -> bool:
-        """Route a status transition to the session's origin UI adapter.
+    async def dispatch_session_status(self, session_id: str, status: str) -> None:
+        """Route a status transition to the session's origin + admin-reflection UI adapters.
 
-        Routing layer responsibility: resolve origin, dispatch. The adapter
+        Routing layer responsibility: resolve origin and admin-reflection
+        target (mirroring ``update_channel_title``), dispatch. Each adapter
         decides which status values it cares about and what to do with them.
-
-        Returns True when the origin adapter's lane ran (regardless of whether
-        the adapter chose to act on the status).
         """
         session = await db.get_session(session_id)
         if session is None:
-            return False
+            return
         origin_adapter = self._resolve_origin_ui_adapter(session)
-        if origin_adapter is None:
-            return False
-        return bool(
+        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        if origin_adapter is not None:
             await self._route_to_ui(
                 session,
                 "on_session_status",
                 status,
                 include_adapters={origin_adapter},
             )
-        )
+        if admin_target is not None:
+            await self._route_to_ui(
+                session,
+                "on_session_status",
+                status,
+                include_adapters={admin_target},
+            )
 
-    async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> bool:
-        """Route a session field-update to the session's origin UI adapter.
+    async def dispatch_session_update(self, session_id: str, updated_fields: Mapping[str, object]) -> None:
+        """Route a session field-update to the session's origin + admin-reflection UI adapters.
 
-        Routing layer responsibility: resolve origin, dispatch. The adapter
+        Routing layer responsibility: resolve origin and admin-reflection
+        target (mirroring ``update_channel_title``), dispatch. Each adapter
         decides which field changes it cares about and what to do with them.
-
-        Returns True when the origin adapter's lane ran.
         """
         session = await db.get_session(session_id)
         if session is None:
-            return False
+            return
         origin_adapter = self._resolve_origin_ui_adapter(session)
-        if origin_adapter is None:
-            return False
-        return bool(
+        admin_target = self._resolve_admin_output_target(session, origin_adapter)
+        if origin_adapter is not None:
             await self._route_to_ui(
                 session,
                 "on_session_updated",
                 updated_fields,
                 include_adapters={origin_adapter},
             )
-        )
+        if admin_target is not None:
+            await self._route_to_ui(
+                session,
+                "on_session_updated",
+                updated_fields,
+                include_adapters={admin_target},
+            )
 
     async def delete_channel(self, session: "Session") -> bool:
         """Delete channel from all UI adapters.

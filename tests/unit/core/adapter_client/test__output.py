@@ -45,6 +45,8 @@ def _make_ui_adapter() -> MagicMock:
     adapter.delete_channel = AsyncMock(return_value=True)
     adapter.clear_turn_state = AsyncMock()
     adapter.drop_pending_output = MagicMock(return_value=0)
+    adapter.on_session_status = AsyncMock()
+    adapter.on_session_updated = AsyncMock()
     return adapter
 
 
@@ -589,6 +591,120 @@ class TestChannelUpdates:
         telegram.update_channel_title.assert_awaited_once_with(fresh)
         discord.update_channel_title.assert_awaited_once_with(fresh)
         whatsapp.update_channel_title.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_status_routes_origin_and_admin_for_telegram_origin(self):
+        """Telegram-origin: typing/badge dispatch reaches Telegram (origin) + Discord (admin reflection)."""
+        client = AdapterClient()
+        session = _make_session(last_input_origin="telegram")
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)):
+            await client.dispatch_session_status(session.session_id, "accepted")
+
+        telegram.on_session_status.assert_awaited_once_with(session, "accepted")
+        discord.on_session_status.assert_awaited_once_with(session, "accepted")
+        whatsapp.on_session_status.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_status_skips_non_origin_non_admin_for_discord_origin(self):
+        """Discord-origin: dispatch reaches Discord only — Telegram/WhatsApp MUST NOT receive it."""
+        client = AdapterClient()
+        session = _make_session(last_input_origin="discord")
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)):
+            await client.dispatch_session_status(session.session_id, "active")
+
+        discord.on_session_status.assert_awaited_once_with(session, "active")
+        telegram.on_session_status.assert_not_awaited()
+        whatsapp.on_session_status.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_status_skips_when_session_not_found(self):
+        client = AdapterClient()
+        telegram = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=None)):
+            await client.dispatch_session_status("missing-session", "accepted")
+
+        telegram.on_session_status.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_status_terminal_origin_still_reaches_admin_reflection(self):
+        """Terminal-origin (no UI origin): admin-reflection (Discord) still receives dispatch."""
+        client = AdapterClient()
+        session = _make_session(last_input_origin="terminal")
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)):
+            await client.dispatch_session_status(session.session_id, "accepted")
+
+        discord.on_session_status.assert_awaited_once_with(session, "accepted")
+        telegram.on_session_status.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_status_no_op_when_no_origin_and_no_admin_target(self):
+        """Without Discord registered as admin reflection target, terminal-origin sessions get no dispatch."""
+        client = AdapterClient()
+        session = _make_session(last_input_origin="terminal")
+        telegram = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)):
+            await client.dispatch_session_status(session.session_id, "accepted")
+
+        telegram.on_session_status.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_update_routes_origin_and_admin_for_telegram_origin(self):
+        client = AdapterClient()
+        session = _make_session(last_input_origin="telegram")
+        telegram = _make_ui_adapter()
+        discord = _make_ui_adapter()
+        whatsapp = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+        client.register_adapter("discord", discord)
+        client.register_adapter("whatsapp", whatsapp)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=session)):
+            await client.dispatch_session_update(session.session_id, {"active_agent": "codex"})
+
+        telegram.on_session_updated.assert_awaited_once_with(session, {"active_agent": "codex"})
+        discord.on_session_updated.assert_awaited_once_with(session, {"active_agent": "codex"})
+        whatsapp.on_session_updated.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_dispatch_session_update_skips_when_session_not_found(self):
+        client = AdapterClient()
+        telegram = _make_ui_adapter()
+        client.register_adapter("telegram", telegram)
+
+        with patch("teleclaude.core.adapter_client._output.db.get_session", AsyncMock(return_value=None)):
+            await client.dispatch_session_update("missing-session", {"active_agent": "codex"})
+
+        telegram.on_session_updated.assert_not_awaited()
 
     @pytest.mark.unit
     @pytest.mark.asyncio
