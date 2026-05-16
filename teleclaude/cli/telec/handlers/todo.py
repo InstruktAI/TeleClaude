@@ -21,7 +21,7 @@ from teleclaude.cli.tool_commands import (
     handle_todo_work,
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
-from teleclaude.constants import ARTIFACT_NAMES
+from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
@@ -473,9 +473,9 @@ def _validate_artifact_name(name: str) -> None:
 
 
 def _handle_todo_artifacts(args: list[str]) -> None:
-    """Handle telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]."""
+    """Handle telec todo artifacts {list|read|write|diff|remove}."""
     if not args:
-        print("Usage: telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]")
+        print("Usage: telec todo artifacts {list|read|write|diff|remove} <slug> [<name>] [<content>|<old>] [<new>]")
         raise SystemExit(1)
 
     subcommand = args[0]
@@ -489,9 +489,11 @@ def _handle_todo_artifacts(args: list[str]) -> None:
         _handle_artifacts_write(sub_args)
     elif subcommand == "diff":
         _handle_artifacts_diff(sub_args)
+    elif subcommand == "remove":
+        _handle_artifacts_remove(sub_args)
     else:
         print(f"Unknown artifacts subcommand: {subcommand}")
-        print("Usage: telec todo artifacts {list|read|write|diff} <slug> [<name>] [<content>|<old>] [<new>]")
+        print("Usage: telec todo artifacts {list|read|write|diff|remove} <slug> [<name>] [<content>|<old>] [<new>]")
         raise SystemExit(1)
 
 
@@ -547,6 +549,53 @@ def _handle_artifacts_diff(args: list[str]) -> None:
     else:
         print(result)
         raise SystemExit(1)
+
+
+def _handle_artifacts_remove(args: list[str]) -> None:
+    """Handle telec todo artifacts remove <slug> <name>."""
+    slug: str | None = None
+    name: str | None = None
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg.startswith("-"):
+            print(f"Unknown option: {arg}")
+            print("Usage: telec todo artifacts remove <slug> <name>")
+            raise SystemExit(1)
+        if slug is None:
+            slug = arg
+        elif name is None:
+            name = arg
+        else:
+            print("Too many positional arguments.")
+            print("Usage: telec todo artifacts remove <slug> <name>")
+            raise SystemExit(1)
+        i += 1
+
+    if not slug or not name:
+        print("Usage: telec todo artifacts remove <slug> <name>")
+        raise SystemExit(1)
+
+    _validate_artifact_name(name)
+    if name == ARTIFACT_INPUT:
+        print("input artifact cannot be removed")
+        raise SystemExit(1)
+
+    result = tool_api_request(
+        "DELETE",
+        f"/todos/artifacts/{slug}/{name}",
+        params={"cwd": str(resolve_invocation_cwd())},
+    )
+    if not isinstance(result, dict) or result.get("status") != "ok":
+        print(result)
+        raise SystemExit(1)
+
+    if result.get("removed") is True:
+        versions_deleted = result.get("versions_deleted", 0)
+        print(f"Removed {name} for {slug}; deleted {versions_deleted} version rows.")
+    else:
+        print(f"No {name} artifact for {slug}; nothing needed to be removed.")
 
 
 def _handle_artifacts_write(args: list[str]) -> None:

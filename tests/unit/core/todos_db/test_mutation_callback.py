@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from teleclaude.constants import ARTIFACT_REQUIREMENTS
 from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, get_todos_db_sync, set_todos_mutation_hook
 
 pytestmark = pytest.mark.asyncio
@@ -125,6 +126,15 @@ async def test_delete_artifacts_fires_mutation_callback(db: TodosDb) -> None:
     cb = MagicMock()
     db._on_mutation = cb
     await db.delete_artifacts("my-slug")
+    cb.assert_called_once()
+
+
+async def test_delete_artifact_fires_mutation_callback_for_real_removal(db: TodosDb) -> None:
+    await db.add_to_roadmap("my-slug")
+    await db.write_artifact("my-slug", ARTIFACT_REQUIREMENTS, "content")
+    cb = MagicMock()
+    db._on_mutation = cb
+    await db.delete_artifact("my-slug", ARTIFACT_REQUIREMENTS)
     cb.assert_called_once()
 
 

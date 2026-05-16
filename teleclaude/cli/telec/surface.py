@@ -592,6 +592,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
                     ),
+                    "remove": CommandDef(
+                        desc="Remove a todo artifact and its version history",
+                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings>",
+                        flags=[_H],
+                        notes=[
+                            "Refuses input because it is the seed artifact for a todo.",
+                            "Missing artifacts are treated as a successful no-op.",
+                        ],
+                        examples=["telec todo artifacts remove my-slug requirements"],
+                        auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+                    ),
                 },
             ),
             "show": CommandDef(

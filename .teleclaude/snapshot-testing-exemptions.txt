@@ -63,7 +63,6 @@ tests/unit/api/test_notifications_routes.py
 tests/unit/api/test_sessions_actions_routes.py
 tests/unit/api/test_sessions_routes.py
 tests/unit/api/test_streaming.py
-tests/unit/api/test_todo_routes.py
 tests/unit/api/test_transcript_converter.py
 tests/unit/api/test_tui_routes.py
 tests/unit/api/test_ws_mixin.py
@@ -82,7 +81,6 @@ tests/unit/cli/telec/handlers/test_history.py
 tests/unit/cli/telec/handlers/test_memories.py
 tests/unit/cli/telec/handlers/test_misc.py
 tests/unit/cli/telec/handlers/test_quality.py
-tests/unit/cli/telec/handlers/test_todo_artifacts.py
 tests/unit/cli/telec/handlers/test_todo_lifecycle_dump_specs.py
 tests/unit/cli/telec/handlers/test_todo.py
 tests/unit/cli/telec/test__run_tui.py
@@ -272,7 +270,6 @@ tests/unit/core/tmux_bridge/test__keys.py
 tests/unit/core/tmux_bridge/test__pane.py
 tests/unit/core/tmux_bridge/test__session.py
 tests/unit/core/tmux_bridge/test__subprocess.py
-tests/unit/core/todos_db/test__artifacts.py
 tests/unit/core/todos_db/test__base.py
 tests/unit/core/todos_db/test__legacy_import.py
 tests/unit/core/todos_db/test__roadmap.py

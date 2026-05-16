@@ -18,7 +18,27 @@ from typing_extensions import TypedDict
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity
 from teleclaude.api_models import TodoDumpRequest
+from teleclaude.constants import (
+    ARTIFACT_INPUT,
+    ARTIFACT_PRD,
+    ARTIFACT_REQUIREMENTS,
+)
 from teleclaude.core.todos_db import TodosDb
+
+_EMPTY = ""
+_MY_SLUG = "my-slug"
+_REPO_CWD = "/repo"
+_SRC_APP = "src/app.py"
+_HEAD_SHA = "head-sha"
+_STATUS_OK = "ok"
+_DRAFT_KIND = "draft"
+_PLAN_DRAFTING = "plan_drafting"
+_PREPARED = "prepared"
+_CREATE_OPERATION_ID = "op-1"
+_REMOVE_OPERATION_ID = "op-123"
+_TODO_REMOVE_KIND = "todo_remove"
+_UPDATED_BY_WRITE_ARTIFACT = "api.todo.write_artifact"
+_UPDATED_BY_PREPPED_DUMP = "api.todo.dump.prepped"
 
 
 class _ArtifactSnapshot(TypedDict, total=False):
@@ -26,6 +46,7 @@ class _ArtifactSnapshot(TypedDict, total=False):
     produced_at: str
     codebase_sha_at_write: str
     referenced_paths: list[str]
+    upstream_digests: dict[str, str]
 
 
 class _ArtifactsSnapshot(TypedDict, total=False):
@@ -33,9 +54,18 @@ class _ArtifactsSnapshot(TypedDict, total=False):
     requirements: _ArtifactSnapshot
 
 
+class _ApprovalSnapshot(TypedDict, total=False):
+    approved: bool
+
+
+class _ApprovalsSnapshot(TypedDict, total=False):
+    prd_approved: _ApprovalSnapshot
+
+
 class _TodoStateSnapshot(TypedDict, total=False):
     lifecycle_phase: str
     artifacts: _ArtifactsSnapshot
+    approvals: _ApprovalsSnapshot
 
 
 def _requirements_artifact(state: _TodoStateSnapshot) -> _ArtifactSnapshot:
@@ -83,11 +113,11 @@ class TestTodoRoutes:
     @pytest.mark.asyncio
     async def test_todo_create_uses_default_cwd_when_request_omits_it(self) -> None:
         """Todo creation falls back to the configured default working directory."""
-        config_stub = SimpleNamespace(computer=SimpleNamespace(default_working_dir="/repo"))
+        config_stub = SimpleNamespace(computer=SimpleNamespace(default_working_dir=_REPO_CWD))
         mock_ops = MagicMock()
         mock_ops.submit_todo_create = AsyncMock(
             return_value={
-                "operation_id": "op-1",
+                "operation_id": _CREATE_OPERATION_ID,
                 "kind": "todo_create",
                 "state": "queued",
                 "poll_after_ms": 250,
@@ -106,10 +136,10 @@ class TestTodoRoutes:
                 _identity=_identity(),
             )
 
-        assert response["operation_id"] == "op-1"
+        assert response["operation_id"] == _CREATE_OPERATION_ID
         mock_ops.submit_todo_create.assert_awaited_once()
         call_kwargs = mock_ops.submit_todo_create.call_args.kwargs
-        assert call_kwargs["cwd"] == "/repo"
+        assert call_kwargs["cwd"] == _REPO_CWD
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -218,25 +248,25 @@ class TestTodoRoutes:
         database = TodosDb(str(tmp_path / "todos.db"))
         await database.initialize()
         try:
-            await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"lifecycle_phase": "prd_drafting"})
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_state(_MY_SLUG, {"lifecycle_phase": _PLAN_DRAFTING})
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.write_artifact(
-                    slug="my-slug",
-                    name="requirements",
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_REQUIREMENTS,
                     content="draft requirements",
-                    cwd="/repo",
+                    cwd=_REPO_CWD,
                     updated_by="tester",
                 )
 
-            state = await database.read_state("my-slug")
-            assert response.status == "ok"
+            state = await database.read_state(_MY_SLUG)
+            assert response.status == _STATUS_OK
             assert state is not None
             snapshot = cast(_TodoStateSnapshot, state)
-            assert snapshot["lifecycle_phase"] == "prd_drafting"
+            assert snapshot["lifecycle_phase"] == _PLAN_DRAFTING
             requirements = _requirements_artifact(snapshot)
-            assert requirements.get("digest", "")
-            assert requirements.get("produced_at", "") == ""
+            assert requirements.get("digest", _EMPTY)
+            assert requirements.get("produced_at", _EMPTY) == _EMPTY
         finally:
             await database.close()
 
@@ -247,28 +277,28 @@ class TestTodoRoutes:
         database = TodosDb(str(tmp_path / "todos.db"))
         await database.initialize()
         try:
-            await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"lifecycle_phase": "prd_drafting"})
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_state(_MY_SLUG, {"lifecycle_phase": _PLAN_DRAFTING})
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.write_artifact(
-                    slug="my-slug",
-                    name="requirements",
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_REQUIREMENTS,
                     content="draft requirements",
-                    cwd="/repo",
+                    cwd=_REPO_CWD,
                     updated_by=None,
                 )
 
-            assert response.status == "ok"
+            assert response.status == _STATUS_OK
             conn = sqlite3.connect(str(tmp_path / "todos.db"))
             try:
                 row = conn.execute(
                     "SELECT updated_by FROM todo_artifacts WHERE slug = ? AND name = ?",
-                    ("my-slug", "requirements"),
+                    (_MY_SLUG, ARTIFACT_REQUIREMENTS),
                 ).fetchone()
             finally:
                 conn.close()
             assert row is not None
-            assert row[0] == "api.todo.write_artifact"
+            assert row[0] == _UPDATED_BY_WRITE_ARTIFACT
         finally:
             await database.close()
 
@@ -279,26 +309,158 @@ class TestTodoRoutes:
         database = TodosDb(str(tmp_path / "todos.db"))
         await database.initialize()
         try:
-            await database.add_to_roadmap("my-slug")
-            await database.write_state("my-slug", {"schema_version": 3, "lifecycle_phase": "prd_drafting"})
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_state(_MY_SLUG, {"schema_version": 3, "lifecycle_phase": _PLAN_DRAFTING})
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
                 response = await todo_routes.write_artifact(
-                    slug="my-slug",
-                    name="prd",
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_PRD,
                     content="touches src/app.py",
-                    cwd="/repo",
+                    cwd=_REPO_CWD,
                     updated_by="tester",
-                    codebase_sha_at_write="head-sha",
-                    referenced_paths=["src/app.py"],
+                    codebase_sha_at_write=_HEAD_SHA,
+                    referenced_paths=[_SRC_APP],
                 )
 
-            state = await database.read_state("my-slug")
-            assert response.status == "ok"
+            state = await database.read_state(_MY_SLUG)
+            assert response.status == _STATUS_OK
             assert state is not None
             artifacts = cast(_TodoStateSnapshot, state)["artifacts"]
             prd = artifacts["prd"]
-            assert prd["codebase_sha_at_write"] == "head-sha"
-            assert prd["referenced_paths"] == ["src/app.py"]
+            assert prd["codebase_sha_at_write"] == _HEAD_SHA
+            assert prd["referenced_paths"] == [_SRC_APP]
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_remove_artifact_deletes_present_artifact(self, tmp_path: Path) -> None:
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_artifact(_MY_SLUG, ARTIFACT_INPUT, "input")
+            await database.write_artifact(_MY_SLUG, ARTIFACT_REQUIREMENTS, "requirements-v1")
+            await database.write_artifact(_MY_SLUG, ARTIFACT_REQUIREMENTS, "requirements-v2")
+            await database.write_artifact(_MY_SLUG, ARTIFACT_PRD, "prd")
+
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.remove_artifact(
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_REQUIREMENTS,
+                    cwd=_REPO_CWD,
+                    _identity=_identity(),
+                )
+
+            assert response.status == _STATUS_OK
+            assert response.removed is True
+            assert response.versions_deleted == 2
+            assert set(await database.list_artifacts(_MY_SLUG)) == {ARTIFACT_INPUT, ARTIFACT_PRD}
+            assert await database.artifact_versions(_MY_SLUG, ARTIFACT_REQUIREMENTS) == []
+        finally:
+            await database.close()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_remove_artifact_is_idempotent_for_missing_artifact(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.slug_in_roadmap = AsyncMock(return_value=True)
+        mock_db.delete_artifact = AsyncMock(return_value={"removed": False, "versions_deleted": 0})
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            response = await todo_routes.remove_artifact(
+                slug=_MY_SLUG,
+                name=ARTIFACT_REQUIREMENTS,
+                cwd=_REPO_CWD,
+                _identity=_identity(),
+            )
+
+        assert response.status == _STATUS_OK
+        assert response.removed is False
+        assert response.versions_deleted == 0
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_remove_artifact_refuses_input(self) -> None:
+        mock_db = AsyncMock()
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.remove_artifact(
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_INPUT,
+                    cwd=_REPO_CWD,
+                    _identity=_identity(),
+                )
+
+        assert exc_info.value.status_code == 400
+        mock_db.delete_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_remove_artifact_returns_404_for_unknown_slug(self) -> None:
+        mock_db = AsyncMock()
+        mock_db.slug_in_roadmap = AsyncMock(return_value=False)
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.remove_artifact(
+                    slug="missing-slug",
+                    name=ARTIFACT_REQUIREMENTS,
+                    cwd=_REPO_CWD,
+                    _identity=_identity(),
+                )
+
+        assert exc_info.value.status_code == 404
+        mock_db.delete_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_remove_artifact_clears_lifecycle_artifact_provenance(self, tmp_path: Path) -> None:
+        database = TodosDb(str(tmp_path / "todos.db"))
+        await database.initialize()
+        try:
+            await database.add_to_roadmap(_MY_SLUG)
+            await database.write_state(
+                _MY_SLUG,
+                {
+                    "schema_version": 3,
+                    "lifecycle_phase": _PLAN_DRAFTING,
+                    "approvals": {"prd_approved": {"approved": True}},
+                    "artifacts": {
+                        "requirements": {
+                            "digest": "digest-before-remove",
+                            "produced_at": "timestamp-before-remove",
+                            "codebase_sha_at_write": "sha-before-remove",
+                            "referenced_paths": [_SRC_APP],
+                            "upstream_digests": {"prd": "upstream-before-remove"},
+                        }
+                    },
+                },
+            )
+            await database.write_artifact(_MY_SLUG, ARTIFACT_REQUIREMENTS, "requirements")
+
+            with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
+                response = await todo_routes.remove_artifact(
+                    slug=_MY_SLUG,
+                    name=ARTIFACT_REQUIREMENTS,
+                    cwd=_REPO_CWD,
+                    _identity=_identity(),
+                )
+
+            state = await database.read_state(_MY_SLUG)
+            assert response.status == _STATUS_OK
+            assert response.removed is True
+            assert state is not None
+            typed_state = cast(_TodoStateSnapshot, state)
+            assert typed_state["lifecycle_phase"] == _PLAN_DRAFTING
+            assert typed_state["approvals"]["prd_approved"]["approved"] is True
+            requirements = typed_state["artifacts"]["requirements"]
+            assert requirements["digest"] == _EMPTY
+            assert requirements["produced_at"] == _EMPTY
+            assert requirements["codebase_sha_at_write"] == _EMPTY
+            assert requirements["referenced_paths"] == []
+            assert requirements["upstream_digests"] == {}
         finally:
             await database.close()
 
@@ -310,28 +472,31 @@ class TestTodoRoutes:
         await database.initialize()
         try:
             request = TodoDumpRequest(
-                slug="my-slug",
+                slug=_MY_SLUG,
                 content="plan content",
                 kind="prepped",
-                cwd="/repo",
+                cwd=_REPO_CWD,
             )
             with (
                 patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database),
-                patch("teleclaude.api.todo_routes.apply_prepared_state", return_value={"lifecycle_phase": "prepared"}),
+                patch(
+                    "teleclaude.api.todo_routes.apply_prepared_state",
+                    return_value={"lifecycle_phase": _PREPARED},
+                ),
             ):
                 response = await todo_routes.todo_dump(request)
 
-            assert response.status == "ok"
+            assert response.status == _STATUS_OK
             conn = sqlite3.connect(str(tmp_path / "todos.db"))
             try:
                 row = conn.execute(
                     "SELECT updated_by FROM todo_artifacts WHERE slug = ? AND name = ?",
-                    ("my-slug", "implementation-plan"),
+                    (_MY_SLUG, "implementation-plan"),
                 ).fetchone()
             finally:
                 conn.close()
             assert row is not None
-            assert row[0] == "api.todo.dump.prepped"
+            assert row[0] == _UPDATED_BY_PREPPED_DUMP
         finally:
             await database.close()
 
@@ -342,8 +507,8 @@ class TestTodoRoutes:
         mock_operations = AsyncMock()
         mock_operations.submit_todo_remove = AsyncMock(
             return_value={
-                "operation_id": "op-123",
-                "kind": "todo_remove",
+                "operation_id": _REMOVE_OPERATION_ID,
+                "kind": _TODO_REMOVE_KIND,
                 "state": "queued",
                 "poll_after_ms": 250,
                 "status_path": "/operations/op-123",
@@ -354,16 +519,16 @@ class TestTodoRoutes:
         with patch("teleclaude.api.todo_routes.get_operations_service", return_value=mock_operations):
             response = await todo_routes.todo_remove(
                 slug="test-slug",
-                cwd="/repo",
+                cwd=_REPO_CWD,
                 client_request_id="req-1",
                 identity=MagicMock(session_id="session-1"),
             )
 
-        assert response["operation_id"] == "op-123"
-        assert response["kind"] == "todo_remove"
+        assert response["operation_id"] == _REMOVE_OPERATION_ID
+        assert response["kind"] == _TODO_REMOVE_KIND
         mock_operations.submit_todo_remove.assert_awaited_once_with(
             slug="test-slug",
-            cwd="/repo",
+            cwd=_REPO_CWD,
             caller_session_id="session-1",
             client_request_id="req-1",
         )
@@ -376,14 +541,14 @@ class TestTodoRoutes:
         await database.initialize()
         try:
             with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=database):
-                request = TodoDumpRequest(slug="my-draft", content="idea", kind="draft", cwd="/repo")
+                request = TodoDumpRequest(slug="my-draft", content="idea", kind=_DRAFT_KIND, cwd=_REPO_CWD)
                 response = await todo_routes.todo_dump(request)
 
-            assert response.status == "ok"
+            assert response.status == _STATUS_OK
             state = await database.read_state("my-draft")
             assert state is not None
-            assert state["kind"] == "draft"
-            assert state["lifecycle_phase"] == "draft"
+            assert state["kind"] == _DRAFT_KIND
+            assert state["lifecycle_phase"] == _DRAFT_KIND
         finally:
             await database.close()
 

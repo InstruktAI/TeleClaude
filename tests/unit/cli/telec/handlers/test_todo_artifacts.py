@@ -6,11 +6,19 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.telec.handlers.todo import _handle_todo_artifacts, _handle_todo_stamp, handle_mark_phase
+from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_REQUIREMENTS
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
+_CWD_PARAM = "cwd"
+_HEAD_SHA = "head-sha"
+_INLINE_CONTENT = "inline-content"
+_NEW_DIGEST = "def456"
+_OLD_DIGEST = "abc123"
+_SRC_APP = "src/app.py"
 
 
 class TestHandleTodoArtifactsList:
@@ -20,13 +28,11 @@ class TestHandleTodoArtifactsList:
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["list"])
 
-    def test_lists_names(self, capsys: pytest.CaptureFixture[str]) -> None:
-        with patch(f"{_MODULE}.tool_api_request", return_value={"artifacts": ["input", "requirements"]}):
+    def test_lists_names(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
+        with patch(f"{_MODULE}.tool_api_request", return_value={"artifacts": [ARTIFACT_INPUT, ARTIFACT_REQUIREMENTS]}):
             _handle_todo_artifacts(["list", "my-slug"])
 
-        output = capsys.readouterr().out
-        assert "input" in output
-        assert "requirements" in output
+        assert capsys.readouterr().out == snapshot
 
 
 class TestHandleTodoArtifactsRead:
@@ -36,11 +42,11 @@ class TestHandleTodoArtifactsRead:
         with pytest.raises(SystemExit):
             _handle_todo_artifacts(["read", "my-slug"])
 
-    def test_prints_content(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_prints_content(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
         with patch(f"{_MODULE}.tool_api_request", return_value={"content": "artifact-content"}):
-            _handle_todo_artifacts(["read", "my-slug", "requirements"])
+            _handle_todo_artifacts(["read", "my-slug", ARTIFACT_REQUIREMENTS])
 
-        assert "artifact-content" in capsys.readouterr().out
+        assert capsys.readouterr().out == snapshot
 
 
 class TestHandleTodoArtifactsWrite:
@@ -54,16 +60,16 @@ class TestHandleTodoArtifactsWrite:
         with (
             patch(f"{_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
-            patch(f"{_MODULE}.get_head_commit", return_value="head-sha"),
-            patch(f"{_MODULE}.extract_referenced_paths", return_value=["src/app.py"]),
+            patch(f"{_MODULE}.get_head_commit", return_value=_HEAD_SHA),
+            patch(f"{_MODULE}.extract_referenced_paths", return_value=[_SRC_APP]),
         ):
-            _handle_todo_artifacts(["write", "my-slug", "requirements", "inline-content"])
+            _handle_todo_artifacts(["write", "my-slug", ARTIFACT_REQUIREMENTS, _INLINE_CONTENT])
 
         mock_api.assert_called_once()
         body = mock_api.call_args[1].get("json_body") or mock_api.call_args[0][2]
-        assert body["content"] == "inline-content"
-        assert body["codebase_sha_at_write"] == "head-sha"
-        assert body["referenced_paths"] == ["src/app.py"]
+        assert body["content"] == _INLINE_CONTENT
+        assert body["codebase_sha_at_write"] == _HEAD_SHA
+        assert body["referenced_paths"] == [_SRC_APP]
 
 
 class TestHandleTodoArtifactsDiff:
@@ -71,23 +77,77 @@ class TestHandleTodoArtifactsDiff:
 
     def test_missing_args_exits(self) -> None:
         with pytest.raises(SystemExit):
-            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123"])
+            _handle_todo_artifacts(["diff", "my-slug", ARTIFACT_REQUIREMENTS, _OLD_DIGEST])
 
-    def test_prints_diff_from_api(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_prints_diff_from_api(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
         with patch(f"{_MODULE}.tool_api_request", return_value={"diff": "@@ -1 +1 @@\n-old\n+new\n"}):
-            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123", "def456"])
+            _handle_todo_artifacts(["diff", "my-slug", ARTIFACT_REQUIREMENTS, _OLD_DIGEST, _NEW_DIGEST])
 
-        assert "+new" in capsys.readouterr().out
+        assert capsys.readouterr().out == snapshot
 
     def test_passes_digests_as_query_params(self) -> None:
         with patch(f"{_MODULE}.tool_api_request", return_value={"diff": ""}) as mock_api:
-            _handle_todo_artifacts(["diff", "my-slug", "requirements", "abc123", "def456"])
+            _handle_todo_artifacts(["diff", "my-slug", ARTIFACT_REQUIREMENTS, _OLD_DIGEST, _NEW_DIGEST])
 
         kwargs = mock_api.call_args.kwargs
         params = kwargs.get("params", {})
-        assert params.get("old") == "abc123"
-        assert params.get("new") == "def456"
-        assert "cwd" in params
+        assert params.get("old") == _OLD_DIGEST
+        assert params.get("new") == _NEW_DIGEST
+        assert params[_CWD_PARAM]
+
+
+class TestHandleTodoArtifactsRemove:
+    """telec todo artifacts remove <slug> <name>."""
+
+    def test_missing_args_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_artifacts(["remove", "my-slug"])
+
+    def test_refuses_input_locally(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_artifacts(["remove", "my-slug", ARTIFACT_INPUT])
+
+        assert capsys.readouterr().out == snapshot
+
+    def test_calls_delete_api_with_cwd(self) -> None:
+        with (
+            patch(
+                f"{_MODULE}.tool_api_request",
+                return_value={"status": "ok", "removed": True, "versions_deleted": 2},
+            ) as mock_api,
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+        ):
+            _handle_todo_artifacts(["remove", "my-slug", ARTIFACT_REQUIREMENTS])
+
+        mock_api.assert_called_once_with(
+            "DELETE",
+            f"/todos/artifacts/my-slug/{ARTIFACT_REQUIREMENTS}",
+            params={"cwd": "/repo"},
+        )
+
+    def test_prints_success_message(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
+        with (
+            patch(
+                f"{_MODULE}.tool_api_request",
+                return_value={"status": "ok", "removed": True, "versions_deleted": 2},
+            ),
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+        ):
+            _handle_todo_artifacts(["remove", "my-slug", ARTIFACT_REQUIREMENTS])
+
+        assert capsys.readouterr().out == snapshot
+
+    def test_prints_noop_message(self, capsys: pytest.CaptureFixture[str], snapshot: SnapshotAssertion) -> None:
+        with (
+            patch(
+                f"{_MODULE}.tool_api_request",
+                return_value={"status": "ok", "removed": False, "versions_deleted": 0},
+            ),
+            patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
+        ):
+            _handle_todo_artifacts(["remove", "my-slug", ARTIFACT_REQUIREMENTS])
+
+        assert capsys.readouterr().out == snapshot
 
 
 class TestHandleTodoStamp:
@@ -165,11 +225,15 @@ class TestHandleTodoStamp:
             caller_session_id="builder-session",
         )
 
-    def test_build_started_flag_exits(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_build_started_flag_exits(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        snapshot: SnapshotAssertion,
+    ) -> None:
         with pytest.raises(SystemExit):
             _handle_todo_stamp(["my-slug", "--build-started"])
 
-        assert "machine-owned" in capsys.readouterr().out
+        assert capsys.readouterr().out == snapshot
 
 
 class TestHandleMarkPhase:

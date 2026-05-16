@@ -26,3 +26,10 @@ class ArtifactVersionRow(TypedDict):
     digest: str
     updated_by: str
     created_at: str
+
+
+class ArtifactRemovalResult(TypedDict):
+    """Result from deleting one named todo artifact."""
+
+    removed: bool
+    versions_deleted: int

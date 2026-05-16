@@ -1,0 +1,47 @@
+# serializer version: 1
+# name: TestHandleTodoArtifactsDiff.test_prints_diff_from_api
+  '''
+  @@ -1 +1 @@
+  -old
+  +new
+  
+  
+  '''
+# ---
+# name: TestHandleTodoArtifactsList.test_lists_names
+  '''
+    input
+    requirements
+  
+  '''
+# ---
+# name: TestHandleTodoArtifactsRead.test_prints_content
+  '''
+  artifact-content
+  
+  '''
+# ---
+# name: TestHandleTodoArtifactsRemove.test_prints_noop_message
+  '''
+  No requirements artifact for my-slug; nothing needed to be removed.
+  
+  '''
+# ---
+# name: TestHandleTodoArtifactsRemove.test_prints_success_message
+  '''
+  Removed requirements for my-slug; deleted 2 version rows.
+  
+  '''
+# ---
+# name: TestHandleTodoArtifactsRemove.test_refuses_input_locally
+  '''
+  input artifact cannot be removed
+  
+  '''
+# ---
+# name: TestHandleTodoStamp.test_build_started_flag_exits
+  '''
+  --build-started is machine-owned; run telec todo work <slug> to enter build.
+  
+  '''
+# ---

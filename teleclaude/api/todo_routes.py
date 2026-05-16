@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from teleclaude.api.auth import (
     CallerIdentity,
     clearance_todos_artifacts_diff,
+    clearance_todos_artifacts_remove,
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
@@ -88,6 +89,17 @@ class _ArtifactWriteResponse(BaseModel):
     status: str
     slug: str
     name: str
+
+
+class _ArtifactRemoveResponse(BaseModel):
+    """Response from artifact removal."""
+
+    model_config = ConfigDict(frozen=True)
+    status: str
+    slug: str
+    name: str
+    removed: bool
+    versions_deleted: int
 
 
 class _SplitResponse(BaseModel):
@@ -257,6 +269,18 @@ async def _get_todos_db_from_cwd(cwd: str) -> TodosDb:
     return await get_todos_db(project_root)
 
 
+def _artifact_name_to_state_key(artifact_name: str) -> str | None:
+    """Return the typed todo-state artifact key for a persisted artifact name."""
+    return {
+        ARTIFACT_INPUT: "input",
+        ARTIFACT_PRD: "prd",
+        ARTIFACT_REQUIREMENTS: "requirements",
+        ARTIFACT_ARCHITECTURE: "architecture",
+        ARTIFACT_TEST_SPECS: "test_specs",
+        ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
+    }.get(artifact_name)
+
+
 async def _sync_artifact_digest_state(
     todos_db: TodosDb,
     slug: str,
@@ -266,14 +290,7 @@ async def _sync_artifact_digest_state(
     referenced_paths: list[str] | None = None,
 ) -> None:
     """Refresh artifact provenance stored in todo state."""
-    key = {
-        ARTIFACT_INPUT: "input",
-        ARTIFACT_PRD: "prd",
-        ARTIFACT_REQUIREMENTS: "requirements",
-        ARTIFACT_ARCHITECTURE: "architecture",
-        ARTIFACT_TEST_SPECS: "test_specs",
-        ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
-    }.get(artifact_name)
+    key = _artifact_name_to_state_key(artifact_name)
     if key is None:
         return
     raw_state = await todos_db.read_state(slug)
@@ -286,6 +303,26 @@ async def _sync_artifact_digest_state(
     entry.digest = await todos_db.artifact_digest(slug, artifact_name)
     entry.codebase_sha_at_write = codebase_sha_at_write
     entry.referenced_paths = referenced_paths or []
+    await writer.commit(todos_db, slug)
+
+
+async def _clear_artifact_digest_state(todos_db: TodosDb, slug: str, artifact_name: str) -> None:
+    """Clear persisted provenance for a removed lifecycle artifact."""
+    key = _artifact_name_to_state_key(artifact_name)
+    if key is None:
+        return
+    raw_state = await todos_db.read_state(slug)
+    if raw_state is None:
+        return
+    writer = StateWriter(raw_state)
+    entry = getattr(writer.state.artifacts, key, None)
+    if entry is None:
+        return
+    entry.digest = ""
+    entry.produced_at = ""
+    entry.codebase_sha_at_write = ""
+    entry.referenced_paths = []
+    entry.upstream_digests = {}
     await writer.commit(todos_db, slug)
 
 
@@ -351,6 +388,44 @@ async def write_artifact(
         cwd=effective_cwd,
     )
     return _ArtifactWriteResponse(status="ok", slug=slug, name=name)
+
+
+@router.delete("/artifacts/{slug}/{name}")
+async def remove_artifact(
+    slug: str,
+    name: str,
+    cwd: str | None = None,
+    _identity: CallerIdentity = Depends(clearance_todos_artifacts_remove),
+) -> _ArtifactRemoveResponse:
+    """Remove a todo artifact and its version history."""
+    effective_cwd = cwd or _default_cwd()
+    todos_db = await _get_todos_db_from_cwd(effective_cwd)
+    if name == ARTIFACT_INPUT:
+        raise HTTPException(status_code=400, detail="input artifact cannot be removed")
+    if not await todos_db.slug_in_roadmap(slug):
+        raise HTTPException(status_code=404, detail=f"slug '{slug}' not found in roadmap")
+
+    try:
+        result = await todos_db.delete_artifact(slug, name)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if result["removed"]:
+        await _clear_artifact_digest_state(todos_db, slug, name)
+        logger.info(
+            "todo artifact remove route completed",
+            slug=slug,
+            artifact=name,
+            versions_deleted=result["versions_deleted"],
+            cwd=effective_cwd,
+        )
+    return _ArtifactRemoveResponse(
+        status="ok",
+        slug=slug,
+        name=name,
+        removed=result["removed"],
+        versions_deleted=result["versions_deleted"],
+    )
 
 
 class _ArtifactListResponse(BaseModel):

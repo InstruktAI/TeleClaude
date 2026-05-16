@@ -154,6 +154,38 @@ subcommands:
           - slug: 'string'
         flags:
           --project-root: 'Project root (default: cwd).'
+      artifacts:
+        description: 'Manage todo artifacts in todos.db.'
+        subcommands:
+          list:
+            description: 'List artifact names for a todo.'
+            args:
+              - slug: 'string'
+          read:
+            description: 'Read one named artifact.'
+            args:
+              - slug: 'string'
+              - name: 'artifact name'
+          write:
+            description: 'Write one named artifact and append version history.'
+            args:
+              - slug: 'string'
+              - name: 'artifact name'
+              - content: 'string'
+          diff:
+            description: 'Show a unified diff between two stored artifact versions.'
+            args:
+              - slug: 'string'
+              - name: 'artifact name'
+              - old_digest: 'string'
+              - new_digest: 'string'
+          remove:
+            description: 'Hard-delete one non-input artifact and all version rows for that artifact. Missing artifacts are a successful no-op.'
+            args:
+              - slug: 'string'
+              - name: 'artifact name (input is refused)'
+            notes:
+              - 'Refuses input because input is the seed artifact for a todo.'
       stamp:
         description: 'Record an authoritative lifecycle signal.'
         args:

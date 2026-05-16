@@ -19,7 +19,7 @@ from teleclaude.core.todos_db._models import (
     TodoArtifactVersion,
     TodoRoadmap,
 )
-from teleclaude.core.todos_db._rows import ArtifactVersionRow
+from teleclaude.core.todos_db._rows import ArtifactRemovalResult, ArtifactVersionRow
 
 logger = get_logger(__name__)
 
@@ -293,6 +293,51 @@ class TodosDbArtifactsMixin:
     async def list_artifact_versions(self, slug: str, name: str, *, limit: int = 50) -> list[ArtifactVersionRow]:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.artifact_versions(slug, name, limit=limit)
+
+    async def delete_artifact(
+        self,
+        slug: str,
+        name: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> ArtifactRemovalResult:
+        """Delete one named artifact and its version history for an active todo."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            row_id = await self._ensure_artifact_id(slug, db_session)
+
+            artifact = await db_session.get(TodoArtifact, (row_id, name))
+            versions = await db_session.exec(
+                select(TodoArtifactVersion)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.id == row_id)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.name == name)
+            )
+            version_rows = list(versions.all())
+
+            if artifact is None and not version_rows:
+                return ArtifactRemovalResult(removed=False, versions_deleted=0)
+
+            if artifact is not None:
+                await db_session.delete(artifact)
+            for version in version_rows:
+                await db_session.delete(version)
+
+            removed = artifact is not None or bool(version_rows)
+            if owns_session:
+                await db_session.commit()
+                logger.info(
+                    "todo artifact removed",
+                    slug=slug,
+                    artifact=name,
+                    versions_deleted=len(version_rows),
+                    mode="async",
+                )
+                self._on_mutation("todo_updated")
+            return ArtifactRemovalResult(removed=removed, versions_deleted=len(version_rows))
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def artifacts_diff(self, slug: str, name: str, old_digest: str, new_digest: str) -> str:
         """Return a unified diff between two artifact versions identified by digest.
