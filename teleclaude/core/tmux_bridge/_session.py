@@ -4,15 +4,15 @@ import asyncio
 import hashlib
 import os
 import re
+import shlex
 import shutil
-import subprocess
-from functools import cache
 from pathlib import Path
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
+from teleclaude.runtime.environment import resolve_runtime_environment
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -21,6 +21,7 @@ logger = get_logger(__name__)
 
 _SETUP_STEP_NO_COLOR_DONE = "__tc_setup_no_color_done__"
 _SETUP_STEP_DESTROY_DONE = "__tc_setup_destroy_done__"
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def _describe_setup_chain_failure(stdout: bytes) -> str:
@@ -31,6 +32,17 @@ def _describe_setup_chain_failure(stdout: bytes) -> str:
     if _SETUP_STEP_NO_COLOR_DONE in output:
         return "set-option destroy-unattached off"
     return "set-environment -u NO_COLOR"
+
+
+def _build_tmux_shell_command(env_vars: dict[str, str], shell_command: Path) -> str:
+    parts: list[str] = []
+    for var_name, var_value in env_vars.items():
+        if not _ENV_NAME_RE.fullmatch(var_name):
+            msg = f"Invalid tmux environment variable name: {var_name}"
+            raise ValueError(msg)
+        parts.append(f"{var_name}={shlex.quote(var_value)}")
+    parts.extend(["exec", shlex.quote(str(shell_command))])
+    return " ".join(parts)
 
 
 def _get_session_tmp_basedir() -> Path:
@@ -55,48 +67,6 @@ def _safe_path_component(value: str) -> str:
 def safe_session_tmp_component(session_id: str) -> str:
     """Return the path component used for a session TMPDIR."""
     return _safe_path_component(session_id)
-
-
-@cache
-def _resolve_host_path() -> str:
-    """PATH a real user login shell produces.
-
-    launchd/systemd start the daemon with a minimal PATH, so os.environ["PATH"]
-    inside the daemon is not the user's interactive PATH. Agent subshells need
-    brew, user bin, etc. for tool lookups to succeed. Invoke the user's login
-    shell once, interactively, to extract its PATH. Cached for the daemon
-    process lifetime; restart picks up shell-config edits.
-
-    Our .zshenv re-prepends $TC_HOME/bin on top of this so the git wrapper
-    still resolves first in every agent subshell.
-    """
-    candidates: list[str] = []
-    user_shell = os.environ.get("SHELL", "")
-    if user_shell and Path(user_shell).name != "teleclaude-shell":
-        candidates.append(user_shell)
-    for fallback in ("/bin/zsh", "/bin/bash"):
-        if fallback not in candidates and Path(fallback).exists():
-            candidates.append(fallback)
-
-    for shell in candidates:
-        try:
-            result = subprocess.run(
-                [shell, "-lic", 'printf %s "$PATH"'],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            logger.warning("host PATH capture via %s failed: %s", shell, exc)
-            continue
-        captured = result.stdout.strip()
-        if result.returncode == 0 and captured:
-            logger.info("captured host PATH via %s (%d chars)", shell, len(captured))
-            return captured
-
-    logger.warning("falling back to daemon process PATH; agent subshells may miss host PATH entries")
-    return os.environ.get("PATH", "")
 
 
 def _prepare_session_tmp_dir(session_id: str) -> Path:
@@ -146,8 +116,7 @@ async def _create_tmux_session(
 ) -> bool:
     """Create a new tmux session.
 
-    Tmux automatically uses the $SHELL environment variable to determine which shell to use.
-    No explicit shell parameter needed - tmux handles this natively.
+    Tmux is started with the TeleClaude shell wrapper as the explicit pane command.
     Tmux size is not specified - tmux uses its default (80x24) which is fine for AI TUIs.
 
     Args:
@@ -167,15 +136,11 @@ async def _create_tmux_session(
         effective_env_vars["ZSH_LAST_WORKING_DIRECTORY"] = "1"
 
         # Pin the shell environment that agent CLIs and every subshell they
-        # spawn will land in. SHELL routes any CLI honoring it to our
-        # exec-wrapper; ZDOTDIR/BASH_ENV/ENV route every zsh/bash/sh -c
-        # through our minimal rc tree, which prepends ~/.teleclaude/bin once.
-        #
-        # PATH is captured from a user login shell (brew, user bin, etc.)
-        # because the daemon's own PATH is the launchd/systemd default. The
-        # minimal rc tree's .zshenv re-prepends $TC_HOME/bin on top of this,
-        # guaranteeing the git wrapper resolves first regardless of what the
-        # captured host PATH contains.
+        # spawn will land in. The tmux pane command below starts the wrapper
+        # directly, SHELL routes any CLI honoring it back through the wrapper,
+        # and ZDOTDIR/BASH_ENV/ENV route zsh/bash/sh -c through our minimal rc
+        # tree. PATH is resolved live from the user's configured shell, then
+        # composed with ~/.teleclaude/bin first so the git wrapper wins.
         #
         # TELECLAUDE_HOME is propagated explicitly so the wrapper and rc
         # files (which all read it with a `${HOME}/.teleclaude` fallback)
@@ -189,7 +154,11 @@ async def _create_tmux_session(
         effective_env_vars["ZDOTDIR"] = shell_dir
         effective_env_vars["BASH_ENV"] = f"{shell_dir}/.bashenv"
         effective_env_vars["ENV"] = f"{shell_dir}/.profile"
-        effective_env_vars["PATH"] = _resolve_host_path()
+        runtime_env = resolve_runtime_environment()
+        effective_env_vars["PATH"] = runtime_env["PATH"]
+        host_shell = runtime_env.get("SHELL")
+        if host_shell:
+            effective_env_vars["TELECLAUDE_HOST_SHELL"] = host_shell
 
         # Enable truecolor for CLI agents.  Without this, CLIs (Gemini, Claude,
         # Codex) fall back to 256-color or plain text because TERM=tmux-256color
@@ -209,9 +178,11 @@ async def _create_tmux_session(
             effective_env_vars["TMP"] = str(session_tmp_dir)
             effective_env_vars["TEMP"] = str(session_tmp_dir)
 
-        # Create tmux session in detached mode
-        # tmux automatically uses $SHELL for the session's shell
-        # No need for explicit shell command - tmux creates proper PTY with user's default shell
+        # Create tmux session in detached mode with the lean TeleClaude shell
+        # wrapper as the explicit pane command. The assignments are repeated in
+        # the command string because tmux's session environment is not reliable
+        # for the first pane process when the tmux server/default shell already
+        # has a stale PATH.
 
         logger.info("create_tmux_session: name=%s, working_dir=%s", name, working_dir)
         cmd = [
@@ -228,6 +199,8 @@ async def _create_tmux_session(
         if effective_env_vars:
             for var_name, var_value in effective_env_vars.items():
                 cmd.extend(["-e", f"{var_name}={var_value}"])
+
+        cmd.append(_build_tmux_shell_command(effective_env_vars, BIN_DIR / "teleclaude-shell"))
 
         # Capture stderr for diagnostics on failure (no special handling otherwise).
         result = await asyncio.create_subprocess_exec(

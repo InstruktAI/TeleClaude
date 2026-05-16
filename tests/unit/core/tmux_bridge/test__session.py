@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import shlex
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -63,11 +64,12 @@ class TestSessionTmpDirHelpers:
 class TestCreateAndEnsureSession:
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_create_tmux_session_injects_env_overrides(self) -> None:
+    async def test_create_tmux_session_injects_env_overrides(self, tmp_path: Path) -> None:
         teleclaude_bin = str(tc_paths.BIN_DIR)
         shell_dir = str(tc_paths.SHELL_DIR)
         session_tmp = Path("/tmp/tmux-alpha")
-        host_path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin"
+        runtime_path = f"{teleclaude_bin}:{tmp_path / 'user-bin'}"
+        host_shell = str(tmp_path / "user-shell")
 
         with (
             patch.dict(
@@ -76,7 +78,10 @@ class TestCreateAndEnsureSession:
                 clear=False,
             ),
             patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=session_tmp),
-            patch("teleclaude.core.tmux_bridge._session._resolve_host_path", return_value=host_path),
+            patch(
+                "teleclaude.core.tmux_bridge._session.resolve_runtime_environment",
+                return_value={"PATH": runtime_path, "SHELL": host_shell},
+            ),
             patch(
                 "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=[_completed_process(), _completed_process()]),
@@ -108,10 +113,10 @@ class TestCreateAndEnsureSession:
         env_values = _extract_tmux_env(new_session_command)
         assert env_values["VOICE"] == "alloy"
         assert env_values["ZSH_LAST_WORKING_DIRECTORY"] == "1"
-        # Host PATH is captured from a login shell and injected here so agent
-        # subshells inherit brew, user bin, etc. The minimal rc tree's .zshenv
-        # re-prepends $TC_HOME/bin on top, keeping the git wrapper first.
-        assert env_values["PATH"] == host_path
+        # PATH is resolved live from the user's shell at session creation and
+        # injected here so the pane and every agent CLI see the same lookup path.
+        assert env_values["PATH"] == runtime_path
+        assert env_values["TELECLAUDE_HOST_SHELL"] == host_shell
         assert env_values["COLORTERM"] == "truecolor"
         assert env_values["TMPDIR"] == str(session_tmp)
         assert env_values["TMP"] == str(session_tmp)
@@ -127,6 +132,11 @@ class TestCreateAndEnsureSession:
         # override-rooted daemon would have the wrapper reset paths back
         # to the default via its $HOME/.teleclaude fallback.
         assert env_values["TELECLAUDE_HOME"] == str(tc_paths.TELECLAUDE_HOME)
+        pane_command_parts = shlex.split(str(new_session_command[-1]))
+        assert f"PATH={runtime_path}" in pane_command_parts
+        assert f"SHELL={teleclaude_bin}/teleclaude-shell" in pane_command_parts
+        assert f"TELECLAUDE_HOST_SHELL={host_shell}" in pane_command_parts
+        assert pane_command_parts[-2:] == ["exec", f"{teleclaude_bin}/teleclaude-shell"]
 
         assert mock_exec.await_args_list[1].args == (
             _session.config.computer.tmux_binary,
@@ -221,78 +231,15 @@ class TestCreateAndEnsureSession:
         )
 
 
-class TestResolveHostPath:
-    def setup_method(self) -> None:
-        _session._resolve_host_path.cache_clear()
-
-    def teardown_method(self) -> None:
-        _session._resolve_host_path.cache_clear()
-
-    @pytest.mark.unit
-    def test_uses_user_shell_when_available(self) -> None:
-        result = SimpleNamespace(returncode=0, stdout="/opt/homebrew/bin:/usr/bin", stderr="")
-        with (
-            patch.dict("teleclaude.core.tmux_bridge._session.os.environ", {"SHELL": "/bin/zsh"}, clear=False),
-            patch("teleclaude.core.tmux_bridge._session.subprocess.run", return_value=result) as mock_run,
-        ):
-            assert _session._resolve_host_path() == "/opt/homebrew/bin:/usr/bin"
-        assert mock_run.call_args.args[0][0] == "/bin/zsh"
-        assert mock_run.call_args.args[0][1:] == ["-lic", 'printf %s "$PATH"']
-
-    @pytest.mark.unit
-    def test_skips_teleclaude_shell_to_avoid_recursion(self) -> None:
-        result = SimpleNamespace(returncode=0, stdout="/captured", stderr="")
-        with (
-            patch.dict(
-                "teleclaude.core.tmux_bridge._session.os.environ",
-                {"SHELL": str(tc_paths.BIN_DIR / "teleclaude-shell")},
-                clear=False,
-            ),
-            patch("pathlib.Path.exists", return_value=True),
-            patch("teleclaude.core.tmux_bridge._session.subprocess.run", return_value=result) as mock_run,
-        ):
-            assert _session._resolve_host_path() == "/captured"
-        invoked_shell = mock_run.call_args.args[0][0]
-        assert invoked_shell != str(tc_paths.BIN_DIR / "teleclaude-shell")
-        assert invoked_shell in ("/bin/zsh", "/bin/bash")
-
-    @pytest.mark.unit
-    def test_falls_back_to_daemon_path_when_all_shells_fail(self) -> None:
-        with (
-            patch.dict(
-                "teleclaude.core.tmux_bridge._session.os.environ",
-                {"SHELL": "/bin/zsh", "PATH": "/daemon/path"},
-                clear=False,
-            ),
-            patch(
-                "teleclaude.core.tmux_bridge._session.subprocess.run",
-                side_effect=OSError("no such shell"),
-            ),
-        ):
-            assert _session._resolve_host_path() == "/daemon/path"
-
-    @pytest.mark.unit
-    def test_falls_back_when_capture_is_empty(self) -> None:
-        empty = SimpleNamespace(returncode=0, stdout="   ", stderr="")
-        with (
-            patch.dict(
-                "teleclaude.core.tmux_bridge._session.os.environ",
-                {"SHELL": "/bin/zsh", "PATH": "/daemon/path"},
-                clear=False,
-            ),
-            patch("pathlib.Path.exists", return_value=False),
-            patch("teleclaude.core.tmux_bridge._session.subprocess.run", return_value=empty),
-        ):
-            assert _session._resolve_host_path() == "/daemon/path"
-
-
 class TestCreateSessionChaining:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_create_tmux_session_chains_post_create_setup_commands(self) -> None:
         with (
             patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=Path("/tmp/fake")),
-            patch("teleclaude.core.tmux_bridge._session._resolve_host_path", return_value="/usr/bin"),
+            patch(
+                "teleclaude.core.tmux_bridge._session.resolve_runtime_environment", return_value={"PATH": "/usr/bin"}
+            ),
             patch(
                 "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
                 new=AsyncMock(return_value=_completed_process()),
@@ -322,7 +269,9 @@ class TestCreateSessionChaining:
     ) -> None:
         with (
             patch("teleclaude.core.tmux_bridge._session._prepare_session_tmp_dir", return_value=Path("/tmp/fake")),
-            patch("teleclaude.core.tmux_bridge._session._resolve_host_path", return_value="/usr/bin"),
+            patch(
+                "teleclaude.core.tmux_bridge._session.resolve_runtime_environment", return_value={"PATH": "/usr/bin"}
+            ),
             patch(
                 "teleclaude.core.tmux_bridge._session.asyncio.create_subprocess_exec",
                 new=AsyncMock(side_effect=[_completed_process(), _completed_process(returncode=1)]),

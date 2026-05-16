@@ -2,11 +2,8 @@
 # Pinned shell entry point for teleclaude-managed tmux sessions.
 #
 # Installed as $SHELL inside tmux sessions so any agent CLI that respects
-# $SHELL — codex confirmed, others probable — lands here regardless of
-# the user's preferred login shell (zsh, bash, fish, nu, etc.). The
-# wrapper exports the env vars our minimal rc tree relies on, then execs
-# /bin/zsh so all subsequent shells (interactive panes, agent tool
-# subshells via `zsh -c`) read the same rc files.
+# $SHELL lands here first. The wrapper exports TeleClaude's environment
+# pins, then execs the resolved host shell from TELECLAUDE_HOST_SHELL.
 #
 # Resolves the teleclaude runtime root via $TELECLAUDE_HOME (matching
 # teleclaude.paths.TELECLAUDE_HOME), falling back to ~/.teleclaude when
@@ -21,4 +18,9 @@ ZDOTDIR="$TC_HOME/shell"
 BASH_ENV="$TC_HOME/shell/.bashenv"
 ENV="$TC_HOME/shell/.profile"
 export PATH ZDOTDIR BASH_ENV ENV
-exec /bin/zsh "$@"
+
+if [ -n "${TELECLAUDE_HOST_SHELL:-}" ] && command -v "$TELECLAUDE_HOST_SHELL" >/dev/null 2>&1; then
+  exec "$TELECLAUDE_HOST_SHELL" "$@"
+fi
+
+exec sh "$@"

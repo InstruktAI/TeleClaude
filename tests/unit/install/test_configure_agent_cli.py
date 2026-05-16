@@ -13,6 +13,7 @@ Covers:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tomllib
 from copy import deepcopy
@@ -130,44 +131,40 @@ def test_shell_rc_resolves_path_to_override_root_when_telceclaude_home_set(tmp_p
 
 
 def test_teleclaude_shell_wrapper_resolves_env_to_override_root(tmp_path: Path) -> None:
-    """Functional check: the wrapper, invoked as /bin/sh wrapper -c 'cmd',
-    must set PATH, ZDOTDIR, BASH_ENV, and ENV under the override root —
-    not the $HOME/.teleclaude fallback — so an override-rooted daemon
-    cannot have the wrapper reset env back to the default.
-    """
+    """The wrapper exports TeleClaude env pins before execing the resolved host shell."""
     custom_root = tmp_path / "custom-tc"
     (custom_root / "bin").mkdir(parents=True)
     (custom_root / "shell").mkdir(parents=True)
-    wrapper = configure_agent_cli.WRAPPER_TEMPLATE_DIR / "teleclaude-shell"
-
-    probe = (
-        'printf "PATH=%s\\n" "$PATH"; '
-        'printf "ZDOTDIR=%s\\n" "$ZDOTDIR"; '
-        'printf "BASH_ENV=%s\\n" "$BASH_ENV"; '
-        'printf "ENV=%s\\n" "$ENV"'
+    probe_bin = tmp_path / "probe-bin"
+    probe_bin.mkdir()
+    probe_shell = probe_bin / "env-probe-shell"
+    probe_shell.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                'printf "PATH=%s\\n" "$PATH"',
+                'printf "ZDOTDIR=%s\\n" "$ZDOTDIR"',
+                'printf "BASH_ENV=%s\\n" "$BASH_ENV"',
+                'printf "ENV=%s\\n" "$ENV"',
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
     )
-    # Exec the wrapper directly with /bin/sh so we don't require /bin/zsh
-    # in the test env. The wrapper's exec /bin/zsh is the last line; we
-    # short-circuit by overriding /bin/zsh via the `exec` substitution
-    # below — instead source the wrapper through sh to capture the env it
-    # exports, then run the probe under that env.
-    # Strip the trailing `exec /bin/zsh "$@"` so we can source the wrapper
-    # under /bin/sh without requiring zsh to be installed; the test only
-    # cares about the env the wrapper *exports*, not the final exec.
-    wrapper_text = wrapper.read_text(encoding="utf-8")
-    sourceable = "\n".join(line for line in wrapper_text.splitlines() if not line.strip().startswith("exec "))
-    sourceable_path = tmp_path / "wrapper-source-only.sh"
-    sourceable_path.write_text(sourceable, encoding="utf-8")
+    probe_shell.chmod(0o755)
+    wrapper = configure_agent_cli.WRAPPER_TEMPLATE_DIR / "teleclaude-shell"
 
     # Use a non-empty inherited PATH so the contract is exercised under
     # realistic conditions (no edge-case trailing colon from empty PATH).
-    inherited_path = "/usr/bin"
+    inherited_path = str(tmp_path / "inherited-bin")
+    input_path = f"{probe_bin}{os.pathsep}{inherited_path}"
     sourced = subprocess.run(
-        ["/bin/sh", "-c", f". {sourceable_path}; {probe}"],
+        [str(wrapper)],
         env={
             "TELECLAUDE_HOME": str(custom_root),
             "HOME": str(tmp_path / "stub-home"),
-            "PATH": inherited_path,
+            "PATH": input_path,
+            "TELECLAUDE_HOST_SHELL": "env-probe-shell",
         },
         capture_output=True,
         text=True,
@@ -193,7 +190,7 @@ def test_teleclaude_shell_wrapper_resolves_env_to_override_root(tmp_path: Path) 
         "ENV": Path(env_out["ENV"]),
     }
     expected = {
-        "PATH_ENTRIES": [custom_root / "bin", Path(inherited_path)],
+        "PATH_ENTRIES": [custom_root / "bin", probe_bin, Path(inherited_path)],
         "ZDOTDIR": custom_root / "shell",
         "BASH_ENV": custom_root / "shell" / ".bashenv",
         "ENV": custom_root / "shell" / ".profile",
