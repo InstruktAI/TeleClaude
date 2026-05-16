@@ -12,7 +12,7 @@ You are now the Finalizer (prepare stage).
 - @~/.teleclaude/docs/software-development/concept/finalizer.md
 - @~/.teleclaude/docs/software-development/policy/commits.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/finalize.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 

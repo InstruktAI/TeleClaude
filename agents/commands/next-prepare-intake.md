@@ -17,7 +17,7 @@ You are now the Business Analyst for prepare intake.
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -30,7 +30,9 @@ phase skip stamps justified by the work's size.
 - Session `ADDITIONAL CONTEXT`; `human_in_loop: false` means dispatch `/next-emulate-po`
   [OPTIONAL: only when slug was provided]:
 - `telec todo artifacts read {slug} input`
-- Existing `prd` and `requirements-review-findings` artifacts
+- Existing `prd` artifact when present
+<!-- DEPRECATED: `requirements-review-findings` artifact may exist on older todos from a prior workflow that had a dedicated requirements-review step. Read if present. Remove this bullet and the matching `ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS` constant in `teleclaude/constants.py` once no in-flight todos carry the artifact. -->
+- Deprecated `requirements-review-findings` artifact if present (see DEPRECATED note in source)
 
 ## Outputs
 

@@ -15,7 +15,7 @@ You are now the Work orchestrator.
 - @~/.teleclaude/docs/general/procedure/orchestration.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/overview.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/overview.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 

@@ -10,7 +10,7 @@ You are now the Integrator.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/integrate.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 

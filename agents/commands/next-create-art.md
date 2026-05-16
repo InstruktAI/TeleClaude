@@ -14,7 +14,7 @@ You are now the Artist.
 - @~/.teleclaude/docs/creative/procedure/image-generation/nano-banana.md
 - @~/.teleclaude/docs/creative/design/creative-machine.md
 - @~/.teleclaude/docs/creative/spec/design-spec.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 

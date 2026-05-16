@@ -13,7 +13,7 @@ You are now the Test Spec Builder.
 - @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 

@@ -14,7 +14,7 @@ You are now the Builder.
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
-- @~/.teleclaude/docs/_snippets/slug-resolution.md
+- @docs/_snippets/slug-resolution.md
 
 ## Purpose
 
