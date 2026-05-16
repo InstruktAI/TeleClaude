@@ -23,6 +23,12 @@ from teleclaude.constants import (
     ARTIFACT_QUALITY_CHECKLIST,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS,
     WORKTREE_DIR,
 )
 from teleclaude.core.next_machine._types import (
@@ -130,32 +136,32 @@ _BUILD_VERDICT_PHASE = "build_review"
 _BUILD_VERDICT_VALUES = ("approve", "changes_requested")
 
 _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
-    "input": ARTIFACT_INPUT,
-    "prd": ARTIFACT_PRD,
-    "requirements": ARTIFACT_REQUIREMENTS,
-    "architecture": ARTIFACT_ARCHITECTURE,
-    "test_specs": ARTIFACT_TEST_SPECS,
-    "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT: ARTIFACT_INPUT,
+    STATE_KEY_PRD: ARTIFACT_PRD,
+    STATE_KEY_REQUIREMENTS: ARTIFACT_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
+    STATE_KEY_TEST_SPECS: ARTIFACT_TEST_SPECS,
+    STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
 }
 
 # Maps a review phase name to the artifact state key it gates.
 # Used by stamp_verdict to bind approved_digest and by the satisfaction walk
 # to compare review approval against current artifact content.
 _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
-    "requirements_review": "requirements",
-    "architecture_review": "architecture",
-    "test_spec_review": "test_specs",
-    "plan_review": "implementation_plan",
+    "requirements_review": STATE_KEY_REQUIREMENTS,
+    "architecture_review": STATE_KEY_ARCHITECTURE,
+    "test_spec_review": STATE_KEY_TEST_SPECS,
+    "plan_review": STATE_KEY_IMPLEMENTATION_PLAN,
 }
 
 # For each artifact that is built from upstream artifacts, lists the upstream
 # state keys whose digests must be captured at stamp time. Used by stamp_artifact
 # to bind upstream_digests so the satisfaction walk can detect upstream changes.
 _ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
-    "prd": ("input",),
-    "architecture": ("prd",),
-    "test_specs": ("prd", "architecture"),
-    "implementation_plan": ("prd", "architecture", "test_specs"),
+    STATE_KEY_PRD: (STATE_KEY_INPUT,),
+    STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
+    STATE_KEY_TEST_SPECS: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
+    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE, STATE_KEY_TEST_SPECS),
 }
 
 
@@ -771,12 +777,12 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
 
 # Artifact keys that can be stamped after worker output is verified.
 _PREPARE_ARTIFACT_NAMES = {
-    "prd": ARTIFACT_PRD,
-    "requirements": ARTIFACT_REQUIREMENTS,
-    "architecture": ARTIFACT_ARCHITECTURE,
-    "implementation_plan": ARTIFACT_IMPLEMENTATION_PLAN,
+    STATE_KEY_PRD: ARTIFACT_PRD,
+    STATE_KEY_REQUIREMENTS: ARTIFACT_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
 }
-_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), "test_specs")
+_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), STATE_KEY_TEST_SPECS)
 
 
 def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
@@ -809,7 +815,7 @@ def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateVal
     if not isinstance(entry, ArtifactEntry):
         raise ValueError(f"unknown artifact phase '{artifact_key}'")
     entry.produced_at = datetime.now(UTC).isoformat()
-    if artifact_key == "test_specs":
+    if artifact_key == STATE_KEY_TEST_SPECS:
         # Sync digest from the test-specs DB artifact when one exists. Workers may
         # write a manifest of spec files to the test-specs artifact; the digest
         # then gates test_spec_review approval. When no manifest is written, the

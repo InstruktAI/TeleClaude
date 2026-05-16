@@ -31,6 +31,7 @@ from teleclaude.config import config
 from teleclaude.config.loader import load_global_config
 from teleclaude.constants import (
     HUMAN_ROLE_ADMIN,
+    HUMAN_ROLE_MEMBER,
     ROLE_INTEGRATOR,
     ROLE_ORCHESTRATOR,
     ROLE_SYSTEM,
@@ -100,11 +101,11 @@ def _filter_sessions_by_role(request: Request, sessions: list[SessionSnapshot]) 
         return sessions
 
     # Admin sees everything
-    if role == "admin":
+    if role == HUMAN_ROLE_ADMIN:
         return sessions
 
     # Member sees own + shared
-    if role == "member":
+    if role == HUMAN_ROLE_MEMBER:
         return [s for s in sessions if s.human_email == email or s.visibility == "shared"]
 
     # Contributor/newcomer/unknown: own sessions only

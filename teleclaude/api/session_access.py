@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import HTTPException, Request
 
 from teleclaude.api import auth as auth_module
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import db
 
 
@@ -36,7 +37,7 @@ async def check_session_access(
         return
 
     # Admin always allowed
-    if role == "admin":
+    if role == HUMAN_ROLE_ADMIN:
         return
 
     session = auth_module.get_cached_session(session_id)

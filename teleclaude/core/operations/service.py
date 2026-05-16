@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
 from sqlalchemy.exc import IntegrityError
 
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
@@ -471,7 +472,7 @@ class OperationsService:
         operation = await self._db.get_operation(operation_id)
         if operation is None:
             raise HTTPException(status_code=404, detail="operation not found")
-        if human_role != "admin" and operation.caller_session_id != caller_session_id:
+        if human_role != HUMAN_ROLE_ADMIN and operation.caller_session_id != caller_session_id:
             raise HTTPException(status_code=404, detail="operation not found")
         return self._serialize_operation(operation)
 

@@ -70,11 +70,26 @@ ARTIFACT_BUG = "bug"
 ARTIFACT_QUALITY_CHECKLIST = "quality-checklist"
 ARTIFACT_DESIGN_SPEC = "design-spec"
 ARTIFACT_DEFERRALS = "deferrals"
+# DEPRECATED: no writer exists; kept only so CLI validation accepts the artifact name
+# on older todos that may still carry it from a prior workflow with a dedicated
+# requirements-review step. Remove this constant and its `ARTIFACT_NAMES` entry — plus
+# the matching bullet in `agents/commands/next-prepare-intake.md` — once no in-flight
+# todos carry the artifact.
 ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
 ARTIFACT_SPEC_REVIEW_FINDINGS = "spec-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
+# TodoState state-dict keys for artifacts. Separate namespace from ARTIFACT_* names:
+# state keys use underscores ("test_specs"), artifact names use hyphens ("test-specs").
+# Convert via teleclaude.core.next_machine.artifacts.artifact_name_to_state_key.
+STATE_KEY_INPUT = "input"
+STATE_KEY_PRD = "prd"
+STATE_KEY_REQUIREMENTS = "requirements"
+STATE_KEY_ARCHITECTURE = "architecture"
+STATE_KEY_TEST_SPECS = "test_specs"
+STATE_KEY_IMPLEMENTATION_PLAN = "implementation_plan"
+
 ARTIFACT_NAMES: frozenset[str] = frozenset(
     {
         ARTIFACT_INPUT,

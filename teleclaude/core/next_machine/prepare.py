@@ -13,6 +13,12 @@ from teleclaude.constants import (
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS,
     SlashCommand,
 )
 from teleclaude.core.db import Db
@@ -42,12 +48,12 @@ from teleclaude.core.todos_db import get_todos_db
 logger = get_logger(__name__)
 
 _ADOPTION_ARTIFACTS: tuple[tuple[str, str], ...] = (
-    ("input", ARTIFACT_INPUT),
-    ("prd", ARTIFACT_PRD),
-    ("requirements", ARTIFACT_REQUIREMENTS),
-    ("architecture", ARTIFACT_ARCHITECTURE),
-    ("test_specs", ARTIFACT_TEST_SPECS),
-    ("implementation_plan", ARTIFACT_IMPLEMENTATION_PLAN),
+    (STATE_KEY_INPUT, ARTIFACT_INPUT),
+    (STATE_KEY_PRD, ARTIFACT_PRD),
+    (STATE_KEY_REQUIREMENTS, ARTIFACT_REQUIREMENTS),
+    (STATE_KEY_ARCHITECTURE, ARTIFACT_ARCHITECTURE),
+    (STATE_KEY_TEST_SPECS, ARTIFACT_TEST_SPECS),
+    (STATE_KEY_IMPLEMENTATION_PLAN, ARTIFACT_IMPLEMENTATION_PLAN),
 )
 
 

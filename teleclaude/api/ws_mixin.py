@@ -33,6 +33,7 @@ from teleclaude.api_models import (
     SessionUpdatedEventDTO,
 )
 from teleclaude.config import config
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, CacheEvent
 from teleclaude.core.models import JsonDict, JsonValue, SessionSnapshot
 from teleclaude.transport.redis_transport import RedisTransport
 
@@ -254,8 +255,8 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                     # Apply role-based visibility filtering using WS connection headers
                     email = websocket.headers.get("x-web-user-email")
                     role = websocket.headers.get("x-web-user-role")
-                    if email and role != "admin":
-                        if role == "member":
+                    if email and role != HUMAN_ROLE_ADMIN:
+                        if role == HUMAN_ROLE_MEMBER:
                             cached_sessions = [
                                 s for s in cached_sessions if s.human_email == email or s.visibility == "shared"
                             ]
@@ -352,7 +353,7 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
         if session is None:
             return None
         dto = SessionDTO.from_core(session, computer=session.computer)
-        if event == "session_started":
+        if event == CacheEvent.SESSION_STARTED.value:
             return SessionStartedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
         return SessionUpdatedEventDTO(event=event, data=dto).model_dump(exclude_none=True)
 

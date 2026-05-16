@@ -16,6 +16,7 @@ from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import OperationalError as SqlAlchemyOperationalError
 
 from teleclaude import paths as tc_paths
+from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER
 from teleclaude.core.agents import AgentName
 from teleclaude.core.dates import format_local_datetime, parse_iso_datetime
 from teleclaude.core.db.connection_factory import create_sync_db_engine
@@ -621,9 +622,9 @@ def _apply_role_filter(
     caller_role: str | None,
 ) -> None:
     """Apply role-based WHERE clauses for history access control."""
-    if caller_role is None or caller_role == "admin":
+    if caller_role is None or caller_role == HUMAN_ROLE_ADMIN:
         return
-    if caller_role == "member":
+    if caller_role == HUMAN_ROLE_MEMBER:
         clauses.append("(human_email = :caller_email OR visibility = 'shared')")
         params["caller_email"] = caller_email
     else:

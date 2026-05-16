@@ -8,6 +8,11 @@ from teleclaude.constants import (
     ARTIFACT_INPUT,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
 )
 
 
@@ -24,10 +29,10 @@ def compute_todo_folder_diff(cwd: str, slug: str, base_sha: str) -> str:
 def artifact_name_to_state_key(artifact_name: str) -> str:
     """Map a DB artifact name to its state dict key."""
     mapping = {
-        ARTIFACT_INPUT: "input",
-        ARTIFACT_PRD: "prd",
-        ARTIFACT_REQUIREMENTS: "requirements",
-        ARTIFACT_ARCHITECTURE: "architecture",
-        ARTIFACT_IMPLEMENTATION_PLAN: "implementation_plan",
+        ARTIFACT_INPUT: STATE_KEY_INPUT,
+        ARTIFACT_PRD: STATE_KEY_PRD,
+        ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
+        ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
+        ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
     }
     return mapping.get(artifact_name, artifact_name.replace(".", "_").replace("-", "_"))

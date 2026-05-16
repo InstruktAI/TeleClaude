@@ -66,7 +66,7 @@ def _delivery_key(
 
 def _target_computer_name(peer_computer_name: str | None) -> str:
     """Normalize the peer routing computer name."""
-    if not peer_computer_name or peer_computer_name in {LOCAL_COMPUTER, "local"}:
+    if not peer_computer_name or peer_computer_name == LOCAL_COMPUTER:
         return config.computer.name
     return peer_computer_name
 

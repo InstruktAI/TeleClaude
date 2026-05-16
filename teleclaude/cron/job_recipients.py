@@ -8,6 +8,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_global_config, load_person_config
 from teleclaude.config.schema import CredsConfig, JobSubscription, SubscriptionNotification
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.paths import TELECLAUDE_HOME
 
 logger = get_logger(__name__)
@@ -85,7 +86,7 @@ def discover_job_recipients(
                 recipients.append((person_cfg.creds, sub_notification))
         elif job_category == "system":
             if email not in seen_emails:
-                if role == "admin" or has_matching_sub:
+                if role == HUMAN_ROLE_ADMIN or has_matching_sub:
                     seen_emails.add(email)
                     recipients.append((person_cfg.creds, sub_notification))
 

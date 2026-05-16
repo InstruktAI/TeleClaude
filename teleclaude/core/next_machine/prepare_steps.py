@@ -6,7 +6,13 @@ from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
+    ARTIFACT_TEST_SPECS,
+    SlashCommand,
+)
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine import prepare_step_support
 from teleclaude.core.next_machine._types import PreparePhase, StateValue
@@ -148,7 +154,7 @@ async def _prepare_dispatch(
         )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
         return _approval_instruction(
-            slug, phase=phase, state=state, cwd=cwd, artifact="prd", stamp_flag="--prd-approved"
+            slug, phase=phase, state=state, cwd=cwd, artifact=ARTIFACT_PRD, stamp_flag="--prd-approved"
         )
     if phase == PreparePhase.ARCHITECTURE_DRAFTING:
         return await _dispatch_worker(
@@ -178,7 +184,7 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             cwd=cwd,
-            artifact="architecture",
+            artifact=ARTIFACT_ARCHITECTURE,
             stamp_flag="--architecture-approved",
         )
     if phase == PreparePhase.TEST_SPECS_DRAFTING:
@@ -209,7 +215,7 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             cwd=cwd,
-            artifact="test-specs",
+            artifact=ARTIFACT_TEST_SPECS,
             stamp_flag="--test-specs-approved",
         )
     if phase == PreparePhase.PLAN_DRAFTING:
@@ -240,7 +246,7 @@ async def _prepare_dispatch(
             phase=phase,
             state=state,
             cwd=cwd,
-            artifact="implementation-plan",
+            artifact=ARTIFACT_IMPLEMENTATION_PLAN,
             stamp_flag="--plan-approved",
         )
     if phase == PreparePhase.PREPARED:

@@ -11,6 +11,18 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import UTC, datetime
 
+from teleclaude.constants import (
+    ARTIFACT_ARCHITECTURE,
+    ARTIFACT_IMPLEMENTATION_PLAN,
+    ARTIFACT_PRD,
+    ARTIFACT_TEST_SPECS,
+    STATE_KEY_ARCHITECTURE,
+    STATE_KEY_IMPLEMENTATION_PLAN,
+    STATE_KEY_INPUT,
+    STATE_KEY_PRD,
+    STATE_KEY_REQUIREMENTS,
+    STATE_KEY_TEST_SPECS,
+)
 from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
 from teleclaude.core.models import Session
 from teleclaude.core.next_machine.git_ops import (
@@ -59,12 +71,12 @@ _ArtifactPresence = Mapping[str, bool]
 _FEATURE_KINDS = {"", "todo", "feature", "draft"}
 _PLAN_ONLY_KINDS = {"refactor", "migration"}
 _DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str], ...] = (
-    ("input", "input"),
-    ("prd", "prd"),
-    ("requirements", "requirements"),
-    ("architecture", "architecture"),
-    ("test_specs", "test_specs"),
-    ("implementation_plan", "implementation_plan"),
+    (STATE_KEY_INPUT, STATE_KEY_INPUT),
+    (STATE_KEY_PRD, STATE_KEY_PRD),
+    (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS),
+    (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE),
+    (STATE_KEY_TEST_SPECS, STATE_KEY_TEST_SPECS),
+    (STATE_KEY_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN),
 )
 _BLOCKING_DRIFT_STATUSES: frozenset[ArtifactDriftStatus] = frozenset({DRIFT_PENDING, DRIFT_SUBSTANTIVE})
 
@@ -316,20 +328,20 @@ def _non_drift_prepare_blockers(model: TodoState) -> list[str]:
 def _missing_upstream_blockers(model: TodoState) -> list[str]:
     """Return blockers for artifacts whose required upstream artifact is absent."""
     blockers: list[str] = []
-    if _artifact_exists(model, "architecture") and not _artifact_exists(model, "prd"):
+    if _artifact_exists(model, STATE_KEY_ARCHITECTURE) and not _artifact_exists(model, STATE_KEY_PRD):
         blockers.append("architecture artifact is present but required upstream prd is missing")
-    if _artifact_exists(model, "test_specs") and not _artifact_exists(model, "prd"):
+    if _artifact_exists(model, STATE_KEY_TEST_SPECS) and not _artifact_exists(model, STATE_KEY_PRD):
         blockers.append("test-specs artifact is present but required upstream prd is missing")
     if (
-        _artifact_exists(model, "test_specs")
+        _artifact_exists(model, STATE_KEY_TEST_SPECS)
         and model.approvals.architecture_skipped is None
-        and not _artifact_exists(model, "architecture")
+        and not _artifact_exists(model, STATE_KEY_ARCHITECTURE)
     ):
         blockers.append("test-specs artifact is present but required upstream architecture is missing")
     if (
         model.kind in _FEATURE_KINDS
-        and _artifact_exists(model, "implementation_plan")
-        and not _artifact_exists(model, "prd")
+        and _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
+        and not _artifact_exists(model, STATE_KEY_PRD)
     ):
         blockers.append("implementation-plan artifact is present but required upstream prd is missing")
     return blockers
@@ -338,9 +350,9 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
 def _review_remediation_blockers(model: TodoState) -> list[str]:
     blockers: list[str] = []
     review_pairs = (
-        ("architecture", model.architecture_review),
-        ("test_specs", model.test_spec_review),
-        ("implementation_plan", model.plan_review),
+        (STATE_KEY_ARCHITECTURE, model.architecture_review),
+        (STATE_KEY_TEST_SPECS, model.test_spec_review),
+        (STATE_KEY_IMPLEMENTATION_PLAN, model.plan_review),
     )
     for artifact_key, review in review_pairs:
         if review.verdict not in ("changes_requested", "needs_work"):
@@ -363,7 +375,7 @@ def _plan_only_phase(
     artifact_presence: _ArtifactPresence | None,
     repo_root: str | None,
 ) -> LifecyclePhase:
-    if not _artifact_present(model, "implementation_plan", artifact_presence=artifact_presence):
+    if not _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence):
         return LifecyclePhase.PLAN_DRAFTING
     if not _review_approved(model.plan_review):
         return LifecyclePhase.PLAN_REVIEW
@@ -382,11 +394,18 @@ def _feature_phase(
 ) -> LifecyclePhase:
     if not any(
         _artifact_present(model, key, artifact_presence=artifact_presence)
-        for key in ("input", "prd", "requirements", "architecture", "test_specs", "implementation_plan")
+        for key in (
+            STATE_KEY_INPUT,
+            STATE_KEY_PRD,
+            STATE_KEY_REQUIREMENTS,
+            STATE_KEY_ARCHITECTURE,
+            STATE_KEY_TEST_SPECS,
+            STATE_KEY_IMPLEMENTATION_PLAN,
+        )
     ):
         return LifecyclePhase.DRAFT
 
-    if not _artifact_present(model, "prd", artifact_presence=artifact_presence):
+    if not _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence):
         return LifecyclePhase.PRD_DRAFTING
     if not _approval_is_human(model.approvals.prd_approved):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
@@ -397,10 +416,10 @@ def _feature_phase(
     if architecture_skipped and test_specs_skipped:
         return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
     if architecture_skipped:
-        if not _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
+        if not _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence):
             return LifecyclePhase.TEST_SPECS_DRAFTING
     else:
-        if not _artifact_present(model, "architecture", artifact_presence=artifact_presence):
+        if not _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence):
             return LifecyclePhase.ARCHITECTURE_DRAFTING
         if not _review_approved(model.architecture_review):
             return LifecyclePhase.ARCHITECTURE_REVIEW
@@ -408,7 +427,7 @@ def _feature_phase(
             return LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL
         if test_specs_skipped:
             return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
-        if not _artifact_present(model, "test_specs", artifact_presence=artifact_presence):
+        if not _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence):
             return LifecyclePhase.TEST_SPECS_DRAFTING
 
     if not _review_approved(model.test_spec_review):
@@ -543,23 +562,23 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase in (LifecyclePhase.DRAFT, LifecyclePhase.PREPARED, LifecyclePhase.BLOCKED):
         return False
     if phase == LifecyclePhase.PRD_DRAFTING:
-        return _artifact_exists(model, "prd")
+        return _artifact_exists(model, STATE_KEY_PRD)
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
         return _approval_is_human(model.approvals.prd_approved)
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
-        return _artifact_exists(model, "architecture") or model.approvals.architecture_skipped is not None
+        return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
         return _review_approved(model.architecture_review)
     if phase == LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL:
         return model.approvals.architecture_approved.approved
     if phase == LifecyclePhase.TEST_SPECS_DRAFTING:
-        return _artifact_exists(model, "test_specs") or model.approvals.test_specs_skipped is not None
+        return _artifact_exists(model, STATE_KEY_TEST_SPECS) or model.approvals.test_specs_skipped is not None
     if phase == LifecyclePhase.TEST_SPECS_REVIEW:
         return _review_approved(model.test_spec_review)
     if phase == LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL:
         return model.approvals.test_specs_approved.approved
     if phase == LifecyclePhase.PLAN_DRAFTING:
-        return _artifact_exists(model, "implementation_plan")
+        return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
         return _review_approved(model.plan_review)
     if phase == LifecyclePhase.PLAN_HUMAN_APPROVAL:
@@ -582,7 +601,7 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
 def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> None:
     """Clear downstream approvals and review verdicts after an artifact rewrite."""
     approvals = model.approvals
-    if refined_artifact == "prd":
+    if refined_artifact == ARTIFACT_PRD:
         approvals.prd_approved = ApprovalStamp()
         approvals.architecture_approved = ApprovalStamp()
         approvals.test_specs_approved = ApprovalStamp()
@@ -592,28 +611,28 @@ def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> 
         _clear_prepare_review(model.architecture_review)
         _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
-        for key in ("prd", "architecture", "test-specs", "implementation-plan"):
+        for key in (ARTIFACT_PRD, ARTIFACT_ARCHITECTURE, ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == "architecture":
+    elif refined_artifact == ARTIFACT_ARCHITECTURE:
         approvals.architecture_approved = ApprovalStamp()
         approvals.test_specs_approved = ApprovalStamp()
         approvals.plan_approved = ApprovalStamp()
         _clear_prepare_review(model.architecture_review)
         _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
-        for key in ("architecture", "test-specs", "implementation-plan"):
+        for key in (ARTIFACT_ARCHITECTURE, ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == "test-specs":
+    elif refined_artifact == ARTIFACT_TEST_SPECS:
         approvals.test_specs_approved = ApprovalStamp()
         approvals.plan_approved = ApprovalStamp()
         _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
-        for key in ("test-specs", "implementation-plan"):
+        for key in (ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == "implementation-plan":
+    elif refined_artifact == ARTIFACT_IMPLEMENTATION_PLAN:
         approvals.plan_approved = ApprovalStamp()
         _clear_prepare_review(model.plan_review)
-        approvals.drift_reviewed.pop("implementation-plan", None)
+        approvals.drift_reviewed.pop(ARTIFACT_IMPLEMENTATION_PLAN, None)
 
 
 def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
@@ -625,13 +644,13 @@ def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
         _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
     elif target == LifecyclePhase.PRD_DRAFTING:
-        invalidate_downstream_on_refine(model, "prd")
+        invalidate_downstream_on_refine(model, ARTIFACT_PRD)
     elif target in (LifecyclePhase.ARCHITECTURE_DRAFTING, LifecyclePhase.ARCHITECTURE_REVIEW):
-        invalidate_downstream_on_refine(model, "architecture")
+        invalidate_downstream_on_refine(model, ARTIFACT_ARCHITECTURE)
     elif target in (LifecyclePhase.TEST_SPECS_DRAFTING, LifecyclePhase.TEST_SPECS_REVIEW):
-        invalidate_downstream_on_refine(model, "test-specs")
+        invalidate_downstream_on_refine(model, ARTIFACT_TEST_SPECS)
     elif target in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
-        invalidate_downstream_on_refine(model, "implementation-plan")
+        invalidate_downstream_on_refine(model, ARTIFACT_IMPLEMENTATION_PLAN)
 
 
 def normalize_mark_phase(model: TodoState, target: LifecyclePhase, *, worktree_cwd: str | None = None) -> None:

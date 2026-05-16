@@ -13,6 +13,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.channels.worker import run_subscription_worker
 from teleclaude.config import config, config_path
 from teleclaude.config.loader import load_project_config
+from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import get_db
 from teleclaude.core.event_bus import RedisStreamsClient, configure_event_bus, event_bus
 from teleclaude.deployment.handler import (
@@ -123,7 +124,7 @@ class _DaemonEventPlatformMixin:  # pyright: ignore[reportUnusedClass]
         global_cfg = load_global_config()
         admin_configs: list[tuple[str, PersonConfig]] = []
         for person in global_cfg.people:
-            if person.role != "admin":
+            if person.role != HUMAN_ROLE_ADMIN:
                 continue
             person_key = person.name.lower().replace(" ", "_")
             person_cfg_path = people_dir / person_key / "teleclaude.yml"

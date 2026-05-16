@@ -2,6 +2,7 @@
 
 from typing import cast
 
+from teleclaude.constants import EVENT_NEW_SESSION
 from teleclaude.core.agents import get_default_agent, get_known_agents
 from teleclaude.core.events import parse_command_string
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent
@@ -62,7 +63,7 @@ class CommandMapper:
                 args=args,
             )
 
-        if event == "new_session":
+        if event == EVENT_NEW_SESSION:
             initial_input = None
             if metadata.launch_intent and metadata.launch_intent.message:
                 initial_input = metadata.launch_intent.message
@@ -196,7 +197,7 @@ class CommandMapper:
                 origin=origin,
             )
 
-        if cmd_name == "new_session":
+        if cmd_name == EVENT_NEW_SESSION:
             initial_input = None
             if launch_intent_obj and launch_intent_obj.message:
                 initial_input = launch_intent_obj.message
@@ -257,7 +258,7 @@ class CommandMapper:
         """Map API input to internal command."""
         session_id = str(payload.get("session_id", ""))
 
-        if command_name == "new_session":
+        if command_name == EVENT_NEW_SESSION:
             skip_listener_registration_raw = payload.get("skip_listener_registration")
             skip_listener_registration = (
                 skip_listener_registration_raw if isinstance(skip_listener_registration_raw, bool) else False
