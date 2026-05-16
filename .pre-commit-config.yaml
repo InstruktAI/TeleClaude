@@ -41,22 +41,14 @@ repos:
     language: system
     files: \.(md|yaml)$
     pass_filenames: false
-- repo: local
-  hooks:
-  - id: teleclaude-docs-check
-    name: Check for hardcoded HOME paths in docs
-    entry: bash -c
-    args:
-    - 'rc=0; while IFS= read -r -d "" f; do if git show ":$f" | grep -Eq "(@?)(/Users/[^/[:space:]]+|/home/[^/[:space:]]+)/\.teleclaude"; then printf "%s\n" "$f"; rc=1; fi; done < <(git diff --cached --name-only --diff-filter=ACM -z -- "*.md"); if [ "$rc" -ne 0 ]; then echo "ERROR: Hardcoded HOME paths found in docs. Run ''telec projects init'' to set up filters."; exit 1; fi'
+  - id: home-paths
+    name: Reject hardcoded HOME paths in docs (telec code lint --step home_paths)
+    entry: uv run python -m teleclaude.cli.telec code lint --step home_paths
     language: system
     files: \.md$
     pass_filenames: false
-  - id: teleclaude-docs-validate
-    name: Validate docs and artifacts
-    entry: ./tools/lint/precommit-hook.sh docs-validate
-    language: system
-    pass_filenames: true
-    files: ^(docs/|agents/|\.agents/|scripts/snippet_schema\.yaml|teleclaude/constants\.py)
+- repo: local
+  hooks:
   - id: check-cli-help
     name: Verify CLI -h exits cleanly
     entry: ./tools/checks/check-cli-help.sh

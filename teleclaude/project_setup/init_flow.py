@@ -20,7 +20,7 @@ from teleclaude.project_setup.domain_seeds import seed_event_domains
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.git_repo import ensure_git_repo, ensure_hooks_path
 from teleclaude.project_setup.gitattributes import update_gitattributes
-from teleclaude.project_setup.hooks import install_precommit_hook
+from teleclaude.project_setup.hooks import ensure_precommit_safety_guards
 from teleclaude.project_setup.macos_setup import install_launchers, is_macos, run_permissions_probe
 from teleclaude.project_setup.skeleton import deploy_skeleton
 from teleclaude.project_setup.sync import sync_project_artifacts
@@ -306,7 +306,7 @@ def init_project(project_root: Path) -> None:
     ensure_hooks_path(project_root)
     setup_git_filters(project_root)
     update_gitattributes(project_root)
-    install_precommit_hook(project_root)
+    ensure_precommit_safety_guards(project_root)
     # Sync runs first — ``ensure_project_config`` materializes a bare
     # ``teleclaude.yml`` when the project is fresh. Only after that can
     # ``_ensure_project_slug`` guarantee the canonical machine identity is

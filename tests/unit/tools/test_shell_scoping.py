@@ -26,7 +26,6 @@ _EXPECTED_COMPONENTS = frozenset(
         "mypy",
         "parallel-typecheck",
         "markdown",
-        "docs-validate",
     }
 )
 
@@ -99,7 +98,7 @@ class TestPrecommitHookWiring:
             for hook in repo.get("hooks", []):
                 hooks_by_id[hook["id"]] = hook
 
-        for hook_id in ("guardrails", "teleclaude-docs-validate", "typecheck"):
+        for hook_id in ("guardrails", "typecheck"):
             assert hook_id in hooks_by_id, f"Hook {hook_id!r} missing from .pre-commit-config.yaml"
             assert hooks_by_id[hook_id].get("pass_filenames") is True, (
                 f"Hook {hook_id!r} must have pass_filenames: true"

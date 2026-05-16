@@ -2,13 +2,11 @@
 
 from teleclaude.project_setup.git_filters import setup_git_filters
 from teleclaude.project_setup.gitattributes import update_gitattributes
-from teleclaude.project_setup.hooks import install_precommit_hook
 from teleclaude.project_setup.init_flow import init_project
 from teleclaude.project_setup.sync import sync_project_artifacts
 
 __all__ = [
     "init_project",
-    "install_precommit_hook",
     "setup_git_filters",
     "sync_project_artifacts",
     "update_gitattributes",

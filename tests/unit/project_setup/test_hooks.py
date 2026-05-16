@@ -1,14 +1,17 @@
-"""Unit tests for teleclaude.project_setup.hooks — hook content generation."""
+"""Unit tests for teleclaude.project_setup.hooks — entrypoint safety guards."""
 
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
-import yaml
 
 import teleclaude.project_setup.hooks as hooks
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_HOME_PATHS_SCRIPT = _REPO_ROOT / "tools" / "lint" / "home_paths.py"
 
 
 def _make_precommit_entrypoint(extra: str = "", install_python: str = "/tmp/python") -> str:
@@ -24,46 +27,13 @@ def _make_precommit_entrypoint(extra: str = "", install_python: str = "/tmp/pyth
     )
 
 
-def test_install_precommit_hook_updates_framework_config_and_entrypoint_guard(tmp_path: Path) -> None:
-    config_path = tmp_path / ".pre-commit-config.yaml"
-    config_path.write_text(yaml.safe_dump({"repos": []}, sort_keys=False), encoding="utf-8")
+def test_ensure_precommit_safety_guards_replaces_old_overlap_guard(tmp_path: Path) -> None:
     hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
-    hook_file.parent.mkdir(parents=True, exist_ok=True)
-    hook_file.write_text(_make_precommit_entrypoint(), encoding="utf-8")
-
-    hooks.install_precommit_hook(tmp_path)
-
-    content = hook_file.read_text(encoding="utf-8")
-    config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-    local_repo = next(repo for repo in config["repos"] if repo["repo"] == "local")
-    assert local_repo["hooks"][0]["id"] == hooks.DOCS_CHECK_MARKER
-    assert hooks.STASH_PREVENTION_MARKER in content
-    assert hooks.RESTAGE_MARKER in content
-
-
-def test_add_raw_git_hook_is_idempotent_and_makes_file_executable(tmp_path: Path) -> None:
-    hooks_dir = tmp_path / ".git" / "hooks"
-    hooks_dir.mkdir(parents=True)
-
-    hooks._add_raw_git_hook(hooks_dir)
-    hooks._add_raw_git_hook(hooks_dir)
-
-    hook_file = hooks_dir / "pre-commit"
-    content = hook_file.read_text(encoding="utf-8")
-    assert content.count(hooks.STASH_PREVENTION_MARKER) == 1
-    assert content.count(hooks.DOCS_CHECK_MARKER) == 1
-    assert hook_file.stat().st_mode & 0o111
-
-
-def test_ensure_precommit_entrypoint_guard_replaces_old_overlap_guard(tmp_path: Path) -> None:
-    hook_file = tmp_path / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
     old_guard = f"# {hooks._OLD_OVERLAP_MARKER}\necho old guard\n"
-    hook_file.write_text(
-        _make_precommit_entrypoint(extra=old_guard),
-        encoding="utf-8",
-    )
+    hook_file.write_text(_make_precommit_entrypoint(extra=old_guard), encoding="utf-8")
 
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
+    hooks.ensure_precommit_safety_guards(tmp_path)
 
     content = hook_file.read_text(encoding="utf-8")
     assert hooks._OLD_OVERLAP_MARKER not in content
@@ -71,21 +41,22 @@ def test_ensure_precommit_entrypoint_guard_replaces_old_overlap_guard(tmp_path: 
     assert hooks.RESTAGE_MARKER in content
 
 
-def test_ensure_precommit_entrypoint_guard_is_idempotent(tmp_path: Path) -> None:
-    hook_file = tmp_path / "pre-commit"
+def test_ensure_precommit_safety_guards_is_idempotent(tmp_path: Path) -> None:
+    hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
     hook_file.write_text(_make_precommit_entrypoint(), encoding="utf-8")
 
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
+    hooks.ensure_precommit_safety_guards(tmp_path)
+    hooks.ensure_precommit_safety_guards(tmp_path)
 
     content = hook_file.read_text(encoding="utf-8")
     assert content.count(hooks.STASH_PREVENTION_MARKER) == 1
     assert content.count(hooks.RESTAGE_MARKER) == 1
 
 
-def test_ensure_precommit_entrypoint_guard_replaces_existing_restage_block(tmp_path: Path) -> None:
-    """When the installed wrapper has an outdated RESTAGE block, re-running must replace it."""
-    hook_file = tmp_path / "pre-commit"
+def test_ensure_precommit_safety_guards_replaces_existing_restage_block(tmp_path: Path) -> None:
+    hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
     outdated = (
         "#!/usr/bin/env bash\n"
         "INSTALL_PYTHON=/tmp/python\n"
@@ -97,18 +68,19 @@ def test_ensure_precommit_entrypoint_guard_replaces_existing_restage_block(tmp_p
     )
     hook_file.write_text(outdated, encoding="utf-8")
 
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
+    hooks.ensure_precommit_safety_guards(tmp_path)
 
     content = hook_file.read_text(encoding="utf-8")
     assert "outdated-restage-logic" not in content
     assert content.count(hooks.RESTAGE_MARKER) == 1
 
 
-def test_ensure_precommit_entrypoint_guard_restores_restage_retry_logic(tmp_path: Path) -> None:
-    hook_file = tmp_path / "pre-commit"
+def test_ensure_precommit_safety_guards_restores_restage_retry_logic(tmp_path: Path) -> None:
+    hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
     hook_file.write_text(_make_precommit_entrypoint(), encoding="utf-8")
 
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
+    hooks.ensure_precommit_safety_guards(tmp_path)
 
     content = hook_file.read_text(encoding="utf-8")
     assert "_pre_staged" in content
@@ -118,9 +90,9 @@ def test_ensure_precommit_entrypoint_guard_restores_restage_retry_logic(tmp_path
     assert 'exec "$INSTALL_PYTHON" -mpre_commit "${ARGS[@]}"' not in content
 
 
-def test_ensure_precommit_entrypoint_guard_cleans_up_legacy_staging_marker(tmp_path: Path) -> None:
-    """Legacy session-scoped-staging marker is removed on re-run."""
-    hook_file = tmp_path / "pre-commit"
+def test_ensure_precommit_safety_guards_cleans_up_legacy_staging_marker(tmp_path: Path) -> None:
+    hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
     legacy = (
         "#!/usr/bin/env bash\n"
         "INSTALL_PYTHON=/tmp/python\n"
@@ -130,7 +102,7 @@ def test_ensure_precommit_entrypoint_guard_cleans_up_legacy_staging_marker(tmp_p
     )
     hook_file.write_text(legacy, encoding="utf-8")
 
-    hooks._ensure_precommit_entrypoint_guard(hook_file)
+    hooks.ensure_precommit_safety_guards(tmp_path)
 
     content = hook_file.read_text(encoding="utf-8")
     assert "legacy-staging" not in content
@@ -139,15 +111,36 @@ def test_ensure_precommit_entrypoint_guard_cleans_up_legacy_staging_marker(tmp_p
     assert hooks.RESTAGE_MARKER in content
 
 
+def test_ensure_precommit_safety_guards_cleans_up_legacy_docs_check_marker(tmp_path: Path) -> None:
+    """The pre-migration docs-check injection marker must be removed on re-run."""
+    hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+    hook_file.parent.mkdir(parents=True)
+    legacy = (
+        "#!/usr/bin/env bash\n"
+        "INSTALL_PYTHON=/tmp/python\n"
+        "ARGS=()\n"
+        f"# {hooks._LEGACY_DOCS_CHECK_MARKER}: Reject hardcoded HOME paths\n"
+        "echo legacy-docs-check\n"
+    )
+    hook_file.write_text(legacy, encoding="utf-8")
+
+    hooks.ensure_precommit_safety_guards(tmp_path)
+
+    content = hook_file.read_text(encoding="utf-8")
+    assert "legacy-docs-check" not in content
+    assert hooks._LEGACY_DOCS_CHECK_MARKER not in content
+
+
 class TestEntrypointGuardBlockOrdering:
     """Verify the guard produces blocks in the correct sequence."""
 
     @pytest.mark.unit
     def test_blocks_appear_in_correct_order(self, tmp_path: Path) -> None:
-        hook_file = tmp_path / "pre-commit"
+        hook_file = tmp_path / ".git" / "hooks" / "pre-commit"
+        hook_file.parent.mkdir(parents=True)
         hook_file.write_text(_make_precommit_entrypoint(), encoding="utf-8")
 
-        hooks._ensure_precommit_entrypoint_guard(hook_file)
+        hooks.ensure_precommit_safety_guards(tmp_path)
 
         content = hook_file.read_text(encoding="utf-8")
         stash_pos = content.index(hooks.STASH_PREVENTION_MARKER)
@@ -155,13 +148,11 @@ class TestEntrypointGuardBlockOrdering:
         assert stash_pos < restage_pos
 
 
-class TestPrecommitCheckCommand:
-    """Regression tests for the PRECOMMIT_CHECK shell command itself.
+class TestHomePathsScript:
+    """Regression tests for tools/lint/home_paths.py — the HOME-path lint step.
 
-    These tests execute the actual command against a real temp git repo to
-    catch regressions like whitespace-splitting on filenames (previously a
-    `for f in $files` loop and a non-`-z` xargs pipeline both bypassed the
-    HOME-path scan when staged filenames contained spaces).
+    These execute the actual script against a real temp git repo to catch
+    regressions like whitespace-splitting on filenames.
     """
 
     @staticmethod
@@ -172,15 +163,15 @@ class TestPrecommitCheckCommand:
         return tmp_path
 
     @staticmethod
-    def _run_check(repo: Path) -> tuple[int, str]:
+    def _run_check(repo: Path) -> int:
         result = subprocess.run(
-            ["bash", "-c", hooks.PRECOMMIT_CHECK],
+            [sys.executable, str(_HOME_PATHS_SCRIPT), "--project-root", str(repo)],
             cwd=repo,
             capture_output=True,
             text=True,
             check=False,
         )
-        return result.returncode, (result.stdout + result.stderr)
+        return result.returncode
 
     def test_rejects_hardcoded_home_path_in_normal_filename(self, tmp_path: Path) -> None:
         repo = self._init_repo(tmp_path)
@@ -188,21 +179,15 @@ class TestPrecommitCheckCommand:
         bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
         subprocess.run(["git", "add", "normal.md"], cwd=repo, check=True)
 
-        rc, _ = self._run_check(repo)
-
-        assert rc == 1, "PRECOMMIT_CHECK must reject hardcoded HOME path in a plain filename"
+        assert self._run_check(repo) == 1
 
     def test_rejects_hardcoded_home_path_in_filename_with_space(self, tmp_path: Path) -> None:
-        """Regression guard for the whitespace-splitting bug: filenames with
-        spaces must not bypass the HOME-path scan."""
         repo = self._init_repo(tmp_path)
         bad = repo / "space name.md"
         bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
         subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
 
-        rc, _ = self._run_check(repo)
-
-        assert rc == 1, "PRECOMMIT_CHECK must reject hardcoded HOME path even when filename contains spaces"
+        assert self._run_check(repo) == 1
 
     def test_accepts_clean_doc_with_filename_containing_space(self, tmp_path: Path) -> None:
         repo = self._init_repo(tmp_path)
@@ -210,6 +195,4 @@ class TestPrecommitCheckCommand:
         ok.write_text("see `@~/.teleclaude/docs/index.yaml`\n", encoding="utf-8")
         subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
 
-        rc, _ = self._run_check(repo)
-
-        assert rc == 0, "PRECOMMIT_CHECK must accept a clean doc with a spaced filename"
+        assert self._run_check(repo) == 0

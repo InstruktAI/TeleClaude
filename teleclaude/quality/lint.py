@@ -113,6 +113,21 @@ class _MarkdownStep:
 
 
 @dataclass
+class _HomePathsStep:
+    """Reject hardcoded HOME paths under .teleclaude in staged markdown."""
+
+    name: str = "home_paths"
+    _project_root: Path = field(default_factory=Path)
+
+    def run(self, targets: list[str]) -> None:
+        """Execute home-paths scan against the calling project's staged set."""
+        _ = targets  # the script reads its own staged set from git
+        script = str(REPO_ROOT / "tools" / "lint" / "home_paths.py")
+        cmd = [sys.executable, script, "--project-root", str(self._project_root)]
+        _run_tool(cmd, self._project_root, self.name)
+
+
+@dataclass
 class _ResourceValidationStep:
     """Resource validation step (telec sync --validate-only)."""
 
@@ -287,6 +302,7 @@ class PythonLintPipeline:
         self.steps: list[PipelineStep] = [
             GuardrailsStep(_project_root=root),
             _MarkdownStep(_project_root=root),
+            _HomePathsStep(_project_root=root),
             _ResourceValidationStep(_project_root=root),
             _SnapshotTestingStep(_project_root=root),
             _RuffCheckStep(_project_root=root),
