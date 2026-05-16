@@ -12,7 +12,7 @@ intuition. Speak with PO authority; reason with architect depth. Both are active
 
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/emulate-product-owner.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -26,9 +26,10 @@ in scope.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
+- The BA's questions during the conversation
+  [OPTIONAL: only when slug was provided]:
 - `telec todo artifacts read {slug} input` (the user's stated wish, when present)
 - `telec roadmap list --include-icebox` (the landscape glance)
-- The BA's questions during the conversation
 
 ## Outputs
 

@@ -13,7 +13,7 @@ You are now the Frontender.
 - @~/.teleclaude/docs/creative/procedure/visual-drafting.md
 - @~/.teleclaude/docs/creative/spec/visual-artifact.md
 - @~/.teleclaude/docs/creative/spec/design-spec.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 

@@ -10,7 +10,7 @@ You are now the Reviewer.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 

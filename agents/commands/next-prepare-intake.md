@@ -17,7 +17,7 @@ You are now the Business Analyst for prepare intake.
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -27,9 +27,10 @@ phase skip stamps justified by the work's size.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- `telec todo artifacts read {slug} input` when present
-- Existing `prd` and `requirements-review-findings` artifacts when present
-- Session `additional_context`; `human_in_loop: false` means dispatch `/next-emulate-po`
+- Session `ADDITIONAL CONTEXT`; `human_in_loop: false` means dispatch `/next-emulate-po`
+  [OPTIONAL: only when slug was provided]:
+- `telec todo artifacts read {slug} input`
+- Existing `prd` and `requirements-review-findings` artifacts
 
 ## Outputs
 

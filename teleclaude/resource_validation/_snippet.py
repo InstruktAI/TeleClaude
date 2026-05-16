@@ -25,12 +25,10 @@ from teleclaude.resource_validation._models import (
     _SOURCES_HEADER,
     _error,
 )
-from teleclaude.snippet_roots import iter_snippet_roots
+from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots
 from teleclaude.snippet_validation import (
-    PARTIALS_PREFIX,
     expected_snippet_id_for_path,
     load_domains,
-    partial_ref_violation,
     validate_inline_ref_format,
     validate_snippet_id_format,
 )
@@ -53,11 +51,6 @@ def resolve_ref_path(ref: str, *, root_path: Path, current_path: Path) -> Path |
     """
     if "://" in ref:
         return None
-    if ref.startswith(PARTIALS_PREFIX):
-        tail = ref[len(PARTIALS_PREFIX) :]
-        if partial_ref_violation(tail) is not None:
-            return None
-        return (root_path / "agents" / "_partials" / tail).resolve()
     candidate = Path(ref).expanduser()
     if not candidate.is_absolute():
         if str(candidate).startswith("docs/"):
@@ -102,7 +95,7 @@ def iter_inline_refs(lines: list[str]) -> list[str]:
 
 def _get_allowed_ref_prefixes() -> tuple[str, ...]:
     home = str(Path.home())
-    return f"@{home}/.teleclaude/docs/", "@docs/", "@./_partials/"
+    return f"@{home}/.teleclaude/docs/", "@docs/"
 
 
 def collect_inline_ref_errors(
@@ -158,11 +151,6 @@ def _resolve_snippet_ref(project_root: Path, snippet_path: Path, ref: str) -> Pa
     target = ref[1:]
     if target.startswith("~"):
         return Path(target).expanduser()
-    if target.startswith(PARTIALS_PREFIX):
-        tail = target[len(PARTIALS_PREFIX) :]
-        if partial_ref_violation(tail) is not None:
-            return None
-        return (project_root / "agents" / "_partials" / tail).resolve()
     if target.startswith("./") or target.startswith("/"):
         return Path(target)
     if target.startswith("../"):
@@ -664,6 +652,8 @@ def validate_all_snippets(project_root: Path) -> None:
             include_baseline = False
         for path in sorted(snippets_root.rglob("*.md")):
             if path.name == "index.yaml":
+                continue
+            if is_excluded_snippet_path(path, snippets_root):
                 continue
             if not include_baseline and "baseline" in str(path):
                 continue

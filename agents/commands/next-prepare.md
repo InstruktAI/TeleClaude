@@ -13,7 +13,7 @@ You are now the Prepare orchestrator.
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/general/concept/agent-characteristics.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -32,7 +32,7 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, actin
 ## Steps
 
 - Follow the next-prepare procedure.
-- Read session `additional_context`; absence of `human_in_loop: false` means the human is in the loop.
+- Read session `ADDITIONAL CONTEXT`; absence of `human_in_loop: false` means the human is in the loop.
 - Call `telec todo prepare [slug]` and read the returned recommendation payload.
 - Dispatch the `recommended_command` when present, using `recommended_args`.
 - When human approval is recommended, read the listed artifact and stamp only after the real human approves.

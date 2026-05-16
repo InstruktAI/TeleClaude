@@ -14,18 +14,6 @@ pytestmark = pytest.mark.unit
 
 
 class TestResolveRefPath:
-    def test_rejects_partials_traversal_to_prevent_escaping_anchor(self, tmp_path: Path) -> None:
-        # Traversal must short-circuit to None so validate_artifact_refs_exist
-        # (which only checks existence) cannot follow .. out of agents/_partials/.
-        assert (
-            _snippet.resolve_ref_path(
-                "./_partials/../foo.md",
-                root_path=tmp_path,
-                current_path=tmp_path / "agents" / "commands" / "next-build.md",
-            )
-            is None
-        )
-
     def test_falls_back_to_project_docs_when_plain_docs_target_is_missing(self, tmp_path: Path) -> None:
         project_root = tmp_path
         current_path = project_root / "docs" / "project" / "policy" / "current.md"
@@ -78,39 +66,6 @@ class TestCollectInlineRefErrors:
             "snippet_inline_ref_missing",
             "snippet_inline_ref_not_file",
         }
-
-    def test_resolves_existing_partial_to_no_errors(self, tmp_path: Path) -> None:
-        project_root = tmp_path
-        snippet_path = project_root / "docs" / "project" / "policy" / "snippet.md"
-        snippet_path.parent.mkdir(parents=True)
-        snippet_path.write_text("body", encoding="utf-8")
-        partial = project_root / "agents" / "_partials" / "foo.md"
-        partial.parent.mkdir(parents=True)
-        partial.write_text("partial", encoding="utf-8")
-
-        errors = _snippet.collect_inline_ref_errors(
-            project_root,
-            snippet_path,
-            ["@./_partials/foo.md"],
-            domains={"software-development"},
-        )
-
-        assert errors == []
-
-    def test_reports_missing_partial(self, tmp_path: Path) -> None:
-        project_root = tmp_path
-        snippet_path = project_root / "docs" / "project" / "policy" / "snippet.md"
-        snippet_path.parent.mkdir(parents=True)
-        snippet_path.write_text("body", encoding="utf-8")
-
-        errors = _snippet.collect_inline_ref_errors(
-            project_root,
-            snippet_path,
-            ["@./_partials/missing.md"],
-            domains={"software-development"},
-        )
-
-        assert [error["code"] for error in errors] == ["snippet_inline_ref_missing"]
 
 
 class TestSeeAlsoValidation:

@@ -22,7 +22,7 @@ from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, SNIPPET_VISIBILITY
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import extract_required_reads as _extract_required_reads
 from teleclaude.slug import normalize_slug
-from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
+from teleclaude.snippet_roots import is_excluded_snippet_path, iter_snippet_roots, snippet_files
 from teleclaude.snippet_validation import load_domains
 
 __all__ = ["load_domains"]
@@ -176,6 +176,8 @@ def normalize_titles(snippets_root: Path) -> None:
     """Normalize H1 titles in all snippets to include the type suffix."""
     for path in sorted(snippets_root.rglob("*.md")):
         if path.name in ("index.yaml", "index.md"):
+            continue
+        if is_excluded_snippet_path(path, snippets_root):
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -338,6 +340,8 @@ def remove_non_baseline_indexes(snippets_root: Path) -> list[str]:
     removed: list[str] = []
     for path in sorted(snippets_root.rglob("index.md")):
         if "baseline" in path.parts or "third-party" in path.parts:
+            continue
+        if is_excluded_snippet_path(path, snippets_root):
             continue
         try:
             path.unlink()

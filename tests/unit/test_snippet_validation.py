@@ -75,33 +75,6 @@ class TestValidateInlineRefFormat:
             is None
         )
 
-    def test_accepts_partials_ref(self) -> None:
-        assert (
-            snippet_validation.validate_inline_ref_format(
-                "@./_partials/slug-resolution.md",
-                domains={"software-development"},
-            )
-            is None
-        )
-
-    def test_rejects_partials_ref_with_parent_traversal(self) -> None:
-        assert (
-            snippet_validation.validate_inline_ref_format(
-                "@./_partials/../foo.md",
-                domains={"software-development"},
-            )
-            == "invalid_partial_ref"
-        )
-
-    def test_rejects_partials_ref_without_md_extension(self) -> None:
-        assert (
-            snippet_validation.validate_inline_ref_format(
-                "@./_partials/no-ext",
-                domains={"software-development"},
-            )
-            == "invalid_partial_ref"
-        )
-
 
 class TestLoadDomains:
     def test_returns_canonical_domain_scopes(self, tmp_path: Path) -> None:

@@ -17,7 +17,7 @@ You are now the Architect for prepare architecture.
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 

@@ -15,7 +15,7 @@ You are now the Bug Fixer.
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 - @~/.teleclaude/docs/software-development/procedure/debugging.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/bug-fix.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -24,12 +24,11 @@ Investigate a bug, apply a fix, and document findings in bug.md.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- Worktree for the slug
-- `telec todo artifacts read {slug} bug` as the requirement source
+- [OPTIONAL: only when slug was provided] `telec todo artifacts read {slug} bug` as the requirement source
 
 ## Outputs
 
-- Updated `bug.md` with Investigation, Root Cause, and Fix Applied sections
+- [OPTIONAL: only when slug was provided] Updated `bug` artifact with Investigation, Root Cause, and Fix Applied sections
 - Commits for the fix
 - Report format:
 

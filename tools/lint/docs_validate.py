@@ -10,6 +10,7 @@ import frontmatter
 
 from teleclaude.resource_validation import clear_errors, get_errors, validate_all_artifacts, validate_artifact
 from teleclaude.resource_validation._snippet import validate_all_snippets, validate_snippet
+from teleclaude.snippet_roots import is_excluded_snippet_path
 from teleclaude.snippet_validation import load_domains
 
 _FULL_REPO_INPUTS = {
@@ -98,6 +99,16 @@ def main(argv: list[str] | None = None) -> int:
             continue
 
         if rel_path.startswith("docs/") and rel_path.endswith(".md"):
+            snippets_root = next(
+                (
+                    repo_root / parent
+                    for parent in ("docs/global", "docs/project")
+                    if (repo_root / parent) in path.parents
+                ),
+                None,
+            )
+            if snippets_root and is_excluded_snippet_path(path, snippets_root):
+                continue
             try:
                 content = path.read_text(encoding="utf-8")
             except OSError as exc:

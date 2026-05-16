@@ -14,7 +14,7 @@ You are now the Builder.
 - @~/.teleclaude/docs/software-development/policy/testing.md
 - @~/.teleclaude/docs/software-development/policy/version-control-safety.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -23,7 +23,6 @@ Execute the build phase for the slug and verify completion.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- Worktree for the slug
 
 ## Outputs
 

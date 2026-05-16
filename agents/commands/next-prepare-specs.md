@@ -14,7 +14,7 @@ You are now the Test Spec Author.
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/prepare-specs.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 

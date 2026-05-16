@@ -12,7 +12,7 @@ You are now the Architect in plan drafting mode.
 - @~/.teleclaude/docs/software-development/concept/architect.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/discipline.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 

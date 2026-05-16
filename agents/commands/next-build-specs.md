@@ -13,7 +13,7 @@ You are now the Test Spec Builder.
 - @~/.teleclaude/docs/software-development/policy/test-structure.md
 - @~/.teleclaude/docs/software-development/policy/definition-of-done.md
 - @~/.teleclaude/docs/software-development/procedure/lifecycle/work/build.md
-- @./_partials/slug-resolution.md
+- @~/.teleclaude/docs/_snippets/slug-resolution.md
 
 ## Purpose
 
@@ -23,9 +23,9 @@ inside the worktree, then make those tests pass.
 ## Inputs
 
 - Slug: "$ARGUMENTS"
+  [OPTIONAL: only when slug was provided]:
 - Approved `test-specs` artifact
 - Approved `implementation-plan` artifact
-- Worktree created by the work phase
 
 ## Outputs
 
