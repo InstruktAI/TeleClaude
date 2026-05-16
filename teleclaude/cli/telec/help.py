@@ -323,11 +323,12 @@ def _usage_leaf(cmd_name: str, sub_name: str) -> str:
     if not sub:
         return _usage_subcmd(cmd_name)
 
-    args_str = f" {sub.args}" if sub.args else ""
+    cleaned_args = strip_hidden_flag_tokens(sub.args, sub.flags)
+    args_str = f" {cleaned_args}" if cleaned_args else ""
     lines = ["Usage:", f"  telec {cmd_name} {sub_name}{args_str}"]
     lines.append(f"\n  {sub.desc}")
 
-    visible = [f for f in sub.flags if f.long != "--help"] if sub.flags else []
+    visible = _visible_flags(sub.flags)
     if visible:
         lines.append("\nOptions:")
         for f in visible:

@@ -112,6 +112,32 @@ def test_split_args_tokens_keeps_bracketed_flag_docs_and_positionals_atomic() ->
     ]
 
 
+def test_usage_main_suppresses_hidden_detach_from_sessions_overview() -> None:
+    """The top-level `telec -h` overview must not advertise --detach on sessions start/run."""
+    overview = help_mod._usage_main()
+    sessions_lines = [
+        line for line in overview.splitlines() if "telec sessions start" in line or "telec sessions run" in line
+    ]
+    assert sessions_lines, "expected sessions start/run lines in overview"
+    for line in sessions_lines:
+        assert "--detach" not in line, f"--detach leaked into overview: {line!r}"
+
+
+def test_usage_leaf_suppresses_hidden_detach_from_sessions_run_usage_line() -> None:
+    """Subcommand `telec sessions run -h` must not list --detach in Usage or Options."""
+    leaf = help_mod._usage_leaf("sessions", "run")
+    usage_block = leaf.split("Notes:", 1)[0]  # Usage + Options, before Notes warning text
+    assert "--detach" not in usage_block, f"--detach leaked into Usage/Options block: {usage_block!r}"
+
+
+def test_usage_leaf_keeps_detach_warning_in_notes() -> None:
+    """The concise warning in Notes is the canonical place where --detach is documented."""
+    leaf = help_mod._usage_leaf("sessions", "run")
+    notes_and_after = leaf.split("Notes:", 1)[1]
+    assert "--detach" in notes_and_after, "expected --detach warning to remain in Notes/Examples"
+
+
+# guard: parametrize-cleanup-pending
 @pytest.mark.parametrize("command_line", _COMPLETION_CONTEXTS)
 def test_handle_completion_emits_well_formed_tokens_for_every_command_context(
     command_line: str,

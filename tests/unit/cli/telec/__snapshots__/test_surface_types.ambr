@@ -1,0 +1,16 @@
+# serializer version: 1
+# name: TestStripHiddenFlagTokens.test_preserves_required_positionals
+  '<slug>'
+# ---
+# name: TestStripHiddenFlagTokens.test_returns_args_unchanged_when_no_flags
+  '<slug>'
+# ---
+# name: TestStripHiddenFlagTokens.test_strips_boolean_token_at_end_of_string
+  '[--a]'
+# ---
+# name: TestStripHiddenFlagTokens.test_strips_token_at_start_of_string
+  '[--b]'
+# ---
+# name: TestStripHiddenFlagTokens.test_strips_value_token_mid_string
+  '[--a] [--b]'
+# ---
