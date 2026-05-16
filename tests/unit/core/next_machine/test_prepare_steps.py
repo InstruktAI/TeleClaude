@@ -1,11 +1,15 @@
-"""Tests for v2 prepare phase dispatch behavior."""
+"""Tests for v2 prepare phase dispatch behavior.
+
+Output is a verbatim execution script. We snapshot the rendered output to lock
+the wording at the boundary and rely on the snapshot diff to catch regressions.
+"""
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.next_machine._types import PreparePhase
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
@@ -29,57 +33,50 @@ async def _dispatch(phase: PreparePhase) -> tuple[bool, str]:
         )
 
 
-async def _assert_dispatches(phase: PreparePhase, command: str) -> None:
-    keep_going, instruction = await _dispatch(phase)
-    payload = json.loads(instruction)
-
+@pytest.mark.asyncio
+async def test_prd_drafting_dispatches_to_intake(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.PRD_DRAFTING)
     assert keep_going is False
-    assert payload["recommended_command"] == command
-    assert payload["recommended_args"] == "my-slug"
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_prd_drafting_dispatches_to_intake_without_worktree_subfolder() -> None:
-    await _assert_dispatches(PreparePhase.PRD_DRAFTING, "/next-prepare-intake")
-
-
-@pytest.mark.asyncio
-async def test_architecture_drafting_dispatches_to_architecture_without_worktree_subfolder() -> None:
-    await _assert_dispatches(PreparePhase.ARCHITECTURE_DRAFTING, "/next-prepare-architecture")
-
-
-@pytest.mark.asyncio
-async def test_test_specs_drafting_dispatches_to_specs_without_worktree_subfolder() -> None:
-    await _assert_dispatches(PreparePhase.TEST_SPECS_DRAFTING, "/next-prepare-specs")
-
-
-@pytest.mark.asyncio
-async def test_plan_review_dispatches_to_plan_review_without_worktree_subfolder() -> None:
-    await _assert_dispatches(PreparePhase.PLAN_REVIEW, "/next-review-plan")
-
-
-async def _assert_human_approval_instruction(phase: PreparePhase, artifact: str, stamp: str) -> None:
-    keep_going, instruction = await _dispatch(phase)
-    payload = json.loads(instruction)
-
+async def test_architecture_drafting_dispatches_to_architecture(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.ARCHITECTURE_DRAFTING)
     assert keep_going is False
-    assert payload["recommended_command"] == "telec todo stamp"
-    assert payload["recommended_args"] == f"my-slug {stamp}"
-    assert payload["required_reads"] == [f"telec todo artifacts read my-slug {artifact}"]
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_prd_human_approval_returns_prd_stamp_instruction() -> None:
-    await _assert_human_approval_instruction(PreparePhase.PRD_HUMAN_APPROVAL, "prd", "--prd-approved")
+async def test_test_specs_drafting_dispatches_to_specs(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.TEST_SPECS_DRAFTING)
+    assert keep_going is False
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_plan_human_approval_returns_plan_stamp_instruction() -> None:
-    await _assert_human_approval_instruction(PreparePhase.PLAN_HUMAN_APPROVAL, "implementation-plan", "--plan-approved")
+async def test_plan_review_dispatches_to_plan_review(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.PLAN_REVIEW)
+    assert keep_going is False
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_blocked_pending_drift_dispatches_drift_analyzer() -> None:
+async def test_prd_human_approval_emits_stamp_instruction(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.PRD_HUMAN_APPROVAL)
+    assert keep_going is False
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_plan_human_approval_emits_stamp_instruction(snapshot: SnapshotAssertion) -> None:
+    keep_going, instruction = await _dispatch(PreparePhase.PLAN_HUMAN_APPROVAL)
+    assert keep_going is False
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: SnapshotAssertion) -> None:
     db = AsyncMock()
     todos_db = AsyncMock()
     state = {
@@ -106,17 +103,38 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer() -> None:
             phase=PreparePhase.BLOCKED,
             state=state,
         )
-
-    payload = json.loads(instruction)
     assert keep_going is False
-    assert payload["recommended_command"] == "/next-drift-analyze"
-    assert payload["blockers"] == ["prd drift is pending; run drift analysis before prepared"]
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_blocked_no_drift_emits_blocker_resolution(snapshot: SnapshotAssertion) -> None:
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {"schema_version": 3, "lifecycle_phase": "blocked", "artifacts": {}}
+    with (
+        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.derive_prepare_drift", return_value={}),
+        patch(
+            f"{_STEPS}.prepare_blockers",
+            return_value=["architecture artifact is present but required upstream prd is missing"],
+        ),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.BLOCKED,
+            state=state,
+        )
+    assert keep_going is False
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
 async def test_prepared_delegates_to_terminal_formatter() -> None:
     with patch(f"{_STEPS}._prepare_step_prepared", new=AsyncMock(return_value=(False, "PREPARED: my-slug"))):
         keep_going, instruction = await _dispatch(PreparePhase.PREPARED)
-
     assert keep_going is False
     assert instruction == "PREPARED: my-slug"

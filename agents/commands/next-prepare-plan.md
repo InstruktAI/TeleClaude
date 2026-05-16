@@ -36,13 +36,8 @@ planning proves it is not atomic.
 
 ## Steps
 
-- Follow the plan-draft procedure.
-- If architecture or test-specs were skipped, read the skip reason from todo state and account for it in plan rationale.
-- Keep tasks grounded in PRD criteria, architecture constraints, test-spec cases, and verified code paths.
-- Do not stamp `plan_approved`; that stamp is reserved for human approval after review.
-- Go idle after writing the plan or performing the split.
+Follow the plan-draft procedure.
 
 ## Discipline
 
-Every task needs a why, explicit files or surfaces where knowable, and a
-verification step. A builder should be able to execute the plan without guessing.
+Follow the plan-draft procedure's discipline.

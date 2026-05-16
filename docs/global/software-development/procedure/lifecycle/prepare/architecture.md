@@ -98,6 +98,8 @@ telec todo artifacts write {slug} architecture <content>
 
 The artifact follows the structure in step 3. Sections that don't apply (e.g., "Event flow changes" for purely-UI work) are explicitly noted as N/A — never silently omitted.
 
+**Architecture is a translation, not an implementation.** Translate product intent into technical shape. Do not implement, do not write tests, and do not invent one-off platform patterns when a standard scaffold or flavor should exist. When a needed scaffold or flavor is missing, surface it as a blocking finding instead of hacking around it.
+
 ### 7. Independent review
 
 The orchestrator dispatches the architecture reviewer:

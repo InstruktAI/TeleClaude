@@ -19,7 +19,6 @@ from teleclaude.constants import (
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
     STATE_KEY_TEST_SPECS,
-    SlashCommand,
 )
 from teleclaude.core.db import Db
 from teleclaude.core.next_machine._types import _PREPARE_LOOP_LIMIT
@@ -32,7 +31,7 @@ from teleclaude.core.next_machine.lifecycle import (
     reconcile_lifecycle_phase,
     require_lifecycle_phase,
 )
-from teleclaude.core.next_machine.output_formatting import PrepareRecommendation, format_prepare_recommendation
+from teleclaude.core.next_machine.output_formatting import format_blocker_resolution
 from teleclaude.core.next_machine.prepare_steps import _commit_writer, _prepare_dispatch
 from teleclaude.core.next_machine.state_mutation import StateWriter
 from teleclaude.project_root import resolve_state_root
@@ -115,35 +114,29 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
     resolved_slug = slug or await _find_next_prepare_slug_db(todos_db)
     if not resolved_slug:
         guidance = await compose_agent_guidance(db)
-        payload: PrepareRecommendation = {
-            "slug": "",
-            "lifecycle_phase": LifecyclePhase.DRAFT.value,
-            "stage": "prepare",
-            "kind": "feature",
-            "recommended_command": f"/{SlashCommand.NEXT_PREPARE_INTAKE.value}",
-            "recommended_args": "",
-            "required_reads": [],
-            "drift": {},
-            "blockers": ["no active preparation work found"],
-            "advisory": [guidance, "Create or select a todo, then run `telec todo prepare` again."],
-        }
-        return format_prepare_recommendation(payload)
+        instruction = (
+            f"1. Create a new todo: `telec todo create <slug>` (use --kind feature|bug|refactor|migration|prepped).\n"
+            f"2. Or pick an existing slug from `telec roadmap list`.\n"
+            f"3. Then call `telec todo prepare <slug>` to drive the lifecycle.\n\n"
+            f"{guidance}"
+        )
+        return format_blocker_resolution(
+            "",
+            instruction,
+            blockers=["no active preparation work found"],
+        )
 
     holder_children = await resolve_holder_children_db(todos_db, resolved_slug)
     if holder_children:
-        payload: PrepareRecommendation = {
-            "slug": resolved_slug,
-            "lifecycle_phase": LifecyclePhase.BLOCKED.value,
-            "stage": "prepare",
-            "kind": "split-holder",
-            "recommended_command": "telec todo work",
-            "recommended_args": resolved_slug,
-            "required_reads": [],
-            "drift": {},
-            "blockers": [f"split holder has children: {', '.join(holder_children)}"],
-            "advisory": ["Run work on the holder to trigger finalize and integration."],
-        }
-        return format_prepare_recommendation(payload)
+        instruction = (
+            f"This slug is a split holder. Run work to trigger finalize and integration:\n"
+            f"  telec todo work {resolved_slug}"
+        )
+        return format_blocker_resolution(
+            resolved_slug,
+            instruction,
+            blockers=[f"split holder has children: {', '.join(holder_children)}"],
+        )
 
     if not await todos_db.slug_in_roadmap(resolved_slug):
         await todos_db.add_to_roadmap(resolved_slug)
@@ -175,19 +168,16 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         if not keep_going:
             return instruction
 
-    payload: PrepareRecommendation = {
-        "slug": resolved_slug,
-        "lifecycle_phase": LifecyclePhase.BLOCKED.value,
-        "stage": "prepare",
-        "kind": "unknown",
-        "recommended_command": "",
-        "recommended_args": "",
-        "required_reads": [],
-        "drift": {},
-        "blockers": [f"prepare loop exceeded {_PREPARE_LOOP_LIMIT} internal transitions"],
-        "advisory": ["Inspect state before continuing."],
-    }
-    return format_prepare_recommendation(payload)
+    instruction = (
+        "The prepare state machine could not converge. Inspect the todo state "
+        f"via `telec todo show {resolved_slug}` and surface to the user — the lifecycle "
+        "cannot self-resolve."
+    )
+    return format_blocker_resolution(
+        resolved_slug,
+        instruction,
+        blockers=[f"prepare loop exceeded {_PREPARE_LOOP_LIMIT} internal transitions"],
+    )
 
 
 __all__ = ["next_prepare"]

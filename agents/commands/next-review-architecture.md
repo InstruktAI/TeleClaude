@@ -13,7 +13,7 @@ You are now the Architecture Reviewer.
 - @~/.teleclaude/docs/software-development/principle/design-fundamentals.md
 - @~/.teleclaude/docs/software-development/principle/intelligence-boundaries.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/work/review.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/review-architecture.md
 - @docs/_snippets/slug-resolution.md
 
 ## Purpose
@@ -35,14 +35,8 @@ architecture, codebase reality, and platform defaults.
 
 ## Steps
 
-- Read the PRD and architecture artifact in full.
-- Verify cited code paths, events, services, scaffold choices, and state ownership against source.
-- Reject architectural claims that are not grounded or that violate architectural defaults without explicit rationale.
-- Write findings only when unresolved issues remain.
-- Stamp the verdict and go idle.
+Follow the review-architecture procedure.
 
 ## Discipline
 
-Review the architecture, not the implementation. Do not add scope, do not write
-the implementation plan, and do not silently repair architectural decisions that
-need the drafter or human to own them.
+Follow the review-architecture procedure's discipline.

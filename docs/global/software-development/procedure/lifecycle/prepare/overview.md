@@ -34,21 +34,30 @@ The orchestrator drives. The state machine reports current state and recommends 
 
 Call `telec todo prepare {slug}` (or query the state machine equivalently). The machine returns the current state — what stamps exist, which artifacts are present, what's outstanding, and a recommended next step with required reads.
 
-The orchestrator reads the recommendation and decides whether to act on it. The recommendation is advisory, not prescriptive. If a fresh human question takes priority, answer that first; come back to the recommendation when ready.
+The orchestrator reads the recommendation. When `recommended_command` is non-empty, that is the next autonomous action — dispatch it via `telec sessions run`. The recommendation's flexibility belongs to in-conversation moments with the user: fresh questions, refinements, scope clarifications. Between user turns, the agent acts on the recommendation.
+
+When blockers are present, the payload decides the action:
+
+- `recommended_command` non-empty: dispatch it.
+- `recommended_command` empty: each blocker names a concrete gap. Resolve it by writing the missing artifact, re-dispatching the responsible draft worker with the review findings, or surfacing a state-machine error to the user.
 
 ### 2. Run the recommended next step
 
 The recommendation maps to one of the phase skills. The orchestrator loads the relevant skill, which inlines its required reads. Phase skills:
 
-| Phase | Skill / command loaded |
-| --- | --- |
-| Intake | `/next-prepare-intake` (loads `prepare/intake.md` procedure) |
+| Phase        | Skill / command loaded                                         |
+| ------------ | -------------------------------------------------------------- |
+| Intake       | `/next-prepare-intake` (loads `prepare/intake.md` procedure)   |
 | Architecture | `/next-prepare-architecture` (loads `prepare/architecture.md`) |
-| Test specs | `/next-prepare-specs` (loads `prepare/prepare-specs.md`) |
-| Plan | `/next-prepare-plan` (loads `prepare/plan-draft.md`) |
-| Reviewer dispatch | `/next-review-architecture`, `/next-review-specs`, `/next-review-plan` |
+| Test specs   | `/next-prepare-specs` (loads `prepare/prepare-specs.md`)       |
+| Plan         | `/next-prepare-plan` (loads `prepare/plan-draft.md`)           |
 
 The orchestrator runs the phase to completion (artifact written, reviewer verdict, human approval) before calling the state machine again for the next recommendation.
+
+Three lifecycle stamps are authored by the actor producing the judgment they capture; the orchestrator dispatches that actor and waits for the stamp:
+
+- `--drift-reviewed` is the deliverable of the `/next-drift-analyze` worker.
+- `--architecture-skipped` and `--test-specs-skipped` are the deliverables of the BA during intake.
 
 ### 3. Honor the approval gates
 
@@ -73,7 +82,7 @@ When the state machine reports drift (codebase changed in artifact-referenced pa
 telec sessions run --command /next-drift-analyze --agent codex --args {slug} --detach
 ```
 
-The worker reads the diffs scoped to referenced paths, assesses impact per affected artifact, and reports findings. The orchestrator integrates: substantive drift triggers re-derivation of the affected layer; cosmetic drift is noted but doesn't invalidate approval.
+The worker reads the diffs scoped to referenced paths, assesses impact per affected artifact, and reports findings. The `/next-drift-analyze` worker is the sole author of `--drift-reviewed`. Substantive verdicts trigger re-derivation of the affected layer; cosmetic verdicts allow the chain to continue.
 
 ### 6. Handle refinement
 

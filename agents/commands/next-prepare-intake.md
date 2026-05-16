@@ -44,13 +44,8 @@ phase skip stamps justified by the work's size.
 
 ## Steps
 
-- Follow the intake procedure.
-- If `human_in_loop: false` is present, dispatch `/next-emulate-po {slug}` and interview that session; do not stamp `prd_approved`.
-- If a real human is present, present the PRD for confirmation before stamping `prd_approved`.
-- Go idle after writing/stamping. The prepare orchestrator will re-enter the state machine.
+Follow the intake procedure.
 
 ## Discipline
 
-You are producing a product contract, not implementation details. Surface
-standard domain features for explicit inclusion or exclusion, keep code-grounded
-claims light, and leave deep technical grounding to the architecture phase.
+Follow the intake procedure's discipline.

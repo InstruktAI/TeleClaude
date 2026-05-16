@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.next_machine.prepare import _find_next_prepare_slug_db, next_prepare
 from teleclaude.core.todos_db import TodosDb
@@ -41,7 +41,7 @@ async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_dispatches_no_active_work_to_intake() -> None:
+async def test_next_prepare_no_active_work_emits_blocker_resolution(snapshot: SnapshotAssertion) -> None:
     db = AsyncMock()
     todos_db = _mock_todos_db()
 
@@ -53,13 +53,11 @@ async def test_next_prepare_dispatches_no_active_work_to_intake() -> None:
     ):
         result = await next_prepare(db, None, "/repo")
 
-    payload = json.loads(result)
-    assert payload["recommended_command"] == "/next-prepare-intake"
-    assert payload["blockers"] == ["no active preparation work found"]
+    assert result == snapshot
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_returns_container_message_when_holder_has_children() -> None:
+async def test_next_prepare_holder_with_children_emits_blocker_resolution(snapshot: SnapshotAssertion) -> None:
     db = AsyncMock()
     todos_db = _mock_todos_db()
 
@@ -70,9 +68,7 @@ async def test_next_prepare_returns_container_message_when_holder_has_children()
     ):
         result = await next_prepare(db, "holder", "/repo")
 
-    payload = json.loads(result)
-    assert payload["recommended_command"] == "telec todo work"
-    assert payload["blockers"] == ["split holder has children: child-a, child-b"]
+    assert result == snapshot
 
 
 @pytest.mark.asyncio

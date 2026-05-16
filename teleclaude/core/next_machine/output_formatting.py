@@ -5,9 +5,6 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
-import json
-from typing import TypedDict
-
 from teleclaude.constants import WORKTREE_DIR
 from teleclaude.core.next_machine._types import REVIEW_DIFF_NOTE
 from teleclaude.paths import COMMANDS_DIR
@@ -15,12 +12,11 @@ from teleclaude.paths import COMMANDS_DIR
 __all__ = [
     "ORCHESTRATOR_IDLE_INVARIANT",
     "REVIEW_DIFF_NOTE",
-    "PrepareRecommendation",
     "ToolCallRequest",
+    "format_blocker_resolution",
     "format_command_loader_message",
     "format_error",
     "format_finalize_handoff_complete",
-    "format_prepare_recommendation",
     "format_prepared",
     "format_stash_debt",
     "format_tool_call",
@@ -52,24 +48,33 @@ class ToolCallRequest(dict[str, object]):  # guard: loose-dict - dynamic payload
     """
 
 
-class PrepareRecommendation(TypedDict):
-    """Structured prepare recommendation payload returned by the state machine."""
+def format_blocker_resolution(
+    slug: str,
+    instruction: str,
+    *,
+    blockers: list[str] | None = None,
+    context: str = "",
+) -> str:
+    """Format a verbatim execution script for non-dispatch prepare instructions.
 
-    slug: str
-    lifecycle_phase: str
-    stage: str
-    kind: str
-    recommended_command: str
-    recommended_args: str
-    required_reads: list[str]
-    drift: dict[str, str]
-    blockers: list[str]
-    advisory: list[str]
-
-
-def format_prepare_recommendation(recommendation: PrepareRecommendation) -> str:
-    """Render a prepare recommendation as stable JSON for orchestrators and CLIs."""
-    return json.dumps(recommendation, indent=2, sort_keys=True)
+    Used when the prepare state machine reaches a state that requires a
+    concrete next action without dispatching a worker — approval gates,
+    non-drift blockers, no-active-work, split-holder, and loop-limit cases.
+    """
+    parts = ["IMPORTANT: This output is an execution script. Follow it verbatim.", ""]
+    parts.append(f"SLUG: {slug or '<none>'}")
+    parts.append("")
+    if context:
+        parts.append(context)
+        parts.append("")
+    if blockers:
+        parts.append("BLOCKERS:")
+        for blocker in blockers:
+            parts.append(f"- {blocker}")
+        parts.append("")
+    parts.append("NEXT ACTION:")
+    parts.append(instruction)
+    return "\n".join(parts)
 
 
 def _command_text(value: object) -> str:

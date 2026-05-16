@@ -73,6 +73,29 @@ Apply the grounding and DoD-driven review-awareness rules from the preparation
 artifact quality policy. The specs must match the codebase's existing testing
 style without inventing a new harness, fixture pattern, or assertion language.
 
+### 4a. Forbidden reviewer moves
+
+The schema has three tiers for spec review: Requirement-Violation, Critical,
+Important. There is no fourth tier. There is no Suggestion bucket.
+
+- **Inventing a fourth tier.** No "Suggestion", "nit", "polish",
+  "non-blocking", or "follow-up" tier exists.
+- **Pre-existing-pattern dodge.** The reviewer evaluates the spec
+  artifact's resulting state. If the current specs violate a cited rule,
+  the finding stands.
+- **Uncited findings.** If you cannot name the rule or criterion, you have
+  an opinion, not a finding. Drop it.
+- **Severity-softening to reach approve.** Words like "minor", "cosmetic",
+  or "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+- **Skipping the per-criterion mapping.** A PRD criterion with no named
+  spec entry is a Requirement-Violation, not an "incomplete" or "TBD"
+  item.
+
+The dispatch reason header is the explicit signal for re-entry. The reason
+`upstream-changed` means the spec content drifted since the last approval;
+the dispatch lists the exact `telec todo artifacts diff` command to
+inspect.
+
 ### 5. Write verdict
 
 Stamp the review verdict:

@@ -19,8 +19,9 @@ from teleclaude.core.next_machine._types import PreparePhase, StateValue
 from teleclaude.core.next_machine.git_ops import DRIFT_PENDING, compose_agent_guidance
 from teleclaude.core.next_machine.lifecycle import derive_prepare_drift, prepare_blockers
 from teleclaude.core.next_machine.output_formatting import (
-    PrepareRecommendation,
-    format_prepare_recommendation,
+    ToolCallRequest,
+    format_blocker_resolution,
+    format_tool_call,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
 
@@ -35,10 +36,6 @@ _derive_project_root = prepare_step_support.derive_project_root
 _prepare_step_prepared = prepare_step_support.prepare_step_prepared
 
 
-def _kind_from_state(state: dict[str, StateValue]) -> str:
-    return str(state.get("kind") or "todo")
-
-
 def _drift_from_state(state: dict[str, StateValue], *, cwd: str) -> dict[str, str]:
     return {name: status for name, status in derive_prepare_drift(StateWriter(state).state, repo_root=cwd).items()}
 
@@ -47,31 +44,20 @@ def _blockers_from_state(state: dict[str, StateValue], *, cwd: str) -> list[str]
     return prepare_blockers(StateWriter(state).state, repo_root=cwd)
 
 
-def _recommendation(
-    *,
-    slug: str,
-    phase: PreparePhase,
-    kind: str,
-    command: str,
-    args: str,
-    required_reads: list[str],
-    drift: dict[str, str],
-    blockers: list[str],
-    advisory: list[str],
-) -> tuple[bool, str]:
-    payload: PrepareRecommendation = {
-        "slug": slug,
-        "lifecycle_phase": phase.value,
-        "stage": "prepare",
-        "kind": kind,
-        "recommended_command": command,
-        "recommended_args": args,
-        "required_reads": required_reads,
-        "drift": drift,
-        "blockers": blockers,
-        "advisory": advisory,
-    }
-    return False, format_prepare_recommendation(payload)
+def _drift_context(drift: dict[str, str]) -> str:
+    if not drift:
+        return ""
+    lines = ["DRIFT STATUS:"]
+    for name, status in sorted(drift.items()):
+        lines.append(f"- {name}: {status}")
+    return "\n".join(lines)
+
+
+def _dispatch_post_block(*, slug: str, expected: str) -> str:
+    return f"""WHEN WORKER COMPLETES:
+The worker produces {expected}.
+1. Tail the worker's final output to verify it succeeded.
+2. Call `telec todo prepare {slug}` to advance the lifecycle to the next phase."""
 
 
 async def _dispatch_worker(
@@ -86,23 +72,19 @@ async def _dispatch_worker(
     expected: str,
     blockers: list[str] | None = None,
 ) -> tuple[bool, str]:
+    _ = phase, state, blockers  # not surfaced in verbatim dispatch script
     guidance = await compose_agent_guidance(db)
     project_root = _derive_project_root(cwd, slug)
-    return _recommendation(
-        slug=slug,
-        phase=phase,
-        kind=_kind_from_state(state),
+    request = ToolCallRequest(
         command=f"/{command.value}",
         args=slug,
-        required_reads=[f"agents/commands/{loader_name}.md"],
-        drift=_drift_from_state(state, cwd=project_root),
-        blockers=blockers or [],
-        advisory=[
-            f"Dispatch a worker for {expected}.",
-            guidance,
-            f"Re-enter with `telec todo prepare {slug}` after the worker goes idle.",
-        ],
+        project=project_root,
+        guidance=guidance,
+        subfolder="",
+        post_block=_dispatch_post_block(slug=slug, expected=expected),
+        note=f"Required reading for this worker: agents/commands/{loader_name}.md",
     )
+    return False, format_tool_call(request)
 
 
 def _approval_instruction(
@@ -114,20 +96,34 @@ def _approval_instruction(
     artifact: str,
     stamp_flag: str,
 ) -> tuple[bool, str]:
-    return _recommendation(
-        slug=slug,
-        phase=phase,
-        kind=_kind_from_state(state),
-        command="telec todo stamp",
-        args=f"{slug} {stamp_flag}",
-        required_reads=[f"telec todo artifacts read {slug} {artifact}"],
-        drift=_drift_from_state(state, cwd=cwd),
-        blockers=[],
-        advisory=[
-            "A real human must approve the artifact before this stamp is valid.",
-            f"Re-enter with `telec todo prepare {slug}` after stamping.",
-        ],
+    _ = phase, state, cwd
+    instruction = (
+        f"1. Read the artifact:\n"
+        f"   telec todo artifacts read {slug} {artifact}\n\n"
+        f"2. Present the artifact to the real human and wait for confirmation.\n\n"
+        f"3. When the human confirms, stamp:\n"
+        f"   telec todo stamp {slug} {stamp_flag}\n\n"
+        f"4. Call `telec todo prepare {slug}` to advance the lifecycle."
     )
+    context = "A real human must approve the artifact before this stamp is valid."
+    return False, format_blocker_resolution(slug, instruction, context=context)
+
+
+def _blocker_resolution(
+    slug: str,
+    *,
+    drift: dict[str, str],
+    blockers: list[str],
+) -> tuple[bool, str]:
+    drift_context = _drift_context(drift)
+    instruction = (
+        f"Each blocker above names a concrete gap. Resolve it by:\n"
+        f"- writing the missing artifact, or\n"
+        f"- re-dispatching the responsible draft worker with the review findings, or\n"
+        f"- surfacing a state-machine error to the user.\n\n"
+        f"Then call `telec todo prepare {slug}` to re-derive the lifecycle phase."
+    )
+    return False, format_blocker_resolution(slug, instruction, blockers=blockers, context=drift_context)
 
 
 async def _prepare_dispatch(
@@ -267,17 +263,7 @@ async def _prepare_dispatch(
                 expected="drift_reviewed stamps for every pending artifact",
                 blockers=blockers,
             )
-        return _recommendation(
-            slug=slug,
-            phase=phase,
-            kind=_kind_from_state(state),
-            command="",
-            args="",
-            required_reads=[],
-            drift=drift,
-            blockers=blockers,
-            advisory=[f"Resolve the blockers, then re-enter with `telec todo prepare {slug}`."],
-        )
+        return _blocker_resolution(slug, drift=drift, blockers=blockers)
     return False, f"UNHANDLED_PHASE: No handler for prepare phase: {phase.value}"
 
 

@@ -33,13 +33,8 @@ Write a language-agnostic prose `test-specs` artifact from approved PRD and opti
 
 ## Steps
 
-- Follow the prepare-specs procedure.
-- Translate each PRD success criterion into Given/When/Then prose.
-- Keep the artifact implementation-language neutral.
-- Do not stamp `test_specs_approved`; that stamp is reserved for human approval after review.
-- Go idle after writing the artifact.
+Follow the prepare-specs procedure.
 
 ## Discipline
 
-You specify behavior, not implementation. No `.py`, `.ts`, fixture, expected-failure,
-or test-runner work belongs in prepare.
+Follow the prepare-specs procedure's discipline.

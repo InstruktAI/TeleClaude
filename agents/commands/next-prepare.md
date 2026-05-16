@@ -31,17 +31,8 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, actin
 
 ## Steps
 
-- Follow the next-prepare procedure.
-- Read session `ADDITIONAL CONTEXT`; absence of `human_in_loop: false` means the human is in the loop.
-- Call `telec todo prepare [slug]` and read the returned recommendation payload.
-- Dispatch the `recommended_command` when present, using `recommended_args`.
-- When human approval is recommended, read the listed artifact and stamp only after the real human approves.
-- When blockers are present, resolve them or dispatch the recommended remediation worker before calling prepare again.
-- Do not create or use a worktree in prepare. Worktrees start only when `/next-work` begins build.
-- Call again after each instruction completes. Repeat until terminal state.
+Follow the prepare overview procedure.
 
 ## Discipline
 
-You are the prepare orchestrator. Your failure mode is treating advisory payloads
-as permission to improvise. The state machine owns routing and blockers; you act
-on the recommendation fields and keep worker work out of the orchestrator session.
+Follow the prepare overview procedure's discipline.

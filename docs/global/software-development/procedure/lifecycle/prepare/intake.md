@@ -73,6 +73,8 @@ Once the BA recognizes a domain, it proactively surfaces the standard features f
 
 The PO answers per feature. Decisions land in the Scope section under Must / Should / Could / Won't. What the PO didn't think to ask for but should consider gets surfaced — not silently included, not silently dropped, but offered for explicit decision. This is the discipline that prevents "the human asked for a CRM and didn't mention dedup, so we shipped a CRM with no dedup."
 
+**What the PRD does NOT contain.** The PRD is a product contract, not an implementation outline. Surface standard domain features for explicit inclusion or exclusion, keep code-grounded claims light, and leave deep technical grounding to the architecture phase. The architecture, test specs, and implementation plan derive from the approved PRD — they do not need to live inside it.
+
 ### 3. Steward, don't quiz
 
 The BA states routing decisions in the user's register — does not ask the user to make technical choices they have no basis for. Example phrasings:

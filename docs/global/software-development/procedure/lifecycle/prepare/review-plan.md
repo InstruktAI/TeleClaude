@@ -170,6 +170,26 @@ Not allowed — route via `needs_work` instead:
 - Changing scope or splitting the todo.
 - Inventing architectural decisions not grounded in PRD, architecture, or codebase.
 
+### 8a. Forbidden reviewer moves
+
+The schema has two tiers for plan review: Critical, Important. There is no
+fourth tier. There is no Suggestion bucket.
+
+- **Inventing a fourth tier.** No "Suggestion", "nit", "polish",
+  "non-blocking", or "follow-up" tier exists.
+- **Pre-existing-pattern dodge.** The reviewer evaluates the plan's
+  resulting state, not how it differs from a prior version. If the current
+  text violates a cited rule, the finding stands.
+- **Uncited findings.** If you cannot name the rule, you have an opinion,
+  not a finding. Drop it.
+- **Severity-softening to reach approve.** Words like "minor", "cosmetic",
+  or "nice to have" are demotion language. Stop, re-cite, re-evaluate.
+
+When the dispatch comes with a digest-mismatch header (the message includes
+a `telec todo artifacts diff` command with old and new digests), the plan
+changed since the last approval. Run the diff command to see what changed
+and re-validate against the requirements and specs.
+
 ### 9. Write verdict
 
 Stamp the review verdict:

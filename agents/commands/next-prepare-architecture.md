@@ -37,14 +37,8 @@ that downstream test-specs and implementation planning can rely on.
 
 ## Steps
 
-- Follow the architecture procedure.
-- Load the code and project architecture docs needed to verify every affected surface you name.
-- Write the architecture artifact with explicit N/A sections where a standard section does not apply.
-- Do not stamp `architecture_approved`; that stamp is reserved for human approval after review.
-- Go idle after writing the artifact.
+Follow the architecture procedure.
 
 ## Discipline
 
-You are translating product intent into technical shape. Do not implement,
-do not write tests, and do not invent one-off platform patterns when a standard
-scaffold or flavor should exist.
+Follow the architecture procedure's discipline.

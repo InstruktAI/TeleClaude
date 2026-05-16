@@ -10,7 +10,7 @@ You are now the Drift Analyzer.
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/regression-zero-tolerance.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md
+- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/drift-analyze.md
 - @docs/_snippets/slug-resolution.md
 
 ## Purpose
@@ -29,11 +29,8 @@ Classify pending codebase drift for prepared artifacts and stamp whether the dri
 
 ## Steps
 
-- Read each pending artifact and inspect the referenced paths changed since the artifact's codebase baseline.
-- Stamp `cosmetic` when the artifact remains valid.
-- Stamp `substantive` when the artifact needs rewriting or human remediation.
-- Go idle after all pending drift has a stamp.
+Follow the drift-analyze procedure.
 
 ## Discipline
 
-You classify drift only. Do not rewrite prepare artifacts, approve gates, or start build work.
+Follow the drift-analyze procedure's discipline.
