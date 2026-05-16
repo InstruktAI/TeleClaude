@@ -51,6 +51,15 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.get_closest_marker("timeout") is not None:
             continue
+        item_path = Path(str(item.path)).resolve()
+        try:
+            rel_path = item_path.relative_to(_repo_root)
+        except ValueError:
+            rel_path = item_path
+        # These tests run the real SQLite schema and migration chain in fixture setup.
+        if rel_path.parts[:4] == ("tests", "unit", "core", "db"):
+            item.add_marker(pytest.mark.timeout(5))
+            continue
         if "unit" in item.keywords:
             item.add_marker(pytest.mark.timeout(1))
         elif "functional" in item.keywords:

@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 import teleclaude.project_setup.hooks as hooks
+from teleclaude.git import GIT_EXECUTABLE
 
 
 def _make_precommit_entrypoint(extra: str = "", install_python: str = "/tmp/python") -> str:
@@ -166,9 +167,9 @@ class TestPrecommitCheckCommand:
 
     @staticmethod
     def _init_repo(tmp_path: Path) -> Path:
-        subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-        subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
-        subprocess.run(["git", "config", "user.name", "Test"], cwd=tmp_path, check=True)
+        subprocess.run([GIT_EXECUTABLE, "init", "-q"], cwd=tmp_path, check=True)
+        subprocess.run([GIT_EXECUTABLE, "config", "user.email", "test@example.com"], cwd=tmp_path, check=True)
+        subprocess.run([GIT_EXECUTABLE, "config", "user.name", "Test"], cwd=tmp_path, check=True)
         return tmp_path
 
     @staticmethod
@@ -186,7 +187,7 @@ class TestPrecommitCheckCommand:
         repo = self._init_repo(tmp_path)
         bad = repo / "normal.md"
         bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
-        subprocess.run(["git", "add", "normal.md"], cwd=repo, check=True)
+        subprocess.run([GIT_EXECUTABLE, "add", "normal.md"], cwd=repo, check=True)
 
         rc, _ = self._run_check(repo)
 
@@ -198,7 +199,7 @@ class TestPrecommitCheckCommand:
         repo = self._init_repo(tmp_path)
         bad = repo / "space name.md"
         bad.write_text("see @/Users/anyone/.teleclaude/docs/index.yaml\n", encoding="utf-8")
-        subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
+        subprocess.run([GIT_EXECUTABLE, "add", "space name.md"], cwd=repo, check=True)
 
         rc, _ = self._run_check(repo)
 
@@ -208,7 +209,7 @@ class TestPrecommitCheckCommand:
         repo = self._init_repo(tmp_path)
         ok = repo / "space name.md"
         ok.write_text("see `@~/.teleclaude/docs/index.yaml`\n", encoding="utf-8")
-        subprocess.run(["git", "add", "space name.md"], cwd=repo, check=True)
+        subprocess.run([GIT_EXECUTABLE, "add", "space name.md"], cwd=repo, check=True)
 
         rc, _ = self._run_check(repo)
 

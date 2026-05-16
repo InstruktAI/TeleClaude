@@ -16,17 +16,22 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from teleclaude.paths import BIN_DIR
+from teleclaude.paths import BIN_DIR, DEFAULT_BIN_DIR
 
-_WRAPPER_DIR = str(BIN_DIR)
+
+def _wrapper_dirs() -> set[Path]:
+    """Return all git wrapper directories that Python git automation must bypass."""
+    return {BIN_DIR.expanduser().resolve(), DEFAULT_BIN_DIR.expanduser().resolve()}
 
 
 def _find_real_git() -> str:
     """Walk PATH, skip the wrapper directory, return the first real git binary."""
+    wrapper_dirs = _wrapper_dirs()
     for entry in os.environ.get("PATH", "").split(os.pathsep):
-        if entry == _WRAPPER_DIR:
+        entry_path = Path(entry).expanduser().resolve()
+        if entry_path in wrapper_dirs:
             continue
-        candidate = Path(entry) / "git"
+        candidate = entry_path / "git"
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
     raise FileNotFoundError("real git binary not found in PATH")
@@ -34,13 +39,15 @@ def _find_real_git() -> str:
 
 # Point gitpython at the real binary BEFORE import to prevent recursion
 # through the wrapper (whose shebang is uv run).
-os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = _find_real_git()
+GIT_EXECUTABLE = _find_real_git()
+os.environ["GIT_PYTHON_GIT_EXECUTABLE"] = GIT_EXECUTABLE
 from git import Repo as Repo  # noqa: E402
 from git.exc import GitCommandError as GitCommandError  # noqa: E402
 from git.exc import InvalidGitRepositoryError as InvalidGitRepositoryError  # noqa: E402
 from git.exc import NoSuchPathError as NoSuchPathError  # noqa: E402
 
 __all__ = [
+    "GIT_EXECUTABLE",
     "GitCommandError",
     "InvalidGitRepositoryError",
     "NoSuchPathError",

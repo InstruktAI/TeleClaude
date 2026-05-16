@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_TELECLAUDE_HOME = Path("~/.teleclaude").expanduser()
 
 
 def _resolve_teleclaude_home() -> Path:
@@ -13,7 +14,7 @@ def _resolve_teleclaude_home() -> Path:
     configured = os.environ.get("TELECLAUDE_HOME")
     if configured:
         return Path(configured).expanduser()
-    return Path("~/.teleclaude").expanduser()
+    return DEFAULT_TELECLAUDE_HOME
 
 
 TELECLAUDE_HOME = _resolve_teleclaude_home()
@@ -21,6 +22,7 @@ STATE_DIR = TELECLAUDE_HOME / "state"
 LOGS_DIR = TELECLAUDE_HOME / "logs"
 GLOBAL_SNIPPETS_DIR = TELECLAUDE_HOME / "docs"
 BIN_DIR = TELECLAUDE_HOME / "bin"
+DEFAULT_BIN_DIR = DEFAULT_TELECLAUDE_HOME / "bin"
 SHELL_DIR = TELECLAUDE_HOME / "shell"
 PEOPLE_DIR = TELECLAUDE_HOME / "people"
 INTEGRATION_DIR = TELECLAUDE_HOME / "integration"

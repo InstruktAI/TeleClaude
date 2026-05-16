@@ -241,7 +241,7 @@ class Bioluminescence(Animation):
         self.height = BIG_BANNER_HEIGHT if self.is_big else LOGO_HEIGHT
         self._all_pixels = PixelMap.get_all_pixels(self.is_big)
         self._agents = [
-            [random.randint(0, self.width - 1), random.randint(0, self.height - 1)] for _ in range(self._NUM_AGENTS)
+            [self.rng.randint(0, self.width - 1), self.rng.randint(0, self.height - 1)] for _ in range(self._NUM_AGENTS)
         ]
         self._trails: dict[tuple[int, int], int] = {}
 
@@ -250,8 +250,8 @@ class Bioluminescence(Animation):
         self._trails = {pos: intensity - 1 for pos, intensity in self._trails.items() if intensity > 1}
         # Move agents
         for agent in self._agents:
-            agent[0] = (agent[0] + random.randint(-1, 1)) % self.width
-            agent[1] = (agent[1] + random.randint(-1, 1)) % self.height
+            agent[0] = (agent[0] + self.rng.randint(-1, 1)) % self.width
+            agent[1] = (agent[1] + self.rng.randint(-1, 1)) % self.height
             self._trails[(agent[0], agent[1])] = self._TRAIL_DECAY
         # Render ONLY the trails (others are transparent)
         result: dict[tuple[int, int], str | int] = {p: -1 for p in self._all_pixels}
