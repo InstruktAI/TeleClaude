@@ -4,8 +4,9 @@ import importlib
 from unittest.mock import MagicMock
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
-from teleclaude.cli.telec.surface_types import CommandDef
+from teleclaude.cli.telec.surface_types import _FLAG_DETACH, CommandDef
 
 help_mod = importlib.import_module("teleclaude.cli.telec.help")
 surface_mod = importlib.import_module("teleclaude.cli.telec.surface")
@@ -112,29 +113,32 @@ def test_split_args_tokens_keeps_bracketed_flag_docs_and_positionals_atomic() ->
     ]
 
 
-def test_usage_main_suppresses_hidden_detach_from_sessions_overview() -> None:
-    """The top-level `telec -h` overview must not advertise --detach on sessions start/run."""
+def test_flag_detach_hidden_attribute_is_true() -> None:
+    """Schema-level anchor: the contract that drives --detach suppression
+    is that ``_FLAG_DETACH.hidden`` is True. Snapshots in the rendered-
+    output tests below capture the downstream effect; this assertion pins
+    the upstream cause as identity, independent of any rendered text."""
+    assert _FLAG_DETACH.hidden is True
+
+
+def test_usage_main_sessions_overview_renders_without_hidden_flags(
+    snapshot: SnapshotAssertion,
+) -> None:
+    """The top-level overview lines for sessions start / sessions run are
+    snapshotted in full. Future drift — including any reintroduction of
+    --detach to the overview — produces a reviewable snapshot delta."""
     overview = help_mod._usage_main()
-    sessions_lines = [
+    sessions_block = "\n".join(
         line for line in overview.splitlines() if "telec sessions start" in line or "telec sessions run" in line
-    ]
-    assert sessions_lines, "expected sessions start/run lines in overview"
-    for line in sessions_lines:
-        assert "--detach" not in line, f"--detach leaked into overview: {line!r}"
+    )
+    assert sessions_block == snapshot
 
 
-def test_usage_leaf_suppresses_hidden_detach_from_sessions_run_usage_line() -> None:
-    """Subcommand `telec sessions run -h` must not list --detach in Usage or Options."""
-    leaf = help_mod._usage_leaf("sessions", "run")
-    usage_block = leaf.split("Notes:", 1)[0]  # Usage + Options, before Notes warning text
-    assert "--detach" not in usage_block, f"--detach leaked into Usage/Options block: {usage_block!r}"
-
-
-def test_usage_leaf_keeps_detach_warning_in_notes() -> None:
-    """The concise warning in Notes is the canonical place where --detach is documented."""
-    leaf = help_mod._usage_leaf("sessions", "run")
-    notes_and_after = leaf.split("Notes:", 1)[1]
-    assert "--detach" in notes_and_after, "expected --detach warning to remain in Notes/Examples"
+def test_usage_leaf_sessions_run_renders_full_output(snapshot: SnapshotAssertion) -> None:
+    """Full leaf help for telec sessions run. The snapshot captures the
+    Usage line, Options list, Notes warning, and Examples — the entire
+    contract surface for the hidden-flag behavior in one assertion."""
+    assert help_mod._usage_leaf("sessions", "run") == snapshot
 
 
 # guard: parametrize-cleanup-pending
