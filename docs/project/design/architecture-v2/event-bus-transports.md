@@ -1,5 +1,5 @@
 ---
-description: 'Three-scope event bus contract for the v2 platform — LOCAL, STREAM, CLUSTER — and the transitional design that lands in the v1 monolith.'
+description: 'Single-transport Redis event bus for v2. Local in-coroutine sync uses Tokio channels — not events.'
 id: 'project/design/architecture-v2/event-bus-transports'
 scope: 'project'
 type: 'design'
@@ -10,308 +10,257 @@ type: 'design'
 ## Required reads
 
 - @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/bounded-contexts.md
-- @docs/project/design/architecture/layer-ownership.md
+- @docs/project/design/architecture-v2/transport-rules.md
+- @docs/project/design/architecture-v2/services.md
 
 ## Purpose
 
-Define the event bus contract for the v2 platform: how events are scoped, which
-transport carries them, and how same-process and cross-process subscribers are
-served by one uniform API.
-
-The contract is introduced now, while the platform is still a monolith, so that
-the v1 daemon's broken Redis-pool-exhausted state can be repaired without a hack
-and the eventual extraction of services into their own processes becomes a
-deployment change rather than a code rewrite.
-
-This snippet specifies the vocabulary and the rules. It commits to a three-scope
-model. It fully designs the transitional implementation that lands in v1
-(LOCAL + CLUSTER). It sketches but does not yet design the STREAM transport,
-which carries high-volume in-process fanout and the co-located WebSocket
-endpoint pattern; STREAM is a follow-up increment with its own design pass.
+Define the event bus contract for v2: one transport, one contract, one set of
+guarantees. Replaces v1's dual-transport (LOCAL in-process + CLUSTER Redis)
+model — that pattern is on the redesign list as the bug-factory it was.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- the v2 bounded-context decomposition (Identity, Session Runtime, Workflow,
-  Session Ledger, Context & Knowledge, Integration & Events, Presentation,
-  Configuration, Agent Artifacts).
-- the v1 outage that surfaced the contract gap: every internal event currently
-  goes through Redis Streams XADD regardless of scope, the daemon's Redis
-  connection pool exhausts under sustained load, and same-process listeners pay
-  full network cost.
-- the existing `EventVisibility` enum (`LOCAL`, `CLUSTER`, `PUBLIC`) in
-  `teleclaude/events/envelope.py`, already partially honored by event schemas
-  but ignored by the internal `EventBus`.
+- the v2 architectural rule that services are crates consumed as SDK
+- the v1 dual-transport bus and its failure modes (visibility misclassification,
+  silent cross-process delivery loss)
+- the actual concurrency story: Tokio + Postgres MVCC handles the writer load
+  Python could not, removing the original reason for the LOCAL fast-path
 
 **Outputs:**
 
-- the three-scope vocabulary and what each scope means semantically.
-- the transport-selection rules driven by visibility.
-- the tagging rules a developer applies when emitting a new event.
-- the increment plan that distinguishes what lands now (LOCAL + CLUSTER) from
-  what is deferred (STREAM).
-- the discipline that prevents in-process convenience from rebuilding the
-  monolith inside the contract.
+- the single transport for events (Redis Streams + pub/sub)
+- the local-coroutine sync primitive that is explicitly not an event
+- the event naming convention
+- the visibility/scope model (or lack thereof)
 
 ## Invariants
 
-- **Visibility is logical scope, not deployment topology.** A `session_updated`
-  event carries the same visibility regardless of whether Presentation is
-  co-located with Session Runtime today or a separate process tomorrow.
-- **Direct cross-context calls are forbidden, even within one process.** If
-  emitter and subscriber belong to different bounded contexts, communication
-  goes through the event bus. Same-process speed is a property of the transport,
-  never of an out-of-band shortcut.
-- **LOCAL never touches Redis.** A LOCAL event is dispatched in-process,
-  synchronously, to the registered handler set. There is no cross-host visibility
-  by design.
-- **CLUSTER reaches every subscriber.** Same-process subscribers receive a
-  CLUSTER event through the local dispatch path; off-process subscribers receive
-  it through Redis Streams. Same envelope, single emit, two delivery legs. No
-  self-redelivery loop: handlers that already fired locally are not re-fired
-  when Redis redelivers the envelope to the originating process.
-- **Idempotency is the dedup primitive.** Every envelope carries an
-  `idempotency_key`. The bus records successful handler executions against this
-  key so that local-then-Redis redelivery and consumer-group retries converge to
-  at-most-once handler firing.
-- **Cross-host failure does not break in-process delivery.** When Redis is
-  unavailable, LOCAL events continue to dispatch and CLUSTER events still reach
-  same-process subscribers. Off-process CLUSTER delivery degrades but does not
-  poison the daemon's liveness.
-- **The bus surface is stable across transports.** `event_bus.emit`,
-  `event_bus.subscribe`, and `event_bus.unsubscribe` have the same shape and the
-  same semantics regardless of the scope of the event. Callers do not branch on
-  transport.
+- **One transport for events: Redis.** No in-process fast-path. No "LOCAL"
+  visibility. Every event goes through Redis Streams (durable events) or
+  Redis pub/sub (ephemeral notifications), depending on the contract the
+  channel needs.
+- **In-coroutine completion signals are not events.** They use Tokio
+  primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
+  They never use `event_bus.emit()`.
+- **The bus surface is one shape.** `event_bus::emit(event)` and
+  `event_bus::subscribe(channel)` have one contract: same envelope, same
+  durability semantics per channel, same idempotency rules.
+- **Idempotency by envelope key.** Every event carries an `idempotency_key`
+  so consumer-group redelivery converges to at-most-once handler firing.
+- **Cross-process delivery is the default.** Any event emitted is visible to
+  any process subscribed to the channel. There is no opt-out for "local
+  only."
+- **Redis pool sizing is operational, not architectural.** If Redis pool
+  exhausts under load, tune the pool — don't invent a second transport to
+  avoid it.
 
 ## Primary flows
 
-### The three scopes
+### The two Redis surfaces (one transport)
 
-| Scope     | Transport(s)                                     | Durability | Cross-process? | Cross-host? | Example events                                                                                |
-| --------- | ------------------------------------------------ | ---------- | -------------- | ----------- | --------------------------------------------------------------------------------------------- |
-| `LOCAL`   | InProcess dispatch only                          | none       | no             | no          | `AGENT_READY`, internal readiness gates, same-coroutine completion signals                    |
-| `STREAM`  | InProcess dispatch + co-located WebSocket bridge | none       | no\*           | no\*        | `agent_activity`, `tool_use`, `user_prompt_submit`, session lifecycle live-streaming (future) |
-| `CLUSTER` | InProcess dispatch + Redis Streams               | durable    | yes            | yes         | `operation.todo_*.completed`, workflow handoff, integrator coordination, system events        |
+Redis offers two delivery mechanisms; both are part of the bus:
 
-\* STREAM is in-process for the data plane. Remote clients reach a STREAM event
-by connecting via WebSocket to the process that owns the entity (e.g., the
-Session Runtime hosting a given session). The control plane that tells the
-client *which* process to connect to is a Presentation-context concern and uses
-the API, not the event bus.
+| Surface | Use | Durability | Replay |
+|---|---|---|---|
+| **Redis Streams** (`XADD`/`XREADGROUP`) | Domain events with consumer groups, retry, DLQ | Durable | Yes |
+| **Redis Pub/Sub** (`PUBLISH`/`SUBSCRIBE`) | Live notifications, cache invalidation, ephemeral fanout | Ephemeral | No |
 
-### Transport selection rule
+A channel's contract picks the surface:
 
-```mermaid
-flowchart TD
-    E[event_bus.emit event, ctx] --> R{visibility on envelope}
-    R -->|LOCAL| L[InProcess dispatch only]
-    R -->|STREAM| S[InProcess dispatch + WS bridge handler]
-    R -->|CLUSTER| C1[InProcess dispatch for local subscribers]
-    C1 --> C2[Redis Streams XADD for off-process subscribers]
-    L --> D[handlers run in this process]
-    S --> D
-    C2 --> P[other processes consumer-group XREADGROUP]
-    P --> D2[handlers run in those processes]
+- `workflow.todo.*` — Streams. Domain events that must be processed
+  reliably; consumer groups handle scale; retries on handler failure.
+- `tui.snapshot.refresh` — Pub/Sub. Live notifications to subscribed TUIs;
+  fine to drop if no subscriber is alive.
+
+The bus crate exposes both via one consistent API. Service authors specify the
+surface at channel definition time (or per-emit if needed). The bus is one
+transport with two delivery modes, both Redis-backed.
+
+### What is and isn't an event
+
+**Events** are domain facts emitted by services for other interested parties to
+react to:
+- `workflow.todo.created`
+- `agent_runtime.session.started`
+- `identity.token.issued`
+- `integration.outbox.dead_lettered`
+
+Events are public. Other services subscribe based on need. They have schemas in
+the emitting service's `events.rs`. They go through the bus.
+
+**Non-events** are in-coroutine coordination signals that have one waiter and
+no fanout:
+- "Wait for this child task to complete" → `tokio::sync::oneshot`
+- "Notify many waiters when a value is available" → `tokio::sync::broadcast`
+- "Producer-consumer queue between two tasks" → `tokio::sync::mpsc`
+
+Non-events stay in the same process. They are not events. They do not use
+`event_bus::emit()`. Calling them events conflates two different abstractions
+and reintroduces the v1 LOCAL-vs-CLUSTER confusion under a different name.
+
+### Channel naming
+
+`{service}.{aggregate}.{verb_past}` — lowercase snake. Examples:
+
+- `workflow.todo.created`
+- `workflow.todo.updated`
+- `workflow.todo.phase_advanced`
+- `workflow.roadmap.entry_moved`
+- `agent_runtime.session.started`
+- `agent_runtime.session.ended`
+- `identity.principal.created`
+- `identity.token.issued`
+- `identity.token.revoked`
+- `integration.outbox.appended`
+- `integration.outbox.delivered`
+- `integration.outbox.dead_lettered`
+
+Enforced as a guardrail at the schema-registration site. Reviewers reject any
+channel name that doesn't match.
+
+### Event envelope
+
+Every event is an envelope:
+
+```rust
+pub struct EventEnvelope {
+    pub channel: String,           // workflow.todo.created
+    pub idempotency_key: String,   // unique per logical event
+    pub emitted_at: DateTime<Utc>,
+    pub principal: Option<Principal>,  // who triggered this
+    pub payload: serde_json::Value,    // schema-validated against events.rs
+}
 ```
 
-### Tagging rule — how to decide a new event's scope
+The bus serializes/deserializes envelopes. Services pattern-match on
+`channel` and deserialize `payload` to the expected type.
 
-Apply the questions in order. The first one that fits decides the scope.
+### Emitting
 
-1. **Is the emitter waiting for a same-coroutine completion signal, with a
-   single waiter and no fanout?** → `LOCAL`. Examples: readiness gates,
-   in-process completion futures.
-2. **Does the event cross a v2 bounded-context boundary?** That is: at least one
-   subscriber lives in a different bounded context from the emitter, *in the v2
-   target topology*. Today's process layout is irrelevant. → `CLUSTER`. Examples:
-   `operation.*.completed` (Workflow → Integration & Events), integrator handoff
-   (Workflow → Workflow on another host).
-3. **Is the event a high-volume in-context broadcast whose subscribers include
-   live-streaming endpoints?** → `STREAM`. Examples: agent activity feeds,
-   session lifecycle live-streaming. STREAM is in-process; remote consumers
-   reach it through a WebSocket bridge co-located with the emitter.
+```rust
+event_bus.emit(EventEnvelope {
+    channel: "workflow.todo.created".into(),
+    idempotency_key: format!("todo-{}-created", todo.id),
+    emitted_at: Utc::now(),
+    principal: Some(ctx.principal.clone()),
+    payload: serde_json::to_value(TodoCreatedPayload { /* ... */ })?,
+}).await?;
+```
 
-The default when uncertain is **not** LOCAL. Defaulting to LOCAL for convenience
-is the failure mode that quietly rebuilds the monolith. Defaulting to CLUSTER
-preserves correctness — a CLUSTER event still dispatches locally for
-same-process subscribers, so the only cost of a false CLUSTER is a Redis XADD
-that nobody consumes off-process. A false LOCAL silently drops cross-context
-delivery and that lie is invisible until production breaks.
+The bus crate writes to the configured Redis surface (Streams or Pub/Sub) for
+that channel.
 
-### Where per-event scope is declared
+### Subscribing
 
-The doc never enumerates events. The visibility of any given event is declared
-in exactly one place — the code — and that declaration is the single source of
-truth. A prose registry duplicated here would go stale the moment a new event
-is added, and an out-of-date doc on a load-bearing contract is worse than no
-doc.
+```rust
+let mut sub = event_bus.subscribe("workflow.todo.*").await?;
+while let Some(envelope) = sub.next().await {
+    if event_bus.already_handled(&envelope.idempotency_key) {
+        continue;
+    }
+    handle_event(envelope).await?;
+    event_bus.mark_handled(&envelope.idempotency_key).await?;
+}
+```
 
-Two declaration sites are valid:
+The bus tracks handler successes by idempotency key to prevent redelivery
+from causing duplicate handler firing.
 
-- **`EventCatalog.default_visibility`** for events with a registered schema in
-  `teleclaude/events/schemas/`. The schema declares the event's correct scope
-  once; producers and the bus honor it.
-- **Explicit `event_bus.emit(event, ctx, visibility=…)`** at the call site for
-  internal events that do not have a schema entry. This is the path most
-  current daemon-internal events take.
+### Idempotency
 
-No event remains at the bus's hardcoded default after Increment 1. Reviewers
-reject PRs that add or modify an `event_bus.emit` call without an explicit
-visibility, and PRs that register a new schema without a `default_visibility`.
+Every envelope carries `idempotency_key`. The bus records handler successes
+keyed by it. If Redis Streams redelivers (consumer group retry, restart-
+recovery, etc.), the bus suppresses re-firing for any handler that already
+succeeded.
 
-### Worked examples — the rule in action
+This is the dedup primitive that makes "at-least-once delivery" (Streams'
+contract) safe for handlers that want "at-most-once execution."
 
-**Example 1: `AGENT_READY`** — emitted by Session Runtime's coordinator when
-an agent's `session_start` hook fires; awaited by the launcher coroutine in
-the same process. Apply the rule:
+### Redis as failure mode
 
-- Question 1: same-coroutine completion signal with a single waiter? **Yes.**
-  → `LOCAL`.
+If Redis is down, events can't emit. Services that need to emit will fail
+their operation. That is the correct behavior — the failure is the signal.
 
-The launcher's `event_bus.subscribe(AGENT_READY, …)` and the coordinator's
-`event_bus.emit(AGENT_READY, ctx, visibility=EventVisibility.LOCAL)` traverse
-the InProcess transport only. No Redis hop.
+There is no in-memory fallback queue. There is no local-file outbox for
+events. (The legitimate outbox pattern for *external delivery* lives in the
+integration service's `outbox` schema — that's about reliable delivery to
+external systems like Telegram, not about internal event bus durability.)
 
-**Example 2: `operation.todo_integrate.completed`** — emitted by a Workflow
-worker when an integration operation succeeds; consumed by the orchestrator
-session (also Workflow) and by Integration & Events bookkeeping. Apply the
-rule:
+Services that need to be resilient to brief Redis outages can retry; the bus
+crate provides retry helpers. Long Redis outages are operational incidents,
+not application-handled failures.
 
-- Question 1: same-coroutine completion signal with a single waiter? No (the
-  orchestrator and the worker live in different sessions, possibly on
-  different computers).
-- Question 2: crosses a v2 bounded-context boundary? **Yes** — Workflow worker
-  → Workflow orchestrator (which may run on another host) and → Integration &
-  Events.
-  → `CLUSTER`.
+### Connection pooling
 
-`event_bus.emit(operation.todo_integrate.completed, ctx,
-visibility=EventVisibility.CLUSTER)` dispatches locally to any same-process
-subscriber and additionally publishes via Redis Streams for cross-host
-consumers.
+Tokio + `redis-rs` (or `fred`) handles thousands of concurrent connections
+without breaking a sweat. Pool sized at startup; tuned via config. There is
+no architectural reason to avoid Redis for events.
 
-### Increment plan
+If a hot path's Redis cost is too high, the answer is one of:
 
-**Increment 1 — visibility-aware dispatch over two transports.**
+1. **Tune the pool / pipelining.** Usually solves it.
+2. **Batch emits.** Multiple related events in one round-trip.
+3. **Re-examine whether the emit is needed at all.** If a thousand events
+   per second are being emitted for something only one local subscriber
+   cares about, that's a domain modeling problem, not a transport problem.
 
-Lands the LOCAL and CLUSTER transports plus the contract above.
+The answer is never "add an in-process fast-path." That's the v1 mistake.
 
-- `EventBus._publish` stops hardcoding `visibility=CLUSTER`. The visibility
-  comes from an explicit `emit(event, ctx, visibility=…)` parameter; the
-  envelope carries it.
-- `EventBus.emit` performs synchronous in-process dispatch first by iterating
-  `self._handlers[event]` and scheduling each handler in the current loop. The
-  existing `_successful_handlers` cache records handler success keyed by
-  `idempotency_key`.
-- For `CLUSTER` envelopes, `emit` additionally schedules a background `xadd`
-  publish task — current behavior, but now opt-in by visibility rather than
-  default.
-- For `LOCAL` envelopes, the `xadd` step is skipped entirely.
-- The consumer-group side (`deliver` in `EventBus`) keeps its current dedup
-  check; same-process redelivery of a locally-already-fired envelope is a
-  no-op per handler.
-- Every existing `event_bus.emit` call site is visited and given an explicit
-  `visibility` via the tagging rule. Every schema in
-  `teleclaude/events/schemas/` is verified to carry a correct
-  `default_visibility`. No event remains at the bus's hardcoded default. The
-  implementation PR's review checklist enumerates the emit sites touched, and
-  the reviewer rejects on any missing site.
-- `config.yml:redis.max_connections` is raised from 30 to 100 as transitional
-  monolith-era sizing. The change is documented as transitional and is
-  expected to shrink once services split.
+### Subscription topology
 
-Result: daemon restart loads the fix, AGENT_READY (and any other LOCAL events)
-stop touching Redis, the pool no longer exhausts under sustained operation,
-and the v2 contract is in place for every emit site.
+For TUI/browser live updates:
 
-**Increment 2 — STREAM transport and co-located WebSocket bridge.**
+- TUI subscribes to Redis pub/sub channels for live events relevant to its
+  views (workflow.*, agent_runtime.session.*, etc.).
+- Browser cannot subscribe to Redis directly. The frontend custom server in
+  `frontend/server.ts` subscribes to Redis on the browser's behalf and pushes
+  via WebSocket. Same event source, different delivery mechanism for clients
+  that aren't local Rust binaries.
 
-Requires a separate design pass. The decisions to settle:
+For background workers:
 
-- Does the daemon's current WebSocket endpoint move into Session Runtime's
-  process explicitly, or does it stay where it is and subscribe via the
-  STREAM bus?
-- How does a remote TUI / web client discover which process hosts a given
-  session? (Presentation API; the existing computers/sessions catalog likely
-  suffices.)
-- What is the back-pressure contract for the WS bridge when a subscriber is
-  slow?
-- Does STREAM carry an `idempotency_key` and per-handler dedup, given there
-  is no durability guarantee?
+- Workers (integration outbox drainer, etc.) subscribe to Streams via
+  consumer groups. Consumer groups handle parallelism and retry.
 
-Once that design lands, events identified as STREAM-eligible during the
-Increment 2 audit move from CLUSTER to STREAM at their declaration site
-(schema or emit kwarg), and Redis traffic drops to the CLUSTER-only steady
-state.
+For services consuming other services' events:
 
-**Increment 3+ — service extraction per the v2 reconstruction order.**
-
-By this point the event bus contract is correct. Extracting a bounded context
-(for example, moving the API server out of the daemon) is a deployment
-change: same emit, same subscribe, the CLUSTER leg of every cross-context
-event now carries traffic that previously delivered in-process. No code in
-the bus needs to change for an extraction.
-
-### Operational properties
-
-- **Pool sizing.** The monolith-era `max_connections: 100` covers the
-  transitional window where CLUSTER plus to-be-STREAM events all run through
-  Redis. Once Increment 2 lands and STREAM events bypass Redis, the steady-state
-  pool requirement drops back toward the original 30. Services that emerge
-  through extraction each carry their own pool budget.
-- **Redis outage behavior.** LOCAL traffic is unaffected. CLUSTER traffic
-  continues to dispatch to same-process subscribers. Off-process CLUSTER
-  delivery fails fast at XADD time; per the contract documented on
-  `EventBus`'s module docstring, workflow truth lives in SQLite-owned stores
-  and clients fall back to polling canonical state. The bus does not buffer
-  beyond Redis's own retry semantics in Increment 1; bounded local buffering on
-  outage is a deferred enhancement and is not blocking for the v1 recovery.
-- **Observability.** Increment 1 adds two counters: `event_bus.local_dispatch`
-  and `event_bus.cluster_publish`. Their ratio is the operational read on how
-  much steady-state Redis traffic remains attributable to in-context fanout —
-  the signal that STREAM is needed and that the Increment 2 audit is paying
-  off.
+- Service A subscribes to service B's relevant channels at startup. Receives
+  events as they emit. Reacts according to its domain logic.
 
 ## Failure modes
 
-**Tagging by deployment, not scope.** A developer sees that two services live
-in the same daemon today and tags an event LOCAL "because it's faster." The
-extraction breaks because LOCAL events do not cross processes. The discipline:
-tag for v2 topology, not v1 topology.
-
-**Defaulting to LOCAL for convenience.** LOCAL is fast; CLUSTER costs a Redis
-hop. Under pressure to make something "lightweight," a developer reaches for
-LOCAL when the event genuinely crosses contexts. The lie is invisible until a
-remote subscriber goes silent. The discipline: when uncertain, choose CLUSTER.
-A spurious XADD is recoverable; a missing one isn't.
-
-**Direct cross-context calls within one process.** "We're both in the daemon
-anyway; just `await presentation.notify_session_updated(...)`." This rebuilds
-the monolith inside the bus contract. The next extraction discovers the call
-the hard way. The discipline: cross-context coordination always goes through
-the bus, even when both contexts are co-located.
-
-**Treating the WS bridge as an exception.** The Presentation context owns the
-WebSocket *API surface* (auth, framing, discovery), but the *data plane* of a
-STREAM event flows from the entity-owning process via a co-located bridge.
-Trying to route STREAM events through Redis to satisfy a notion of "all events
-must be cluster-visible" reintroduces the pool pressure the contract is
-designed to eliminate. The discipline: STREAM is in-process by design and
-remote visibility is provided by where the WebSocket terminates, not by the
-broker.
-
-**Re-firing locally-delivered handlers when Redis redelivers.** The
-`_successful_handlers` cache exists to prevent this. Removing or bypassing it
-under the assumption "it's a fresh consumer-group read so it must be new"
-silently double-fires handlers for CLUSTER events emitted in the same process
-as a same-process subscriber. The discipline: the idempotency key is the
-identity of an envelope across delivery legs; trust it.
+- **Reintroducing dual-transport "for performance."** Tempting when one
+  channel feels expensive. The performance cost of going through Redis is
+  almost always negligible compared to the operations the event represents.
+  Tune Redis, not the architecture.
+- **Naming Tokio channels as events.** `let (tx, rx) = oneshot::channel::<AgentReady>()` is a non-event. Don't call it `agent_ready_event`. Don't put it in `events.rs`. Don't tempt anyone to extract it to the bus later.
+- **Misusing pub/sub for durable events.** Pub/sub drops messages if no
+  subscriber is alive. Domain events that must be processed reliably go on
+  Streams, not pub/sub.
+- **Misusing Streams for live UI notifications.** Streams persist
+  indefinitely (until pruned), build up consumer-group state, are heavier
+  than pub/sub. UI freshness notifications use pub/sub.
+- **Cross-service request/response via the bus.** "Service A emits a
+  request event, service B emits a response event." The bus is for facts,
+  not queries. Cross-service queries go through the service crate's public
+  function. Events are for after-the-fact notification, not synchronous
+  coordination.
+- **Skipping idempotency keys.** "This emit is one-time, doesn't need a
+  key." Consumer-group redelivery is real; idempotency keys are how
+  handlers stay at-most-once.
+- **Adding a fallback queue for Redis downtime.** Same anti-pattern as the
+  hook outbox DB. Redis being down is an operational incident; the bus
+  doesn't paper over it.
 
 ## See Also
 
-- docs/project/design/architecture-v2/bounded-contexts.md — the contexts that define what counts as crossing a boundary.
-- docs/project/design/architecture-v2/reconstruction-order.md — the order in which contexts move from monolith to standalone services.
-- docs/project/design/architecture/layer-ownership.md — why downstream layers receive fully resolved inputs and never reach sideways.
-- docs/project/spec/event-vocabulary.md — the authoritative list of event types.
+- @docs/project/design/architecture-v2/overview.md
+- @docs/project/design/architecture-v2/transport-rules.md
+- @docs/project/design/architecture-v2/services.md
+- @docs/project/design/architecture-v2/redesign-list.md — dual-transport bus
+  is on the anti-pattern list.
+- @docs/project/design/architecture-v2/file-layout.md — `crates/event_bus/` is
+  the infrastructure crate.

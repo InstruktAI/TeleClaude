@@ -1,5 +1,5 @@
 ---
-description: 'Target architecture for the next-generation TeleClaude platform.'
+description: 'Target architecture for v2: Rust services-as-crates, Postgres-only storage, in-place greenfield rebuild alongside v1 in the same repo.'
 id: 'project/design/architecture-v2/overview'
 scope: 'project'
 type: 'design'
@@ -11,361 +11,253 @@ type: 'design'
 
 - @docs/project/design/architecture/system-overview.md
 - @docs/project/design/architecture-v2/journey.md
+- @docs/project/design/architecture-v2/transport-rules.md
+- @docs/project/design/architecture-v2/services.md
+- @docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
-This document defines the target architecture for the next TeleClaude platform.
-It is intentionally high level. Its job is to establish the destination before
-the refactor is decomposed into detailed designs, implementation plans, and
-execution todos.
-
-The central design goal is simple:
-
-- restore clear boundaries,
-- remove daemon/API overreach,
-- keep local project work operational when runtime services are down,
-- and provide a clean base for a broader small-business platform.
+Define the target architecture for v2 and the operational model that gets us
+there. v2 is a Rust greenfield rebuild of the TeleClaude backend, executed
+in-place in the same repo as v1, with services lifting one at a time until v1
+is fully retired.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- the current TeleClaude architecture
-- the Architecture V2 rationale and drift analysis
-- the need for a greenfield platform shape that supports broader business domains
+- the current TeleClaude (v1) architecture and its drift (see journey)
+- the operational reality: single machine, single-user-today,
+  multi-concurrent-writers, AI-agent-heavy workload
+- the existing `frontend/` (Next.js) which v2 keeps unchanged
 
 **Outputs:**
 
-- the target architectural destination
-- the core principles and non-negotiable invariants
-- the bounded-context and service/process model
-- the storage, retrieval, state-machine, and contract strategies
-- the migration direction that should follow from this target shape
+- the target architectural shape
+- the language, storage, and transport choices
+- the service model and runtime composition
+- the migration approach that gets us from v1 to v2 without freezing
+  development
 
 ## Invariants
 
-- Local project bookkeeping works without daemon or API availability.
-- The daemon is reduced to runtime coordination responsibilities.
-- The API is a thin boundary, not the owner of business logic.
-- Side effects move to durable event-driven processing.
-- Operational truth moves from file sprawl into typed storage.
-- Progressive disclosure remains the primary context-engineering model.
-- No transport adapter owns workflow or business logic.
-- Daemon restart must not block local project work.
-- Cross-component side effects must survive component restarts.
-- Storage and projections must be deterministic and versioned.
+- **Backend is Rust.** The compiler is the discipline enforcer that v1
+  (Python) couldn't be. Frontend stays TypeScript/Next.js where it already
+  lives.
+- **Services are crates.** Every service is a Rust library crate consumed as
+  an SDK by the binaries that need it. No local-process transports between
+  same-language services. See transport-rules.
+- **Local-first.** Project-local work runs without daemon dependency. CLI
+  embeds the service crates it needs and calls them directly.
+- **Postgres-only for persistent state.** One local Postgres instance,
+  schema per service. No SQLite anywhere in v2. No filesystem-as-database.
+- **Redis is the bus, not state.** Pub/sub for events, queues for work,
+  leases for coordination, ephemeral cache. State lives in Postgres.
+- **Daemon is narrow.** Hosts the agent_runtime service in long-running
+  form, supervises workers, runs the WebSocket bridge for browser delivery.
+  It is no longer the gravity well for business logic.
+- **Greenfield in same repo.** v2 lives at `crates/` alongside v1
+  (`teleclaude/`). They coexist until v1 is retired piece by piece. No
+  separate fork, no parallel repo.
+- **No transports between local same-language processes.** SDK calls only
+  within Rust. HTTP only for cross-language (browser) or cross-machine.
+- **Single event-bus transport.** Redis Streams for events.
+  In-coroutine sync uses Tokio channels (`oneshot`, `broadcast`) — not
+  events.
+- **Authored content stays as files.** Code, configs, docs sources, agent
+  artifacts — all filesystem. Services ingest from files but don't own the
+  source.
 
 ## Primary flows
 
-### Strategic outcomes
-
-The target system must provide these outcomes:
-
-1. Local project bookkeeping works without daemon or API availability.
-2. The daemon is reduced to runtime coordination responsibilities.
-3. The API becomes a thin boundary, not the owner of business logic.
-4. Side effects move to durable event-driven processing.
-5. Operational truth moves from file sprawl into typed storage.
-6. The platform becomes extensible enough to host business domains such as CRM,
-   marketing, support, and administration on the same architectural base.
-
-### Core principles
-
-### 1. Local-first project autonomy
-
-Project-local work must not depend on the TeleClaude daemon just to read or
-write project state. Agents running inside tmux must be able to continue
-working when daemon/API processes are restarted or temporarily unavailable.
-
-### 2. Business logic lives in services, not transports
-
-CLI commands, API routes, TUI actions, and webhook handlers are transport
-adapters only. They authenticate, validate, translate, and call application
-services. They do not define workflow behavior.
-
-### 3. Daemon scope is narrow
-
-The daemon exists to coordinate long-lived runtime concerns:
-
-- session lifecycle,
-- agent runtime integration,
-- adapter orchestration,
-- live fanout/broadcast,
-- runtime subscriptions,
-- background consumers that truly require an always-on runtime.
-
-It is not the general owner of project bookkeeping or local command execution.
-
-### 4. Event-driven side effects
-
-Cross-component side effects must be durable and restart-safe. Projection,
-notification, mirror replacement, ingestion, and background follow-up work
-should use durable events instead of fragile in-process coupling.
-
-### 5. Storage is operational truth
-
-Operational state should live in typed storage, not ad hoc files. Human authoring
-surfaces may still exist, but the canonical runtime truth belongs in databases
-and service-owned schemas.
-
 ### Target stack
 
-The current recommendation for the greenfield platform is:
-
-- **Language**: TypeScript
-- **Web/UI**: Next.js
-- **Primary database**: Postgres
-- **Sync contracts**: OpenAPI
-- **Async contracts**: durable event schemas
-- **Service style**: domain/application services with thin generated or mostly
-  generated transport adapters
-
-Next.js is a strong fit for web and admin surfaces, but it should not become the
-entire backend runtime. Long-running orchestration, projection, and ingestion
-work belong in dedicated services or workers.
-
-### Bounded contexts
-
-The target platform should be decomposed into these main bounded contexts.
-
-### 1. Identity and Access
-
-Owns:
-
-- people and roles,
-- machine/session principals,
-- boundary authentication,
-- authorization policy inputs.
-
-Does not own:
-
-- project bookkeeping,
-- session runtime orchestration,
-- transport-specific business behavior.
-
-### 2. Session Runtime
-
-Owns:
-
-- session lifecycle,
-- agent runtime coordination,
-- tmux/runtime integration,
-- live output/delta fanout,
-- adapter runtime state.
-
-Does not own:
-
-- local project todo commands,
-- history read models,
-- documentation storage,
-- UI/domain business logic.
-
-### 3. Workflow
-
-Owns:
-
-- todos,
-- roadmap state,
-- artifacts,
-- workflow state machines,
-- local bookkeeping operations.
-
-This context must support local CLI operation with no daemon dependency.
-
-### 4. Session Ledger
-
-Owns:
-
-- canonical session history,
-- transcript ingestion,
-- deterministic ordering,
-- consumer cursors and projections,
-- history reads and replay surfaces.
-
-This replaces direct transcript parsing by downstream consumers and eventually
-supersedes the current mirrors approach.
-
-### 5. Context and Knowledge
-
-Owns:
-
-- global/company/project knowledge objects,
-- snippet taxonomy,
-- retrieval policy,
-- context selection and progressive disclosure,
-- ingestion of company/project information dumps.
-
-This is not generic RAG-first infrastructure. The retrieval model remains
-policy-driven, scope-driven, and progressive-disclosure oriented.
-
-### 6. Integration and Events
-
-Owns:
-
-- inbound webhooks,
-- event normalization,
-- durable outbox/inbox behavior,
-- retries and replay,
-- async work dispatch to workers/projectors.
-
-### 7. Presentation Domains
-
-Owns:
-
-- admin dashboards,
-- CRM,
-- marketing surfaces,
-- support/help-desk views,
-- public/static sites,
-- user-facing business interfaces.
-
-These are consumers of the application services, not the owners of core logic.
-
-### Service/process model
-
-The target runtime should be independently restartable by boundary.
-
-### 1. Local CLI
-
-- direct caller of local application services,
-- no daemon requirement for project-local operations,
-- can authenticate locally where required.
-
-### 2. API shell
-
-- thin authenticated transport boundary,
-- calls application services or submits async work,
-- should be restartable without breaking local project bookkeeping.
-
-### 3. Runtime daemon
-
-- session runtime only,
-- should be restartable without breaking local project bookkeeping,
-- should not be overloaded with general business/service logic.
-
-### 4. Workers
-
-- projections,
-- notifications,
-- ingestion follow-up,
-- async materialization,
-- retry-safe event consumers.
-
-### 5. Web
-
-- Next.js-based domain interfaces,
-- talks to application/API boundaries,
-- should not own long-running orchestration.
-
-### Storage model
-
-The target platform should converge on one primary Postgres instance for the
-single-machine scale we expect.
-
-Recommended Postgres schema partitioning by bounded context:
-
-- `identity`
-- `runtime`
-- `workflow`
-- `ledger`
-- `context`
-- `integration`
-- `projection`
-
-This is one database with clean ownership, not many operational databases.
-
-### What belongs in Postgres
-
-- workflow/todo state,
-- session ledger,
-- projections,
-- knowledge/snippet storage,
-- company/project registry data,
-- auth/session principals,
-- event outbox/inbox,
-- read-model caches that must survive restarts.
-
-### What should stop being canonical files
-
-- mirrors,
-- operational snippets registry,
-- todo/workflow state,
-- session summaries,
-- history projections,
-- runtime metadata used by services.
-
-### Retrieval and knowledge strategy
-
-The current progressive-disclosure approach should remain the core model.
-
-The target architecture should preserve:
-
-- scope-aware selection,
-- structured taxonomy,
-- context layering,
-- explicit policy-driven retrieval,
-- operational memory injection.
-
-This is stronger than naive “vector-search everything” RAG.
-
-The target design is:
-
-- structured primary retrieval,
-- optional semantic retrieval as a secondary aid,
-- ingestion pipelines that normalize external/company documents into canonical
-  typed knowledge records.
-
-### State machine strategy
-
-State machines remain a strength of the platform and should be formalized rather
-than discarded.
-
-The target architecture should provide:
-
-- a shared workflow/state-machine engine at the application layer,
-- machine-specific definitions for workflow domains,
-- explicit durable state transitions,
-- clean separation between machine logic and transport delivery.
-
-### Contract strategy
-
-The contract-first model should be:
-
-- OpenAPI for synchronous command/query surfaces,
-- durable event schemas for asynchronous boundaries.
-
-Generated or mostly generated code should exist at the transport layer only:
-
-- DTOs,
-- client SDKs,
-- CLI/API shells,
-- validation wrappers.
-
-The domain model itself should remain handwritten and explicit.
-
-### Migration direction
-
-The refactor should not be approached as a single “rewrite everything” blob.
-It should proceed by bounded context, with the architecture fixed first.
-
-Recommended initial order:
-
-1. Identity and access boundary model
-2. Workflow/local todo autonomy
-3. Session ledger
-4. Context and knowledge storage
-5. Durable event/integration layer
-6. Presentation domain rollout
+| Concern | Choice |
+|---|---|
+| Backend language | Rust |
+| Frontend | TypeScript / Next.js (already in `frontend/`) |
+| Persistent state | Postgres (single local instance, schema per service) |
+| Events / queues / leases / cache | Redis |
+| Browser real-time | WebSocket (frontend custom server bridges to Redis) |
+| Logging | `tracing` → `instrukt_ai_logging` format files |
+| Migrations | `sqlx::migrate!()` per service |
+| Async runtime | Tokio |
+
+### The eight services
+
+Each is a library crate under `crates/`. See `services.md` for full
+ownership boundaries.
+
+- `identity` — principals, roles, tokens, auth resolution
+- `agent_runtime` — agent sessions, tmux orchestration, live coordination
+- `workflow` — todos, roadmap, artifacts, state machines
+- `session_ledger` — canonical transcripts, history, replay
+- `knowledge` — snippets, taxonomy, selection policy
+- `integration` — webhooks, outbox/inbox, workers, retries
+- `config` — system, project, person configuration overlays
+- `agent_artifacts` — artifact sources, inflation, distribution
+
+Plus cross-cutting infrastructure crates: `observability`, `event_bus`,
+`storage`, `state_machine`, `shared`.
+
+### Binary composition
+
+A small fixed set of binaries embeds these crates:
+
+- `telec` — CLI, single binary, embeds whatever services its subcommands
+  need
+- `telec-tui` — TUI, embeds workflow + agent_runtime + others as needed
+- `telec-daemon` — long-running supervisor; hosts agent_runtime, spawns
+  workers, runs the WebSocket bridge
+- `telec-api` — HTTP API for the browser frontend
+- Worker binaries — spawned by daemon for integration outbox drainage,
+  retries, etc.
+
+### Runtime topology
+
+```
+[browser]
+   ↓ WebSocket (via frontend custom server bridge → Redis sub)
+[telec-api]                            ← HTTP API in Rust, embeds services
+   |
+   |                       ┌──── Redis ────┐
+   |                       │ events queues │
+   ↓                       │ pub/sub leases│
+[Postgres]  ←──schema────  └─────  ▲ ──────┘
+   ↑                              │
+   |                              │
+[telec-daemon]                    │
+   ↑                              │
+[telec / telec-tui (per invocation, in-process services)]
+```
+
+Every binary embeds the service crates it needs. Postgres holds all
+persistent state. Redis carries events and ephemeral coordination. The
+daemon is one binary among several, not the central hub.
+
+### Cross-cutting principles
+
+**Local-first project autonomy.** Project-local work runs without daemon
+dependency. `telec todo list` calls workflow service directly via the crate.
+
+**Business logic in services, not transports.** CLI, TUI, API, hook
+receivers, UI adapters are all thin entry points. They authenticate,
+validate, translate, and call into service crates. They define no domain
+behavior.
+
+**Event-driven side effects.** Cross-component coordination uses Redis
+events. Side effects that must survive restart use the integration
+service's outbox/inbox.
+
+**Storage is operational truth.** All operational state lives in Postgres,
+service-owned schemas. No SQLite, no JSON state files, no compensating
+caches.
+
+**Progressive-disclosure context.** The strongest existing platform idea
+survives intact in the knowledge service. Structured retrieval, scope-aware
+selection, policy-driven, not generic RAG.
+
+### Frontend
+
+`frontend/` (Next.js + custom server for WebSocket support) stays where it
+is. It talks to `telec-api` (or, during transition, to the v1 daemon HTTP
+API). When `telec-api` is up, the frontend's HTTP/WebSocket bridge points
+at it instead of v1.
+
+The frontend is not part of the Rust rewrite. It evolves on its own
+timeline. v2 backend exposes the contract; frontend consumes it.
+
+### Migration approach
+
+v2 lives at `crates/` alongside v1 at `teleclaude/`. No `_legacy/` move, no
+big-bang. Each service migrates as its own focused effort:
+
+1. **MVP first** — workflow + identity-stub + observability + CLI to
+   functional alpha. This proves the pattern.
+2. **Per-service alpha** thereafter — each subsequent service is its own
+   focused work item with a narrow freeze on that service's domain during
+   the lift.
+3. **Cutover per service** — when a service's alpha lands, its v1
+   counterpart's call sites switch to v2. The v1 code is deleted in the
+   same PR.
+4. **End state** — all eight services in v2 alpha. `teleclaude/` is empty
+   and deleted. v1 is fully retired.
+
+During transition, v1 and v2 read/write independent storage. v1 SQLite
+files coexist with v2 Postgres. Cutover per service includes a one-shot
+data migration from v1's storage to v2's Postgres schema. No dual-write,
+no shared schemas across the v1/v2 boundary.
+
+### Why Rust specifically
+
+Maurice's chosen reasoning (recorded for future readers):
+
+- **Discipline enforcement.** v1's "convoluted feel" is the cost of
+  Python's flexibility. Rust's compiler is the structural answer that
+  agents-and-reviewers-being-careful couldn't be.
+- **AI writing quality.** Smaller training corpus than Python, but much
+  more uniform — the compiler rejects bad code before it can be written.
+  Agent iteration loop maps perfectly to compile-fix-recompile.
+- **Concurrent workload fit.** Tokio + Postgres MVCC handle the
+  multi-writer concurrent reality (many hook events per minute, daemon +
+  CLI + TUI all writing) far better than Python with SQLite.
+- **Long-running daemon ergonomics.** Single binary, no GC pauses, small
+  memory footprint, easy to ship.
+- **Industry direction.** Infrastructure tooling is consolidating on
+  Rust (Cargo, ripgrep, fd, bat, oxc, biome, turbopack, sqlx, etc.).
+
+### Why Postgres-only
+
+- Real concurrent multi-writer workload demands MVCC. SQLite's
+  single-writer serialization is the wrong primitive for our shape.
+- Transactional coherence within services — atomic multi-table operations,
+  no partial states.
+- Single mental model and toolchain. One DB technology, one set of
+  patterns, no context-switching.
+- Service boundaries enforced by schema ownership without scattering across
+  files. Per-project isolation via per-project schemas (`acme_workflow`)
+  or `project_id` column.
+- Single backup, single observability surface, single tooling story.
+- Future-ready for multi-host without rewrite.
+
+The "install one Postgres locally" friction is operational; the
+architectural benefits are structural and weigh more.
 
 ## Failure modes
 
-- Local-first workflow autonomy is not restored and bookkeeping still depends on
-  runtime services.
-- The daemon is rebuilt as a broad service owner instead of a narrow runtime
-  coordinator.
-- The API grows beyond translation and starts owning application behavior.
-- Storage truth remains fragmented across files, caches, and loosely typed
-  projections.
-- Retrieval collapses into generic RAG infrastructure and loses
-  policy-driven progressive disclosure.
-- Presentation layers are built before service and storage boundaries are stable.
+- **Local-first not actually local.** A v2 path silently routes through
+  daemon HTTP for something the CLI binary could call in-process. Reverts
+  v1's CLI-coupled-to-daemon problem under Rust syntax.
+- **Daemon re-grows.** v2 daemon accretes responsibilities that should
+  live in their own services or worker binaries. Reproduces the gravity
+  well.
+- **Services reintroducing transports between themselves.** "Workflow
+  exposes an HTTP endpoint that agent_runtime calls" — wrong shape. They
+  share a crate dependency, not an HTTP layer.
+- **Storage tier sprawl.** A service decides it needs "just a small
+  SQLite cache" for performance. Reintroduces the fragmented-storage
+  failure mode. Postgres-only, always.
+- **Dual-transport bus.** Tempting to add a LOCAL fast-path to events
+  when Redis costs feel high. The cost is the discipline benefit.
+- **Cross-service queries against another service's schema.** Workflow
+  reading from identity's tables directly. Same coupling as cross-service
+  HTTP, different transport.
+- **Authored content drifting into Postgres.** Configs, doc sources, agent
+  artifacts ending up in Postgres "for queryability." Authored content
+  stays in files; services ingest indexes from files but don't own the
+  source.
+- **Treating the v2 work as a side effect of features.** Migration must
+  be its own dedicated workstream. New features land in v1 until their
+  service migrates, then in v2.
+
+## See Also
+
+- @docs/project/design/architecture-v2/journey.md — why v2
+- @docs/project/design/architecture-v2/services.md — service breakdown
+- @docs/project/design/architecture-v2/transport-rules.md — the load-bearing rule
+- @docs/project/design/architecture-v2/file-layout.md — on-disk structure
+- @docs/project/design/architecture-v2/redesign-list.md — anti-patterns to fix
+- @docs/project/design/architecture-v2/auth-model.md — identity model
+- @docs/project/design/architecture-v2/observability-model.md — logging model
+- @docs/project/design/architecture-v2/event-bus-transports.md — event bus contract
+- @docs/project/design/architecture-v2/reconstruction-order.md — migration approach

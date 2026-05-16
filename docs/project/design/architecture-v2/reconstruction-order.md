@@ -1,5 +1,5 @@
 ---
-description: 'Recommended reconstruction order for building the Architecture V2 platform from the spine outward.'
+description: 'Migration order for v2: MVP first (workflow + CLI), then per-service alpha with narrow freezes. Parallel to v1, in same repo.'
 id: 'project/design/architecture-v2/reconstruction-order'
 scope: 'project'
 type: 'design'
@@ -10,313 +10,384 @@ type: 'design'
 ## Required reads
 
 - @docs/project/design/architecture-v2/overview.md
-- @docs/project/design/architecture-v2/bounded-contexts.md
+- @docs/project/design/architecture-v2/services.md
+- @docs/project/design/architecture-v2/file-layout.md
 
 ## Purpose
 
-Define the order in which the greenfield TypeScript platform should be built so
-the reconstruction proceeds from stable ownership and storage truth instead of
-repeating the current platform's runtime-centered growth pattern.
-
-This is not an in-place migration order for the current Python codebase. It is
-the recommended reconstruction order for rebuilding the platform from scratch
-while carrying forward the best ideas from the current system.
+Define the order and shape of the v2 migration. v2 lives at `crates/`
+alongside v1 (`teleclaude/`) and grows in-place. Migration is dedicated work
+(not smeared across features), proceeds service-by-service after an MVP
+proves the pattern, and uses narrow per-service freezes that never globally
+block feature work.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- the Architecture V2 target shape
-- the bounded-context decomposition
-- the need to sequence the rebuild so the platform spine is established first
+- the v2 target architecture (services as crates, Postgres-only, single Redis
+  transport, observability, identity)
+- the existing v1 codebase that must keep shipping during migration
+- the principle (named with Maurice mid-discussion): migration is its own
+  dedicated workstream, not a side effect of feature work
+- AI-scale execution time (hours-to-days per service, not weeks-to-months)
 
 **Outputs:**
 
-- the staged reconstruction order
-- the rationale for why each phase occurs when it does
-- the parallel design streams that can proceed alongside implementation
-- the anti-patterns the reconstruction must explicitly avoid
+- the wave structure (MVP first, spine next, services after)
+- the per-service alpha + narrow freeze pattern
+- the parallelism the dependency graph allows
+- the feature/bug discipline during migration
 
 ## Invariants
 
-- Build the system from the spine outward.
-- Do not start with shiny surfaces, adapters, or generated shells.
-- Build the things that define the platform's truth first.
-- The architecture must be locked before subsystem implementation begins.
-- Workflow local autonomy must be restored before runtime-heavy concerns are
-  rebuilt.
-- Adapters and transport layers sit on top of domain, storage, and event
-  boundaries rather than defining them.
+- **Migration is a dedicated workstream.** Each migration is its own todo
+  with PRD, architecture, plan, build, review, finalize. Not a side effect
+  of feature work.
+- **No global freeze.** Per-service migrations have a narrow freeze on that
+  service's domain during the lift. Features in other domains continue.
+- **Build alongside v1, cut over per service.** v2 services land in
+  `crates/`; v1 keeps running. Each cutover is a focused PR with one-shot
+  data migration from v1 storage to v2 Postgres.
+- **No dual-write.** During transition, each service has one authoritative
+  storage: v1 SQLite or v2 Postgres, never both simultaneously.
+- **MVP proves the pattern.** Before any other service migrates, MVP must
+  ship a working workflow service + Rust CLI end-to-end. The MVP reveals
+  what the per-service alpha workflow actually takes.
+- **Per-service alpha is small.** Each is hours-to-days of focused AI
+  execution, not weeks. If a single service migration is taking longer,
+  the scope is wrong — split it or simplify.
 
 ## Primary flows
 
-### Guiding principle
-
-Build the system from the spine outward.
-
-Do not start with shiny surfaces. Do not start with adapters. Do not start with
-generated shells. Build the things that define the platform's truth first.
-
-### Phase 0 — Lock the architecture
+### Phase 0 — Lock the architecture (done when these docs are stable)
 
 **Deliverables:**
 
-- target architecture overview
-- bounded contexts
-- service boundaries
-- storage ownership model
-- contract strategy
-- reconstruction order
+- this docset complete: overview, services, file-layout, transport-rules,
+  auth-model, observability-model, event-bus-transports, redesign-list,
+  reconstruction-order
+- Rust testing policy at `software-development/policy/rust/testing.md`
+- Rust core policy at `software-development/policy/rust/core.md`
+
+**Why first:** Every subsequent wave references these. Without them, agent
+sessions doing migration work re-derive architecture from priors and drift.
+
+### Wave 1 — MVP (workflow + CLI + identity stub + observability + Postgres)
+
+**Goal:** Prove the v2 pattern end-to-end with the most-touched service.
+
+**Scope:**
+
+1. Rust workspace bootstrap at `crates/` (Cargo.toml workspace, member
+   list, shared deps).
+2. `crates/shared/` — primitive types (`Slug`, `ProjectId`, time helpers).
+3. `crates/observability/` — `tracing` wrapper emitting
+   `instrukt_ai_logging` format to `/var/log/instrukt-ai/teleclaude/`.
+4. `crates/storage/` — `sqlx::PgPool` helpers, migration runner.
+5. `crates/event_bus/` — Redis Streams + pub/sub wrapper.
+6. `crates/identity/` — single-user stub (returns `Principal::Human` from
+   env, full implementation deferred).
+7. `crates/workflow/` — full functional implementation:
+   - Postgres `workflow` schema with migrations
+   - Public API: list/create/get/update todos, roadmap, artifacts
+   - State machine (lifecycle phases) for the workflow domain
+   - Event emission on every mutation
+8. `crates/telec/` — CLI binary:
+   - `telec todo list/show/create/update`
+   - `telec roadmap list/add/move/remove`
+   - Embeds workflow + identity + observability
+9. Postgres setup: `docker-compose.yml`, `make pg-up`/`make pg-down`.
+10. Data migration tool: read v1 SQLite `todos.db` → write to v2 Postgres
+    `workflow` schema. Run once.
+11. Cutover: `telec todo` and `telec roadmap` route to v2 binary; v1 todo
+    code paths deprecated.
+
+**Result:** v1 TUI still works, sessions still work, Telegram still works.
+Only workflow has moved. New todos created via Rust CLI; v1 TUI shows
+post-migration state via its existing read paths (until TUI rewrites).
+
+**Time:** Days, not weeks. Single focused work item.
+
+### Wave 2 — Spine completion (identity, config, observability hardening)
+
+**Goal:** Complete the spine pieces that the MVP stubbed.
+
+**Scope:**
+
+1. `crates/identity/` — full implementation:
+   - Postgres `identity` schema
+   - Real principal resolution (env, TTY login, HTTP headers, session tokens)
+   - Token issuance/validation/revocation
+2. `crates/config/` — config service:
+   - Read overlays from `teleclaude.yml` / `config.yml` / per-person configs
+   - Validation
+   - Effective-config computation
+3. `crates/observability/` — refinements based on MVP experience (any
+   missing tracing patterns, log format gaps).
+
+**Result:** Identity and config are fully v2. Other services that need them
+(when they migrate) have real implementations to depend on.
+
+**Time:** Days. Each is a focused service migration.
+
+### Wave 3 — Knowledge (docs/snippets)
+
+**Goal:** Migrate `telec docs index` / `telec docs get` to a Rust service.
+
+**Scope:**
+
+1. `crates/knowledge/`:
+   - Postgres `knowledge` schema (snippet index, taxonomy)
+   - Ingestion from `docs/` filesystem
+   - Selection policy engine
+2. CLI: `telec docs` subcommands route to knowledge service.
+3. v1 docs index paths deprecated.
+
+**Result:** Knowledge fully v2. `telec docs` is the v2 CLI binary's command.
+
+**Time:** Days.
+
+### Wave 4 — Agent runtime (the big one)
+
+**Goal:** Migrate session lifecycle, tmux orchestration, agent CLI
+supervision. Narrow v1 daemon to its remaining responsibilities.
+
+**Scope:**
+
+1. `crates/agent_runtime/`:
+   - Postgres `agent_runtime` schema (sessions, operations, availability)
+   - Tmux orchestration (replaces `teleclaude/core/tmux_bridge/`)
+   - Agent CLI process supervision (spawning, monitoring, terminating
+     the running Claude / Codex / Gemini processes)
+   - Live I/O streaming
+   - Event emission on session lifecycle
+   - Subscription to `integration.inbox.agent_hook_*` events (emitted by
+     integration when subprocess hooks fire) to react to lifecycle signals
+2. `crates/telec-daemon/` — Rust daemon binary that hosts agent_runtime,
+   spawns workers, runs WebSocket bridge.
+3. v1 daemon shrinks dramatically — most of it dies.
+4. Data migration: v1 `teleclaude.db` sessions → v2 Postgres.
 
-**Why first:**
+**Not in this wave:** the `telec-hook` subprocess binary and hook payload
+parsing/normalization. Those belong to `integration` (Wave 6) per the
+change-axis heuristic — hook receiver code changes when external CLI
+protocols change, which is integration's domain. agent_runtime is the
+SUBSCRIBER to hook events, not the receiver. Until Wave 6, the v1 Python
+hook receiver keeps running and publishes to Redis; v2 agent_runtime
+subscribes from there.
 
-Without this, the rewrite will just grow another accidental monolith.
+**Result:** Daemon restart time drops dramatically (Wave 4 is the moment
+"daemon restart pain" stops). Sessions managed by v2.
 
-### Phase 1 — Platform spine
+**Time:** Days (longest single migration; still bounded).
 
-**Goal:**
+### Wave 5 — Session ledger
 
-Define the foundational contracts and storage model that every later subsystem
-will rely on.
+**Goal:** Replace mirrors with the canonical ledger service.
 
-**Build:**
+**Scope:**
 
-1. Postgres schema strategy
-2. identity model
-3. configuration model
-4. domain/application layering conventions
-5. contract conventions:
-   - OpenAPI for sync
-   - event schemas for async
-6. event envelope contract:
-   - common metadata fields
-   - versioning rules
-   - correlation/idempotency fields
-   - producer/consumer typing conventions
-7. legacy-to-v2 import specification template:
-   - what existing state is preserved
-   - what is transformed
-   - what is intentionally dropped
-
-**Result:**
-
-The platform now has a stable core vocabulary.
-
-### Phase 2 — Workflow core
-
-**Goal:**
-
-Rebuild local-first bookkeeping correctly before anything else.
-
-**Build:**
-
-1. workflow domain model
-2. todo/roadmap/artifact storage model
-3. transactional workflow operations
-4. workflow state machine engine
-5. local CLI path over application services
-6. workflow import spec from current platform state
-
-**Why this early:**
-
-This restores the most important lost architectural promise: local project work
-must continue even when runtime services are down.
-
-### Phase 3 — Context and knowledge core
-
-**Goal:**
-
-Rebuild the progressive-disclosure context system on proper storage and
-contracts.
-
-**Build:**
-
-1. taxonomy model
-2. snippet/knowledge storage model
-3. project/company/global ownership model
-4. selection policy engine
-5. ingestion pipeline contracts for business/company information
-6. context/knowledge import spec from current platform state
-
-**Why now:**
-
-Context engineering is one of the strongest existing platform ideas. It should
-become a first-class subsystem, not remain file-sprawl.
-
-### Phase 4 — Session ledger
-
-**Goal:**
-
-Build the canonical session history layer.
-
-**Build:**
-
-1. ledger schema
-2. canonical block/event model
-3. ingestion/projector model
-4. cursor/session sequence model
-5. read contracts for history and deltas
-6. ledger import/backfill spec from current platform state
-
-**Why after workflow/context:**
-
-The ledger is foundational, but it does not need to block local-first workflow.
-It is a separate spine track that can be designed carefully once the platform's
-general storage and contract conventions are established.
-
-### Phase 5 — Event backbone
-
-**Goal:**
-
-Make side effects durable and restart-safe.
-
-**Build:**
-
-1. outbox/inbox model
-2. worker contracts
-3. retry and dead-letter behavior
-4. projector/event consumer model
-5. event observability
-
-**Why here:**
-
-By now, the platform has real domain services and storage, and the event
-envelope/type contract already exists from Phase 1. The event backbone can be
-built around actual boundaries instead of theoretical ones.
-
-### Phase 6 — Session runtime
-
-**Goal:**
-
-Rebuild the daemon-shaped runtime around a much narrower ownership model.
-
-**Build:**
-
-1. session lifecycle services
-2. tmux/runtime orchestration
-3. live delta fanout
-4. adapter runtime contracts
-5. runtime observability and restart boundaries
-
-**Why not first:**
-
-The old system already proved that making runtime the center of everything leads
-to overreach. In the new system, runtime must be built on top of clean domain
-boundaries, not the other way around.
-
-### Phase 7 — Thin API
-
-**Goal:**
-
-Expose the system without letting transport become the owner.
-
-**Build:**
-
-1. thin authenticated API shell
-2. generated DTOs and clients where appropriate
-3. request-to-service mapping
-4. async receipt/enqueue patterns where needed
-
-**Why here:**
-
-The API should be a boundary over already-defined services, not the birthplace
-of those services.
-
-### Phase 8 — Presentation surfaces
-
-**Goal:**
-
-Bring Next.js and domain-specific interfaces online over stable services.
-
-**Build:**
-
-1. admin surfaces
-2. workflow UI
-3. session/history UI
-4. CRM, support, and marketing domains
-5. public and static surfaces
-
-**Why later:**
-
-The UI will move faster and cleaner if the service model beneath it is already
-well formed.
-
-### Phase 9 — Agent artifact authoring and distribution
-
-**Goal:**
-
-Rebuild the artifact system as an explicit subsystem instead of letting it
-accrete onto unrelated contexts.
-
-**Build:**
-
-1. canonical artifact source model
-2. inflation/transformation rules
-3. sync/distribution services
-4. deployed-runtime publication model
-5. artifact import spec from the current platform
-
-**Why here:**
-
-The artifact system needs stable configuration, context, and contract models
-under it. It should be rebuilt deliberately instead of being allowed to emerge
-through ad hoc tooling.
-
-### Phase 10 — Adapters and external interfaces
-
-**Goal:**
-
-Reconnect the platform to the outside world.
-
-**Build:**
-
-1. webhook ingestion
-2. chat adapters
-3. notifications
-4. external automation hooks
-
-**Why last:**
-
-Adapters magnify architectural mistakes. They should sit on top of solid
-runtime, event, and service boundaries.
-
-### Parallel design streams
-
-Some design work should proceed in parallel even if implementation is staged.
-
-- Stream A: state-machine abstraction
-- Stream B: config and effective-config strategy
-- Stream C: knowledge ingestion and taxonomy refinement
-- Stream D: auth and principal model
-- Stream E: observability and operations model
-
-### Summary
-
-The recommended reconstruction order is:
-
-1. Architecture
-2. Platform spine
-3. Workflow
-4. Context and knowledge
-5. Session ledger
-6. Event backbone
-7. Session runtime
-8. API
-9. Presentation
-10. Agent artifacts
-11. Adapters
-
-That order gives the new system a stable center of gravity and prevents the
-greenfield effort from repeating the current platform's main failure mode:
-everything growing around the runtime until the runtime owns too much.
+1. `crates/session_ledger/`:
+   - Postgres `session_ledger` schema
+   - Transcript ingestion
+   - Read API for history
+2. `telec history` routes to ledger service.
+3. v1 mirrors deprecated.
+
+### Wave 6 — Integration & events (ALL inbound)
+
+**Goal:** Migrate ALL inbound-from-external concerns: HTTP webhooks,
+subprocess hook receivers, outbox/inbox, worker supervision.
+
+**Scope:**
+
+1. `crates/integration/`:
+   - Postgres `integration` schema (outbox, inbox, dlq, worker_state)
+   - HTTP webhook receivers (Telegram, Discord, WhatsApp)
+   - Subprocess hook receivers (Claude Code, Codex, Gemini hooks):
+     payload parsing, validation, normalization, event emission
+   - Outbound delivery workers for at-least-once external delivery
+2. `crates/telec-hook/` — small Rust binary, integration's subprocess
+   entry point. Reads stdin JSON, calls `integration::ingest_agent_hook()`,
+   exits. Registered with Claude Code / Codex / Gemini agent configs
+   (replacing the v1 Python hook receiver).
+3. Worker binaries spawned by `telec-daemon`.
+4. v1 webhook/adapter code AND v1 Python hook receiver deprecated.
+5. Agent CLI configs (`~/.claude/settings.json`, etc.) updated to
+   reference `telec-hook` instead of the v1 Python receiver path.
+
+**Why hooks and webhooks together:** both are inbound-from-external
+following the same shape (receive payload → normalize → emit event).
+Same change axis (external system protocol changes). Same Postgres
+inbox/dlq machinery. Splitting by transport (HTTP vs subprocess) would
+duplicate code for no gain. See `transport-rules.md` placement heuristic.
+
+### Wave 7 — Agent artifacts
+
+**Goal:** Move `agents/` source distribution into a Rust service.
+
+**Scope:**
+
+1. `crates/agent_artifacts/`:
+   - Source manifest reading from `agents/`
+   - Inflation (master → output)
+   - Distribution to deployed runtime dirs
+2. `telec sync` routes to artifacts service.
+3. v1 distribution code deprecated.
+
+### Wave 8 — HTTP API for browser
+
+**Goal:** Replace v1 daemon's HTTP API with a Rust API binary.
+
+**Scope:**
+
+1. `crates/telec-api/`:
+   - HTTP server (axum or similar)
+   - Thin routes calling into service crates
+   - OpenAPI contract for the browser
+2. Frontend custom server bridges to telec-api instead of v1 daemon.
+3. v1 daemon's HTTP API endpoints deprecated.
+
+### Wave 9 — TUI rewrite
+
+**Goal:** Rust TUI replacing the Python Textual TUI.
+
+**Scope:**
+
+1. `crates/telec-tui/`:
+   - Ratatui app
+   - Subscribes to Redis events for live updates
+   - Embeds service crates for queries
+2. v1 Python TUI deprecated.
+
+**Position in sequence:** This can happen anywhere after Wave 1 (MVP). It's
+parallelizable because the TUI consumes services rather than providing them.
+
+### Wave 10 — Legacy purge
+
+**Goal:** Delete `teleclaude/` (Python package) entirely.
+
+**Scope:**
+
+1. Verify no remaining v1 code paths are called.
+2. Delete `teleclaude/` directory.
+3. Delete v1-specific build/test configuration.
+4. Update Makefile to remove v1 targets.
+
+### Dependency graph
+
+```
+Phase 0 (architecture docs)
+        ↓
+Wave 1 (MVP: workflow + CLI + spine basics)
+        ↓
+Wave 2 (Spine: identity, config full)
+        ↓
+   ┌────┴────────┬─────────────────────┐
+   ↓             ↓                     ↓
+Wave 3        Wave 4              Wave 9
+(knowledge)   (agent_runtime)     (TUI — anywhere after Wave 1)
+              ↓
+              Wave 5 (ledger) ↘
+              Wave 6 (integration) → Wave 8 (HTTP API)
+              ↓
+              Wave 7 (agent_artifacts)
+                            ↓
+                    Wave 10 (legacy purge)
+```
+
+Many waves are parallelizable. Wave 1 blocks everything else (the MVP
+proves the pattern). After Wave 2, several services can lift in parallel
+because they don't depend on each other for code.
+
+### Feature/bug discipline during migration
+
+A service is in one of three states at any time:
+
+1. **v1-only** — code lives in `teleclaude/`, storage in SQLite.
+2. **Migrating** — active lift in progress, narrow freeze on the
+   service's domain.
+3. **v2-only** — code lives in `crates/`, storage in Postgres, v1
+   counterpart deleted.
+
+**Rules:**
+
+- **New feature in a v1-only service** — lands in v1. Will be carried
+  along when that service migrates.
+- **New feature in a v2-only service** — lands in v2.
+- **New feature in a migrating service** — pause until migration alpha
+  lands. Per-service freeze.
+- **Bug fix in a migrating service** — hot-patch v1 with an explicit
+  "subsumed when migration lands" note. Migration PR either reapplies
+  the fix in v2 form or makes it obsolete.
+- **Bug fix elsewhere** — normal flow.
+
+This is enforced via the discipline snippet read by prepare/build/review
+agents. The snippet tracks which services are v1-only vs v2-only vs
+migrating; agents check before deciding where to land code.
+
+### Why MVP-first instead of spine-first
+
+The doc's earlier version (when v2 was a TypeScript greenfield rewrite)
+recommended spine-first. For the Rust in-place migration, MVP-first is
+better because:
+
+1. **The workflow service is the most-touched domain.** Cache-coherence
+   bugs (the one that started this conversation) live there. Migrating
+   first proves the v2 pattern resolves real production pain.
+2. **The spine that the MVP needs is small.** Identity stub, observability,
+   storage helpers, event bus. Not the full spine — just enough.
+3. **The full spine completes as Wave 2** once the MVP has surfaced what's
+   actually needed.
+4. **AI scale supports this.** With Python's slower iteration, spine-first
+   was safer. With Rust + AI agents, the MVP-and-iterate loop is faster
+   and surfaces real requirements that pure design would miss.
+
+### What changed from the prior version of this doc
+
+The earlier version of this doc described a TypeScript greenfield rewrite
+in a separate codebase. That strategy was abandoned because side-by-side
+migration is required (Maurice's framing: "if we want to keep shipping,
+we can't fork the language"). The current doc describes the Rust in-place
+migration that actually proceeds.
+
+The prior phases (Postgres-first, identity-first, workflow-second) are
+re-ordered into MVP-first because the workflow service is the highest-
+leverage migration and Rust's compile-time discipline makes the
+iterate-after-MVP-ships strategy lower-risk than it would have been in
+Python.
 
 ## Failure modes
 
-1. Rewriting the daemon first and rebuilding the runtime as the center of the
-   whole platform.
-2. Generating transports before the service model exists.
-3. Rebuilding presentation before domain and storage boundaries are fixed.
-4. Letting the ledger or event backbone pull workflow local autonomy back into
-   runtime dependence.
-5. Leaving artifact authoring/distribution unowned instead of giving it an
-   explicit bounded context from the start.
+- **Treating migration as a side effect of features.** Smearing v2 work
+  across feature PRs produces hybrid code that's worse than either pure
+  version. Migration is its own todos.
+- **Global freeze.** Pausing all feature work for "v2 migration." Kills
+  velocity. Per-service narrow freezes only.
+- **Big-bang Wave 10.** Trying to migrate all services before any cutover.
+  Each service cuts over independently as its alpha ships. v1 dies piece
+  by piece.
+- **Dual-write during a service's transition.** "Workflow in Rust writes
+  to both Postgres and v1 SQLite for safety." No. One authoritative store
+  at a time. Cutover is atomic per service (one-shot data migration + code
+  switch).
+- **Cross-service queries spanning v1 and v2.** "v1 daemon reads from v2
+  Postgres workflow schema for the TUI." No. Each language reads its own
+  side. The TUI shows v1 state until TUI rewrites.
+- **MVP scope creep.** Trying to migrate identity + workflow + agent_runtime
+  in MVP. Defeats the "prove the pattern small" purpose. MVP is
+  workflow + CLI + identity-stub + observability + storage + event_bus,
+  full stop.
+- **Spine-first re-derivation.** Reading the prior version of this doc
+  and recommending "spine first." That strategy was for a TypeScript
+  greenfield rewrite that no longer applies. MVP-first is the call for
+  this migration.
+
+## See Also
+
+- @docs/project/design/architecture-v2/overview.md
+- @docs/project/design/architecture-v2/services.md
+- @docs/project/design/architecture-v2/file-layout.md
+- @docs/project/design/architecture-v2/redesign-list.md
+- @docs/project/design/architecture-v2/journey.md
