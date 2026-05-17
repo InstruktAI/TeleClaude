@@ -258,6 +258,8 @@ pub(crate) fn updated_by(principal: &Principal) -> Option<String> {
         Principal::Human { email, .. } => Some(email.clone()),
         Principal::AgentSession { session_id, .. } => Some(format!("agent:{session_id}")),
         Principal::System { service } => Some(format!("system:{service}")),
-        Principal::Anonymous => None,
+        // `Principal::Anonymous` is `#[non_exhaustive]` outside the identity
+        // crate so the catch-all is the only legal way to handle it here.
+        _ => None,
     }
 }

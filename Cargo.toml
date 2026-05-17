@@ -6,6 +6,7 @@ members = [
     "crates/storage",
     "crates/event-bus",
     "crates/identity",
+    "crates/config",
     "crates/workflow",
     "crates/telec-cli",
 ]
@@ -28,12 +29,13 @@ anyhow = "1.0"
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+serde_yaml = "0.9"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
 
 # IDs
-uuid = { version = "1.10", features = ["v4", "serde"] }
+uuid = { version = "1.10", features = ["v4", "v5", "serde"] }
 
 # Database
 sqlx = { version = "0.8", default-features = false, features = [
@@ -73,6 +75,7 @@ observability = { path = "crates/observability" }
 storage = { path = "crates/storage" }
 event-bus = { path = "crates/event-bus" }
 identity = { path = "crates/identity" }
+config = { path = "crates/config" }
 workflow = { path = "crates/workflow" }
 
 [profile.release]

@@ -20,10 +20,13 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use event_bus::EventBus;
+use identity::IdentityService;
 use workflow::WorkflowService;
 
 mod config;
+mod identity_sink;
 mod migrate;
+mod migrate_identity;
 mod output;
 mod project;
 mod roadmap;
@@ -62,6 +65,9 @@ enum Command {
     Roadmap(roadmap::RoadmapArgs),
     /// One-shot data migration from v1 SQLite to v2 Postgres (stub; G1).
     MigrateWorkflowV1(migrate::MigrateArgs),
+    /// One-shot import of the v1 people roster and v1 session tokens
+    /// into the v2 `identity` schema (Wave E1).
+    MigrateIdentityV1(migrate_identity::MigrateIdentityArgs),
 }
 
 #[tokio::main]
@@ -93,17 +99,36 @@ async fn run() -> Result<i32> {
     }
 
     let cfg = config::CliConfig::from_env().context("read CLI configuration from environment")?;
-    let principal = identity::resolve_from_env().context("resolve principal identity")?;
 
     let pool = storage::build_pool(&cfg.database_url)
         .await
         .context("build Postgres pool")?;
+
+    storage::run_migrations(&pool, &identity::MIGRATOR)
+        .await
+        .context("apply identity schema migrations")?;
 
     let events = Arc::new(
         EventBus::connect(&cfg.redis_url)
             .await
             .context("connect to Redis event bus")?,
     );
+
+    // Resolve identity: prefer TELEC_SESSION_TOKEN (validated against the
+    // identity schema in Postgres), else TELECLAUDE_OWNER_EMAIL. The
+    // session-token path requires the pool, so it builds on top of the
+    // freshly-constructed connection.
+    let identity_sink = Arc::new(identity_sink::EventBusIdentitySink::new(
+        events.clone(),
+        None,
+    ));
+    let identity_service = IdentityService::new(pool.clone(), identity_sink.clone());
+    let principal = {
+        let token_validator = identity_service.token_validator();
+        identity::resolve_from_environment(&token_validator)
+            .await
+            .context("resolve principal identity")?
+    };
 
     let service = WorkflowService::new(pool, events);
     let project = project::resolve_project(&service, cli.project.as_deref())
@@ -114,5 +139,19 @@ async fn run() -> Result<i32> {
         Command::Todo(args) => todo::dispatch(args, &service, project, &principal).await,
         Command::Roadmap(args) => roadmap::dispatch(args, &service, project, &principal).await,
         Command::MigrateWorkflowV1(args) => migrate::run(args, &service).await,
+        Command::MigrateIdentityV1(args) => {
+            let summary = migrate_identity::migrate_identity_v1(&identity_service, &args)
+                .await
+                .context("run migrate-identity-v1")?;
+            println!(
+                "migrate-identity-v1: humans inserted={}, skipped_existing={}, tokens inserted={}, skipped={}{}",
+                summary.humans_inserted,
+                summary.humans_skipped_existing,
+                summary.tokens_inserted,
+                summary.tokens_skipped_existing,
+                if summary.dry_run { " (dry-run; reverted)" } else { "" },
+            );
+            Ok(0)
+        }
     }
 }

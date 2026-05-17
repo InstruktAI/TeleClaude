@@ -10,3 +10,7 @@
 /// `migrate-workflow-v1` subcommand body — owned by Wave G1.
 #[path = "migrate.rs"]
 pub mod migrate;
+
+/// `migrate-identity-v1` subcommand body — owned by Wave E1.
+#[path = "migrate_identity.rs"]
+pub mod migrate_identity;
