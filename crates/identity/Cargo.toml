@@ -6,10 +6,18 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+shared.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 uuid.workspace = true
-shared.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+sqlx.workspace = true
+async-trait = "0.1"
+tracing.workspace = true
+libc = "0.2"
 
 [dev-dependencies]
-serde_json.workspace = true
+storage.workspace = true
+tempfile = "3"

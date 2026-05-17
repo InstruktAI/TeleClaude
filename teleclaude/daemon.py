@@ -184,6 +184,7 @@ from teleclaude.tts.manager import TTSManager
 _record_import_timing("teleclaude.tts.manager", _t)
 
 _t = time.perf_counter()
+from teleclaude.transport.identity_bridge import IdentityBridge, IdentityEnvelope
 from teleclaude.transport.workflow_bridge import WorkflowBridge, WorkflowEnvelope
 
 _record_import_timing("teleclaude.transport.workflow_bridge", _t)
@@ -377,6 +378,8 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._ingest_scheduler_task: asyncio.Task[object] | None = None
         self._workflow_bridge_task: asyncio.Task[object] | None = None
         self._workflow_bridge: WorkflowBridge | None = None
+        self._identity_bridge_task: asyncio.Task[object] | None = None
+        self._identity_bridge: IdentityBridge | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
 
         self.lifecycle = DaemonLifecycle(
@@ -691,6 +694,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                     set_redis_transport(redis_adapter)
 
             await self._start_workflow_bridge()
+            await self._start_identity_bridge()
 
             self.resource_monitor_task = asyncio.create_task(
                 self.monitoring_service.resource_monitor_loop(), name="resource-monitor"
@@ -739,6 +743,11 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         if workflow_bridge is not None:
             await workflow_bridge.stop()
         await self._await_task_attr("_workflow_bridge_task", "Workflow Redis bridge stopped", timeout=5.0)
+
+        identity_bridge = getattr(self, "_identity_bridge", None)
+        if identity_bridge is not None:
+            await identity_bridge.stop()
+        await self._await_task_attr("_identity_bridge_task", "Identity Redis bridge stopped", timeout=5.0)
 
         await self._await_task_attr("webhook_delivery_task", "Webhook delivery worker stopped", timeout=5.0)
         await self._await_task_attr(
@@ -956,6 +965,54 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
             self.cache.publish_workflow_change("artifacts", computer=computer, project_path=project_path)
         elif category == "roadmap":
             self.cache.publish_workflow_change("roadmap", computer=computer)
+
+    async def _start_identity_bridge(self) -> None:
+        """Attach the v2 ``identity.*`` Redis subscriber to the daemon loop.
+
+        Mirrors :meth:`_start_workflow_bridge`. The current v1 daemon has
+        no identity cache that benefits from invalidation, so the dispatch
+        callback logs each envelope and otherwise no-ops; future v1 code
+        that needs to react to identity events extends the callback.
+        """
+        # startup boundary lazy imports to keep cold import cheap
+        from teleclaude.transport.redis_client import create_redis_client  # startup boundary
+
+        redis_url = os.getenv("REDIS_URL") or getattr(config.redis, "url", "") or "redis://localhost:6379"
+        password = getattr(config.redis, "password", None)
+        max_connections = int(getattr(config.redis, "max_connections", 10) or 10)
+        socket_timeout_raw = getattr(config.redis, "socket_timeout", None)
+        socket_timeout = float(socket_timeout_raw) if socket_timeout_raw else None
+
+        def _factory() -> Any:
+            return create_redis_client(
+                redis_url,
+                password=password,
+                max_connections=max_connections,
+                socket_timeout=socket_timeout,
+            )
+
+        bridge = IdentityBridge(
+            redis_factory=_factory,
+            dispatch=self._dispatch_identity_event,
+        )
+        self._identity_bridge = bridge
+        self._identity_bridge_task = asyncio.create_task(bridge.run(), name="identity-bridge")
+        self._identity_bridge_task.add_done_callback(self._log_background_task_exception("identity_bridge"))
+        logger.info("Identity Redis bridge started", redis_url=redis_url)
+
+    def _dispatch_identity_event(self, envelope: IdentityEnvelope) -> None:
+        """Log a decoded v2 identity envelope.
+
+        The MVP dispatch is observational: there is no v1 identity cache to
+        invalidate today. Extending this hook with cache invalidation is
+        cheap when the need arises.
+        """
+        logger.info(
+            "Identity v2 event observed",
+            channel=envelope.channel,
+            idempotency_key=envelope.idempotency_key,
+            principal_kind=envelope.principal_kind,
+        )
 
 
 def _install_event_wait_tracer() -> None:
