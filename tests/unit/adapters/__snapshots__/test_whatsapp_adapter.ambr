@@ -1,0 +1,41 @@
+# serializer version: 1
+# name: TestAuthHeaders.test_returns_bearer_token
+  'Bearer token-abc'
+# ---
+# name: TestChunkMessage.test_splits_on_word_boundary_when_possible
+  list([
+    'hello',
+    'wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww',
+    'world',
+  ])
+# ---
+# name: TestExtractMessageId.test_extracts_id_from_valid_response
+  'wamid.abc123'
+# ---
+# name: TestResolveMediaType.test_audio_mime_returns_audio
+  'audio'
+# ---
+# name: TestResolveMediaType.test_image_mime_returns_image
+  'image'
+# ---
+# name: TestResolveMediaType.test_unknown_mime_returns_document
+  'document'
+# ---
+# name: TestSendFile.test_posts_media_payload_and_returns_message_id
+  'image'
+# ---
+# name: TestSendMessage.test_chunks_text_within_customer_window
+  list([
+    'abcd',
+    'efgh',
+  ])
+# ---
+# name: TestUrlProperties.test_media_url_format
+  'https://graph.facebook.com/v20.0/12345/media'
+# ---
+# name: TestUrlProperties.test_messages_url_format
+  'https://graph.facebook.com/v20.0/12345/messages'
+# ---
+# name: TestWhatsAppAdapterClassAttributes.test_adapter_key_is_whatsapp
+  'whatsapp'
+# ---

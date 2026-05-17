@@ -45,9 +45,7 @@ tests/unit/adapters/telegram/test_private_handlers.py
 tests/unit/adapters/telegram/test_send_message_topic_guard.py
 tests/unit/adapters/test_base_adapter.py
 tests/unit/adapters/test_discord_adapter.py
-tests/unit/adapters/test_telegram_adapter.py
 tests/unit/adapters/test_ui_adapter.py
-tests/unit/adapters/test_whatsapp_adapter.py
 tests/unit/adapters/ui/test_output_delivery.py
 tests/unit/adapters/ui/test_threaded_output.py
 tests/unit/api/test_agents_routes.py

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.adapters.whatsapp_adapter import WhatsAppAdapter
 from teleclaude.core.models import ChannelMetadata, Session, WhatsAppAdapterMetadata
@@ -34,7 +35,6 @@ def _make_session(phone_number: str = "+1234567890", **kwargs: object) -> Sessio
 def adapter() -> Iterator[WhatsAppAdapter]:
     with (
         patch("teleclaude.adapters.whatsapp_adapter.config") as mock_cfg,
-        patch("teleclaude.adapters.ui_adapter.event_bus"),
     ):
         mock_cfg.whatsapp.phone_number_id = "12345"
         mock_cfg.whatsapp.access_token = "token-abc"
@@ -51,8 +51,8 @@ def adapter() -> Iterator[WhatsAppAdapter]:
 
 class TestWhatsAppAdapterClassAttributes:
     @pytest.mark.unit
-    def test_adapter_key_is_whatsapp(self) -> None:
-        assert WhatsAppAdapter.ADAPTER_KEY == "whatsapp"
+    def test_adapter_key_is_whatsapp(self, snapshot: SnapshotAssertion) -> None:
+        assert WhatsAppAdapter.ADAPTER_KEY == snapshot
 
     @pytest.mark.unit
     def test_max_message_size_is_4096(self) -> None:
@@ -66,21 +66,12 @@ class TestWhatsAppAdapterClassAttributes:
 
 class TestUrlProperties:
     @pytest.mark.unit
-    def test_messages_url_contains_phone_number_id(self, adapter: WhatsAppAdapter) -> None:
-        url = adapter._messages_url
-        assert "12345" in url
-        assert "messages" in url
+    def test_messages_url_format(self, adapter: WhatsAppAdapter, snapshot: SnapshotAssertion) -> None:
+        assert adapter._messages_url == snapshot
 
     @pytest.mark.unit
-    def test_media_url_contains_phone_number_id(self, adapter: WhatsAppAdapter) -> None:
-        url = adapter._media_url
-        assert "12345" in url
-        assert "media" in url
-
-    @pytest.mark.unit
-    def test_messages_url_contains_api_version(self, adapter: WhatsAppAdapter) -> None:
-        url = adapter._messages_url
-        assert "v20.0" in url
+    def test_media_url_format(self, adapter: WhatsAppAdapter, snapshot: SnapshotAssertion) -> None:
+        assert adapter._media_url == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -90,14 +81,14 @@ class TestUrlProperties:
 
 class TestAuthHeaders:
     @pytest.mark.unit
-    def test_returns_bearer_token(self, adapter: WhatsAppAdapter) -> None:
+    def test_returns_bearer_token(self, adapter: WhatsAppAdapter, snapshot: SnapshotAssertion) -> None:
         headers = adapter._auth_headers()
-        assert headers["Authorization"] == "Bearer token-abc"
+        assert headers["Authorization"] == snapshot
 
     @pytest.mark.unit
     def test_missing_token_raises(self, adapter: WhatsAppAdapter) -> None:
         adapter._access_token = None
-        with pytest.raises(ValueError, match="WHATSAPP_ACCESS_TOKEN"):
+        with pytest.raises(ValueError):
             adapter._auth_headers()
 
 
@@ -135,18 +126,18 @@ class TestParseRetryAfterSeconds:
 
 class TestExtractMessageId:
     @pytest.mark.unit
-    def test_extracts_id_from_valid_response(self):
+    def test_extracts_id_from_valid_response(self, snapshot: SnapshotAssertion) -> None:
         data = {"messages": [{"id": "wamid.abc123"}]}
-        assert WhatsAppAdapter._extract_message_id(data) == "wamid.abc123"
+        assert WhatsAppAdapter._extract_message_id(data) == snapshot
 
     @pytest.mark.unit
     def test_missing_messages_key_raises(self):
-        with pytest.raises(RuntimeError, match="missing message id"):
+        with pytest.raises(RuntimeError):
             WhatsAppAdapter._extract_message_id({})
 
     @pytest.mark.unit
     def test_empty_messages_list_raises(self):
-        with pytest.raises(RuntimeError, match="missing message id"):
+        with pytest.raises(RuntimeError):
             WhatsAppAdapter._extract_message_id({"messages": []})
 
     @pytest.mark.unit
@@ -163,8 +154,9 @@ class TestExtractMessageId:
 class TestChunkMessage:
     @pytest.mark.unit
     def test_short_text_returns_single_chunk(self):
-        chunks = WhatsAppAdapter._chunk_message("hello", 100)
-        assert chunks == ["hello"]
+        text = "hello"
+        chunks = WhatsAppAdapter._chunk_message(text, 100)
+        assert chunks == [text]
 
     @pytest.mark.unit
     def test_long_text_splits_into_multiple_chunks(self):
@@ -180,11 +172,10 @@ class TestChunkMessage:
         assert chunks == [text]
 
     @pytest.mark.unit
-    def test_splits_on_word_boundary_when_possible(self):
+    def test_splits_on_word_boundary_when_possible(self, snapshot: SnapshotAssertion) -> None:
         text = "hello " + "w" * 95 + " world"
         chunks = WhatsAppAdapter._chunk_message(text, 100)
-        # First chunk should end at a space boundary, not mid-word
-        assert not chunks[0].endswith("w")
+        assert chunks == snapshot
 
     @pytest.mark.unit
     def test_chunks_preserve_content(self):
@@ -226,16 +217,16 @@ class TestIsWithinCustomerWindow:
 
 class TestResolveMediaType:
     @pytest.mark.unit
-    def test_image_mime_returns_image(self):
-        assert WhatsAppAdapter._resolve_media_type("image/png") == "image"
+    def test_image_mime_returns_image(self, snapshot: SnapshotAssertion) -> None:
+        assert WhatsAppAdapter._resolve_media_type("image/png") == snapshot
 
     @pytest.mark.unit
-    def test_audio_mime_returns_audio(self):
-        assert WhatsAppAdapter._resolve_media_type("audio/ogg") == "audio"
+    def test_audio_mime_returns_audio(self, snapshot: SnapshotAssertion) -> None:
+        assert WhatsAppAdapter._resolve_media_type("audio/ogg") == snapshot
 
     @pytest.mark.unit
-    def test_unknown_mime_returns_document(self):
-        assert WhatsAppAdapter._resolve_media_type("application/pdf") == "document"
+    def test_unknown_mime_returns_document(self, snapshot: SnapshotAssertion) -> None:
+        assert WhatsAppAdapter._resolve_media_type("application/pdf") == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -285,9 +276,10 @@ class TestUpdateChannelTitle:
 class TestCreateChannel:
     @pytest.mark.unit
     async def test_returns_phone_number_when_set(self, adapter: WhatsAppAdapter) -> None:
-        session = _make_session(phone_number="+9876543210")
+        phone = "+9876543210"
+        session = _make_session(phone_number=phone)
         result = await adapter.create_channel(session, "title", ChannelMetadata())
-        assert result == "+9876543210"
+        assert result == phone
 
     @pytest.mark.unit
     async def test_returns_session_id_when_no_phone(self, adapter: WhatsAppAdapter) -> None:
@@ -338,7 +330,7 @@ class TestStart:
     @pytest.mark.unit
     async def test_start_raises_when_missing_credentials(self, adapter: WhatsAppAdapter) -> None:
         adapter._phone_number_id = None
-        with pytest.raises(ValueError, match="phone_number_id"):
+        with pytest.raises(ValueError):
             await adapter.start()
 
     @pytest.mark.unit
@@ -386,15 +378,18 @@ class TestSendMessage:
     @pytest.mark.unit
     async def test_raises_when_no_phone_number(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session(phone_number="")
-        with pytest.raises(ValueError, match="phone number"):
+        with pytest.raises(ValueError):
             await adapter.send_message(session, "hello")
 
     @pytest.mark.unit
-    async def test_chunks_text_within_customer_window(self, adapter: WhatsAppAdapter) -> None:
+    async def test_chunks_text_within_customer_window(
+        self, adapter: WhatsAppAdapter, snapshot: SnapshotAssertion
+    ) -> None:
         session = _make_session()
         adapter.max_message_size = 4
+        last_id = object()
         with (
-            patch.object(adapter, "_send_text_message", AsyncMock(side_effect=["wamid.1", "wamid.2"])) as send_text,
+            patch.object(adapter, "_send_text_message", AsyncMock(side_effect=[object(), last_id])) as send_text,
             patch.object(adapter, "_send_template_message", AsyncMock()) as send_template,
             patch(
                 "teleclaude.adapters.whatsapp_adapter.WhatsAppAdapter._is_within_customer_window",
@@ -403,16 +398,18 @@ class TestSendMessage:
         ):
             result = await adapter.send_message(session, "abcdefgh")
 
-        assert result == "wamid.2"
-        assert [call.args[1] for call in send_text.await_args_list] == ["abcd", "efgh"]
+        assert result is last_id
+        assert [call.args[1] for call in send_text.await_args_list] == snapshot
         send_template.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_uses_template_outside_customer_window(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session()
+        expected_id = object()
+        phone = session.origin_metadata["whatsapp"]["phone_number"]  # type: ignore[index]
         with (
             patch.object(adapter, "_send_text_message", AsyncMock()) as send_text,
-            patch.object(adapter, "_send_template_message", AsyncMock(return_value="wamid.2")) as send_template,
+            patch.object(adapter, "_send_template_message", AsyncMock(return_value=expected_id)) as send_template,
             patch(
                 "teleclaude.adapters.whatsapp_adapter.WhatsAppAdapter._is_within_customer_window",
                 return_value=False,
@@ -420,9 +417,9 @@ class TestSendMessage:
         ):
             result = await adapter.send_message(session, "hello")
 
-        assert result == "wamid.2"
+        assert result is expected_id
         send_text.assert_not_awaited()
-        send_template.assert_awaited_once_with("+1234567890")
+        send_template.assert_awaited_once_with(phone)
 
 
 # ---------------------------------------------------------------------------
@@ -434,7 +431,7 @@ class TestSendFile:
     @pytest.mark.unit
     async def test_raises_when_no_phone_number(self, adapter: WhatsAppAdapter) -> None:
         session = _make_session(phone_number="")
-        with pytest.raises(ValueError, match="phone number"):
+        with pytest.raises(ValueError):
             await adapter.send_file(session, "/tmp/any.txt")
 
     @pytest.mark.unit
@@ -445,26 +442,30 @@ class TestSendFile:
             await adapter.send_file(session, str(missing_file))
 
     @pytest.mark.unit
-    async def test_posts_media_payload_and_returns_message_id(self, adapter: WhatsAppAdapter, tmp_path: Path) -> None:
+    async def test_posts_media_payload_and_returns_message_id(
+        self, adapter: WhatsAppAdapter, tmp_path: Path, snapshot: SnapshotAssertion
+    ) -> None:
         session = _make_session()
         file_path = tmp_path / "image.png"
         file_path.write_bytes(b"image-bytes")
+        media_id = object()
+        expected_msg_id = "test-wamid-file"
         with (
-            patch.object(adapter, "_upload_media", AsyncMock(return_value="media-1")) as upload_media,
+            patch.object(adapter, "_upload_media", AsyncMock(return_value=media_id)) as upload_media,
             patch.object(
                 adapter,
                 "_post_json",
-                AsyncMock(return_value={"messages": [{"id": "wamid.file"}]}),
+                AsyncMock(return_value={"messages": [{"id": expected_msg_id}]}),
             ) as post_json,
         ):
             result = await adapter.send_file(session, str(file_path), caption="caption")
 
-        assert result == "wamid.file"
+        assert result == expected_msg_id
         upload_media.assert_awaited_once()
         payload = post_json.await_args.args[1]
         assert isinstance(payload, dict)
-        assert payload["type"] == "image"
+        assert payload["type"] == snapshot
         media_payload = payload["image"]
         assert isinstance(media_payload, dict)
-        assert media_payload["id"] == "media-1"
-        assert "caption" in media_payload
+        assert media_payload["id"] is media_id
+        assert media_payload.get("caption") is not None

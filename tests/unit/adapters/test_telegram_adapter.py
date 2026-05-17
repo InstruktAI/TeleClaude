@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.adapters.telegram_adapter import TelegramAdapter
 from teleclaude.core.models import MessageMetadata, Session
@@ -27,7 +28,6 @@ def adapter(monkeypatch: pytest.MonkeyPatch) -> TelegramAdapter:
         patch("teleclaude.adapters.telegram_adapter.config", mock_cfg),
         patch("teleclaude.adapters.telegram_adapter.telegram_policy"),
         patch("teleclaude.adapters.telegram_adapter.OutputQoSScheduler"),
-        patch("teleclaude.adapters.ui_adapter.event_bus"),
     ):
         mock_client = MagicMock()
         return TelegramAdapter(mock_client)
@@ -48,24 +48,16 @@ def _make_session(session_id: str = "sess-1", *, native_log_file: str | None = N
 # ---------------------------------------------------------------------------
 
 
-def test_adapter_key_is_telegram(adapter: TelegramAdapter) -> None:
-    assert adapter.ADAPTER_KEY == "telegram"
+def test_adapter_key_is_telegram(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter.ADAPTER_KEY == snapshot
 
 
-def test_simple_command_events_contains_cancel2x(adapter: TelegramAdapter) -> None:
-    assert "cancel2x" in adapter.SIMPLE_COMMAND_EVENTS
+def test_simple_command_events_membership(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter.SIMPLE_COMMAND_EVENTS == snapshot
 
 
-def test_simple_command_events_contains_kill(adapter: TelegramAdapter) -> None:
-    assert "kill" in adapter.SIMPLE_COMMAND_EVENTS
-
-
-def test_simple_command_events_contains_key_up(adapter: TelegramAdapter) -> None:
-    assert "key_up" in adapter.SIMPLE_COMMAND_EVENTS
-
-
-def test_command_handler_overrides_contains_agent_resume(adapter: TelegramAdapter) -> None:
-    assert "agent_resume" in adapter.COMMAND_HANDLER_OVERRIDES
+def test_command_handler_overrides_membership(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter.COMMAND_HANDLER_OVERRIDES == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -92,20 +84,15 @@ def test_get_ai_session_poll_interval_returns_half_second(adapter: TelegramAdapt
 
 
 def test_format_output_returns_empty_for_empty_input(adapter: TelegramAdapter) -> None:
-    assert adapter.format_output("") == ""
+    assert not adapter.format_output("")
 
 
-def test_format_output_wraps_text_in_code_block(adapter: TelegramAdapter) -> None:
-    result = adapter.format_output("hello world")
-    assert result.startswith("```")
-    assert result.endswith("```")
+def test_format_output_wraps_text_in_code_block(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter.format_output("hello world") == snapshot
 
 
-def test_format_output_shortens_long_separator_lines(adapter: TelegramAdapter) -> None:
-    long_sep = "─" * 118
-    result = adapter.format_output(long_sep)
-    # After shortening, the repeated char should be 47 occurrences
-    assert "─" * 118 not in result
+def test_format_output_shortens_long_separator_lines(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter.format_output("─" * 118) == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -113,16 +100,18 @@ def test_format_output_shortens_long_separator_lines(adapter: TelegramAdapter) -
 # ---------------------------------------------------------------------------
 
 
-def test_event_to_command_converts_underscores_to_hyphens(adapter: TelegramAdapter) -> None:
-    assert adapter._event_to_command("key_up") == "key-up"
+def test_event_to_command_converts_underscores_to_hyphens(
+    adapter: TelegramAdapter, snapshot: SnapshotAssertion
+) -> None:
+    assert adapter._event_to_command("key_up") == snapshot
 
 
-def test_event_to_command_converts_multi_underscore(adapter: TelegramAdapter) -> None:
-    assert adapter._event_to_command("new_session") == "new-session"
+def test_event_to_command_converts_multi_underscore(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter._event_to_command("new_session") == snapshot
 
 
-def test_event_to_command_passes_through_plain_name(adapter: TelegramAdapter) -> None:
-    assert adapter._event_to_command("cancel") == "cancel"
+def test_event_to_command_passes_through_plain_name(adapter: TelegramAdapter, snapshot: SnapshotAssertion) -> None:
+    assert adapter._event_to_command("cancel") == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -199,10 +188,12 @@ def test_is_message_from_trusted_bot_returns_false_for_unknown_bot(adapter: Tele
 # ---------------------------------------------------------------------------
 
 
-def test_build_metadata_for_thread_returns_markdownv2_parse_mode(adapter: TelegramAdapter) -> None:
+def test_build_metadata_for_thread_returns_markdownv2_parse_mode(
+    adapter: TelegramAdapter, snapshot: SnapshotAssertion
+) -> None:
     meta = adapter._build_metadata_for_thread()
     assert isinstance(meta, MessageMetadata)
-    assert meta.parse_mode == "MarkdownV2"
+    assert meta.parse_mode == snapshot
 
 
 # ---------------------------------------------------------------------------
@@ -214,13 +205,14 @@ def test_build_metadata_for_thread_returns_markdownv2_parse_mode(adapter: Telegr
 async def test_send_threaded_output_off_mode_calls_ui_adapter_directly(adapter: TelegramAdapter) -> None:
     adapter._qos_scheduler._policy.mode = "off"
     session = _make_session()
+    expected = object()
 
     with patch(
-        "teleclaude.adapters.telegram_adapter.UiAdapter.send_threaded_output", AsyncMock(return_value="msg-1")
+        "teleclaude.adapters.telegram_adapter.UiAdapter.send_threaded_output", AsyncMock(return_value=expected)
     ) as mock_send:
         result = await adapter.send_threaded_output(session, "hello")
 
-    assert result == "msg-1"
+    assert result is expected
     mock_send.assert_awaited_once()
 
 
@@ -228,7 +220,8 @@ async def test_send_threaded_output_off_mode_calls_ui_adapter_directly(adapter: 
 async def test_send_threaded_output_qos_enqueues_deferred_lane_work(adapter: TelegramAdapter) -> None:
     adapter._qos_scheduler._policy.mode = "coalesce_only"
     adapter._qos_scheduler.enqueue = MagicMock()
-    adapter.client._run_deferred_ui_lane = AsyncMock(return_value="msg-2")
+    expected_dispatched = "dispatched-result-sentinel"
+    adapter.client._run_deferred_ui_lane = AsyncMock(return_value=expected_dispatched)
     session = _make_session()
 
     result = await adapter.send_threaded_output(session, "hello", delivery_ts=None)
@@ -243,11 +236,11 @@ async def test_send_threaded_output_qos_enqueues_deferred_lane_work(adapter: Tel
 
     dispatched = await dispatch()
 
-    assert dispatched == "msg-2"
+    assert dispatched == expected_dispatched
     adapter.client._run_deferred_ui_lane.assert_awaited_once()
     lane_args = adapter.client._run_deferred_ui_lane.await_args.args
     assert lane_args[0] is session
-    assert lane_args[1] == "telegram"
+    assert lane_args[1] == TelegramAdapter.ADAPTER_KEY
 
 
 # ---------------------------------------------------------------------------
