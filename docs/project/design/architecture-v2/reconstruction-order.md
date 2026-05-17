@@ -366,27 +366,81 @@ parallelizable because the TUI consumes services rather than providing them.
 3. Delete v1-specific build/test configuration.
 4. Update Makefile to remove v1 targets.
 
-### Dependency graph
+### Service-implementation vs service-cutover (two-step per service)
+
+Each service goes through TWO todos: one to **deliver the v2 service
+parallel-capable** (alongside v1), and a separate one to **authoritatively
+cut over** v1 → v2 (delete v1 paths, run data migration, swap consumer
+references). The separation is dictated by the cutover-safety pattern
+(see "What makes a cutover safe" earlier in this doc):
+
+| Service | Implementation todo | Cutover todo |
+|---|---|---|
+| Workflow | `v2-mvp-bootstrap` (delivered) | `v2-workflow-cutover` |
+| Identity | `v2-spine-completion` (delivers identity + config + observability) | `v2-identity-cutover` |
+| Config | `v2-spine-completion` (same) | `v2-config-cutover` |
+| Knowledge | `v2-knowledge` | `v2-knowledge-cutover` |
+| Session ledger | `v2-session-ledger` | `v2-session-ledger-cutover` |
+| Integration | `v2-integration` (includes telec-hook binary) | `v2-integration-cutover` |
+| Agent runtime | `v2-agent-runtime` | folded into `v2-daemon-narrow` (daemon cutover IS agent_runtime cutover) |
+| Agent artifacts | `v2-agent-artifacts` | `v2-agent-artifacts-cutover` |
+
+Plus the binary cutovers:
+
+| Binary | Implementation todo | Cutover note |
+|---|---|---|
+| `telec-tui` | `v2-tui-rewrite` | Parallel-capable; v1 TUI continues until trusted |
+| `telec-daemon` | `v2-daemon-narrow` | Single-PR cutover (cannot run two daemons) |
+| `telec-api` | `v2-api-rewrite` | Single-PR cutover (frontend bridge swap) |
+| `telec-hook` | part of `v2-integration` | Cutover involves agent CLI config re-pointing |
+
+Plus the supporting v1 tooling change:
+
+| Todo | Purpose |
+|---|---|
+| `telec-code-rust-support` | Add Rust to the `telec code` Python quality pipeline so future v2 work uses the same ergonomic CLI |
+
+### Dependency graph (full)
 
 ```
-Phase 0 (architecture docs)
+Phase 0 (architecture docs)                                  ← DELIVERED
         ↓
-Wave 1 (MVP: workflow + CLI + spine basics)
+Wave 1: v2-mvp-bootstrap (workflow + CLI parallel-capable)   ← DELIVERED
         ↓
-Wave 2 (Spine: identity, config full)
+   ┌────┴────────────────────────────────────────┐
+   ↓                                             ↓
+Wave 2: v2-spine-completion                  telec-code-rust-support
+(identity, config, observability)            (Rust support in v1
+                                              quality pipeline)
         ↓
-   ┌────┴────────┬─────────────────────┐
-   ↓             ↓                     ↓
-Wave 3        Wave 4              Wave 9
-(knowledge)   (agent_runtime)     (TUI — anywhere after Wave 1)
-              ↓
-              Wave 5 (ledger) ↘
-              Wave 6 (integration) → Wave 8 (HTTP API)
-              ↓
-              Wave 7 (agent_artifacts)
-                            ↓
-                    Wave 10 (legacy purge)
+   ┌────┼─────────────────────────────────────────────────┐
+   ↓    ↓                                                 ↓
+Wave 3:           Wave 4:                            Wave 9:
+v2-knowledge      v2-agent-runtime                   v2-tui-rewrite
+        ↓             ↓                              (anytime after Wave 1)
+Wave 5:           Wave 6:
+v2-session-       v2-integration
+ledger            (includes telec-hook binary)
+                      ↓
+                  Wave 7: v2-agent-artifacts
+                      ↓
+   ┌──────────────────┼─────────────┐
+   ↓                  ↓             ↓
+v2-daemon-narrow  v2-api-rewrite  Per-service CUTOVER todos:
+(replaces v1      (HTTP server     - v2-workflow-cutover
+daemon hosting    binary)          - v2-identity-cutover
+agent_runtime)                     - v2-config-cutover
+                                   - v2-knowledge-cutover
+                                   - v2-session-ledger-cutover
+                                   - v2-integration-cutover
+                                   - v2-agent-artifacts-cutover
+                  ↓
+              Wave 10: legacy purge (delete teleclaude/)
 ```
+
+Cutover todos lift v1 paths only after the corresponding service
+implementation is delivered AND the cutover-safety checklist passes.
+Each cutover is a single atomic PR (no dual-truth windows).
 
 Many waves are parallelizable. Wave 1 blocks everything else (the MVP
 proves the pattern). After Wave 2, several services can lift in parallel
