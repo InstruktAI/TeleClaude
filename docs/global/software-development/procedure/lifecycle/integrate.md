@@ -45,6 +45,9 @@ each decision point until the queue is drained.
    - `make lint`
    - `make test`
      If either command fails, fix the failures, rerun both, then resume the state machine.
+   - The pre-push hook at `.githooks/pre-push` enforces `telec code lint --all` automatically.
+     If the hook blocks the push with `ERROR: Integration push blocked — telec code lint --all failed.`,
+     resolve the reported lint violations and retry.
 
 The state machine returns one of the following instruction blocks at each step.
 

@@ -42,3 +42,13 @@ A v2 Rust workspace lives alongside v1 under `crates/`. It exposes a parallel `W
   The TUI runs as the first pane in the `tc_tui` tmux session. Using tmux's pane PID is reliable regardless of how the process was launched.
 - Do not restart the daemon and do not instruct the user to restart telec.
 - Verify the change in the TUI after reload.
+
+## Integration push guard
+
+The pre-push hook runs `telec code lint --all` before allowing any push from `trees/_integration/` to `origin/main`.
+
+- **Canonical source:** `.githooks/pre-push` (tracked in git; edit this file to change hook behavior).
+- **Active hook:** `.git/hooks/pre-push` (deployed from canonical source; this is the file git actually executes).
+- **Per-worktree mirror:** `trees/_integration/.githooks/pre-push` (kept in sync to prevent regression when hooks are re-deployed from this mirror).
+
+If an integration push is blocked with `ERROR: Integration push blocked — telec code lint --all failed.`, resolve all lint violations reported by `telec code lint --all` and retry the push. The CI `make lint` check is a redundant post-push catch layer; the pre-push guard is the primary enforcement surface.
