@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,8 @@ from teleclaude.cli.telec.handlers.code import (
 )
 from teleclaude.git import GitCommandError
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
+
+REPO_ROOT = Path(__file__).resolve().parents[5]
 
 
 class TestClassifyMainCommit:
@@ -289,6 +292,71 @@ class TestCommitWorkspaceScope:
         assert "teleclaude/touched.py" in commit_call.args
 
 
+class TestRustCommitBoundary:
+    """Rust commit gates stay owned by git pre-commit, not telec quality dispatch."""
+
+    @pytest.mark.unit
+    def test_rust_commit_path_does_not_call_quality_handlers_directly(self, tmp_path: Path) -> None:
+        """telec code commit invokes git commit; cargo remains a pre-commit concern."""
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(DirtyPath("crates/workflow/src/lib.rs", DirtyOp.MODIFIED),),
+            scoped_dirty_paths=("crates/workflow/src/lib.rs",),
+            scoped_existing_paths=("crates/workflow/src/lib.rs",),
+        )
+        staged_snapshots = [
+            [],
+            ["crates/workflow/src/lib.rs"],
+        ]
+        staged_files: list[list[str]] = []
+        repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
+
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged_files.append(files),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+            patch("teleclaude.cli.telec.handlers.code.handle_lint") as lint_handler,
+            patch("teleclaude.cli.telec.handlers.code.handle_test") as test_handler,
+            patch("teleclaude.cli.telec.handlers.code.handle_format") as format_handler,
+        ):
+            _commit_under_lock(
+                message="chore(rust): smoke test",
+                git_args=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+
+        assert staged_files == [["crates/workflow/src/lib.rs"]]
+        lint_handler.assert_not_called()
+        test_handler.assert_not_called()
+        format_handler.assert_not_called()
+        repo.git.commit.assert_called_once_with(
+            "-m",
+            "chore(rust): smoke test",
+            "--",
+            "crates/workflow/src/lib.rs",
+            with_extended_output=True,
+        )
+
+    @pytest.mark.unit
+    def test_excluded_pre_commit_config_has_no_branch_diff(self) -> None:
+        """The todo must not modify .pre-commit-config.yaml."""
+        assert _branch_diff(".pre-commit-config.yaml") == []
+
+    @pytest.mark.unit
+    def test_excluded_teleclaude_yml_has_no_branch_diff(self) -> None:
+        """The todo must not modify teleclaude.yml."""
+        assert _branch_diff("teleclaude.yml") == []
+
+
 class TestChangedWorkspaceScope:
     """Changed file listing consumes the centralized workspace scope."""
 
@@ -337,3 +405,25 @@ class TestChangedWorkspaceScope:
             handle_code_changed([])
 
         assert capsys.readouterr().out.splitlines() == ["teleclaude/touched.py"]
+
+
+def _branch_diff(path: str) -> list[str]:
+    merge_base = subprocess.run(
+        ["git", "merge-base", "HEAD", "main"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if merge_base.returncode != 0:
+        pytest.skip("main branch is unavailable for structural branch-diff check")
+    diff = subprocess.run(
+        ["git", "diff", "--name-only", f"{merge_base.stdout.strip()}..HEAD", "--", path],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if diff.returncode != 0:
+        pytest.skip("git diff is unavailable for structural branch-diff check")
+    return [line for line in diff.stdout.splitlines() if line]

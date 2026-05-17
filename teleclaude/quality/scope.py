@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import tomllib
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -39,6 +40,7 @@ _PRETTIER_EXTENSIONS = (
     ".mjs",
     ".cjs",
 )
+_ROOT_RUST_METADATA = {"Cargo.toml", "Cargo.lock", "rust-toolchain.toml"}
 
 
 class WorkspaceScopeKind(Enum):
@@ -73,6 +75,29 @@ class WorkspaceScopeResolution:
     dirty_paths: tuple[DirtyPath, ...]
     scoped_dirty_paths: tuple[str, ...]
     scoped_existing_paths: tuple[str, ...]
+
+
+class RustScopeKind(Enum):
+    EMPTY = "empty"
+    PACKAGE = "package"
+    WORKSPACE = "workspace"
+
+
+@dataclass(frozen=True)
+class RustScope:
+    kind: RustScopeKind
+    workspace_root: Path | None
+    package: str | None = None
+    rust_owned_paths: tuple[str, ...] = ()
+    unresolved_paths: tuple[str, ...] = ()
+
+
+class CargoWorkspaceError(RuntimeError):
+    """Raised when Rust is configured but the Cargo workspace root is missing."""
+
+    def __init__(self, manifest_path: Path) -> None:
+        self.manifest_path = manifest_path
+        super().__init__(f"Cargo workspace manifest not found: {manifest_path}")
 
 
 def is_worktree(project_root: Path) -> bool:
@@ -229,6 +254,127 @@ def typescript_files(paths: list[str]) -> list[str]:
 def prettier_files(paths: list[str]) -> list[str]:
     """Return only files owned by prettier from *paths*."""
     return [path for path in paths if path.endswith(_PRETTIER_EXTENSIONS)]
+
+
+def rust_files(paths: list[str]) -> list[str]:
+    """Return paths owned by Rust/Cargo quality tooling."""
+    return [path for path in paths if _is_rust_owned_path(_as_posix(path))]
+
+
+def resolve_cargo_workspace_root(project_root: Path) -> Path:
+    """Resolve the Cargo workspace root from the root Cargo.toml."""
+    manifest_path = project_root / "Cargo.toml"
+    if not manifest_path.exists():
+        raise CargoWorkspaceError(manifest_path)
+    return manifest_path.parent
+
+
+def resolve_rust_scope(project_root: Path, paths: list[str], *, run_all: bool = False) -> RustScope:
+    """Resolve changed Rust paths to Cargo package or workspace scope."""
+    normalized_paths = [_project_relative_path(project_root, path) for path in paths]
+    owned_paths = tuple(rust_files(normalized_paths))
+
+    if run_all:
+        workspace_root = resolve_cargo_workspace_root(project_root)
+        return RustScope(
+            kind=RustScopeKind.WORKSPACE,
+            workspace_root=workspace_root,
+            rust_owned_paths=owned_paths,
+        )
+
+    if not owned_paths:
+        return RustScope(kind=RustScopeKind.EMPTY, workspace_root=None)
+
+    workspace_root = resolve_cargo_workspace_root(project_root)
+    packages: set[str] = set()
+    unresolved_paths: list[str] = []
+
+    for path in owned_paths:
+        if _is_root_rust_metadata(path):
+            return RustScope(
+                kind=RustScopeKind.WORKSPACE,
+                workspace_root=workspace_root,
+                rust_owned_paths=owned_paths,
+            )
+        package_name = _resolve_package_for_rust_path(project_root, path)
+        if package_name is None:
+            unresolved_paths.append(path)
+            continue
+        packages.add(package_name)
+
+    if unresolved_paths:
+        logger.warning("Rust paths with unresolved Cargo ownership force workspace scope: %s", unresolved_paths)
+        return RustScope(
+            kind=RustScopeKind.WORKSPACE,
+            workspace_root=workspace_root,
+            rust_owned_paths=owned_paths,
+            unresolved_paths=tuple(unresolved_paths),
+        )
+
+    if len(packages) == 1:
+        return RustScope(
+            kind=RustScopeKind.PACKAGE,
+            workspace_root=workspace_root,
+            package=next(iter(packages)),
+            rust_owned_paths=owned_paths,
+        )
+
+    return RustScope(
+        kind=RustScopeKind.WORKSPACE,
+        workspace_root=workspace_root,
+        rust_owned_paths=owned_paths,
+    )
+
+
+def _project_relative_path(project_root: Path, path: str) -> str:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            return candidate.resolve().relative_to(project_root.resolve()).as_posix()
+        except ValueError:
+            return candidate.as_posix()
+    return _as_posix(path)
+
+
+def _as_posix(path: str) -> str:
+    return path.replace("\\", "/").removeprefix("./")
+
+
+def _is_rust_owned_path(path: str) -> bool:
+    parts = Path(path).parts
+    return (
+        path.endswith(".rs")
+        or _is_root_rust_metadata(path)
+        or _is_crate_manifest(parts)
+        or _is_crate_migration(parts, path)
+    )
+
+
+def _is_root_rust_metadata(path: str) -> bool:
+    return path in _ROOT_RUST_METADATA
+
+
+def _is_crate_manifest(parts: tuple[str, ...]) -> bool:
+    return len(parts) == 3 and parts[0] == "crates" and parts[2] == "Cargo.toml"
+
+
+def _is_crate_migration(parts: tuple[str, ...], path: str) -> bool:
+    return len(parts) >= 4 and parts[0] == "crates" and parts[2] == "migrations" and path.endswith(".sql")
+
+
+def _resolve_package_for_rust_path(project_root: Path, path: str) -> str | None:
+    parts = Path(path).parts
+    if len(parts) < 3 or parts[0] != "crates":
+        return None
+    manifest_path = project_root / "crates" / parts[1] / "Cargo.toml"
+    if not manifest_path.exists():
+        return None
+    with open(manifest_path, "rb") as f:
+        data = tomllib.load(f)
+    package_name = data.get("package", {}).get("name")
+    if not isinstance(package_name, str) or not package_name:
+        return None
+    return package_name
 
 
 def validate_scoped_paths(paths: list[str], project_root: Path) -> list[str]:

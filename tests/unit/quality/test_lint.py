@@ -19,6 +19,13 @@ from teleclaude.quality.lint import (
 )
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 
+PACKAGE_STORAGE = "storage"
+PACKAGE_WORKFLOW = "workflow"
+WORKFLOW_SOURCE = "crates/workflow/src/lib.rs"
+STORAGE_SOURCE = "crates/storage/src/lib.rs"
+PYTHON_SOURCE = "teleclaude/foo.py"
+TYPESCRIPT_SOURCE = "frontend/app/foo.tsx"
+
 
 def _workspace_resolution(
     *,
@@ -32,6 +39,24 @@ def _workspace_resolution(
         dirty_paths=tuple(DirtyPath(path, DirtyOp.MODIFIED) for path in scoped_existing_paths),
         scoped_dirty_paths=scoped_existing_paths,
         scoped_existing_paths=scoped_existing_paths,
+    )
+
+
+def _write_rust_workspace(root: Path) -> None:
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["crates/workflow", "crates/storage"]\n',
+        encoding="utf-8",
+    )
+    _write_rust_crate(root, "workflow", PACKAGE_WORKFLOW)
+    _write_rust_crate(root, "storage", PACKAGE_STORAGE)
+
+
+def _write_rust_crate(root: Path, member: str, package: str) -> None:
+    crate = root / "crates" / member
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        f'[package]\nname = "{package}"\nversion = "0.1.0"\nedition = "2021"\n',
+        encoding="utf-8",
     )
 
 
@@ -593,6 +618,295 @@ class TestMultiLanguageLintDispatch:
         pipeline = PythonLintPipeline(project_root=tmp_path)
         py_step_names = [s.name for s in pipeline.steps]
         assert "eslint" not in py_step_names
+
+
+class TestRustLintDispatch:
+    """LintRunner dispatches Cargo linting only for declared Rust projects."""
+
+    def test_rust_only_project_skips_python_pipeline_and_runs_cargo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rust-only lint runs cargo without entering the Python pipeline."""
+        _write_rust_workspace(tmp_path)
+        python_calls: list[object] = []
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert python_calls == []
+        assert [name for name, _cmd, _cwd in tool_calls] == ["cargo_fmt_check", "cargo_clippy"]
+
+    def test_legacy_no_language_project_runs_python_pipeline_without_cargo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Legacy projects with no language declaration keep Python lint behavior."""
+        python_calls: list[object] = []
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: [])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(PYTHON_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert python_calls == [[PYTHON_SOURCE]]
+        assert [call for call in tool_calls if call[1] and call[1][0] == "cargo"] == []
+
+    def test_mixed_python_and_rust_project_runs_both_pipelines(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mixed projects lint Python targets and Cargo scope in one runner call."""
+        _write_rust_workspace(tmp_path)
+        python_calls: list[object] = []
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python", "rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(PYTHON_SOURCE, WORKFLOW_SOURCE),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert python_calls == [[PYTHON_SOURCE, WORKFLOW_SOURCE]]
+        assert [name for name, _cmd, _cwd in tool_calls] == ["cargo_fmt_check", "cargo_clippy"]
+
+    def test_python_only_project_never_invokes_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Rust-looking paths are ignored when rust is not declared."""
+        python_calls: list[object] = []
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["python"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(PYTHON_SOURCE, WORKFLOW_SOURCE),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.lint.run_pipeline", python_calls.append)
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert python_calls == [[PYTHON_SOURCE, WORKFLOW_SOURCE]]
+        assert [call for call in tool_calls if call[1] and call[1][0] == "cargo"] == []
+
+    def test_rust_lint_empty_file_scope_skips_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Declared Rust with no Rust-owned paths does not launch cargo."""
+        _write_rust_workspace(tmp_path)
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("docs/x.md",),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert tool_calls == []
+
+    def test_single_package_scope_uses_package_cargo_commands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Single-crate Rust scope maps to cargo -p commands from workspace root."""
+        _write_rust_workspace(tmp_path)
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert tool_calls == [
+            ("cargo_fmt_check", ["cargo", "fmt", "-p", PACKAGE_WORKFLOW, "--", "--check"], tmp_path),
+            (
+                "cargo_clippy",
+                ["cargo", "clippy", "-p", PACKAGE_WORKFLOW, "--all-targets", "--", "-D", "warnings"],
+                tmp_path,
+            ),
+        ]
+
+    def test_cross_crate_scope_uses_workspace_cargo_commands(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cross-crate Rust scope maps to workspace Cargo commands."""
+        _write_rust_workspace(tmp_path)
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE, STORAGE_SOURCE),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert tool_calls == [
+            ("cargo_fmt_check", ["cargo", "fmt", "--all", "--", "--check"], tmp_path),
+            (
+                "cargo_clippy",
+                ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+                tmp_path,
+            ),
+        ]
+
+    def test_run_all_uses_workspace_cargo_commands(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--all bypasses package-local scope for Rust lint."""
+        _write_rust_workspace(tmp_path)
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run(run_all=True)
+
+        assert tool_calls == [
+            ("cargo_fmt_check", ["cargo", "fmt", "--all", "--", "--check"], tmp_path),
+            (
+                "cargo_clippy",
+                ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"],
+                tmp_path,
+            ),
+        ]
+
+    def test_failing_rust_step_exits_nonzero(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Rust step failures propagate through the unified lint failure path."""
+        _write_rust_workspace(tmp_path)
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+
+        def _fail_clippy(cmd: list[str], cwd: Path, step_name: str) -> None:
+            _ = cmd, cwd
+            if step_name == "cargo_clippy":
+                raise SystemExit(17)
+
+        monkeypatch.setattr("teleclaude.quality.lint._run_tool", _fail_clippy)
+
+        with pytest.raises(SystemExit) as exc_info:
+            LintRunner(project_root=tmp_path).run()
+
+        assert exc_info.value.code == 17
+
+    def test_typescript_only_project_runs_typescript_without_cargo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """TypeScript lint behavior remains independent from Rust support."""
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.lint.get_project_languages", lambda _path: ["typescript"])
+        monkeypatch.setattr(
+            "teleclaude.quality.lint.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(TYPESCRIPT_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+        (tmp_path / "teleclaude.yml").write_text(
+            "languages:\n  - typescript\nfrontend_root: frontend\n",
+            encoding="utf-8",
+        )
+        (tmp_path / "frontend" / "app").mkdir(parents=True)
+
+        LintRunner(project_root=tmp_path).run()
+
+        assert [name for name, _cmd, _cwd in tool_calls] == ["eslint", "tsc"]
+        assert [call for call in tool_calls if call[1] and call[1][0] == "cargo"] == []
+
+    def test_rust_steps_are_available_for_step_dispatch(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """telec code lint --step can dispatch a named Rust step when rust is declared."""
+        _write_rust_workspace(tmp_path)
+        tool_calls: list[tuple[str, list[str], Path]] = []
+
+        (tmp_path / "teleclaude.yml").write_text("languages:\n  - rust\n", encoding="utf-8")
+        monkeypatch.setattr(
+            "teleclaude.quality.lint._run_tool",
+            lambda cmd, cwd, step_name: tool_calls.append((step_name, list(cmd), cwd)),
+        )
+
+        LintRunner(project_root=tmp_path).run_step("cargo_clippy", [WORKFLOW_SOURCE])
+
+        assert tool_calls == [
+            (
+                "cargo_clippy",
+                ["cargo", "clippy", "-p", PACKAGE_WORKFLOW, "--all-targets", "--", "-D", "warnings"],
+                tmp_path,
+            )
+        ]
 
 
 # ---------------------------------------------------------------------------

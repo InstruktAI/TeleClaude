@@ -12,6 +12,47 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.quality.format import FormatRunner
+from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
+
+PACKAGE_STORAGE = "storage"
+PACKAGE_WORKFLOW = "workflow"
+WORKFLOW_SOURCE = "crates/workflow/src/lib.rs"
+STORAGE_SOURCE = "crates/storage/src/lib.rs"
+PYTHON_SOURCE = "teleclaude/foo.py"
+
+
+def _workspace_resolution(
+    *,
+    kind: WorkspaceScopeKind,
+    scoped_existing_paths: tuple[str, ...],
+    has_session_identity: bool = True,
+) -> WorkspaceScopeResolution:
+    return WorkspaceScopeResolution(
+        kind=kind,
+        has_session_identity=has_session_identity,
+        dirty_paths=tuple(DirtyPath(path, DirtyOp.MODIFIED) for path in scoped_existing_paths),
+        scoped_dirty_paths=scoped_existing_paths,
+        scoped_existing_paths=scoped_existing_paths,
+    )
+
+
+def _write_rust_workspace(root: Path) -> None:
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["crates/workflow", "crates/storage"]\n',
+        encoding="utf-8",
+    )
+    _write_rust_crate(root, "workflow", PACKAGE_WORKFLOW)
+    _write_rust_crate(root, "storage", PACKAGE_STORAGE)
+
+
+def _write_rust_crate(root: Path, member: str, package: str) -> None:
+    crate = root / "crates" / member
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        f'[package]\nname = "{package}"\nversion = "0.1.0"\nedition = "2021"\n',
+        encoding="utf-8",
+    )
+
 
 # ---------------------------------------------------------------------------
 # FormatRunner dispatches per-language formatters
@@ -180,6 +221,129 @@ class TestFormatRunnerTypeScript:
         # No formatters should have run for TS files when TS not configured
         prettier_cmds = [c for c in commands_run if "prettier" in c]
         assert len(prettier_cmds) == 0, f"TS files should not be formatted without TS in languages: {commands_run}"
+
+
+class TestFormatRunnerRust:
+    """FormatRunner dispatches Rust files to cargo fmt when Rust is declared."""
+
+    def test_no_arg_rust_format_uses_single_package_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No-arg Rust formatting derives workspace scope and uses cargo -p."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.format.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run()
+
+        assert calls == [(["cargo", "fmt", "-p", PACKAGE_WORKFLOW], tmp_path, "cargo fmt")]
+
+    def test_run_all_rust_format_uses_workspace_scope(self, tmp_path: Path) -> None:
+        """--all Rust formatting runs cargo fmt --all from workspace root."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run(run_all=True)
+
+        assert calls == [(["cargo", "fmt", "--all"], tmp_path, "cargo fmt")]
+
+    def test_cross_crate_rust_format_uses_workspace_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cross-crate Rust scope formats the whole Cargo workspace."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.format.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE, STORAGE_SOURCE),
+            ),
+        )
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run()
+
+        assert calls == [(["cargo", "fmt", "--all"], tmp_path, "cargo fmt")]
+
+    def test_explicit_rust_file_formats_package_scope(self, tmp_path: Path) -> None:
+        """Explicit .rs files trigger package-scoped cargo fmt."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run(files=[WORKFLOW_SOURCE])
+
+        assert calls == [(["cargo", "fmt", "-p", PACKAGE_WORKFLOW], tmp_path, "cargo fmt")]
+
+    def test_explicit_non_rust_file_does_not_invoke_cargo(self, tmp_path: Path) -> None:
+        """Non-Rust explicit files do not launch cargo fmt."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run(files=["docs/x.md"])
+
+        assert [call for call in calls if call[0] and call[0][0] == "cargo"] == []
+
+    def test_python_only_project_does_not_invoke_cargo_for_rust_path(self, tmp_path: Path) -> None:
+        """Rust-looking paths are ignored when rust is not declared."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["python"]).run(files=[WORKFLOW_SOURCE])
+
+        assert [call for call in calls if call[0] and call[0][0] == "cargo"] == []
+
+    def test_rust_only_project_does_not_format_python_files(self, tmp_path: Path) -> None:
+        """Explicit Python files do not run ruff in declared Rust-only projects."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run(files=[PYTHON_SOURCE])
+
+        assert [call for call in calls if call[0] and call[0][0] == "ruff"] == []
+        assert [call for call in calls if call[0] and call[0][0] == "cargo"] == []
+
+    def test_no_arg_rust_format_with_empty_scope_skips_cargo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Declared Rust with no Rust-owned scoped files does not launch cargo."""
+        _write_rust_workspace(tmp_path)
+        calls: list[tuple[list[str], Path, str]] = []
+
+        monkeypatch.setattr(
+            "teleclaude.quality.format.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=("docs/x.md",),
+            ),
+        )
+
+        with patch("teleclaude.quality.format._run_format_tool") as mock_run:
+            mock_run.side_effect = lambda cmd, cwd, name: calls.append((list(cmd), cwd, name))
+            FormatRunner(project_root=tmp_path, languages=["rust"]).run()
+
+        assert calls == []
 
 
 # ---------------------------------------------------------------------------

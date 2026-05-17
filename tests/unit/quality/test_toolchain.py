@@ -13,6 +13,7 @@ import pytest
 
 from teleclaude.quality.toolchain import (
     TOOLCHAIN_REGISTRY,
+    RustToolchain,
     TypeScriptToolchain,
     get_toolchain,
 )
@@ -137,6 +138,54 @@ class TestTypeScriptToolchain:
         assert str(tmp_path / "custom") == dirs[0], (
             f"get_toolchain did not pass frontend_root through — got {dirs[0]!r}, expected {str(tmp_path / 'custom')!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Rust toolchain
+# ---------------------------------------------------------------------------
+
+
+class TestRustToolchain:
+    """Rust toolchain is registered and exposes cargo metadata."""
+
+    def test_rust_toolchain_registered(self, tmp_path: Path) -> None:
+        """get_toolchain('rust', ...) returns the Rust toolchain."""
+        toolchain = get_toolchain("rust", project_root=tmp_path)
+
+        assert toolchain.language == "rust"
+
+    def test_rust_toolchain_advertises_cargo_tools_and_config_source(self, tmp_path: Path) -> None:
+        """Rust toolchain lists cargo, rustfmt, and clippy with Cargo.toml config."""
+        toolchain = get_toolchain("rust", project_root=tmp_path)
+
+        assert "cargo" in toolchain.tools
+        assert "rustfmt" in toolchain.tools
+        assert "clippy" in toolchain.tools
+        assert toolchain.config_source == "Cargo.toml"
+
+    def test_rust_source_dirs_prefers_crates_root_when_present(self, tmp_path: Path) -> None:
+        """Rust source dirs point at crates/ for workspace repositories."""
+        (tmp_path / "crates").mkdir()
+
+        toolchain = get_toolchain("rust", project_root=tmp_path)
+
+        assert toolchain.source_dirs == ["crates"]
+
+    def test_rust_source_dirs_falls_back_to_workspace_root(self, tmp_path: Path) -> None:
+        """Rust source dirs fall back to the cargo workspace root marker."""
+        toolchain = get_toolchain("rust", project_root=tmp_path)
+
+        assert toolchain.source_dirs == ["."]
+
+    def test_rust_registry_value_is_rust_toolchain_class(self) -> None:
+        """Rust uses the same registry extension point as existing languages."""
+        assert TOOLCHAIN_REGISTRY["rust"] is RustToolchain
+
+    def test_rust_companion_mapping_does_not_fabricate_python_tests(self, tmp_path: Path) -> None:
+        """Rust tests are cargo-scoped, not Python companion-mapped."""
+        toolchain = get_toolchain("rust", project_root=tmp_path)
+
+        assert toolchain.map_to_test_companion("crates/workflow/src/lib.rs") == ""
 
 
 # ---------------------------------------------------------------------------

@@ -20,9 +20,13 @@ from pathlib import Path
 import yaml
 
 from teleclaude.quality.scope import (
+    CargoWorkspaceError,
+    RustScope,
+    RustScopeKind,
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     get_project_languages,
+    resolve_rust_scope,
     resolve_workspace_scope_resolution,
     typescript_files,
     validate_scoped_paths,
@@ -200,7 +204,7 @@ class TestRunner:
         validated = validate_scoped_paths(list(scope_resolution.scoped_existing_paths), self._project_root)
         self._scoped_files = set(validated)
         targets = resolve_test_targets(self._project_root, self._scoped_files)
-        if not targets and not typescript_files(list(self._scoped_files)):
+        if not targets and not self._has_non_python_scoped_tests():
             logger.info("No test companions found for scoped files — skipping")
             sys.exit(0)
         return targets
@@ -232,18 +236,23 @@ class TestRunner:
 
         # Run TypeScript tests when configured AND relevant
         languages = get_project_languages(self._project_root)
+        should_run_pytest = self._should_run_pytest(languages)
         should_run_vitest = "typescript" in languages and self._should_run_vitest()
+        should_run_rust = "rust" in languages and self._should_run_rust_tests()
 
-        if targets:
+        if targets and should_run_pytest:
             args = self.build_pytest_args(targets)
             exit_code = run_pytest(args, cwd=self._project_root)
             if exit_code != 0:
                 sys.exit(exit_code)
-        elif not should_run_vitest:
+        elif not should_run_vitest and not should_run_rust:
             logger.info("No Python test targets in scope — skipping pytest")
 
         if should_run_vitest:
             self._run_vitest()
+
+        if should_run_rust:
+            self._run_cargo_test()
 
     def _should_run_vitest(self) -> bool:
         """Determine whether vitest should run based on scope context.
@@ -254,6 +263,16 @@ class TestRunner:
         if self._is_full_suite:
             return True
         return bool(typescript_files(list(self._scoped_files)))
+
+    def _should_run_pytest(self, languages: list[str]) -> bool:
+        """Run pytest for declared Python or legacy no-language projects."""
+        return not languages or "python" in languages
+
+    def _has_non_python_scoped_tests(self) -> bool:
+        languages = get_project_languages(self._project_root)
+        return ("typescript" in languages and bool(typescript_files(list(self._scoped_files)))) or (
+            "rust" in languages and self._rust_scope_kind() is not RustScopeKind.EMPTY
+        )
 
     def _run_vitest(self) -> None:
         """Run vitest for TypeScript tests from frontend_root."""
@@ -268,6 +287,39 @@ class TestRunner:
         if result.returncode != 0:
             logger.error("vitest failed (exit %d)", result.returncode)
             sys.exit(result.returncode)
+
+    def _should_run_rust_tests(self) -> bool:
+        """Determine whether cargo test should run based on scope context."""
+        if self._is_full_suite:
+            return True
+        return self._rust_scope_kind() is not RustScopeKind.EMPTY
+
+    def _rust_scope_kind(self) -> RustScopeKind:
+        return self._resolve_rust_scope().kind
+
+    def _run_cargo_test(self) -> None:
+        """Run cargo test for package or workspace Rust scope."""
+        scope = self._resolve_rust_scope()
+        if scope.kind is RustScopeKind.EMPTY:
+            return
+        cmd = _cargo_test_command(scope)
+        logger.info("Running cargo test from %s", _rust_cwd(scope))
+        # Justified subprocess: cargo test is an external Rust tool with no Python API.
+        result = subprocess.run(cmd, cwd=str(_rust_cwd(scope)), check=False)
+        if result.returncode != 0:
+            logger.error("cargo test failed (exit %d)", result.returncode)
+            sys.exit(result.returncode)
+
+    def _resolve_rust_scope(self) -> RustScope:
+        try:
+            return resolve_rust_scope(
+                self._project_root,
+                list(self._scoped_files),
+                run_all=self._is_full_suite,
+            )
+        except CargoWorkspaceError as exc:
+            logger.error("Rust workspace unavailable: %s", exc)
+            raise SystemExit(1) from exc
 
     def _resolve_frontend_root(self) -> Path:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
@@ -291,3 +343,15 @@ class TestRunner:
             if testpaths:
                 return list(testpaths)
         return ["tests/unit", "tests/integration"]
+
+
+def _cargo_test_command(scope: RustScope) -> list[str]:
+    if scope.kind is RustScopeKind.PACKAGE and scope.package is not None:
+        return ["cargo", "test", "-p", scope.package]
+    return ["cargo", "test", "--workspace"]
+
+
+def _rust_cwd(scope: RustScope) -> Path:
+    if scope.workspace_root is None:
+        raise RuntimeError("Rust scope has no workspace root")
+    return scope.workspace_root

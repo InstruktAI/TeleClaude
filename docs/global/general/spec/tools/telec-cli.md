@@ -47,6 +47,17 @@ There are many of course, but this section is now intended to reveal the full su
 
 <!-- @exec: telec code -h -->
 
+Rust is a first-class `telec code` language when `rust` is declared in
+`teleclaude.yml`. `telec code lint`, `telec code format`, and `telec code test`
+invoke Cargo tooling from the Cargo workspace root. Single-crate Rust changes
+use `-p <package>` where Cargo supports package scoping; cross-crate changes,
+root Cargo metadata changes, and `--all` use workspace scope.
+
+`telec code commit` remains decoupled from the dev-time Rust pipeline. Commit-time
+Rust gates are owned by the existing pre-commit cargo hooks. The current Rust
+test hook is library-only (`cargo test --workspace --lib --quiet`) unless a
+future task changes the hook.
+
 ### `telec todo artifacts`
 
 <!-- @exec: telec todo artifacts -h -->

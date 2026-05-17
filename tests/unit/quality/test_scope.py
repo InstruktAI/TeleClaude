@@ -9,12 +9,29 @@ import pytest
 from teleclaude.project_root import resolve_invocation_cwd, resolve_workspace_root
 from teleclaude.quality import scope as scope_module
 from teleclaude.quality.scope import (
+    CargoWorkspaceError,
     DirtyOp,
+    RustScopeKind,
     WorkspaceScopeKind,
     get_project_languages,
+    resolve_cargo_workspace_root,
+    resolve_rust_scope,
     resolve_workspace_scope_resolution,
+    rust_files,
     validate_scoped_paths,
 )
+
+PACKAGE_WORKFLOW = "workflow"
+PACKAGE_STORAGE = "storage"
+WORKFLOW_MEMBER = "workflow_member"
+WORKFLOW_SOURCE = "crates/workflow/src/lib.rs"
+WORKFLOW_MANIFEST = "crates/workflow/Cargo.toml"
+WORKFLOW_MIGRATION = "crates/workflow/migrations/0001_init.sql"
+STORAGE_SOURCE = "crates/storage/src/lib.rs"
+ROOT_MANIFEST = "Cargo.toml"
+ROOT_LOCKFILE = "Cargo.lock"
+RUST_TOOLCHAIN = "rust-toolchain.toml"
+UNRESOLVED_RUST_SOURCE = "experimental/src/lib.rs"
 
 
 class _FakeGit:
@@ -29,6 +46,23 @@ class _FakeGit:
 class _FakeRepo:
     def __init__(self, status_output: str) -> None:
         self.git = _FakeGit(status_output)
+
+
+def _write_workspace(root: Path) -> None:
+    (root / ROOT_MANIFEST).write_text(
+        '[workspace]\nmembers = ["crates/workflow", "crates/workflow_member", "crates/storage"]\n',
+        encoding="utf-8",
+    )
+
+
+def _write_crate(root: Path, member: str, package: str) -> None:
+    crate = root / "crates" / member
+    (crate / "src").mkdir(parents=True)
+    (crate / "migrations").mkdir()
+    (crate / ROOT_MANIFEST).write_text(
+        f'[package]\nname = "{package}"\nversion = "0.1.0"\nedition = "2021"\n',
+        encoding="utf-8",
+    )
 
 
 class TestResolveWorkspaceRoot:
@@ -214,6 +248,151 @@ class TestGetProjectLanguages:
     def test_returns_empty_list_when_no_config_file(self, tmp_path: Path) -> None:
         """Returns empty list when teleclaude.yml doesn't exist."""
         assert get_project_languages(tmp_path) == []
+
+
+class TestRustFiles:
+    """Rust-owned path filtering follows the Cargo workspace contract."""
+
+    def test_rust_files_returns_only_rust_owned_paths(self) -> None:
+        """The documented Rust path set is retained and unrelated files are dropped."""
+        paths = [
+            WORKFLOW_SOURCE,
+            WORKFLOW_MANIFEST,
+            WORKFLOW_MIGRATION,
+            ROOT_MANIFEST,
+            ROOT_LOCKFILE,
+            RUST_TOOLCHAIN,
+            "teleclaude/quality/lint.py",
+            "docs/x.md",
+        ]
+
+        assert rust_files(paths) == [
+            WORKFLOW_SOURCE,
+            WORKFLOW_MANIFEST,
+            WORKFLOW_MIGRATION,
+            ROOT_MANIFEST,
+            ROOT_LOCKFILE,
+            RUST_TOOLCHAIN,
+        ]
+
+
+class TestResolveCargoWorkspaceRoot:
+    """Cargo workspace root resolution is anchored by root Cargo.toml."""
+
+    def test_resolves_workspace_root_to_root_manifest_parent(self, tmp_path: Path) -> None:
+        """The workspace root is the parent directory of root Cargo.toml."""
+        _write_workspace(tmp_path)
+
+        assert resolve_cargo_workspace_root(tmp_path) == tmp_path
+
+    def test_missing_workspace_manifest_raises_specific_error(self, tmp_path: Path) -> None:
+        """A Rust project without root Cargo.toml fails fast."""
+        with pytest.raises(CargoWorkspaceError) as exc_info:
+            resolve_cargo_workspace_root(tmp_path)
+
+        assert exc_info.value.manifest_path == tmp_path / ROOT_MANIFEST
+
+
+class TestResolveRustScope:
+    """Rust scope resolution maps changed files to Cargo package/workspace scope."""
+
+    def test_crate_path_maps_to_package_name_from_manifest(self, tmp_path: Path) -> None:
+        """Package names come from crate Cargo.toml, not member directory names."""
+        _write_workspace(tmp_path)
+        _write_crate(tmp_path, WORKFLOW_MEMBER, PACKAGE_WORKFLOW)
+
+        resolved = resolve_rust_scope(tmp_path, [f"crates/{WORKFLOW_MEMBER}/src/lib.rs"])
+
+        assert resolved.kind is RustScopeKind.PACKAGE
+        assert resolved.package == PACKAGE_WORKFLOW
+
+    def test_single_crate_paths_resolve_to_package_scope(self, tmp_path: Path) -> None:
+        """All Rust-owned paths in one crate produce single-package scope."""
+        _write_workspace(tmp_path)
+        _write_crate(tmp_path, "workflow", PACKAGE_WORKFLOW)
+
+        resolved = resolve_rust_scope(
+            tmp_path,
+            [
+                "crates/workflow/src/a.rs",
+                "crates/workflow/src/b.rs",
+                WORKFLOW_MIGRATION,
+            ],
+        )
+
+        assert resolved.kind is RustScopeKind.PACKAGE
+        assert resolved.package == PACKAGE_WORKFLOW
+
+    def test_cross_crate_paths_resolve_to_workspace_scope(self, tmp_path: Path) -> None:
+        """Rust-owned paths spanning crates produce workspace scope."""
+        _write_workspace(tmp_path)
+        _write_crate(tmp_path, "workflow", PACKAGE_WORKFLOW)
+        _write_crate(tmp_path, "storage", PACKAGE_STORAGE)
+
+        resolved = resolve_rust_scope(tmp_path, [WORKFLOW_SOURCE, STORAGE_SOURCE])
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+        assert resolved.package is None
+
+    def test_root_manifest_change_forces_workspace_scope(self, tmp_path: Path) -> None:
+        """Root Cargo.toml is a workspace-wide trigger."""
+        _write_workspace(tmp_path)
+
+        resolved = resolve_rust_scope(tmp_path, [ROOT_MANIFEST])
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+
+    def test_root_lockfile_change_forces_workspace_scope(self, tmp_path: Path) -> None:
+        """Root Cargo.lock is a workspace-wide trigger."""
+        _write_workspace(tmp_path)
+
+        resolved = resolve_rust_scope(tmp_path, [ROOT_LOCKFILE])
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+
+    def test_rust_toolchain_change_forces_workspace_scope(self, tmp_path: Path) -> None:
+        """rust-toolchain.toml is a workspace-wide trigger."""
+        _write_workspace(tmp_path)
+
+        resolved = resolve_rust_scope(tmp_path, [RUST_TOOLCHAIN])
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+
+    def test_run_all_forces_workspace_scope(self, tmp_path: Path) -> None:
+        """--all overrides package-local changed-file scope."""
+        _write_workspace(tmp_path)
+        _write_crate(tmp_path, "workflow", PACKAGE_WORKFLOW)
+
+        resolved = resolve_rust_scope(tmp_path, [WORKFLOW_SOURCE], run_all=True)
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+        assert resolved.package is None
+
+    def test_unresolvable_ownership_downgrades_to_workspace_scope(self, tmp_path: Path) -> None:
+        """Rust-owned paths outside crates/ are tracked as unresolved workspace scope."""
+        _write_workspace(tmp_path)
+
+        resolved = resolve_rust_scope(tmp_path, [UNRESOLVED_RUST_SOURCE])
+
+        assert resolved.kind is RustScopeKind.WORKSPACE
+        assert resolved.unresolved_paths == (UNRESOLVED_RUST_SOURCE,)
+
+    def test_no_rust_owned_paths_returns_empty_scope_without_workspace_manifest(self, tmp_path: Path) -> None:
+        """Non-Rust paths do not require a Cargo workspace."""
+        resolved = resolve_rust_scope(tmp_path, ["teleclaude/quality/lint.py", "docs/x.md"])
+
+        assert resolved.kind is RustScopeKind.EMPTY
+        assert resolved.workspace_root is None
+
+    def test_sql_migration_under_crate_maps_to_package_scope(self, tmp_path: Path) -> None:
+        """SQL migrations under a crate trigger that crate's cargo scope."""
+        _write_workspace(tmp_path)
+        _write_crate(tmp_path, "workflow", PACKAGE_WORKFLOW)
+
+        resolved = resolve_rust_scope(tmp_path, [WORKFLOW_MIGRATION])
+
+        assert resolved.kind is RustScopeKind.PACKAGE
+        assert resolved.package == PACKAGE_WORKFLOW
 
 
 class TestResolveInvocationCwd:

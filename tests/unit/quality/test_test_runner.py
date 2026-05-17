@@ -14,6 +14,14 @@ import pytest
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 from teleclaude.quality.test_runner import TestRunner, map_source_to_companion, resolve_test_targets, run_pytest
 
+PACKAGE_STORAGE = "storage"
+PACKAGE_WORKFLOW = "workflow"
+WORKFLOW_SOURCE = "crates/workflow/src/lib.rs"
+STORAGE_SOURCE = "crates/storage/src/lib.rs"
+PYTHON_SOURCE = "teleclaude/foo.py"
+PYTHON_TEST = "tests/unit/test_foo.py"
+TYPESCRIPT_SOURCE = "frontend/app/foo.tsx"
+
 
 def _workspace_resolution(
     *,
@@ -27,6 +35,24 @@ def _workspace_resolution(
         dirty_paths=tuple(DirtyPath(path, DirtyOp.MODIFIED) for path in scoped_existing_paths),
         scoped_dirty_paths=scoped_existing_paths,
         scoped_existing_paths=scoped_existing_paths,
+    )
+
+
+def _write_rust_workspace(root: Path) -> None:
+    (root / "Cargo.toml").write_text(
+        '[workspace]\nmembers = ["crates/workflow", "crates/storage"]\n',
+        encoding="utf-8",
+    )
+    _write_rust_crate(root, "workflow", PACKAGE_WORKFLOW)
+    _write_rust_crate(root, "storage", PACKAGE_STORAGE)
+
+
+def _write_rust_crate(root: Path, member: str, package: str) -> None:
+    crate = root / "crates" / member
+    (crate / "src").mkdir(parents=True)
+    (crate / "Cargo.toml").write_text(
+        f'[package]\nname = "{package}"\nversion = "0.1.0"\nedition = "2021"\n',
+        encoding="utf-8",
     )
 
 
@@ -445,3 +471,218 @@ class TestVitestScoping:
         runner.run(targets=targets)
 
         assert len(vitest_calls) == 1, "vitest SHOULD run when scope includes TypeScript files"
+
+
+class TestRustTestRunner:
+    """TestRunner dispatches cargo test when Rust is declared."""
+
+    def test_single_crate_scope_invokes_package_cargo_test(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Single-crate Rust scope runs cargo test -p package."""
+        _write_rust_workspace(tmp_path)
+        cargo_calls: list[tuple[list[str], Path]] = []
+        pytest_calls: list[list[str]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.run_pytest",
+            lambda args, cwd=None: pytest_calls.append(list(args)) or 0,
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert pytest_calls == []
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+
+    def test_cross_crate_scope_invokes_workspace_cargo_test(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Cross-crate Rust scope runs cargo test --workspace."""
+        _write_rust_workspace(tmp_path)
+        cargo_calls: list[tuple[list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE, STORAGE_SOURCE),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert cargo_calls == [(["cargo", "test", "--workspace"], tmp_path)]
+
+    def test_run_all_invokes_workspace_cargo_test(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """--all Rust test runs cargo test --workspace."""
+        _write_rust_workspace(tmp_path)
+        cargo_calls: list[tuple[list[str], Path]] = []
+        pytest_calls: list[list[str]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.run_pytest",
+            lambda args, cwd=None: pytest_calls.append(list(args)) or 0,
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets(run_all=True)
+        runner.run(targets=targets)
+
+        assert pytest_calls == []
+        assert cargo_calls == [(["cargo", "test", "--workspace"], tmp_path)]
+
+    def test_mixed_python_and_rust_runs_pytest_and_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Mixed Python+Rust scope runs pytest companions and cargo test."""
+        _write_rust_workspace(tmp_path)
+        (tmp_path / PYTHON_TEST).parent.mkdir(parents=True)
+        (tmp_path / PYTHON_TEST).touch()
+        cargo_calls: list[tuple[list[str], Path]] = []
+        pytest_calls: list[list[str]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["python", "rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(PYTHON_SOURCE, WORKFLOW_SOURCE),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.run_pytest",
+            lambda args, cwd=None: pytest_calls.append(list(args)) or 0,
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert pytest_calls == [[PYTHON_TEST, "-m", "not expensive", "-q"]]
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+
+    def test_rust_only_scope_does_not_exit_when_no_python_companions(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rust-only scoped files bypass the old no-Python-companion early exit."""
+        _write_rust_workspace(tmp_path)
+        cargo_calls: list[tuple[list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(WORKFLOW_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+
+    def test_python_only_project_does_not_invoke_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Rust-looking paths do not run cargo when rust is absent."""
+        _write_rust_workspace(tmp_path)
+        (tmp_path / PYTHON_TEST).parent.mkdir(parents=True)
+        (tmp_path / PYTHON_TEST).touch()
+        cargo_calls: list[tuple[list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["python"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(PYTHON_SOURCE, WORKFLOW_SOURCE),
+            ),
+        )
+        monkeypatch.setattr("teleclaude.quality.test_runner.run_pytest", lambda _args, cwd=None: 0)
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert cargo_calls == []
+
+    def test_typescript_scope_still_runs_vitest_without_cargo(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Vitest behavior remains unchanged and independent from Rust."""
+        vitest_calls: list[bool] = []
+        cargo_calls: list[tuple[list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["typescript"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.resolve_workspace_scope_resolution",
+            lambda _path: _workspace_resolution(
+                kind=WorkspaceScopeKind.WORKTREE,
+                scoped_existing_paths=(TYPESCRIPT_SOURCE,),
+            ),
+        )
+        monkeypatch.setattr(TestRunner, "_run_vitest", lambda self_runner: vitest_calls.append(True))
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets()
+        runner.run(targets=targets)
+
+        assert vitest_calls == [True]
+        assert cargo_calls == []
+
+    def test_explicit_empty_rust_scope_skips_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """File-scoped runs with no Rust-owned paths skip cargo test."""
+        _write_rust_workspace(tmp_path)
+        cargo_calls: list[tuple[list[str], Path]] = []
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.get_project_languages", lambda _path: ["rust"])
+        monkeypatch.setattr(
+            "teleclaude.quality.test_runner.subprocess.run",
+            lambda cmd, cwd, check=False: cargo_calls.append((list(cmd), Path(cwd))) or CompletedProcess(cmd, 0),
+        )
+
+        runner = TestRunner(project_root=tmp_path)
+        targets = runner.resolve_targets(files=["docs/x.md"])
+        runner.run(targets=targets)
+
+        assert cargo_calls == []

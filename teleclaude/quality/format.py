@@ -10,11 +10,22 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import sys
 from pathlib import Path
 
 import yaml
 
-from teleclaude.quality.scope import prettier_files, python_files, typescript_files
+from teleclaude.quality.scope import (
+    CargoWorkspaceError,
+    RustScope,
+    RustScopeKind,
+    WorkspaceScopeKind,
+    prettier_files,
+    python_files,
+    resolve_rust_scope,
+    resolve_workspace_scope_resolution,
+    typescript_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +33,7 @@ logger = logging.getLogger(__name__)
 def _run_format_tool(cmd: list[str], cwd: Path, name: str) -> None:
     """Run a format tool and raise SystemExit on failure.
 
-    Justified subprocess: ruff, prettier have no Python API.
+    Justified subprocess: ruff, prettier, and cargo fmt have no Python API.
     """
     logger.info("Running %s", name)
     result = subprocess.run(cmd, cwd=str(cwd), check=False)
@@ -56,7 +67,7 @@ class FormatRunner:
             return
 
         if run_all or files is None:
-            self._format_defaults()
+            self._format_defaults(run_all=run_all)
         else:
             self._format_files(files)
 
@@ -67,16 +78,18 @@ class FormatRunner:
         ts_files = typescript_files(files)
         doc_targets = [path for path in prettier_targets if path not in ts_files]
 
-        if py_files:
+        if py_files and self._should_format_python():
             self._format_python(py_files)
         if doc_targets:
             self._format_markdown(doc_targets)
         if ts_files and "typescript" in self._languages:
             self._format_typescript(ts_files)
+        if "rust" in self._languages:
+            self._format_rust(files)
 
-    def _format_defaults(self) -> None:
+    def _format_defaults(self, *, run_all: bool = False) -> None:
         """Format default directories based on configured languages."""
-        if "python" in self._languages:
+        if self._should_format_python():
             default_dirs = ["teleclaude", "bin", "tests"]
             self._format_python(default_dirs)
 
@@ -86,6 +99,9 @@ class FormatRunner:
 
         if "typescript" in self._languages:
             self._format_typescript_defaults()
+
+        if "rust" in self._languages:
+            self._format_rust_defaults(run_all=run_all)
 
         self._cleanup_empty_claude_md()
 
@@ -130,6 +146,43 @@ class FormatRunner:
             "prettier (typescript)",
         )
 
+    def _format_rust_defaults(self, *, run_all: bool) -> None:
+        """Format Rust using workspace-derived scope for no-arg runs."""
+        if run_all:
+            self._format_rust([], run_all=True)
+            return
+
+        try:
+            scope_resolution = resolve_workspace_scope_resolution(self._project_root)
+        except (RuntimeError, OSError) as exc:
+            logger.error(
+                "Workspace scope unavailable. Pass files explicitly: telec code format <files...>\nReason: %s",
+                exc,
+            )
+            sys.exit(1)
+
+        if scope_resolution.kind is WorkspaceScopeKind.SHARED_BRANCH and not scope_resolution.has_session_identity:
+            self._format_rust([], run_all=True)
+            return
+
+        self._format_rust(list(scope_resolution.scoped_existing_paths))
+
+    def _format_rust(self, files: list[str], *, run_all: bool = False) -> None:
+        """Run cargo fmt for package or workspace Rust scope."""
+        try:
+            scope = resolve_rust_scope(self._project_root, files, run_all=run_all)
+        except CargoWorkspaceError as exc:
+            logger.error("Rust workspace unavailable: %s", exc)
+            raise SystemExit(1) from exc
+
+        if scope.kind is RustScopeKind.EMPTY:
+            return
+        _run_format_tool(_cargo_fmt_command(scope), _rust_cwd(scope), "cargo fmt")
+
+    def _should_format_python(self) -> bool:
+        """Format Python when declared or when using legacy no-language config."""
+        return not self._languages or "python" in self._languages
+
     def _resolve_frontend_root(self) -> Path:
         """Read frontend_root from teleclaude.yml, defaulting to 'frontend'."""
         config_path = self._project_root / "teleclaude.yml"
@@ -169,3 +222,15 @@ class FormatRunner:
                     logger.info("Removed empty CLAUDE.md: %s", path)
         except FileNotFoundError:
             logger.debug("rg not found — skipping CLAUDE.md cleanup")
+
+
+def _cargo_fmt_command(scope: RustScope) -> list[str]:
+    if scope.kind is RustScopeKind.PACKAGE and scope.package is not None:
+        return ["cargo", "fmt", "-p", scope.package]
+    return ["cargo", "fmt", "--all"]
+
+
+def _rust_cwd(scope: RustScope) -> Path:
+    if scope.workspace_root is None:
+        raise RuntimeError("Rust scope has no workspace root")
+    return scope.workspace_root

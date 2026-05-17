@@ -90,6 +90,29 @@ class TypeScriptToolchain:
         return [str(self._frontend_root)]
 
 
+class RustToolchain:
+    """Rust language toolchain — cargo, rustfmt, clippy."""
+
+    language: str = "rust"
+    tools: list[str] = ["cargo", "rustfmt", "clippy"]
+    config_source: str = "Cargo.toml"
+
+    def __init__(self, project_root: Path) -> None:
+        self._project_root = project_root
+
+    def map_to_test_companion(self, source: str) -> str:
+        """Rust tests are Cargo-scoped; no Python companion path is fabricated."""
+        _ = source
+        return ""
+
+    @property
+    def source_dirs(self) -> list[str]:
+        """Return the Cargo workspace source root."""
+        if (self._project_root / "crates").exists():
+            return ["crates"]
+        return ["."]
+
+
 def _split_ts_ext(filename: str) -> tuple[str, str]:
     """Split a TypeScript filename into (name, extension)."""
     for ext in (".tsx", ".ts", ".jsx", ".js"):
@@ -100,6 +123,7 @@ def _split_ts_ext(filename: str) -> tuple[str, str]:
 
 TOOLCHAIN_REGISTRY: dict[str, Callable[..., LintToolchain]] = {
     "python": PythonToolchain,
+    "rust": RustToolchain,
     "typescript": TypeScriptToolchain,
 }
 

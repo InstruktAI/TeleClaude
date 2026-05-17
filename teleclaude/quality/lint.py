@@ -20,10 +20,14 @@ import yaml
 
 from teleclaude.paths import REPO_ROOT
 from teleclaude.quality.scope import (
+    CargoWorkspaceError,
+    RustScope,
+    RustScopeKind,
     WorkspaceScopeKind,
     WorkspaceScopeResolution,
     get_project_languages,
     python_files,
+    resolve_rust_scope,
     resolve_workspace_scope_resolution,
     typescript_files,
     validate_scoped_paths,
@@ -34,6 +38,7 @@ __all__ = [
     "GuardrailsStep",
     "LintRunner",
     "PythonLintPipeline",
+    "RustLintPipeline",
     "TypeScriptLintPipeline",
     "get_project_languages",
     "run_pipeline",
@@ -360,6 +365,80 @@ class TypeScriptLintPipeline:
         return [s.name for s in self.steps]
 
 
+@dataclass
+class _CargoFmtCheckStep:
+    """Cargo fmt check for Rust workspaces."""
+
+    name: str = "cargo_fmt_check"
+    _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
+
+    def run(self, targets: list[str]) -> None:
+        """Execute cargo fmt --check against package or workspace scope."""
+        scope = _resolve_step_rust_scope(self._project_root, targets, run_all=self._run_all)
+        if scope.kind is RustScopeKind.EMPTY:
+            return
+        cmd = _cargo_fmt_check_command(scope)
+        _run_tool(cmd, _rust_cwd(scope), self.name)
+
+
+@dataclass
+class _CargoClippyStep:
+    """Cargo clippy for Rust workspaces."""
+
+    name: str = "cargo_clippy"
+    _project_root: Path = field(default_factory=Path)
+    _run_all: bool = False
+
+    def run(self, targets: list[str]) -> None:
+        """Execute cargo clippy against package or workspace scope."""
+        scope = _resolve_step_rust_scope(self._project_root, targets, run_all=self._run_all)
+        if scope.kind is RustScopeKind.EMPTY:
+            return
+        cmd = _cargo_clippy_command(scope)
+        _run_tool(cmd, _rust_cwd(scope), self.name)
+
+
+class RustLintPipeline:
+    """Rust lint pipeline with cargo fmt-check and clippy steps."""
+
+    def __init__(self, project_root: Path, *, run_all: bool = False) -> None:
+        self.steps: list[PipelineStep] = [
+            _CargoFmtCheckStep(_project_root=project_root, _run_all=run_all),
+            _CargoClippyStep(_project_root=project_root, _run_all=run_all),
+        ]
+
+    def describe(self) -> list[str]:
+        """Return ordered step names for diagnostics."""
+        return [s.name for s in self.steps]
+
+
+def _resolve_step_rust_scope(project_root: Path, targets: list[str], *, run_all: bool) -> RustScope:
+    try:
+        return resolve_rust_scope(project_root, targets, run_all=run_all)
+    except CargoWorkspaceError as exc:
+        logger.error("Rust workspace unavailable: %s", exc)
+        raise SystemExit(1) from exc
+
+
+def _cargo_fmt_check_command(scope: RustScope) -> list[str]:
+    if scope.kind is RustScopeKind.PACKAGE and scope.package is not None:
+        return ["cargo", "fmt", "-p", scope.package, "--", "--check"]
+    return ["cargo", "fmt", "--all", "--", "--check"]
+
+
+def _cargo_clippy_command(scope: RustScope) -> list[str]:
+    if scope.kind is RustScopeKind.PACKAGE and scope.package is not None:
+        return ["cargo", "clippy", "-p", scope.package, "--all-targets", "--", "-D", "warnings"]
+    return ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
+
+
+def _rust_cwd(scope: RustScope) -> Path:
+    if scope.workspace_root is None:
+        raise RuntimeError("Rust scope has no workspace root")
+    return scope.workspace_root
+
+
 # ---------------------------------------------------------------------------
 # Module-level run_pipeline — called by LintRunner, mockable by tests
 # ---------------------------------------------------------------------------
@@ -407,6 +486,8 @@ class LintRunner:
         _pipeline_ctx[0] = self._project_root
         languages = get_project_languages(self._project_root)
         typescript_scope: list[str] | None = None
+        rust_scope: list[str] | None = None
+        rust_run_all = False
 
         if files is not None:
             targets = validate_scoped_paths(files, self._project_root)
@@ -418,16 +499,25 @@ class LintRunner:
                 return
             logger.info("Explicit files provided — bypassing scoping (%d files)", len(targets))
             typescript_scope = targets
+            rust_scope = targets
         elif run_all:
             logger.info("--all flag — running against source directories")
             targets = self._resolve_source_dirs(languages)
+            rust_run_all = True
         else:
             scope_resolution = self._resolve_workspace_scope_resolution()
             targets = self._targets_from_workspace_scope(scope_resolution, languages)
             if self._is_file_scoped_resolution(scope_resolution):
                 typescript_scope = targets
+                rust_scope = targets
+            else:
+                rust_run_all = True
 
-        run_pipeline(targets)
+        if self._should_run_python_pipeline(languages):
+            run_pipeline(targets)
+
+        if "rust" in languages:
+            self._run_rust_pipeline(files=rust_scope, run_all=rust_run_all)
 
         if "typescript" in languages:
             self._run_typescript_pipeline(files=typescript_scope)
@@ -437,7 +527,7 @@ class LintRunner:
         if languages:
             all_dirs: list[str] = []
             for lang in languages:
-                if lang == "typescript":
+                if lang in ("rust", "typescript"):
                     continue  # TS has its own pipeline dispatch
                 try:
                     toolchain = get_toolchain(lang, self._project_root)
@@ -520,12 +610,27 @@ class LintRunner:
         for step in pipeline.steps:
             step.run(targets)
 
+    def _run_rust_pipeline(self, files: list[str] | None = None, *, run_all: bool = False) -> None:
+        """Run the Rust lint pipeline from the Cargo workspace root."""
+        targets = [] if files is None else files
+        pipeline = RustLintPipeline(self._project_root, run_all=run_all)
+        for step in pipeline.steps:
+            step.run(targets)
+
+    def _should_run_python_pipeline(self, languages: list[str]) -> bool:
+        """Run Python lint for declared Python or legacy no-language projects."""
+        return not languages or "python" in languages
+
     def _collect_all_steps(self) -> dict[str, PipelineStep]:
         """Collect steps from all configured language pipelines."""
         steps: dict[str, PipelineStep] = {}
-        for s in PythonLintPipeline(self._project_root).steps:
-            steps[s.name] = s
         languages = get_project_languages(self._project_root)
+        if self._should_run_python_pipeline(languages):
+            for s in PythonLintPipeline(self._project_root).steps:
+                steps[s.name] = s
+        if "rust" in languages:
+            for s in RustLintPipeline(self._project_root).steps:
+                steps[s.name] = s
         if "typescript" in languages:
             frontend_root = self._resolve_frontend_root()
             for s in TypeScriptLintPipeline(self._project_root, frontend_root).steps:
