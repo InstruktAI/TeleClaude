@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/prepare-specs'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Prepare test-specs procedure. Produces a language-agnostic prose test-specs artifact from approved PRD and optional architecture; build phase later translates it into executable tests.'
+description: 'Prepare test-specs procedure. Produces a language-agnostic prose test-specs artifact from human-approved PRD and optional reviewer-approved architecture; build phase later translates it into executable tests.'
 ---
 
 # Prepare Specs — Procedure
@@ -23,8 +23,8 @@ tests.
 
 ## Preconditions
 
-- `prd` exists and has been approved.
-- `architecture` exists and has been approved, or `architecture_skipped` is stamped.
+- `prd` exists and has been approved by the real human.
+- `architecture` exists and has reviewer approval, or `architecture_skipped` is stamped.
 - Slug is active and not delivered.
 
 ## Steps
@@ -43,10 +43,10 @@ telec todo artifacts write {slug} test-specs <content>
 ## Outputs
 
 - `test-specs` artifact stored in the todo DB.
+- Reviewer verdict `approve` on `test_spec_review` is the authority that advances this phase.
 
 ## Recovery
 
 - Sparse PRD: return to intake with a concrete finding instead of inventing criteria.
 - Architecture gap: mark the affected spec entry with the missing architecture question and request architecture revision.
 - Spec-during-build ambiguity: add a `Notes` line to the spec entry describing what the builder must verify before choosing the concrete test shape.
-

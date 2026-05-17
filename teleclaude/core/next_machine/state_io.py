@@ -628,9 +628,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
         review_mgr.stamp_verdict("plan_review", "skipped")
     else:
         review_mgr.stamp_verdict("plan_review", "approve")
-        writer.state.approvals.plan_approved.approved = True
-        writer.state.approvals.plan_approved.approved_at = now_iso
-        writer.state.approvals.plan_approved.caller_session_id = "system:apply_prepared_state"
 
     if input_digest:
         writer.state.artifacts.input.digest = input_digest

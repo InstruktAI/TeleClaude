@@ -11,7 +11,7 @@ type: 'design'
 > **Detailed state machine documentation:**
 >
 > - [Lifecycle State Machines — Overview](lifecycle-state-machines.md) — end-to-end flow, roles, how the three phases connect
-> - [Prepare Flow (Phase A)](prepare-flow.md) — PRD → Architecture → Test specs → Plan with review and human approval gates
+> - [Prepare Flow (Phase A)](prepare-flow.md) — PRD → Architecture → Test specs → Plan with PRD-only human approval and downstream review gates
 > - [Work State Machine (Phase B)](work-state-machine.md) — build/review/fix/finalize routing
 > - [Integration State Machine (Phase C)](integration-state-machine.md) — 12 states, lease-serialized merge-to-main delivery
 
@@ -24,7 +24,7 @@ The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phas
    - `requirements.md` and `implementation-plan.md` (preparation check)
    - `todo state (todos.db)` (build/review phase tracking)
 2. **Phases**:
-   - **Phase A (Prepare)**: Sequential artifact production with review gates. 10-state machine.
+   - **Phase A (Prepare)**: Sequential artifact production with PRD-only human approval and downstream review gates.
    - **Phase B (Work)**: Deterministic, autonomous implementation and verification.
    - **Phase C (Integrate)**: Lease-serialized, crash-recoverable merge-to-main delivery. 12-state machine.
 3. **Execution**: It returns explicit instructions or tool calls for the calling AI to execute.
@@ -82,20 +82,18 @@ stateDiagram-v2
 
 ## Primary flows
 
-### 1. Phase A: Preparation (HITL)
+### 1. Phase A: Preparation
 
 ```mermaid
 flowchart TD
     Start[next_prepare called]
-    CheckFiles{requirements.md<br/>+ plan.md<br/>exist?}
-    HITL[Return HITL guidance]
-    Dispatch[Dispatch architect AI]
+    PRDGate{PRD human-approved?}
+    Dispatch[Dispatch current prepare worker or reviewer]
     Done[Ready for Phase B]
 
-    Start --> CheckFiles
-    CheckFiles -->|No| HITL
-    CheckFiles -->|Yes, hitl=true| HITL
-    CheckFiles -->|Yes, hitl=false| Dispatch
+    Start --> PRDGate
+    PRDGate -->|No| PresentPRD[Present PRD for human approval]
+    PRDGate -->|Yes| Dispatch
     Dispatch --> Done
 ```
 

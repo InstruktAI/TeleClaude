@@ -7,10 +7,7 @@ from typing import TYPE_CHECKING
 from instrukt_ai_logging import get_logger
 
 from teleclaude.constants import (
-    ARTIFACT_ARCHITECTURE,
-    ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
-    ARTIFACT_TEST_SPECS,
     SlashCommand,
 )
 from teleclaude.core.db import Db
@@ -174,15 +171,6 @@ async def _prepare_dispatch(
             loader_name="next-review-architecture",
             expected="an architecture review verdict and findings when needed",
         )
-    if phase == PreparePhase.ARCHITECTURE_HUMAN_APPROVAL:
-        return _approval_instruction(
-            slug,
-            phase=phase,
-            state=state,
-            cwd=cwd,
-            artifact=ARTIFACT_ARCHITECTURE,
-            stamp_flag="--architecture-approved",
-        )
     if phase == PreparePhase.TEST_SPECS_DRAFTING:
         return await _dispatch_worker(
             db=db,
@@ -205,15 +193,6 @@ async def _prepare_dispatch(
             loader_name="next-review-specs",
             expected="a test-spec review verdict and findings when needed",
         )
-    if phase == PreparePhase.TEST_SPECS_HUMAN_APPROVAL:
-        return _approval_instruction(
-            slug,
-            phase=phase,
-            state=state,
-            cwd=cwd,
-            artifact=ARTIFACT_TEST_SPECS,
-            stamp_flag="--test-specs-approved",
-        )
     if phase == PreparePhase.PLAN_DRAFTING:
         return await _dispatch_worker(
             db=db,
@@ -235,15 +214,6 @@ async def _prepare_dispatch(
             command=SlashCommand.NEXT_REVIEW_PLAN,
             loader_name="next-review-plan",
             expected="a plan review verdict and findings when needed",
-        )
-    if phase == PreparePhase.PLAN_HUMAN_APPROVAL:
-        return _approval_instruction(
-            slug,
-            phase=phase,
-            state=state,
-            cwd=cwd,
-            artifact=ARTIFACT_IMPLEMENTATION_PLAN,
-            stamp_flag="--plan-approved",
         )
     if phase == PreparePhase.PREPARED:
         return await _prepare_step_prepared(db, slug)

@@ -651,9 +651,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
     Supported flag combinations:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
       --prd-approved
-      --architecture-approved
-      --test-specs-approved
-      --plan-approved
       --architecture-skipped <reason>
       --test-specs-skipped <reason>
       --drift-reviewed <artifact> <verdict> <reason>
@@ -676,8 +673,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
         raise SystemExit(1)
     if not stamp_type:
         print(
-            "Missing stamp flag (--verdict, --prd-approved, --architecture-approved, "
-            "--test-specs-approved, --plan-approved, --architecture-skipped, "
+            "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
             "--test-specs-skipped, --drift-reviewed, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved)"
@@ -717,9 +713,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
 
 _STAMP_BOOLEAN_FLAGS = {
     "--prd-approved": "prd_approved",
-    "--architecture-approved": "architecture_approved",
-    "--test-specs-approved": "test_specs_approved",
-    "--plan-approved": "plan_approved",
     "--requirements-ready": "requirements_ready",
     "--plan-ready": "plan_ready",
     "--specs-built": "specs_built",

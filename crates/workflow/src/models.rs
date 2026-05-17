@@ -26,13 +26,10 @@ pub enum LifecyclePhase {
     PrdHumanApproval,
     ArchitectureDrafting,
     ArchitectureReview,
-    ArchitectureHumanApproval,
     TestSpecsDrafting,
     TestSpecsReview,
-    TestSpecsHumanApproval,
     PlanDrafting,
     PlanReview,
-    PlanHumanApproval,
     Prepared,
     Blocked,
     BuildStarted,
@@ -98,13 +95,10 @@ impl LifecyclePhase {
             | Self::PrdHumanApproval
             | Self::ArchitectureDrafting
             | Self::ArchitectureReview
-            | Self::ArchitectureHumanApproval
             | Self::TestSpecsDrafting
             | Self::TestSpecsReview
-            | Self::TestSpecsHumanApproval
             | Self::PlanDrafting
             | Self::PlanReview
-            | Self::PlanHumanApproval
             | Self::Prepared
             | Self::Blocked => LifecycleStage::Prepare,
             Self::BuildStarted
@@ -187,6 +181,12 @@ mod tests {
         let encoded = serde_json::to_string(&LifecyclePhase::HandedOff).expect("serialize");
         let decoded: LifecyclePhase = serde_json::from_str(&encoded).expect("deserialize");
         assert_eq!(decoded, LifecyclePhase::HandedOff);
+    }
+
+    #[test]
+    fn lifecycle_phase_serde_rejects_removed_downstream_human_gate() {
+        let decoded = serde_json::from_str::<LifecyclePhase>("\"plan_human_approval\"");
+        assert!(decoded.is_err());
     }
 
     #[test]

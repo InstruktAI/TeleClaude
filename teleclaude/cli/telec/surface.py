@@ -529,7 +529,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "Use --draft to stage an idea without triggering autonomous pickup.",
                     "Use --prepped when content is a complete implementation plan: content becomes "
                     "the implementation-plan artifact, kind=prepped, plan_review=approve, "
-                    "plan_approved=true, ready for build.",
+                    "ready for build.",
                     "POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. "
                     "Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, "
                     "where an autonomous orchestrator can spawn builders against it. Agents must present "
@@ -616,7 +616,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
-                    " [--architecture-approved] [--test-specs-approved] [--plan-approved]"
                     " [--architecture-skipped <reason>] [--test-specs-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]"
                 ),
@@ -631,9 +630,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         ),
                     ),
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
-                    Flag("--architecture-approved", desc="Mark architecture as approved by the human"),
-                    Flag("--test-specs-approved", desc="Mark test specs as approved by the human"),
-                    Flag("--plan-approved", desc="Mark implementation plan as approved by the human"),
                     Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
                     Flag("--test-specs-skipped", desc="Skip test-specs phase with a reason"),
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
@@ -643,7 +639,6 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     "telec todo stamp my-slug --verdict approve --phase plan_review",
                     "telec todo stamp my-slug --verdict changes_requested --phase build_review",
                     "telec todo stamp my-slug --finalize-ready",
-                    "telec todo stamp my-slug --plan-approved",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),

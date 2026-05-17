@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/architecture'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Architecture derivation phase. Orchestrator + cross-model peer ground the approved PRD in code reality, name which services, events, scaffolds, and platform building blocks the work uses. Output: an approved architecture artifact for downstream specs and plan derivation.'
+description: 'Architecture derivation phase. Orchestrator + cross-model peer ground the approved PRD in code reality, name which services, events, scaffolds, and platform building blocks the work uses. Output: a reviewer-approved architecture artifact for downstream specs and plan derivation.'
 ---
 
 # Architecture — Procedure
@@ -21,7 +21,7 @@ description: 'Architecture derivation phase. Orchestrator + cross-model peer gro
 
 Take the approved PRD and ground it in the codebase. Identify which existing services and event flows the work touches, which platform-quality-flavors apply, which new components (if any) need to exist, and how the work decomposes architecturally. Produce an **architecture artifact** — a code-grounded technical brief that bridges product intent and implementation plan.
 
-The orchestrator drives this phase. A cross-model peer is dispatched in parallel to verify independently. The output is the technical contract for the work, approved by the human before downstream phases proceed.
+The orchestrator drives this phase. A cross-model peer is dispatched in parallel to verify independently. The output is the technical contract for the work, approved by the architecture reviewer before downstream phases proceed.
 
 ## Preconditions
 
@@ -115,24 +115,20 @@ The orchestrator integrates the verdict:
 - `approve` → proceed to step 8.
 - `changes_requested` → revise the architecture against findings; re-dispatch reviewer.
 
-### 8. Present for human approval
+### 8. Accept reviewer approval
 
-When the reviewer's verdict is `approve` and findings are addressed, the orchestrator presents the architecture artifact to the human. Calibration applies — register matches PersonDTO proficiency.
+When the reviewer's verdict is `approve` and findings are addressed, the architecture phase is complete. The reviewer is the independent authority for this derived artifact.
 
-The human either:
-
-- **Confirms** → orchestrator stamps `architecture_approved`. Phase complete.
-- **Refines** → orchestrator captures delta, may re-engage the peer if the delta opens substantial new architectural ground, regenerates the architecture artifact, presents again.
+If the human later refines intent or technical constraints, the orchestrator captures the delta, may re-engage the peer if the delta opens substantial new architectural ground, regenerates the architecture artifact, and re-dispatches review.
 
 ### 9. Hand off
 
-Once `architecture_approved` is stamped, the architecture phase is done. Downstream phases (test specs, plan) consume the approved architecture artifact alongside the PRD.
+Once the architecture reviewer stamps `approve`, downstream phases (test specs, plan) consume the reviewed architecture artifact alongside the PRD.
 
 ## Outputs
 
 - **`architecture` artifact** — code-grounded technical brief.
-- **Reviewer verdict** stamped: `architecture_review_verdict: approve`.
-- **`architecture_approved` stamp** — recorded by the orchestrator after human confirmation.
+- **Reviewer verdict** stamped: `architecture_review: approve`.
 - Session transcripts for the orchestrator and the peer carry the durable trace of the architectural reasoning.
 
 ## Recovery
@@ -142,7 +138,7 @@ Once `architecture_approved` is stamped, the architecture phase is done. Downstr
 - **Code-intelligence not yet available.** Falls back to manual grounding. Notes confidence level per major architectural claim. Reviewer pays extra attention to claims marked as inferred.
 - **Reviewer verdict `changes_requested` cannot be addressed by orchestrator's auto-remediation rules.** Surface to the human as a blocker requiring direction. Don't grind through endless revision rounds without surfacing.
 - **Drift detected since PRD approval.** Reconciliation flags codebase changes in PRD-referenced paths. Lean drift worker dispatched (`telec sessions run --command /next-drift-analyze`); orchestrator integrates findings; if substantive, re-engages PRD approval gate before continuing architecture.
-- **Architecture would require a flavor that doesn't exist.** This is a blocking finding, not a license to hack a one-off. Orchestrator surfaces the gap and either: (a) recommends the user defer this work until the flavor is built; (b) recommends splitting off the flavor-build as its own todo first; (c) proceeds with explicit human approval to hack a one-off, with the hack documented as tech debt.
+- **Architecture would require a flavor that doesn't exist.** This is a blocking finding, not a license to hack a one-off. Orchestrator surfaces the gap and either: (a) recommends the user defer this work until the flavor is built; (b) recommends splitting off the flavor-build as its own todo first; (c) asks the human whether the product constraint permits a documented one-off.
 
 ## See Also
 

@@ -54,24 +54,22 @@ pub enum LifecycleSignal {
     /// Human approved the PRD; begin architecture drafting.
     ArchitectureDrafted,
     /// Architecture artifact reviewed (`ArchitectureDrafting` → review)
-    /// or review approved (`ArchitectureReview` → human approval).
+    /// or review approved (`ArchitectureReview` → test specs).
     ArchitectureApproved,
     /// Architecture step skipped for this todo (refactor/migration path).
     ArchitectureSkipped,
     /// Architecture approved; begin test-specs drafting.
     TestSpecsDrafted,
     /// Test specs reviewed (`TestSpecsDrafting` → review) or review
-    /// approved (`TestSpecsReview` → human approval).
+    /// approved (`TestSpecsReview` → implementation plan).
     TestSpecsApproved,
     /// Test-specs step skipped for this todo.
     TestSpecsSkipped,
     /// Test specs approved; begin implementation-plan drafting.
     PlanDrafted,
     /// Implementation plan reviewed (`PlanDrafting` → review) or review
-    /// approved (`PlanReview` → human approval).
+    /// approved (`PlanReview` → prepared).
     PlanApproved,
-    /// Plan approved by human; all prepare gates cleared.
-    PreparedReached,
     /// A blocker was raised against the todo from a non-terminal phase.
     Blocked,
 
@@ -139,20 +137,14 @@ pub fn next_lifecycle_phase(
         (P::PrdHumanApproval, S::ArchitectureSkipped) => P::TestSpecsDrafting,
 
         (P::ArchitectureDrafting, S::ArchitectureApproved) => P::ArchitectureReview,
-        (P::ArchitectureReview, S::ArchitectureApproved) => P::ArchitectureHumanApproval,
-
-        (P::ArchitectureHumanApproval, S::TestSpecsDrafted) => P::TestSpecsDrafting,
-        (P::ArchitectureHumanApproval, S::TestSpecsSkipped) => P::PlanDrafting,
+        (P::ArchitectureReview, S::ArchitectureApproved) => P::TestSpecsDrafting,
+        (P::ArchitectureReview, S::TestSpecsSkipped) => P::PlanDrafting,
 
         (P::TestSpecsDrafting, S::TestSpecsApproved) => P::TestSpecsReview,
-        (P::TestSpecsReview, S::TestSpecsApproved) => P::TestSpecsHumanApproval,
-
-        (P::TestSpecsHumanApproval, S::PlanDrafted) => P::PlanDrafting,
+        (P::TestSpecsReview, S::TestSpecsApproved) => P::PlanDrafting,
 
         (P::PlanDrafting, S::PlanApproved) => P::PlanReview,
-        (P::PlanReview, S::PlanApproved) => P::PlanHumanApproval,
-
-        (P::PlanHumanApproval, S::PreparedReached) => P::Prepared,
+        (P::PlanReview, S::PlanApproved) => P::Prepared,
 
         // ---- Work lane: forward progress and review cycle ---------------------
         (P::Prepared, S::BuildStarted) => P::BuildStarted,
@@ -219,30 +211,17 @@ mod tests {
     }
 
     #[test]
-    fn architecture_review_advances_to_architecture_human_approval_on_architecture_approved() {
+    fn architecture_review_advances_to_test_specs_drafting_on_architecture_approved() {
         let next =
             next_lifecycle_phase(P::ArchitectureReview, LifecycleSignal::ArchitectureApproved)
                 .expect("legal transition");
-        assert_eq!(next, P::ArchitectureHumanApproval);
-    }
-
-    #[test]
-    fn architecture_human_approval_advances_to_test_specs_drafting_on_test_specs_drafted() {
-        let next = next_lifecycle_phase(
-            P::ArchitectureHumanApproval,
-            LifecycleSignal::TestSpecsDrafted,
-        )
-        .expect("legal transition");
         assert_eq!(next, P::TestSpecsDrafting);
     }
 
     #[test]
-    fn architecture_human_approval_skips_to_plan_drafting_on_test_specs_skipped() {
-        let next = next_lifecycle_phase(
-            P::ArchitectureHumanApproval,
-            LifecycleSignal::TestSpecsSkipped,
-        )
-        .expect("legal transition");
+    fn architecture_review_skips_to_plan_drafting_on_test_specs_skipped() {
+        let next = next_lifecycle_phase(P::ArchitectureReview, LifecycleSignal::TestSpecsSkipped)
+            .expect("legal transition");
         assert_eq!(next, P::PlanDrafting);
     }
 
@@ -254,15 +233,8 @@ mod tests {
     }
 
     #[test]
-    fn test_specs_review_advances_to_test_specs_human_approval_on_test_specs_approved() {
+    fn test_specs_review_advances_to_plan_drafting_on_test_specs_approved() {
         let next = next_lifecycle_phase(P::TestSpecsReview, LifecycleSignal::TestSpecsApproved)
-            .expect("legal transition");
-        assert_eq!(next, P::TestSpecsHumanApproval);
-    }
-
-    #[test]
-    fn test_specs_human_approval_advances_to_plan_drafting_on_plan_drafted() {
-        let next = next_lifecycle_phase(P::TestSpecsHumanApproval, LifecycleSignal::PlanDrafted)
             .expect("legal transition");
         assert_eq!(next, P::PlanDrafting);
     }
@@ -275,15 +247,8 @@ mod tests {
     }
 
     #[test]
-    fn plan_review_advances_to_plan_human_approval_on_plan_approved() {
+    fn plan_review_advances_to_prepared_on_plan_approved() {
         let next = next_lifecycle_phase(P::PlanReview, LifecycleSignal::PlanApproved)
-            .expect("legal transition");
-        assert_eq!(next, P::PlanHumanApproval);
-    }
-
-    #[test]
-    fn plan_human_approval_advances_to_prepared_on_prepared_reached() {
-        let next = next_lifecycle_phase(P::PlanHumanApproval, LifecycleSignal::PreparedReached)
             .expect("legal transition");
         assert_eq!(next, P::Prepared);
     }
@@ -410,7 +375,6 @@ mod tests {
             LifecycleSignal::TestSpecsSkipped,
             LifecycleSignal::PlanDrafted,
             LifecycleSignal::PlanApproved,
-            LifecycleSignal::PreparedReached,
             LifecycleSignal::Blocked,
             LifecycleSignal::BuildStarted,
             LifecycleSignal::BuildComplete,

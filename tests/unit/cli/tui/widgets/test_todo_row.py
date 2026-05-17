@@ -73,7 +73,7 @@ def test_lifecycle_phase_label_test_spec_phases_map_to_specs() -> None:
 
 @pytest.mark.unit
 def test_lifecycle_phase_label_planning_phases_map_to_planning() -> None:
-    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW, LifecyclePhase.PLAN_HUMAN_APPROVAL):
+    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
         result = lifecycle_phase_label(phase.value)
         assert result is not None
         _, value, _ = result

@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase overview. PRD intake, optional architecture, prose test specs, implementation planning, and human approval gates.'
+description: 'Prepare phase overview. PRD intake, optional architecture, prose test specs, implementation planning, PRD-only human approval, and downstream reviewer gates.'
 id: 'software-development/procedure/lifecycle/prepare'
 scope: 'domain'
 type: 'procedure'
@@ -54,14 +54,14 @@ The plan worker writes `implementation-plan` from the approved PRD, optional
 architecture, and optional test-specs. If the work is not atomic, the worker
 splits it instead of forcing an oversized plan.
 
-### 5. Approval Gates
+### 5. Authority Gates
 
 The state machine advances only from persisted evidence:
 
-- `prd_approved`
-- `architecture_approved` or `architecture_skipped`
-- `test_specs_approved` or `test_specs_skipped`
-- `plan_approved`
+- `prd_approved` by the real human
+- `architecture_review` verdict `approve` or `architecture_skipped`
+- `test_spec_review` verdict `approve` or `test_specs_skipped`
+- `plan_review` verdict `approve`
 
 ### 6. Drift
 
@@ -75,10 +75,10 @@ substantive drift blocks until the affected upstream artifact is reworked.
 - `architecture` or `architecture_skipped`
 - `test-specs` or `test_specs_skipped`
 - `implementation-plan`
-- Approval, skip, and drift review stamps in todo state
+- Human PRD approval, reviewer verdicts, skip stamps, and drift review stamps in todo state
 
 ## Recovery
 
 - If any phase blocks, the state machine records the blocker and stops.
-- Fix-forward only: preserve valid artifacts, clear downstream approvals when
+- Fix-forward only: preserve valid artifacts, clear downstream authority when
   an upstream artifact is refined, and re-enter with `telec todo prepare`.

@@ -114,18 +114,6 @@ async def apply_todo_stamp(
         await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_TEST_SPECS, "specs_built")
     elif stamp_type == "prd_approved":
         await _apply_approval_stamp(todos_db, writer, slug, ARTIFACT_PRD, "prd_approved", caller_session_id)
-    elif stamp_type == "architecture_approved":
-        await _apply_approval_stamp(
-            todos_db, writer, slug, ARTIFACT_ARCHITECTURE, "architecture_approved", caller_session_id
-        )
-    elif stamp_type == "test_specs_approved":
-        await _apply_approval_stamp(
-            todos_db, writer, slug, ARTIFACT_TEST_SPECS, "test_specs_approved", caller_session_id
-        )
-    elif stamp_type == "plan_approved":
-        await _apply_approval_stamp(
-            todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_approved", caller_session_id
-        )
     elif stamp_type == "architecture_skipped":
         ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
     elif stamp_type == "test_specs_skipped":

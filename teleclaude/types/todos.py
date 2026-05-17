@@ -6,6 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from teleclaude.types.lifecycle import LEGACY_LIFECYCLE_PHASE_NORMALIZATION
 from teleclaude.types.state_value import StateValue
 
 LifecyclePhaseValue = Literal[
@@ -14,13 +15,10 @@ LifecyclePhaseValue = Literal[
     "prd_human_approval",
     "architecture_drafting",
     "architecture_review",
-    "architecture_human_approval",
     "test_specs_drafting",
     "test_specs_review",
-    "test_specs_human_approval",
     "plan_drafting",
     "plan_review",
-    "plan_human_approval",
     "prepared",
     "blocked",
     "build_started",
@@ -255,22 +253,27 @@ class TodoState(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _strip_legacy_display_fields(cls, data: object) -> object:
-        """Drop legacy display-only fields before strict schema validation.
+        """Normalize legacy fields before strict schema validation.
 
         Older todos.db rows may still carry ``current`` from the pre-canonical
         lifecycle model. Validation strips it so a subsequent write removes it
-        from persistence.
+        from persistence. Rows persisted on removed downstream approval phases
+        are normalized back to the corresponding review phase so prepare can
+        re-adopt the next pointer from reviewer verdicts.
         """
         if not isinstance(data, dict):
             return data
 
         legacy_keys = {"current"}
-        if not legacy_keys.intersection(data):
+        lifecycle_phase = data.get("lifecycle_phase")
+        if not legacy_keys.intersection(data) and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION:
             return data
 
         cleaned = dict(data)
         for key in legacy_keys:
             cleaned.pop(key, None)
+        if isinstance(lifecycle_phase, str):
+            cleaned["lifecycle_phase"] = LEGACY_LIFECYCLE_PHASE_NORMALIZATION.get(lifecycle_phase, lifecycle_phase)
         return cleaned
 
     @classmethod

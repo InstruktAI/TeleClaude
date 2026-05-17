@@ -44,7 +44,7 @@ def test_todo_state_strips_legacy_current_field_on_validation() -> None:
     assert dumped["lifecycle_phase"] == PreparePhase.DRAFT.value
 
 
-def test_apply_prepared_state_writes_lifecycle_phase_prepared_and_plan_approval() -> None:
+def test_apply_prepared_state_writes_lifecycle_phase_prepared_with_plan_review_approved() -> None:
     captured_state: dict[str, StateValue] = {}
 
     def _fake_write_state_sync(_slug: str, state: dict[str, StateValue]) -> None:
@@ -66,11 +66,9 @@ def test_apply_prepared_state_writes_lifecycle_phase_prepared_and_plan_approval(
         apply_prepared_state("/tmp/cwd", "slug")
 
     assert captured_state.get("lifecycle_phase") == PreparePhase.PREPARED.value
-    approvals = captured_state.get("approvals")
-    assert isinstance(approvals, dict)
-    plan_approved = approvals.get("plan_approved")
-    assert isinstance(plan_approved, dict)
-    assert plan_approved["approved"] is True
+    plan_review = captured_state.get("plan_review")
+    assert isinstance(plan_review, dict)
+    assert plan_review.get("verdict") == "approve"
     assert "prepare_phase" not in captured_state
 
 

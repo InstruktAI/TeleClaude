@@ -564,13 +564,10 @@ const LIFECYCLE_PHASES: &[&str] = &[
     "prd_human_approval",
     "architecture_drafting",
     "architecture_review",
-    "architecture_human_approval",
     "test_specs_drafting",
     "test_specs_review",
-    "test_specs_human_approval",
     "plan_drafting",
     "plan_review",
-    "plan_human_approval",
     "prepared",
     "blocked",
     "build_started",
@@ -582,6 +579,17 @@ const LIFECYCLE_PHASES: &[&str] = &[
 ];
 
 const ROADMAP_STATUSES: &[&str] = &["active", "icebox", "delivered"];
+
+fn normalize_lifecycle_phase(raw: &str) -> Option<String> {
+    let normalized = match raw {
+        "architecture_human_approval" => "architecture_review".to_owned(),
+        "test_specs_human_approval" => "test_specs_review".to_owned(),
+        "plan_human_approval" => "plan_review".to_owned(),
+        _ if LIFECYCLE_PHASES.contains(&raw) => raw.to_owned(),
+        _ => return None,
+    };
+    Some(normalized)
+}
 
 #[derive(Debug, Default)]
 struct ImportStats {
@@ -857,10 +865,12 @@ fn promote_state(state: &Value, slug: &str) -> Result<Promoted> {
         .remove("lifecycle_phase")
         .and_then(|v| v.as_str().map(str::to_owned))
     {
-        Some(raw) if LIFECYCLE_PHASES.contains(&raw.as_str()) => raw,
-        Some(raw) => anyhow::bail!(
-            "todo {slug}: unknown v1 lifecycle_phase {raw:?}; refusing migration. Allowed: {LIFECYCLE_PHASES:?}",
-        ),
+        Some(raw) => match normalize_lifecycle_phase(&raw) {
+            Some(normalized) => normalized,
+            None => anyhow::bail!(
+                "todo {slug}: unknown v1 lifecycle_phase {raw:?}; refusing migration. Allowed: {LIFECYCLE_PHASES:?}",
+            ),
+        },
         None => "draft".to_owned(),
     };
 
@@ -934,6 +944,16 @@ mod tests {
         let message = format!("{err}");
         assert!(message.contains("unknown v1 lifecycle_phase"));
         assert!(message.contains("not-a-phase"));
+    }
+
+    #[test]
+    fn promote_state_normalizes_legacy_downstream_human_phase() {
+        let promoted = promote_state(
+            &json!({ "lifecycle_phase": "architecture_human_approval" }),
+            "test-slug",
+        )
+        .expect("legacy phase normalized");
+        assert_eq!(promoted.lifecycle_phase, "architecture_review");
     }
 
     #[test]

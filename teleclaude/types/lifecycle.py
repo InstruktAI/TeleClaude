@@ -14,6 +14,12 @@ from __future__ import annotations
 
 from enum import Enum
 
+LEGACY_LIFECYCLE_PHASE_NORMALIZATION: dict[str, str] = {
+    "architecture_human_approval": "architecture_review",
+    "test_specs_human_approval": "test_specs_review",
+    "plan_human_approval": "plan_review",
+}
+
 
 class LifecyclePhase(str, Enum):
     """Ordered software-development lifecycle phases."""
@@ -23,13 +29,10 @@ class LifecyclePhase(str, Enum):
     PRD_HUMAN_APPROVAL = "prd_human_approval"
     ARCHITECTURE_DRAFTING = "architecture_drafting"
     ARCHITECTURE_REVIEW = "architecture_review"
-    ARCHITECTURE_HUMAN_APPROVAL = "architecture_human_approval"
     TEST_SPECS_DRAFTING = "test_specs_drafting"
     TEST_SPECS_REVIEW = "test_specs_review"
-    TEST_SPECS_HUMAN_APPROVAL = "test_specs_human_approval"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
-    PLAN_HUMAN_APPROVAL = "plan_human_approval"
     PREPARED = "prepared"
     BLOCKED = "blocked"
     BUILD_STARTED = "build_started"
@@ -56,13 +59,10 @@ PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.PRD_HUMAN_APPROVAL,
         LifecyclePhase.ARCHITECTURE_DRAFTING,
         LifecyclePhase.ARCHITECTURE_REVIEW,
-        LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL,
         LifecyclePhase.TEST_SPECS_DRAFTING,
         LifecyclePhase.TEST_SPECS_REVIEW,
-        LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL,
         LifecyclePhase.PLAN_DRAFTING,
         LifecyclePhase.PLAN_REVIEW,
-        LifecyclePhase.PLAN_HUMAN_APPROVAL,
         LifecyclePhase.PREPARED,
         LifecyclePhase.BLOCKED,
     }
@@ -81,6 +81,7 @@ WORK_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
 
 
 __all__ = [
+    "LEGACY_LIFECYCLE_PHASE_NORMALIZATION",
     "LIFECYCLE_PHASE_ORDER",
     "PREPARE_LIFECYCLE_PHASES",
     "WORK_LIFECYCLE_PHASES",

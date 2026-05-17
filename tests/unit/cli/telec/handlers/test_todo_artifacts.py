@@ -191,22 +191,16 @@ class TestHandleTodoStamp:
             caller_session_id="sess-1",
         )
 
-    def test_plan_approved_stamp(self) -> None:
+    def test_plan_approved_stamp_is_not_exposed(self) -> None:
         with (
             patch(f"{_MODULE}.apply_todo_stamp", new=AsyncMock(return_value={"status": "ok"})) as mock_stamp,
             patch(f"{_MODULE}.resolve_invocation_cwd", return_value=Path("/repo")),
             patch(f"{_MODULE}.get_session_id", return_value="sess-1"),
         ):
-            _handle_todo_stamp(["my-slug", "--plan-approved"])
+            with pytest.raises(SystemExit):
+                _handle_todo_stamp(["my-slug", "--plan-approved"])
 
-        mock_stamp.assert_awaited_once_with(
-            cwd="/repo",
-            slug="my-slug",
-            stamp_type="plan_approved",
-            value="true",
-            phase=None,
-            caller_session_id="sess-1",
-        )
+        mock_stamp.assert_not_awaited()
 
     def test_build_complete_stamp(self) -> None:
         with (

@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/overview'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Prepare stage overview. The orchestrator drives a four-step derivation chain (PRD → Architecture → Test specs → Plan) with human approval gates, skip-when-warranted, and standin mode for autonomous intake.'
+description: 'Prepare stage overview. The orchestrator drives a four-step derivation chain (PRD → Architecture → Test specs → Plan) with PRD-only human approval, reviewer-gated downstream artifacts, skip-when-warranted, and standin mode for autonomous intake.'
 ---
 
 # Prepare Overview — Procedure
@@ -18,7 +18,7 @@ description: 'Prepare stage overview. The orchestrator drives a four-step deriva
 
 ## Goal
 
-Drive a todo through the prepare phase from initial intent capture to a state where the work is ready for the build phase. The chain has four derivation steps, each producing an artifact, each gated by reviewer verdict and human approval. Phases that don't earn their place for a specific work item are skipped explicitly with reason; phases that do earn their place run with the same shape every time.
+Drive a todo through the prepare phase from initial intent capture to a state where the work is ready for the build phase. The chain has four derivation steps. The PRD is gated by real human approval because it captures intent. Architecture, test specs, and plan are gated by reviewer verdict because they derive from approved intent and code reality. Phases that don't earn their place for a specific work item are skipped explicitly with reason; phases that do earn their place run with the same shape every time.
 
 The orchestrator drives. The state machine reports current state and recommends the next step. The orchestrator loads the skill for that step (which carries the skill's required reads), does the work, and stamps the appropriate progress. Phase boundaries are deterministic; the work within each phase is adaptive to the specific intent.
 
@@ -66,16 +66,17 @@ The recommendation maps to one of the phase skills. The orchestrator loads the r
 | Test specs   | `/next-prepare-specs` (loads `prepare/prepare-specs.md`)       |
 | Plan         | `/next-prepare-plan` (loads `prepare/plan-draft.md`)           |
 
-The orchestrator runs the phase to completion (artifact written, reviewer verdict, human approval) before calling the state machine again for the next recommendation.
+The orchestrator runs the phase to completion before calling the state machine again for the next recommendation. For intake, completion means PRD artifact plus real human approval. For downstream derivation, completion means artifact plus reviewer verdict.
 
-Three lifecycle stamps are authored by the actor producing the judgment they capture; the orchestrator dispatches that actor and waits for the stamp:
+Lifecycle stamps are authored by the actor producing the judgment they capture; the orchestrator dispatches that actor and waits for the stamp:
 
 - `--drift-reviewed` is the deliverable of the `/next-drift-analyze` worker.
+- `--verdict approve --phase architecture_review`, `test_spec_review`, or `plan_review` is the deliverable of the corresponding reviewer.
 - `--architecture-skipped` and `--test-specs-skipped` are the deliverables of the BA during intake.
 
-### 4. Honor the approval gates
+### 4. Honor the PRD approval gate
 
-Each artifact has a human approval gate. The orchestrator stamps the approval only after the real human (not a standin) confirms. In standin mode, the orchestrator may produce artifacts but cannot stamp human-approval — the chain pauses at the approval gate until the real human engages.
+Only the PRD has a human approval gate. The orchestrator stamps `--prd-approved` only after the real human (not a standin) confirms the PRD. In standin mode, the orchestrator may produce a PRD but cannot stamp human approval; the chain pauses until the real human engages.
 
 When the real human re-engages a standin-paused todo via `/next-prepare {slug}`, the state machine recognizes the situation and recommends presenting the standin-produced artifact for approval. Standard refinement loop applies from there.
 
@@ -102,25 +103,25 @@ The worker reads the diffs scoped to referenced paths, assesses impact per affec
 
 When the human refines (proposes changes to an artifact at any layer), the orchestrator classifies the refinement scope:
 
-- **Intent-level** (new thinking, scope changes) → re-enter intake with the delta. Downstream approvals invalidated.
-- **Architecture-level** (technical brief change) → re-enter architecture phase. Specs and plan approvals invalidated.
-- **Specs-level** (behavior contract change) → re-enter specs phase. Plan approval invalidated.
+- **Intent-level** (new thinking, scope changes) → re-enter intake with the delta. Downstream authority invalidated.
+- **Architecture-level** (technical brief change) → re-enter architecture phase. Specs and plan reviewer verdicts invalidated.
+- **Specs-level** (behavior contract change) → re-enter specs phase. Plan reviewer verdict invalidated.
 - **Plan-level** (task adjustment) → re-enter plan phase. No further downstream to invalidate.
 
-The orchestrator clears the relevant approval stamps and re-runs the affected phases.
+The orchestrator clears the relevant approval or reviewer authority and re-runs the affected phases.
 
 ### 8. Terminal state
 
-When all required phases have approval stamps and grounding is fresh, the state machine derives `PREPARED`. The orchestrator reports to the user and hands off to the work phase.
+When the PRD has human approval, all required downstream artifacts have reviewer approval, and grounding is fresh, the state machine derives `PREPARED`. The orchestrator reports to the user and hands off to the work phase.
 
 If reviewer verdicts cannot be resolved through normal revision rounds, or if drift cannot be cleanly re-derived, the state machine derives `BLOCKED`. The orchestrator surfaces the blocker to the human for direction.
 
 ## Outputs
 
 - `prd` artifact, human-approved.
-- `architecture` artifact, human-approved (unless skipped).
-- Test specs, human-approved (unless skipped).
-- `implementation-plan` artifact, human-approved.
+- `architecture` artifact, reviewer-approved (unless skipped).
+- Test specs, reviewer-approved (unless skipped).
+- `implementation-plan` artifact, reviewer-approved.
 - Grounding stamps reflecting fresh codebase reference.
 - The state machine reports `PREPARED` (or `BLOCKED` with reasons).
 

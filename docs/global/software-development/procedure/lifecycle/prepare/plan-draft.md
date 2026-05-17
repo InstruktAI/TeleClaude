@@ -3,7 +3,7 @@ id: 'software-development/procedure/lifecycle/prepare/plan-draft'
 type: 'procedure'
 domain: 'software-development'
 scope: 'domain'
-description: 'Plan drafting phase for next-prepare. Produces implementation plans from approved PRD, optional architecture, and optional test-specs artifacts.'
+description: 'Plan drafting phase for next-prepare. Produces implementation plans from human-approved PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs artifacts.'
 ---
 
 # Prepare Plan Draft — Procedure
@@ -17,8 +17,8 @@ description: 'Plan drafting phase for next-prepare. Produces implementation plan
 
 ## Goal
 
-Produce `implementation-plan` from the approved `prd`, optional `architecture`,
-and optional prose `test-specs`; or split the todo into dependent child work
+Produce `implementation-plan` from the human-approved `prd`, optional reviewer-approved `architecture`,
+and optional reviewer-approved prose `test-specs`; or split the todo into dependent child work
 items when planning shows the work is not atomic.
 
 The plan must be detailed enough for a builder to execute without guessing, and
@@ -27,9 +27,9 @@ for one builder session, this phase owns the split.
 
 ## Preconditions
 
-1. `telec todo artifacts read {slug} prd` exists and is approved.
-2. `architecture` is either approved or explicitly skipped.
-3. `test-specs` is either approved or explicitly skipped.
+1. `telec todo artifacts read {slug} prd` exists and is human-approved.
+2. `architecture` is either reviewer-approved or explicitly skipped.
+3. `test-specs` is either reviewer-approved or explicitly skipped.
 4. `todos.db` roadmap is readable.
 5. Slug is active (not icebox, not delivered).
 
@@ -39,7 +39,7 @@ for one builder session, this phase owns the split.
 
 Read the full context before writing anything:
 
-- `telec todo artifacts read {slug} prd` — the approved product intent and success criteria.
+- `telec todo artifacts read {slug} prd` — the human-approved product intent and success criteria.
 - `telec todo artifacts read {slug} architecture` — when present; otherwise read the skip reason.
 - `telec todo artifacts read {slug} test-specs` — when present; otherwise read the skip reason.
 - `telec todo artifacts read {slug} input` — the original human thinking (for intent).
@@ -58,8 +58,8 @@ Re-entry is the base case for plan drafting — fresh production is the special
 case (first time only). Every dispatch carries a `Dispatch reason: <reason>`
 header. Pick your behavior from the reason:
 
-- **`fresh`** — no prior implementation plan exists. Produce one from approved
-  PRD, optional architecture, and optional test-specs. This is the only path that uses the full atomicity
+- **`fresh`** — no prior implementation plan exists. Produce one from human-approved
+  PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs. This is the only path that uses the full atomicity
   decision (step 2) and full draft (step 3).
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
@@ -96,7 +96,7 @@ Evaluate:
 work that will fail gate validation. Split first:
 
 - create focused child todos
-- seed them from the approved parent PRD and any approved architecture/spec slices
+- seed them from the human-approved parent PRD and any reviewer-approved architecture/spec slices
 - add dependency ordering in `todos.db` roadmap
 - call `telec todo split <slug> --into <child1> <child2> ...`
 - stop treating the parent as directly builder-ready
@@ -157,7 +157,7 @@ more to fix than they cost to prevent.
 
 ### 5. Write artifacts
 
-If the todo stays atomic, write (using approved PRD, optional architecture, and optional test-specs as inputs):
+If the todo stays atomic, write (using human-approved PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs as inputs):
 
 - `telec todo artifacts write {slug} implementation-plan <content>` — the full plan with tasks, rationale, and verification.
   Each task must reference which PRD criteria and test-spec cases it satisfies.
@@ -168,12 +168,12 @@ metadata and current worktree state.
 If the todo is split instead:
 
 - Call `telec todo split <slug> --into <child1> <child2> ...`
-- Seed each child's `input` with the relevant subset of parent PRD and approved architecture/spec context.
+- Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture/spec context.
 
 ### 6. Enforce boundaries
 
 - Do not invent behavior not grounded in PRD, architecture, test-specs, or codebase patterns.
-- Do not rewrite approved upstream artifacts unless the plan is blocked by a genuine
+- Do not rewrite approved or reviewer-approved upstream artifacts unless the plan is blocked by a genuine
   contradiction in those artifacts.
 - Do not change roadmap status beyond the child dependency links needed for a split.
 - If blocked by uncertainty, record the blocker and continue with what is known.

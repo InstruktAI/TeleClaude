@@ -143,7 +143,7 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
       split:
-        description: 'Split a todo into child items. Children inherit the parent approved prepare phase: requirements-approved → children start at plan_drafting; plan-approved → children start at prepared (ready for build).'
+        description: 'Split a todo into child items. Children inherit the parent reviewed prepare phase: requirements-reviewed → children start at plan_drafting; plan-reviewed → children start at prepared (ready for build).'
         args:
           - slug: 'string'
         flags:
@@ -194,9 +194,6 @@ subcommands:
           --verdict: 'approve | changes_requested | needs_work | needs_decision'
           --phase: 'Review phase for --verdict: architecture_review | test_spec_review | plan_review | build_review'
           --prd-approved: 'Mark PRD approved by the real human.'
-          --architecture-approved: 'Mark architecture approved by the real human.'
-          --test-specs-approved: 'Mark prose test-specs approved by the real human.'
-          --plan-approved: 'Mark implementation plan approved by the real human.'
           --architecture-skipped: 'Skip architecture phase with a reason.'
           --test-specs-skipped: 'Skip test-specs phase with a reason.'
           --drift-reviewed: 'Record drift review: artifact, substantive|cosmetic, reason.'

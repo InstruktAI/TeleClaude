@@ -34,6 +34,7 @@ from teleclaude.core.next_machine.git_ops import (
 )
 from teleclaude.paths import MAIN_DB_PATH
 from teleclaude.types.lifecycle import (
+    LEGACY_LIFECYCLE_PHASE_NORMALIZATION,
     LIFECYCLE_PHASE_ORDER,
     PREPARE_LIFECYCLE_PHASES,
     WORK_LIFECYCLE_PHASES,
@@ -85,8 +86,9 @@ def coerce_lifecycle_phase(raw: object) -> LifecyclePhase | None:
     """Return a lifecycle phase enum member for a stored raw value."""
     if not isinstance(raw, str) or not raw:
         return None
+    normalized = LEGACY_LIFECYCLE_PHASE_NORMALIZATION.get(raw, raw)
     try:
-        return LifecyclePhase(raw)
+        return LifecyclePhase(normalized)
     except ValueError:
         return None
 
@@ -379,8 +381,6 @@ def _plan_only_phase(
         return LifecyclePhase.PLAN_DRAFTING
     if not _review_approved(model.plan_review):
         return LifecyclePhase.PLAN_REVIEW
-    if not model.approvals.plan_approved.approved:
-        return LifecyclePhase.PLAN_HUMAN_APPROVAL
     if prepare_blockers(model, repo_root=repo_root):
         return LifecyclePhase.BLOCKED
     return LifecyclePhase.PREPARED
@@ -423,8 +423,6 @@ def _feature_phase(
             return LifecyclePhase.ARCHITECTURE_DRAFTING
         if not _review_approved(model.architecture_review):
             return LifecyclePhase.ARCHITECTURE_REVIEW
-        if not model.approvals.architecture_approved.approved:
-            return LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL
         if test_specs_skipped:
             return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
         if not _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence):
@@ -432,8 +430,6 @@ def _feature_phase(
 
     if not _review_approved(model.test_spec_review):
         return LifecyclePhase.TEST_SPECS_REVIEW
-    if not model.approvals.test_specs_approved.approved:
-        return LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL
     return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
@@ -569,20 +565,14 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
         return _review_approved(model.architecture_review)
-    if phase == LifecyclePhase.ARCHITECTURE_HUMAN_APPROVAL:
-        return model.approvals.architecture_approved.approved
     if phase == LifecyclePhase.TEST_SPECS_DRAFTING:
         return _artifact_exists(model, STATE_KEY_TEST_SPECS) or model.approvals.test_specs_skipped is not None
     if phase == LifecyclePhase.TEST_SPECS_REVIEW:
         return _review_approved(model.test_spec_review)
-    if phase == LifecyclePhase.TEST_SPECS_HUMAN_APPROVAL:
-        return model.approvals.test_specs_approved.approved
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
         return _review_approved(model.plan_review)
-    if phase == LifecyclePhase.PLAN_HUMAN_APPROVAL:
-        return model.approvals.plan_approved.approved
     if phase == LifecyclePhase.BUILD_STARTED:
         return bool(model.build_completed_at)
     if phase == LifecyclePhase.BUILD_COMPLETE:
