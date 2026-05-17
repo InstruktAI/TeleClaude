@@ -272,7 +272,7 @@ class MaintenanceService:
                 if ctx.session_id == session.session_id and not ready_future.done():
                     ready_future.set_result(None)
 
-            ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]
+            ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
             try:
                 if not await tmux_bridge.send_keys_existing_tmux(
                     session_name=session.tmux_session_name,

@@ -37,8 +37,8 @@ class _ChannelsMixin:  # pyright: ignore[reportUnusedClass]
         if self._session_updated_subscribed:
             return
         self._session_updated_subscribed = True
-        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._on_session_status)  # type: ignore[arg-type]
-        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._on_session_updated)  # type: ignore[arg-type]
+        event_bus.subscribe(TeleClaudeEvents.SESSION_STATUS, self._on_session_status)
+        event_bus.subscribe(TeleClaudeEvents.SESSION_UPDATED, self._on_session_updated)
 
     async def _on_session_status(self, _event: str, context: SessionStatusContext) -> None:
         await self.dispatch_session_status(context.session_id, context.status)

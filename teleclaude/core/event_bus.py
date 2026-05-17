@@ -25,7 +25,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict, TypeVar, cast, overload
 
 from instrukt_ai_logging import get_logger
 from pydantic import JsonValue
@@ -87,6 +87,11 @@ _INTERNAL_DOMAIN_NAME = "internal-event-bus"
 _SUCCESS_CACHE_MAX_KEYS = 1024
 
 EventHandler = Callable[[str, EventContext], Awaitable[object]]
+EventNameT = TypeVar("EventNameT", bound=EventType)
+EventContextT = TypeVar("EventContextT", bound=EventContext)
+TypedEventHandler = Callable[[EventNameT, EventContextT], Awaitable[object]]
+SessionStatusEventHandler = Callable[[str, SessionStatusContext], Awaitable[object]]
+SessionUpdatedEventHandler = Callable[[str, SessionUpdatedContext], Awaitable[object]]
 ContextBuilder = Callable[[Mapping[str, JsonValue]], EventContext]
 
 
@@ -313,7 +318,28 @@ class EventBus:
         """Total CLUSTER emit attempts scheduled for Redis publish since startup."""
         return self._cluster_publish_count
 
-    def subscribe(self, event: EventType, handler: EventHandler) -> EventHandler:
+    @overload
+    def subscribe(
+        self,
+        event: Literal["session_status"],
+        handler: SessionStatusEventHandler,
+    ) -> EventHandler: ...
+
+    @overload
+    def subscribe(
+        self,
+        event: Literal["session_updated"],
+        handler: SessionUpdatedEventHandler,
+    ) -> EventHandler: ...
+
+    @overload
+    def subscribe(self, event: EventNameT, handler: TypedEventHandler[EventNameT, EventContextT]) -> EventHandler: ...
+
+    def subscribe(
+        self,
+        event: EventType,
+        handler: Callable[..., Awaitable[object]],
+    ) -> EventHandler:
         """Subscribe a handler to an event. Returns the registered (wrapped) handler.
 
         The returned reference is the handle to pass to ``unsubscribe`` — the bus
@@ -323,7 +349,7 @@ class EventBus:
         """
         if event not in self._handlers:
             self._handlers[event] = []
-        wrapped = create_event_guard(handler, emit=self.emit, reraise=True)
+        wrapped = create_event_guard(cast(EventHandler, handler), emit=self.emit, reraise=True)
         self._handlers[event].append(wrapped)
         logger.debug("Subscribed handler for event: %s (total: %d)", event, len(self._handlers[event]))
         return wrapped

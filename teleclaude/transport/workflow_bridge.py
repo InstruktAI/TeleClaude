@@ -23,10 +23,12 @@ import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
+
+from teleclaude.transport._redis_pubsub import RedisPubSub
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -259,7 +261,7 @@ class WorkflowBridge:
     async def _run_once(self) -> None:
         """Open one Redis pub/sub session and consume until error or stop."""
         client = self._redis_factory()
-        pubsub = client.pubsub()
+        pubsub = cast(RedisPubSub, client.pubsub())
         await pubsub.psubscribe(WORKFLOW_PATTERN)
         logger.info("Workflow Redis subscriber attached", pattern=WORKFLOW_PATTERN)
         try:
@@ -273,7 +275,7 @@ class WorkflowBridge:
         finally:
             try:
                 await pubsub.punsubscribe(WORKFLOW_PATTERN)
-                await pubsub.aclose()  # type: ignore[no-untyped-call]
+                await pubsub.aclose()
             except Exception:
                 logger.debug("Error closing workflow pubsub", exc_info=True)
 

@@ -18,7 +18,7 @@ from teleclaude.constants import HUMAN_ROLE_ADMIN
 from teleclaude.core.db import Db
 from teleclaude.core.db_models import Operation
 from teleclaude.core.event_bus import event_bus
-from teleclaude.core.events import OperationCompletedContext
+from teleclaude.core.events import EventType, OperationCompletedContext
 from teleclaude.core.integration.state_machine import next_integrate
 from teleclaude.core.next_machine.create import next_create
 from teleclaude.core.next_machine.prepare import next_prepare
@@ -54,7 +54,7 @@ OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
 OPERATION_KIND_TODO_CREATE = "todo_create"
 OPERATION_KIND_TODO_PREPARE = "todo_prepare"
 OPERATION_KIND_TODO_REMOVE = "todo_remove"
-_COMPLETION_EVENTS: dict[str, str] = {
+_COMPLETION_EVENTS: dict[str, EventType] = {
     OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
     OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
     OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",

@@ -28,10 +28,12 @@ import json
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from instrukt_ai_logging import get_logger
 from redis.exceptions import RedisError
+
+from teleclaude.transport._redis_pubsub import RedisPubSub
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -259,7 +261,7 @@ class IdentityBridge:
     async def _run_once(self) -> None:
         """Open one Redis pub/sub session and consume until error or stop."""
         client = self._redis_factory()
-        pubsub = client.pubsub()
+        pubsub = cast(RedisPubSub, client.pubsub())
         await pubsub.psubscribe(IDENTITY_PATTERN)
         logger.info("Identity Redis subscriber attached", pattern=IDENTITY_PATTERN)
         try:
@@ -273,7 +275,7 @@ class IdentityBridge:
         finally:
             try:
                 await pubsub.punsubscribe(IDENTITY_PATTERN)
-                await pubsub.aclose()  # type: ignore[no-untyped-call]
+                await pubsub.aclose()
             except Exception:
                 logger.debug("Error closing identity pubsub", exc_info=True)
 

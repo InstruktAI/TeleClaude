@@ -360,7 +360,7 @@ class _DaemonSessionMixin:  # pyright: ignore[reportUnusedClass]
             if ctx.session_id == session_id and not ready_future.done():
                 ready_future.set_result(None)
 
-        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)  # type: ignore[arg-type]
+        ready_handler = event_bus.subscribe(TeleClaudeEvents.AGENT_READY, _on_ready)
         try:
             t0 = time.time()
             await self.command_service.start_agent(
