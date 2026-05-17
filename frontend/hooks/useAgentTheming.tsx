@@ -9,7 +9,7 @@
  * State persists strictly to browser localStorage.
  */
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useSyncExternalStore, type ReactNode } from 'react'
 
 interface AgentThemingContextValue {
   /** True = themed mode (agent colors visible), False = peaceful mode (neutral) */
@@ -20,7 +20,42 @@ interface AgentThemingContextValue {
 
 const AgentThemingContext = createContext<AgentThemingContextValue | undefined>(undefined)
 
-const STORAGE_KEY = 'teleclaude_agent_theming'
+export const STORAGE_KEY = 'teleclaude_agent_theming'
+
+const subscribers = new Set<() => void>()
+
+function subscribe(callback: () => void) {
+  subscribers.add(callback)
+
+  const handleStorage = (e: StorageEvent) => {
+    if (e.key === STORAGE_KEY) {
+      callback()
+    }
+  }
+
+  window.addEventListener('storage', handleStorage)
+  return () => {
+    window.removeEventListener('storage', handleStorage)
+    subscribers.delete(callback)
+  }
+}
+
+function getSnapshot(): boolean {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored !== null) {
+      return stored === 'true'
+    }
+    return true // Default to themed mode
+  } catch (e) {
+    // Fall back to themed mode to keep the UI renderable when browser storage is unavailable
+    return true
+  }
+}
+
+function getServerSnapshot(): boolean {
+  return true // Same default value for server/hydration consistency
+}
 
 interface AgentThemingProviderProps {
   children: ReactNode
@@ -31,30 +66,17 @@ interface AgentThemingProviderProps {
  * Persists strictly to localStorage.
  */
 export function AgentThemingProvider({ children }: AgentThemingProviderProps) {
-  const [isThemed, setIsThemed] = useState(false)
-  const [isInitialized, setIsInitialized] = useState(false)
-
-  // Read initial state from localStorage on mount
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored !== null) {
-      setIsThemed(stored === 'true')
-    } else {
-      // Default to themed mode if nothing is set
-      setIsThemed(true)
-    }
-    setIsInitialized(true)
-  }, [])
+  const isThemed = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
 
   // Update state and localStorage
   const setThemed = (themed: boolean) => {
-    setIsThemed(themed)
-    localStorage.setItem(STORAGE_KEY, String(themed))
-  }
-
-  // Avoid flash of neutral state during initialization
-  if (!isInitialized) {
-    return null
+    try {
+      localStorage.setItem(STORAGE_KEY, String(themed))
+    } catch (e) {
+      // Ignore storage errors, still notify local subscribers
+    }
+    // Synchronously notify local external-store subscribers
+    subscribers.forEach((callback) => callback())
   }
 
   return (

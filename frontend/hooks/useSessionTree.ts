@@ -341,7 +341,7 @@ export function useSessionTree(
         }
       })
     },
-    [visibleNodeIds],
+    [setCursorId, visibleNodeIds],
   )
 
   const expandAll = useCallback(() => {

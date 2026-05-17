@@ -2,7 +2,6 @@
 # A PR touching any listed file must migrate that file's string assertions and remove the file from this list in the same change.
 # Adding new files is forbidden.
 
-frontend/components/__tests__/ChatPage.test.tsx
 frontend/components/__tests__/Footer.test.tsx
 frontend/components/__tests__/LeftPanel.test.tsx
 frontend/components/__tests__/LoginPage.test.tsx
@@ -11,7 +10,6 @@ frontend/components/__tests__/SessionTree.test.tsx
 frontend/components/__tests__/TabBar.test.tsx
 frontend/components/__tests__/TreeNode.test.tsx
 frontend/components/parts/__tests__/PlainTextContent.test.tsx
-frontend/components/sidebar/__tests__/NewSessionDialog.test.tsx
 frontend/hooks/__tests__/useLiveSessions.test.ts
 frontend/hooks/__tests__/useSessionHighlights.test.ts
 frontend/hooks/__tests__/useSessionTree.test.ts

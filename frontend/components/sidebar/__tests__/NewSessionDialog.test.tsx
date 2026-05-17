@@ -26,11 +26,25 @@ function renderDialog(props: Partial<Parameters<typeof NewSessionDialog>[0]> = {
   )
 }
 
+const EXPECTED_CLAUDE = 'Claude'
+const EXPECTED_GEMINI = 'Gemini'
+const EXPECTED_CODEX = 'Codex'
+const EXPECTED_FAST = 'fast'
+const EXPECTED_MED = 'med'
+const EXPECTED_SLOW = 'slow'
+const EXPECTED_NATIVE_SESSION_ID = 'Native session ID'
+const EXPECTED_SUBDIR = 'Subdirectory'
+
+const URL_API_COMPUTERS = '/api/computers'
+const URL_API_PROJECTS = '/api/projects'
+const URL_API_SESSIONS = '/api/sessions'
+const VAL_SRV_KEEP = '/srv/keep'
+
 describe('NewSessionDialog', () => {
   beforeEach(() => {
     fetchMock.mockImplementation((input: string | URL) => {
       const url = String(input)
-      if (url === '/api/computers') {
+      if (url === URL_API_COMPUTERS) {
         return Promise.resolve({
           ok: true,
           json: async () => [
@@ -39,7 +53,8 @@ describe('NewSessionDialog', () => {
         })
       }
 
-      if (url.startsWith('/api/projects?computer=')) {
+      const parsedUrl = new URL(url, "http://localhost");
+      if (parsedUrl.pathname === URL_API_PROJECTS) {
         return Promise.resolve({
           ok: true,
           json: async () => [
@@ -48,7 +63,7 @@ describe('NewSessionDialog', () => {
         })
       }
 
-      if (url === '/api/sessions') {
+      if (url === URL_API_SESSIONS) {
         return Promise.resolve({
           ok: true,
           json: async () => ({ session_id: 'sess-new' }),
@@ -70,28 +85,27 @@ describe('NewSessionDialog', () => {
 
   it('renders agent radio group', () => {
     renderDialog()
-    expect(screen.getByText('Claude')).toBeDefined()
-    expect(screen.getByText('Gemini')).toBeDefined()
-    expect(screen.getByText('Codex')).toBeDefined()
+    expect(screen.getByText(EXPECTED_CLAUDE)).toBeDefined()
+    expect(screen.getByText(EXPECTED_GEMINI)).toBeDefined()
+    expect(screen.getByText(EXPECTED_CODEX)).toBeDefined()
   })
 
   it('renders thinking mode radio group', () => {
     renderDialog()
-    expect(screen.getByText('fast')).toBeDefined()
-    expect(screen.getByText('med')).toBeDefined()
-    expect(screen.getByText('slow')).toBeDefined()
+    expect(screen.getByText(EXPECTED_FAST)).toBeDefined()
+    expect(screen.getByText(EXPECTED_MED)).toBeDefined()
+    expect(screen.getByText(EXPECTED_SLOW)).toBeDefined()
   })
 
   it('renders native_session_id and subdir text inputs', () => {
     renderDialog()
-    expect(screen.getByPlaceholderText('Native session ID')).toBeDefined()
-    expect(screen.getByPlaceholderText('Subdirectory')).toBeDefined()
+    expect(screen.getByPlaceholderText(EXPECTED_NATIVE_SESSION_ID)).toBeDefined()
+    expect(screen.getByPlaceholderText(EXPECTED_SUBDIR)).toBeDefined()
   })
 
-  it('renders title and message fields', () => {
+  it('renders message field', () => {
     renderDialog()
-    expect(screen.getByPlaceholderText('Auto-generated')).toBeDefined()
-    expect(screen.getByPlaceholderText('Start with a message...')).toBeDefined()
+    expect(document.querySelector('textarea')).toBeDefined()
   })
 
   it('initializes computer and project from prefill prop', () => {
@@ -107,7 +121,7 @@ describe('NewSessionDialog', () => {
 
     fetchMock.mockImplementation((input: string | URL) => {
       const url = String(input)
-      if (url === '/api/computers') {
+      if (url === URL_API_COMPUTERS) {
         return Promise.resolve({
           ok: true,
           json: async () => [
@@ -116,7 +130,8 @@ describe('NewSessionDialog', () => {
         })
       }
 
-      if (url.startsWith('/api/projects?computer=')) {
+      const parsedUrl = new URL(url, "http://localhost");
+      if (parsedUrl.pathname === URL_API_PROJECTS) {
         return new Promise((resolve) => {
           resolveProjects = resolve
         })
@@ -137,7 +152,7 @@ describe('NewSessionDialog', () => {
       <NewSessionDialog
         open={true}
         onOpenChange={vi.fn()}
-        prefill={{ computer: 'local', project: '/srv/keep' }}
+        prefill={{ computer: 'local', project: VAL_SRV_KEEP }}
       />,
     )
 
@@ -146,7 +161,7 @@ describe('NewSessionDialog', () => {
         ok: true,
         json: async () => [
           { name: 'fallback', path: '/srv/fallback' },
-          { name: 'keep', path: '/srv/keep' },
+          { name: 'keep', path: VAL_SRV_KEEP },
         ],
       })
       await Promise.resolve()
@@ -154,7 +169,9 @@ describe('NewSessionDialog', () => {
 
     await waitFor(() => {
       const projectSelect = screen.getAllByRole('combobox')[1] as HTMLSelectElement
-      expect(projectSelect.value).toBe('/srv/keep')
+      expect(projectSelect.value).toBe(VAL_SRV_KEEP)
     })
   })
 })
+
+

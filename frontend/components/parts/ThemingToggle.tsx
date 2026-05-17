@@ -15,6 +15,7 @@ export function ThemingToggle() {
 
   return (
     <button
+      data-testid="theming-toggle"
       onClick={() => setThemed(!isThemed)}
       className={`
         inline-flex h-8 w-8 items-center justify-center rounded-md

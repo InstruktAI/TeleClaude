@@ -98,7 +98,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
         }
       });
     return () => controller.abort();
-  }, [computer]);
+  }, [computer, prefill?.project]);
 
   function reset() {
     setMessage("");

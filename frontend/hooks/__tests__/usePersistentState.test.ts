@@ -77,4 +77,20 @@ describe("usePersistentState", () => {
     expect(result.current[0]).toEqual({ activeTab: "sessions" })
     expect(result.current[2].hasStoredValue).toBe(false)
   })
+
+  it("uses the latest initial value on hydration if it changes before hydration", async () => {
+    const { result, rerender } = renderHook(
+      (props) => usePersistentState(props.key, props.initial),
+      { initialProps: { key: "teleclaude.test", initial: { activeTab: "sessions" } } }
+    )
+
+    // Rerender with a new key to trigger re-hydration with a new initial value
+    rerender({ key: "teleclaude.test2", initial: { activeTab: "preparation" } })
+
+    await waitFor(() => {
+      expect(result.current[0]).toEqual({ activeTab: "preparation" })
+    })
+
+    expect(result.current[2].hasStoredValue).toBe(false)
+  })
 })

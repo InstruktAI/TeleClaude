@@ -83,8 +83,10 @@ export function useSessionHighlights(
   const [volatileState, setVolatileState] = useState<VolatileHighlightMap>({});
   const timersRef = useRef<Map<string, number>>(new Map());
   const activeSessionIdRef = useRef<string | null>(activeSessionId ?? null);
-  const stableStateRef = useRef<Map<string, SessionHighlightViewState>>(new Map());
-  activeSessionIdRef.current = activeSessionId ?? null;
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId ?? null;
+  }, [activeSessionId]);
 
   const cancelHighlightTimer = useCallback((sessionId: string) => {
     const timer = timersRef.current.get(sessionId);
@@ -134,8 +136,6 @@ export function useSessionHighlights(
   useEffect(() => {
     if (!persistence.isHydrated) return;
 
-    const validSessionIds = new Set(sessions.map((session) => session.session_id));
-
     setPersistedState((prev) => {
       let changed = false;
       const next: PersistedHighlightMap = {};
@@ -169,24 +169,7 @@ export function useSessionHighlights(
       }
       return next;
     });
-
-    setVolatileState((prev) => {
-      let changed = false;
-      const next: VolatileHighlightMap = {};
-
-      for (const [sessionId, value] of Object.entries(prev)) {
-        if (!validSessionIds.has(sessionId)) {
-          changed = true;
-          cancelHighlightTimer(sessionId);
-          continue;
-        }
-        next[sessionId] = value;
-      }
-
-      return changed ? next : prev;
-    });
   }, [
-    cancelHighlightTimer,
     persistence.isHydrated,
     sessions,
     setPersistedState,
@@ -262,27 +245,30 @@ export function useSessionHighlights(
   }, [onEvent, removeSessionState, schedulePreviewClear, setPersistedState]);
 
   useEffect(() => {
+    const timers = timersRef.current;
+
     return () => {
-      for (const timer of timersRef.current.values()) {
+      for (const timer of timers.values()) {
         window.clearTimeout(timer);
       }
-      timersRef.current.clear();
+      timers.clear();
     };
   }, []);
 
-  return useMemo(() => {
+  const computedState = useMemo(() => {
+    const sessionById = new Map(
+      sessions.map((session) => [session.session_id, session]),
+    );
     const sessionIds = new Set<string>([
-      ...sessions.map((session) => session.session_id),
+      ...sessionById.keys(),
       ...Object.keys(persistedState),
-      ...Object.keys(volatileState),
     ]);
     const next = new Map<string, SessionHighlightViewState>();
-    const previous = stableStateRef.current;
 
     for (const sessionId of sessionIds) {
       const persisted = persistedState[sessionId];
       const volatile = volatileState[sessionId];
-      const session = sessions.find((value) => value.session_id === sessionId);
+      const session = sessionById.get(sessionId);
 
       const state: SessionHighlightViewState = {
         highlightType: persisted?.highlightType ?? null,
@@ -301,17 +287,12 @@ export function useSessionHighlights(
         state.lastOutputSummary ||
         state.lastOutputSummaryAt
       ) {
-        const previousState = previous.get(sessionId);
-        next.set(
-          sessionId,
-          previousState && sameViewState(previousState, state)
-            ? previousState
-            : state,
-        );
+        next.set(sessionId, state);
       }
     }
 
-    stableStateRef.current = next;
     return next;
   }, [persistedState, sessions, volatileState]);
+
+  return computedState;
 }

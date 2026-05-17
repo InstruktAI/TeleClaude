@@ -75,16 +75,18 @@ export function useLiveSessions(computer?: string) {
   const query = useSessions(computer);
   const { onEvent } = useWS();
   const [sessions, setSessions] = useState<SessionInfo[]>(() => query.data ?? []);
+  const [prevQueryData, setPrevQueryData] = useState(query.data);
+  const [prevQueryIsLoading, setPrevQueryIsLoading] = useState(query.isLoading);
 
-  useEffect(() => {
+  if (query.data !== prevQueryData || query.isLoading !== prevQueryIsLoading) {
+    setPrevQueryData(query.data);
+    setPrevQueryIsLoading(query.isLoading);
     if (query.data) {
       setSessions(query.data);
-      return;
-    }
-    if (!query.isLoading) {
+    } else if (!query.isLoading) {
       setSessions([]);
     }
-  }, [query.data, query.isLoading]);
+  }
 
   useEffect(() => {
     const cleanupInitial = onEvent("sessions_initial", (event) => {

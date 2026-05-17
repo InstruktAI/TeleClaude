@@ -11,16 +11,18 @@ export function useLiveAgentAvailability() {
   const [availability, setAvailability] = useState<Record<string, AgentAvailabilityInfo>>(
     () => query.data ?? {},
   );
+  const [prevQueryData, setPrevQueryData] = useState(query.data);
+  const [prevQueryIsLoading, setPrevQueryIsLoading] = useState(query.isLoading);
 
-  useEffect(() => {
+  if (query.data !== prevQueryData || query.isLoading !== prevQueryIsLoading) {
+    setPrevQueryData(query.data);
+    setPrevQueryIsLoading(query.isLoading);
     if (query.data) {
       setAvailability(query.data);
-      return;
-    }
-    if (!query.isLoading) {
+    } else if (!query.isLoading) {
       setAvailability({});
     }
-  }, [query.data, query.isLoading]);
+  }
 
   useEffect(() => {
     return onEvent("agent_availability", (event) => {

@@ -34,11 +34,14 @@ export function usePersistentState<T>(
   const serialize = options.serialize ?? defaultSerialize<T>
   const deserialize = options.deserialize ?? defaultDeserialize<T>
   const initialValueRef = useRef(initialValue)
-  initialValueRef.current = initialValue
 
   const [state, setState] = useState<T>(() => resolveInitialValue(initialValue))
   const [hasStoredValue, setHasStoredValue] = useState(false)
   const [isHydrated, setIsHydrated] = useState(false)
+
+  useEffect(() => {
+    initialValueRef.current = initialValue
+  }, [initialValue])
 
   useEffect(() => {
     const fallback = resolveInitialValue(initialValueRef.current)
