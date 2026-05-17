@@ -273,7 +273,7 @@ class IdentityBridge:
         finally:
             try:
                 await pubsub.punsubscribe(IDENTITY_PATTERN)
-                await pubsub.aclose()
+                await pubsub.aclose()  # type: ignore[no-untyped-call]
             except Exception:
                 logger.debug("Error closing identity pubsub", exc_info=True)
 
