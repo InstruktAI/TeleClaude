@@ -1,0 +1,19 @@
+# serializer version: 1
+# name: test_build_complete_review_dispatch_note_matches_bug_todo
+  'Bug artifact contract for bug-slug: bug is the mandate for this fix. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
+# ---
+# name: test_build_complete_review_dispatch_note_matches_standard_prepared_todo
+  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
+# ---
+# name: test_build_started_dispatch_note_matches_bug_todo
+  'Bug artifact contract for bug-slug: bug is the mandate for this fix. Start implementation now. When the build is committed and ready for review, run `telec todo stamp bug-slug --build-complete`.'
+# ---
+# name: test_build_started_dispatch_note_matches_plan_only_todo
+  'Plan-only artifact contract for refactor-slug: implementation-plan is the intent and execution source for this refactor work. Start implementation now. When the build is committed and ready for review, run `telec todo stamp refactor-slug --build-complete`.'
+# ---
+# name: test_build_started_dispatch_note_matches_prepped_todo
+  'Prepped artifact contract for prepped-slug: implementation-plan is the sole spec because prepare was intentionally skipped. Start implementation now. When the build is committed and ready for review, run `telec todo stamp prepped-slug --build-complete`.'
+# ---
+# name: test_build_started_dispatch_note_matches_standard_prepared_todo
+  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp todo-slug --build-complete`.'
+# ---

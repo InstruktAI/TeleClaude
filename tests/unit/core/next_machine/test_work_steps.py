@@ -5,8 +5,8 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
-import teleclaude.core.next_machine.work_steps as work_steps
 from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine._types import PhaseStatus
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest
@@ -113,35 +113,35 @@ async def _capture_build_dispatch_request(
 
 
 @pytest.mark.asyncio
-async def test_build_started_dispatch_note_matches_standard_prepared_todo() -> None:
+async def test_build_started_dispatch_note_matches_standard_prepared_todo(snapshot: SnapshotAssertion) -> None:
     request = await _capture_build_dispatch_request("todo")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPARED
+    assert request["note"] == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_started_dispatch_note_matches_prepped_todo() -> None:
+async def test_build_started_dispatch_note_matches_prepped_todo(snapshot: SnapshotAssertion) -> None:
     request = await _capture_build_dispatch_request("prepped")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPPED
+    assert request["note"] == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_started_dispatch_note_matches_bug_todo() -> None:
+async def test_build_started_dispatch_note_matches_bug_todo(snapshot: SnapshotAssertion) -> None:
     request = await _capture_build_dispatch_request("bug")
 
     assert request["command"] == SlashCommand.NEXT_BUGS_FIX
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_BUG
+    assert request["note"] == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_started_dispatch_note_matches_plan_only_todo() -> None:
+async def test_build_started_dispatch_note_matches_plan_only_todo(snapshot: SnapshotAssertion) -> None:
     request = await _capture_build_dispatch_request("refactor")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PLAN_ONLY
+    assert request["note"] == snapshot
 
 
 async def _capture_review_dispatch_request(
@@ -187,19 +187,21 @@ async def _capture_review_dispatch_request(
 
 
 @pytest.mark.asyncio
-async def test_build_complete_review_dispatch_note_matches_standard_prepared_todo() -> None:
+async def test_build_complete_review_dispatch_note_matches_standard_prepared_todo(
+    snapshot: SnapshotAssertion,
+) -> None:
     request = await _capture_review_dispatch_request("todo")
 
     assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPARED
+    assert request["note"] == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_complete_review_dispatch_note_matches_bug_todo() -> None:
+async def test_build_complete_review_dispatch_note_matches_bug_todo(snapshot: SnapshotAssertion) -> None:
     request = await _capture_review_dispatch_request("bug")
 
     assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
-    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_BUG
+    assert request["note"] == snapshot
 
 
 @pytest.mark.asyncio
