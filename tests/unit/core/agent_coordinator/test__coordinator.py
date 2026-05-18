@@ -14,16 +14,23 @@ from teleclaude.core.models import Session
 from teleclaude.core.origins import InputOrigin
 
 ACTIVE_OUTPUT_STATUS = "active_output"
+ACTIVE_STATUS = "active"
 ACCEPTED_STATUS = "accepted"
+AGENT_SESSION_STARTED_REASON = "agent_session_started"
 AGENT_RESPONSE = "Agent response here."
 BASH_TOOL_NAME = "Bash"
 COMPLETED_STATUS = "completed"
 FINAL_OUTPUT = "final output"
+LINK_OUTPUT = "link output"
 LAST_ACTIVITY_FIELD = "last_activity"
 LAST_AGENT_STOP_AT_FIELD = "last_agent_stop_at"
 LAST_INPUT_ORIGIN_FIELD = "last_input_origin"
 LAST_MESSAGE_SENT_AT_FIELD = "last_message_sent_at"
 LAST_MESSAGE_SENT_FIELD = "last_message_sent"
+NATIVE_SESSION_ID_FIELD = "native_session_id"
+PROJECT_PATH_FIELD = "project_path"
+SCHEDULE_EVENT_TYPE_FIELD = "event_type"
+SCHEDULE_SESSION_ID_FIELD = "session_id"
 LAST_OUTPUT_AT_FIELD = "last_output_at"
 LAST_OUTPUT_RAW_FIELD = "last_output_raw"
 LAST_OUTPUT_SUMMARY_FIELD = "last_output_summary"
@@ -34,8 +41,11 @@ NATIVE_SESSION_ID = "native-123"
 PROMPT_TEXT = "fix the bug"
 PROJECT_PATH = "/my/project"
 RAW_AGENT_TEXT = "Raw agent text."
+REPO_PATH = "/repo"
 SESSION_ID = "sess-001"
 SHORT_SUMMARY = "Short summary."
+TOOL_PREVIEW = "$ ls"
+TTS_SUMMARY = "The task is done."
 TURN_ANCHOR_SHA = "abc123"
 TURN_ANCHOR_SHA_FIELD = "turn_anchor_sha"
 
@@ -148,7 +158,7 @@ class TestEmitStatusEvent:
             mock_canonical.message_intent = "ctrl_status"
             mock_canonical.delivery_scope = "CTRL"
             mock_serial.return_value = mock_canonical
-            coord._emit_status_event(SESSION_ID, "active", "agent_session_started")
+            coord._emit_status_event(SESSION_ID, ACTIVE_STATUS, AGENT_SESSION_STARTED_REASON)
 
         mock_bus.emit.assert_called_once()
         call_args = mock_bus.emit.call_args
@@ -179,10 +189,10 @@ class TestEmitStatusEvent:
             ),
             patch("teleclaude.core.agent_coordinator._coordinator.event_bus") as mock_bus,
         ):
-            coord._emit_status_event(SESSION_ID, "active", "some_reason")
+            coord._emit_status_event(SESSION_ID, ACTIVE_STATUS, "some_reason")
 
         mock_bus.emit.assert_not_called()
-        assert "sess-001" not in coord._last_emitted_status
+        assert SESSION_ID not in coord._last_emitted_status
 
     @pytest.mark.unit
     def test_serializer_failure_does_not_raise(self):
@@ -192,7 +202,7 @@ class TestEmitStatusEvent:
             side_effect=RuntimeError("status contract down"),
         ):
             # Should not raise — failures are logged and swallowed
-            coord._emit_status_event(SESSION_ID, "active", "some_reason")
+            coord._emit_status_event(SESSION_ID, ACTIVE_STATUS, "some_reason")
 
 
 class TestHandleEvent:
@@ -274,7 +284,7 @@ class TestHandleSessionStart:
             await coord.handle_session_start(context)
 
         call_kwargs = mock_db.update_session.call_args[1]
-        assert call_kwargs["native_session_id"] == NATIVE_SESSION_ID
+        assert call_kwargs[NATIVE_SESSION_ID_FIELD] == NATIVE_SESSION_ID
 
     @pytest.mark.unit
     async def test_emits_active_status_for_non_headless(self):
@@ -294,7 +304,7 @@ class TestHandleSessionStart:
             coord._speak_session_start = AsyncMock()
             await coord.handle_session_start(context)
 
-        coord._emit_status_event.assert_called_once_with(SESSION_ID, "active", "agent_session_started")
+        coord._emit_status_event.assert_called_once_with(SESSION_ID, ACTIVE_STATUS, AGENT_SESSION_STARTED_REASON)
 
     @pytest.mark.unit
     async def test_skips_status_for_headless_session(self):
@@ -335,7 +345,7 @@ class TestHandleSessionStart:
             await coord.handle_session_start(context)
 
         call_kwargs = mock_db.update_session.call_args[1]
-        assert call_kwargs["project_path"] == PROJECT_PATH
+        assert call_kwargs[PROJECT_PATH_FIELD] == PROJECT_PATH
 
     @pytest.mark.unit
     async def test_schedules_speak_on_session_start(self):
@@ -359,8 +369,8 @@ class TestHandleSessionStart:
 
         mock_schedule.assert_called_once()
         schedule_kwargs = mock_schedule.call_args.kwargs
-        assert schedule_kwargs["session_id"] == SESSION_ID
-        assert schedule_kwargs["event_type"] == AgentHookEvents.AGENT_SESSION_START
+        assert schedule_kwargs[SCHEDULE_SESSION_ID_FIELD] == SESSION_ID
+        assert schedule_kwargs[SCHEDULE_EVENT_TYPE_FIELD] == AgentHookEvents.AGENT_SESSION_START
 
 
 class TestHandleUserPromptSubmit:
@@ -451,7 +461,7 @@ class TestHandleUserPromptSubmit:
         context.session_id = SESSION_ID
         context.data.prompt = PROMPT_TEXT
         context.data.raw = {}
-        session = _make_session(lifecycle_status="active", project_path="/repo")
+        session = _make_session(lifecycle_status="active", project_path=REPO_PATH)
 
         def _close_coro(coro: object, label: str) -> None:
             if hasattr(coro, "close"):
@@ -478,7 +488,7 @@ class TestHandleUserPromptSubmit:
             coord._queue_background_task = MagicMock(side_effect=_close_coro)
             await coord.handle_user_prompt_submit(context)
 
-        read_head_mock.assert_called_once_with("/repo")
+        read_head_mock.assert_called_once_with(REPO_PATH)
         anchor_calls = [c for c in mock_db.update_session.call_args_list if TURN_ANCHOR_SHA_FIELD in c.kwargs]
         assert len(anchor_calls) == 1
         assert anchor_calls[0].kwargs[TURN_ANCHOR_SHA_FIELD] == TURN_ANCHOR_SHA
@@ -639,8 +649,8 @@ class TestHandleAgentStop:
 
         mock_schedule.assert_called_once()
         schedule_kwargs = mock_schedule.call_args.kwargs
-        assert schedule_kwargs["session_id"] == SESSION_ID
-        assert schedule_kwargs["event_type"] == AgentHookEvents.AGENT_STOP
+        assert schedule_kwargs[SCHEDULE_SESSION_ID_FIELD] == SESSION_ID
+        assert schedule_kwargs[SCHEDULE_EVENT_TYPE_FIELD] == AgentHookEvents.AGENT_STOP
 
     @pytest.mark.unit
     async def test_emits_completed_status(self):
@@ -713,7 +723,7 @@ class TestHandleAgentStop:
             coord._finalize_agent_stop = AsyncMock()
             await coord.handle_agent_stop(context)
 
-        coord._emit_activity_event.assert_called_once_with("sess-001", AgentHookEvents.AGENT_STOP, summary=None)
+        coord._emit_activity_event.assert_called_once_with(SESSION_ID, AgentHookEvents.AGENT_STOP, summary=None)
 
     @pytest.mark.unit
     async def test_does_not_clear_last_tool_done_at(self):
@@ -782,16 +792,16 @@ class TestFinalizeAgentStop:
             patch("teleclaude.core.agent_coordinator._coordinator.get_command_service") as mock_cs,
         ):
             mock_cs.return_value = MagicMock()
-            await coord._finalize_agent_stop("sess-001", payload, "link output", None)
+            await coord._finalize_agent_stop(SESSION_ID, payload, LINK_OUTPUT, None)
 
         mock_schedule.assert_called_once_with(
-            "sess-001",
+            SESSION_ID,
             client=coord.client,
             command_service=mock_cs.return_value,
             source_computer=None,
         )
         coord._notify_session_listener.assert_awaited_once()
-        coord._forward_stop_to_initiator.assert_awaited_once_with("sess-001", "link output")
+        coord._forward_stop_to_initiator.assert_awaited_once_with(SESSION_ID, LINK_OUTPUT)
 
 
 class TestHandleToolUse:
@@ -805,8 +815,8 @@ class TestHandleToolUse:
 
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
-            patch("teleclaude.core.agent_coordinator._coordinator.extract_tool_name", return_value="Bash"),
-            patch("teleclaude.core.agent_coordinator._coordinator.build_tool_preview", return_value="$ ls"),
+            patch("teleclaude.core.agent_coordinator._coordinator.extract_tool_name", return_value=BASH_TOOL_NAME),
+            patch("teleclaude.core.agent_coordinator._coordinator.build_tool_preview", return_value=TOOL_PREVIEW),
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -816,7 +826,7 @@ class TestHandleToolUse:
             await coord.handle_tool_use(context)
 
         coord._emit_activity_event.assert_called_once_with(
-            "sess-001", AgentHookEvents.TOOL_USE, "Bash", tool_preview="$ ls"
+            SESSION_ID, AgentHookEvents.TOOL_USE, BASH_TOOL_NAME, tool_preview=TOOL_PREVIEW
         )
 
     @pytest.mark.unit
@@ -1180,8 +1190,8 @@ class TestSpeakAgentStopSummary:
     async def test_valid_summary_calls_tts(self):
         coord = _make_coordinator()
         coord.tts_manager.speak = AsyncMock()
-        await coord._speak_agent_stop_summary("sess-001", "The task is done.")
-        coord.tts_manager.speak.assert_called_once_with("The task is done.", session_id="sess-001")
+        await coord._speak_agent_stop_summary(SESSION_ID, TTS_SUMMARY)
+        coord.tts_manager.speak.assert_called_once_with(TTS_SUMMARY, session_id=SESSION_ID)
 
     @pytest.mark.unit
     async def test_tts_exception_does_not_propagate(self):

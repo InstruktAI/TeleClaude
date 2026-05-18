@@ -19,6 +19,12 @@ from teleclaude.transport.redis_transport import RedisTransport
 
 DROP_CODEX_SUBAGENT_TRACE = "Dropping Codex subagent agent_stop notification"
 LAST_INPUT_ORIGIN_FIELD = "last_input_origin"
+LOCAL_COMPUTER = "local"
+PAUSED_SESSION_A = "paused-sess-A"
+PAUSED_SESSION_B = "paused-sess-B"
+REMOTE_COMPUTER = "remote-box"
+RESOURCE_SESSIONS = "sessions"
+TTL_REASON = "ttl"
 
 
 class _FakeRedisTransport(RedisTransport):
@@ -74,6 +80,10 @@ def _queue_item(row_id: int, event_type: str, classification: str) -> HookOutbox
     )
 
 
+def _row_id(row: HookOutboxRow) -> int:
+    return int(row["id"])
+
+
 def test_make_stale_read_callback_requests_refresh_only_for_remote_redis() -> None:
     refresh_calls: list[tuple[str, str, str]] = []
     adapter = object.__new__(_FakeRedisTransport)
@@ -87,12 +97,12 @@ def test_make_stale_read_callback_requests_refresh_only_for_remote_redis() -> No
         get_adapter=lambda: adapter,
     )
 
-    callback("sessions", "local")
-    callback("sessions", "workstation")
-    callback("sessions", "")
-    callback("sessions", "remote-box")
+    callback(RESOURCE_SESSIONS, LOCAL_COMPUTER)
+    callback(RESOURCE_SESSIONS, "workstation")
+    callback(RESOURCE_SESSIONS, "")
+    callback(RESOURCE_SESSIONS, REMOTE_COMPUTER)
 
-    assert refresh_calls == [("remote-box", "sessions", "ttl")]
+    assert refresh_calls == [(REMOTE_COMPUTER, RESOURCE_SESSIONS, TTL_REASON)]
 
 
 def test_enqueue_bursty_item_replaces_latest_matching_item_after_critical_boundary() -> None:
@@ -117,8 +127,8 @@ def test_enqueue_bursty_item_replaces_latest_matching_item_after_critical_bounda
     )
 
     assert enqueued is True
-    assert [int(item.row["id"]) for item in pending] == [1, 2, 4]
-    assert [int(row["id"]) for row in dropped_rows] == [3]
+    assert [_row_id(item.row) for item in pending] == [1, 2, 4]
+    assert [_row_id(row) for row in dropped_rows] == [3]
     assert claimed_row_ids == {1, 2, 4}
 
 
@@ -232,7 +242,7 @@ async def test_worker_passes_paused_sessions_to_db_fetch() -> None:
         await daemon_instance._hook_outbox_worker()
 
     assert len(captured_exclude) == 1
-    assert captured_exclude[0] == frozenset({"paused-sess-A", "paused-sess-B"})
+    assert captured_exclude[0] == frozenset({PAUSED_SESSION_A, PAUSED_SESSION_B})
 
 
 @pytest.mark.unit
