@@ -697,47 +697,111 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_unsubscribe_session_reports_success_when_listener_was_registered(self) -> None:
-        """Unsubscribe reports success when the caller had an active listener."""
+    async def test_unsubscribe_session_removes_listener_only(self) -> None:
+        """Unsubscribe reports listener removed when only the listener axis had state."""
         identity = _identity("caller-unsub")
 
-        with patch(
-            "teleclaude.api.sessions_actions_routes.unregister_listener",
-            new=AsyncMock(return_value=True),
-        ) as unregister_listener:
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.unregister_listener",
+                new=AsyncMock(return_value=True),
+            ) as unregister_listener,
+            patch(
+                "teleclaude.api.sessions_actions_routes.close_link_for_member",
+                new=AsyncMock(return_value=None),
+            ) as close_link,
+        ):
             response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
 
-        message = response["message"]
-        assert response["status"] == "success"
-        assert isinstance(message, str)
-        assert message
-        assert "sess-unsub" in message
+        assert response == {
+            "status": "success",
+            "listener_removed": True,
+            "link_closed": False,
+            "link_id": None,
+        }
         unregister_listener.assert_awaited_once_with(
             target_session_id="sess-unsub",
             caller_session_id="caller-unsub",
+        )
+        close_link.assert_awaited_once_with(
+            caller_session_id="caller-unsub",
+            target_session_id="sess-unsub",
         )
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_unsubscribe_session_reports_error_when_listener_was_absent(self) -> None:
-        """Unsubscribe reports error when the caller had no active listener."""
+    async def test_unsubscribe_session_closes_link_only(self) -> None:
+        """Unsubscribe reports link closed when only the link axis had state."""
         identity = _identity("caller-unsub")
 
-        with patch(
-            "teleclaude.api.sessions_actions_routes.unregister_listener",
-            new=AsyncMock(return_value=False),
-        ) as unregister_listener:
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.unregister_listener",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "teleclaude.api.sessions_actions_routes.close_link_for_member",
+                new=AsyncMock(return_value="link-abc"),
+            ),
+        ):
             response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
 
-        message = response["message"]
-        assert response["status"] == "error"
-        assert isinstance(message, str)
-        assert message
-        assert "sess-unsub" in message
-        unregister_listener.assert_awaited_once_with(
-            target_session_id="sess-unsub",
-            caller_session_id="caller-unsub",
-        )
+        assert response == {
+            "status": "success",
+            "listener_removed": False,
+            "link_closed": True,
+            "link_id": "link-abc",
+        }
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_unsubscribe_session_clears_both_axes(self) -> None:
+        """Unsubscribe reports both flags true when both axes had state."""
+        identity = _identity("caller-unsub")
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.unregister_listener",
+                new=AsyncMock(return_value=True),
+            ),
+            patch(
+                "teleclaude.api.sessions_actions_routes.close_link_for_member",
+                new=AsyncMock(return_value="link-xyz"),
+            ),
+        ):
+            response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
+
+        assert response == {
+            "status": "success",
+            "listener_removed": True,
+            "link_closed": True,
+            "link_id": "link-xyz",
+        }
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_unsubscribe_session_idempotent_on_empty_state(self) -> None:
+        """Unsubscribe returns success with both flags false when nothing was subscribed."""
+        identity = _identity("caller-unsub")
+
+        with (
+            patch(
+                "teleclaude.api.sessions_actions_routes.unregister_listener",
+                new=AsyncMock(return_value=False),
+            ),
+            patch(
+                "teleclaude.api.sessions_actions_routes.close_link_for_member",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            response = await sessions_actions_routes.unsubscribe_session("sess-unsub", identity=identity)
+
+        assert response == {
+            "status": "success",
+            "listener_removed": False,
+            "link_closed": False,
+            "link_id": None,
+        }
 
     @pytest.mark.unit
     @pytest.mark.asyncio

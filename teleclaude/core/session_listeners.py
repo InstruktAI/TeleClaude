@@ -351,6 +351,25 @@ async def _notify_listeners(target_session_id: str, message: str) -> int:
     )
     success_count = 0
     for listener in listeners:
+        # Suppress delivery while the caller holds an active direct link with the
+        # target. The active-conversation channel supersedes passive notification
+        # for the duration of the link. The listener row is preserved — delivery
+        # resumes on the next event after the link is severed. See
+        # project/spec/session-subscriptions.
+        active_link = await db.get_active_link_between_sessions(
+            listener.caller_session_id,
+            target_session_id,
+            mode="direct_link",
+        )
+        if active_link is not None:
+            logger.debug(
+                "Suppressing listener notify: caller=%s target=%s (active direct link %s)",
+                listener.caller_session_id,
+                target_session_id,
+                active_link.link_id,
+            )
+            continue
+
         delivered = await deliver_listener_message(
             listener.caller_session_id,
             listener.caller_tmux_session,

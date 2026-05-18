@@ -516,16 +516,21 @@ def _emit_tmux_feedback(message: str) -> None:
 
 
 def handle_sessions_unsubscribe(args: list[str]) -> None:
-    """Stop receiving notifications from a session without ending it.
+    """Stop caring about a session — umbrella verb across both subscription axes.
 
     Usage: telec sessions unsubscribe <session_id>
 
-    Removes the caller's listener for the target session. The session continues
-    running, but the caller no longer receives events from it. Use this to
-    detach from a monitored session while leaving it running.
+    Removes the caller's listener for the target session AND severs any active
+    direct link the caller holds with that target. Idempotent: empty state
+    returns success with both action flags false. The target session keeps
+    running.
 
-    This requires a valid session identity (X-Caller-Session-Id header). The
-    daemon will verify that the caller has an active listener for the target.
+    Response payload reports which axis was actually cleared:
+      { status, listener_removed, link_closed, link_id }
+
+    Use `sessions send --close-link` instead if you only want to end the
+    direct conversation but keep passive notifications. See
+    project/spec/session-subscriptions for the contract.
 
     Examples:
       telec sessions unsubscribe abc123def456

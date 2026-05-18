@@ -53,7 +53,7 @@ from teleclaude.core.db import db
 from teleclaude.core.models import MessageMetadata, SessionLaunchIntent, SessionLaunchKind
 from teleclaude.core.models._adapter import TerminalOriginMetadata, WebOriginMetadata
 from teleclaude.core.origins import InputOrigin
-from teleclaude.core.session_listeners import unregister_listener
+from teleclaude.core.session_listeners import close_link_for_member, unregister_listener
 from teleclaude.core.session_status import compute_agent_status
 from teleclaude.core.session_utils import split_project_path_and_subdir
 from teleclaude.output_projection import conversation_projector as conversation_projector_module
@@ -678,16 +678,26 @@ async def unsubscribe_session(
     session_id: str,
     identity: CallerIdentity = Depends(clearance_sessions_unsubscribe),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Stop receiving notifications from a session without ending it.
+    """Stop caring about a target session — umbrella verb across both subscription axes.
 
-    Unregisters the caller's listener for the target session. The session
-    continues running but the caller no longer receives events from it.
-    Requires dual-factor caller identity.
+    Removes the caller's listener row (if any) AND severs any active direct link
+    the caller holds with the target. Idempotent: empty state returns success
+    with both action flags false. See `project/spec/session-subscriptions`.
     """
-    success = await unregister_listener(target_session_id=session_id, caller_session_id=identity.session_id)
-    if success:
-        return {"status": "success", "message": f"Stopped notifications from session {session_id}"}
-    return {"status": "error", "message": f"No listener found for session {session_id}"}
+    listener_removed = await unregister_listener(
+        target_session_id=session_id,
+        caller_session_id=identity.session_id,
+    )
+    link_id = await close_link_for_member(
+        caller_session_id=identity.session_id,
+        target_session_id=session_id,
+    )
+    return {
+        "status": "success",
+        "listener_removed": listener_removed,
+        "link_closed": link_id is not None,
+        "link_id": link_id,
+    }
 
 
 @router.post("/sessions/self/result")

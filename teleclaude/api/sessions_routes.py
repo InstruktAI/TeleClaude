@@ -57,7 +57,6 @@ from teleclaude.core.session_listeners import (
     get_peer_members,
     register_listener,
     resolve_link_for_sender_target,
-    unregister_listener,
 )
 
 if TYPE_CHECKING:
@@ -344,12 +343,12 @@ async def _link_direct_sessions(
     target_session_id: str,
     caller_session: Session | None,
 ) -> None:
-    """Create the direct link between caller and target sessions after creation."""
-    await unregister_listener(
-        target_session_id=target_session_id,
-        caller_session_id=caller_session_id,
-    )
+    """Create the direct link between caller and target sessions after creation.
 
+    Does not touch listener records — the two subscription axes are orthogonal.
+    Notification suppression while the link is active is enforced at delivery
+    time in `_notify_listeners`. See `project/spec/session-subscriptions`.
+    """
     resolved_caller_session = caller_session or await db.get_session(caller_session_id)
     target_session = await db.get_session(target_session_id)
     caller_label = (
@@ -808,10 +807,6 @@ async def _create_direct_link(
     if link_ctx:
         return _active_direct_link_response(link_ctx[0].link_id, already_active=True)
 
-    await unregister_listener(
-        target_session_id=target_session_id,
-        caller_session_id=caller_session_id,
-    )
     link, _ = await create_or_reuse_direct_link(
         caller_session_id=caller_session_id,
         target_session_id=target_session_id,
