@@ -1,8 +1,9 @@
 ---
-id: 'project/policy/adapter-boundaries'
-type: 'policy'
-scope: 'project'
 description: 'Strict separation between adapters and core logic.'
+id: 'project/policy/adapter-boundaries'
+scope: 'project'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Adapter Boundaries — Policy

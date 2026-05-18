@@ -1,8 +1,9 @@
 ---
-id: 'project/policy/launch-service-authoring'
-type: 'policy'
-scope: 'project'
 description: 'Launchd/systemd service templates must use replacement markers, never hardcoded paths.'
+id: 'project/policy/launch-service-authoring'
+scope: 'project'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Launch Service Authoring — Policy

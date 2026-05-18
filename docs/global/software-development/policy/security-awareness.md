@@ -3,6 +3,7 @@ description: 'Security posture, defense in depth, OWASP surface, auth, crypto, t
 id: 'software-development/policy/security-awareness'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Security Awareness — Policy

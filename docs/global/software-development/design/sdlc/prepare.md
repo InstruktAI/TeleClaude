@@ -1,9 +1,10 @@
 ---
-id: 'software-development/design/sdlc/prepare'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'Prepare phase design: pair-based discovery, turn-based artifact production, and human approval boundaries.'
+domain: 'software-development'
+id: 'software-development/design/sdlc/prepare'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Prepare — Design
@@ -48,6 +49,13 @@ produce artifacts in turns.
   truth.
 - Automation supplies supporting facts for judgment; it does not decide scope,
   trade-offs, or design quality on its own.
+- **Gherkin (`Given / When / Then`) belongs in `test-specs`, not in
+  `requirements`.** Requirements success criteria are outcome-shaped in the
+  product owner's language — observable indicators of success without
+  pre-imposing the test author's grammar. Translating those outcomes into
+  Gherkin behavioral contracts is the test-specs phase's job, not intake's.
+  Carrying Gherkin in requirements duplicates the test-specs phase's content
+  and pushes the PO into a downstream author's format.
 
 ## Primary flows
 

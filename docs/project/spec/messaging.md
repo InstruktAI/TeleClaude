@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/messaging'
-type: 'spec'
-scope: 'project'
 description: 'Messaging tools for Telegram, Discord, and email delivery — hooks, files, widgets, and escalation.'
+id: 'project/spec/messaging'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Messaging — Spec

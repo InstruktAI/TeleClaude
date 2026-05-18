@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/project-initialization'
-type: 'procedure'
-domain: 'general'
-scope: 'global'
 description: 'Complete telec projects init pipeline — agent CLI configuration, git plumbing, artifact sync, event domain seeding, project registration, release channel.'
+domain: 'general'
+id: 'general/procedure/project-initialization'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Project Initialization — Procedure

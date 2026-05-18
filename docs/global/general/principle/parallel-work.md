@@ -3,6 +3,7 @@ description: 'Prefer parallelizing independent work with clear briefs and reconc
 id: 'general/principle/parallel-work'
 scope: 'domain'
 type: 'principle'
+visibility: 'public'
 ---
 
 # Parallel Work — Principle

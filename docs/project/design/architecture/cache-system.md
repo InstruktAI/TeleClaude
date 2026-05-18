@@ -3,6 +3,7 @@ description: 'Event-driven read-cache architecture using SQLite snapshots.'
 id: 'project/design/architecture/cache-system'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Cache System — Design

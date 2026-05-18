@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/memory-management'
-type: 'procedure'
-scope: 'global'
-description: 'Guidelines for saving high-signal memories to the long-term database, distinguishing them from documentation and bugs.'
 activation_trigger: 'Use when you encounter a durable user preference, friction, or relationship context'
+description: 'Guidelines for saving high-signal memories to the long-term database, distinguishing them from documentation and bugs.'
+id: 'general/procedure/memory-management'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Memory Management — Procedure

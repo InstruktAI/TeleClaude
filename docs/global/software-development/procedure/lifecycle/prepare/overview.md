@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/overview'
-type: 'procedure'
+description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the four-phase derivation chain (PRD → Architecture → Test specs → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
 domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/overview'
 scope: 'domain'
-description: 'Prepare stage overview. The orchestrator drives a four-step derivation chain (PRD → Architecture → Test specs → Plan) with PRD-only human approval, reviewer-gated downstream artifacts, skip-when-warranted, and standin mode for autonomous intake.'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Prepare Overview — Procedure
@@ -13,131 +14,216 @@ description: 'Prepare stage overview. The orchestrator drives a four-step deriva
 - @~/.teleclaude/docs/general/principle/stewardship.md
 - @~/.teleclaude/docs/general/principle/calibration.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
-- @~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
 
 ## Goal
 
-Drive a todo through the prepare phase from initial intent capture to a state where the work is ready for the build phase. The chain has four derivation steps. The PRD is gated by real human approval because it captures intent. Architecture, test specs, and plan are gated by reviewer verdict because they derive from approved intent and code reality. Phases that don't earn their place for a specific work item are skipped explicitly with reason; phases that do earn their place run with the same shape every time.
+Drive a todo through the prepare phase from initial intent capture to a state
+where the work is ready for the build phase. One session drives the whole
+chain. Each phase loads its skill, does its focused work, and advances the
+state machine. The state machine decides what happens next.
 
-The orchestrator drives. The state machine reports current state and recommends the next step. The orchestrator loads the skill for that step (which carries the skill's required reads), does the work, and stamps the appropriate progress. Phase boundaries are deterministic; the work within each phase is adaptive to the specific intent.
+### Defaults — read these once and carry them through every phase
+
+1. **One session drives the whole prepare lifecycle.** The same session loads
+   the skill for each phase, does the work, advances the state machine, and
+   loads the next skill when the state machine routes there. There is no
+   parallel orchestrator session that dispatches workers per phase. The
+   session you are in is the one that does the work.
+
+2. **Each phase has its own focus, sharpened by a hat:**
+   - **BA hat** for intake — loaded via the `/next-prepare-intake` skill
+   - **Architect hat** for architecture — loaded via the `/next-prepare-architecture` skill
+   - **Test Spec Author hat** for test specs — loaded via the `/next-prepare-specs` skill
+   - **Planner hat** for plan — loaded via the `/next-prepare-plan` skill
+
+   Putting on a hat sharpens focus for the current phase; it does not erase
+   the lifecycle awareness underneath. The hat comes off when the phase ends
+   and the next skill loads.
+
+3. **Reviewers are dispatched, not in-session.** When the state machine
+   routes to a review step, dispatch the cross-model reviewer as a separate
+   session via `telec sessions run` and tail it. No `--direct` link with
+   reviewers — the dispatched session writes findings and a verdict; the
+   active phase skill reads them.
+
+4. **`--direct` is for the PO emulator only.** Standin-mode intake
+   (`human_in_loop: false`) dispatches `/next-emulate-po` with a `--direct`
+   link so the BA can interview the emulated PO across multiple turns. No
+   other dispatch in prepare uses `--direct`.
+
+5. **Human approval is on the PRD only.** The human reviews the PRD and
+   stamps `prd_approved`. There is no automated PRD reviewer — the human is
+   the sole authority on intent. Architecture, test specs, and plan advance
+   on reviewer verdict; no human approval gates downstream of the PRD.
 
 ## Preconditions
 
-- Slug exists in the roadmap, or is created during the session at the moment intent is concrete enough.
-- Session was invoked via `/next-prepare [slug]` (direct human invocation) or auto-spawned by the daemon (dump-mode entry).
-- Session `additional_context` carries `human_in_loop: true | false`. Default `true`.
+- Slug exists in the roadmap, or is created during the session at the moment
+  intent is concrete enough.
+- Session was invoked via `/next-prepare [slug]` (direct human invocation) or
+  auto-spawned by the daemon (dump-mode entry).
+- Session `additional_context` carries `human_in_loop: true | false`.
+  Default `true`.
 
 ## Steps
 
 ### 1. Pre-flight input viability
 
-Before calling the state machine, the orchestrator reads the `input` artifact and decides whether intake can proceed at all. This gate exists because intake — especially in standin mode — will otherwise invent scope from a sparse or accidental input, producing artifacts that look real but encode nothing.
+Before calling the state machine, read the `input` artifact and decide whether
+intake can proceed at all. This gate exists because intake — especially in
+standin mode — will otherwise invent scope from a sparse or accidental input,
+producing artifacts that look real but encode nothing.
 
-Read the input via `telec todo artifacts read {slug} input`. Apply the viability check:
+Read the input via `telec todo artifacts read {slug} input`. Apply the
+viability check:
 
 - **Hard-stop signals** (any one disqualifies the input as-is):
-  - Input is a single short phrase or noun phrase with no goal, no actor, no outcome — fewer than ~10 meaningful words.
-  - Slug carries a raw timestamp suffix (e.g., `…-1778958052`) indicating an auto-generated dump, with no companion context from a prior session.
+  - Input is a single short phrase or noun phrase with no goal, no actor, no
+    outcome — fewer than ~10 meaningful words.
+  - Slug carries a raw timestamp suffix (e.g., `…-1778958052`) indicating an
+    auto-generated dump, with no companion context from a prior session.
   - Input is empty, placeholder text, or matches a known smoke-test pattern.
 
 - **Mode-dependent resolution:**
-  - `human_in_loop: false` (standin) → **hard-stop and escalate.** Do not dispatch intake. The PO emulator has no way to fill the gap and a human cannot sanity-check the result. Surface to the user: "Input too sparse for standin mode; needs human elaboration or removal." Stop the prepare flow.
-  - `human_in_loop: true` → **soft-stop and elicit from the user before dispatch.** Quote the input back, name the gap, ask one direct question to surface the goal/actor/outcome. Update the input artifact with the elaborated text, then proceed.
+  - `human_in_loop: false` (standin) → **hard-stop and escalate.** Do not
+    dispatch intake. The PO emulator has no way to fill the gap and a human
+    cannot sanity-check the result. Surface to the user: "Input too sparse
+    for standin mode; needs human elaboration or removal." Stop the prepare
+    flow.
+  - `human_in_loop: true` → **soft-stop and elicit from the user before
+    dispatch.** Quote the input back, name the gap, ask one direct question
+    to surface the goal/actor/outcome. Update the input artifact with the
+    elaborated text, then proceed.
 
-Substantive inputs (clear intent, concrete outcome, identifiable actor — even if short) pass the gate and proceed to Step 2.
+Substantive inputs (clear intent, concrete outcome, identifiable actor — even
+if short) pass the gate and proceed to Step 2.
 
-### 2. Orient
+### 2. Call the state machine
 
-Call `telec todo prepare {slug}` (or query the state machine equivalently). The machine returns a verbatim execution script for the current phase — the same shape the work state machine emits via `format_tool_call`. The script describes either a dispatch (STEP 1 / STEP 2 / STEP 3) or a non-dispatch resolution (approval gate, blocker resolution, terminal).
+Call `telec todo prepare {slug}`. The machine returns a verbatim execution
+script for the current phase. The script describes either a skill load (load
+the next phase's skill and do its work), a reviewer dispatch (dispatch a
+cross-model reviewer and tail it), an approval pause (present to the real
+human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
 
-The orchestrator executes the script verbatim between user turns. The script's flexibility belongs to in-conversation moments with the user: fresh questions, refinements, scope clarifications.
+Execute the script verbatim. The script's flexibility belongs to
+in-conversation moments with the user: fresh questions, refinements, scope
+clarifications.
 
-When a phase produces a blocker the state machine cannot dispatch a worker for (missing upstream artifact, schema upcycle failure, review remediation), the script's NEXT ACTION names the concrete resolution: write the missing artifact, re-dispatch the responsible draft worker with the review findings, or surface a state-machine error to the user.
+### 3. Load the recommended skill and do the work
 
-### 3. Run the recommended next step
+When the state machine routes you to a phase, load the corresponding skill
+and do its focused work. Each skill ends by calling `telec todo prepare
+{slug}` to advance — that's how the lifecycle proceeds.
 
-The recommendation maps to one of the phase skills. The orchestrator loads the relevant skill, which inlines its required reads. Phase skills:
-
-| Phase        | Skill / command loaded                                         |
-| ------------ | -------------------------------------------------------------- |
-| Intake       | `/next-prepare-intake` (loads `prepare/intake.md` procedure)   |
-| Architecture | `/next-prepare-architecture` (loads `prepare/architecture.md`) |
-| Test specs   | `/next-prepare-specs` (loads `prepare/prepare-specs.md`)       |
-| Plan         | `/next-prepare-plan` (loads `prepare/plan-draft.md`)           |
-
-The orchestrator runs the phase to completion before calling the state machine again for the next recommendation. For intake, completion means PRD artifact plus real human approval. For downstream derivation, completion means artifact plus reviewer verdict.
-
-Lifecycle stamps are authored by the actor producing the judgment they capture; the orchestrator dispatches that actor and waits for the stamp:
-
-- `--drift-reviewed` is the deliverable of the `/next-drift-analyze` worker.
-- `--verdict approve --phase architecture_review`, `test_spec_review`, or `plan_review` is the deliverable of the corresponding reviewer.
-- `--architecture-skipped` and `--test-specs-skipped` are the deliverables of the BA during intake.
+| Phase        | Skill                                  | Hat              |
+| ------------ | -------------------------------------- | ---------------- |
+| Intake       | `/next-prepare-intake`                 | BA               |
+| Architecture | `/next-prepare-architecture`           | Architect        |
+| Test specs   | `/next-prepare-specs`                  | Test Spec Author |
+| Plan         | `/next-prepare-plan`                   | Planner          |
 
 ### 4. Honor the PRD approval gate
 
-Only the PRD has a human approval gate. The orchestrator stamps `--prd-approved` only after the real human (not a standin) confirms the PRD. In standin mode, the orchestrator may produce a PRD but cannot stamp human approval; the chain pauses until the real human engages.
+The PRD is the only artifact gated by human approval. When intake produces
+the PRD, present it to the real human for review and approval. On confirm,
+stamp `prd_approved` (only the real human can — standin cannot stamp this).
+On refine, capture the delta, rewrite the PRD, present again.
 
-When the real human re-engages a standin-paused todo via `/next-prepare {slug}`, the state machine recognizes the situation and recommends presenting the standin-produced artifact for approval. Standard refinement loop applies from there.
+In standin mode, the BA writes the PRD but cannot stamp `prd_approved` — the
+chain pauses at this gate until the real human engages with the slug.
 
 ### 5. Skip phases that don't earn their place
 
-At intake, and at each phase boundary thereafter, the orchestrator assesses whether the next phase earns its place for this specific work. When it doesn't, the orchestrator stamps the skip with reason:
+At intake, the BA assesses size and stamps skips with reason when warranted:
 
-- `architecture_skipped: <reason>` — e.g., "single-file change, no cross-service implications."
-- `test_specs_skipped: <reason>` — e.g., "trivial behavior change covered by existing tests."
+- `architecture_skipped: <reason>` — e.g., "single-file change, no
+  cross-service implications."
+- `test_specs_skipped: <reason>` — e.g., "trivial behavior change covered by
+  existing tests."
 
-The state machine respects skips when deriving the current layer.
+The state machine respects skips when deriving the current phase.
 
 ### 6. Handle drift
 
-When the state machine reports drift (codebase changed in artifact-referenced paths since the artifact was authored), the orchestrator dispatches a lean drift-analysis worker:
+When the state machine reports drift (codebase changed in artifact-referenced
+paths since the artifact was authored), dispatch a lean drift-analysis
+worker:
 
 ```
 telec sessions run --command /next-drift-analyze --agent codex --args {slug}
 ```
 
-The worker reads the diffs scoped to referenced paths, assesses impact per affected artifact, and reports findings. The `/next-drift-analyze` worker is the sole author of `--drift-reviewed`. Substantive verdicts trigger re-derivation of the affected layer; cosmetic verdicts allow the chain to continue.
+The worker reads the diffs scoped to referenced paths, assesses impact per
+affected artifact, and reports findings. The `/next-drift-analyze` worker is
+the sole author of `--drift-reviewed`. Substantive verdicts trigger
+re-derivation of the affected phase; cosmetic verdicts allow the chain to
+continue.
 
 ### 7. Handle refinement
 
-When the human refines (proposes changes to an artifact at any layer), the orchestrator classifies the refinement scope:
+When the human refines (proposes changes to an artifact at any layer),
+classify the refinement scope and re-enter the appropriate phase:
 
-- **Intent-level** (new thinking, scope changes) → re-enter intake with the delta. Downstream authority invalidated.
-- **Architecture-level** (technical brief change) → re-enter architecture phase. Specs and plan reviewer verdicts invalidated.
-- **Specs-level** (behavior contract change) → re-enter specs phase. Plan reviewer verdict invalidated.
-- **Plan-level** (task adjustment) → re-enter plan phase. No further downstream to invalidate.
+- **Intent-level** (new thinking, scope changes) → re-enter intake with the
+  delta. Downstream approvals invalidated.
+- **Architecture-level** (technical brief change) → re-enter architecture
+  phase. Specs and plan approvals invalidated.
+- **Specs-level** (behavior contract change) → re-enter specs phase. Plan
+  approval invalidated.
+- **Plan-level** (task adjustment) → re-enter plan phase. No further
+  downstream to invalidate.
 
-The orchestrator clears the relevant approval or reviewer authority and re-runs the affected phases.
+Clear the relevant approval stamps and re-run the affected phases.
 
 ### 8. Terminal state
 
-When the PRD has human approval, all required downstream artifacts have reviewer approval, and grounding is fresh, the state machine derives `PREPARED`. The orchestrator reports to the user and hands off to the work phase.
+When all required phases have approval stamps and grounding is fresh, the
+state machine derives `PREPARED`. Report to the user and hand off to the work
+phase.
 
-If reviewer verdicts cannot be resolved through normal revision rounds, or if drift cannot be cleanly re-derived, the state machine derives `BLOCKED`. The orchestrator surfaces the blocker to the human for direction.
+If reviewer verdicts cannot be resolved through normal revision rounds, or if
+drift cannot be cleanly re-derived, the state machine derives `BLOCKED`.
+Surface the blocker to the human for direction.
 
 ## Outputs
 
 - `prd` artifact, human-approved.
 - `architecture` artifact, reviewer-approved (unless skipped).
-- Test specs, reviewer-approved (unless skipped).
+- `test-specs` artifact, reviewer-approved (unless skipped).
 - `implementation-plan` artifact, reviewer-approved.
 - Grounding stamps reflecting fresh codebase reference.
 - The state machine reports `PREPARED` (or `BLOCKED` with reasons).
 
 ## Recovery
 
-- **Input fails the viability gate in standin mode.** Orchestrator does not dispatch intake. Surfaces the gap to the user with the input quoted back, and recommends either elaboration (re-dump with substance) or removal (`telec todo remove {slug}`). The prepare flow stops until the input is fixed or the todo is removed.
-- **Input fails the viability gate in human-in-loop mode.** Orchestrator stops before dispatch, quotes the input, and asks one direct question to surface the missing goal/actor/outcome. Updates the input artifact with the human's elaboration, then proceeds from Step 2.
-- **State machine returns an unfamiliar recommendation.** Orchestrator surfaces this to the user; doesn't improvise.
-- **Phase skill loading fails.** Orchestrator reports the failure; doesn't proceed without the skill loaded.
-- **Reviewer dispatch fails repeatedly.** Surface as a blocker; don't grind without reviewer verification.
-- **Human disengages mid-flow.** State machine retains current state; next session resumes where things were left.
-- **Conflict between standin-produced artifact and real human's intent.** When the human refines a standin-produced artifact substantially, the orchestrator treats the refinement as authoritative and re-derives downstream — even if downstream had already been auto-produced in standin mode. The human's stamp is the source of truth.
+- **Input fails the viability gate in standin mode.** Do not dispatch intake.
+  Surface the gap to the user with the input quoted back, and recommend
+  either elaboration (re-dump with substance) or removal (`telec todo remove
+  {slug}`). The prepare flow stops until the input is fixed or the todo is
+  removed.
+- **Input fails the viability gate in human-in-loop mode.** Stop before
+  dispatch, quote the input, and ask one direct question to surface the
+  missing goal/actor/outcome. Update the input artifact with the human's
+  elaboration, then proceed from Step 2.
+- **State machine returns an unfamiliar recommendation.** Surface this to the
+  user; do not improvise.
+- **Skill loading fails.** Report the failure; do not proceed without the
+  skill loaded.
+- **Reviewer dispatch fails repeatedly.** Surface as a blocker; do not grind
+  without reviewer verification.
+- **Human disengages mid-flow.** State machine retains current state; next
+  session resumes where things were left.
+- **Conflict between standin-produced artifact and real human's intent.**
+  When the human refines a standin-produced artifact substantially, treat
+  the refinement as authoritative and re-derive downstream — even if
+  downstream had already been auto-produced in standin mode. The human's
+  stamp is the source of truth.
 
 ## See Also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/prepare-specs.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
 - ~/.teleclaude/docs/software-development/principle/architectural-defaults.md

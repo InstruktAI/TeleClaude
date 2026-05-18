@@ -1,9 +1,10 @@
 ---
-id: 'project/spec/session-output-routing'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
 description: 'Canonical routing contract for session messages across origin UX and admin lanes.'
+domain: 'software-development'
+id: 'project/spec/session-output-routing'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Session Output Routing — Spec
@@ -13,6 +14,9 @@ description: 'Canonical routing contract for session messages across origin UX a
 This spec defines the routing contract for session messages across origin UX and admin visibility paths.
 
 Core decides delivery scope and targeted recipients accordingly. Adapters decide how to present messages (threaded, edit-in-place, multi-placement) and how to route them internally (admin channels, origin UX, suppression).
+
+Projection ordering, cursors, and origin gating are defined in `project/spec/session-projection`.
+This spec owns recipient selection only.
 
 ### Mental model: three lanes
 
@@ -97,13 +101,15 @@ Channel provisioning determines whether a UI adapter can receive delivery. It do
 
 ### Entry point (`last_input_origin`)
 
-`last_input_origin` records the most recent interaction source for session continuity. It supports direct replies to the origin endpoint. It is routing metadata set only at acceptance boundaries — where normalized input becomes accepted core state. UI adapters must not write this field.
+`last_input_origin` records the most recent accepted interaction source for session continuity. It supports direct replies to the origin endpoint and tells projection whether a user source entry was already visible in a UI client. It is live routing/presence metadata, not a durable audit log and not a projection cursor.
+
+The field is set only at acceptance boundaries where normalized input becomes accepted core state. UI adapters pass origin metadata into the command layer; they do not mutate session state directly. Terminal input has no adapter acceptance boundary, so the terminal hook path records `terminal` at `user_prompt_submit`.
 
 Current canonical origins are `telegram`, `discord`, `whatsapp`, `web`, and `terminal`.
 
 ### Projection ownership
 
-Transcript/file truth is the sole source of conversational truth. One projector owns user-input and agent-output projection into canonical state.
+Transcript/file truth is the sole source of conversational truth in v1. `session_ledger` blocks are the target source of truth in v2. The full projection contract lives in `project/spec/session-projection`.
 
 | Field                  | Owner                | Purpose                                           |
 | ---------------------- | -------------------- | ------------------------------------------------- |
@@ -111,7 +117,9 @@ Transcript/file truth is the sole source of conversational truth. One projector 
 | `last_message_sent`    | Transcript projector | Operational text snapshot of last projected input |
 | `last_message_sent_at` | Transcript projector | Operational timestamp of last projected input     |
 
-The projector uses `last_projected_at` for dedupe decisions — it never reads `last_message_sent_at` for this purpose. Non-projector code (acceptance handlers, coordinators, UI adapters) must not advance `last_projected_at`. The projector writes `last_message_sent`/`last_message_sent_at` alongside `last_projected_at` for downstream operational consumers. Acceptance handlers may set these fields eagerly before the projector runs so that downstream consumers have immediate values; the projector's write is authoritative.
+The projector uses `last_projected_at` for v1 dedupe decisions - it never reads `last_message_sent_at` for this purpose. Non-projector code (acceptance handlers, coordinators, UI adapters) must not advance `last_projected_at`. The projector writes `last_message_sent`/`last_message_sent_at` alongside `last_projected_at` for downstream operational consumers. Acceptance handlers may set these fields eagerly before the projector runs so that downstream consumers have immediate values; the projector's write is authoritative.
+
+Projection must honor origin freshness before crossing a user source entry. If the next user entry's origin is not fresh, projection defers instead of guessing from stale routing state.
 
 ### Actor attribution expectations
 
@@ -133,3 +141,7 @@ The projector uses `last_projected_at` for dedupe decisions — it never reads `
 - Telegram does not render admin reflections.
 - Admin-lane recipients can still render multiple internal placements. That is adapter behavior, not core routing policy.
 - Command acknowledgements and lifecycle chatter are not cross-adapter broadcasts. Targeted origin delivery and Discord admin reflection are the only supported UI routing patterns.
+
+## See Also
+
+- docs/project/spec/session-projection.md

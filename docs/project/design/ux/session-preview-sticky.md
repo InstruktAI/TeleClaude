@@ -1,8 +1,9 @@
 ---
-id: 'project/design/ux/session-preview-sticky'
-type: 'design'
-scope: 'project'
 description: 'Preview and sticky session interaction model for TUI pane management.'
+id: 'project/design/ux/session-preview-sticky'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Session Preview & Sticky — Design

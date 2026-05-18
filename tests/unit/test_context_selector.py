@@ -144,7 +144,7 @@ def test_build_context_output_emits_requested_public_body_and_denied_private_sni
     monkeypatch.setattr(
         context_selector,
         "get_project_slug",
-        lambda _root: "alpha",  # pyright: ignore[reportUnknownLambdaType]
+        lambda _: "alpha",  # pyright: ignore[reportUnknownLambdaType]
     )
 
     output = context_selector.build_context_output(
@@ -159,3 +159,101 @@ def test_build_context_output_emits_requested_public_body_and_denied_private_sni
     assert "Hidden body." not in output
     assert "id: project/spec/private" in output
     assert "access: denied" in output
+
+
+def test_phase1_header_includes_dynamic_filter_enums() -> None:
+    output = context_selector._build_phase1_output(
+        [],
+        [],
+        areas=[],
+        global_snippets_root=Path("/tmp/global-docs"),
+        test_agent=None,
+        test_mode=None,
+        test_request=None,
+        test_csv_path=None,
+    )
+    expected_areas = "|".join(context_selector.TAXONOMY_TYPES)
+    expected_domains = "|".join(context_selector.DOMAIN_SCOPES)
+    assert f"--areas <{expected_areas}>" in output
+    assert f"--domains <{expected_domains}>" in output
+
+
+def test_include_snippet_unauthed_sees_only_public(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    project_root = tmp_path / "workspace" / "alpha"
+    project_docs = project_root / "docs" / "project"
+    project_docs.mkdir(parents=True)
+    (project_docs / "index.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "project_root": str(project_root),
+                "snippets": [
+                    {
+                        "id": "project/spec/internal-thing",
+                        "description": "Internal project snippet",
+                        "type": "spec",
+                        "scope": "project",
+                        "path": "docs/project/internal-thing.md",
+                        "visibility": "internal",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    global_root = tmp_path / "global-home"
+    global_docs = global_root / "docs"
+    (global_docs / "general" / "policy").mkdir(parents=True)
+    (global_docs / "software-development" / "policy").mkdir(parents=True)
+    (global_docs / "index.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "project_root": str(global_root),
+                "snippets": [
+                    {
+                        "id": "general/policy/public-thing",
+                        "description": "Public global snippet",
+                        "type": "policy",
+                        "scope": "global",
+                        "path": "docs/general/policy/public-thing.md",
+                        "visibility": "public",
+                    },
+                    {
+                        "id": "general/policy/internal-thing",
+                        "description": "Internal global snippet",
+                        "type": "policy",
+                        "scope": "global",
+                        "path": "docs/general/policy/internal-thing.md",
+                        "visibility": "internal",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(context_selector, "GLOBAL_SNIPPETS_DIR", global_docs)
+    monkeypatch.setattr(
+        context_selector,
+        "_load_manifest_by_name",
+        lambda: {},  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(
+        context_selector,
+        "get_project_slug",
+        lambda _: "alpha",  # pyright: ignore[reportUnknownLambdaType]
+    )
+
+    output = context_selector.build_context_output(
+        areas=[],
+        project_root=project_root,
+        snippet_ids=None,
+        effective_human_role=None,
+    )
+
+    assert "general/policy/public-thing" in output
+    assert "general/policy/internal-thing" not in output
+    assert "project/spec/internal-thing" not in output

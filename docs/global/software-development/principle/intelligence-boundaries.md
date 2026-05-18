@@ -3,6 +3,7 @@ description: 'Code that classifies, scores, judges, evaluates, or auto-edits con
 id: 'software-development/principle/intelligence-boundaries'
 scope: 'domain'
 type: 'principle'
+visibility: 'public'
 ---
 
 # Intelligence Boundaries — Principle

@@ -3,6 +3,7 @@ description: 'Migration order for v2: MVP first (workflow + CLI), then per-servi
 id: 'project/design/architecture-v2/reconstruction-order'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Reconstruction Order — Design

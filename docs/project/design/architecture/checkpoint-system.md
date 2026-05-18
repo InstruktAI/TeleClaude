@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/checkpoint-system'
-type: 'design'
-scope: 'project'
 description: 'Checkpoint injection mechanism that delivers structured debrief prompts to AI agents at turn boundaries.'
+id: 'project/design/architecture/checkpoint-system'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Checkpoint System — Design

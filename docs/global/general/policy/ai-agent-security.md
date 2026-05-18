@@ -3,6 +3,7 @@ description: 'Security policy for AI agent systems covering prompt injection, cr
 id: 'general/policy/ai-agent-security'
 scope: 'global'
 type: 'policy'
+visibility: 'public'
 ---
 
 # AI Agent Security — Policy

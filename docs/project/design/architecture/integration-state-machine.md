@@ -1,9 +1,10 @@
 ---
 description: 'Phase C state machine: lease-serialized, crash-recoverable integration from feature branches to canonical main.'
-id: 'project/design/architecture/integration-state-machine'
 domain: 'software-development'
+id: 'project/design/architecture/integration-state-machine'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Integration State Machine — Design

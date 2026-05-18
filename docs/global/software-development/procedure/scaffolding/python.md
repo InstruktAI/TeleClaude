@@ -3,6 +3,7 @@ description: 'Scaffold a Python repo with standard tooling, Makefile targets, an
 id: 'software-development/procedure/scaffolding/python'
 scope: 'domain'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Python Skaffolding — Procedure

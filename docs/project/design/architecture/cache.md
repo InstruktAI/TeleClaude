@@ -3,6 +3,7 @@ description: 'DaemonCache snapshot layer for computers, projects, todos, session
 id: 'project/design/architecture/cache'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Cache — Design

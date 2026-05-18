@@ -1,9 +1,10 @@
 ---
-id: 'general/principle/proprioception'
-type: 'principle'
-domain: 'general'
-scope: 'global'
 description: 'A distributed system that senses itself as a whole — not through monitoring, but through the ambient signals that flow between its parts.'
+domain: 'general'
+id: 'general/principle/proprioception'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # System Proprioception — Principle

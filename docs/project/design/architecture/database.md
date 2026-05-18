@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/database'
-type: 'design'
-scope: 'project'
 description: 'SQLite persistence for sessions, hook outbox, memory, UX state, and agent metadata.'
+id: 'project/design/architecture/database'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Database — Design

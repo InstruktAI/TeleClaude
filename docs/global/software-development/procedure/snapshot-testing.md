@@ -1,9 +1,10 @@
 ---
 description: 'Snapshot-testing idioms and migration patterns for string assertions in tests.'
-id: 'software-development/procedure/snapshot-testing'
-type: 'procedure'
 domain: 'software-development'
+id: 'software-development/procedure/snapshot-testing'
 scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Snapshot Testing — Procedure

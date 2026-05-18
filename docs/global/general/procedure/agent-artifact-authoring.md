@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/agent-artifact-authoring'
-type: 'procedure'
-scope: 'global'
-description: 'Author agent artifacts (agents, skills, commands) that compile into tool-specific formats.'
 activation_trigger: 'Use when creating or updating agent artifacts'
+description: 'Author agent artifacts (agents, skills, commands) that compile into tool-specific formats.'
+id: 'general/procedure/agent-artifact-authoring'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Agent Artifact Authoring — Procedure

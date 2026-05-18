@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/review-architecture'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Architecture review phase. Validate the architecture artifact against the approved PRD, project architecture, codebase reality, and platform defaults.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/review-architecture'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Review Architecture — Procedure

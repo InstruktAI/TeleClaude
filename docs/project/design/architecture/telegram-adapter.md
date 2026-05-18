@@ -3,6 +3,7 @@ description: 'Telegram UI adapter that maps topics to sessions and enforces UX c
 id: 'project/design/architecture/telegram-adapter'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Telegram Adapter — Design

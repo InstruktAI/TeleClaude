@@ -1,8 +1,9 @@
 ---
-id: 'general/spec/history-log'
-type: 'spec'
-scope: 'global'
 description: 'Standard format for history.md logs that record request/response entries.'
+id: 'general/spec/history-log'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # History Log — Spec

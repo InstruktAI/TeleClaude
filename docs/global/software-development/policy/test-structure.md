@@ -3,6 +3,7 @@ description: '1:1 source-to-test mapping, directory conventions, exemptions, and
 id: 'software-development/policy/test-structure'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Test Structure — Policy

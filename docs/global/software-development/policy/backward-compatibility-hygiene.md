@@ -1,9 +1,10 @@
 ---
-id: 'software-development/policy/backward-compatibility-hygiene'
-type: 'policy'
-domain: 'software-development'
-scope: 'global'
 description: 'Backward compatibility hygiene rules for shipping stable releases without breaking consumers.'
+domain: 'software-development'
+id: 'software-development/policy/backward-compatibility-hygiene'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Backward Compatibility Hygiene — Policy

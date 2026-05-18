@@ -3,6 +3,7 @@ description: 'Definition of Ready gates for work items before they enter impleme
 id: 'software-development/policy/definition-of-ready'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Definition Of Ready — Policy

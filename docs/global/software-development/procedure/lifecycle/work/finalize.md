@@ -1,9 +1,10 @@
 ---
 description: 'Finalize phase. Two-stage finalize: worker prepare, orchestrator apply.'
-id: 'software-development/procedure/lifecycle/work/finalize'
-type: 'procedure'
 domain: 'software-development'
+id: 'software-development/procedure/lifecycle/work/finalize'
 scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Finalize — Procedure

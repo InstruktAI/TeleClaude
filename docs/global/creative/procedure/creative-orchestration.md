@@ -1,9 +1,10 @@
 ---
-id: 'creative/procedure/creative-orchestration'
-type: 'procedure'
-domain: 'creative'
-scope: 'global'
 description: 'Drive the creative state machine: dispatch workers, park at human gates, advance through design spec, art generation, and visual artifact phases.'
+domain: 'creative'
+id: 'creative/procedure/creative-orchestration'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Creative Orchestration — Procedure

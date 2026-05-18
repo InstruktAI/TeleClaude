@@ -1,9 +1,10 @@
 ---
-id: 'general/principle/stewardship'
-type: 'principle'
-domain: 'general'
-scope: 'global'
 description: 'The agent is the steward by default. Stewardship flows to whoever holds the deepest knowledge on the topic at hand. During convergence, the steward leads.'
+domain: 'general'
+id: 'general/principle/stewardship'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Stewardship — Principle

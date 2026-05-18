@@ -1,9 +1,10 @@
 ---
-id: 'project/design/architecture/help-desk-platform'
-type: 'design'
-domain: 'software-development'
-scope: 'project'
 description: 'Help desk platform with identity-scoped memory, admin relay channels, escalation, internal channels, and operator workspace.'
+domain: 'software-development'
+id: 'project/design/architecture/help-desk-platform'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Help Desk Platform — Design

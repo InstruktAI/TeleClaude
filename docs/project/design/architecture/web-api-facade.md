@@ -3,6 +3,7 @@ description: 'Next.js API facade as the canonical web contract, proxying to daem
 id: 'project/design/architecture/web-api-facade'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Web Api Facade — Design

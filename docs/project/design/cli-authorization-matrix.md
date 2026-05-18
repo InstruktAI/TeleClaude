@@ -1,8 +1,9 @@
 ---
-id: 'project/design/cli-authorization-matrix'
-type: 'design'
-scope: 'project'
 description: 'Per-command authorization matrix for telec CLI across all system and human roles.'
+id: 'project/design/cli-authorization-matrix'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # CLI Authorization Matrix — Design

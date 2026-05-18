@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/runtime-operations-truth'
-type: 'spec'
-scope: 'project'
 description: 'Practical contract for documenting daemon background operations and their real user impact.'
+id: 'project/spec/runtime-operations-truth'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Runtime Operations Truth — Spec

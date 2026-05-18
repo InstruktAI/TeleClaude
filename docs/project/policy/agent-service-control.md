@@ -3,6 +3,7 @@ description: 'Defines which service/daemon commands agents may run, which are co
 id: 'project/policy/agent-service-control'
 scope: 'project'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Agent Service Control — Policy

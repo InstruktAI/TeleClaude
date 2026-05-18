@@ -1,11 +1,16 @@
 ---
-id: 'project/design/architecture/output-delivery'
-type: 'design'
-scope: 'project'
 description: 'Output and footer message separation in UI adapters, with delivery chain and lifecycle.'
+id: 'project/design/architecture/output-delivery'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Output Delivery — Design
+
+## Required reads
+
+- @docs/project/spec/session-projection.md
 
 ## Purpose
 
@@ -44,6 +49,8 @@ This separation allows output to be edited independently from metadata, prevents
 7. **Backward compatibility**: `from_json` deserializer handles legacy `threaded_footer_message_id` field by mapping it to `footer_message_id`.
 
 8. **Threaded output without status**: Threaded output (e.g., Gemini) calls `_deliver_output` without a status_line parameter. The footer shows session IDs only in this case.
+
+9. **Delivery receipts only**: Output message ids, footer ids, overflow offsets, and edit anchors are adapter-local receipts. They do not define source ordering, user-turn boundaries, or projection dedupe.
 
 ## Primary flows
 
@@ -99,3 +106,4 @@ sequenceDiagram
 | Telegram topic_id missing                             | `send_message` returns `""`                          | Footer skipped, no message_id stored |
 | Legacy session data with `threaded_footer_message_id` | `from_json` maps to `footer_message_id`              | Transparent backward compat          |
 | Output message exceeds byte budget                    | Handled by output sizing pipeline (separate concern) | See output-sizing design doc         |
+| Delivery state treated as projection truth            | Invalid; can duplicate or reorder source content      | Rebuild from source cursor           |

@@ -3,6 +3,7 @@ description: 'v2 logging/observability model: crates/observability wraps tracing
 id: 'project/design/architecture-v2/observability-model'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Observability Model — Design

@@ -3,6 +3,7 @@ description: 'Text-to-speech system with multi-backend fallback, per-session voi
 id: 'project/design/architecture/tts-system'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # TTS System — Design

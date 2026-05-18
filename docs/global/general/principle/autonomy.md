@@ -1,8 +1,9 @@
 ---
-id: 'general/principle/autonomy'
-type: 'principle'
-scope: 'global'
 description: 'The principle of autonomy for AI agents, emphasizing steady progress and independence.'
+id: 'general/principle/autonomy'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Autonomy — Principle

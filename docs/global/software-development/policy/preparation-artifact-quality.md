@@ -1,8 +1,9 @@
 ---
-id: 'software-development/policy/preparation-artifact-quality'
-type: 'policy'
-scope: 'domain'
 description: 'Quality rules for preparation artifacts (PRD, architecture, test specs, and plans). Shared by creators and reviewers.'
+id: 'software-development/policy/preparation-artifact-quality'
+scope: 'domain'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Preparation Artifact Quality — Policy

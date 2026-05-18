@@ -3,6 +3,7 @@ description: 'Context selection pipeline that picks relevant docs for the two-ph
 id: 'project/design/architecture/context-selection'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Context Selection — Design

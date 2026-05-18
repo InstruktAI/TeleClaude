@@ -3,6 +3,7 @@ description: 'Python typing, data handling, error patterns, async, idioms. Moder
 id: 'software-development/policy/python/core'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Core — Policy

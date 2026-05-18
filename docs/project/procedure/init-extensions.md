@@ -1,9 +1,10 @@
 ---
-id: 'project/procedure/init-extensions'
-type: 'procedure'
-domain: 'software-development'
-scope: 'project'
 description: 'TeleClaude-specific init extensions — help desk bootstrap and macOS launcher installation with permissions probe.'
+domain: 'software-development'
+id: 'project/procedure/init-extensions'
+scope: 'project'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Init Extensions — Procedure

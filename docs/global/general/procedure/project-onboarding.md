@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/project-onboarding'
-type: 'procedure'
-domain: 'general'
-scope: 'global'
 description: 'AI-driven project onboarding via telec projects onboard / analyze / assess — runs init plumbing then dispatches doc-snippet analysis and quality-config assessment agent sessions.'
+domain: 'general'
+id: 'general/procedure/project-onboarding'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Project Onboarding — Procedure

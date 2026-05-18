@@ -3,6 +3,7 @@ description: 'Base TypeScript project scaffolding policy.'
 id: 'software-development/procedure/scaffolding/typescript'
 scope: 'domain'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # TypeScript Scaffolding — Procedure

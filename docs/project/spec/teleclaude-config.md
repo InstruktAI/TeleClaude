@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/teleclaude-config'
-type: 'spec'
-scope: 'project'
 description: 'Authoritative surface for TeleClaude config files, daemon runtime config, and related environment variables.'
+id: 'project/spec/teleclaude-config'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Teleclaude Config — Spec

@@ -3,6 +3,7 @@ description: 'Steps to add a new adapter implementation and wire it into the dae
 id: 'project/procedure/add-adapter'
 scope: 'project'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Add Adapter — Procedure

@@ -3,6 +3,7 @@ description: 'Deferred work — the authoritative v1→v2 workflow cutover that 
 id: 'project/design/architecture-v2/future-cutover'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Future Cutover — Design

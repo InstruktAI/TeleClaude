@@ -1,9 +1,10 @@
 ---
 description: 'Phase B state machine: build, review, fix, and finalize routing for implementation work.'
-id: 'project/design/architecture/work-state-machine'
 domain: 'software-development'
+id: 'project/design/architecture/work-state-machine'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Work State Machine — Design

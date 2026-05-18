@@ -3,6 +3,7 @@ description: 'UI adapters translate human inputs into events and render outputs 
 id: 'project/design/architecture/ui-adapter'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Ui Adapter — Design
@@ -11,6 +12,7 @@ type: 'design'
 
 - @docs/project/policy/ux-message-cleanup.md
 - @docs/project/spec/session-output-routing.md
+- @docs/project/spec/session-projection.md
 
 ## Purpose
 
@@ -21,12 +23,14 @@ Responsibilities
 - Manage topics or channels for per-session organization.
 - Preserve origin-endpoint continuity for direct user replies.
 - Decide local presentation strategy (edit-in-place, threaded, or multi-placement) for delivered messages.
+- Store adapter-local delivery receipts for platform messages.
 
 Boundaries
 
 - No cross-computer orchestration responsibilities.
 - No domain policy decisions; UI is translation and presentation only.
 - No core-level routing assumptions for origin continuity; the extra admin reflection is routed upstream and only Discord renders it.
+- No projection truth ownership. Adapter metadata is delivery receipt state only.
 
 Invariants
 
@@ -56,12 +60,13 @@ Invariants
 - **Read-Only Core State**: UI adapters never mutate session, database, or domain state directly; all writes via commands.
 - **Platform-Agnostic Commands**: User actions normalized to command objects (CreateSessionCommand, SendMessageCommand); platform details in metadata only.
 - **Consistent Cleanup Rules**: pending_message_deletions enforced uniformly across all UI adapters; trigger conditions identical.
-- **Single Output Message**: One persistent output message per session, edited repeatedly; message_id tracked in adapter_metadata namespace.
+- **Delivery Receipts Only**: Output message ids, char offsets, overflow state, and edit anchors are adapter-local receipts. They are not source truth and must not determine projection ordering.
 - **Scope Contract**: Core defines recipients via delivery scope. Adapters must not broaden `ORIGIN_ONLY` recipient sets.
 - **Reflection Contract**: Discord is the single admin adapter. Core sends the extra admin reflection only to Discord when the origin is not Discord. Telegram suppresses reflections entirely.
 - **Origin Endpoint UX**: `ORIGIN_ONLY` messages appear only at the origin endpoint.
 - **Summary Rule**: `last_output_summary` is origin-only and non-threaded only (in-edit UX path).
 - **No Command Rebroadcast**: UI adapters do not rebroadcast command acknowledgements or lifecycle chatter to peer adapters.
+- **No Turn Truth in Adapters**: UI adapters may clear or replace delivery receipts when rendering requires it, but source turn boundaries and projection cursors are owned upstream.
 
 ## Primary flows
 
@@ -248,6 +253,7 @@ flowchart TD
 - Telegram is an origin/input adapter only.
 - Reflection suppression now happens before broad UI fanout, which avoids unnecessary lane work.
 - Live output is now targeted at the origin UI adapter only. UI adapters never broaden that routing decision.
+- Whether a user source entry is echoed, skipped, or reflected is decided by session projection before adapter rendering.
 
 ## Failure modes
 
@@ -258,6 +264,7 @@ flowchart TD
 - **Unauthorized User**: Message from non-whitelisted user. Silently ignored; no command execution or feedback.
 - **Cleanup Message Already Deleted**: pending_message_deletions references deleted message. Delete fails gracefully; row cleared.
 - **Feedback Routing Failure**: last_input_origin adapter offline. Feedback not delivered; logged. User sees nothing.
+- **Adapter State Treated as Truth**: Invalid. A stale message id, char offset, or turn anchor may cause bad rendering, but it must not move the projection cursor or reorder source content.
 - **Voice Transcription Failure**: TTS API down or audio format unsupported. User sees error notice; voice message not deleted.
 - **File Download Failure**: Platform API error during download. User sees error feedback; no file sent to AI.
 - **Multiple Adapters Active**: Origin-only feedback appears only on the origin endpoint. Non-origin endpoints rely on dual-lane stream traffic.

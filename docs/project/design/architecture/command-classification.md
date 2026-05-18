@@ -3,6 +3,7 @@ description: 'Response-mode classification for API commands: immediate, fire-and
 id: 'project/design/architecture/command-classification'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Command Classification — Design

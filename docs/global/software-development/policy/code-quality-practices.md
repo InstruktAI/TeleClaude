@@ -3,6 +3,7 @@ description: 'Practical guidance for applying code-quality policy in day-to-day 
 id: 'software-development/policy/code-quality-practices'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Code Quality Practices — Policy

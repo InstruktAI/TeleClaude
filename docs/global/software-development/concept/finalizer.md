@@ -3,6 +3,7 @@ description: 'Post-review prepare role. Merge origin/main into the worktree bran
 id: 'software-development/concept/finalizer'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Finalizer — Concept

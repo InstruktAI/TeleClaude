@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/prepare-flow'
-type: 'design'
-scope: 'project'
 description: 'Prepare phase flow for v2. PRD → Architecture → Test specs → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based phase skipping, standin-mode support, and lean drift analysis.'
+id: 'project/design/architecture/prepare-flow'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Prepare Flow — Design
@@ -79,7 +80,7 @@ flowchart TD
     ModeCheck -->|yes — standin mode| DispatchStandin[Dispatch /next-emulate-po peer<br/>cross-model preferred]
     ModeCheck -->|no — human in loop| Intake
 
-    DispatchStandin --> Intake[Intake: BA interviews PO<br/>fills PRD template via elicitation<br/>5 Whys, JTBD, MoSCoW, Gherkin, light Pre-mortem]
+    DispatchStandin --> Intake[Intake: BA interviews PO<br/>fills PRD template via elicitation<br/>5 Whys, JTBD, MoSCoW, light Pre-mortem<br/>success criteria are outcome-shaped, not Gherkin]
 
     Intake --> WritePRD[Write PRD artifact]
     WritePRD --> PRDApprove{Real human approves PRD?}

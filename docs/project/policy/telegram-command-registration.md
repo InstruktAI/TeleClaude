@@ -3,6 +3,7 @@ description: 'Rules for registering Telegram commands and keeping the command li
 id: 'project/policy/telegram-command-registration'
 scope: 'project'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Telegram Command Registration — Policy

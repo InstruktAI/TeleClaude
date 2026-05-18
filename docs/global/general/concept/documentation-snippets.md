@@ -3,6 +3,7 @@ description: 'Modular documentation system for selective context delivery to AI 
 id: 'general/concept/documentation-snippets'
 scope: 'global'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Documentation Snippets — Concept

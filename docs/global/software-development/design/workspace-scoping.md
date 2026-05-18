@@ -1,9 +1,10 @@
 ---
-id: 'software-development/design/workspace-scoping'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'How telec code commands resolve workspace scope across isolated worktrees, shared branches, and explicit file overrides.'
+domain: 'software-development'
+id: 'software-development/design/workspace-scoping'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Workspace Scoping — Design

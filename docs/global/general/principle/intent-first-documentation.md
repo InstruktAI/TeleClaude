@@ -1,8 +1,9 @@
 ---
-id: 'general/principle/intent-first-documentation'
-type: 'principle'
-scope: 'global'
 description: 'Preserve intent, boundaries, and durable reasoning in documentation.'
+id: 'general/principle/intent-first-documentation'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Intent First Documentation — Principle

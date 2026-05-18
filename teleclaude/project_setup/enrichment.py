@@ -15,7 +15,7 @@ import frontmatter
 import yaml
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.constants import SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 
 logger = get_logger(__name__)
 
@@ -25,11 +25,13 @@ RefreshResult = Literal["created", "updated", "unchanged"]
 
 class SnippetMetadata(TypedDict, total=False):
     """Metadata for a generated snippet. All fields are optional; type and scope default to
-    taxonomy name and 'project' respectively when omitted."""
+    taxonomy name and 'project' respectively when omitted. Visibility defaults to 'internal'
+    — the analyzer must opt a snippet into 'public' deliberately."""
 
     type: str
     scope: str
     description: str
+    visibility: str
     generated_at: str
 
 
@@ -233,6 +235,7 @@ def _render_snippet(snippet_id: str, content: str, metadata: SnippetMetadata) ->
         "type": metadata.get("type", snippet_id.split("/")[1]),
         "scope": metadata.get("scope", "project"),
         "description": metadata.get("description", ""),
+        "visibility": metadata.get("visibility", SNIPPET_VISIBILITY_INTERNAL),
         GENERATED_BY_KEY: GENERATED_BY_VALUE,
         "generated_at": metadata.get(
             "generated_at",

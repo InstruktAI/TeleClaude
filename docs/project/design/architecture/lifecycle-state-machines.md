@@ -1,9 +1,10 @@
 ---
 description: 'Overview of the three state machines that drive the TeleClaude software development lifecycle.'
-id: 'project/design/architecture/lifecycle-state-machines'
 domain: 'software-development'
+id: 'project/design/architecture/lifecycle-state-machines'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Lifecycle State Machines — Design

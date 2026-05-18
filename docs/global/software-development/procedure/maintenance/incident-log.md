@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/maintenance/incident-log'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Incident logging procedure focused on root cause quality, prevention actions, and repeat-incident reduction.'
+domain: 'software-development'
+id: 'software-development/procedure/maintenance/incident-log'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Incident Log — Procedure

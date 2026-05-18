@@ -1,8 +1,9 @@
 ---
-id: 'project/design/ux/session-highlight/implementation-plan'
-type: 'design'
-scope: 'project'
 description: 'Implementation plan for explicit reason-driven highlight system.'
+id: 'project/design/ux/session-highlight/implementation-plan'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Session Highlight Implementation Plan — Design

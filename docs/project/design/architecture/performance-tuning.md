@@ -1,9 +1,10 @@
 ---
-id: 'project/design/architecture/performance-tuning'
-type: 'design'
-domain: 'software-development'
-scope: 'project'
 description: 'Performance tuning decisions for the daemon under sustained API load, covering connection pooling, caching layers, event loop policy, and background worker pressure.'
+domain: 'software-development'
+id: 'project/design/architecture/performance-tuning'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Performance Tuning — Design

@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/company-onboarding'
-type: 'procedure'
-domain: 'general'
-scope: 'global'
 description: 'Complete telec companies onboard flow — inbox processing, organizational analysis, company doc snippet generation, and project linking.'
+domain: 'general'
+id: 'general/procedure/company-onboarding'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Company Onboarding — Procedure

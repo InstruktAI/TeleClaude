@@ -1,9 +1,10 @@
 ---
-id: 'general/spec/expertise-taxonomy'
-type: 'spec'
-domain: 'general'
-scope: 'global'
 description: 'Fixed domain taxonomy for PersonEntry.expertise — domains, subdivisions, proficiency levels, and extension policy.'
+domain: 'general'
+id: 'general/spec/expertise-taxonomy'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Expertise Taxonomy — Spec

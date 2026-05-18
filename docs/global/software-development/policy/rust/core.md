@@ -3,6 +3,7 @@ description: 'Rust language usage rules: typing, error handling, ownership, asyn
 id: 'software-development/policy/rust/core'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Rust Core — Policy

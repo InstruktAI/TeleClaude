@@ -1,8 +1,9 @@
 ---
-id: 'general/policy/artifact-scope'
-type: 'policy'
-scope: 'global'
 description: 'Determine whether an artifact belongs in global or project scope before creating it.'
+id: 'general/policy/artifact-scope'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Artifact Scope — Policy

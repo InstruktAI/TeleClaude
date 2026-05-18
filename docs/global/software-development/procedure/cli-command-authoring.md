@@ -3,6 +3,7 @@ description: 'Procedure for adding new CLI commands to telec: REST model, surfac
 id: 'software-development/procedure/cli-command-authoring'
 scope: 'domain'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # CLI Command Authoring — Procedure

@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/integrate'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Integration phase. Drive the integration state machine, handle squash commits, conflicts, push rejections, and lease contention.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/integrate'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Integration — Procedure

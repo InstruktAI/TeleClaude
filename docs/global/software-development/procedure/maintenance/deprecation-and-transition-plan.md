@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/maintenance/deprecation-and-transition-plan'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Procedure for retiring legacy paths safely while keeping service behavior stable during transition.'
+domain: 'software-development'
+id: 'software-development/procedure/maintenance/deprecation-and-transition-plan'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Deprecation And Transition Plan — Procedure

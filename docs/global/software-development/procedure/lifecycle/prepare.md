@@ -3,6 +3,7 @@ description: 'Prepare phase overview. PRD intake, optional architecture, prose t
 id: 'software-development/procedure/lifecycle/prepare'
 scope: 'domain'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Prepare — Procedure

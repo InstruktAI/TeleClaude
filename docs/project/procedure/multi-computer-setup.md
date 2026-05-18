@@ -1,8 +1,9 @@
 ---
-id: 'project/procedure/multi-computer-setup'
-type: 'procedure'
-scope: 'project'
 description: 'Guide for setting up a distributed TeleClaude network.'
+id: 'project/procedure/multi-computer-setup'
+scope: 'project'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Multi Computer Setup — Procedure

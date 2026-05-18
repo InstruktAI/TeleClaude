@@ -3,6 +3,7 @@ description: 'Anti-patterns from v1 that v2 must NOT port. Living document — e
 id: 'project/design/architecture-v2/redesign-list'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Redesign List — Design
@@ -247,9 +248,23 @@ reintroduces any of these patterns is rejected.
   typed queries. No other code parses transcript files. Mirrors as a
   compensating mechanism don't exist.
 
+**19. Adapter-owned projection and turn state.**
+- *v1*: UI adapters and adapter metadata participate in turn decisions through
+  message ids, char offsets, delivery timestamps, turn anchors, and
+  `break_threaded_turn` cleanup. Session fields such as `last_input_origin`
+  and `last_projected_at` partially compensate for missing source-owned
+  cursors.
+- *Failure*: Rendering mechanics become mistaken for source truth. Races between
+  input-origin recording, hook signals, transcript availability, and adapter
+  delivery state can duplicate user input or replay stale assistant output under
+  the wrong turn.
+- *v2*: `session_ledger` owns ordered blocks, per-consumer cursors, projection
+  state, and origin metadata. Adapters own only delivery receipts and platform
+  mechanics. Signals wake projection; they never define content.
+
 ### Identity/auth anti-patterns
 
-**19. Multiple accreted auth paths.**
+**20. Multiple accreted auth paths.**
 - *v1*: `x-session-token`, `x-caller-session-id` + `x-tmux-session`
   cross-check, `x-telec-email`. Three paths, each pragmatic in isolation.
 - *Failure*: Resolution logic spread across middleware layers. Hard to
@@ -261,7 +276,7 @@ reintroduces any of these patterns is rejected.
 
 ### Hooks/integration anti-patterns
 
-**20. Hooks doing identity resolution and event emission inline.**
+**21. Hooks doing identity resolution and event emission inline.**
 - *v1*: Hook receiver subprocess does a lot — resolves identity, validates
   context, emits events, sometimes does business logic.
 - *Failure*: Hook receivers become large and bug-prone. Business logic in a
@@ -270,7 +285,7 @@ reintroduces any of these patterns is rejected.
   event with the relevant fields, exit. All downstream work happens in
   long-running services that subscribe.
 
-**21. Per-project host-level watchers.**
+**22. Per-project host-level watchers.**
 - *v1*: Per-project watcher services accumulated as host-level operational
   debt (named in journey doc).
 - *Failure*: Many services to manage, install, debug. Machine-level
@@ -280,7 +295,7 @@ reintroduces any of these patterns is rejected.
 
 ### CLI/TUI anti-patterns
 
-**22. 50+ flat top-level CLI subcommands.**
+**23. 50+ flat top-level CLI subcommands.**
 - *v1*: `telec ...` has dozens of subcommands at the top level, with
   inconsistent verb-noun shape.
 - *Failure*: Hard to discover. Hard to remember. New commands accrete
@@ -289,7 +304,7 @@ reintroduces any of these patterns is rejected.
   `telec todo list`, `telec todo create`, `telec sessions list`. Commands
   group under nouns.
 
-**23. TUI re-implements business logic.**
+**24. TUI re-implements business logic.**
 - *v1*: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
   mutating storage directly.
 - *Failure*: TUI contains logic that should live in services. Multiple
@@ -300,7 +315,7 @@ reintroduces any of these patterns is rejected.
 
 ### Tooling/git anti-patterns
 
-**24. Git wrapper at `~/.teleclaude/bin/git` blocking destructive ops.**
+**25. Git wrapper at `~/.teleclaude/bin/git` blocking destructive ops.**
 - *v1*: Wrapper script enforces "no `git stash`, no `git reset --hard`" by
   shadowing `git` on PATH. Requires PATH manipulation in every shell.
 - *Failure*: Clever but brittle. PATH ordering bugs. Doesn't enforce when
@@ -311,7 +326,7 @@ reintroduces any of these patterns is rejected.
 
 ### Process/operations anti-patterns
 
-**25. Mixed startup/shutdown boundaries.**
+**26. Mixed startup/shutdown boundaries.**
 - *v1*: Many subsystems start, stop, and fail together. Daemon, API,
   watchers, projection work, optional subsystems all coupled.
 - *Failure*: Restart pain. One failure cascades.
@@ -321,7 +336,7 @@ reintroduces any of these patterns is rejected.
 
 ### Path/install anti-patterns
 
-**26. Operational state stored as files.**
+**27. Operational state stored as files.**
 - *v1*: SQLite databases (`teleclaude.db`, `mirrors.db`, `events.db`)
   plus JSON state files (`state/session_map.json`, `state/runtime-settings.json`,
   `state/cron_state.json`, etc.) all under `~/.teleclaude/`. State and
@@ -338,7 +353,7 @@ reintroduces any of these patterns is rejected.
   itself is the same shape v1 has; the contents shrink dramatically as
   state moves out.
 
-**27. Python tooling workarounds (uv cwd mangling, venv re-exec) baked
+**28. Python tooling workarounds (uv cwd mangling, venv re-exec) baked
 into path resolution.**
 - *v1*: `TELEC_INVOCATION_CWD` env var exists to recover actual cwd
   after `uv run --directory` changes process cwd. Hook receiver does a

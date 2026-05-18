@@ -1,8 +1,9 @@
 ---
-id: 'project/procedure/runner-operations'
-type: 'procedure'
-scope: 'project'
 description: 'Self-hosted GitHub Actions runner lifecycle, diagnostics, and recovery.'
+id: 'project/procedure/runner-operations'
+scope: 'project'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Runner Operations — Procedure

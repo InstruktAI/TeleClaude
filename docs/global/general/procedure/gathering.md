@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/gathering'
-type: 'procedure'
-domain: 'general'
-scope: 'global'
 description: 'The governing procedure for agents to collectively sense, reflect, and plan through the breath cycle.'
+domain: 'general'
+id: 'general/procedure/gathering'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Gathering — Procedure

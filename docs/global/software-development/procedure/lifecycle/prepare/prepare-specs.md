@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/prepare-specs'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Prepare test-specs procedure. Produces a language-agnostic prose test-specs artifact from human-approved PRD and optional reviewer-approved architecture; build phase later translates it into executable tests.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/prepare-specs'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Prepare Specs — Procedure
@@ -16,10 +17,19 @@ description: 'Prepare test-specs procedure. Produces a language-agnostic prose t
 
 ## Goal
 
-Produce a prose `test-specs` artifact that covers the PRD success criteria and
-architecture quality implications without writing source code. The artifact is
-the behavioral contract a build worker later translates into project-specific
-tests.
+Your focus this turn is the test-specs phase: derive a Gherkin
+(`Given / When / Then`) behavioral contract from the PRD's outcome-shaped
+success criteria and the architecture's testable quality implications. The
+wider prepare lifecycle is still yours; this phase is one focused part of it.
+
+### Outcome
+
+Derive a `test-specs` artifact — a Gherkin (`Given / When / Then`) behavioral
+contract — from the PRD's outcome-shaped success criteria and the architecture's
+testable quality implications. The artifact is the behavioral contract a build
+worker later translates into project-specific tests. Test-specs is the **only**
+phase that produces Gherkin in the prepare lifecycle; the PRD carries outcomes
+in PO language, not `Given / When / Then`.
 
 ## Preconditions
 
@@ -31,14 +41,26 @@ tests.
 
 1. Read `telec todo artifacts read {slug} prd` in full.
 2. Read `telec todo artifacts read {slug} architecture` when present; otherwise read the architecture skip reason from state.
-3. For each PRD success criterion, write at least one Given/When/Then prose spec.
-4. Add quality implications from architecture where applicable: audit logging, performance budgets, observability, accessibility, security boundaries, config behavior, and compatibility promises.
+3. For each PRD success criterion (outcome-shaped, in PO language), derive at least one `Given / When / Then` scenario that makes the outcome verifiable. The PRD says *what* counts as success; test-specs says *how to test* it.
+4. Add Gherkin scenarios for architecture-derived quality implications where applicable: audit logging, performance budgets, observability, accessibility, security boundaries, config behavior, and compatibility promises. These are testable concerns the PRD doesn't carry.
 5. Keep every entry language-agnostic. Name likely behavioral surfaces when helpful, but do not name concrete test files unless the architecture already makes that surface explicit.
 6. Write the artifact:
 
 ```bash
 telec todo artifacts write {slug} test-specs <content>
 ```
+
+7. **Final step — advance.** When the test-specs artifact is written, call:
+
+```bash
+telec todo prepare {slug}
+```
+
+The state machine routes the next action. It will direct you to dispatch the
+test-specs reviewer and tail it. On `approve` it advances to the plan phase.
+On `needs_work` it routes you back here to address the findings; read
+`telec todo artifacts read {slug} spec-review-findings`, update the
+test-specs artifact to resolve each finding, then advance again.
 
 ## Outputs
 

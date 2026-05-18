@@ -1,9 +1,10 @@
 ---
-id: 'general/principle/breath'
-type: 'principle'
-domain: 'general'
-scope: 'global'
 description: 'The rhythm of divergence, hold, and convergence that underlies all creative and engineering work.'
+domain: 'general'
+id: 'general/principle/breath'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Breath — Principle

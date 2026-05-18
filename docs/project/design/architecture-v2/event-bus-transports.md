@@ -3,6 +3,7 @@ description: 'Single-transport Redis event bus for v2. Local in-coroutine sync u
 id: 'project/design/architecture-v2/event-bus-transports'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Event Bus Transports — Design

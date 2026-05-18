@@ -3,6 +3,7 @@ description: 'Supervisory role. Dispatch workers, monitor progress, drive state 
 id: 'general/concept/orchestrator'
 scope: 'global'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Orchestrator — Concept

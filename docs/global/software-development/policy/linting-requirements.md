@@ -3,6 +3,7 @@ description: 'Linting and type-checking rules. Required fixes, import rules, and
 id: 'software-development/policy/linting-requirements'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Linting Requirements — Policy

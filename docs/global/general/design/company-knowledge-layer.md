@@ -1,9 +1,10 @@
 ---
-id: 'general/design/company-knowledge-layer'
-type: 'design'
-domain: 'general'
-scope: 'global'
 description: 'Architecture of the company knowledge layer — storage, context selection, project linking, and multi-company isolation.'
+domain: 'general'
+id: 'general/design/company-knowledge-layer'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Company Knowledge Layer — Design

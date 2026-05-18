@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/maintenance/backlog-hygiene'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Backlog hygiene rules to keep work small, explicit, and decision-ready.'
+domain: 'software-development'
+id: 'software-development/procedure/maintenance/backlog-hygiene'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Backlog Hygiene — Procedure

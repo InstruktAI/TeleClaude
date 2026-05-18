@@ -3,6 +3,7 @@ description: 'Steps to build and distribute agent artifacts in this repository.'
 id: 'project/procedure/agent-artifact-distribution'
 scope: 'project'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Agent Artifact Distribution — Procedure

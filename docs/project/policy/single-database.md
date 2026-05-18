@@ -1,8 +1,9 @@
 ---
-id: 'project/policy/single-database'
-type: 'policy'
-scope: 'project'
 description: 'Database boundaries follow domain boundaries. Each domain owns its storage.'
+id: 'project/policy/single-database'
+scope: 'project'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Database Boundaries — Policy

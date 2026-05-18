@@ -1,9 +1,10 @@
 ---
-id: 'software-development/design/code-intelligence'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'High-level design for code intelligence as an SDLC input substrate: structural fact extraction, role-specific views, and strict automation-vs-judgment boundaries.'
+domain: 'software-development'
+id: 'software-development/design/code-intelligence'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Code Intelligence — Design

@@ -3,6 +3,7 @@ description: 'YouTube subscription tagger: scheduled script job that classifies 
 id: 'project/spec/jobs/youtube-sync-subscriptions'
 scope: 'project'
 type: 'spec'
+visibility: 'public'
 ---
 
 # Youtube Sync Subscriptions — Spec

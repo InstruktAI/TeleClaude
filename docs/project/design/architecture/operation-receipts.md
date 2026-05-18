@@ -3,6 +3,7 @@ description: 'Receipt-first contract for durable async operations: immediate ope
 id: 'project/design/architecture/operation-receipts'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Operation Receipts — Design

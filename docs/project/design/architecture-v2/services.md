@@ -3,6 +3,7 @@ description: 'The eight services that compose v2 TeleClaude. Each is a Rust crat
 id: 'project/design/architecture-v2/services'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Services — Design

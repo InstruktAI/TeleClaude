@@ -19,7 +19,7 @@ class ContextCall(TypedDict):
     baseline_only: bool
     include_third_party: bool
     domains: list[str] | None
-    effective_human_role: str
+    effective_human_role: str | None
     config: AppConfig
 
 
@@ -51,7 +51,7 @@ def test_handle_docs_index_builds_context_with_filters(
     monkeypatch.setattr(
         docs,
         "load_app_config",
-        lambda _path: mock_config,  # pyright: ignore[reportUnknownLambdaType]
+        lambda _: mock_config,  # pyright: ignore[reportUnknownLambdaType]
     )
     monkeypatch.setattr(docs, "read_current_session_email", lambda: "member@example.com")
     mock_resolver = SimpleNamespace(resolve_by_email=lambda email: SimpleNamespace(person_role="member", email=email))
@@ -91,7 +91,7 @@ def test_handle_docs_get_splits_snippet_ids(
     monkeypatch.setattr(
         docs,
         "load_app_config",
-        lambda _path: AppConfig(global_=GlobalConfig()),  # pyright: ignore[reportUnknownLambdaType]
+        lambda _: AppConfig(global_=GlobalConfig()),  # pyright: ignore[reportUnknownLambdaType]
     )
     monkeypatch.setattr(docs, "read_current_session_email", lambda: "member@example.com")
     mock_resolver = SimpleNamespace(resolve_by_email=lambda email: SimpleNamespace(person_role="member", email=email))
@@ -102,6 +102,32 @@ def test_handle_docs_get_splits_snippet_ids(
     assert received[0]["snippet_ids"] == ["a", "b", "c"]
     assert received[0]["project_root"] == tmp_path
     assert capsys.readouterr().out == "GET\n"
+
+
+def test_handle_docs_index_passes_none_role_when_unauthed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    received: list[ContextCall] = []
+    mock_config = AppConfig(global_=GlobalConfig())
+
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        docs,
+        "build_context_output",
+        lambda **kwargs: received.append(kwargs) or "INDEX",  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(
+        docs,
+        "load_app_config",
+        lambda _: mock_config,  # pyright: ignore[reportUnknownLambdaType]
+    )
+    monkeypatch.setattr(docs, "read_current_session_email", lambda: None)
+
+    docs._handle_docs_index([])
+
+    assert received[0]["effective_human_role"] is None
+    assert capsys.readouterr().out == "INDEX\n"
 
 
 def test_handle_docs_get_requires_at_least_one_id(

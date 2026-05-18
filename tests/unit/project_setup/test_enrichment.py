@@ -22,9 +22,22 @@ def test_write_snippet_writes_frontmatter_defaults(tmp_path: Path) -> None:
     assert post.metadata["id"] == "project/design/overview"
     assert post.metadata["type"] == "design"
     assert post.metadata["scope"] == "project"
+    assert post.metadata["visibility"] == "internal"
     assert post.metadata["generated_by"] == "telec-init"
     assert post.metadata["generated_at"] != ""
     assert post.content.strip() == "Generated body"
+
+
+def test_write_snippet_honors_explicit_public_visibility(tmp_path: Path) -> None:
+    snippet_path = enrichment.write_snippet(
+        tmp_path,
+        "project/design/overview",
+        "Generated body",
+        {"visibility": "public"},
+    )
+
+    post = frontmatter.load(snippet_path)
+    assert post.metadata["visibility"] == "public"
 
 
 def test_merge_snippet_preserves_human_section_after_marker() -> None:

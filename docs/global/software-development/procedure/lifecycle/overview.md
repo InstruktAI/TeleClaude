@@ -1,9 +1,10 @@
 ---
 description: 'Software development lifecycle. Three-stage model: prepare, work, integrate.'
-id: 'software-development/procedure/lifecycle/overview'
-type: 'procedure'
 domain: 'software-development'
+id: 'software-development/procedure/lifecycle/overview'
 scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Lifecycle Overview — Procedure

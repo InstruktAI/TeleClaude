@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/firecrawl-web-scraping'
-type: 'procedure'
-scope: 'global'
-description: 'Last-resort web scraping via Firecrawl MCP tools when built-in web search and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data extraction, and multi-page crawling.'
 activation_trigger: 'Use when web search fails and you need to scrape JavaScript-rendered content'
+description: 'Last-resort web scraping via Firecrawl MCP tools when built-in web search and consolidated docs are insufficient. JavaScript-rendered SPAs, structured data extraction, and multi-page crawling.'
+id: 'general/procedure/firecrawl-web-scraping'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Firecrawl Web Scraping — Procedure

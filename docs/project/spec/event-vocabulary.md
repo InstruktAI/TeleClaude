@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/event-vocabulary'
-type: 'spec'
-scope: 'project'
 description: 'Authoritative vocabulary for TeleClaude internal and external events.'
+id: 'project/spec/event-vocabulary'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Event Vocabulary — Spec

@@ -3,6 +3,7 @@ description: 'Cache contract for snapshot reads, TTL refresh, and websocket upda
 id: 'project/policy/cache-contract'
 scope: 'project'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Cache Contract — Policy

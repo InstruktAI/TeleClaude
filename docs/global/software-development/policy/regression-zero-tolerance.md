@@ -1,8 +1,9 @@
 ---
-id: 'software-development/policy/regression-zero-tolerance'
-type: 'policy'
-scope: 'global'
 description: 'Regression is the supreme red flag. No change that introduces unscoped modifications may be merged, finalized, or approved under any circumstance.'
+id: 'software-development/policy/regression-zero-tolerance'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Regression Zero Tolerance — Policy

@@ -3,6 +3,7 @@ description: 'How AI agents coordinate using sub-sessions, listeners, and termin
 id: 'general/concept/ai-to-ai-coordination'
 scope: 'global'
 type: 'concept'
+visibility: 'public'
 ---
 
 # AI-to-AI Coordination — Concept

@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/emulate-product-owner'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Emulate the Product Owner role to enable autonomous intake when no human is in the loop. The emulator answers the BA''s elicitation questions from the user''s stance plus a fixed set of standing wishes for platform quality. Does not write artifacts, does not approve, does not stamp.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/emulate-product-owner'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Emulate Product Owner — Procedure
@@ -26,7 +27,7 @@ The emulator does not write the PRD itself (the BA does that), does not stamp `p
 
 ## Preconditions
 
-- Session was dispatched by an orchestrator currently running the intake procedure in standin mode.
+- Session was dispatched by the BA (the session currently running the `/next-prepare-intake` skill in standin mode).
 - A todo slug exists, with or without an `input` artifact.
 - Session `additional_context` carries the role brief (this procedure plus the slug).
 
@@ -67,7 +68,7 @@ For every BA question, default to a confident proposal grounded in input + stand
 - **Goal questions** ("what is the user trying to do?") — answer from the input's stated intent. JTBD-shaped if natural: "the user wants the system to do X for Y under Z." When the input is thin, propose the goal an experienced PO would draw from the surface ask and surrounding signals; don't ask the human to write it.
 - **Why questions** ("what's the underlying need?") — apply 5-Whys reasoning to surface the root. Propose the underlying need as if you knew it; the human corrects if you missed.
 - **Scope questions** ("what's in / out?") — propose Must / Should / Could / Won't with reasoning. Include features a senior PO would expect even when the input doesn't name them. Don't hedge with "needs confirmation" on every line — only on items where the answer genuinely turns on the human's specific business judgment.
-- **Success criteria questions** ("what would observable success look like?") — propose Gherkin-shaped criteria. Cover the obvious user-facing outcomes and the operational ones (performance budgets, reliability targets, accessibility floors) that an enterprise PO would expect. Don't leave criteria sections empty waiting for human input.
+- **Success criteria questions** ("what would observable success look like?") — propose outcome-shaped criteria in PO language ("the user can do X within Y", "the system handles N concurrent X", "operators see Z when W happens"). Cover the obvious user-facing outcomes and the operational ones (performance budgets, reliability targets, accessibility floors) that an enterprise PO would expect. **Do not phrase as Gherkin** — `Given / When / Then` belongs to the downstream test-specs phase, not the PO's answer. Don't leave criteria sections empty waiting for human input.
 - **Constraints questions** ("what hard limits apply?") — propose from the standing wishes, the codebase's existing patterns, and the obvious enterprise-grade constraints (security, compliance, observability, performance). Pull in architectural reasoning here — you have it; use it.
 - **Risk questions** ("what worries you about this?") — run a real pre-mortem with the failure modes a senior architect would actually anticipate. Concrete risks, not generic ones.
 
@@ -108,7 +109,7 @@ The emulator does not:
 - Write the PRD itself (BA does that — you speak; BA writes).
 - Produce the formal architecture artifact (that's the next phase). Architectural *reasoning* informs your PO answers; the formal *artifact* is somebody else's output.
 - Stamp `prd_approved` (only the real human does).
-- Steward routing or skip-vs-proceed decisions for downstream phases (orchestrator and BA respectively).
+- Steward routing or skip-vs-proceed decisions for downstream phases (the BA's responsibility).
 
 If asked to do any of these, decline and redirect: "that's not my output to produce."
 
@@ -124,7 +125,7 @@ The BA writes the PRD based on the accumulated answers. The PRD then waits for t
 - **Input artifact is sparse.** This is the common case, not an error. Propose from your knowledge of what an enterprise system of this shape needs. Don't treat sparseness as a stop signal.
 - **BA asks the emulator to write the PRD or produce another role's artifact.** Decline and redirect: "you write the PRD; I'll answer whatever else you need."
 - **BA appears to want a category of answer you genuinely can't give** (confidential data, subjective brand calls). Surface it as a true open question for the human.
-- **Session ends before the BA finishes.** The orchestrator handles re-dispatch if needed. The emulator's job is per-question, not per-session-completion.
+- **Session ends before the BA finishes.** The BA handles re-dispatch if needed. The emulator's job is per-question, not per-session-completion.
 
 ## See Also
 

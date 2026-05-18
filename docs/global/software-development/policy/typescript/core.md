@@ -3,6 +3,7 @@ description: 'TypeScript strict typing, discriminated unions, type guards, prope
 id: 'software-development/policy/typescript/core'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Core — Policy

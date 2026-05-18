@@ -1,9 +1,10 @@
 ---
-id: 'creative/policy/visual-constraints'
-type: 'policy'
-domain: 'creative'
-scope: 'global'
 description: 'Rules governing visual artifact production: CSS-only animations, design spec fidelity, no external dependencies.'
+domain: 'creative'
+id: 'creative/policy/visual-constraints'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Visual Constraints — Policy

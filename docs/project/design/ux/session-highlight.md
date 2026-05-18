@@ -1,8 +1,9 @@
 ---
-id: 'project/design/ux/session-highlight'
-type: 'design'
-scope: 'project'
 description: 'Session highlight system for user attention in TUI.'
+id: 'project/design/ux/session-highlight'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Session Highlight — Design

@@ -3,6 +3,7 @@ description: 'Local HTTP and WebSocket API that reads from cache and routes writ
 id: 'project/design/architecture/api-server'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Api Server — Design

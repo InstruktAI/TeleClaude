@@ -1,8 +1,9 @@
 ---
-id: 'general/policy/orchestrator-jurisdiction'
-type: 'policy'
-scope: 'global'
 description: 'Enforces strict separation between process state management and system code modification for the Orchestrator role.'
+id: 'general/policy/orchestrator-jurisdiction'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Orchestrator Jurisdiction — Policy

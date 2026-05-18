@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/drift-analyze'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Drift analysis phase. Classify each pending prepare-artifact drift as cosmetic or substantive and stamp the verdict so the lifecycle can continue or re-derive the affected layer.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/drift-analyze'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Drift Analyze — Procedure
@@ -64,7 +65,7 @@ invalidate the artifact.
 ### 4. Go idle
 
 After every pending artifact has a stamp, end the worker turn. The
-orchestrator re-enters the state machine and acts on the new state.
+dispatching session re-enters the state machine and acts on the new state.
 
 ## Outputs
 
@@ -74,9 +75,9 @@ orchestrator re-enters the state machine and acts on the new state.
 ## Discipline
 
 Classify drift only. Do not rewrite prepare artifacts, do not approve gates,
-do not start build work. The artifact's owning layer (intake, architecture,
-specs, plan) re-derives substantive drift when the orchestrator re-enters
-the state machine.
+do not start build work. The artifact's owning phase skill (intake,
+architecture, specs, plan) re-derives substantive drift when the dispatching
+session re-enters the state machine.
 
 A `cosmetic` verdict must be grounded in the actual diff, not assumed. If
 the diff cannot be cleanly classified, stamp `substantive` and let the

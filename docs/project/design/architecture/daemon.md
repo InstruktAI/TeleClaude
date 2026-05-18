@@ -3,6 +3,7 @@ description: 'Daemon orchestration responsibilities, boundaries, and background 
 id: 'project/design/architecture/daemon'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Daemon — Design

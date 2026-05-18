@@ -3,6 +3,7 @@ description: 'Concrete shape of the v2 MVP: workflow service + Rust CLI + Postgr
 id: 'project/design/architecture-v2/mvp-shape'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # MVP Shape — Design

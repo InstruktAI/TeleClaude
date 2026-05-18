@@ -3,6 +3,7 @@ description: 'InstruktAI Python logging standard. Logfmt format, dual-level cont
 id: 'software-development/policy/python/logging'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Logging — Policy

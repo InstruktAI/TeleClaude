@@ -1,8 +1,9 @@
 ---
-id: 'project/procedure/deploy'
-type: 'procedure'
-scope: 'project'
 description: 'How TeleClaude updates propagate to computers via the automated deployment pipeline.'
+id: 'project/procedure/deploy'
+scope: 'project'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Deploy — Procedure

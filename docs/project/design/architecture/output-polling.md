@@ -3,6 +3,7 @@ description: 'Mechanism for real-time terminal output capture and streaming.'
 id: 'project/design/architecture/output-polling'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Output Polling — Design
@@ -20,7 +21,7 @@ type: 'design'
 5. **Normalize**: Raw pane output is normalized for generic change detection; raw capture is preserved for Codex-specific synthesis.
 6. **Diff**: Normalized pane snapshots are compared against prior normalized capture.
 7. **Emit**: `OutputEvent` is yielded to `PollingCoordinator`.
-8. **Project**: Transcript projection decides whether assistant-visible output actually changed.
+8. **Project**: Session projection decides whether source-visible user or assistant output is eligible for adapter delivery.
 9. **Finalize title**: Completed-turn signals (`agent_stop`) finalize semantic title generation from the bounded transcript window for that turn and emit `SESSION_TITLE_CHANGED`.
 10. **Broadcast**: `AdapterClient` routes output updates to active observers. Title delivery is not routed through `AdapterClient`; `UiAdapter` consumes `SESSION_TITLE_CHANGED` directly.
 
@@ -70,7 +71,8 @@ sequenceDiagram
 - **One Poller Per Session**: Each active session has exactly one poller instance; no duplicates.
 - **Poller Lifecycle Matches Session**: Poller starts when session becomes active, stops when session closes.
 - **Normalized change detection**: Generic `OutputChanged` detection compares normalized pane text, not raw ANSI/styling noise.
-- **Projection-owned dedupe**: Poller activity wakes transcript projection, but only a changed projected assistant render may trigger outbound output delivery.
+- **Projection-owned dedupe**: Poller activity wakes session projection, but only eligible source entries after the projection cursor may trigger outbound delivery.
+- **Origin-gated projection**: If source activity arrives before the matching user-turn origin is fresh, projection defers and leaves the cursor unchanged.
 - **Completed-turn title finalization**: Title generation is not part of the live output loop. It runs only when a completed-turn signal finalizes the current transcript window.
 - **One title per user turn**: Duplicate `agent_stop` signals inside the same user turn must not generate a second title update.
 - **Adapter-owned title QoS**: Raw semantic title changes are delivered through `SESSION_TITLE_CHANGED`; each UI adapter owns latest-only coalescing and platform-specific title pacing.
@@ -104,7 +106,7 @@ sequenceDiagram
 2. **Normalize**: Strip ANSI/control-noise for generic change detection while preserving the raw capture for Codex synthesis.
 3. **Diff**: Compare normalized buffer against last normalized read
 4. **Emit**: Send `OutputChanged` when normalized pane text changed
-5. **Project**: Rebuild transcript-derived assistant output and compare against the last projected render signature
+5. **Project**: Rebuild source-derived visible output, apply origin gating, and compare against the last projected cursor/render signature
 6. **Deliver**: Only if the projected render changed, call adapter output delivery
 7. **Finalize title later**: Do not generate titles here; title finalization waits for the completed-turn signal and uses the last user input plus the assistant output that followed it
 
@@ -173,6 +175,7 @@ enforcement — currently out of scope.
 - **Tmux Hangs on Capture**: Poller times out after 5s. Logs error, skips this poll cycle. Session appears frozen until next successful poll.
 - **Raw repaint noise**: ANSI/style-only changes may still occur in tmux, but normalized diffing suppresses them for generic output delivery.
 - **Projection dedupe miss**: If transcript projection stops comparing projected assistant renders, unchanged output can fan out again even when the poller behaved correctly.
+- **Premature projection**: If a wakeup races ahead of origin recording, the projector must defer. Terminal origin recording is itself a projection signal so the deferred pass can resume.
 - **Poller Task Crash**: Exception in async task. Poller stops, output streaming halts. Session remains active but frozen. Requires daemon restart.
 - **Output Too Large**: Tmux buffer exceeds memory limits. Poller truncates to last N lines. Beginning of output lost.
 - **Race Condition on Stop**: Poller emits output after session marked closed. Event ignored by adapters. Harmless.

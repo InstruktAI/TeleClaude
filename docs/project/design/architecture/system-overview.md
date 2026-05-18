@@ -3,6 +3,7 @@ description: 'High-level architectural blueprint of TeleClaude components and da
 id: 'project/design/architecture/system-overview'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # System Overview — Design

@@ -1,9 +1,10 @@
 ---
-id: 'software-development/design/sdlc/work'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'Work phase design: build-review-fix loops, artifact consumption rules, and role focus for realizing prepared changes.'
+domain: 'software-development'
+id: 'software-development/design/sdlc/work'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Work — Design

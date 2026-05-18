@@ -1,9 +1,10 @@
 ---
-id: 'general/spec/agent-shorthand'
-type: 'spec'
-domain: 'general'
-scope: 'global'
 description: 'Communication contract for agent-to-agent exchanges: registers, levels, phase markers, fallback, and output discipline.'
+domain: 'general'
+id: 'general/spec/agent-shorthand'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Agent Shorthand — Spec

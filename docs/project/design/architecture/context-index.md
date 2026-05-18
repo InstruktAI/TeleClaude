@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/context-index'
-type: 'design'
-scope: 'project'
 description: 'Snippet index generation that produces docs/index.yaml from snippet frontmatter.'
+id: 'project/design/architecture/context-index'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Context Index — Design

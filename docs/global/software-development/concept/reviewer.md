@@ -3,6 +3,7 @@ description: 'Evaluative role. Assess code against requirements and standards, p
 id: 'software-development/concept/reviewer'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Reviewer — Concept

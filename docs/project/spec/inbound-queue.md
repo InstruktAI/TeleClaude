@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/inbound-queue'
-type: 'spec'
-scope: 'project'
 description: 'Architecture, schema, worker design, and retry policy for the durable inbound message queue.'
+id: 'project/spec/inbound-queue'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Inbound Queue — Spec
@@ -86,12 +87,14 @@ Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles w
 1. Fetch session from DB — raises if not found
 2. Startup gate: wait up to 15s for session to exit `initializing` — raises on timeout
 3. Headless adoption: if `lifecycle_status == 'headless'`, adopt a tmux session
-4. Break threaded output if enabled
-5. Update session metadata: `last_message_sent`, `last_input_origin`
-6. Broadcast user input to other adapters
+4. Record accepted input metadata before any projection-visible wakeup: `last_message_sent`, `last_message_sent_at`, `last_input_origin`
+5. Drop pending adapter QoS output if needed; this is delivery cleanup only, not projection truth
+6. Broadcast/project user input according to the routing and projection contracts
 7. Wrap text with bracketed paste, send via `tmux_io.process_text`
 8. On `process_text` returning False: raise `RuntimeError` (triggers retry)
 9. On success: update `last_activity`, start polling
+
+The metadata write in step 4 is the UI-origin acceptance boundary. It makes the origin fresh before the agent can produce source activity that wakes projection. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `project/spec/session-projection`.
 
 ### Deduplication
 
@@ -111,4 +114,8 @@ Adapters that provide stable message IDs (Discord, Telegram) must pass `source_m
 
 ### Adapter Contract
 
-Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic.
+Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and the core delivery path records accepted state.
+
+## See Also
+
+- docs/project/spec/session-projection.md

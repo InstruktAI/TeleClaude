@@ -3,6 +3,7 @@ description: 'TTL and scope matrix for cache refresh behavior.'
 id: 'project/spec/cache-ttl-matrix'
 scope: 'project'
 type: 'spec'
+visibility: 'public'
 ---
 
 # Cache Ttl Matrix — Spec

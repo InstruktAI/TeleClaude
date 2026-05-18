@@ -3,6 +3,7 @@ description: 'Test-focused role. Improve test quality, fix failures, enforce tes
 id: 'software-development/concept/tester'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Tester — Concept

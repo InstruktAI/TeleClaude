@@ -1,8 +1,9 @@
 ---
-id: 'general/spec/tools/telec-cli'
-type: 'spec'
-scope: 'global'
 description: 'AI-safe telec CLI commands for project work, docs sync, todo scaffolding, and configuration.'
+id: 'general/spec/tools/telec-cli'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Telec CLI Tool — Spec

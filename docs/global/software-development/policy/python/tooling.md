@@ -3,6 +3,7 @@ description: 'Python project tool invocation policy for uv-managed repositories.
 id: 'software-development/policy/python/tooling'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Python Tooling — Policy

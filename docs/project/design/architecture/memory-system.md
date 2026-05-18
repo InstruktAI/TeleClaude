@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/memory-system'
-type: 'design'
-scope: 'project'
 description: 'Persistent memory subsystem for storing, searching, and injecting relationship-centric observations into agent sessions.'
+id: 'project/design/architecture/memory-system'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Memory System — Design
@@ -194,7 +195,7 @@ sequenceDiagram
 
 ## Invariants
 
-1. **Main database**: All memory tables live in `/Users/Morriz/.teleclaude/teleclaude.db` alongside session and hook tables.
+1. **Main database**: All memory tables live in `~/.teleclaude/teleclaude.db` alongside session and hook tables.
 
 2. **Strict enum validation**: `ObservationType` is enforced at every API boundary. The SQL schema has no CHECK constraint — validation happens in Python. Invalid types are rejected with 422 before reaching the database.
 

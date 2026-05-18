@@ -3,6 +3,7 @@ description: 'Send Telegram alerts when the daemon is down using standalone scri
 id: 'project/procedure/out-of-band-telegram-alerts'
 scope: 'project'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Out Of Band Telegram Alerts — Procedure

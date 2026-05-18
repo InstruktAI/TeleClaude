@@ -3,6 +3,7 @@ description: 'Orchestration loop for the next-work state machine and worker sess
 id: 'general/procedure/orchestration'
 scope: 'global'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Orchestration — Procedure

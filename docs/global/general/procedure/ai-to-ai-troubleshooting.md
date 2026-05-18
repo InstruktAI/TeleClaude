@@ -3,6 +3,7 @@ description: 'Identify and fix common issues with AI-to-AI coordination, timeout
 id: 'general/procedure/ai-to-ai-troubleshooting'
 scope: 'global'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # AI-to-AI Troubleshooting — Procedure

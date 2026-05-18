@@ -1,9 +1,10 @@
 ---
-id: 'software-development/design/sdlc/integration'
-type: 'design'
-domain: 'software-development'
-scope: 'global'
 description: 'Integration phase design: concurrency-aware landing, sequencing, and system-level convergence for reviewed changes.'
+domain: 'software-development'
+id: 'software-development/design/sdlc/integration'
+scope: 'global'
+type: 'design'
+visibility: 'public'
 ---
 
 # Integration — Design

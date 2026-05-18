@@ -3,6 +3,7 @@ description: 'Load-bearing rule for v2: services are crates consumed as SDK. Tra
 id: 'project/design/architecture-v2/transport-rules'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Transport Rules — Design

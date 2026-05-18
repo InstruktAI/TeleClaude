@@ -1,8 +1,9 @@
 ---
-id: 'general/policy/heartbeat'
-type: 'policy'
-scope: 'global'
 description: 'Periodic self-awareness timer that keeps agents aligned during sustained work.'
+id: 'general/policy/heartbeat'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Heartbeat — Policy

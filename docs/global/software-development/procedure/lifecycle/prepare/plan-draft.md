@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/plan-draft'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Plan drafting phase for next-prepare. Produces implementation plans from human-approved PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs artifacts.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/plan-draft'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Prepare Plan Draft — Procedure
@@ -16,6 +17,15 @@ description: 'Plan drafting phase for next-prepare. Produces implementation plan
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
 
 ## Goal
+
+Your focus this turn is the plan phase: produce an `implementation-plan`
+artifact from the human-approved PRD, the reviewer-approved architecture
+(when present), and the reviewer-approved test-specs (when present); or split
+the todo into dependent child work items when planning shows the work is not
+atomic. The wider prepare lifecycle is still yours; this phase is one focused
+part of it.
+
+### Outcome
 
 Produce `implementation-plan` from the human-approved `prd`, optional reviewer-approved `architecture`,
 and optional reviewer-approved prose `test-specs`; or split the todo into dependent child work
@@ -177,6 +187,21 @@ If the todo is split instead:
   contradiction in those artifacts.
 - Do not change roadmap status beyond the child dependency links needed for a split.
 - If blocked by uncertainty, record the blocker and continue with what is known.
+
+### 7. Final step — advance
+
+When the implementation-plan artifact is written (or the split has been
+executed via `telec todo split`), call:
+
+```
+telec todo prepare {slug}
+```
+
+The state machine routes the next action. It will direct you to dispatch the
+plan reviewer and tail it. On `approve` it advances toward `PREPARED`. On
+`needs_work` it routes you back here to address the findings; read
+`telec todo artifacts read {slug} plan-review-findings`, update the
+implementation-plan to resolve each finding, then advance again.
 
 ## Outputs
 

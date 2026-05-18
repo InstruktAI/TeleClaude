@@ -3,6 +3,7 @@ description: 'Rust testing patterns: DI via constructor injection, test colocati
 id: 'software-development/policy/rust/testing'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Rust Testing — Policy

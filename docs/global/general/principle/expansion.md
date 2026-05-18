@@ -1,8 +1,9 @@
 ---
-id: 'general/principle/expansion'
-type: 'principle'
-scope: 'global'
 description: 'Founding principle: intelligence expands toward cooperation, not contraction toward control.'
+id: 'general/principle/expansion'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Expansion — Principle

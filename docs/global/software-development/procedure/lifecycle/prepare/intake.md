@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/intake'
-type: 'procedure'
+description: 'Intake procedure for the prepare phase. The BA interviews a stakeholder (real human or AI standin) to fill a PRD via BMAD-aligned template + elicitation toolkit. Output: a human-approved PRD ready to inform downstream derivation.'
 domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/intake'
 scope: 'domain'
-description: 'Intake procedure for the prepare phase. The orchestrator (BA) interviews a stakeholder (real human or AI standin) to fill a PRD via BMAD-aligned template + elicitation toolkit. Output: a human-approved PRD ready to inform downstream derivation.'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Intake — Procedure
@@ -19,11 +20,24 @@ description: 'Intake procedure for the prepare phase. The orchestrator (BA) inte
 
 ## Goal
 
-Take a human's intent (in-session conversation, an existing dumped input, or anything in between) and produce a **PRD (Product Requirements Document)** — a structured artifact capturing what the user actually wants, with success criteria, scope, constraints, and any open intent questions, ready for downstream derivation.
+Your focus this turn is the intake phase: interview the Product Owner, fill
+the PRD template, and write the PRD. The wider prepare lifecycle is still
+yours; this phase is one focused part of it.
 
-The orchestrator acts in **Business Analyst mode** for this phase: it elicits, structures, decides routing, and stewards the conversation. **"BA mode" is a procedural awareness configuration the same general intelligent agent loads — not a separate AI entity.** The agent loads this procedure and its required reads; that loadout is "BA mode." At other phases of the lifecycle the same agent loads different skills and operates in different modes.
+### Outcome
 
-The stakeholder being interviewed is the **Product Owner role**. This IS a separate session — represented either by a real human (default) or by a dispatched AI emulator (when the session is in standin mode per `additional_context`). The emulator runs the `emulate-product-owner` procedure with a deliberately small loadout: standing wishes for quality, no intake-frameworks tools, no artifact-writing, no stamping. The PO doesn't run the elicitation; it answers.
+Take a human's intent (in-session conversation, an existing dumped input, or
+anything in between) and produce a **PRD (Product Requirements Document)** — a
+structured artifact capturing what the user actually wants, with success
+criteria, scope, constraints, and any open intent questions, ready for
+downstream derivation.
+
+The stakeholder being interviewed is the **Product Owner role**. The PO is
+represented either by a real human (default) or by a dispatched AI emulator
+(when the session is in standin mode per `additional_context`). The emulator
+runs the `emulate-product-owner` procedure with a deliberately small loadout:
+standing wishes for quality, no intake-frameworks tools, no artifact-writing,
+no stamping. The PO doesn't run the elicitation; it answers.
 
 ## Preconditions
 
@@ -50,7 +64,7 @@ The BA fills a structured **PRD template** through elicitation. The template sec
 | **Why** | The underlying need behind the surface ask. Often surfaced by applying 5 Whys when the stated request looks like a proxy. |
 | **Affected actors** | Who is impacted — users, operators, downstream systems, integrating services. |
 | **Scope** | What's in (Must / Should / Could) and what's out (Won't, with brief reasoning). Apply MoSCoW for prioritization. |
-| **Success criteria** | Observable indicators that the work succeeded. Express in Gherkin (`Given / When / Then`) where the behavior is testable. |
+| **Success criteria** | Observable indicators that the work succeeded, written as outcome-shaped prose in the PO's language ("the user can do X within Y", "the system handles N concurrent requests", "operators see Z when W happens"). **Not Gherkin.** Translating these outcomes into `Given / When / Then` behavioral contracts is the test-specs phase's job, not intake's. |
 | **Constraints** | Hard limits — existing patterns, capacity, security boundaries, off-the-shelf preferences, integration points. |
 | **Risks and unknowns** | Failures imagined (light pre-mortem). Things only the user can resolve. |
 | **Brownfield context** | If the work touches existing code, briefly note what's there. Full code-grounded analysis happens in the Architecture phase, not here — the BA only flags brownfield-vs-greenfield and any obvious code intersections the PO knows about. |
@@ -62,8 +76,9 @@ The BA fills a structured **PRD template** through elicitation. The template sec
 - **Jobs To Be Done (JTBD)** — for framing the Goal section.
 - **MoSCoW** — for filling Scope with prioritized categories.
 - **Pre-mortem** — light application when filling Risks.
-- **Gherkin** — for Success criteria where observable behavior is testable.
 - **Socratic questioning** — throughout, for clarity probes ("what does X mean to you here?").
+
+Gherkin (`Given / When / Then`) is **not** an intake tool. It belongs to the test-specs phase, which derives behavioral contracts from these outcome-shaped success criteria.
 
 Impact Mapping and Volere shell are available in the toolkit but **not default** — apply them only when the work item's scale justifies them (large/architectural work for Impact Mapping; compliance-heavy work for Volere).
 
@@ -105,27 +120,34 @@ telec todo artifacts write {slug} prd <content>
 
 The PRD content follows the template structure above. JTBD-shaped Goal at the top. Each section filled at the depth the work warrants — small work has terse sections; large work has elaborated sections.
 
-### 6. Present for approval
+### 6. Present for human review and approval
 
-The BA presents the PRD to the PO (human or standin) for confirmation. Phrasing matches proficiency:
+The PRD has no automated reviewer. The human is the sole authority on PRD
+correctness because only the human owns intent. Present the PRD to the PO for
+review and approval. Phrasing matches proficiency:
 
 - Novice: walks through the document in user-facing language, asks "does this match what you want?"
 - Expert: terser presentation, surfaces the structure quickly.
 
 The PO either:
 
-- **Confirms** → BA stamps `prd_approved` (only when a real human is in the loop; standin cannot stamp this — see Recovery).
-- **Refines** → BA captures the delta, rewrites the PRD, presents again.
+- **Confirms** → stamp `prd_approved` (only when a real human is in the loop;
+  standin cannot stamp this — see Recovery).
+- **Refines** → capture the delta, rewrite the PRD, present again.
 
-### 7. Hand off
+### 7. Final step — advance
 
-Once `prd_approved` is stamped, intake is complete. The state machine's next-recommended-step transitions to the next phase based on skip stamps:
+When the PRD is written and (when a real human is in the loop)
+`prd_approved` is stamped, along with any size-based skip stamps
+(`architecture_skipped`, `test_specs_skipped`), call:
 
-- No skips → Architecture phase next.
-- `architecture_skipped` → Test specs phase next.
-- Both skipped → Plan phase next.
+```
+telec todo prepare {slug}
+```
 
-The intake session can end; the next phase is invoked separately (or by the same agent loading the next phase's skill).
+The state machine routes the next action — typically loading the next phase's
+skill, or pausing for the real human when the PRD was authored in standin
+mode and awaits approval.
 
 ## Outputs
 

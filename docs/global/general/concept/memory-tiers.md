@@ -3,6 +3,7 @@ description: 'The layered memory architecture that gives AI agents continuity, c
 id: 'general/concept/memory-tiers'
 scope: 'global'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Memory Tiers — Concept

@@ -3,6 +3,7 @@ description: 'Baseline quality gates defining when work is truly complete. Funct
 id: 'software-development/policy/definition-of-done'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Definition Of Done — Policy

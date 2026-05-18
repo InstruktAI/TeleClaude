@@ -1,8 +1,9 @@
 ---
-id: 'project/design/ux/tui-animations'
-type: 'design'
-scope: 'project'
 description: 'Physical architecture and animation catalog for the TUI cinematic rooftop banner.'
+id: 'project/design/ux/tui-animations'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # TUI Animation Specification: The Cinematic Rooftop — Design

@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/discipline'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Behavioral primer for preparation work. Activates quality discipline before the agent acts.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/discipline'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Preparation Discipline — Procedure

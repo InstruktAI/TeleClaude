@@ -1,9 +1,10 @@
 ---
-id: 'creative/spec/visual-artifact'
-type: 'spec'
-domain: 'creative'
-scope: 'global'
 description: 'Interchange format for visual artifacts: self-contained HTML+CSS files with CSS-only animations, constrained by a design spec.'
+domain: 'creative'
+id: 'creative/spec/visual-artifact'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Visual Artifact — Spec

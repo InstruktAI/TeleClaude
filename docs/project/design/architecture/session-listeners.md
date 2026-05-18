@@ -3,6 +3,7 @@ description: 'In-memory listener registry that notifies callers when target sess
 id: 'project/design/architecture/session-listeners'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Session Listeners — Design

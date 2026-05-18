@@ -3,9 +3,15 @@ description: 'AdapterClient centralizes UI adapter lifecycle, delivery, and cros
 id: 'project/design/architecture/adapter-client'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Adapter Client — Design
+
+## Required reads
+
+- @docs/project/spec/session-output-routing.md
+- @docs/project/spec/session-projection.md
 
 ## Purpose
 
@@ -61,6 +67,8 @@ flowchart TB
 - **UI Metadata Requirement**: Before sending to a non-origin adapter, ensure UI channel metadata exists.
 - **Pre/Post Hooks**: User input cleanup (pre-hook) and message tracking (post-hook) run atomically.
 - **Fresh title sync**: Channel-title delivery must resolve current session truth at execution time so stale queued work cannot replay an older title.
+- **Projection Before Delivery**: AdapterClient delivers already-selected projected content. It does not infer source order or turn truth from adapter state.
+- **QoS Break Is Not Projection**: `break_threaded_turn` may drop pending adapter QoS payloads, but it must not decide what source entries have been delivered.
 
 ## Primary flows
 
@@ -137,7 +145,7 @@ sequenceDiagram
     par Parallel delivery
         AC->>AC: Inject into tmux (critical path)
         AC->>Discord: broadcast_user_input(session, text, origin, actor) if origin != discord
-        AC->>AC: break_threaded_turn(session)
+        AC->>AC: drop pending adapter QoS payloads
     end
     Note over Discord: Normal origin-path delivery remains separate.<br/>No duplicate admin reflection is created for Discord-origin input.
 ```
@@ -168,5 +176,6 @@ sequenceDiagram
 - **Transport Unavailable**: Cross-computer command fails immediately. Returns error to caller. Local operations unaffected.
 - **Cleanup Hook Failure**: Pre/post hooks fail to delete messages or track IDs. Stale messages accumulate in UI. Does not block message delivery.
 - **Stale Broad Fanout Assumption**: Invalid. AdapterClient must choose explicit targets up front. `_route_to_ui()` is an execution helper, not a policy engine.
+- **Adapter-owned turn assumption**: Invalid. Adapter delivery receipts can be cleared for rendering, but source ordering and duplicate suppression belong to session projection.
 - **Parallel Delivery Timeout**: One adapter blocks indefinitely. Other adapters complete normally. Stuck adapter logged and skipped.
 - **Discovery Failure**: No remote computers found. Commands targeting specific computer fail with "not found" error. Local sessions continue.

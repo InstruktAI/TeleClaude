@@ -1,9 +1,10 @@
 ---
-id: 'project/design/architecture/layer-ownership'
-type: 'design'
-domain: 'software-development'
-scope: 'project'
 description: 'Architectural layer boundaries, ownership rules, and the cross-cutting invariant that downstream layers receive fully resolved inputs.'
+domain: 'software-development'
+id: 'project/design/architecture/layer-ownership'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Layer Ownership — Design

@@ -3,6 +3,7 @@ description: 'Why TeleClaude needs an architecture v2 and what has drifted in th
 id: 'project/design/architecture-v2/journey'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Architecture V2 Journey — Design

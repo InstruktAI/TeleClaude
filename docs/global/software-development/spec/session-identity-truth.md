@@ -1,9 +1,10 @@
 ---
-id: 'software-development/spec/session-identity-truth'
-type: 'spec'
-domain: 'software-development'
-scope: 'domain'
 description: 'Canonical identity-mapping spec for systems that mix managed sessions with standalone/headless event sources.'
+domain: 'software-development'
+id: 'software-development/spec/session-identity-truth'
+scope: 'domain'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Session Identity Truth — Spec

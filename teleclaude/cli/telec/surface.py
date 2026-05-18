@@ -2,6 +2,8 @@
 
 from __future__ import annotations  # noqa: I001
 
+from teleclaude.constants import DOMAIN_SCOPES, TAXONOMY_TYPES
+
 from .surface_types import (
     CommandAuth,
     CommandDef,
@@ -403,8 +405,8 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
                     Flag("--third-party", "-t", "Include third-party docs"),
-                    Flag("--areas", "-a", "Filter by taxonomy type"),
-                    Flag("--domains", "-d", "Filter by domain"),
+                    Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)})"),
+                    Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)})"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

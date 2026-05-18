@@ -3,6 +3,7 @@ description: 'Contract-based pub/sub webhook service for event routing, inbound 
 id: 'project/design/architecture/hook-service'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Hook Service — Design

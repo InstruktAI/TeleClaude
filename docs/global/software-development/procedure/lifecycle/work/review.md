@@ -1,9 +1,10 @@
 ---
 description: 'Review phase. Verify requirements, code quality, tests, and deliver verdict with findings.'
-id: 'software-development/procedure/lifecycle/work/review'
-type: 'procedure'
 domain: 'software-development'
+id: 'software-development/procedure/lifecycle/work/review'
 scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Review — Procedure

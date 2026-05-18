@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/integration-orchestrator'
-type: 'spec'
-scope: 'project'
 description: 'Event-driven singleton integrator contract for serial branch-to-main delivery.'
+id: 'project/spec/integration-orchestrator'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Integration Orchestrator — Spec

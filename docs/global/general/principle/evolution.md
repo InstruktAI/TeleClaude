@@ -1,8 +1,9 @@
 ---
-id: 'general/principle/evolution'
-type: 'principle'
-scope: 'global'
 description: 'Refine the agent-user partnership through shared tools, feedback on friction, and the guidance of conversational norms.'
+id: 'general/principle/evolution'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Evolution — Principle

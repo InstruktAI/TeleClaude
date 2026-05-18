@@ -3,6 +3,7 @@ description: 'Research role. Gather authoritative sources, summarize, and index 
 id: 'software-development/concept/researcher'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Researcher — Concept

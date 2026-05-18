@@ -1,10 +1,11 @@
 ---
-description: 'Refine ideas into explicit, approved designs through focused questioning and trade-off analysis before writing implementation code.'
 activation_trigger: 'Use when the user wants to refine an idea before implementation'
-id: 'general/procedure/brainstorming'
-type: 'procedure'
+description: 'Refine ideas into explicit, approved designs through focused questioning and trade-off analysis before writing implementation code.'
 domain: 'general'
+id: 'general/procedure/brainstorming'
 scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Brainstorming — Procedure

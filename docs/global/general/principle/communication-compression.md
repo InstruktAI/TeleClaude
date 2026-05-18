@@ -1,9 +1,10 @@
 ---
-id: 'general/principle/communication-compression'
-type: 'principle'
-domain: 'general'
-scope: 'global'
 description: 'Why agent-to-agent exchanges compress aggressively, and when that compression is worth using.'
+domain: 'general'
+id: 'general/principle/communication-compression'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Communication Compression — Principle

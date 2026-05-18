@@ -3,6 +3,7 @@ description: 'Two-track bug handling: inline for internal discovery, maintenance
 id: 'software-development/procedure/bugs-handling'
 scope: 'domain'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Bugs Handling — Procedure

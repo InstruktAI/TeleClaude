@@ -3,6 +3,7 @@ description: 'Restart-safe peer conversation replay built from transcript truth 
 id: 'project/design/architecture/conversation-delivery'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Conversation Delivery — Design

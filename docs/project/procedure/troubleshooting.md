@@ -3,6 +3,7 @@ description: 'Operational runbooks for TeleClaude incidents and infrastructure f
 id: 'project/procedure/troubleshooting'
 scope: 'project'
 type: 'procedure'
+visibility: 'public'
 ---
 
 # Troubleshooting Runbooks — Procedure

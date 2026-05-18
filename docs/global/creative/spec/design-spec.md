@@ -1,9 +1,10 @@
 ---
-id: 'creative/spec/design-spec'
-type: 'spec'
-domain: 'creative'
-scope: 'global'
 description: 'Schema for design specification artifacts that anchor visual identity and constrain agent-generated UI.'
+domain: 'creative'
+id: 'creative/spec/design-spec'
+scope: 'global'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Design Spec — Spec

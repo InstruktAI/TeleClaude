@@ -3,6 +3,7 @@ description: 'Scheduled job runner: architecture, job contract, and configuratio
 id: 'project/design/architecture/jobs-runner'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Jobs Runner — Design

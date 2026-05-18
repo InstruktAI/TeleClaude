@@ -13,7 +13,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
-from teleclaude.constants import HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL
+from teleclaude.constants import DOMAIN_SCOPES, HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
 from teleclaude.docs_index import extract_required_reads, get_project_slug
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
@@ -594,8 +594,6 @@ def _include_snippet_factory(
     project_domain_roots: dict[str, Path],
 ) -> Callable[[SnippetMeta], bool]:
     def _include(snippet: SnippetMeta) -> bool:
-        if not effective_human_role:
-            return False
         if effective_human_role != HUMAN_ROLE_ADMIN and snippet.visibility != "public":
             return False
         if global_snippets_root in snippet.path.parents:
@@ -652,6 +650,7 @@ def _build_phase1_output(
     parts = [
         "# PHASE 1: Snippet Index (IDs + descriptions)",
         "# Review the snippets below and select the IDs you need.",
+        f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(DOMAIN_SCOPES)}>",
         "",
     ]
     ordered = sorted(

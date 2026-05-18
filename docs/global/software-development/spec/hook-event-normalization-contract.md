@@ -1,9 +1,10 @@
 ---
-id: 'software-development/spec/hook-event-normalization-contract'
-type: 'spec'
-domain: 'software-development'
-scope: 'domain'
 description: 'Canonical contract for normalizing external hook events into internal event types and forwarding only handled events.'
+domain: 'software-development'
+id: 'software-development/spec/hook-event-normalization-contract'
+scope: 'domain'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Hook Event Normalization Contract — Spec

@@ -3,6 +3,7 @@ description: 'Commitizen format, attribution, when to commit. Atomic commits, ho
 id: 'software-development/policy/commits'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Commits — Policy

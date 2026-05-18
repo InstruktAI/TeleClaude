@@ -3,6 +3,7 @@ description: 'Pre-commit quality gates, test principles, linting, isolation, ant
 id: 'software-development/policy/testing'
 scope: 'domain'
 type: 'policy'
+visibility: 'public'
 ---
 
 # Testing — Policy

@@ -1,9 +1,10 @@
 ---
-id: 'software-development/concept/intake-frameworks'
-type: 'concept'
-domain: 'software-development'
-scope: 'domain'
 description: 'Named menu of established business-analysis and requirements-engineering frameworks used during intake. Each carries an objective and a trigger condition that activates the agent''s trained associations.'
+domain: 'software-development'
+id: 'software-development/concept/intake-frameworks'
+scope: 'domain'
+type: 'concept'
+visibility: 'public'
 ---
 
 # Intake Frameworks — Concept
@@ -22,7 +23,7 @@ A menu of established, widely-documented business-analysis and requirements-engi
 | **Pre-mortem analysis** | Gary Klein | Imagine the work shipped and failed; reason backwards to surface risks before they're abstract. | Risk surfacing. One of the named expansion avenues during discovery. |
 | **MoSCoW prioritization** | Dai Clegg / DSDM | Force every surfaced item into Must / Should / Could / Won't with explicit rationale. | Tailor-fit. Trimming a wide expansion to what fits the actual intent. |
 | **Volere shell** | Suzanne and James Robertson | Structure each requirement with Description, Rationale, Source, Fit Criterion, Customer Satisfaction/Dissatisfaction. | Requirements format reference. Aligns with `preparation-artifact-quality`. |
-| **Specification by Example / Gherkin** | Gojko Adzic, Dan North | Express success criteria as "Given X, when Y, then Z" examples that bridge to executable tests. | Bridging confirmed reframe to test specs. |
+| **Specification by Example / Gherkin** | Gojko Adzic, Dan North | Express behavioral contracts as "Given X, when Y, then Z" examples that translate cleanly to executable tests. | Test-specs phase only. Not used during intake — PRD success criteria stay outcome-shaped in PO language. |
 
 ### How procedures reference this concept
 
@@ -33,11 +34,11 @@ A procedure that needs intake work lists the relevant frameworks by name with a 
 | Goal | **JTBD** — restate the request as "the user wants the system to do X for Y under Z." |
 | Why | **5 Whys** — when the surface ask looks like a proxy for an underlying need. |
 | Scope | **MoSCoW** — categorize every surfaced item as Must / Should / Could / Won't with rationale. |
-| Success criteria | **Gherkin** — Given/When/Then form for observable behaviors. |
+| Success criteria | Outcome-shaped prose in PO language — observable indicators of success ("the user can do X within Y", "the system handles N concurrent X"). **Not Gherkin.** Gherkin belongs to the test-specs phase, not the PRD. |
 | Risks and unknowns | **Pre-mortem** — imagine failure modes, surface risks. |
 | (throughout) | **Socratic questioning** — clarity probes. |
 
-**Default-on:** 5 Whys, JTBD, MoSCoW, Pre-mortem, Gherkin. The agent applies these per the section mapping above.
+**Default-on (intake):** 5 Whys, JTBD, MoSCoW, Pre-mortem. The agent applies these per the section mapping above. Gherkin is default-on for the **test-specs phase**, not for intake.
 
 **Available-but-not-default:**
 

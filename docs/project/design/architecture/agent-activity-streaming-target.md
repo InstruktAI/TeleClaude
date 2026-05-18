@@ -1,8 +1,9 @@
 ---
-id: 'project/design/architecture/agent-activity-streaming-target'
-type: 'design'
-scope: 'project'
 description: 'Target architecture for unified agent activity streaming across Telegram, TUI, and Web clients.'
+id: 'project/design/architecture/agent-activity-streaming-target'
+scope: 'project'
+type: 'design'
+visibility: 'public'
 ---
 
 # Agent Activity Streaming Target — Design

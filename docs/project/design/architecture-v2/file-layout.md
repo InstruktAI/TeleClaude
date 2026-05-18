@@ -3,6 +3,7 @@ description: 'Concrete directory and file structure for v2 Rust workspace, per-c
 id: 'project/design/architecture-v2/file-layout'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # File Layout — Design

@@ -3,6 +3,7 @@ description: 'Redis Streams transport for cross-computer request/response and pe
 id: 'project/design/architecture/redis-transport'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Redis Transport — Design

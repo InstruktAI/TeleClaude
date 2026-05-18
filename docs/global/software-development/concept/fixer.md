@@ -3,6 +3,7 @@ description: 'Inline bug-fixing mindset. Fix what you find, where you find it.'
 id: 'software-development/concept/fixer'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Fixer — Concept

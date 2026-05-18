@@ -1,8 +1,9 @@
 ---
-id: 'project/spec/hook-normalized-events'
-type: 'spec'
-scope: 'project'
 description: 'Plain-language contract for how TeleClaude maps raw hook events and decides what gets processed.'
+id: 'project/spec/hook-normalized-events'
+scope: 'project'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Hook Normalized Events — Spec

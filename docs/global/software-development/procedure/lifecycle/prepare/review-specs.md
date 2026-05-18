@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/lifecycle/prepare/review-specs'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Test-spec review phase. Validate prose test specifications against the PRD, optional architecture, and preparation artifact quality rules.'
+domain: 'software-development'
+id: 'software-development/procedure/lifecycle/prepare/review-specs'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Review Test Specs — Procedure
@@ -120,7 +121,9 @@ telec todo artifacts write {slug} spec-review-findings <content>
 ## Recovery
 
 - If the test-specs phase was skipped but the PRD clearly requires a bespoke
-  behavioral contract, mark `needs_work` and ask the orchestrator to clear the
-  skip stamp.
+  behavioral contract, mark `needs_work` and surface in the findings that the
+  skip stamp needs to be cleared. The dispatching session (running the Test
+  Spec Author skill on re-entry) will read the findings and route the request
+  back to the human.
 - If architecture is absent because it was skipped, validate specs against PRD
   and existing code/test patterns only.

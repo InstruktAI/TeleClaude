@@ -1,9 +1,10 @@
 ---
-id: 'software-development/procedure/maintenance/bug-intake-and-triage'
-type: 'procedure'
-domain: 'software-development'
-scope: 'domain'
 description: 'Fast bug intake and triage method for small teams: classify impact quickly and force clear outcomes.'
+domain: 'software-development'
+id: 'software-development/procedure/maintenance/bug-intake-and-triage'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Bug Intake And Triage — Procedure

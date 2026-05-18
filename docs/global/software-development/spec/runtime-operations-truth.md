@@ -1,9 +1,10 @@
 ---
-id: 'software-development/spec/runtime-operations-truth'
-type: 'spec'
-domain: 'software-development'
-scope: 'domain'
 description: 'Canonical format and content requirements for documenting live runtime operations and their failure impact.'
+domain: 'software-development'
+id: 'software-development/spec/runtime-operations-truth'
+scope: 'domain'
+type: 'spec'
+visibility: 'public'
 ---
 
 # Runtime Operations Truth — Spec

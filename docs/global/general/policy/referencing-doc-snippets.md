@@ -1,8 +1,9 @@
 ---
-id: 'general/policy/referencing-doc-snippets'
-type: 'policy'
-scope: 'global'
 description: 'Policy for referencing documentation snippets in AI agent prompts.'
+id: 'general/policy/referencing-doc-snippets'
+scope: 'global'
+type: 'policy'
+visibility: 'public'
 ---
 
 # Referencing Doc Snippets — Policy
@@ -18,7 +19,7 @@ description: 'Policy for referencing documentation snippets in AI agent prompts.
 ## Rationale
 
 - Inline `@` references are the single enforced mechanism for mandatory reading.
-- A stable global root (`/Users/Morriz/.teleclaude/docs`) prevents ambiguity across repos.
+- A stable global root (`~/.teleclaude/docs`) prevents ambiguity across repos.
 - Repo‑relative `@docs/...` keeps project docs portable and consistent.
 - Soft references prevent third-party docs from being auto-included in agent context.
 

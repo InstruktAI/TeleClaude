@@ -1,9 +1,10 @@
 ---
-id: 'general/procedure/git-repo-ingestion'
-type: 'procedure'
-scope: 'global'
-description: 'Ingest Git repositories for analysis. Clone or pull into a checkout root, produce durable index and history artifacts, and reuse prior work across requests.'
 activation_trigger: 'Use when you need to analyze an external Git repository'
+description: 'Ingest Git repositories for analysis. Clone or pull into a checkout root, produce durable index and history artifacts, and reuse prior work across requests.'
+id: 'general/procedure/git-repo-ingestion'
+scope: 'global'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Git Repo Ingestion — Procedure

@@ -3,6 +3,7 @@ description: 'Target architecture for v2: Rust services-as-crates, Postgres-only
 id: 'project/design/architecture-v2/overview'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Architecture V2 Overview — Design

@@ -3,6 +3,7 @@ description: 'Strategic role. Requirements, architecture, use cases. Break down 
 id: 'software-development/concept/architect'
 scope: 'domain'
 type: 'concept'
+visibility: 'public'
 ---
 
 # Architect — Concept

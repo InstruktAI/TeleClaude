@@ -3,6 +3,7 @@ description: 'Tmux session orchestration, input injection, and per-session temp 
 id: 'project/design/architecture/tmux-management'
 scope: 'project'
 type: 'design'
+visibility: 'public'
 ---
 
 # Tmux Management — Design

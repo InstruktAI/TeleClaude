@@ -1,8 +1,9 @@
 ---
-id: 'software-development/procedure/project-analysis'
-type: 'procedure'
-scope: 'domain'
 description: 'AI-driven project analysis procedure invoked by /projects-analyze (telec projects analyze / onboard). Guides the analysis session through codebase discovery, convention inference, and snippet generation.'
+id: 'software-development/procedure/project-analysis'
+scope: 'domain'
+type: 'procedure'
+visibility: 'public'
 ---
 
 # Project Analysis — Procedure
@@ -181,6 +182,12 @@ Generated snippets must:
 - Conform to the scaffolding schema (`software-development/spec/init-scaffolding`).
 - Use `project/` scope IDs (e.g., `project/design/architecture`).
 - Include `generated_by: telec-init` and `generated_at: <ISO8601>` in frontmatter.
+- Declare `visibility` deliberately. Default to `internal`. Promote a single
+  snippet to `public` only when both hold: (a) the content reveals nothing
+  sensitive (no credentials, no private infra topology, no internal personnel
+  routing, no non-public business intel, no personal data), and (b) the content
+  is genuinely useful to an outsider asking the project's help desk. When in
+  doubt, keep it `internal` — the analyzer never bulk-publishes by reflex.
 - Reference concrete findings: real package names, actual file paths, observed
   patterns — never generic placeholder text.
 - Cover the categories implied by the analyzed codebase. Not every category

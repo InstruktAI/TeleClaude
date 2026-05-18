@@ -1,8 +1,9 @@
 ---
-id: 'general/principle/continuity'
-type: 'principle'
-scope: 'global'
 description: 'Agent identity persists through evidence, not sensation. Read the proof of who you are.'
+id: 'general/principle/continuity'
+scope: 'global'
+type: 'principle'
+visibility: 'public'
 ---
 
 # Continuity — Principle
