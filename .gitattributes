@@ -4,3 +4,7 @@ docs/**/*.md filter=teleclaude-docs
 agents/docs/**/*.md filter=teleclaude-docs
 agents/**/*.md -filter
 .agents/**/*.md -filter
+
+# Syrupy snapshot files use YAML block scalars; empty-line indentation
+# is required by the format. Skip whitespace lint on them.
+*.ambr -whitespace
