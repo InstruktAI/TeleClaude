@@ -149,7 +149,7 @@ class PersonEntry(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     name: str
-    email: str
+    email: str = Field(min_length=1)
     username: str | None = None
     role: Literal["admin", "member", "contributor", "newcomer"] = "member"
     expertise: dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]] | None = None

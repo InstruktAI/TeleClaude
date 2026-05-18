@@ -82,9 +82,9 @@ class IdentityResolver:
         return "".join(ch for ch in phone_number if ch.isdigit())
 
     @staticmethod
-    def _optional_nick(value: object) -> str | None:
+    def _optional_nick(value: str | None) -> str | None:
         """Normalize optional platform nicknames."""
-        if isinstance(value, str) and value.strip():
+        if value and value.strip():
             return value.strip()
         return None
 
@@ -129,8 +129,7 @@ class IdentityResolver:
         self._registered_people_count = len(global_config.people)
         people_by_key: dict[str, PersonEntry] = {}
         for person in global_config.people:
-            if person.email:
-                self._by_email[person.email.lower()] = person
+            self._by_email[person.email.lower()] = person
             if person.username:
                 self._by_username[person.username.lower()] = person
             people_by_key[self._normalize_key(person.name)] = person

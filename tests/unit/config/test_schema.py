@@ -11,30 +11,35 @@ from teleclaude.config.schema import (
     IntegratorCutoverConfig,
     JobWhenConfig,
     PersonConfig,
+    PersonEntry,
     ProjectConfig,
 )
 
 
 class TestJobWhenConfig:
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("every", ["1m", "2h", "3d"])
     def test_accepts_supported_every_values(self, every: str) -> None:
         config = JobWhenConfig(every=every)
         assert config.every == every
 
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("every", ["0m", "soon", "15x"])
     def test_rejects_invalid_every_values(self, every: str) -> None:
         with pytest.raises(ValidationError):
             JobWhenConfig(every=every)
 
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("at_value", ["09:00", ["09:00", "14:30"]])
     def test_accepts_wall_clock_times(self, at_value: str | list[str]) -> None:
         config = JobWhenConfig(at=at_value)
         assert config.at == at_value
 
     @pytest.mark.unit
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("at_value", ["9:00", "24:00", ["07:00", "12:99"]])
     def test_rejects_invalid_wall_clock_times(self, at_value: str | list[str]) -> None:
         with pytest.raises(ValidationError):
@@ -89,6 +94,11 @@ class TestSchemaValidators:
     def test_person_config_rejects_project_only_keys(self) -> None:
         with pytest.raises(ValidationError, match="Keys not allowed at per-person level: business"):
             PersonConfig.model_validate({"business": {}})
+
+    @pytest.mark.unit
+    def test_person_entry_requires_non_empty_email(self) -> None:
+        with pytest.raises(ValidationError):
+            PersonEntry.model_validate({"name": "Alice", "email": ""})
 
     @pytest.mark.unit
     def test_project_slug_defaults_to_none_for_legacy_configs(self) -> None:

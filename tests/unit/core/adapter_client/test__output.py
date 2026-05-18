@@ -10,7 +10,6 @@ import pytest
 from teleclaude.adapters.base_adapter import BaseAdapter
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.core.adapter_client._client import AdapterClient
-from teleclaude.core.identity import IdentityContext
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.core.origins import InputOrigin
 
@@ -52,7 +51,6 @@ TELEGRAM_FILE_MESSAGE_ID = "telegram-file"
 TELEGRAM_MESSAGE_ID = "telegram-msg"
 TRANSCRIPT_MESSAGE_ID = "transcript-msg"
 TRANSCRIPT_TEXT = "transcript"
-UNKNOWN_TERMINAL_EMAIL = "unknown@example.com"
 UPDATED_TEXT = "updated"
 WHATSAPP_ADAPTER = InputOrigin.WHATSAPP.value
 WHATSAPP_MESSAGE_ID = "whatsapp-msg"
@@ -372,11 +370,7 @@ class TestBroadcastUserInput:
             patch.object(client, "_route_to_ui", AsyncMock()) as mock_route,
         ):
             resolver = MagicMock()
-            resolver.resolve_by_email.return_value = MagicMock(
-                display_name_override=None,
-                person_name=MAURICE_NAME,
-                person_email=MAURICE_EMAIL,
-            )
+            resolver.resolve_by_email.return_value = MagicMock(display_name=MAURICE_NAME)
             mock_resolver.return_value = resolver
 
             await client.broadcast_user_input(session, HELLO_TEXT, InputOrigin.TERMINAL.value)
@@ -390,9 +384,9 @@ class TestBroadcastUserInput:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
-    async def test_terminal_origin_falls_back_to_email_when_human_email_is_unregistered(self):
+    async def test_terminal_origin_requires_session_human_email(self):
         client = AdapterClient()
-        session = _make_session(last_input_origin=InputOrigin.TERMINAL.value, human_email=UNKNOWN_TERMINAL_EMAIL)
+        session = _make_session(last_input_origin=InputOrigin.TERMINAL.value)
         client.register_adapter(DISCORD_ADAPTER, _make_ui_adapter())
 
         with (
@@ -401,17 +395,14 @@ class TestBroadcastUserInput:
             patch.object(client, "_route_to_ui", AsyncMock()) as mock_route,
         ):
             resolver = MagicMock()
-            resolver.resolve_by_email.return_value = IdentityContext()
             mock_resolver.return_value = resolver
 
-            await client.broadcast_user_input(session, HELLO_TEXT, InputOrigin.TERMINAL.value)
+            with pytest.raises(ValueError):
+                await client.broadcast_user_input(session, HELLO_TEXT, InputOrigin.TERMINAL.value)
 
         resolver.resolve.assert_not_called()
-        resolver.resolve_by_email.assert_called_once_with(UNKNOWN_TERMINAL_EMAIL)
-        mock_route.assert_awaited_once()
-        metadata = mock_route.await_args.kwargs[ROUTE_KWARG_METADATA]
-        assert metadata.reflection_origin == InputOrigin.TERMINAL.value
-        assert metadata.reflection_actor_name == UNKNOWN_TERMINAL_EMAIL
+        resolver.resolve_by_email.assert_not_called()
+        mock_route.assert_not_awaited()
 
 
 class TestThreadState:

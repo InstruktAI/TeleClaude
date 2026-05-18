@@ -292,19 +292,10 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
         # terminal origin_metadata section, but it should still resolve to
         # the session's human identity for Discord reflection.
         if not normalized_actor_name and reflection_origin == InputOrigin.TERMINAL.value:
-            terminal_email = (session_to_use.human_email or "").strip()
-            if terminal_email:
-                terminal_identity = resolver.resolve_by_email(terminal_email)
-                terminal_display_name_override = (terminal_identity.display_name_override or "").strip()
-                normalized_actor_name = (
-                    terminal_display_name_override
-                    if terminal_display_name_override
-                    else (
-                        (terminal_identity.person_name or "").strip()
-                        or (terminal_identity.person_email or "").strip()
-                        or terminal_email
-                    )
-                )
+            terminal_email = session_to_use.human_email
+            if not terminal_email or not terminal_email.strip():
+                raise ValueError("Terminal user input reflection requires session.human_email")
+            normalized_actor_name = resolver.resolve_by_email(terminal_email).display_name
 
         if not normalized_actor_name:
             identity = resolver.resolve(source, session_to_use.get_origin_section(source))
