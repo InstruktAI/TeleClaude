@@ -612,7 +612,7 @@ async def test_finalize_ready_claim_stale_sha_blocks(snapshot: SnapshotAssertion
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_emits_event_with_full_payload_contract() -> None:
+async def test_finalize_ready_claim_emits_event_with_full_payload_contract(snapshot: SnapshotAssertion) -> None:
     """Valid claim emits the lifecycle event with the full payload contract
     required by the Integration Orchestrator Spec: slug, branch, sha,
     worker_session_id, ready_at."""
@@ -647,12 +647,7 @@ async def test_finalize_ready_claim_emits_event_with_full_payload_contract() -> 
     assert result == (True, "")
     assert emit.await_count == 1
     payload = emit.await_args.kwargs["payload"]
-    assert payload["slug"] == "test-slug"
-    assert payload["branch"] == "test-slug"
-    assert payload["sha"] == "cafebabe"
-    assert payload["worker_session_id"] == "w-1"
-    assert payload["ready_at"] == "2026-05-09T12:00:00+00:00"
-    assert "orchestrator_session_id" not in payload
+    assert payload == snapshot
 
 
 @pytest.mark.asyncio

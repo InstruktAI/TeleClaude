@@ -130,6 +130,15 @@
   Builder session sess-123 has not stamped build completion yet. Wait for it to run `telec todo stamp test-slug --build-complete`, then call telec todo work test-slug.
   '''
 # ---
+# name: test_finalize_ready_claim_emits_event_with_full_payload_contract
+  dict({
+    'branch': 'test-slug',
+    'ready_at': '2026-05-09T12:00:00+00:00',
+    'sha': 'cafebabe',
+    'slug': 'test-slug',
+    'worker_session_id': 'w-1',
+  })
+# ---
 # name: test_finalize_ready_claim_remote_mismatch_blocks
   '''
   ERROR: FINALIZE_REMOTE_MISMATCH
