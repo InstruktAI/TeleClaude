@@ -155,6 +155,15 @@ class PersonEntry(BaseModel):
     expertise: dict[str, ProficiencyLevel | dict[str, ProficiencyLevel]] | None = None
     proficiency: ProficiencyLevel | None = None  # deprecated — use expertise
 
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, v: str) -> str:
+        """Normalize and reject empty person email values."""
+        value = v.strip()
+        if not value:
+            raise ValueError("Person email must be non-empty")
+        return value
+
 
 class TelegramCreds(BaseModel):
     """Telegram platform credentials."""
