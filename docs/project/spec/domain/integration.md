@@ -13,8 +13,8 @@ description: Integration bounded context — anything coming from or going to ou
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
-- @docs/global/software-development/spec/domain-spec.md
+- docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
 - @docs/project/design/architecture-v2/transport-rules.md

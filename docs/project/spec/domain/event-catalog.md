@@ -11,7 +11,7 @@ description: 'Every domain event the platform emits — producer context, named 
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/principle/domain-driven-design.md
 - @docs/project/design/architecture-v2/event-bus-transports.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md

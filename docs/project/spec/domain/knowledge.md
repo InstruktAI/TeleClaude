@@ -13,9 +13,9 @@ description: Knowledge bounded context — snippet index, taxonomy, scope-aware 
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
-- @docs/global/software-development/spec/domain-spec.md
-- @docs/global/general/spec/snippet-authoring-schema.md
+- docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/spec/domain-spec.md
+- docs/global/general/spec/snippet-authoring-schema.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
 

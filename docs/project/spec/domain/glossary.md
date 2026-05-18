@@ -11,7 +11,7 @@ description: 'Cross-context ubiquitous-language register. Disambiguates terms th
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/principle/domain-driven-design.md
 - @docs/project/design/architecture-v2/services.md
 
 ## What it is

@@ -11,7 +11,7 @@ description: 'Relationships between the eight bounded contexts — partnership, 
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/principle/domain-driven-design.md
 - @docs/project/design/architecture-v2/services.md
 - @docs/project/spec/domain/glossary.md
 

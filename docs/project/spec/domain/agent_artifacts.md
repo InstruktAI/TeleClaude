@@ -13,8 +13,8 @@ description: Agent Artifacts bounded context — source manifest, inflation rule
 
 ## Required reads
 
-- @docs/global/software-development/principle/domain-driven-design.md
-- @docs/global/software-development/spec/domain-spec.md
+- docs/global/software-development/principle/domain-driven-design.md
+- docs/global/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
 
