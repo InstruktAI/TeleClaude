@@ -1,5 +1,5 @@
 ---
-description: 'Fix phase for prepare. Address review findings inside the active phase skill and re-dispatch the reviewer via the state machine.'
+description: 'Fix phase for prepare. Address review findings inside the active procedure and re-dispatch the reviewer via the state machine.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/prepare/fix-review'
 scope: 'domain'
@@ -16,7 +16,7 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is to address reviewer findings on the current phase's
-artifact, in this session, using the same skill you used to draft the
+artifact, in this session, using the same procedure you used to draft the
 artifact. There is no separate "fixer" identity — the BA fixes PRD findings,
 the Architect fixes architecture findings, the Test Spec Author fixes
 test-spec findings, the Planner fixes plan findings. After fixes, advance the
@@ -46,8 +46,8 @@ Extract:
 ## Preconditions
 
 - The relevant findings artifact exists with a non-`APPROVE` verdict.
-- The current phase's skill is loaded (BA, Architect, Test Spec Author, or
-  Planner — the same skill that drafted the artifact under review).
+- The current phase's procedure is loaded (BA, Architect, Test Spec Author, or
+  Planner — the same procedure that drafted the artifact under review).
 
 ## Steps
 
@@ -72,7 +72,7 @@ Extract:
 
    The state machine re-dispatches the reviewer against the updated artifact.
    The reviewer runs as a separate session, writes findings and a verdict,
-   and idles. The active phase skill reads the new findings on the next
+   and idles. The active procedure reads the new findings on the next
    state-machine advance.
 
 ## Outputs

@@ -32,12 +32,16 @@ structured artifact capturing what the user actually wants, with success
 criteria, scope, constraints, and any open intent questions, ready for
 downstream derivation.
 
-The stakeholder being interviewed is the **Product Owner role**. The PO is
-represented either by a real human (default) or by a dispatched AI emulator
-(when the session is in standin mode per `additional_context`). The emulator
+The stakeholder being interviewed is the **Product Owner role** — either the
+real human directly, or a dispatched AI PO emulator standing in. The emulator
 runs the `emulate-product-owner` procedure with a deliberately small loadout:
-standing wishes for quality, no intake-frameworks tools, no artifact-writing,
-no stamping. The PO doesn't run the elicitation; it answers.
+standing wishes for quality (right-sized, established patterns, sane
+architecture, off-the-shelf preference), input-artifact handling, the
+answer-don't-orchestrate boundary. The PO doesn't run the elicitation; it
+answers.
+
+The real human always owns final `prd_approved`. The emulator can give PO
+feedback on the written PRD but cannot stamp approval.
 
 ## Preconditions
 
@@ -49,10 +53,24 @@ no stamping. The PO doesn't run the elicitation; it answers.
 
 ### 1. Establish mode and orient
 
-- Read the session's `additional_context`. If it indicates **standin mode**, dispatch a Product Owner emulator via `/next-emulate-po {slug}` (cross-model preferred — Codex or Gemini). The command's required reads carry the PO loadout: standing wishes for quality (right-sized, established patterns, sane architecture, off-the-shelf preference), input-artifact handling, the answer-don't-orchestrate boundary.
-- If **human_in_loop**, the human IS the Product Owner. No peer dispatch for this role.
-- If no slug exists yet, hold off on creating one until the conversation has produced something concrete enough to commit to.
-- If a slug exists and an `input` artifact is already present (dumped earlier, or partial from a prior session), read it in full before engaging.
+Two cases determine who plays the PO role:
+
+- **`input` artifact exists.** Read it in full before doing anything else. The
+  human dumped intent and walked away. Assess whether the input is rich enough
+  to write the PRD directly without elicitation — if the intent, scope, and
+  success criteria are already clear, skip to step 5. If the input is sparse or
+  ambiguous, dispatch the PO emulator via `telec sessions run --command
+  /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+  preferred). The brief must end with the exact instruction:
+  `telec sessions send <this_session_id> "<your response>" --direct`.
+  The orchestrator substitutes its own session id. Conduct elicitation with the
+  emulator before writing.
+- **No `input` artifact, human is present, no standin requested.** The human IS
+  the PO. No emulator dispatch. Conduct elicitation directly in conversation.
+  When the human explicitly asks to call in a standin, dispatch the emulator at
+  that point with `--direct` and hand off the PO role.
+
+If no slug exists yet, create one before dispatching the emulator.
 
 ### 2. Interview the Product Owner to fill the PRD template
 
@@ -120,49 +138,64 @@ telec todo artifacts write {slug} prd <content>
 
 The PRD content follows the template structure above. JTBD-shaped Goal at the top. Each section filled at the depth the work warrants — small work has terse sections; large work has elaborated sections.
 
-### 6. Present for human review and approval
+### 6. PRD review and approval
 
-The PRD has no automated reviewer. The human is the sole authority on PRD
-correctness because only the human owns intent. Present the PRD to the PO for
-review and approval. Phrasing matches proficiency:
+After writing the PRD, the BA senses through attunement whether the conversation
+is ready to close. Name it: "PRD is written. Do you want to review it yourself,
+or should I call in the standin to read it and give PO feedback so you can
+approve later?"
 
-- Novice: walks through the document in user-facing language, asks "does this match what you want?"
-- Expert: terser presentation, surfaces the structure quickly.
+**Never reproduce the artifact content in the chat.** Reference it with
+`telec todo artifacts read {slug} prd`.
 
-The PO either:
+Two paths:
 
-- **Confirms** → stamp `prd_approved` (only when a real human is in the loop;
-  standin cannot stamp this — see Recovery).
-- **Refines** → capture the delta, rewrite the PRD, present again.
+- **Human reviews now.** Human reads the artifact, confirms or refines inline,
+  then stamps `prd_approved`.
+- **Standin reviews.** Dispatch the emulator via `telec sessions run --command
+  /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+  preferred). The brief asks it to read the PRD and give a PO gut-check: does
+  this reflect the input faithfully? aligned with standing wishes? anything
+  off-scope? The brief must end with the exact instruction:
+  `telec sessions send <this_session_id> "<your response>" --direct`.
+  The orchestrator substitutes its own session id. The emulator replies via
+  direct link; the session then goes idle. The
+  human returns, sees the feedback, and stamps `prd_approved`. The emulator
+  cannot stamp.
 
 ### 7. Final step — advance
 
-When the PRD is written and (when a real human is in the loop)
-`prd_approved` is stamped, along with any size-based skip stamps
-(`architecture_skipped`, `test_specs_skipped`), call:
+When `prd_approved` is stamped (by the real human), along with any size-based
+skip stamps (`architecture_skipped`, `test_specs_skipped`), call:
 
 ```
 telec todo prepare {slug}
 ```
 
 The state machine routes the next action — typically loading the next phase's
-skill, or pausing for the real human when the PRD was authored in standin
-mode and awaits approval.
+procedure. When HITL: false, the state machine will route here when the human
+re-engages and stamps approval.
 
 ## Outputs
 
 - **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure.
-- **`prd_approved` stamp** — recorded when the real human confirms. Standin-mode sessions cannot stamp this; the real human must do so when they re-engage.
+- **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.
 - **Skip stamps** when applicable: `architecture_skipped`, `test_specs_skipped`, each with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
 
 ## Recovery
 
-- **Standin mode produces a PRD that the real human hasn't seen yet.** Agent goes idle after writing PRD. When the human invokes `/next-prepare {slug}`, the state machine reports "PRD authored in standin mode, awaiting your approval." The agent then presents the PRD to the human: "we role-played you and worked this through — here's what we landed on. Confirm or refine." Standard refinement flow applies from there.
-- **Conversation stalls / human can't articulate.** BA applies more probing techniques (Socratic questions, "tell me about a similar problem you've solved before," "what would a successful version look like a year from now"). If genuinely stuck, BA captures what is known, marks remaining gaps as Open questions in the PRD, and writes a partial PRD flagged as needing more input. Human approves the partial-with-gaps explicitly.
-- **Input artifact is sparse or contradictory.** BA reads what's there, identifies specific gaps, asks the human (or standin) targeted questions to fill them. Doesn't invent material.
-- **PO contradicts the standing wishes** (e.g., explicitly asks for a hacky one-off solution). BA flags the contradiction in stewardship register: "the platform defaults toward [established pattern]; you're asking for [hack] — confirm you want this override and the reason." Captured in PRD's Constraints section.
-- **Daemon-side `additional_context` is missing or ambiguous about mode.** Default to human_in_loop. Better to underuse standin than to standin-mode a real-human session.
+- **Human returns after standin review.** The emulator's feedback is visible
+  in the session. Human stamps `prd_approved` or refines. Never reproduce the
+  artifact content in the chat.
+- **Input artifact is sparse or contradictory.** BA identifies specific gaps and
+  asks the emulator (or human directly) targeted questions. Does not invent
+  material. Marks unresolvable gaps as Open questions in the PRD.
+- **PO contradicts standing wishes.** BA names the contradiction in the
+  conversation and captures it in the PRD's Constraints section.
+- **Daemon-side `additional_context` is missing or ambiguous.** Default to
+  human-in-loop: treat the human as the PO unless an input artifact exists or
+  they request the standin.
 
 ## See Also
 

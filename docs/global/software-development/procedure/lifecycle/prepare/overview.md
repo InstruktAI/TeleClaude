@@ -19,31 +19,31 @@ visibility: 'public'
 
 Drive a todo through the prepare phase from initial intent capture to a state
 where the work is ready for the build phase. One session drives the whole
-chain. Each phase loads its skill, does its focused work, and advances the
+chain. Each phase loads its procedure, does its focused work, and advances the
 state machine. The state machine decides what happens next.
 
 ### Defaults — read these once and carry them through every phase
 
 1. **One session drives the whole prepare lifecycle.** The session you are
-   in loads each phase's skill in turn, does the work itself, advances the
-   state machine, and loads the next skill when the state machine routes
+   in loads each phase's procedure in turn, does the work itself, advances the
+   state machine, and loads the next procedure when the state machine routes
    there.
 
 2. **Each phase has its own focus, sharpened by a hat:**
-   - **BA hat** for intake — loaded via the `/next-prepare-intake` skill
-   - **Architect hat** for architecture — loaded via the `/next-prepare-architecture` skill
-   - **Test Spec Author hat** for test specs — loaded via the `/next-prepare-specs` skill
-   - **Planner hat** for plan — loaded via the `/next-prepare-plan` skill
+   - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/next-prepare-intake.md`
+   - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/next-prepare-architecture.md`
+   - **Test Spec Author hat** for test specs — loaded by reading `~/.teleclaude/commands/next-prepare-specs.md`
+   - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/next-prepare-plan.md`
 
    Putting on a hat sharpens focus for the current phase; it does not erase
    the lifecycle awareness underneath. The hat comes off when the phase ends
-   and the next skill loads.
+   and the next procedure loads.
 
 3. **Reviewers are cross-model and dispatched.** When the state machine
    routes to a review step, dispatch the reviewer as a separate session via
    `telec sessions run` and tail it. The reviewer writes its findings to the
    findings artifact and a verdict to its review stamp; the active phase
-   skill reads them on the next state-machine advance.
+   procedure reads them on the next state-machine advance.
 
 4. **Human approval is on the PRD only.** The human reviews the PRD and
    stamps `prd_approved`. The human is the sole authority on intent.
@@ -94,8 +94,8 @@ if short) pass the gate and proceed to Step 2.
 ### 2. Call the state machine
 
 Call `telec todo prepare {slug}`. The machine returns a verbatim execution
-script for the current phase. The script describes either a skill load (load
-the next phase's skill and do its work), a reviewer dispatch (dispatch a
+script for the current phase. The script describes either a procedure load (load
+the next phase's procedure and do its work), a reviewer dispatch (dispatch a
 cross-model reviewer and tail it), an approval pause (present to the real
 human and wait), or a terminal state (`PREPARED` or `BLOCKED`).
 
@@ -103,18 +103,18 @@ Execute the script verbatim. The script's flexibility belongs to
 in-conversation moments with the user: fresh questions, refinements, scope
 clarifications.
 
-### 3. Load the recommended skill and do the work
+### 3. Load the recommended procedure and do the work
 
-When the state machine routes you to a phase, load the corresponding skill
-and do its focused work. Each skill ends by calling `telec todo prepare
+When the state machine routes you to a phase, load the corresponding procedure
+and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-| Phase        | Skill                                  | Hat              |
+| Phase        |  Procedure                                             | Hat              |
 | ------------ | -------------------------------------- | ---------------- |
-| Intake       | `/next-prepare-intake`                 | BA               |
-| Architecture | `/next-prepare-architecture`           | Architect        |
-| Test specs   | `/next-prepare-specs`                  | Test Spec Author |
-| Plan         | `/next-prepare-plan`                   | Planner          |
+| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`                 | BA               |
+| Architecture | `~/.teleclaude/commands/next-prepare-architecture.md`           | Architect        |
+| Test specs   | `~/.teleclaude/commands/next-prepare-specs.md`                  | Test Spec Author |
+| Plan         | `~/.teleclaude/commands/next-prepare-plan.md`                   | Planner          |
 
 ### 4. Honor the PRD approval gate
 
@@ -201,8 +201,8 @@ Surface the blocker to the human for direction.
   elaboration, then proceed from Step 2.
 - **State machine returns an unfamiliar recommendation.** Surface this to the
   user; do not improvise.
-- **Skill loading fails.** Report the failure; do not proceed without the
-  skill loaded.
+- **Procedure loading fails.** Report the failure; do not proceed without the
+  procedure loaded.
 - **Reviewer dispatch fails repeatedly.** Surface as a blocker; do not grind
   without reviewer verification.
 - **Human disengages mid-flow.** State machine retains current state; next

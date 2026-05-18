@@ -12,7 +12,7 @@ visibility: 'public'
 
 Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required.
 
-The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped skill for each step (intake, architecture, test specs, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active phase skill dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture, test specs, and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
+The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, test specs, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture, test specs, and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
 
 ## Inputs/Outputs
 
@@ -60,12 +60,12 @@ The confirmed plan is the handoff input to the work phase.
 **Drift:**
 
 - Drift is detected by reconciliation: `current main SHA != artifact.codebase_sha_at_write` AND at least one referenced path changed between.
-- Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active phase skill integrates findings on re-entry.
+- Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active procedure integrates findings on re-entry.
 - Substantive drift triggers re-derivation of affected layers; cosmetic drift is noted, not acted on.
 
 **Cross-model verification:**
 
-- The independent verification of derived artifacts (architecture, test specs, plan) comes from cross-model reviewers dispatched per phase. The active phase skill dispatches the reviewer, tails it, and integrates the verdict.
+- The independent verification of derived artifacts (architecture, test specs, plan) comes from cross-model reviewers dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
 - The PRD has no automated reviewer — the human is the sole authority on intent, so the human verifies the PRD directly.
 
 ## Primary flows
@@ -111,7 +111,7 @@ flowchart TD
     PlanReview --> Grounding{Grounding fresh?}
 
     Grounding -->|yes| Prepared([PREPARED → work phase])
-    Grounding -->|drift detected| DriftWorker[Lean drift-analyze worker dispatched<br/>active phase skill integrates findings on re-entry]
+    Grounding -->|drift detected| DriftWorker[Lean drift-analyze worker dispatched<br/>active procedure integrates findings on re-entry]
     DriftWorker --> Plan[Re-derive affected layers<br/>or proceed if cosmetic]
     Plan --> Grounding
 
@@ -127,7 +127,7 @@ flowchart TD
 
 **Use case 1 — new work item, human in the loop (default).**
 
-Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare skill.
+Trigger: user invokes `/next-prepare` (with or without slug), or asks an active agent to load the prepare procedure.
 
 Mode: human_in_loop.
 
@@ -156,12 +156,12 @@ Also covers the `--draft` dump case: human comes back to a slug with an `input` 
 ## Failure modes
 
 - **PRD authored in standin mode but human never returns.** Todo sits idle indefinitely. The system does not auto-proceed past `prd_approved` gate. Human's eventual return triggers the approval flow.
-- **Drift detected mid-chain.** Reconciliation flags drift in artifact-referenced paths. Lean drift-analysis worker dispatched. If substantive, the affected layer's approval is invalidated and the active phase skill re-enters drafting. If cosmetic, drift is noted in artifact metadata and the chain continues.
+- **Drift detected mid-chain.** Reconciliation flags drift in artifact-referenced paths. Lean drift-analysis worker dispatched. If substantive, the affected layer's approval is invalidated and the active procedure re-enters drafting. If cosmetic, drift is noted in artifact metadata and the chain continues.
 - **Reviewer verdict `changes_requested` cannot be addressed by auto-remediation.** Surface to the human as a blocker requiring direction. Do not grind through endless revision rounds.
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Uses `telec todo split` to spawn children. Each child gets its own track through the chain. Parent becomes a container.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; ask the human whether the product constraint permits a documented one-off.
 - **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the Architect surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
-- **Phase skill drifts into orchestrator-shaped action.** If a phase skill dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading skills, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the cross-model reviewers.
+- **Active procedure drifts into orchestrator-shaped action.** If a procedure dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading procedures, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the cross-model reviewers.
 - **No `additional_context` mode marker.** Default to `human_in_loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
 
 ### Open design choices still being prototyped

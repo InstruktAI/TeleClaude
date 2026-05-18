@@ -126,7 +126,7 @@ architecture artifact to resolve each finding, then advance again.
 - **`architecture` artifact** — code-grounded technical brief written via
   `telec todo artifacts write`.
 - **`architecture_review` verdict `approve`** is stamped by the reviewer (not
-  by this skill).
+  by this procedure).
 
 ## Discipline
 

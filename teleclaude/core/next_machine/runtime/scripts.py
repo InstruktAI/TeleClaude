@@ -85,7 +85,7 @@ def format_review_needs_work_script(
 
     No ``--direct`` link is opened between the reviewer and the active fixer
     session. The reviewer writes its findings artifact and idles. The fixer
-    (the active phase skill in the prepare session) reads the findings on its
+    (the active procedure in the prepare session) reads the findings on its
     next state-machine advance and addresses them in its own session.
     """
     completion_clause = (

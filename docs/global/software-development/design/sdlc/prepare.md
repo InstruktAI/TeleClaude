@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase design: one driving session loads phase-scoped skills in sequence, produces the four prepare artifacts, and submits each derived artifact to a cross-model reviewer. PRD is the only human approval gate.'
+description: 'Prepare phase design: one driving session loads phase-scoped procedures in sequence, produces the four prepare artifacts, and submits each derived artifact to a cross-model reviewer. PRD is the only human approval gate.'
 domain: 'software-development'
 id: 'software-development/design/sdlc/prepare'
 scope: 'global'
@@ -19,7 +19,7 @@ Define how the prepare phase produces the aligned artifacts that downstream
 work must consume.
 
 Prepare exists to turn a problem impulse into build-ready truth. One session
-drives the whole prepare lifecycle. The session loads a phase-scoped skill for
+drives the whole prepare lifecycle. The session loads a phase-scoped procedure for
 each step in the chain — intake, architecture, test specs, plan — and does the
 work for that step itself. Each derived artifact is verified by a cross-model
 reviewer running in a separate dispatched session. The PRD is verified by the
@@ -46,17 +46,17 @@ human, who is the sole authority on intent.
 ## Invariants
 
 - One session drives the whole prepare lifecycle. The same session loads
-  each phase's skill, does the phase's work, advances the state machine, and
-  loads the next skill when the state machine routes there.
+  each phase's procedure, does the phase's work, advances the state machine, and
+  loads the next procedure when the state machine routes there.
 - Each phase has its own focus, sharpened by a hat. Intake = BA hat
-  (`/next-prepare-intake`). Architecture = Architect hat
-  (`/next-prepare-architecture`). Test specs = Test Spec Author hat
-  (`/next-prepare-specs`). Plan = Planner hat (`/next-prepare-plan`). The
-  hat is the loaded skill; the lifecycle awareness underneath persists
+  (`~/.teleclaude/commands/next-prepare-intake.md`). Architecture = Architect hat
+  (`~/.teleclaude/commands/next-prepare-architecture.md`). Test specs = Test Spec Author hat
+  (`~/.teleclaude/commands/next-prepare-specs.md`). Plan = Planner hat (`~/.teleclaude/commands/next-prepare-plan.md`). The
+  hat is the loaded procedure; the lifecycle awareness underneath persists
   across hats.
 - Reviewers are cross-model and dispatched. Each derived artifact
   (architecture, test specs, plan) is reviewed by a separately-dispatched
-  cross-model session. The active phase skill dispatches the reviewer,
+  cross-model session. The active procedure dispatches the reviewer,
   tails it, and reads its findings and verdict on the next state-machine
   advance.
 - The PRD is the only human approval gate. The human reviews the PRD and
@@ -85,15 +85,15 @@ human, who is the sole authority on intent.
 The state machine drives a deterministic phase chain. Each phase is one focus
 turn of the same driving session.
 
-| Phase        | Skill                          | Hat              | Authority gate                              |
+| Phase        | Procedure                          | Hat              | Authority gate                              |
 | ------------ | ------------------------------ | ---------------- | ------------------------------------------- |
-| Intake       | `/next-prepare-intake`         | BA               | `prd_approved` (real human only)            |
-| Architecture | `/next-prepare-architecture`   | Architect        | `architecture_review` verdict `approve`     |
-| Test specs   | `/next-prepare-specs`          | Test Spec Author | `test_spec_review` verdict `approve`        |
-| Plan         | `/next-prepare-plan`           | Planner          | `plan_review` verdict `approve`             |
+| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`         | BA               | `prd_approved` (real human only)            |
+| Architecture | `~/.teleclaude/commands/next-prepare-architecture.md`   | Architect        | `architecture_review` verdict `approve`     |
+| Test specs   | `~/.teleclaude/commands/next-prepare-specs.md`          | Test Spec Author | `test_spec_review` verdict `approve`        |
+| Plan         | `~/.teleclaude/commands/next-prepare-plan.md`           | Planner          | `plan_review` verdict `approve`             |
 
 Each phase ends by calling `telec todo prepare {slug}`. The state machine
-routes the next action — load the next skill, dispatch a reviewer, pause for
+routes the next action — load the next procedure, dispatch a reviewer, pause for
 human approval, or terminate at `PREPARED` / `BLOCKED`.
 
 ### Intake
@@ -112,11 +112,11 @@ slug.
 
 ### Derivation phases (architecture, test specs, plan)
 
-For each derivation phase, the same session loads the phase's skill, grounds
+For each derivation phase, the same session loads the phase's procedure, grounds
 in upstream artifacts, produces the phase artifact, and advances the state
 machine. The state machine then dispatches a cross-model reviewer. The
-active phase skill tails the reviewer; on `approve` the chain advances; on
-`needs_work` the active skill addresses the findings and advances again to
+active procedure tails the reviewer; on `approve` the chain advances; on
+`needs_work` the active procedure addresses the findings and advances again to
 re-dispatch the reviewer.
 
 ### Standin mode
@@ -147,7 +147,7 @@ scopes:
 When reconciliation detects that artifact-referenced paths changed since the
 artifact was authored, a lean `/next-drift-analyze` worker is dispatched. It
 stamps each pending artifact as `cosmetic` or `substantive`. Substantive
-drift invalidates the affected phase and the active skill re-derives. The
+drift invalidates the affected phase and the active procedure re-derives. The
 PREPARED terminal requires fresh grounding.
 
 ## Failure modes
@@ -155,11 +155,11 @@ PREPARED terminal requires fresh grounding.
 - PRD success criteria stay vague because intake elicitation was shallow.
 - The BA front-loads Gherkin into the PRD, duplicating test-specs content
   and pushing the PO into a test author's grammar.
-- A phase skill drifts into orchestrator-shaped action (dispatching workers
+- A procedure drifts into orchestrator-shaped action (dispatching workers
   for sub-phases) instead of doing the phase work itself.
 - A standin-produced PRD is auto-stamped `prd_approved` without the real
   human's review.
-- Reviewer findings cannot be addressed by the active phase skill, and the
+- Reviewer findings cannot be addressed by the active procedure, and the
   chain grinds rather than surfacing the blocker.
 - Drift is detected but the affected phase isn't re-derived, leaving
   downstream artifacts grounded in stale upstream truth.

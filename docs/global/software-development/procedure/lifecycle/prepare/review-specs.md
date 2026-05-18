@@ -123,7 +123,7 @@ telec todo artifacts write {slug} spec-review-findings <content>
 - If the test-specs phase was skipped but the PRD clearly requires a bespoke
   behavioral contract, mark `needs_work` and surface in the findings that the
   skip stamp needs to be cleared. The dispatching session (running the Test
-  Spec Author skill on re-entry) will read the findings and route the request
+  Spec Author procedure on re-entry) will read the findings and route the request
   back to the human.
 - If architecture is absent because it was skipped, validate specs against PRD
   and existing code/test patterns only.

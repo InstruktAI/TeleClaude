@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.lifecycle import derive_prepare_drift, prepare
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_blocker_resolution,
-    format_skill_load,
+    format_procedure_load,
     format_tool_call,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -85,22 +85,22 @@ async def _dispatch_worker(
     return False, format_tool_call(request)
 
 
-def _load_skill(
+def _load_procedure(
     *,
     slug: str,
     command: SlashCommand,
     hat: str,
     expected: str,
 ) -> tuple[bool, str]:
-    """Emit a skill-load script for a drafting phase.
+    """Emit a procedure-load script for a drafting phase.
 
     Draft phases (intake, architecture, test specs, plan) are performed by the
-    same session that drives the prepare lifecycle — it loads the phase's
-    skill inline and does the work. This helper produces the verbatim
+    same session that drives the prepare lifecycle — it reads the phase's
+    procedure inline and does the work. This helper produces the verbatim
     instruction for that load. Reviewer phases use ``_dispatch_worker``
     instead because the cross-model reviewer runs in a separate session.
     """
-    return False, format_skill_load(
+    return False, format_procedure_load(
         slug=slug,
         command_name=command.value,
         hat=hat,
@@ -140,7 +140,7 @@ def _blocker_resolution(
     instruction = (
         f"Each blocker above names a concrete gap. Resolve it by:\n"
         f"- writing the missing artifact, or\n"
-        f"- re-loading the responsible phase skill (intake, architecture, test specs, plan) "
+        f"- re-loading the responsible procedure (intake, architecture, test specs, plan) "
         f"in this session and addressing the review findings, or\n"
         f"- surfacing a state-machine error to the user.\n\n"
         f"Then call `telec todo prepare {slug}` to re-derive the lifecycle phase."
@@ -160,7 +160,7 @@ async def _prepare_dispatch(
     """Dispatch to the appropriate v2 prepare phase handler."""
     _ = todos_db
     if phase in (PreparePhase.DRAFT, PreparePhase.PRD_DRAFTING):
-        return _load_skill(
+        return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_INTAKE,
             hat="BA",
@@ -171,7 +171,7 @@ async def _prepare_dispatch(
             slug, phase=phase, state=state, cwd=cwd, artifact=ARTIFACT_PRD, stamp_flag="--prd-approved"
         )
     if phase == PreparePhase.ARCHITECTURE_DRAFTING:
-        return _load_skill(
+        return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_ARCHITECTURE,
             hat="Architect",
@@ -189,7 +189,7 @@ async def _prepare_dispatch(
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.TEST_SPECS_DRAFTING:
-        return _load_skill(
+        return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_SPECS,
             hat="Test Spec Author",
@@ -207,7 +207,7 @@ async def _prepare_dispatch(
             expected="a test-spec review verdict and findings when needed",
         )
     if phase == PreparePhase.PLAN_DRAFTING:
-        return _load_skill(
+        return _load_procedure(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_PLAN,
             hat="Planner",

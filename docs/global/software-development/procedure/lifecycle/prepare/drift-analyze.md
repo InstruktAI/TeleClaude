@@ -75,7 +75,7 @@ dispatching session re-enters the state machine and acts on the new state.
 ## Discipline
 
 Classify drift only. Do not rewrite prepare artifacts, do not approve gates,
-do not start build work. The artifact's owning phase skill (intake,
+do not start build work. The artifact's owning procedure (intake,
 architecture, specs, plan) re-derives substantive drift when the dispatching
 session re-enters the state machine.
 

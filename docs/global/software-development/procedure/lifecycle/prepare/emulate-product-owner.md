@@ -27,7 +27,7 @@ The emulator does not write the PRD itself (the BA does that), does not stamp `p
 
 ## Preconditions
 
-- Session was dispatched by the BA (the session currently running the `/next-prepare-intake` skill in standin mode).
+- Session was dispatched by the BA (the session currently running the `~/.teleclaude/commands/next-prepare-intake.md` procedure in standin mode).
 - A todo slug exists, with or without an `input` artifact.
 - Session `additional_context` carries the role brief (this procedure plus the slug).
 
