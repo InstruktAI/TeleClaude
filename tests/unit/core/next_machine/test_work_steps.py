@@ -6,8 +6,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+import teleclaude.core.next_machine.work_steps as work_steps
 from teleclaude.constants import SlashCommand
+from teleclaude.core.next_machine._types import PhaseStatus
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest
+from teleclaude.core.next_machine.review_runtime import ReviewResolution
 from teleclaude.core.next_machine.work_steps import (
     _handle_build_complete_claim,
     _handle_finalize_ready_claim,
@@ -116,8 +119,7 @@ async def test_build_started_dispatch_note_matches_standard_prepared_todo() -> N
     assert request["command"] == SlashCommand.NEXT_BUILD
     note = request.get("note")
     assert isinstance(note, str)
-    assert "PRD is the canonical intent" in note
-    assert "bug is the mandate" not in note
+    assert note.startswith(work_steps.PREPARED_ARTIFACT_CONTRACT.format(slug="todo-slug"))
 
 
 @pytest.mark.asyncio
@@ -127,8 +129,7 @@ async def test_build_started_dispatch_note_matches_prepped_todo() -> None:
     assert request["command"] == SlashCommand.NEXT_BUILD
     note = request.get("note")
     assert isinstance(note, str)
-    assert "implementation-plan is the sole spec" in note
-    assert "PRD is the canonical" not in note
+    assert note.startswith(work_steps.PREPPED_ARTIFACT_CONTRACT.format(slug="prepped-slug"))
 
 
 @pytest.mark.asyncio
@@ -138,8 +139,79 @@ async def test_build_started_dispatch_note_matches_bug_todo() -> None:
     assert request["command"] == SlashCommand.NEXT_BUGS_FIX
     note = request.get("note")
     assert isinstance(note, str)
-    assert "bug is the mandate" in note
-    assert "PRD is the canonical" not in note
+    assert note.startswith(work_steps.BUG_ARTIFACT_CONTRACT.format(slug="bug-slug"))
+
+
+@pytest.mark.asyncio
+async def test_build_started_dispatch_note_matches_plan_only_todo() -> None:
+    request = await _capture_build_dispatch_request("refactor")
+
+    assert request["command"] == SlashCommand.NEXT_BUILD
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert note.startswith(work_steps.PLAN_ONLY_ARTIFACT_CONTRACT.format(slug="refactor-slug", kind="refactor"))
+
+
+async def _capture_review_dispatch_request(
+    kind: str,
+) -> ToolCallRequest:
+    state = {
+        "kind": kind,
+        "lifecycle_phase": "build_complete",
+        "build_review": {"round": 0, "baseline_commit": "aaa111", "dispatch_head": "aaa111"},
+    }
+
+    with (
+        patch(
+            f"{_WORK_STEPS}.resolve_pending_review_state",
+            new=AsyncMock(
+                return_value=ReviewResolution(
+                    state=state,
+                    status=PhaseStatus.PENDING.value,
+                    instruction=None,
+                )
+            ),
+        ),
+        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
+        patch(f"{_WORK_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_WORK_STEPS}.format_tool_call", return_value="dispatch") as format_tool_call_mock,
+    ):
+        keep_going, instruction = await _work_step_build_complete(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug=f"{kind}-slug",
+            cwd="/project",
+            worktree_cwd=f"/project/trees/{kind}-slug",
+            state=state,
+            head_before_merge="aaa111",
+            head_after_merge="aaa111",
+        )
+
+    assert keep_going is False
+    assert instruction == "dispatch"
+    request = format_tool_call_mock.call_args.args[0]
+    assert isinstance(request, ToolCallRequest)
+    return request
+
+
+@pytest.mark.asyncio
+async def test_build_complete_review_dispatch_note_matches_standard_prepared_todo() -> None:
+    request = await _capture_review_dispatch_request("todo")
+
+    assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert note.startswith(work_steps.PREPARED_ARTIFACT_CONTRACT.format(slug="todo-slug"))
+
+
+@pytest.mark.asyncio
+async def test_build_complete_review_dispatch_note_matches_bug_todo() -> None:
+    request = await _capture_review_dispatch_request("bug")
+
+    assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert note.startswith(work_steps.BUG_ARTIFACT_CONTRACT.format(slug="bug-slug"))
 
 
 @pytest.mark.asyncio

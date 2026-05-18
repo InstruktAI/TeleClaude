@@ -58,6 +58,23 @@ from teleclaude.core.next_machine.review_runtime import ReviewDispatchContext, r
 
 logger = get_logger(__name__)
 
+PREPARED_ARTIFACT_CONTRACT = (
+    "Prepared artifact contract for {slug}: PRD is the canonical intent and "
+    "requirements source; implementation-plan is the execution spine; "
+    "architecture and test-specs are optional context when present. "
+    "Legacy requirements is only a fallback when PRD is absent."
+)
+BUG_ARTIFACT_CONTRACT = "Bug artifact contract for {slug}: bug is the mandate for this fix."
+PREPPED_ARTIFACT_CONTRACT = (
+    "Prepped artifact contract for {slug}: implementation-plan is the sole spec "
+    "because prepare was intentionally skipped."
+)
+PLAN_ONLY_ARTIFACT_CONTRACT = (
+    "Plan-only artifact contract for {slug}: implementation-plan is the intent and execution source "
+    "for this {kind} work."
+)
+_PLAN_ONLY_WORK_KINDS = {"refactor", "migration"}
+
 
 # ---------------------------------------------------------------------------
 # Post-block helpers
@@ -85,23 +102,17 @@ def _reviewer_idle_post_block(slug: str) -> str:
 
 def _prepared_artifact_note(slug: str) -> str:
     """Return the current prepare artifact contract for worker dispatch notes."""
-    return (
-        f"Prepared artifact contract for {slug}: PRD is the canonical intent and "
-        f"requirements source; implementation-plan is the execution spine; "
-        f"architecture and test-specs are optional context when present. "
-        f"Legacy requirements is only a fallback when PRD is absent."
-    )
+    return PREPARED_ARTIFACT_CONTRACT.format(slug=slug)
 
 
 def _artifact_contract_note(slug: str, kind: str) -> str:
     """Return the work artifact contract for the current todo kind."""
     if kind == "bug":
-        return f"Bug artifact contract for {slug}: bug is the mandate for this fix."
+        return BUG_ARTIFACT_CONTRACT.format(slug=slug)
     if kind == "prepped":
-        return (
-            f"Prepped artifact contract for {slug}: implementation-plan is the sole spec "
-            f"because prepare was intentionally skipped."
-        )
+        return PREPPED_ARTIFACT_CONTRACT.format(slug=slug)
+    if kind in _PLAN_ONLY_WORK_KINDS:
+        return PLAN_ONLY_ARTIFACT_CONTRACT.format(slug=slug, kind=kind)
     return _prepared_artifact_note(slug)
 
 
@@ -450,7 +461,8 @@ async def _work_step_review_changes_requested(
         completion_clause=(
             f"Collaborate until all findings are resolved, then persist the full review-findings artifact "
             f"with telec todo artifacts write {slug} review-findings <content> and set the verdict "
-            f"by arithmetic: APPROVE only when unresolved Critical and Important counts are both zero. "
+            f"by arithmetic: APPROVE only when unresolved Requirement-Violation, Critical, and Important "
+            f"counts are all zero. "
             f"Report FIX COMPLETE."
         ),
     )

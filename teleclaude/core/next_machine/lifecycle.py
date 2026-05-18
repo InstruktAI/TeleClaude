@@ -214,6 +214,20 @@ def _artifact_present(model: TodoState, key: str, *, artifact_presence: _Artifac
     return _artifact_exists(model, key)
 
 
+def _intent_artifact_exists(model: TodoState) -> bool:
+    return _artifact_exists(model, STATE_KEY_PRD) or _artifact_exists(model, STATE_KEY_REQUIREMENTS)
+
+
+def _intent_artifact_present(
+    model: TodoState,
+    *,
+    artifact_presence: _ArtifactPresence | None = None,
+) -> bool:
+    return _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence) or _artifact_present(
+        model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence
+    )
+
+
 def _session_principal(session_id: str) -> str:
     session = Session(
         session_id=session_id,
@@ -330,10 +344,10 @@ def _non_drift_prepare_blockers(model: TodoState) -> list[str]:
 def _missing_upstream_blockers(model: TodoState) -> list[str]:
     """Return blockers for artifacts whose required upstream artifact is absent."""
     blockers: list[str] = []
-    if _artifact_exists(model, STATE_KEY_ARCHITECTURE) and not _artifact_exists(model, STATE_KEY_PRD):
-        blockers.append("architecture artifact is present but required upstream prd is missing")
-    if _artifact_exists(model, STATE_KEY_TEST_SPECS) and not _artifact_exists(model, STATE_KEY_PRD):
-        blockers.append("test-specs artifact is present but required upstream prd is missing")
+    if _artifact_exists(model, STATE_KEY_ARCHITECTURE) and not _intent_artifact_exists(model):
+        blockers.append("architecture artifact is present but required upstream prd/requirements intent is missing")
+    if _artifact_exists(model, STATE_KEY_TEST_SPECS) and not _intent_artifact_exists(model):
+        blockers.append("test-specs artifact is present but required upstream prd/requirements intent is missing")
     if (
         _artifact_exists(model, STATE_KEY_TEST_SPECS)
         and model.approvals.architecture_skipped is None
@@ -343,9 +357,11 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
     if (
         model.kind in _FEATURE_KINDS
         and _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
-        and not _artifact_exists(model, STATE_KEY_PRD)
+        and not _intent_artifact_exists(model)
     ):
-        blockers.append("implementation-plan artifact is present but required upstream prd is missing")
+        blockers.append(
+            "implementation-plan artifact is present but required upstream prd/requirements intent is missing"
+        )
     return blockers
 
 
@@ -393,21 +409,23 @@ def _feature_phase(
     repo_root: str | None,
 ) -> LifecyclePhase:
     if not any(
-        _artifact_present(model, key, artifact_presence=artifact_presence)
-        for key in (
-            STATE_KEY_INPUT,
-            STATE_KEY_PRD,
-            STATE_KEY_REQUIREMENTS,
-            STATE_KEY_ARCHITECTURE,
-            STATE_KEY_TEST_SPECS,
-            STATE_KEY_IMPLEMENTATION_PLAN,
-        )
+        [
+            _artifact_present(model, STATE_KEY_INPUT, artifact_presence=artifact_presence),
+            _intent_artifact_present(model, artifact_presence=artifact_presence),
+            _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence),
+            _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence),
+            _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence),
+        ]
     ):
         return LifecyclePhase.DRAFT
 
-    if not _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence):
+    has_prd = _artifact_present(model, STATE_KEY_PRD, artifact_presence=artifact_presence)
+    has_legacy_requirements = _artifact_present(model, STATE_KEY_REQUIREMENTS, artifact_presence=artifact_presence)
+    if not (has_prd or has_legacy_requirements):
         return LifecyclePhase.PRD_DRAFTING
-    if not _approval_is_human(model.approvals.prd_approved):
+    if has_prd and not _approval_is_human(model.approvals.prd_approved):
+        return LifecyclePhase.PRD_HUMAN_APPROVAL
+    if not has_prd and has_legacy_requirements and not _review_approved(model.requirements_review):
         return LifecyclePhase.PRD_HUMAN_APPROVAL
 
     architecture_skipped = model.approvals.architecture_skipped is not None
@@ -558,9 +576,11 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase in (LifecyclePhase.DRAFT, LifecyclePhase.PREPARED, LifecyclePhase.BLOCKED):
         return False
     if phase == LifecyclePhase.PRD_DRAFTING:
-        return _artifact_exists(model, STATE_KEY_PRD)
+        return _intent_artifact_exists(model)
     if phase == LifecyclePhase.PRD_HUMAN_APPROVAL:
-        return _approval_is_human(model.approvals.prd_approved)
+        return _approval_is_human(model.approvals.prd_approved) or (
+            _artifact_exists(model, STATE_KEY_REQUIREMENTS) and _review_approved(model.requirements_review)
+        )
     if phase == LifecyclePhase.ARCHITECTURE_DRAFTING:
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:

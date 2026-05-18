@@ -16,6 +16,7 @@ from teleclaude.core.next_machine.lifecycle import (
     is_ready_for_work,
     is_settled_ok_phase,
     phase_is_complete,
+    prepare_blockers,
     reconcile_lifecycle_phase,
 )
 from teleclaude.types.lifecycle import LifecycleStage
@@ -92,6 +93,19 @@ def test_both_optional_layers_skipped_routes_to_plan(monkeypatch: pytest.MonkeyP
     )
 
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_DRAFTING
+
+
+def test_legacy_requirements_fallback_can_reconcile_to_prepared() -> None:
+    state = _base_feature()
+    state.artifacts.requirements.digest = "requirements"
+    state.requirements_review.verdict = "approve"
+    state.approvals.architecture_skipped = SkipStamp(reason="legacy", skipped_at="now")
+    state.approvals.test_specs_skipped = SkipStamp(reason="legacy", skipped_at="now")
+    state.artifacts.implementation_plan.digest = "plan"
+    state.plan_review.verdict = "approve"
+
+    assert prepare_blockers(state) == []
+    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PREPARED
 
 
 def test_architecture_review_approval_advances_to_test_specs(monkeypatch: pytest.MonkeyPatch) -> None:
