@@ -85,14 +85,11 @@ When a todo reaches `delivered`, the integrator (or the finalize step, depending
 - If there are still pending slugs in `delivered_by`, the slug is removed from the list and the snippet stays `target` (partially delivered; remaining slugs still in flight).
 - `telec sync` catches drift: any snippet whose `delivered_by` contains slugs that are all delivered must be flipped — failing to flip is a lint error.
 
-### 4. Discoverability respects status
+### 4. Discoverability surfaces ownership
 
-`telec docs index` exposes a `--status` filter:
-- `--status actual` (default) — show only snippets reflecting current reality
-- `--status target` — show forward design
-- `--status all` — show everything
+`telec docs index` renders the status and the owning slugs inline for every non-`actual` snippet — `actual` snippets render with no prefix, `target` and `mixed` snippets render with a bracketed prefix that names the status and the `delivered_by` slugs. The same listing answers "what is the state of this snippet?" and "who is on the hook to close the gap?" without a second lookup.
 
-Agents that need to ground in current state default to `actual`. Agents that need to align on future direction (orchestrators, designers, reviewers checking build vs intended) ask for `target` or `all`.
+A worker preparing or building a slug runs `telec docs index --target <slug>` to see exactly which snippets it owns. This is the canonical query that makes the doc-first discipline operational rather than aspirational: the worker asks the system what it has been put on the hook for, and the system answers.
 
 ### 5. Domain specs are typically target before they're actual
 
@@ -118,7 +115,7 @@ A snippet marked `actual` claims to describe the current system. If the code cha
 
 - **Cross-context target snippets.** Some snippets describe intentions that span multiple bounded contexts (e.g., a new event taxonomy used by three services). The `delivered_by` list captures the slugs that deliver each part; the snippet may stay `target` until all parts deliver, or may flip to `mixed` with section-level marks as parts land.
 
-- **The product owner's anchor vs. the agent's ground.** A product owner reading `target` snippets to track their own design intent sees forward state. An agent reading the same snippets to make a code decision needs current state. The status filter resolves this in tooling — but the human-vs-agent reading style needs to match the situation. When a human writes "in our system, X works like Y" as a target snippet, the human is asserting design; an agent reading later must check the status and not assume X works that way today.
+- **The product owner's anchor vs. the agent's ground.** A product owner reading `target` snippets to track their own design intent sees forward state. An agent reading the same snippets to make a code decision needs current state. The inline status prefix in `telec docs index` keeps the distinction visible at the listing level — but the human-vs-agent reading style still needs to match the situation. When a human writes "in our system, X works like Y" as a target snippet, the human is asserting design; an agent reading later must check the status and not assume X works that way today.
 
 - **Doc-first vs. discovery.** Some design only becomes clear after touching the code (the agent discovers the actual aggregate boundary by trying to model it). The discipline: it's fine to draft a `target` snippet, attempt the work, learn from the discovery, revise the `target` snippet, then deliver. The doc-first principle doesn't require you to be omniscient at design time; it requires you to write down what you learn AS you learn it, in the doc layer, with status honesty.
 
