@@ -53,12 +53,12 @@ status: actual          # default for existing snippets and new code-grounded sn
 
 ```yaml
 status: target          # for forward design
-delivered_by: [v2-knowledge, v2-knowledge-cutover]   # required when status is target or mixed
+delivered_by: [slug-a, slug-b]   # required when status is target or mixed
 ```
 
 ```yaml
-status: mixed
-delivered_by: [some-slug]   # sections inside the snippet mark themselves with > [TARGET] or > [ACTUAL] callouts
+status: mixed           # body describes some current state and some intended state
+delivered_by: [slug-a]
 ```
 
 Validation rules:
@@ -93,9 +93,9 @@ A worker preparing or building a slug runs `telec docs index --target <slug>` to
 
 ### 5. Domain specs are typically target before they're actual
 
-The per-context domain specs (see `software-development/spec/domain-spec`) for the v2 services are authored as `target` snippets with `delivered_by` listing the v2-* slugs that will deliver them. The Rust workers build against the target specs. When a service ships and cuts over, its domain spec flips to `actual`. The parity check verifies the flip is honest — that the running system actually satisfies what the spec describes.
+A per-context domain spec (see `software-development/spec/domain-spec`) for a service that is being rewritten is authored as a `target` snippet, with `delivered_by` listing the slugs that will deliver the rewrite. Workers on the new implementation build against the target spec. When the new implementation ships and cuts over, the domain spec flips to `actual`. The parity check verifies the flip is honest — that the running system actually satisfies what the spec describes.
 
-This is the structural reason v1 → v2 migration is safe under this discipline: the domain spec is the shared target; both v1 (in its declining role) and v2 (in its ascending role) must satisfy it; the cutover happens when v2 satisfies the same spec v1 satisfies.
+This is the structural reason a service rewrite is safe under this discipline: the domain spec is the shared target; both the old implementation (in its declining role) and the new one (in its ascending role) must satisfy it; the cutover happens when the new implementation satisfies the same spec the old one satisfies.
 
 ### 6. Hand-edits to snippets follow the same discipline
 

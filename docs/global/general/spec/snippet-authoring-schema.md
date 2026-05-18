@@ -31,9 +31,6 @@ Frontmatter (optional):
 - `status` — lifecycle state of the snippet relative to the implementation. One of `actual`, `target`, or `mixed`. Defaults to `actual` when omitted. See `software-development/principle/documentation-first-development` for the discipline.
 - `delivered_by` — list of todo slugs that will materialize this snippet's intended state. REQUIRED when `status` is `target` or `mixed`. FORBIDDEN when `status` is `actual`. Each slug must exist in the project roadmap. When all listed slugs reach `delivered`, the snippet is flipped to `status: actual` and `delivered_by` is removed (enforced by `telec sync`; failure to flip is a lint error).
 
-> [TARGET — delivered_by: snippet-status-framework]
-> The `status` and `delivered_by` fields are described here as the canonical schema. Enforcement (validation, the `--status` filter on `telec docs index`, the auto-flip in `telec sync`) is delivered by the `snippet-status-framework` todo. Authors may include the fields now; the current parser ignores unknown frontmatter and will not reject them.
-
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
 
 Document structure:
