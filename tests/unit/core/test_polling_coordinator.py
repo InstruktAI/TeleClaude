@@ -12,6 +12,7 @@ import pytest
 import teleclaude.core.polling_coordinator as pc
 import teleclaude.core.session_title as session_title
 from teleclaude.core.models import Session
+from teleclaude.core.origins import InputOrigin
 from teleclaude.core.polling_coordinator import (
     _build_transcript_output_update,
     _cleanup_codex_input_state,
@@ -19,6 +20,8 @@ from teleclaude.core.polling_coordinator import (
     _try_bind_codex_transcript,
     project_session_from_transcript,
 )
+
+LAST_PROJECTED_OUTPUT_DIGEST_FIELD = "last_projected_output_digest"
 
 
 class TestPercentile:
@@ -455,7 +458,7 @@ class TestProjectSessionFromTranscript:
             title="Untitled",
             active_agent="codex",
             native_log_file="/tmp/transcript.jsonl",
-            last_input_origin="web",
+            last_input_origin=InputOrigin.WEB.value,
             last_message_sent="typed in browser",
             last_message_sent_at=datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC),
         )
@@ -484,7 +487,7 @@ class TestProjectSessionFromTranscript:
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
-        assert result.last_input_origin == "web"
+        assert result.last_input_origin == InputOrigin.WEB.value
 
     @pytest.mark.unit
     async def test_fresh_discord_origin_is_skipped_without_resetting_origin(self):
@@ -495,7 +498,7 @@ class TestProjectSessionFromTranscript:
             title="Untitled",
             active_agent="codex",
             native_log_file="/tmp/transcript.jsonl",
-            last_input_origin="discord",
+            last_input_origin=InputOrigin.DISCORD.value,
             last_message_sent="typed in discord",
             last_message_sent_at=datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC),
         )
@@ -524,7 +527,44 @@ class TestProjectSessionFromTranscript:
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
-        assert result.last_input_origin == "discord"
+        assert result.last_input_origin == InputOrigin.DISCORD.value
+
+    @pytest.mark.unit
+    async def test_non_terminal_origin_without_stored_preview_defers_projection(self):
+        session = Session(
+            session_id="sess-origin-missing-preview",
+            computer_name="local",
+            tmux_session_name="tmux-origin-missing-preview",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin=InputOrigin.DISCORD.value,
+            last_message_sent=None,
+            last_message_sent_at=datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC),
+        )
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        delivery_ts = datetime(2026, 4, 7, 12, 0, 2, tzinfo=UTC)
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("unrelated transcript text", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=("assistant text", delivery_ts, False),
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+        adapter_client.send_output_update.assert_not_awaited()
+        mock_db.update_session.assert_not_awaited()
+        assert result is session
 
     @pytest.mark.unit
     async def test_stale_non_terminal_origin_defers_user_and_output_projection(self):
@@ -645,7 +685,7 @@ class TestProjectSessionFromTranscript:
         # turn start anchor on every projection so edits accumulate.
         for call in mock_db.update_session.await_args_list:
             assert "last_tool_done_at" not in call.kwargs
-        assert any("last_projected_output_digest" in call.kwargs for call in mock_db.update_session.await_args_list)
+        assert any(LAST_PROJECTED_OUTPUT_DIGEST_FIELD in call.kwargs for call in mock_db.update_session.await_args_list)
         adapter_client.send_output_update.assert_awaited_once_with(
             session,
             "assistant text",
@@ -765,6 +805,7 @@ class TestProjectSessionFromTranscript:
             native_log_file="/tmp/transcript.jsonl",
         )
         adapter_client = AsyncMock()
+        title = "New title"
         with (
             patch(
                 "teleclaude.core.session_title.extract_last_user_message_with_timestamp",
@@ -782,7 +823,7 @@ class TestProjectSessionFromTranscript:
             ),
             patch(
                 "teleclaude.core.session_title.generate_session_title",
-                AsyncMock(return_value="New title"),
+                AsyncMock(return_value=title),
             ) as mock_generate,
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
@@ -790,9 +831,9 @@ class TestProjectSessionFromTranscript:
             result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
         mock_generate.assert_awaited_once_with([("user", "latest request"), ("assistant", "first part\n\nsecond part")])
-        mock_db.update_session.assert_awaited_once_with(session.session_id, title="New title")
+        mock_db.update_session.assert_awaited_once_with(session.session_id, title=title)
         adapter_client.update_channel_title.assert_awaited_once_with(session)
-        assert result.title == "New title"
+        assert result.title == title
 
     @pytest.mark.unit
     async def test_generate_session_title_runs_once_per_user_turn(self):
@@ -875,6 +916,7 @@ class TestProjectSessionFromTranscript:
             native_log_file="/tmp/transcript.jsonl",
         )
         adapter_client = AsyncMock()
+        title = "Generated title"
 
         with (
             patch(
@@ -887,16 +929,16 @@ class TestProjectSessionFromTranscript:
             ),
             patch(
                 "teleclaude.core.session_title.generate_session_title",
-                AsyncMock(return_value="Generated title"),
+                AsyncMock(return_value=title),
             ),
             patch("teleclaude.core.session_title.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
             result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
-        mock_db.update_session.assert_awaited_once_with(session.session_id, title="Generated title")
+        mock_db.update_session.assert_awaited_once_with(session.session_id, title=title)
         adapter_client.update_channel_title.assert_awaited_once_with(session)
-        assert result.title == "Generated title"
+        assert result.title == title
         assert result is session
 
 

@@ -17,6 +17,9 @@ from teleclaude.core.hook_outbox_queue import HookOutboxQueueItem, HookOutboxSes
 from teleclaude.core.models import Session
 from teleclaude.transport.redis_transport import RedisTransport
 
+DROP_CODEX_SUBAGENT_TRACE = "Dropping Codex subagent agent_stop notification"
+LAST_INPUT_ORIGIN_FIELD = "last_input_origin"
+
 
 class _FakeRedisTransport(RedisTransport):
     """Marker subclass used for isinstance checks."""
@@ -306,7 +309,7 @@ async def test_dispatch_hook_event_drops_codex_subagent_agent_stop() -> None:
 
     assert not daemon_instance._handle_agent_event.called
     assert not mock_db.update_session.called
-    assert any("Dropping Codex subagent agent_stop notification" in message for message, _ in trace_calls)
+    assert any(DROP_CODEX_SUBAGENT_TRACE in message for message, _ in trace_calls)
 
 
 @pytest.mark.unit
@@ -357,5 +360,5 @@ async def test_dispatch_hook_event_does_not_reset_existing_headless_origin() -> 
             {"agent_name": "claude"},
         )
 
-    assert not any("last_input_origin" in call.kwargs for call in mock_db.update_session.await_args_list)
+    assert not any(LAST_INPUT_ORIGIN_FIELD in call.kwargs for call in mock_db.update_session.await_args_list)
     assert daemon_instance._handle_agent_event.called

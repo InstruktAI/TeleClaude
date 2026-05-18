@@ -217,10 +217,10 @@ def _message_preview(text: str) -> str:
     return text[:200]
 
 
-def _stored_preview_matches(session: "Session", text: str) -> bool:
+def _stored_preview_matches(session: "Session", text: str, *, require_stored: bool = False) -> bool:
     stored = (session.last_message_sent or "").strip()
     if not stored:
-        return True
+        return not require_stored
     return stored == _message_preview(text).strip()
 
 
@@ -230,7 +230,7 @@ def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
     origin = (session.last_input_origin or "").strip()
     if not origin:
         return False
-    if not _stored_preview_matches(session, user_text):
+    if not _stored_preview_matches(session, user_text, require_stored=origin != InputOrigin.TERMINAL.value):
         return False
 
     accepted_at = _as_utc(session.last_message_sent_at)
