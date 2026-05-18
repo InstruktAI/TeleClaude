@@ -14,13 +14,9 @@ from teleclaude.core.next_machine.runtime.scripts import (
 )
 
 
-def test_format_review_in_progress_script_reuses_live_reviewer() -> None:
+def test_format_review_in_progress_script_reuses_live_reviewer(snapshot: SnapshotAssertion) -> None:
     instruction = format_review_in_progress_script("slug-a", "rev-1", next_step="telec todo work slug-a")
-
-    assert "REVIEW IN PROGRESS" in instruction
-    assert "rev-1" in instruction
-    assert "telec todo work slug-a" in instruction
-    assert "telec sessions run" not in instruction
+    assert instruction == snapshot
 
 
 def test_format_review_needs_work_script_hands_findings_off_without_direct_link(
@@ -37,7 +33,9 @@ def test_format_review_needs_work_script_hands_findings_off_without_direct_link(
     assert instruction == snapshot
 
 
-def test_format_fix_findings_message_points_to_artifact_without_count_claim() -> None:
+def test_format_fix_findings_message_points_to_artifact_without_count_claim(
+    snapshot: SnapshotAssertion,
+) -> None:
     assert "open_count" not in signature(format_fix_findings_message).parameters
 
     instruction = format_fix_findings_message(
@@ -48,10 +46,10 @@ def test_format_fix_findings_message_points_to_artifact_without_count_claim() ->
         "requirements",
     )
 
-    assert "telec todo artifacts read slug-a requirements-review-findings" in instruction
+    assert instruction == snapshot
 
 
-def test_format_review_ground_shift_script_sends_scoped_follow_up() -> None:
+def test_format_review_ground_shift_script_sends_scoped_follow_up(snapshot: SnapshotAssertion) -> None:
     instruction = format_review_ground_shift_script(
         "slug-a",
         "rev-1",
@@ -61,7 +59,4 @@ def test_format_review_ground_shift_script_sends_scoped_follow_up() -> None:
         next_step="telec todo work slug-a",
     )
 
-    assert "REVIEW GROUND SHIFTED" in instruction
-    assert 'telec sessions send rev-1 "' in instruction
-    assert "src/a.py, src/b.py" in instruction
-    assert "telec todo work slug-a" in instruction
+    assert instruction == snapshot

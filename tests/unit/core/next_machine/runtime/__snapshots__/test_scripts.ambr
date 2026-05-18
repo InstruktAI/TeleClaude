@@ -1,4 +1,34 @@
 # serializer version: 1
+# name: test_format_fix_findings_message_points_to_artifact_without_count_claim
+  'Round 2 requirements review needs work. Findings artifact: `requirements-review-findings`. Target artifact: `requirements`. Required read: software-development/procedure/lifecycle/fix-review-findings. Address the findings and report FIX COMPLETE. Read findings via: telec todo artifacts read slug-a requirements-review-findings'
+# ---
+# name: test_format_review_ground_shift_script_sends_scoped_follow_up
+  '''
+  REVIEW GROUND SHIFTED: slug-a
+  
+  Execute in order:
+  
+  telec sessions send rev-1 "Ground shifted for slug-a: origin/main merge advanced the review target from head-old to head-new. Keep focus on this todo only. Re-check only the overlapping reviewed files (src/a.py, src/b.py) and continue the same review session. If the merged changes are irrelevant to your existing findings, keep your current scope and verdict logic unchanged."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  Wait for reviewer session rev-1 to report idle.
+  When the signal arrives, call telec todo work slug-a.
+  '''
+# ---
+# name: test_format_review_in_progress_script_reuses_live_reviewer
+  '''
+  REVIEW IN PROGRESS: slug-a
+  
+  Execute in order:
+  
+  Do not dispatch a new reviewer. Reuse live reviewer session rev-1.
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  Wait for reviewer session rev-1 to report idle.
+  When the signal arrives, call telec todo work slug-a.
+  '''
+# ---
 # name: test_format_review_needs_work_script_hands_findings_off_without_direct_link
   '''
   REVIEW NEEDS WORK: slug-a

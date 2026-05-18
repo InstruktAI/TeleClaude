@@ -231,14 +231,15 @@ def format_skill_load(
     using ``format_tool_call`` because they are legitimate cross-model
     dispatches.
     """
+    loader = format_command_loader_message(command_name, slug)
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 SLUG: {slug}
 
 NEXT ACTION:
 Put on the {hat} hat. Load the /{command_name} skill in this session:
-read `agents/commands/{command_name}.md` and follow it as the active
-instruction set for this turn. Treat the slug above as the input.
+
+{loader}
 
 The wider prepare lifecycle is still yours. This is one focused phase. The
 skill is loaded inline; no new session is dispatched.
