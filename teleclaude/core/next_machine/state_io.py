@@ -566,9 +566,9 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     state = read_phase_state(cwd, slug)
     kind = state.get("kind")
 
-    if kind not in ("prepped", "bug") and not (
-        _has_artifact_content(cwd, slug, ARTIFACT_PRD) or _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
-    ):
+    has_prd = _has_artifact_content(cwd, slug, ARTIFACT_PRD)
+    has_legacy_requirements = _has_artifact_content(cwd, slug, ARTIFACT_REQUIREMENTS)
+    if kind not in ("prepped", "bug") and not (has_prd or has_legacy_requirements):
         raise ValueError(f"Missing prd artifact with content for {slug}")
     if kind != "bug" and not _has_artifact_content(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN):
         raise ValueError(f"Missing implementation-plan artifact with content for {slug}")
@@ -632,9 +632,12 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     if input_digest:
         writer.state.artifacts.input.digest = input_digest
     writer.state.lifecycle_phase = "prepared"
-    if kind not in ("prepped", "bug"):
+    if kind not in ("prepped", "bug") and has_prd:
         writer.state.artifacts.prd.digest = _artifact_digest(cwd, slug, ARTIFACT_PRD)
         writer.state.artifacts.prd.produced_at = now_iso
+    elif kind not in ("prepped", "bug") and has_legacy_requirements:
+        writer.state.artifacts.requirements.digest = _artifact_digest(cwd, slug, ARTIFACT_REQUIREMENTS)
+        writer.state.artifacts.requirements.produced_at = now_iso
     if kind != "bug":
         writer.state.artifacts.implementation_plan.digest = _artifact_digest(cwd, slug, ARTIFACT_IMPLEMENTATION_PLAN)
         writer.state.artifacts.implementation_plan.produced_at = now_iso

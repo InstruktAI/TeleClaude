@@ -93,6 +93,18 @@ def _prepared_artifact_note(slug: str) -> str:
     )
 
 
+def _artifact_contract_note(slug: str, kind: str) -> str:
+    """Return the work artifact contract for the current todo kind."""
+    if kind == "bug":
+        return f"Bug artifact contract for {slug}: bug is the mandate for this fix."
+    if kind == "prepped":
+        return (
+            f"Prepped artifact contract for {slug}: implementation-plan is the sole spec "
+            f"because prepare was intentionally skipped."
+        )
+    return _prepared_artifact_note(slug)
+
+
 async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     """List child sessions spawned by the current orchestrator session."""
     if not session_id:
@@ -224,7 +236,7 @@ async def _work_step_build_started(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"{_prepared_artifact_note(slug)} Start implementation now. "
+                f"{_artifact_contract_note(slug, kind)} Start implementation now. "
                 f"When the build is committed and ready for review, "
                 f"run `telec todo stamp {slug} --build-complete`."
             ),
@@ -305,6 +317,8 @@ async def _work_step_build_complete(
     round_num = round_raw if isinstance(round_raw, int) else 0
 
     # No live reviewer claimed the review — dispatch a fresh one.
+    kind_raw = state.get("kind")
+    kind = kind_raw if isinstance(kind_raw, str) else "todo"
     baseline_raw = build_review.get("baseline_commit", "")
     baseline = baseline_raw if isinstance(baseline_raw, str) else ""
     reviewer_id = await find_live_session_for_slug(db, slug, f"/{SlashCommand.NEXT_REVIEW_BUILD.value}")
@@ -348,7 +362,7 @@ async def _work_step_build_complete(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             next_call=f"telec todo work {slug}",
-            note=f"{_prepared_artifact_note(slug)} {REVIEW_DIFF_NOTE}",
+            note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
             post_block=_reviewer_idle_post_block(slug),
         )
     )

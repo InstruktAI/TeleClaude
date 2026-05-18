@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from teleclaude.core.next_machine.state_io import (
+    apply_prepared_state,
     mark_phase_state,
     stamp_artifact,
     validate_mark_phase_preconditions,
@@ -106,3 +107,27 @@ def test_stamp_implementation_plan_records_v2_upstream_digests(seeded_db: TodosD
         "architecture": _digest(architecture_content),
         "test_specs": _digest(specs_content),
     }
+
+
+def test_apply_prepared_state_stamps_legacy_requirements_without_fabricating_prd(seeded_db: TodosDb) -> None:
+    cwd = str(seeded_db._db_path.parent.parent)
+    requirements_content = "# Requirements\n\nLegacy requirement body.\n"
+    plan_content = "# Plan\n\n- [ ] Do the work.\n"
+    seeded_db.write_artifact_sync("slug-a", "requirements", requirements_content)
+    seeded_db.write_artifact_sync("slug-a", "implementation-plan", plan_content)
+
+    with (
+        patch(f"{_STATE_IO}.resolve_state_root", return_value=Path(cwd)),
+        patch(f"{_STATE_IO}.get_todos_db_sync", return_value=seeded_db),
+        patch(f"{_STATE_IO}.run_git_command", return_value=(0, "abc123\n", "")),
+    ):
+        state = apply_prepared_state(cwd, "slug-a")
+
+    artifacts = state.get("artifacts", {})
+    assert isinstance(artifacts, dict)
+    prd = artifacts.get("prd", {})
+    requirements = artifacts.get("requirements", {})
+    assert isinstance(prd, dict)
+    assert isinstance(requirements, dict)
+    assert prd.get("digest", "") == ""
+    assert requirements.get("digest") == _digest(requirements_content)

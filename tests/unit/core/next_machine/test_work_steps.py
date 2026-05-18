@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from teleclaude.constants import SlashCommand
+from teleclaude.core.next_machine.output_formatting import ToolCallRequest
 from teleclaude.core.next_machine.work_steps import (
     _handle_build_complete_claim,
     _handle_finalize_ready_claim,
@@ -79,6 +81,65 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
 
     assert keep_going is False
     assert "STEP 1 - DISPATCH" in instruction
+
+
+async def _capture_build_dispatch_request(
+    kind: str,
+) -> ToolCallRequest:
+    state = _base_state(kind=kind)
+
+    with (
+        patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
+        patch(f"{_WORK_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_WORK_STEPS}.format_tool_call", return_value="dispatch") as format_tool_call_mock,
+    ):
+        keep_going, instruction = await _work_step_build_started(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug=f"{kind}-slug",
+            cwd="/project",
+            worktree_cwd=f"/project/trees/{kind}-slug",
+            state=state,
+        )
+
+    assert keep_going is False
+    assert instruction == "dispatch"
+    request = format_tool_call_mock.call_args.args[0]
+    assert isinstance(request, ToolCallRequest)
+    return request
+
+
+@pytest.mark.asyncio
+async def test_build_started_dispatch_note_matches_standard_prepared_todo() -> None:
+    request = await _capture_build_dispatch_request("todo")
+
+    assert request["command"] == SlashCommand.NEXT_BUILD
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert "PRD is the canonical intent" in note
+    assert "bug is the mandate" not in note
+
+
+@pytest.mark.asyncio
+async def test_build_started_dispatch_note_matches_prepped_todo() -> None:
+    request = await _capture_build_dispatch_request("prepped")
+
+    assert request["command"] == SlashCommand.NEXT_BUILD
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert "implementation-plan is the sole spec" in note
+    assert "PRD is the canonical" not in note
+
+
+@pytest.mark.asyncio
+async def test_build_started_dispatch_note_matches_bug_todo() -> None:
+    request = await _capture_build_dispatch_request("bug")
+
+    assert request["command"] == SlashCommand.NEXT_BUGS_FIX
+    note = request.get("note")
+    assert isinstance(note, str)
+    assert "bug is the mandate" in note
+    assert "PRD is the canonical" not in note
 
 
 @pytest.mark.asyncio

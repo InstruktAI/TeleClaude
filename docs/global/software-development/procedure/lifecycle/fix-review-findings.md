@@ -1,5 +1,5 @@
 ---
-description: 'Address review findings for any review phase: requirements, specs, plan, or build. Single procedure parameterized by the findings artifact name.'
+description: 'Address review findings for any review phase: prepared artifacts, plan, or build. Single procedure parameterized by the findings artifact name.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/fix-review-findings'
 scope: 'domain'
@@ -48,7 +48,8 @@ New prepare work uses human `prd_approved` rather than a requirements review pha
    - Apply the minimal fix to the target artifact.
    - Verify via commit hooks (lint + unit tests) after each fix.
    - Commit one fix per issue when the target is code. For artifact targets
-     (`requirements`, `implementation-plan`), persist the updated artifact via
+     (`architecture`, `test-specs`, `implementation-plan`, or legacy `requirements`),
+     persist the updated artifact via
      `telec todo artifacts write {slug} {target_artifact_name} "<content>"`.
 
 3. **Update the findings artifact** with a "Fixes Applied" section recording each
@@ -71,7 +72,8 @@ New prepare work uses human `prd_approved` rather than a requirements review pha
 
 ## Outputs
 
-- Updated target artifact (code, `requirements`, `implementation-plan`, or test specs).
+- Updated target artifact (code, `architecture`, `test-specs`, `implementation-plan`,
+  or legacy `requirements`).
 - Updated findings artifact with a "Fixes Applied" section and a verdict reflecting
   the remaining unresolved Requirement-Violation, Critical, and Important findings.
 
