@@ -19,7 +19,9 @@ def _todo(slug: str, *, group: str | None = None, after: list[str] | None = None
 
 
 @pytest.mark.unit
-def test_build_dep_tree_renders_group_children_before_after_sorted_roots() -> None:
+def test_after_only_items_cascade_under_their_first_visible_dep() -> None:
+    """When `group` is absent, `after` drives visual nesting under the first
+    resolvable dep, so dependency chains render as a cascade."""
     nodes = build_dep_tree(
         [
             _todo("a"),
@@ -29,9 +31,48 @@ def test_build_dep_tree_renders_group_children_before_after_sorted_roots() -> No
     )
 
     assert [(node.slug, node.depth, node.is_last, node.tree_lines) for node in nodes] == [
-        ("a", 0, False, []),
-        ("b", 1, True, [True]),
-        ("c", 0, True, []),
+        ("a", 0, True, []),
+        ("b", 1, False, [True]),
+        ("c", 1, True, [True]),
+    ]
+
+
+@pytest.mark.unit
+def test_explicit_group_beats_after_for_hierarchy() -> None:
+    """When `group` and `after` disagree, explicit `group` wins (tso-* case):
+    item declares membership in test-suite-overhaul while listing
+    refactor-large-files as a dep — it must nest under the group, not the dep."""
+    nodes = build_dep_tree(
+        [
+            _todo("refactor-large-files"),
+            _todo("test-suite-overhaul"),
+            _todo("tso-foo", group="test-suite-overhaul", after=["refactor-large-files"]),
+        ]
+    )
+    assert [(node.slug, node.depth) for node in nodes] == [
+        ("refactor-large-files", 0),
+        ("test-suite-overhaul", 0),
+        ("tso-foo", 1),
+    ]
+
+
+@pytest.mark.unit
+def test_after_cascade_picks_first_visible_entry() -> None:
+    """Multi-parent after=[A, B] nests under A (first). Cross-group after still
+    influences root ordering (Phase 2) but only one parent is drawn."""
+    nodes = build_dep_tree(
+        [
+            _todo("a"),
+            _todo("b"),
+            _todo("c", after=["a", "b"]),
+        ]
+    )
+    # Phase 2 promotes root `a` after root `b` because c (in a's tree) depends on b.
+    # c is drawn as a's child (first-in-list); the b dep is still respected via root ordering.
+    assert [(node.slug, node.depth) for node in nodes] == [
+        ("b", 0),
+        ("a", 0),
+        ("c", 1),
     ]
 
 

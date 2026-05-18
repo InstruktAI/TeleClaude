@@ -60,6 +60,38 @@ def _topo_sort_siblings(slugs: list[str], after_map: dict[str, list[str]]) -> li
     return result
 
 
+def _has_cycle_to(parent_map: dict[str, str | None], slug: str, target: str) -> bool:
+    """Return True if following parent_map upward from slug reaches target."""
+    visited_chain: set[str] = set()
+    current: str | None = slug
+    while current is not None:
+        if current == target:
+            return True
+        if current in visited_chain:
+            return False
+        visited_chain.add(current)
+        current = parent_map.get(current)
+    return False
+
+
+def _resolve_parent(
+    item: TodoItem,
+    visible_slugs: set[str],
+    parent_map: dict[str, str | None],
+) -> str | None:
+    """Return the visual parent for an item: explicit group, else first cycle-free after entry."""
+    if item.group and item.group in visible_slugs and item.group != item.slug:
+        return item.group
+    for candidate in item.after:
+        if (
+            candidate in visible_slugs
+            and candidate != item.slug
+            and not _has_cycle_to(parent_map, candidate, item.slug)
+        ):
+            return candidate
+    return None
+
+
 def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
     """Build a dependency tree from TodoItems using `group` for hierarchy and `after` for ordering.
 
@@ -69,8 +101,10 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
     Returns:
         List of TreeRenderNode in DFS order (parent before children)
 
-    Phase 1 - Hierarchy from `group`:
-        - Items with `group=Y` (where Y is visible and not self) nest under Y
+    Phase 1 - Hierarchy:
+        - Items with `group=Y` (visible, not self) nest under Y (explicit wins)
+        - Else, items with `after=[…]` nest under the first visible, non-cyclic
+          entry — making after-only chains render as a visual cascade
         - All others are roots
 
     Phase 2 - Ordering from `after`:
@@ -88,15 +122,12 @@ def build_dep_tree(items: list[TodoItem]) -> list[TreeRenderNode]:
     visible_slugs = set(todo_by_slug.keys())
     after_map = {t.slug: t.after for t in items}
 
-    # --- Phase 1: Hierarchy from group only ---
+    # --- Phase 1: Hierarchy from group (explicit) with after (implicit) fallback ---
     parent_map: dict[str, str | None] = {}
     children_map: dict[str, list[str]] = {}
 
     for item in items:
-        parent_slug = None
-        if item.group and item.group in visible_slugs and item.group != item.slug:
-            parent_slug = item.group
-
+        parent_slug = _resolve_parent(item, visible_slugs, parent_map)
         parent_map[item.slug] = parent_slug
         if parent_slug is not None:
             children_map.setdefault(parent_slug, []).append(item.slug)
