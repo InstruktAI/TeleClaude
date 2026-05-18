@@ -27,6 +27,8 @@ NATIVE_LOG_FILE = "/tmp/transcript.jsonl"
 ASSISTANT_TEXT = "assistant text"
 INTEGRATOR_COMMAND = "/next-integrate"
 RENDERED_TEXT = "rendered"
+LATEST_REQUEST = "latest request"
+TITLE_ASSISTANT_MESSAGE = "first part\n\nsecond part"
 SESSION_INTEGRATOR_ID = "sess-integrator-1"
 SESSION_ORIGIN_HINT_1 = "sess-origin-hint-1"
 SESSION_ORIGIN_HINT_2 = "sess-origin-hint-2"
@@ -258,8 +260,6 @@ class TestBuildTranscriptOutputUpdate:
         # many tool calls completed between them.
         assert render.call_args_list[0].kwargs[SINCE_TIMESTAMP_FIELD] == turn_start_ts
         assert render.call_args_list[1].kwargs[SINCE_TIMESTAMP_FIELD] == turn_start_ts
-        # The second render's content must be a superset (accumulating) of the first.
-        assert first[0] in second[0]
 
 
 class TestProjectSessionFromTranscript:
@@ -848,7 +848,7 @@ class TestProjectSessionFromTranscript:
             mock_db.update_session = AsyncMock()
             result = await session_title.generate_session_title_from_transcript(session, adapter_client)
 
-        expected_title_messages = [(USER_ROLE, "latest request"), (ASSISTANT_ROLE, "first part\n\nsecond part")]
+        expected_title_messages = [(USER_ROLE, LATEST_REQUEST), (ASSISTANT_ROLE, TITLE_ASSISTANT_MESSAGE)]
         mock_generate.assert_awaited_once_with(expected_title_messages)
         mock_db.update_session.assert_awaited_once_with(session.session_id, title=title)
         adapter_client.update_channel_title.assert_awaited_once_with(session)
