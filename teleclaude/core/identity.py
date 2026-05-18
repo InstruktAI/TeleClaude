@@ -43,18 +43,6 @@ class IdentityContext:
             raise ValueError(f"Invalid IdentityContext — no resolvable display name: {self}")
         return result
 
-    @property
-    def canonical_display_name(self) -> str:
-        """Best canonical identity name without platform-specific display overrides."""
-        result = (
-            (self.person_name or "").strip()
-            or (self.person_email or "").strip()
-            or (self.platform_user_id or "").strip()
-        )
-        if not result:
-            raise ValueError(f"Invalid IdentityContext — no resolvable display name: {self}")
-        return result
-
 
 _GLOBAL_CONFIG_PATH = GLOBAL_CONFIG_PATH
 _PEOPLE_DIR = PEOPLE_DIR
@@ -99,6 +87,10 @@ class IdentityResolver:
         if isinstance(value, str) and value.strip():
             return value.strip()
         return None
+
+    def _display_name_override_for(self, person: PersonEntry) -> str | None:
+        """Return the configured display override for a person."""
+        return self._discord_nick_by_email.get(person.email.lower())
 
     def _reload_if_stale(self) -> None:
         """Reload config if any source file changed (mtime-based)."""
@@ -163,7 +155,7 @@ class IdentityResolver:
             discord_creds = getattr(person_conf.creds, "discord", None) if person_conf.creds else None
             if discord_creds:
                 self._by_discord_user_id[discord_creds.user_id] = person
-                discord_nick = self._optional_nick(getattr(discord_creds, "nick", None))
+                discord_nick = self._optional_nick(discord_creds.nick)
                 if discord_nick:
                     self._discord_nick_by_user_id[discord_creds.user_id] = discord_nick
                     self._discord_nick_by_email[person.email.lower()] = discord_nick
@@ -183,7 +175,7 @@ class IdentityResolver:
                 person_name=person.name,
                 person_email=person.email,
                 person_role=self._normalize_role(person.role),
-                display_name_override=self._discord_nick_by_email.get(person.email.lower()),
+                display_name_override=self._display_name_override_for(person),
             )
         return IdentityContext()
 
@@ -214,7 +206,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
-                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
+                        display_name_override=self._display_name_override_for(person),
                         platform="terminal",
                         platform_user_id=email,
                     )
@@ -230,7 +222,7 @@ class IdentityResolver:
                             person_name=person.name,
                             person_email=person.email,
                             person_role=self._normalize_role(person.role),
-                            display_name_override=self._discord_nick_by_email.get(person.email.lower()),
+                            display_name_override=self._display_name_override_for(person),
                             platform="telegram",
                             platform_user_id=str(uid_int),
                         )
@@ -246,7 +238,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
-                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
+                        display_name_override=self._display_name_override_for(person),
                         platform="web",
                         platform_user_id=email,
                     )
@@ -281,7 +273,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
-                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
+                        display_name_override=self._display_name_override_for(person),
                         platform="whatsapp",
                         platform_user_id=normalized_phone,
                     )

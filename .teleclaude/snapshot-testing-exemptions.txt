@@ -152,7 +152,6 @@ tests/unit/config/test_runtime_settings.py
 tests/unit/config/test_schema_export.py
 tests/unit/config/test_schema.py
 tests/unit/core/adapter_client/test__channels.py
-tests/unit/core/adapter_client/test__output.py
 tests/unit/core/adapter_client/test__remote.py
 tests/unit/core/agent_coordinator/test__fanout.py
 tests/unit/core/agent_coordinator/test__helpers.py

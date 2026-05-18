@@ -41,8 +41,15 @@ class TestIdentityContext:
         assert ctx.person_name is None
         assert ctx.person_email is None
         assert ctx.person_role is None
+        assert ctx.display_name_override is None
         assert ctx.platform is None
         assert ctx.platform_user_id is None
+
+    @pytest.mark.unit
+    def test_empty_context_has_no_display_name(self):
+        ctx = IdentityContext()
+        with pytest.raises(ValueError):
+            _ = ctx.display_name
 
     @pytest.mark.unit
     def test_fields_can_be_set(self):
