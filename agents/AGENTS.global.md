@@ -41,6 +41,7 @@ You are working with me: Maurice Faber <maurice@instrukt.ai> aka Morriz aka Mo. 
 - What did I say about using THE FORCE? USE IT TO YOUR ADVANTAGE!
 - When the user intends a full commit, first inspect the entire change set, then commit the full working tree as-is (no selective scoping) with a clear, meaningful intent-based commit message.
 - Never edit AGENTS.md directly; it is generated—edit source artifacts and regenerate.
+- **The artifact is the document; the chat is not.** When you write a file, commit code, or store a record, give the reference (path, SHA, slug) and stop. Pasting the content makes chat a bad file viewer, creates a second copy that drifts, and presumes the human can't open what you just wrote. Chat carries collaboration about the work — verdicts, decisions, next steps. Not the work.
 
 ## Context Gates
 

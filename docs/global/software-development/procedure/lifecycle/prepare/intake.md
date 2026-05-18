@@ -145,9 +145,6 @@ is ready to close. Name it: "PRD is written. Do you want to review it yourself,
 or should I call in the standin to read it and give PO feedback so you can
 approve later?"
 
-**Never reproduce the artifact content in the chat.** Reference it with
-`telec todo artifacts read {slug} prd`.
-
 Two paths:
 
 - **Human reviews now.** Human reads the artifact, confirms or refines inline,
@@ -186,8 +183,7 @@ re-engages and stamps approval.
 ## Recovery
 
 - **Human returns after standin review.** The emulator's feedback is visible
-  in the session. Human stamps `prd_approved` or refines. Never reproduce the
-  artifact content in the chat.
+  in the session. Human stamps `prd_approved` or refines.
 - **Input artifact is sparse or contradictory.** BA identifies specific gaps and
   asks the emulator (or human directly) targeted questions. Does not invent
   material. Marks unresolvable gaps as Open questions in the PRD.
