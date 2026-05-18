@@ -70,28 +70,51 @@ This context does NOT own: live session state (`agent_runtime` owns that), the p
   - `text_content` excludes tool blocks, thinking blocks, tool results. Pure conversation only.
   - Mirror is ETERNAL. No retention pruning.
 - **Identifier:** `mirror_id` (UUID).
-- **Lifecycle:** Created when session_mirrors receives an extraction instruction (typically `agent_runtime.session.ended` event carrying the native file path + identity fields). Immutable after creation. Never deleted in normal operation; archival to cold storage is an optional future concern.
+- **Lifecycle:** Built up INCREMENTALLY by the `session_history` consumer over a session's life. First window for a session creates the mirror row (identity fields, initial text_content). Subsequent windows append filtered text to text_content. Mirror is "complete" when the consumer's cursor catches up to a session that has ended — but partial mirrors are perfectly valid (a session still in flight has a partial-but-live mirror, searchable as content accumulates). Never deleted in normal operation; archival is an optional future concern.
 
 ### Domain events emitted
 
 #### `session_mirrors.mirror.created`
 
 - **Producer:** `session_mirrors`
-- **Emitted when:** a new mirror is successfully extracted and persisted.
-- **Payload:** `mirror_id`, `agent`, `project_slug`, `human_email`, `started_at`, `extracted_at`, `summary`.
+- **Emitted when:** a brand-new mirror row is INSERTed (first window for a session).
+- **Payload:** `mirror_id`, `agent`, `project_slug`, `human_email`, `started_at`, `created_at`.
 - **Visibility:** CLUSTER
 - **Known consumers:** `frontend` (search index refresh, history view update); audit log consumers.
 - **Idempotency key:** `mirror_id`.
 - **Posture:** `commit-then-emit`.
 
+#### `session_mirrors.mirror.updated`
+
+- **Producer:** `session_mirrors`
+- **Emitted when:** an existing mirror's text_content is appended (subsequent windows).
+- **Payload:** `mirror_id`, `text_appended_chars`, `updated_at`.
+- **Visibility:** CLUSTER
+- **Known consumers:** `frontend` (search index incremental refresh).
+- **Idempotency key:** `(mirror_id, updated_at)`.
+- **Posture:** `commit-then-emit`.
+
+### How mirrors get built — the session_history consumer
+
+session_history is a registered consumer of `agent_runtime.extract-window` (see `agent_runtime` domain spec). It is NOT triggered by `session.ended`. The pattern:
+
+1. Scheduler tick or per-session turn-trigger fires
+2. session_history calls `telec sessions extract-window --consumer session-history`
+3. agent_runtime returns rich windows (user_text, assistant_text, thinking, tool_use, tool_result blocks) for sessions with new content
+4. session_history **filters to user_text + assistant_text** and concatenates the filtered text
+5. UPSERT into `session_mirrors.mirrors`:
+   - If new session_id: INSERT mirror row with identity fields, initial text_content
+   - If existing: UPDATE mirror's text_content with the appended new text
+6. Emit `mirror.created` (on INSERT) or `mirror.updated` (on UPDATE)
+7. `telec sessions ack --consumer session-history --position <X>` advances the cursor on success
+
+This means session_mirrors does NOT subscribe to `agent_runtime.session.ended` for mirror creation. The mirror builds up continuously. Mirror lifetime is decoupled from session lifetime.
+
+Other consumers of `session.ended` (e.g., `identity` for session-token revocation) still subscribe to it for their own purposes; session_history just doesn't need to.
+
 ### Domain events consumed
 
-#### `agent_runtime.session.ended`
-
-- **Producer:** `agent_runtime`
-- **Reaction:** session_mirrors receives the event with the native file path and identity fields. Reads the native file, extracts text content + summary, persists a new mirror row.
-- **Failure handling:** if the native file is not readable (already pruned by agent CLI, permission error), log and skip — the mirror cannot be created. The agent_runtime event is not failed; the session is still gone from runtime regardless.
-- **Idempotency:** if a mirror already exists for the same `(agent, native_session_id, started_at)` triple, the extraction is a no-op. Re-receipt of the event is safe.
+None (directly). session_history's reads come via `agent_runtime.extract-window` CLI, not via event subscription. This keeps session_mirrors as a pure persistence consumer — it has no upstream event dependency.
 
 ### Use cases
 

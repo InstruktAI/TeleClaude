@@ -30,11 +30,11 @@ Skeleton on first commit: structure + lifecycle/spine context events. Per-contex
 
 Every event name follows: `<context>.<noun>.<past-tense-verb>` or `<context>.<past-tense-verb>` when no sub-noun is meaningful.
 
-- `<context>` — one of the eight services (`workflow`, `identity`, `config`, `knowledge`, `agent_runtime`, `session_mirrors`, `integration`, `agent_artifacts`).
+- `<context>` — one of the eight services (`workflow`, `identity`, `config`, `context`, `agent_runtime`, `session_mirrors`, `integration`, `memory`). v2 fold: `knowledge` + `agent_artifacts` collapsed into `context`; `memory` added.
 - `<noun>` — the entity or aggregate the event is about (optional; omitted when the context only has one primary subject).
 - `<past-tense-verb>` — what happened (`created`, `updated`, `deleted`, `started`, `ended`, `received`, `delivered`, `phase_advanced`, etc.).
 
-Examples: `workflow.todo.created`, `agent_runtime.session.started`, `integration.outbox.delivered`, `knowledge.snippet.indexed`.
+Examples: `workflow.todo.created`, `agent_runtime.session.started`, `integration.outbox.delivered`, `memory.observation.saved`.
 
 ### Per-event description format
 
@@ -83,14 +83,20 @@ Each event below carries:
 
 **Detailed entries:** to be expanded by `project/spec/domain/workflow` authoring.
 
-#### knowledge
+#### context
+
+NO events emitted. `context` is filesystem-driven. Consumers re-read source/index on demand. `telec context sync` is the implicit "context changed" signal; downstream tools can subscribe to git or file watchers if reactive behavior is ever needed (none currently is).
+
+**Detailed entries:** see `project/spec/domain/context`.
+
+#### memory
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
-| `knowledge.snippet.indexed` | knowledge | CLUSTER | commit-then-emit |
-| `knowledge.taxonomy.updated` | knowledge | CLUSTER | commit-then-emit |
+| `memory.observation.saved` | memory | CLUSTER | commit-then-emit |
+| `memory.observation.deleted` | memory | CLUSTER | commit-then-emit |
 
-**Detailed entries:** to be expanded by `project/spec/domain/knowledge` authoring.
+**Detailed entries:** see `project/spec/domain/memory`.
 
 #### agent_runtime
 
@@ -109,7 +115,8 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
-| `session_mirrors.mirror.created` | session_mirrors | CLUSTER | commit-then-emit |
+| `session_mirrors.mirror.created` | session_mirrors | CLUSTER | commit-then-emit (first window for a session — INSERT) |
+| `session_mirrors.mirror.updated` | session_mirrors | CLUSTER | commit-then-emit (subsequent windows — UPDATE appending text_content) |
 
 **Detailed entries:** see `project/spec/domain/session_mirrors`.
 
@@ -126,13 +133,15 @@ Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/i
 
 **Detailed entries:** see `project/spec/domain/integration`.
 
-#### agent_artifacts
+#### scheduler (infrastructure crate, not a service)
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
-| `agent_artifacts.synced` | agent_artifacts | CLUSTER | commit-then-emit |
+| `scheduler.tick.minute` | scheduler bridge | CLUSTER | commit-then-emit (the tick fires per OS cron entry every minute) |
+| `scheduler.tick.hour` | scheduler bridge | CLUSTER | derived — fires on the minute-tick that crosses an hour boundary |
+| `scheduler.tick.day` | scheduler bridge | CLUSTER | derived — fires on the minute-tick that crosses a day boundary |
 
-**Detailed entries:** to be expanded by `project/spec/domain/agent_artifacts` authoring.
+The scheduler bridge is one OS cron entry that fires `telec cron tick` every minute, emitting the events above. Per-pillar listeners subscribe and consult their own cadence policy + cursor state to decide whether to act. See `transport-rules.md` "Recurring jobs" section. NOT a bounded context; one-line infrastructure crate.
 
 ### Subscription map
 
@@ -148,7 +157,8 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step) |
 | `workflow.todo.phase_advanced` | `integration` (outbox notifications to recipients per subscription) |
 | `workflow.todo.delivered` | `integration` (delivery announcement notifications) |
-| `knowledge.snippet.indexed` | `frontend` (search index refresh) |
+| `memory.observation.saved` | audit log consumers; future memory miner correlating observations |
+| `scheduler.tick.minute` | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.) |
 | `config.effective.updated` | every service that caches config (re-read on next access) |
 
 ## Allowed values

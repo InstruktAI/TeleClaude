@@ -166,6 +166,32 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 - **Identifier:** the daemon process itself (singleton per daemon).
 - **Lifecycle:** Created at daemon startup. Receives hooks throughout the daemon's lifetime. Cleaned up at daemon shutdown; in-flight window is lost on crash (~1s of hooks; acceptable per trade-off).
 
+#### ExtractorCursor (aggregate, source-owned cursor bookkeeping)
+
+- **Root:** `ExtractorCursor` (one row per `(consumer_id, session_id)` pair)
+- **Contains:** `consumer_id` (the registered subscriber identifier, e.g., `skill-miner`, `memory-miner`, `session-history`), `session_id` (the session being tracked), `last_processed_position` (turn count or block index — natural unit per session), `last_processed_at`.
+- **Invariants:**
+  - One row per `(consumer_id, session_id)` pair.
+  - Cursor advances on explicit consumer ack via `telec sessions ack` — never auto-advances on read.
+  - First-ever read for a (consumer, session) pair returns content from the session's start; row is created on first successful ack.
+  - Consumer ids are free-form strings; no central registry. A new consumer simply appears on first call.
+  - Cursors are NEVER pruned when their session is pruned from `agent_runtime.sessions`. The cursor row may outlive its session record briefly; reconciliation cleans orphans.
+- **Identifier:** `(consumer_id, session_id)`.
+- **Lifecycle:** Created on first ack from a (consumer, session) pair. Updated on each subsequent ack. Operator can reset via `telec sessions cursors reset --consumer <id>`. Pruned when both the session record AND no recent ack activity from the consumer indicate the cursor is dead.
+
+### Extract-window mechanism (source-side primitive)
+
+agent_runtime exposes a single source primitive for downstream consumers (session_history, skill-miner, memory-miner, future consumers):
+
+- `telec sessions extract-window --consumer <id> [--session <id>]` — returns new content since the consumer's cursor, per session, with rich content (all block types: user_text, assistant_text, thinking, tool_use, tool_result). Cursor is NOT auto-advanced.
+- `telec sessions ack --consumer <id> --position <X> [--session <id>]` — advances the cursor after the consumer has safely processed.
+- `telec sessions cursors list` — operator visibility into all consumers + their positions.
+- `telec sessions cursors reset --consumer <id> [--session <id>]` — operator override; rewinds a cursor for re-processing.
+
+The runtime can coalesce reads when multiple consumers want overlapping windows (one DB read per snapshot, fanned out to each consumer's filtered result). Implementation optimization; not an API concern.
+
+**Trigger model.** Per-session turn-trigger is the primary signal: when a session crosses N new turns since any consumer's last cursor, an in-process listener wakes the relevant consumers. Scheduler tick (see `scheduler.tick.*` events) acts as the backstop for low-activity periods. Default optimal window per Hermes evidence: ~10 turns.
+
 ### Domain events emitted
 
 #### `agent_runtime.session.started`

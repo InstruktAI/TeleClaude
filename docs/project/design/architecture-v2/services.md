@@ -198,35 +198,50 @@ mirrors as a compensating mechanism.
 
 ---
 
-### 5. `knowledge`
+### 5. `context`
 
 **Owns:**
 
-- global/company/project knowledge index
-- snippet taxonomy
-- context selection policy
-- progressive disclosure rules
-- ingestion pipelines for company and business information
+- ALL filesystem-driven context engineering: docs (snippets), skills,
+  commands, and agent files (AGENTS.master.md, addenda)
+- Per-kind validation against schemas
+- Inflation (e.g., `AGENTS.master.md` → `AGENTS.md` with addendum merging)
+- Distribution / deployment to agent runtime directories
+  (`~/.claude/`, `~/.codex/`, `~/.gemini/`)
+- `telec context sync` operation (replaces v1 `telec sync` docs portion)
+- Selection policy as a pure function
+- CRUD CLI per kind: `telec context docs|skills|commands|agents
+  list/get/create/update/delete`
 
 **Does not own:**
 
-- the authored snippet content itself (lives in `docs/` filesystem; this
-  service indexes and serves it)
+- the authored source content itself (lives in git under `docs/` and
+  `agents/`/`.agents/`; this service indexes, validates, deploys)
 - runtime session streaming
 - todo state
 - adapter lifecycle
+- HTTP integration
 
-**Postgres schema:** `knowledge`
-- `snippets_index` (id, source path, type, scope, domain, last indexed)
-- `taxonomy`
-- `selection_policy_rules`
+**Postgres schema:** NONE. Filesystem-driven. State lives in git
+(source) + filesystem (deployed). The index is a pre-computed YAML at
+`~/.teleclaude/docs/index.yaml` produced by sync.
 
-**Emits events:** `knowledge.snippet.indexed`,
-`knowledge.taxonomy.updated`.
+**Emits events:** NONE. Filesystem-driven; no event-bus participation as
+a source. The act of `git commit` + `telec context sync` is the implicit
+"context changed" signal.
 
-**Why it exists:** Preserves the strongest existing platform idea —
-structured, scope-aware, policy-driven context engineering. Not generic
-RAG. The `telec docs` commands route through this service.
+**Why it exists:** v1 had two services (`knowledge` for docs, separately
+`agent_artifacts` for skills/commands/agents) that shared the same change
+axis — file-based context engineering. v2 folds them. The "context"
+naming captures both static reference (docs) AND invokable capability
+(skills/commands/agents), which is what "context engineering" means in
+the AI sense.
+
+**v2 fold:** The previous v1 split (knowledge + agent_artifacts) was
+artifactual — both contexts had the same change axis (file-based
+inflation + deployment to agent runtimes). The fold reduces the service
+count from 8 to 7 architectural pieces, then re-rises to 8 with the
+addition of `memory` as a distinct service.
 
 ---
 
@@ -316,39 +331,42 @@ validation.
 
 ---
 
-### 8. `agent_artifacts`
+### 8. `memory`
 
 **Owns:**
 
-- agent artifact source manifest (commands, skills, agent files in
-  `agents/`)
-- inflation rules (e.g., `AGENTS.master.md` → `AGENTS.md`)
-- distribution to deployed runtime directories (`~/.claude/`, `~/.codex/`,
-  `~/.gemini/`)
-- the `telec sync` operation
+- durable observations agents store and query (gotchas, decisions,
+  patterns, preferences, relationships, facts)
+- full-text search over observations
+- timeline queries (around an anchor observation)
+- per-principal authorship + per-project optional scoping
+- CLI surface: `telec memory list/search/save/delete/update/timeline`
 
 **Does not own:**
 
-- the authored artifact content itself (lives in `agents/` filesystem)
-- knowledge retrieval policy
-- workflow/todo state
-- session runtime orchestration
-- presentation logic
+- session transcripts (`session_mirrors`)
+- context content (`context`)
+- workflow state
+- adapter lifecycle
 
-**Postgres schema:** **none.** This service is filesystem-driven. Source is
-in `agents/`, deployed output is on disk under `~/.<agent>/`, build/inflation
-outputs land in `dist/`. There is no business state that survives a `telec
-sync` and isn't already encoded in filesystem + git.
+**Postgres schema:** `memory`
+- `observations` — own UUID, type, title, body, author principal,
+  project_slug (nullable), anchor_id (nullable), timestamps
+- Full-text index on (title || body) for search
 
-If inflation caching becomes expensive enough to justify a cache, that
-cache goes in Redis (or `.cache/` on disk), not Postgres.
+**Emits events:** `memory.observation.saved`, `memory.observation.deleted`.
 
-**Emits events:** `agent_artifacts.synced` (after `telec sync` completes).
+**Why it exists:** v1's `teleclaude/memory/` already exists; v2 ports it
+to Rust + Postgres with cleaner CRUD surface. Memory is distinct from
+session_mirrors (per-fact vs per-session-text) and from context
+(observed vs authored). The third pillar of "things the platform
+remembers": context = static reference; mirrors = session history;
+memory = curated observations.
 
-**Why it exists:** The artifact system is too important to remain homeless.
-It is adjacent to knowledge but not the same — knowledge owns retrieval
-policy over authored content; artifacts owns how agent-facing deliverables
-are built, packaged, and published.
+**Mining:** No internal mining. Memory miner is an intelligence agent
+running OUTSIDE this context — consumes `agent_runtime.extract-window`,
+writes via `telec memory save`. See `transport-rules.md` "Cross-cutting
+concerns via intelligence + shared utilities + CLI" for the pattern.
 
 ---
 
@@ -389,13 +407,13 @@ One local Postgres instance. Schema per service:
 | Service | Schema | Notes |
 |---|---|---|
 | `identity` | `identity` | |
-| `agent_runtime` | `agent_runtime` | |
+| `agent_runtime` | `agent_runtime` | Includes `sessions`, `operations`, `availability`, `extractor_cursors` (source-side cursor table for consumers) |
 | `workflow` | `workflow` (or `<project>_workflow`) | Per-project isolation: see file-layout |
-| `session_mirrors` | `session_mirrors` | Large transcript data; TOAST handles blobs |
-| `knowledge` | `knowledge` | Index only; sources in `docs/` filesystem |
-| `integration` | `integration` | Outbox/inbox/dlq |
+| `session_mirrors` | `session_mirrors` | Flat text per session; TOAST handles large content; built incrementally by session_history consumer |
+| `context` | **none** | Filesystem-driven (docs + skills + commands + agents); index file at `~/.teleclaude/docs/index.yaml` |
+| `integration` | `integration` | Outbox/inbox/dlq — for true external webhooks only |
 | `config` | `config` (optional, for history only) | Otherwise stateless |
-| `agent_artifacts` | **none** | Filesystem-driven |
+| `memory` | `memory` | Observations with full-text index on title || body |
 
 Single Postgres, clean ownership, no fragmentation.
 
@@ -498,7 +516,7 @@ cutover migrates v1 consumers to read effective config from v2 service.
 
 #### Remaining services — footprint mapping deferred to each migration
 
-`agent_runtime`, `session_mirrors`, `knowledge`, `integration`,
+`agent_runtime`, `session_mirrors`, `context`, `integration`,
 `agent_artifacts` — full v1 footprints get mapped here during planning
 of each service's migration. The cutover safety checklist in
 `reconstruction-order.md` references this section.

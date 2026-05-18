@@ -137,7 +137,7 @@ Explicitly out of scope so the prepare worker doesn't expand:
 - Rust HTTP API (`telec-api`). v1 daemon's HTTP API continues for browser.
 - `telec-hook` binary. v1 Python hook receiver continues.
 - Webhook receivers in Rust. v1 Python webhook handlers continue.
-- Other services: `agent_runtime`, `session_mirrors`, `knowledge`,
+- Other services: `agent_runtime`, `session_mirrors`, `context`,
   `integration` (full), `config` (full), `agent_artifacts`. All stay v1.
 - Full identity service. Only single-user stub in MVP.
 - Frontend changes. `frontend/` Next.js untouched.

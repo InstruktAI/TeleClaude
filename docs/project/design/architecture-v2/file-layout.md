@@ -284,7 +284,7 @@ small per-machine preferences (tui_state).
 | `session-auth/` | `identity.session_tokens` (Postgres) |
 | `integration/` | `integration` Postgres schema |
 | `bin/` (wrappers) | Single Rust binaries at `~/.local/bin/`; git wrapper retired (pre-commit hook enforces same rules) |
-| `docs/` (global snippets mirror) | Gone — `knowledge` service indexes directly from repo `docs/` source |
+| `docs/` (global snippets mirror) | Gone — `context` service indexes directly from repo `docs/` source |
 | Lock files (`git-main.lock`) | Postgres advisory locks or Redis SET NX |
 | PID files (`cron_runner.pid`) | systemd / launchd manages PIDs |
 

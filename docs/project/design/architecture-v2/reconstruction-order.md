@@ -229,8 +229,8 @@ post-migration state via its existing read paths (until TUI rewrites).
 
 **Scope:**
 
-1. `crates/knowledge/`:
-   - Postgres `knowledge` schema (snippet index, taxonomy)
+1. `crates/context/`:
+   - Postgres `context` schema (snippet index, taxonomy)
    - Ingestion from `docs/` filesystem
    - Selection policy engine
 2. CLI: `telec docs` subcommands route to knowledge service.

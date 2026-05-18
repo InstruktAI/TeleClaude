@@ -444,6 +444,86 @@ NOT a legitimate use of this pattern).
   Each service owns its schema; cross-service queries go through the owning
   service's crate.
 
+### Cross-cutting concerns via intelligence + shared utilities + CLI
+
+Some platform concerns are inherently cross-cutting — analytics, mining, observation, pattern detection. The temptation is to build a new service for these, or to allow cross-service reads. v2 explicitly avoids both.
+
+**The pattern:**
+
+1. **Intelligence (agents) does the cross-cutting work.** An agent worker has access to the platform's CLI surfaces (which are themselves service-boundary respecting). It reads via existing CLI commands, reasons about what it finds, and writes via existing CLI commands.
+
+2. **Shared utilities go in `crates/shared/`** as they emerge. Generic pattern-detection primitives, diff helpers, frequency counters, classification utilities. Small, reusable, no service-specific logic. Don't pre-build; grow as real scanners need them.
+
+3. **CLI is the bridge.** The intelligence agent calls `telec sessions extract-window`, `telec memory search`, `telec todo show`, etc. to read. It calls `telec context skills create`, `telec memory save`, etc. to write. Every cross-cutting concern composes through the CLI.
+
+**Why this is right:**
+
+- Preserves strict separation of concerns (no cross-service Postgres reads, no shared state)
+- Reuses existing surfaces (no new architectural primitives)
+- Aligns with `architectural-defaults` rule 6 ("CLI-first agency")
+- Composable — adding a new mining concern = a new agent worker; no architectural change
+
+**What this rules out:**
+
+- Cross-service Postgres reads. A service that needs another service's data calls its CLI or its crate's functions. Never queries another service's tables.
+- A "mining service" or "observability service" with knowledge of multiple domain schemas. Mining is a behavior, not a service.
+- Bypassing CLI for "performance" — the CLI's read APIs ARE the right surface; if performance is an issue, optimize the CLI's underlying query, not the access pattern.
+
+### Recurring jobs via scheduler bridge + source-owned cursors
+
+Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
+
+**Scheduler bridge.** One OS cron entry fires `telec cron tick` every minute. The `scheduler` infrastructure crate emits `scheduler.tick.minute` Redis events (and derived `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries). NOT a service; one-line infrastructure that bridges OS cron into in-platform events. Per-platform install adds one OS cron entry; uninstall removes it.
+
+**Per-pillar listeners** subscribe to ticks. Each listener:
+1. Receives `scheduler.tick.minute`
+2. Consults its own state (cadence policy: "I run every 15 minutes; last ran at T")
+3. If due → runs its work (invoke CLI, spawn sub-workers, etc.)
+4. Updates its cursor on success
+
+**Per-session turn-trigger** complements the tick: a long-running consumer can also be woken when a tracked session crosses N new turns since its last cursor. This is more responsive than tick-only; the tick is a backstop for low-activity periods. Default optimal window per Hermes evidence: ~10 turns.
+
+**Source-owned cursors.** Cursors live with the source being scanned, not with the consumer doing the scanning. The pillar producing the stream owns:
+- A `<pillar>.extractor_cursors` table (per consumer, per stream subject — e.g., per session)
+- A registration / list-since-cursor / explicit-ack CLI:
+  ```
+  telec <pillar> extract-window --consumer <id> [--<subject> <id>]
+  telec <pillar> ack --consumer <id> --position <X> [--<subject> <id>]
+  telec <pillar> cursors list
+  telec <pillar> cursors reset --consumer <id> [--<subject> <id>]
+  ```
+- Multiple consumers share the same primitive; cursors are independent per `(consumer_id, subject)`
+
+**Manual ack pattern** (NOT auto-advance on read). The source returns content; the cursor stays until the consumer explicitly acks. If the consumer crashes mid-processing, the next call returns the same window — retry is safe. The CONSUMER side ensures idempotency at writes (e.g., `telec context skills create` should dedup by content hash).
+
+**Where cursors live applied to v2:**
+
+| Source | Cursor table | Consumers |
+|---|---|---|
+| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors` | `session-history` (writes mirrors), `skill-miner` (writes skills via context), `memory-miner` (writes observations via memory) |
+| Other pillars | Add only when a real consumer materializes |
+
+**Where job state (other than cursor) lives:**
+
+Per-pillar. If `memory` has a "weekly cleanup" job, its last-run state lives in `memory`'s schema. No central jobs database; no shared state.
+
+**Net architecture:**
+
+```
+OS cron (every minute)
+  → telec cron tick
+    → scheduler.tick.minute event
+      → per-pillar listeners react (consult own cadence + cursor)
+        → intelligence (agent worker) wakes
+          → reads via SOURCE's extract-window CLI
+            → processes (pattern detection, transformation, etc.)
+              → writes via DESTINATION's CRUD CLI
+                → SOURCE's ack CLI advances cursor
+                  → optional: emit system.jobs.completed
+```
+
+No central jobs service. No cross-pillar reads. No shared state. CLI bridges everything; intelligence does the reasoning.
+
 ## See Also
 
 - docs/project/design/architecture-v2/file-layout.md

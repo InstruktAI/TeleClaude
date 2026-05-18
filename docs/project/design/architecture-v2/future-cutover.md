@@ -151,7 +151,7 @@ truth flips from SQLite to Postgres atomically. v1 SQLite paths
 ### Sequencing relative to the broader v2 migration
 
 Per `reconstruction-order.md`, several other services (`agent_runtime`,
-`session_mirrors`, `knowledge`, `integration`, `config`,
+`session_mirrors`, `context`, `integration`, `config`,
 `agent_artifacts`) will also migrate to dedicated v2 crates with their
 own Postgres schemas. The workflow cutover can land independently of
 those — workflow is the smallest entangled surface and the natural

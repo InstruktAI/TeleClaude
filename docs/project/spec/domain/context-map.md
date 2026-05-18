@@ -21,6 +21,8 @@ The relationships between the eight bounded contexts of the platform: which depe
 
 A bounded context is a service. Eight services, ten or so relationships, named explicitly.
 
+**v2 fold (2026-05-18):** `knowledge` and `agent_artifacts` were collapsed into a single `context` bounded context — they share the same change axis (file-based context engineering: docs, skills, commands, agent files). `memory` was added as the 8th service (durable observations, distinct from session_mirrors). Net service count remains 8: workflow, identity, config, agent_runtime, session_mirrors, context, integration, memory.
+
 ## Canonical fields
 
 ### Visual map
@@ -33,45 +35,50 @@ graph TD
 
     %% Domain contexts
     workflow[workflow<br/>todos, roadmap, lifecycle]
-    knowledge[knowledge<br/>snippet index, selection]
-    agent_runtime[agent_runtime<br/>live sessions, tmux, CLIs]
-    session_mirrors[session_mirrors<br/>session history, replay]
-    integration[integration<br/>inbound + outbound external]
-    agent_artifacts[agent_artifacts<br/>artifact sync, deploy]
+    context[context<br/>docs+skills+commands+agents]
+    agent_runtime[agent_runtime<br/>live sessions, tmux, CLIs, hooks]
+    session_mirrors[session_mirrors<br/>eternal text extracts]
+    memory[memory<br/>durable observations]
+    integration[integration<br/>external HTTP webhooks + outbox]
 
     %% Spine: every service depends on these
     identity -.->|principal resolution| workflow
-    identity -.->|principal resolution| knowledge
+    identity -.->|principal resolution| context
     identity -.->|principal resolution| agent_runtime
     identity -.->|principal resolution| integration
+    identity -.->|principal resolution| memory
     config -.->|effective config| workflow
-    config -.->|effective config| knowledge
+    config -.->|effective config| context
     config -.->|effective config| agent_runtime
     config -.->|effective config| integration
     config -.->|effective config| session_mirrors
-    config -.->|effective config| agent_artifacts
+    config -.->|effective config| memory
 
-    %% Agent CLI hooks reach agent_runtime directly via telec-hook IPC (internal — not shown)
     %% External messaging flows through integration → agent_runtime
+    %% Agent CLI hooks reach agent_runtime directly via telec-hook IPC (internal — not shown)
     integration ==>|integration.inbox.received<br/>external messaging| agent_runtime
 
-    %% Session lifecycle flow
-    agent_runtime ==>|agent_runtime.session.started/updated/ended| session_mirrors
+    %% Extract-window: source-side cursor primitive in agent_runtime
+    %% Multiple consumers (session_history, skill-miner, memory-miner) call extract-window via CLI
+    %% session_history is shown explicitly because it's part of session_mirrors
+    agent_runtime -.->|extract-window CLI<br/>session_history consumer| session_mirrors
+
+    %% Operation events
     agent_runtime ==>|operation events| workflow
 
     %% Workflow → outbound notifications
     workflow ==>|workflow.todo.phase_advanced<br/>workflow.todo.delivered| integration
 
-    %% Knowledge feeds prepare
-    knowledge ==>|context selections| workflow
+    %% Context feeds prepare
+    context ==>|context selections| workflow
 
-    %% Agent artifacts deploys hook configs that integration receives
-    agent_artifacts -.->|deployed hook configs<br/>(filesystem)| integration
+    %% Context deploys hook configs that agent_runtime reads (filesystem-mediated)
+    context -.->|deployed hook configs<br/>(filesystem)| agent_runtime
 
     classDef spine fill:#e0e7ff,stroke:#4338ca
     classDef domain fill:#dcfce7,stroke:#15803d
     class identity,config spine
-    class workflow,knowledge,agent_runtime,session_mirrors,integration,agent_artifacts domain
+    class workflow,context,agent_runtime,session_mirrors,memory,integration domain
 ```
 
 **Legend:**
@@ -87,7 +94,7 @@ Each row names one directed relationship: upstream → downstream. Relationship 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
 | `identity` | `workflow` | Customer-Supplier | Workflow asks identity to resolve the calling principal for authorization on todo operations. Identity owns the contract; workflow conforms. |
-| `identity` | `knowledge` | Customer-Supplier | Knowledge uses principal role + visibility policy to filter snippets at read time. |
+| `identity` | `context` | Customer-Supplier | Knowledge uses principal role + visibility policy to filter snippets at read time. |
 | `identity` | `agent_runtime` | Customer-Supplier | Agent runtime binds principals to sessions (the principal authoring a session, the session token credentialing live UI access). |
 | `identity` | `integration` | Customer-Supplier | Integration resolves caller principal on inbound, attaches principal context to dispatched events. |
 | `config` | (all six domain contexts) | Open Host Service | Config publishes effective-configuration values; every context reads what it needs at startup or on demand. Config doesn't know its consumers; consumers know what config keys they need. |
@@ -106,7 +113,9 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `agent_runtime` | `session_mirrors` | Partnership | These two contexts evolve together as the session story. Agent_runtime emits `session.started`, `session.updated`, `session.ended`; session_mirrors appends canonical blocks and projects read models. The session_id namespace is shared. Coordination is tight. |
+| `agent_runtime` | `session_mirrors` | Customer-Supplier (via extract-window CLI) | session_mirrors hosts a `session_history` consumer that registers against `agent_runtime.extract-window`, builds mirrors incrementally from rich windows (filtering to user_text + assistant_text). NOT subscribed to `session.ended` for mirror creation — mirror builds up over the session's life. |
+| `agent_runtime` | `context` (skill-miner) | Customer-Supplier (via extract-window CLI) | A future intelligence-driven skill miner consumes extract-window, detects patterns, writes via `telec context skills create`. No event subscription; CLI-only. |
+| `agent_runtime` | `memory` (memory-miner) | Customer-Supplier (via extract-window CLI) | Same pattern — intelligence-driven miner consumes extract-window, writes via `telec memory save`. CLI-only. |
 | `agent_runtime` | `workflow` | Customer-Supplier | Long-running operations on sessions (file syncs, builds) emit `operation.completed` events; workflow consumes when an operation completes a todo lifecycle step. |
 
 #### Workflow → outbound notifications
@@ -115,17 +124,23 @@ The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which ent
 |---|---|---|---|
 | `workflow` | `integration` | Customer-Supplier | When a todo advances phase or delivers, workflow emits a domain event. Integration's outbox-dispatch subscribes and routes notifications to configured recipients per their channel preferences. |
 
-#### Knowledge → workflow (context engineering)
+#### Context → workflow (context engineering)
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `knowledge` | `workflow` | Customer-Supplier | Knowledge resolves context selections (which snippets to load given a todo's slug, agent, role). Workflow's prepare-orchestrator + build workers consume these selections at session-start time. |
+| `context` | `workflow` | Customer-Supplier | Context resolves selections (which snippets to load given a todo's slug, agent, role). Workflow's prepare-orchestrator + build workers consume these selections at session-start time. |
 
 #### Cross-filesystem coordination
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `agent_artifacts` | `agent_runtime` | Conformist (via filesystem) | Agent_artifacts deploys hook configs (e.g., `~/.claude/settings.json:hooks` pointing at `telec-hook`). `agent_runtime` owns `telec-hook` and reads those configs only insofar as the agent CLI invokes the binary. The handshake is filesystem-mediated, not direct. |
+| `context` | `agent_runtime` | Conformist (via filesystem) | `context` deploys hook configs (e.g., `~/.claude/settings.json:hooks` pointing at `telec-hook`). `agent_runtime` owns `telec-hook` and reads those configs only insofar as the agent CLI invokes the binary. The handshake is filesystem-mediated, not direct. |
+
+#### Memory standalone
+
+| Upstream | Downstream | Relationship | Purpose |
+|---|---|---|---|
+| `memory` | (all callers) | Open Host Service | Memory is queried/written by agents and humans throughout the system. No strong upstream relationship beyond the spine; no strong downstream relationship beyond callers consuming what they query. |
 
 ### Anti-corruption layers (v1 → v2 migration)
 
@@ -134,7 +149,7 @@ During the migration window, every v2 service maintains an ACL against its v1 co
 - v2 `workflow` ↔ v1 `teleclaude/core/todos_db` — v2 reads v1 SQLite during the parallel-capable phase; the ACL translates v1 row shape into v2 aggregates. ACL location: `crates/workflow/src/v1_compat.rs` (planned).
 - v2 `identity` ↔ v1 `teleclaude/core/db/_tokens.py` + `_sessions.py` — token format and principal-resolution rules differ slightly. ACL planned in `crates/identity/src/v1_compat.rs`.
 - v2 `session_mirrors` ↔ v1 `teleclaude/mirrors` + `teleclaude/history` — text extraction translation; the v2 Mirror aggregate is flat (one row per session, no blocks). v1's CLI surface (`telec history list/search/show`) is preserved via Python shim during the parallel-capable phase.
-- v2 `knowledge` ↔ v1 `teleclaude/docs_index.py` + `context_selector.py` — selection policy translates v1's accumulated edge cases.
+- v2 `context` ↔ v1 `teleclaude/docs_index.py` + `context_selector.py` — selection policy translates v1's accumulated edge cases.
 - v2 `integration` ↔ v1 `teleclaude/hooks/` + messaging adapters — both inbound paths and outbox shape need translation.
 
 ACLs disappear when the corresponding cutover lands (`v2-<service>-cutover` todos). Until then, ACLs are explicit translation modules with their own tests.
@@ -155,7 +170,7 @@ The context map is the answer to "if a change happens, what triggered it?" — t
 - `identity` changes when auth/identity rules change
 - `config` changes when configuration shape changes
 - `workflow` changes when todo lifecycle changes
-- `knowledge` changes when snippet schema or selection policy changes
+- `context` changes when snippet schema or selection policy changes
 - `agent_runtime` changes when session lifecycle, tmux orchestration, or supervision changes
 - `session_mirrors` changes when block schema or read-model shape changes
 - `integration` changes when external protocol (webhook, hook, messaging) changes — irrespective of which external system
