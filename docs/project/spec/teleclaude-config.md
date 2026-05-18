@@ -86,12 +86,16 @@ Valid **only** in `~/.teleclaude/people/{name}/teleclaude.yml`.
 ```yaml
 creds:
   telegram: { user_name, user_id, chat_id }
-  discord: { user_id }
+  discord: { user_id, nick }
   whatsapp: { phone_number }
 subscriptions: list[SubscriptionEntry]
 interests: list[string]
 invite_token: string
 ```
+
+`creds.discord.nick` is optional. When present, it is the Discord-facing display name for
+reflected human input; canonical identity, authorization, and personal workspace resolution still
+use `people[].name`.
 
 ### Environment variables
 

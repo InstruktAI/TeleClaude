@@ -26,12 +26,26 @@ class IdentityContext:
     person_name: str | None = None
     person_email: str | None = None
     person_role: str | None = None
+    display_name_override: str | None = None
     platform: str | None = None
     platform_user_id: str | None = None
 
     @property
     def display_name(self) -> str:
-        """Best available human-readable name: person_name → person_email → platform_user_id."""
+        """Best available human-readable name, honoring platform display overrides."""
+        result = (
+            (self.display_name_override or "").strip()
+            or (self.person_name or "").strip()
+            or (self.person_email or "").strip()
+            or (self.platform_user_id or "").strip()
+        )
+        if not result:
+            raise ValueError(f"Invalid IdentityContext — no resolvable display name: {self}")
+        return result
+
+    @property
+    def canonical_display_name(self) -> str:
+        """Best canonical identity name without platform-specific display overrides."""
         result = (
             (self.person_name or "").strip()
             or (self.person_email or "").strip()
@@ -54,6 +68,8 @@ class IdentityResolver:
         self._by_username: dict[str, PersonEntry] = {}
         self._by_telegram_user_id: dict[int, PersonEntry] = {}
         self._by_discord_user_id: dict[str, PersonEntry] = {}
+        self._discord_nick_by_email: dict[str, str] = {}
+        self._discord_nick_by_user_id: dict[str, str] = {}
         self._by_whatsapp_phone: dict[str, PersonEntry] = {}
         self._registered_people_count: int = 0
         self._config_mtime_ns: int | None = None
@@ -76,6 +92,13 @@ class IdentityResolver:
     def _normalize_phone_number(phone_number: str) -> str:
         """Normalize phone number to numeric digits without leading plus."""
         return "".join(ch for ch in phone_number if ch.isdigit())
+
+    @staticmethod
+    def _optional_nick(value: object) -> str | None:
+        """Normalize optional platform nicknames."""
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        return None
 
     def _reload_if_stale(self) -> None:
         """Reload config if any source file changed (mtime-based)."""
@@ -100,6 +123,8 @@ class IdentityResolver:
         self._by_username.clear()
         self._by_telegram_user_id.clear()
         self._by_discord_user_id.clear()
+        self._discord_nick_by_email.clear()
+        self._discord_nick_by_user_id.clear()
         self._by_whatsapp_phone.clear()
         self._registered_people_count = 0
 
@@ -138,6 +163,10 @@ class IdentityResolver:
             discord_creds = getattr(person_conf.creds, "discord", None) if person_conf.creds else None
             if discord_creds:
                 self._by_discord_user_id[discord_creds.user_id] = person
+                discord_nick = self._optional_nick(getattr(discord_creds, "nick", None))
+                if discord_nick:
+                    self._discord_nick_by_user_id[discord_creds.user_id] = discord_nick
+                    self._discord_nick_by_email[person.email.lower()] = discord_nick
 
             whatsapp_creds = getattr(person_conf.creds, "whatsapp", None) if person_conf.creds else None
             if whatsapp_creds and getattr(whatsapp_creds, "phone_number", None):
@@ -154,6 +183,7 @@ class IdentityResolver:
                 person_name=person.name,
                 person_email=person.email,
                 person_role=self._normalize_role(person.role),
+                display_name_override=self._discord_nick_by_email.get(person.email.lower()),
             )
         return IdentityContext()
 
@@ -184,6 +214,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
+                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
                         platform="terminal",
                         platform_user_id=email,
                     )
@@ -199,6 +230,7 @@ class IdentityResolver:
                             person_name=person.name,
                             person_email=person.email,
                             person_role=self._normalize_role(person.role),
+                            display_name_override=self._discord_nick_by_email.get(person.email.lower()),
                             platform="telegram",
                             platform_user_id=str(uid_int),
                         )
@@ -214,6 +246,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
+                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
                         platform="web",
                         platform_user_id=email,
                     )
@@ -228,6 +261,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
+                        display_name_override=self._discord_nick_by_user_id.get(discord_uid_str),
                         platform="discord",
                         platform_user_id=discord_uid_str,
                     )
@@ -247,6 +281,7 @@ class IdentityResolver:
                         person_name=person.name,
                         person_email=person.email,
                         person_role=self._normalize_role(person.role),
+                        display_name_override=self._discord_nick_by_email.get(person.email.lower()),
                         platform="whatsapp",
                         platform_user_id=normalized_phone,
                     )

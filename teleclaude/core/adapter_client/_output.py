@@ -295,10 +295,15 @@ class _OutputMixin:  # pyright: ignore[reportUnusedClass]
             terminal_email = (session_to_use.human_email or "").strip()
             if terminal_email:
                 terminal_identity = resolver.resolve_by_email(terminal_email)
+                terminal_display_name = getattr(terminal_identity, "display_name", None)
                 normalized_actor_name = (
-                    (terminal_identity.person_name or "").strip()
-                    or (terminal_identity.person_email or "").strip()
-                    or terminal_email
+                    terminal_display_name.strip()
+                    if isinstance(terminal_display_name, str) and terminal_display_name.strip()
+                    else (
+                        (terminal_identity.person_name or "").strip()
+                        or (terminal_identity.person_email or "").strip()
+                        or terminal_email
+                    )
                 )
 
         if not normalized_actor_name:
