@@ -77,6 +77,25 @@ def test_after_cascade_picks_first_visible_entry() -> None:
 
 
 @pytest.mark.unit
+def test_after_cycle_does_not_loop_one_item_becomes_root() -> None:
+    """When two items reference each other via `after`, the first processed gets
+    a parent and the second is forced to root by the cycle guard — no infinite
+    recursion, predictable shape."""
+    nodes = build_dep_tree(
+        [
+            _todo("a", after=["b"]),
+            _todo("b", after=["a"]),
+        ]
+    )
+    # Processing order: a sees no parent_map entry for b → a.parent = b.
+    # Then b sees parent_map[a] = b → cycle → b stays root.
+    assert [(node.slug, node.depth, node.is_last, node.tree_lines) for node in nodes] == [
+        ("b", 0, True, []),
+        ("a", 1, True, [True]),
+    ]
+
+
+@pytest.mark.unit
 def test_topo_sort_siblings_falls_back_to_input_order_for_cycles_and_external_dependencies() -> None:
     assert _topo_sort_siblings(["x", "y"], {"x": ["y"], "y": ["x"]}) == ["x", "y"]
     assert _topo_sort_siblings(["x", "y"], {"x": ["outside"]}) == ["x", "y"]
