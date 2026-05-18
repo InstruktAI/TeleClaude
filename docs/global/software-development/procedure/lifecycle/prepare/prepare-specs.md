@@ -9,6 +9,25 @@ visibility: 'public'
 
 # Prepare Specs — Procedure
 
+> **DEPRECATED — merged into intake.**
+>
+> Per `software-development/principle/documentation-first-development`
+> Implication #9, there is no separate test-specs phase. Gherkin acceptance
+> scenarios live in the feature spec snippet and are authored during the
+> intake phase, alongside the business value framing. The hub-and-spoke
+> model removes the structural reason this phase existed — there is no
+> separate `test-specs` workflow.artifact to produce.
+>
+> The state machine no longer transitions through a test-specs phase.
+> Orchestrators MUST NOT dispatch a `next-prepare-specs` worker. If a
+> feature spec's Gherkin needs refinement after intake (because
+> architecture-phase domain spec updates surfaced new scenarios), the
+> architecture worker appends to the feature spec snippet in the same
+> phase — no separate cycle needed.
+>
+> This file is retained for historical reference only and will be removed
+> in a future cleanup.
+
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/testing.md
@@ -17,19 +36,28 @@ visibility: 'public'
 
 ## Goal
 
-Your focus this turn is the test-specs phase: derive a Gherkin
-(`Given / When / Then`) behavioral contract from the PRD's outcome-shaped
-success criteria and the architecture's testable quality implications. The
-wider prepare lifecycle is still yours; this phase is one focused part of it.
+DEPRECATED — see banner above. The original test-specs phase derived a
+Gherkin (`Given / When / Then`) behavioral contract from the PRD into a
+separate `test-specs` workflow.artifact. In the doc-first model, Gherkin
+is authored DIRECTLY into the feature spec snippet during intake; no
+separate phase exists.
+
+### Output target (deprecated)
+
+This phase has no output target. The Gherkin behavioral contract lives in
+the **feature spec snippet** at
+`docs/project/spec/feature/<context>/<concept-name>.md` — authored during
+intake. Architecture phase may append to it. No phase dedicated to
+Gherkin production exists.
 
 ### Outcome
 
-Derive a `test-specs` artifact — a Gherkin (`Given / When / Then`) behavioral
-contract — from the PRD's outcome-shaped success criteria and the architecture's
-testable quality implications. The artifact is the behavioral contract a build
-worker later translates into project-specific tests. Test-specs is the **only**
-phase that produces Gherkin in the prepare lifecycle; the PRD carries outcomes
-in PO language, not `Given / When / Then`.
+Confirm the feature spec snippet(s) for this slug contain complete Gherkin
+scenarios covering every PRD success criterion + every architectural change
+worth a behavioral assertion. Refine where gaps exist. The feature spec is
+the binding behavioral contract a build worker reads and an executable test
+suite later mirrors. Test-specs phase is a CHECKPOINT on Gherkin
+completeness, not a re-author.
 
 ## Preconditions
 

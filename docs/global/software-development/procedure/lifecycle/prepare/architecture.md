@@ -21,17 +21,49 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is the architecture phase: ground the approved PRD in the
-codebase and produce an `architecture` artifact for downstream test-specs and
-plan derivation. The wider prepare lifecycle is still yours; this phase is one
-focused part of it.
+codebase, identify which bounded contexts and which cross-cutting concerns the
+delivery touches, and author the architectural changes DIRECTLY into the
+appropriate doc snippets. The wider prepare lifecycle is still yours; this
+phase is one focused part of it.
+
+### Output targets (per `documentation-first-development`)
+
+Architecture is NOT a separate workflow.artifact. Design decisions that survive
+delivery land in docs across two locations — route per change:
+
+- **Per-context architectural changes** → the affected domain spec snippet at
+  `docs/project/spec/domain/<context>.md`. Examples: a new aggregate, a new
+  event the context emits, a refined invariant, a new ubiquitous-language term
+  inside the context, an internal-model adjustment.
+- **Cross-cutting architectural changes** → the architecture design docs at
+  `docs/project/design/architecture-v2/*.md`. Examples: a new bounded context,
+  a communication-pattern change (touches `event-bus-transports`), a
+  transport-rules change, a context-map shift (touches `context-map` + likely
+  `services.md`), a deployment-shape change (touches `file-layout`).
+- **A change with both faces** → updates both. A new event family used across
+  contexts adds the event to the producing context's domain spec AND adds it
+  to `project/spec/domain/event-catalog` AND may add a new context-map edge if
+  the consumer set changes.
+
+Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
+
+For decisions that DON'T survive delivery (implementation-tactic choices,
+library selection, internal sequencing within a build), keep them ephemeral.
+Add them to the next phase's `implementation-plan` workflow.artifact or to the
+PRD risks section — they're scaffolding, not contract.
+
+There is no `architecture` workflow.artifact. The doc updates ARE the
+architecture record.
 
 ### Outcome
 
 Take the approved PRD and ground it in the codebase. Identify which existing
-services and event flows the work touches, which platform-quality-flavors apply,
-which new components (if any) need to exist, and how the work decomposes
-architecturally. Produce an **architecture artifact** — a code-grounded
-technical brief that bridges product intent and implementation plan.
+services + event flows the work touches, which cross-cutting concerns are
+affected, which new components (if any) need to exist, and how the work
+decomposes architecturally. Author durable design decisions DIRECTLY into the
+appropriate doc snippets (domain spec, design doc, or both per the routing
+above). Note ephemeral tactic decisions on the implementation-plan artifact
+(next phase) or in the PRD's brownfield section.
 
 ## Preconditions
 

@@ -107,6 +107,68 @@ The product owner habit of "update the doc to anchor my thinking" is welcome —
 
 A snippet marked `actual` claims to describe the current system. If the code changes and the snippet doesn't, the snippet is wrong. The reviewer of any code change checks whether the change invalidates any `actual` snippet; if it does, the change either updates the snippet (preferred) or marks the snippet `target` with the change's slug as the deliverer-of-the-update. Stale `actual` snippets are defects.
 
+### 8. Feature specs are the hub; domain specs are the spokes
+
+Documentation organizes around two snippet kinds with one-directional flow:
+
+- **Feature spec** (the hub) — describes a feature in business-value terms, contains Gherkin acceptance scenarios, points at the bounded contexts it touches. Lives at `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named, NEVER slug-named — the snippet identity is the domain concept it describes, not the todo that authored or refined it.
+- **Domain spec** (the spokes) — describes a bounded context's ubiquitous language, aggregates, events, and design. Its Use cases section indexes the feature specs that touch this context.
+
+Authoring flows from hub to spokes: an intake agent processes a human's input as a feature need (the hub), then identifies and updates the affected domain specs (the spokes). The reverse direction (spokes inferring hubs) is forbidden — domain concepts don't carry business value standalone; that's the feature's job.
+
+**`delivered_by` is many-to-many.** A single delivery may shape multiple snippets; a single snippet may be shaped over time by multiple deliveries. The `delivered_by` list accumulates slugs while in flight; each slug clears as it delivers. The snippet flips to `actual` only when the list empties.
+
+**Architecture is NOT a separate workflow.artifact.** Design decisions that survive delivery land in docs across two locations:
+- **Per-context architectural changes** (new aggregates, new events, refined invariants, internal model adjustments) → the affected domain spec snippet at `docs/project/spec/domain/<context>.md`
+- **Cross-cutting architectural changes** (new bounded context, communication patterns, transport rules, context-map shifts, deployment shape) → the architecture design docs at `docs/project/design/architecture-v2/*.md`
+
+Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. There is no `architecture` workflow.artifact and no `architecture` snippet kind; the doc updates ARE the architecture record. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces.
+
+**PRDs do not survive as snippets.** The PRD captures work-guidance for one delivery (MoSCoW, Why, risks). It is scaffolding. It stays a workflow.artifact and retires after delivery. Only the behavioral contract (Gherkin in feature spec) and the design (updates in domain specs) become docs.
+
+### 9. Prepare workers author directly to the docs layer
+
+The intake and architecture phases of the prepare lifecycle write DIRECTLY to docs — feature spec snippets (intake), domain spec snippets and architecture design docs (architecture). No intermediate workflow.artifacts that later "migrate." The doc IS the source.
+
+**Gherkin lives in the feature spec snippet, authored during intake.** There is no separate `test-specs` phase. The intake worker authors business value + Gherkin acceptance scenarios in the same feature spec snippet, in the same phase. The v1 test-specs phase was artifact-shaped ceremony that the hub-and-spoke model removes.
+
+Ephemeral workflow.artifacts (PRD, implementation plan, review findings, drift analysis, deferrals) remain in `workflow.artifacts` because they're process scaffolding, not behavioral contract.
+
+The prepare state machine still has phases; each phase's OUTPUT target shifts to docs (or stays workflow.artifact for the scaffolding). A phase with nothing to author (e.g., architecture phase on a Gherkin-only feature enrichment) produces no doc change and advances naturally.
+
+### 10. Migration versioning via `applies_to`
+
+When a project has a v1 → v2 (or vN → vN+1) migration boundary, snippets carry an `applies_to` frontmatter field marking which implementation version they describe:
+
+- **`applies_to: v1`** — describes v1 behavior. Authoritative until cutover for that area; historical record after.
+- **`applies_to: v2`** — describes v2 behavior.
+- **`applies_to: both`** — shared contract honored by both implementations (e.g., a transport pattern v1 and v2 both implement).
+
+Combined with `status: actual | target | mixed`, the snippet pair `(applies_to, status)` becomes the migration tracker:
+
+| `applies_to` | `status` | Meaning |
+|---|---|---|
+| `v1` | `actual` | v1 does this; v2 hasn't matched yet |
+| `both` | `actual` | v2 ships parallel-capable; both honor the contract |
+| `v2` | `actual` | Cutover landed; v1 retired this feature |
+| `v2` | `target` | v2 will do this; not yet shipped/cutover |
+
+Migration is COMPLETE when zero snippets are `applies_to: v1`. The system becomes measurable, queryable, and never guessing about parity.
+
+Required on design docs under `docs/project/design/architecture/` (v1), `architecture-v2/` (v2), and on feature snippets under `docs/project/spec/feature/`. Path-vs-frontmatter mismatch is a lint error.
+
+### 11. Multi-pillar features split at intake
+
+A feature whose acceptance scenarios cross multiple bounded contexts (pillars) gets handled by the intake phase via proactive split:
+
+1. Intake authors ONE feature spec snippet capturing the cross-context business value and end-to-end Gherkin.
+2. Intake identifies which contexts the feature touches (the pillars).
+3. If the per-pillar slices could deliver independently (the typical case for multi-pillar features), intake recommends `telec todo split`: a container todo holds the feature identity; per-pillar child todos handle each context's implementation slice. Each child carries its own PRD workflow.artifact (its slice's scope) but the children all reference the SAME feature spec via `delivered_by`. The feature spec's `delivered_by` accumulates every child slug.
+4. Children deliver independently; the feature spec flips `target → actual` only when ALL children deliver (per the many-to-many accumulation rule above).
+5. If the slices MUST land together (e.g., a new event taxonomy where every consumer needs the coordinated update on the same day), intake keeps a single todo with multiple per-context commits. Independence is the discriminator.
+
+The human reviewer confirms the split decomposition before child todos are dispatched. Auto-splitting without review risks fragmenting features the human wanted atomic.
+
 ## Tensions
 
 - **`target` snippets that never deliver.** The slug they point to may be deferred, frozen, or abandoned. The system flags this: a `target` snippet whose `delivered_by` contains only frozen / removed slugs is invalid. The author must either revive the delivery (unfreeze the slug) or convert the snippet back to `actual` (reverting the target content to reflect current state) — design that nobody is actually committing to deliver doesn't belong in the doc layer.

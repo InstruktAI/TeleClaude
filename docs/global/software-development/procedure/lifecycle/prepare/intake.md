@@ -21,16 +21,75 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is the intake phase: interview the Product Owner, fill
-the PRD template, and write the PRD. The wider prepare lifecycle is still
-yours; this phase is one focused part of it.
+the PRD template, write the PRD, AND author/enrich the feature spec snippet
+that captures the business value + Gherkin acceptance scenarios in the
+durable docs layer. The wider prepare lifecycle is still yours; this phase
+is one focused part of it.
+
+### Output targets (per `documentation-first-development`)
+
+- **`prd` workflow.artifact (scaffolding, ephemeral)** — captures work
+  guidance for THIS delivery: MoSCoW scope, Why, affected actors, risks,
+  brownfield context. Stays in `workflow.artifacts`. Retires after delivery.
+- **Feature spec snippet (durable contract, hub)** — author or enrich the
+  feature spec(s) at
+  `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
+  NEVER slug-named. Contains the business value summary and the Gherkin
+  acceptance scenarios. Frontmatter `status: target`,
+  `delivered_by` accumulates this slug. The Gherkin lives here from intake
+  onward; the test-specs phase later VERIFIES it rather than re-authoring.
+- **Domain spec touchpoints** — if intake identifies that a delivery WILL
+  require domain spec updates (new aggregates, new events, refined
+  invariants), note them in the PRD scope. The architecture phase authors
+  those updates.
+
+The PRD is scaffolding. The feature spec snippet is the durable behavioral
+contract that survives delivery.
 
 ### Outcome
 
 Take a human's intent (in-session conversation, an existing dumped input, or
-anything in between) and produce a **PRD (Product Requirements Document)** — a
-structured artifact capturing what the user actually wants, with success
-criteria, scope, constraints, and any open intent questions, ready for
-downstream derivation.
+anything in between) and produce:
+1. A **PRD (Product Requirements Document)** workflow.artifact — structured
+   work guidance, ready for human approval.
+2. An authored/enriched **feature spec snippet** at the concept-named path
+   above, containing the business value framing + initial Gherkin
+   acceptance scenarios. This snippet is the durable hub the rest of the
+   lifecycle (and future deliveries) reference.
+3. If the input touches MULTIPLE pillars (bounded contexts) with
+   independently-deliverable slices, a **proactive split** of this todo into
+   a container + per-pillar children (see Pillar identification + split
+   below).
+
+### Pillar identification + split (multi-pillar features)
+
+During grounding, identify which bounded contexts the feature touches. The
+list of pillars comes from `project/spec/domain/context-map` and the per-
+context domain specs.
+
+Decision rule:
+
+- **Single-pillar feature** → regular todo flow. Author the feature spec under
+  the touched context's directory; one todo carries the work.
+- **Multi-pillar feature, slices INDEPENDENT** → propose `telec todo split`
+  to the human. Create a container todo holding the feature identity; one
+  child per pillar for the per-context implementation slice. All children's
+  `delivered_by` accumulates on the SAME feature spec snippet (chosen primary
+  context for the feature). Each child has its own PRD workflow.artifact for
+  its slice's scope. Children deliver independently; feature spec flips
+  `target → actual` only when ALL children deliver.
+- **Multi-pillar feature, slices MUST land together** (e.g., a new event
+  taxonomy where every consumer needs the coordinated update on the same
+  day) → keep a single todo with multiple per-context commits. Independence
+  is the discriminator.
+
+The human reviewer confirms the split decomposition before child todos are
+dispatched. Do not split without explicit human approval — auto-splitting
+risks fragmenting features the human wanted atomic.
+
+When splitting, the feature spec snippet's `delivered_by` lists the children
+(not the container). The container's role is to hold the feature identity
+and reach `delivered` when all children deliver.
 
 The stakeholder being interviewed is the **Product Owner role** — either the
 real human directly, or a dispatched AI PO emulator standing in. The emulator

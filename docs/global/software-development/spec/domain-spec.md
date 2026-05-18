@@ -102,34 +102,28 @@ One subsubsection per consumed event. Each entry:
 - **Reaction** — what this context does in response, in domain terms
 - **Failure handling** — what happens if the reaction fails (retry, dead-letter, compensating event)
 
-#### Use cases
+#### Use cases (index of feature specs)
 
-One subsubsection per use case. Each use case in one of two forms:
+This section is an INDEX. Each entry references a feature spec snippet at `docs/project/spec/feature/<this-context>/<concept-name>.md` that owns the Gherkin acceptance scenarios for one use case touching this context.
 
-**JTBD form (preferred for product-driven use cases):**
+Per `software-development/principle/documentation-first-development`, feature specs are the hub (Gherkin lives there); domain specs are the spokes. The use cases section here lists which feature specs touch this bounded context, with a one-line summary per entry — NOT embedded Gherkin.
 
-```
-When <situation>, I want to <motivation>, so I can <expected outcome>.
-
-Domain steps:
-1. <step in ubiquitous language>
-2. ...
-
-Acceptance:
-- <condition that proves the use case is satisfied>
-```
-
-**Gherkin form (preferred for technical / event-driven use cases):**
+Format:
 
 ```
-Given <context state>
-And <additional state>
-When <action>
-Then <observable outcome>
-And <additional outcome>
+- **<feature-concept-name>** — `docs/project/spec/feature/<this-context>/<concept-name>.md` — one-line summary of the use case in domain language
 ```
 
-Use cases describe WHAT the system does for whom, not HOW. Implementation details (frameworks, libraries, storage) belong in the implementation architecture docs, not the domain spec.
+Example:
+
+```
+- **session-restart-recovery** — `docs/project/spec/feature/agent_runtime/session-restart-recovery.md` — sessions survive daemon restart with reconstructed SessionRuntime actors
+- **operation-tracking** — `docs/project/spec/feature/agent_runtime/operation-tracking.md` — long-running task receipts persist across restarts and signal completion via events
+```
+
+When a new feature touches this context, a new entry is added here AND the corresponding feature spec is authored at the referenced path.
+
+Detailed Gherkin scenarios live in the feature spec, not here. Detailed JTBD / business value lives in the feature spec, not here. The domain spec stays compact because its job is to describe the bounded context's model + index its features — not to duplicate scenario detail.
 
 #### Context map position
 

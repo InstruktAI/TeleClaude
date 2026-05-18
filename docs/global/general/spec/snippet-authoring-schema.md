@@ -30,6 +30,7 @@ Frontmatter (optional):
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 - `status` — lifecycle state of the snippet relative to the implementation. One of `actual`, `target`, or `mixed`. Defaults to `actual` when omitted. See `software-development/principle/documentation-first-development` for the discipline.
 - `delivered_by` — list of todo slugs that will materialize this snippet's intended state. REQUIRED when `status` is `target` or `mixed`. FORBIDDEN when `status` is `actual`. Each slug must exist in the project roadmap. When all listed slugs reach `delivered`, the snippet is flipped to `status: actual` and `delivered_by` is removed (enforced by `telec sync`; failure to flip is a lint error).
+- `applies_to` — for projects with a v1 → v2 migration boundary (TeleClaude specifically). One of `v1`, `v2`, or `both`. Marks which implementation version the snippet describes. `v1` = describes v1 behavior (authoritative until cutover, then historical). `v2` = describes v2 behavior. `both` = shared contract honored by both implementations. Required on snippets under `docs/project/design/architecture/` (path → `v1`), `docs/project/design/architecture-v2/` (path → `v2`), and on per-feature snippets under `docs/project/spec/feature/`. Optional elsewhere. Path-vs-frontmatter mismatch is a lint error.
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
 
@@ -67,6 +68,8 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/global/general/{taxonomy}/` — on-demand cross-domain documentation.
 - `docs/global/{domain}/{taxonomy}/` — domain-specific (e.g., `software-development`).
 - `docs/project/{taxonomy}/` — project-scoped documentation.
+- `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
+- `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
 Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
