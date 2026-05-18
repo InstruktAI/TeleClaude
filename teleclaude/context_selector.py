@@ -650,7 +650,7 @@ def _build_phase1_output(
     parts = [
         "# PHASE 1: Snippet Index (IDs + descriptions)",
         "# Review the snippets below and select the IDs you need.",
-        f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(DOMAIN_SCOPES)}>",
+        f"# Filter with --areas <{'|'.join(TAXONOMY_TYPES)}> and/or --domains <{'|'.join(DOMAIN_SCOPES)}> (omit for all)",
         "",
     ]
     ordered = sorted(

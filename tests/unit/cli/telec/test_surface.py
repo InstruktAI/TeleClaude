@@ -35,6 +35,12 @@ def test_docs_index_flags_render_canonical_enums() -> None:
 
     areas_desc = by_long["--areas"].desc
     domains_desc = by_long["--domains"].desc
+    args_line = index_cmd.args
 
-    assert "|".join(TAXONOMY_TYPES) in areas_desc
-    assert "|".join(DOMAIN_SCOPES) in domains_desc
+    expected_areas = "|".join(TAXONOMY_TYPES)
+    expected_domains = "|".join(DOMAIN_SCOPES)
+
+    assert expected_areas in areas_desc
+    assert expected_domains in domains_desc
+    assert expected_areas in args_line
+    assert expected_domains in args_line

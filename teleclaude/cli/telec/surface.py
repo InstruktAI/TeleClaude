@@ -400,13 +400,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args="[--baseline-only] [--third-party] [--areas <types>] [--domains <names>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>]",
                 flags=[
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
                     Flag("--third-party", "-t", "Include third-party docs"),
-                    Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)})"),
-                    Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)})"),
+                    Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)}); omit for all"),
+                    Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)}); omit for all"),
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
@@ -419,6 +419,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
         notes=[
             "Two-phase flow: use 'telec docs index' to discover IDs, then 'telec docs get <id...>' to fetch content.",
+            "Omitting --areas and/or --domains returns all values for that dimension; pass a comma-separated subset to filter.",
             "Example phase 1: telec docs index --areas policy,procedure --domains software-development",
             "Example phase 2: telec docs get software-development/policy/testing project/spec/command-surface",
         ],
