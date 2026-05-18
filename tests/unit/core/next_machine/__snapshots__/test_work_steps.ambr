@@ -1,9 +1,42 @@
 # serializer version: 1
+# name: test_build_complete_claim_fail_no_builder_surfaces_error
+  '''
+  ERROR: BUILD_GATE_FAILED
+  Build gates failed for test-slug and no live builder session exists to relay output. Manual intervention required.
+  
+  gate failed
+  
+  NEXT: telec todo work test-slug
+  '''
+# ---
+# name: test_build_complete_claim_fail_returns_fix_relay_script
+  '''
+  BUILD GATE FAILED: test-slug
+  
+  Execute in order:
+  
+  telec sessions send builder-123 "Build gates failed on your build_complete claim for test-slug. Fix the failures and re-stamp build_complete.
+  
+  FAILED tests/foo.py"
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the builder reports idle after re-stamping, call telec todo work test-slug.
+  '''
+# ---
 # name: test_build_complete_review_dispatch_note_matches_bug_todo
   'Bug artifact contract for bug-slug: bug is the mandate for this fix. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
 # ---
 # name: test_build_complete_review_dispatch_note_matches_standard_prepared_todo
   'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
+# ---
+# name: test_build_complete_round_limit_message_has_no_suggestion_floor
+  '''
+  ERROR: REVIEW_ROUND_LIMIT
+  Review rounds exceeded for test-slug: current=99, max=3. Per lifecycle/work/review severity schema and general/procedure/orchestration Review Round Limit Handling: round limit is not an escape hatch. The schema has three tiers (Requirement-Violation, Critical, Important) and every tier blocks the verdict. Approve is permitted only when every finding is resolved. If any finding remains, keep review=changes_requested; if the loop is genuinely stuck, escalate to the human with the accumulated findings. Read review-findings and verify.
+  
+  NEXT: telec todo artifacts read test-slug review-findings
+  '''
 # ---
 # name: test_build_started_dispatch_note_matches_bug_todo
   'Bug artifact contract for bug-slug: bug is the mandate for this fix. Start implementation now. When the build is committed and ready for review, run `telec todo stamp bug-slug --build-complete`.'
@@ -16,4 +49,147 @@
 # ---
 # name: test_build_started_dispatch_note_matches_standard_prepared_todo
   'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp todo-slug --build-complete`.'
+# ---
+# name: test_build_started_dispatches_when_no_builder_exists
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  PARALLELIZATION (pick the one matching your agent choice; append to --additional-context):
+  - claude:
+      "Independent sub-tasks MUST be parallelized via TeamCreate — one team, multiple workers in a single call. Sequential dispatch of independent work is a failure mode; default to TeamCreate whenever two or more sub-tasks have no data dependency."
+  - codex:
+      "When work decomposes into independent subtasks, immediately spawn bounded explorer/worker sub-agents for them and keep the critical path moving locally. Do not serialize non-blocking discovery, implementation, or verification; wait only when a result blocks integration, then merge/close agents."
+  - gemini:
+      "Mandate: Identify independent sub-tasks and concurrently delegate them to sub-agents using `invoke_agent` in a single turn. Ensure parallel sub-agents do not mutate the same files; otherwise, execute them simultaneously without setting `wait_for_previous`."
+  
+  Dispatch metadata: command="/next-build" args="test-slug" project="/project" subfolder="trees/test-slug"
+  
+  telec sessions run --command "/next-build" --args "test-slug" --project "/project"   --agent "<your selection>" --mode "<your selection>" --subfolder "trees/test-slug"
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER IDLES:
+  Call telec todo work test-slug. The state machine emits the next action after the worker has stamped `telec todo stamp test-slug --build-complete`.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Prepared artifact contract for test-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp test-slug --build-complete`.
+  '''
+# ---
+# name: test_build_started_rejects_pre_prepared_lifecycle_phase
+  tuple(
+    'NOT_PREPARED',
+    "test-slug is not ready for work: lifecycle_phase 'plan_review' is before 'prepared'. Run telec todo prepare test-slug before entering work.",
+  )
+# ---
+# name: test_build_started_waits_for_builder_completion_stamp
+  '''
+  BUILDER ACTIVE: test-slug
+  
+  Builder session sess-123 has not stamped build completion yet. Wait for it to run `telec todo stamp test-slug --build-complete`, then call telec todo work test-slug.
+  '''
+# ---
+# name: test_finalize_ready_claim_remote_mismatch_blocks
+  '''
+  ERROR: FINALIZE_REMOTE_MISMATCH
+  finalize_ready: remote branch 'test-slug' ('deadbeef') does not match local branch ('cafebabe') — push first, then re-stamp finalize_ready
+  
+  NEXT: telec todo work test-slug
+  '''
+# ---
+# name: test_finalize_ready_claim_stale_sha_blocks
+  '''
+  ERROR: FINALIZE_STALE_CLAIM
+  finalize_ready: stamped SHA ('oldsha') does not match current worktree HEAD ('newsha') — the branch advanced after the claim was stamped. Re-stamp finalize_ready.
+  
+  NEXT: telec todo work test-slug
+  '''
+# ---
+# name: test_finalize_ready_claim_uncommitted_changes_blocks
+  '''
+  ERROR: FINALIZE_UNCOMMITTED
+  finalize_ready: worktree trees/test-slug has uncommitted changes — commit before finalizing
+  
+  NEXT: telec todo work test-slug
+  '''
+# ---
+# name: test_review_changes_requested_relay_message_addresses_every_finding
+  '''
+  REVIEW CHANGES REQUESTED: test-slug
+  
+  Execute in order:
+  
+  Tell the reviewer to start a direct conversation with the fixer:
+  telec sessions send builder-1 "A fixer is active at builder-1. Start a direct conversation: telec sessions send builder-1 '<your findings summary>' --direct. Review requested changes for test-slug. Findings artifact: `review-findings`. Target: source code in the worktree. Required read: software-development/procedure/lifecycle/fix-review-findings. Address every Requirement-Violation, Critical, and Important finding — anything less keeps the verdict at REQUEST CHANGES per the severity schema in lifecycle/work/review. Requirement-Violation findings in particular indicate a stated requirement's success criteria are not satisfied in the delivery; fix the narrowing or the weak verification, do not argue severity. When every finding is resolved, commit the fixes and run `telec todo stamp test-slug --build-complete`. Read findings via: telec todo artifacts read test-slug review-findings Collaborate until all findings are resolved, then persist the full review-findings artifact with telec todo artifacts write test-slug review-findings <content> and set the verdict by arithmetic: APPROVE only when unresolved Requirement-Violation, Critical, and Important counts are all zero. Report FIX COMPLETE." (you will use regular send, NOT --direct)
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  Wait for fixer to complete (monitor via heartbeat; do not poll continuously).
+  Wait for reviewer session builder-1 to report idle.
+  When the signal arrives, call telec todo work test-slug.
+  '''
+# ---
+# name: test_review_changes_requested_tells_reviewer_to_open_direct_builder_link
+  '''
+  REVIEW CHANGES REQUESTED: test-slug
+  
+  Execute in order:
+  
+  Tell the reviewer to start a direct conversation with the fixer:
+  telec sessions send reviewer-1 "A fixer is active at builder-1. Start a direct conversation: telec sessions send builder-1 '<your findings summary>' --direct. Review requested changes for test-slug. Findings artifact: `review-findings`. Target: source code in the worktree. Required read: software-development/procedure/lifecycle/fix-review-findings. Address every Requirement-Violation, Critical, and Important finding — anything less keeps the verdict at REQUEST CHANGES per the severity schema in lifecycle/work/review. Requirement-Violation findings in particular indicate a stated requirement's success criteria are not satisfied in the delivery; fix the narrowing or the weak verification, do not argue severity. When every finding is resolved, commit the fixes and run `telec todo stamp test-slug --build-complete`. Read findings via: telec todo artifacts read test-slug review-findings Collaborate until all findings are resolved, then persist the full review-findings artifact with telec todo artifacts write test-slug review-findings <content> and set the verdict by arithmetic: APPROVE only when unresolved Requirement-Violation, Critical, and Important counts are all zero. Report FIX COMPLETE." (you will use regular send, NOT --direct)
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  Wait for fixer to complete (monitor via heartbeat; do not poll continuously).
+  Wait for reviewer session reviewer-1 to report idle.
+  When the signal arrives, call telec todo work test-slug.
+  '''
+# ---
+# name: test_review_changes_requested_waits_for_fix_completion_stamp_after_commits
+  '''
+  FIX WORK NOT STAMPED: test-slug
+  
+  Builder session builder-1 has commits after review baseline aaa111 at HEAD bbb222, but has not stamped build completion. Wait for it to run `telec todo stamp test-slug --build-complete`, then call telec todo work test-slug.
+  '''
 # ---

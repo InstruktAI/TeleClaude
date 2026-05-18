@@ -45,7 +45,7 @@ def _base_state(*, kind: str = "todo", lifecycle_phase: str = "build_started") -
 
 
 @pytest.mark.asyncio
-async def test_build_started_waits_for_builder_completion_stamp() -> None:
+async def test_build_started_waits_for_builder_completion_stamp(snapshot: SnapshotAssertion) -> None:
     """A live builder owns the explicit build_complete stamp."""
     state = _base_state()
 
@@ -60,12 +60,11 @@ async def test_build_started_waits_for_builder_completion_stamp() -> None:
         )
 
     assert keep_going is False
-    assert "BUILDER ACTIVE" in instruction
-    assert "telec todo stamp test-slug --build-complete" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_started_dispatches_when_no_builder_exists() -> None:
+async def test_build_started_dispatches_when_no_builder_exists(snapshot: SnapshotAssertion) -> None:
     """When no builder session exists, dispatch a fresh one."""
     state = _base_state()
 
@@ -83,18 +82,19 @@ async def test_build_started_dispatches_when_no_builder_exists() -> None:
         )
 
     assert keep_going is False
-    assert "STEP 1 - DISPATCH" in instruction
+    assert instruction == snapshot
 
 
 async def _capture_build_dispatch_request(
     kind: str,
 ) -> ToolCallRequest:
     state = _base_state(kind=kind)
+    dispatch = object()
 
     with (
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
         patch(f"{_WORK_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_WORK_STEPS}.format_tool_call", return_value="dispatch") as format_tool_call_mock,
+        patch(f"{_WORK_STEPS}.format_tool_call", return_value=dispatch) as format_tool_call_mock,
     ):
         keep_going, instruction = await _work_step_build_started(
             db=_mock_db(),
@@ -106,7 +106,7 @@ async def _capture_build_dispatch_request(
         )
 
     assert keep_going is False
-    assert instruction == "dispatch"
+    assert instruction is dispatch
     request = format_tool_call_mock.call_args.args[0]
     assert isinstance(request, ToolCallRequest)
     return request
@@ -147,6 +147,7 @@ async def test_build_started_dispatch_note_matches_plan_only_todo(snapshot: Snap
 async def _capture_review_dispatch_request(
     kind: str,
 ) -> ToolCallRequest:
+    dispatch = object()
     state = {
         "kind": kind,
         "lifecycle_phase": "build_complete",
@@ -166,7 +167,7 @@ async def _capture_review_dispatch_request(
         ),
         patch(f"{_WORK_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
         patch(f"{_WORK_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_WORK_STEPS}.format_tool_call", return_value="dispatch") as format_tool_call_mock,
+        patch(f"{_WORK_STEPS}.format_tool_call", return_value=dispatch) as format_tool_call_mock,
     ):
         keep_going, instruction = await _work_step_build_complete(
             db=_mock_db(),
@@ -180,7 +181,7 @@ async def _capture_review_dispatch_request(
         )
 
     assert keep_going is False
-    assert instruction == "dispatch"
+    assert instruction is dispatch
     request = format_tool_call_mock.call_args.args[0]
     assert isinstance(request, ToolCallRequest)
     return request
@@ -234,7 +235,7 @@ async def test_build_started_bug_skips_readiness_gate_and_dispatches() -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_started_rejects_pre_prepared_lifecycle_phase() -> None:
+async def test_build_started_rejects_pre_prepared_lifecycle_phase(snapshot: SnapshotAssertion) -> None:
     """Pre-prepared lifecycle_phase produces NOT_PREPARED at the work-step entry.
 
     Integration coverage for the readiness gate wiring in _work_step_build_started:
@@ -261,15 +262,16 @@ async def test_build_started_rejects_pre_prepared_lifecycle_phase() -> None:
     assert instruction is blocked
     format_error_mock.assert_called_once()
     args = format_error_mock.call_args
-    assert args.args[0] == "NOT_PREPARED"
-    assert "before 'prepared'" in args.args[1]
+    assert args.args == snapshot
 
 
 # ── _work_step_review_changes_requested: waiting ─────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_waits_for_fix_completion_stamp_after_commits() -> None:
+async def test_review_changes_requested_waits_for_fix_completion_stamp_after_commits(
+    snapshot: SnapshotAssertion,
+) -> None:
     """Committed fixes are evidence only until the builder stamps completion."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
@@ -295,12 +297,13 @@ async def test_review_changes_requested_waits_for_fix_completion_stamp_after_com
         )
 
     assert keep_going is False
-    assert "FIX WORK NOT STAMPED" in instruction
-    assert "telec todo stamp test-slug --build-complete" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_relay_message_addresses_every_finding() -> None:
+async def test_review_changes_requested_relay_message_addresses_every_finding(
+    snapshot: SnapshotAssertion,
+) -> None:
     """Relay to a live builder names every finding tier and forbids the Suggestion bucket.
 
     Pins the Severity tier overhaul: the message must instruct the builder to address
@@ -331,13 +334,13 @@ async def test_review_changes_requested_relay_message_addresses_every_finding() 
         )
 
     assert keep_going is False
-    assert "REVIEW CHANGES REQUESTED: test-slug" in instruction
-    assert "Requirement-Violation, Critical, and Important" in instruction
-    assert "Suggestion" not in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_review_changes_requested_tells_reviewer_to_open_direct_builder_link() -> None:
+async def test_review_changes_requested_tells_reviewer_to_open_direct_builder_link(
+    snapshot: SnapshotAssertion,
+) -> None:
     """The reviewer, not the orchestrator, initiates the direct fix conversation."""
     state: dict = {
         "lifecycle_phase": "review_changes_requested",
@@ -365,17 +368,12 @@ async def test_review_changes_requested_tells_reviewer_to_open_direct_builder_li
             state=state,
         )
 
-    command_lines = [
-        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
-    ]
     assert keep_going is False
-    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at builder-1.')
-    assert "telec sessions send builder-1 '<your findings summary>' --direct" in command_lines[0]
-    assert not command_lines[0].endswith(" --direct")
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_complete_round_limit_message_has_no_suggestion_floor() -> None:
+async def test_build_complete_round_limit_message_has_no_suggestion_floor(snapshot: SnapshotAssertion) -> None:
     """Round-limit message must not promise approval for Suggestion-only findings.
 
     Pins the orchestration round-limit overhaul: the message must state that round
@@ -400,8 +398,7 @@ async def test_build_complete_round_limit_message_has_no_suggestion_floor() -> N
     )
 
     assert keep_going is False
-    assert "REVIEW_ROUND_LIMIT" in instruction
-    assert "Suggestion" not in instruction
+    assert instruction == snapshot
 
 
 # ── _handle_build_complete_claim ────────────────────────────────────────────
@@ -451,7 +448,7 @@ async def test_build_complete_claim_pass_advances_lifecycle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_build_complete_claim_fail_returns_fix_relay_script() -> None:
+async def test_build_complete_claim_fail_returns_fix_relay_script(snapshot: SnapshotAssertion) -> None:
     """A claim with failing gates clears the claim and emits a fix-relay script to the live builder."""
     state = {
         "build_gate_claim_at": "2026-01-01T00:00:00+00:00",
@@ -472,13 +469,11 @@ async def test_build_complete_claim_fail_returns_fix_relay_script() -> None:
         )
 
     assert keep_going is False
-    assert "BUILD GATE FAILED" in instruction
-    assert "builder-123" in instruction
-    assert "FAILED tests/foo.py" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_build_complete_claim_fail_no_builder_surfaces_error() -> None:
+async def test_build_complete_claim_fail_no_builder_surfaces_error(snapshot: SnapshotAssertion) -> None:
     """A failed claim with no live builder surfaces a manual-intervention error."""
     state = {
         "build_gate_claim_at": "2026-01-01T00:00:00+00:00",
@@ -499,8 +494,7 @@ async def test_build_complete_claim_fail_no_builder_surfaces_error() -> None:
         )
 
     assert keep_going is False
-    assert "BUILD_GATE_FAILED" in instruction
-    assert "Manual intervention required" in instruction
+    assert instruction == snapshot
 
 
 # ── _handle_finalize_ready_claim ────────────────────────────────────────────
@@ -545,7 +539,7 @@ async def test_finalize_ready_claim_wrong_phase_returns_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_uncommitted_changes_blocks() -> None:
+async def test_finalize_ready_claim_uncommitted_changes_blocks(snapshot: SnapshotAssertion) -> None:
     state = {
         "finalize": {"status": "ready", "sha": "cafebabe", "worker_session_id": "w-1"},
         "lifecycle_phase": "review_approved",
@@ -561,11 +555,11 @@ async def test_finalize_ready_claim_uncommitted_changes_blocks() -> None:
         )
 
     assert keep_going is False
-    assert "FINALIZE_UNCOMMITTED" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_remote_mismatch_blocks() -> None:
+async def test_finalize_ready_claim_remote_mismatch_blocks(snapshot: SnapshotAssertion) -> None:
     state = {
         "finalize": {"status": "ready", "sha": "cafebabe", "worker_session_id": "w-1"},
         "lifecycle_phase": "review_approved",
@@ -586,11 +580,11 @@ async def test_finalize_ready_claim_remote_mismatch_blocks() -> None:
         )
 
     assert keep_going is False
-    assert "FINALIZE_REMOTE_MISMATCH" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_stale_sha_blocks() -> None:
+async def test_finalize_ready_claim_stale_sha_blocks(snapshot: SnapshotAssertion) -> None:
     """A claim whose stamped SHA differs from current worktree HEAD is rejected
     even when the three live refs agree among themselves — the branch advanced
     after the claim was stamped, and integrating the wrong commit would be a bug."""
@@ -614,7 +608,7 @@ async def test_finalize_ready_claim_stale_sha_blocks() -> None:
         )
 
     assert keep_going is False
-    assert "FINALIZE_STALE_CLAIM" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
@@ -679,7 +673,7 @@ async def test_finalize_ready_claim_emit_failure_propagates_before_commit() -> N
         patch(f"{_WORK_STEPS}.emit_event", new=AsyncMock(side_effect=RuntimeError("redis down"))),
         patch(f"{_WORK_STEPS}._commit_writer", new=commit),
     ):
-        with pytest.raises(RuntimeError, match="redis down"):
+        with pytest.raises(RuntimeError):
             await _handle_finalize_ready_claim(
                 slug="test-slug",
                 cwd="/project",
