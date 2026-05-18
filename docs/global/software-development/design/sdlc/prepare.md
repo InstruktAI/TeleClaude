@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase design: pair-based discovery, turn-based artifact production, and human approval boundaries.'
+description: 'Prepare phase design: one driving session loads phase-scoped skills in sequence, produces the four prepare artifacts, and submits each derived artifact to a cross-model reviewer. PRD is the only human approval gate.'
 domain: 'software-development'
 id: 'software-development/design/sdlc/prepare'
 scope: 'global'
@@ -15,122 +15,160 @@ visibility: 'public'
 
 ## Purpose
 
-Define how the prepare phase produces the aligned artifacts that downstream work
-must consume.
+Define how the prepare phase produces the aligned artifacts that downstream
+work must consume.
 
-Prepare exists to turn a problem impulse into build-ready truth. It does this
-through a persistent pair of workers who explore the problem together and then
-produce artifacts in turns.
+Prepare exists to turn a problem impulse into build-ready truth. One session
+drives the whole prepare lifecycle. The session loads a phase-scoped skill for
+each step in the chain — intake, architecture, test specs, plan — and does the
+work for that step itself. Each derived artifact is verified by a cross-model
+reviewer running in a separate dispatched session. The PRD is verified by the
+human, who is the sole authority on intent.
 
 ## Inputs/Outputs
 
 **Inputs**
 
-- whatever the todo carries: a brain dump (`input`), existing `requirements`,
-  or any other starting state — all treated as input to the process
+- whatever the todo carries: a brain dump (`input`), existing artifacts, or
+  any other starting state — all treated as input to the process
 - the codebase (ground truth)
 - the roadmap (signal about project direction and adjacent work)
 - applicable documentation and domain context
+- session `additional_context` carrying `human_in_loop: true | false`
 
 **Outputs**
 
-- `requirements`
-- `test-specs`
+- `prd` (intake)
+- `architecture` (when not skipped)
+- `test-specs` (when not skipped)
 - `implementation-plan`
 
 ## Invariants
 
-- `requirements` and `test-specs` remain in the same hot scope.
-- `implementation-plan` is derived from both `requirements` and `test-specs`.
-- Each artifact is only considered ready when the other pair member has reviewed
-  and accepted it.
-- The human approves requirements before downstream work begins.
-- Prepare must not hand downstream work a cold reinterpretation of upstream
-  truth.
-- Automation supplies supporting facts for judgment; it does not decide scope,
-  trade-offs, or design quality on its own.
-- **Gherkin (`Given / When / Then`) belongs in `test-specs`, not in
-  `requirements`.** Requirements success criteria are outcome-shaped in the
-  product owner's language — observable indicators of success without
-  pre-imposing the test author's grammar. Translating those outcomes into
-  Gherkin behavioral contracts is the test-specs phase's job, not intake's.
-  Carrying Gherkin in requirements duplicates the test-specs phase's content
-  and pushes the PO into a downstream author's format.
+- One session drives the whole prepare lifecycle. The same session loads
+  each phase's skill, does the phase's work, advances the state machine, and
+  loads the next skill when the state machine routes there.
+- Each phase has its own focus, sharpened by a hat. Intake = BA hat
+  (`/next-prepare-intake`). Architecture = Architect hat
+  (`/next-prepare-architecture`). Test specs = Test Spec Author hat
+  (`/next-prepare-specs`). Plan = Planner hat (`/next-prepare-plan`). The
+  hat is the loaded skill; the lifecycle awareness underneath persists
+  across hats.
+- Reviewers are cross-model and dispatched. Each derived artifact
+  (architecture, test specs, plan) is reviewed by a separately-dispatched
+  cross-model session. The active phase skill dispatches the reviewer,
+  tails it, and reads its findings and verdict on the next state-machine
+  advance.
+- The PRD is the only human approval gate. The human reviews the PRD and
+  stamps `prd_approved`. Architecture, test specs, and plan advance on
+  reviewer verdict alone.
+- Phases may be skipped when they don't earn their place. During intake,
+  the BA stamps `architecture_skipped` and/or `test_specs_skipped` with
+  reason when the work doesn't warrant the phase. Plan and PRD are
+  non-skippable.
+- Each phase grounds in the prior phase's output. Human refinement at any
+  layer invalidates downstream approvals and re-enters the affected phase.
+- Automation supplies supporting facts for judgment; it does not decide
+  scope, trade-offs, or design quality on its own.
+- **Gherkin (`Given / When / Then`) belongs in `test-specs`, not in `prd`.**
+  PRD success criteria are outcome-shaped in the product owner's language —
+  observable indicators of success without pre-imposing the test author's
+  grammar. Translating those outcomes into Gherkin behavioral contracts is
+  the test-specs phase's job, not intake's. Carrying Gherkin in the PRD
+  duplicates the test-specs phase's content and pushes the PO into a
+  downstream author's format.
 
 ## Primary flows
 
-### The pair
+### The chain
 
-Prepare is done by a persistent pair of two workers. They stay together across
-the full prepare flow.
+The state machine drives a deterministic phase chain. Each phase is one focus
+turn of the same driving session.
 
-Each worker naturally brings a different lens:
+| Phase        | Skill                          | Hat              | Authority gate                              |
+| ------------ | ------------------------------ | ---------------- | ------------------------------------------- |
+| Intake       | `/next-prepare-intake`         | BA               | `prd_approved` (real human only)            |
+| Architecture | `/next-prepare-architecture`   | Architect        | `architecture_review` verdict `approve`     |
+| Test specs   | `/next-prepare-specs`          | Test Spec Author | `test_spec_review` verdict `approve`        |
+| Plan         | `/next-prepare-plan`           | Planner          | `plan_review` verdict `approve`             |
 
-- `A`: intent, scope, meaning, outcome fidelity
-- `B`: rigor, precision, structure, execution realism
+Each phase ends by calling `telec todo prepare {slug}`. The state machine
+routes the next action — load the next skill, dispatch a reviewer, pause for
+human approval, or terminate at `PREPARED` / `BLOCKED`.
 
-The lenses describe who they ARE, not a role they are assigned. During
-discovery, there are no roles — both explore freely through their natural
-perspective. Roles (writer, reviewer) are assigned only when it is time to
-produce an artifact.
+### Intake
 
-### Discovery (pair-based)
+The BA interviews the Product Owner (real human, or a dispatched PO emulator
+in standin mode) and fills the PRD template via elicitation. PRD success
+criteria are outcome-shaped, in PO language. When the work warrants it, the
+BA stamps skip decisions (`architecture_skipped`, `test_specs_skipped`) with
+reason. The BA writes the PRD and presents it to the human for review and
+approval. The human is the sole authority on PRD correctness because only
+the human owns intent.
 
-Both workers explore the problem together. No roles, no assignments. They read
-the input, check the codebase, check the roadmap, surface hidden assumptions,
-challenge each other's thinking, and converge on understanding.
+In standin mode, the BA writes the PRD but cannot stamp `prd_approved`. The
+chain pauses at the approval gate until the real human re-engages with the
+slug.
 
-This is how humans work: they discuss first. The quality comes from two
-perspectives seeing what one would miss.
+### Derivation phases (architecture, test specs, plan)
 
-Discovery is the only pair-based step. It produces shared understanding, not an
-artifact. The artifact comes after.
+For each derivation phase, the same session loads the phase's skill, grounds
+in upstream artifacts, produces the phase artifact, and advances the state
+machine. The state machine then dispatches a cross-model reviewer. The
+active phase skill tails the reviewer; on `approve` the chain advances; on
+`needs_work` the active skill addresses the findings and advances again to
+re-dispatch the reviewer.
 
-### Artifact production (turn-based)
+### Standin mode
 
-After discovery, artifacts are produced in turns: one writes, the other reviews.
+When session `additional_context` carries `human_in_loop: false`, intake
+dispatches a Product Owner emulator (`/next-emulate-po`) as the BA's
+interviewee. The BA writes a PRD that captures what an experienced PO would
+propose given the input plus standing wishes for quality. The BA does not
+stamp `prd_approved` — that gate is the real human's. The chain pauses at
+PRD approval until the real human engages. Once the PRD is approved, all
+other phases (architecture, specs, plan) proceed under reviewer authority.
 
-The writer records what was discussed and agreed on. The reviewer checks whether
-the recording is complete and accurate. The review is lightweight because the
-reviewer was present during discovery — it is confirmation, not cold evaluation.
+### Refinement
 
-| Artifact              | Writer | Reviewer | What is checked                                     |
-| --------------------- | ------ | -------- | --------------------------------------------------- |
-| `requirements`        | `A`    | `B`      | Did the writer capture the full discussed intent?   |
-| `test-specs`          | `A`    | `B`      | Do the specs cover what was agreed on?              |
-| `implementation-plan` | `B`    | `A`      | Is the execution plan faithful to intent and specs? |
+When the human refines an artifact, the change classifies into one of four
+scopes:
 
-### Human approval
+- **Intent-level** (new thinking, scope changes) → re-enter intake with the
+  delta. Downstream approvals invalidated.
+- **Architecture-level** (technical brief change) → re-enter architecture
+  phase. Specs and plan approvals invalidated.
+- **Specs-level** (behavior contract change) → re-enter specs phase. Plan
+  approval invalidated.
+- **Plan-level** (task adjustment) → re-enter plan phase.
 
-The human approves requirements before downstream work begins. This is explicit
-and non-optional.
+### Drift
 
-After the pair writes and reviews requirements, the human reads them. The human
-may talk directly to the writer to add or correct things. When the human is
-satisfied, the orchestrator stamps approval and the machine continues.
-
-The human is part of the loop, not an afterthought.
-
-### Gate (pair self-assessment)
-
-After all artifacts are produced and reviewed, the pair checks their own work
-against Definition of Ready. This is self-assessment — the pair evaluates
-whether what they produced is actually ready to build. It is not an external
-audit by a third party.
+When reconciliation detects that artifact-referenced paths changed since the
+artifact was authored, a lean `/next-drift-analyze` worker is dispatched. It
+stamps each pending artifact as `cosmetic` or `substantive`. Substantive
+drift invalidates the affected phase and the active skill re-derives. The
+PREPARED terminal requires fresh grounding.
 
 ## Failure modes
 
-- requirements stay vague because discovery was shallow or cut short
-- the writer misses something from the discussion and the reviewer does not
-  catch it
-- specs become implementation-shaped rather than intent-shaped
-- the plan drifts from requirements and specs because it was written without
-  the full upstream context
-- human approval is skipped or treated as a rubber stamp
-- automation is mistaken for judgment and allowed to set scope or accept weak
-  reasoning on its own
+- PRD success criteria stay vague because intake elicitation was shallow.
+- The BA front-loads Gherkin into the PRD, duplicating test-specs content
+  and pushing the PO into a test author's grammar.
+- A phase skill drifts into orchestrator-shaped action (dispatching workers
+  for sub-phases) instead of doing the phase work itself.
+- A standin-produced PRD is auto-stamped `prd_approved` without the real
+  human's review.
+- Reviewer findings cannot be addressed by the active phase skill, and the
+  chain grinds rather than surfacing the blocker.
+- Drift is detected but the affected phase isn't re-derived, leaving
+  downstream artifacts grounded in stale upstream truth.
 
 ## See Also
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/overview.md —
-  the actual process steps for executing prepare
+  the executable procedure for driving the prepare lifecycle
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/prepare-specs.md
+- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md

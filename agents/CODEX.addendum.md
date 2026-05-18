@@ -22,12 +22,6 @@ This file defines Codex-specific operating rules for this repository.
 - When the user scopes work to tests only, treat that as a hard boundary. Do not change production code to satisfy failing tests unless the user explicitly broadens scope.
 - A missing symbol referenced by a failing test does not by itself imply a production regression. Run `git log -S '<symbol>'` and read the removing commit before drawing any conclusion. If the removal was deliberate, the test is obsolete — delete it. Trace transitive callers before assuming surrounding code is alive: a call site that references a removed symbol may itself be dead. Restoring previously-removed code under a tests-only scope is forbidden.
 
-## Worker Orchestration Discipline
-
-- When orchestrating worker sessions, dispatch and then wait for completion notification/timeout before acting again.
-- Do not proactively tail, ping, or steer workers unless a timeout fires, the worker asks a direct question, or the user explicitly requests intervention.
-- Do not close or restart an active worker session just to accelerate; only intervene on explicit stall/error signals or user direction.
-
 ## Timer and Heartbeat Supremacy
 
 - When the repository process or state machine tells you to set a timer or sleep for a specific duration, treat that duration as the governing cadence.

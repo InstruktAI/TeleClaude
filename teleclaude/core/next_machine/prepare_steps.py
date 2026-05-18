@@ -18,6 +18,7 @@ from teleclaude.core.next_machine.lifecycle import derive_prepare_drift, prepare
 from teleclaude.core.next_machine.output_formatting import (
     ToolCallRequest,
     format_blocker_resolution,
+    format_skill_load,
     format_tool_call,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -84,6 +85,29 @@ async def _dispatch_worker(
     return False, format_tool_call(request)
 
 
+def _load_skill(
+    *,
+    slug: str,
+    command: SlashCommand,
+    hat: str,
+    expected: str,
+) -> tuple[bool, str]:
+    """Emit a skill-load script for a drafting phase.
+
+    Draft phases (intake, architecture, test specs, plan) are performed by the
+    same session that drives the prepare lifecycle — it loads the phase's
+    skill inline and does the work. This helper produces the verbatim
+    instruction for that load. Reviewer phases use ``_dispatch_worker``
+    instead because the cross-model reviewer runs in a separate session.
+    """
+    return False, format_skill_load(
+        slug=slug,
+        command_name=command.value,
+        hat=hat,
+        expected=expected,
+    )
+
+
 def _approval_instruction(
     slug: str,
     *,
@@ -135,14 +159,10 @@ async def _prepare_dispatch(
     """Dispatch to the appropriate v2 prepare phase handler."""
     _ = todos_db
     if phase in (PreparePhase.DRAFT, PreparePhase.PRD_DRAFTING):
-        return await _dispatch_worker(
-            db=db,
+        return _load_skill(
             slug=slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
             command=SlashCommand.NEXT_PREPARE_INTAKE,
-            loader_name="next-prepare-intake",
+            hat="BA",
             expected="a `prd` artifact or an explicit blocker",
         )
     if phase == PreparePhase.PRD_HUMAN_APPROVAL:
@@ -150,14 +170,10 @@ async def _prepare_dispatch(
             slug, phase=phase, state=state, cwd=cwd, artifact=ARTIFACT_PRD, stamp_flag="--prd-approved"
         )
     if phase == PreparePhase.ARCHITECTURE_DRAFTING:
-        return await _dispatch_worker(
-            db=db,
+        return _load_skill(
             slug=slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
             command=SlashCommand.NEXT_PREPARE_ARCHITECTURE,
-            loader_name="next-prepare-architecture",
+            hat="Architect",
             expected="an `architecture` artifact or an `architecture_skipped` stamp recommendation",
         )
     if phase == PreparePhase.ARCHITECTURE_REVIEW:
@@ -172,15 +188,11 @@ async def _prepare_dispatch(
             expected="an architecture review verdict and findings when needed",
         )
     if phase == PreparePhase.TEST_SPECS_DRAFTING:
-        return await _dispatch_worker(
-            db=db,
+        return _load_skill(
             slug=slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
             command=SlashCommand.NEXT_PREPARE_SPECS,
-            loader_name="next-prepare-specs",
-            expected="a prose `test-specs` artifact or a `test_specs_skipped` stamp recommendation",
+            hat="Test Spec Author",
+            expected="a `test-specs` Gherkin artifact or a `test_specs_skipped` stamp recommendation",
         )
     if phase == PreparePhase.TEST_SPECS_REVIEW:
         return await _dispatch_worker(
@@ -194,14 +206,10 @@ async def _prepare_dispatch(
             expected="a test-spec review verdict and findings when needed",
         )
     if phase == PreparePhase.PLAN_DRAFTING:
-        return await _dispatch_worker(
-            db=db,
+        return _load_skill(
             slug=slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
             command=SlashCommand.NEXT_PREPARE_PLAN,
-            loader_name="next-prepare-plan",
+            hat="Planner",
             expected="an `implementation-plan` artifact or split decision",
         )
     if phase == PreparePhase.PLAN_REVIEW:

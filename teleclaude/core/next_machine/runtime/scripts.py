@@ -29,10 +29,37 @@ def format_reviewer_direct_fix_message(
     task_context: str,
     completion_clause: str,
 ) -> str:
-    """Build the reviewer message that opens the worker-owned direct fix link."""
+    """Build the reviewer message that opens the worker-owned direct fix link.
+
+    Used by the work lifecycle, where reviewer ↔ fixer direct-link collaboration
+    is the established pattern. The prepare lifecycle uses
+    ``format_reviewer_handoff_message`` instead — prepare reviewer dispatch is
+    tail-only with no ``--direct`` link.
+    """
     return (
         f"A fixer is active at {fixer_session_id}. "
         f"Start a direct conversation: telec sessions send {fixer_session_id} '<your findings summary>' --direct. "
+        f"{task_context} "
+        f"{completion_clause}"
+    )
+
+
+def format_reviewer_handoff_message(
+    *,
+    fixer_session_id: str,
+    task_context: str,
+    completion_clause: str,
+) -> str:
+    """Build the reviewer message that hands findings to the active fixer session.
+
+    The reviewer writes findings to the findings artifact and idles; the
+    fixer reads them on its next state-machine advance. Used by the prepare
+    lifecycle.
+    """
+    return (
+        f"A fixer is active at {fixer_session_id}. "
+        f"Write your findings to the findings artifact and idle when done. "
+        f"The fixer will read the artifact on its next state-machine advance. "
         f"{task_context} "
         f"{completion_clause}"
     )
@@ -54,17 +81,19 @@ def format_review_needs_work_script(
     *,
     next_step: str,
 ) -> str:
-    """Script for NEEDS_WORK variant: have the reviewer link directly with the worker."""
+    """Script for NEEDS_WORK variant: reviewer writes findings; fixer reads them and re-advances.
+
+    No ``--direct`` link is opened between the reviewer and the active fixer
+    session. The reviewer writes its findings artifact and idles. The fixer
+    (the active phase skill in the prepare session) reads the findings on its
+    next state-machine advance and addresses them in its own session.
+    """
     completion_clause = (
-        f"Collaborate until all findings are resolved. "
-        f"Before reporting FIX COMPLETE, close the direct link with: "
-        f"telec sessions send {reviewer_session_id} --close-link "
-        f"This prevents stale conversation context from leaking into the next review phase. "
-        f"Then persist the full review-findings artifact, set verdict by arithmetic "
-        f"(APPROVE only when unresolved Critical and Important counts both reach zero), "
-        f"and report FIX COMPLETE."
+        "Persist the full review-findings artifact and set verdict by arithmetic "
+        "(APPROVE only when unresolved Critical and Important counts both reach zero). "
+        "Then idle. The fixer reads your findings on its next state-machine advance."
     )
-    reviewer_message = format_reviewer_direct_fix_message(
+    reviewer_message = format_reviewer_handoff_message(
         fixer_session_id=worker_session_id,
         task_context=message,
         completion_clause=completion_clause,
@@ -73,12 +102,13 @@ def format_review_needs_work_script(
     return (
         f"REVIEW NEEDS WORK: {slug}\n\n"
         f"Execute in order:\n\n"
-        f"Tell the reviewer to start a direct conversation with the fixer:\n"
-        f'telec sessions send {reviewer_session_id} "{escaped}" (you will use regular send, NOT --direct)\n\n'
+        f"Hand findings off to the reviewer:\n"
+        f'telec sessions send {reviewer_session_id} "{escaped}"\n\n'
         f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
         f'Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) '
         f"and save the new task_id.\n"
-        f"Wait for fixer to complete (monitor via heartbeat; do not poll continuously).\n"
+        f"Wait for the fixer to address findings and advance the state machine; "
+        f"the state machine will re-dispatch the reviewer when the artifact is updated.\n"
         f"Wait for reviewer session {reviewer_session_id} to report idle.\n"
         f"When the reviewer idles, call {next_step}."
     )

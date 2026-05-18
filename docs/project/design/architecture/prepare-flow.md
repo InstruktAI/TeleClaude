@@ -12,7 +12,7 @@ visibility: 'public'
 
 Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required.
 
-The flow replaces the prior pair-driven prepare model. The orchestrator is the agent the user (or the standin) talks to; one cross-model peer is dispatched per derivation phase for independent verification; existing reviewer agents validate each downstream artifact. The human approves the PRD because only the human owns intent. Architecture, test specs, and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
+The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped skill for each step (intake, architecture, test specs, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active phase skill dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture, test specs, and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
 
 ## Inputs/Outputs
 
@@ -60,13 +60,13 @@ The confirmed plan is the handoff input to the work phase.
 **Drift:**
 
 - Drift is detected by reconciliation: `current main SHA != artifact.codebase_sha_at_write` AND at least one referenced path changed between.
-- Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; orchestrator integrates findings.
+- Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active phase skill integrates findings on re-entry.
 - Substantive drift triggers re-derivation of affected layers; cosmetic drift is noted, not acted on.
 
-**One persistent peer for the chain:**
+**Cross-model verification:**
 
-- After intake, the orchestrator's cross-model peer is reused across the architecture, specs, and plan phases for continuity. Reviewers (existing `review-*` agents) provide the independent verification per artifact.
-- Final cross-check at `PREPARED` may dispatch a fresh different-model peer when the cumulative architectural decisions warrant a cold read.
+- The independent verification of derived artifacts (architecture, test specs, plan) comes from cross-model reviewers dispatched per phase. The active phase skill dispatches the reviewer, tails it, and integrates the verdict.
+- The PRD has no automated reviewer — the human is the sole authority on intent, so the human verifies the PRD directly.
 
 ## Primary flows
 

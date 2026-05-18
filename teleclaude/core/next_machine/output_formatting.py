@@ -18,6 +18,7 @@ __all__ = [
     "format_error",
     "format_finalize_handoff_complete",
     "format_prepared",
+    "format_skill_load",
     "format_stash_debt",
     "format_tool_call",
     "format_uncommitted_changes",
@@ -213,6 +214,40 @@ def format_command_loader_message(command_name: str, slug: str) -> str:
         f"Treat the following as provided inputs to that instruction set:\n"
         f"{slug}"
     )
+
+
+def format_skill_load(
+    *,
+    slug: str,
+    command_name: str,
+    hat: str,
+    expected: str,
+) -> str:
+    """Format a skill-load instruction for the active prepare session.
+
+    Used by the prepare state machine when the next phase is a drafting phase
+    (intake, architecture, test specs, plan). The same session loads the
+    phase's skill inline and does the phase's work — no separate session is
+    dispatched. Reviewer phases keep using ``format_tool_call`` because they
+    are legitimate cross-model dispatches.
+    """
+    return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
+
+SLUG: {slug}
+
+NEXT ACTION:
+Put on the {hat} hat. Load the /{command_name} skill in this session and
+follow it as the active instruction set for this turn.
+
+The wider prepare lifecycle is still yours. This is one focused phase. Do not
+dispatch a new session — load the skill inline and do the work.
+
+EXPECTED DELIVERABLE: {expected}
+
+WHEN THE PHASE'S WORK IS COMPLETE:
+Call `telec todo prepare {slug}` to advance the state machine. The state
+machine will route the next action — dispatch a reviewer, pause for human
+approval, load the next phase's skill, or terminate at PREPARED / BLOCKED."""
 
 
 def format_error(code: str, message: str, next_call: str = "") -> str:

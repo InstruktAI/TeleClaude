@@ -71,9 +71,9 @@ Extract:
    ```
 
    The state machine re-dispatches the reviewer against the updated artifact.
-   Reviewer dispatch is **not** `--direct` — the reviewer runs as a separate
-   session, writes findings and a verdict, and idles. The active phase skill
-   reads the new findings on the next state-machine advance.
+   The reviewer runs as a separate session, writes findings and a verdict,
+   and idles. The active phase skill reads the new findings on the next
+   state-machine advance.
 
 ## Outputs
 

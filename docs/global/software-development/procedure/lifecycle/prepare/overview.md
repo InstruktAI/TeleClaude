@@ -24,11 +24,10 @@ state machine. The state machine decides what happens next.
 
 ### Defaults — read these once and carry them through every phase
 
-1. **One session drives the whole prepare lifecycle.** The same session loads
-   the skill for each phase, does the work, advances the state machine, and
-   loads the next skill when the state machine routes there. There is no
-   parallel orchestrator session that dispatches workers per phase. The
-   session you are in is the one that does the work.
+1. **One session drives the whole prepare lifecycle.** The session you are
+   in loads each phase's skill in turn, does the work itself, advances the
+   state machine, and loads the next skill when the state machine routes
+   there.
 
 2. **Each phase has its own focus, sharpened by a hat:**
    - **BA hat** for intake — loaded via the `/next-prepare-intake` skill
@@ -40,21 +39,15 @@ state machine. The state machine decides what happens next.
    the lifecycle awareness underneath. The hat comes off when the phase ends
    and the next skill loads.
 
-3. **Reviewers are dispatched, not in-session.** When the state machine
-   routes to a review step, dispatch the cross-model reviewer as a separate
-   session via `telec sessions run` and tail it. No `--direct` link with
-   reviewers — the dispatched session writes findings and a verdict; the
-   active phase skill reads them.
+3. **Reviewers are cross-model and dispatched.** When the state machine
+   routes to a review step, dispatch the reviewer as a separate session via
+   `telec sessions run` and tail it. The reviewer writes its findings to the
+   findings artifact and a verdict to its review stamp; the active phase
+   skill reads them on the next state-machine advance.
 
-4. **`--direct` is for the PO emulator only.** Standin-mode intake
-   (`human_in_loop: false`) dispatches `/next-emulate-po` with a `--direct`
-   link so the BA can interview the emulated PO across multiple turns. No
-   other dispatch in prepare uses `--direct`.
-
-5. **Human approval is on the PRD only.** The human reviews the PRD and
-   stamps `prd_approved`. There is no automated PRD reviewer — the human is
-   the sole authority on intent. Architecture, test specs, and plan advance
-   on reviewer verdict; no human approval gates downstream of the PRD.
+4. **Human approval is on the PRD only.** The human reviews the PRD and
+   stamps `prd_approved`. The human is the sole authority on intent.
+   Architecture, test specs, and plan advance on reviewer verdict alone.
 
 ## Preconditions
 
