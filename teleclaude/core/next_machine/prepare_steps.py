@@ -140,7 +140,8 @@ def _blocker_resolution(
     instruction = (
         f"Each blocker above names a concrete gap. Resolve it by:\n"
         f"- writing the missing artifact, or\n"
-        f"- re-dispatching the responsible draft worker with the review findings, or\n"
+        f"- re-loading the responsible phase skill (intake, architecture, test specs, plan) "
+        f"in this session and addressing the review findings, or\n"
         f"- surfacing a state-machine error to the user.\n\n"
         f"Then call `telec todo prepare {slug}` to re-derive the lifecycle phase."
     )

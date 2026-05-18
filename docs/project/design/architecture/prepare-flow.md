@@ -111,7 +111,7 @@ flowchart TD
     PlanReview --> Grounding{Grounding fresh?}
 
     Grounding -->|yes| Prepared([PREPARED → work phase])
-    Grounding -->|drift detected| DriftWorker[Lean drift-analyze worker<br/>orchestrator integrates findings]
+    Grounding -->|drift detected| DriftWorker[Lean drift-analyze worker dispatched<br/>active phase skill integrates findings on re-entry]
     DriftWorker --> Plan[Re-derive affected layers<br/>or proceed if cosmetic]
     Plan --> Grounding
 
@@ -155,18 +155,17 @@ Also covers the `--draft` dump case: human comes back to a slug with an `input` 
 
 ## Failure modes
 
-- **Peer dispatch fails or returns unusable output.** Orchestrator continues solo at that phase; notes the missing peer perspective in the artifact. Reviewer still runs and verifies independently.
 - **PRD authored in standin mode but human never returns.** Todo sits idle indefinitely. The system does not auto-proceed past `prd_approved` gate. Human's eventual return triggers the approval flow.
-- **Drift detected mid-chain.** Reconciliation flags drift in artifact-referenced paths. Lean drift-analysis worker dispatched. If substantive, the affected layer's approval is invalidated and the layer re-enters drafting. If cosmetic, drift is noted in artifact metadata and the chain continues.
+- **Drift detected mid-chain.** Reconciliation flags drift in artifact-referenced paths. Lean drift-analysis worker dispatched. If substantive, the affected layer's approval is invalidated and the active phase skill re-enters drafting. If cosmetic, drift is noted in artifact metadata and the chain continues.
 - **Reviewer verdict `changes_requested` cannot be addressed by auto-remediation.** Surface to the human as a blocker requiring direction. Do not grind through endless revision rounds.
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Uses `telec todo split` to spawn children. Each child gets its own track through the chain. Parent becomes a container.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; ask the human whether the product constraint permits a documented one-off.
-- **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the orchestrator surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
+- **Architecture and PRD disagree post-derivation.** When architecture surfaces something the PRD didn't anticipate (a hidden dependency, an unexpected scope expansion), the Architect surfaces the gap to the human as an open question. May trigger PRD refinement before architecture is finalized.
+- **Phase skill drifts into orchestrator-shaped action.** If a phase skill dispatches new sessions for its sub-work (instead of doing it itself), that's a regression — the design is one session loading skills, not many sessions dispatched. The only legitimate dispatches in prepare are the PO emulator (intake standin) and the cross-model reviewers.
 - **No `additional_context` mode marker.** Default to `human_in_loop: true`. Better to under-trigger standin mode than to standin-mode a real-human session.
 
 ### Open design choices still being prototyped
 
-- **Cross-model peer rotation across phases.** Currently the persistent peer is one model across all phases. Whether to rotate models per phase (Codex for architecture, Gemini for specs, etc.) for additional cognitive diversity is open. May add cost; may add value.
 - **Standin-mode coverage of downstream phases.** Currently standin mode applies only to intake. Whether standin can also run downstream derivation after a real human approves the PRD is an open question. Conservative default: standin produces PRD only; downstream work waits for PRD human approval, then reviewer gates own derived artifacts.
 - **Brownfield code-intelligence dependency.** Architecture phase ideally uses a code-intelligence blueprint (graph of services, events, dependencies). When that blueprint doesn't exist yet, the agents fall back to manual grounding. The architecture procedure notes this fallback explicitly.
 

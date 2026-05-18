@@ -60,6 +60,28 @@
   NOTE: Required reading for this worker: agents/commands/next-prepare-architecture.md
   '''
 # ---
+# name: test_architecture_drafting_loads_architecture_skill
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  NEXT ACTION:
+  Put on the Architect hat. Load the /next-prepare-architecture skill in this session:
+  read `agents/commands/next-prepare-architecture.md` and follow it as the active
+  instruction set for this turn. Treat the slug above as the input.
+  
+  The wider prepare lifecycle is still yours. This is one focused phase. The
+  skill is loaded inline; no new session is dispatched.
+  
+  EXPECTED DELIVERABLE: an `architecture` artifact or an `architecture_skipped` stamp recommendation
+  
+  WHEN THE PHASE'S WORK IS COMPLETE:
+  Call `telec todo prepare my-slug` to advance the state machine. The state
+  machine will route the next action — dispatch a reviewer, pause for human
+  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
+  '''
+# ---
 # name: test_architecture_review_dispatches_to_reviewer
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -133,7 +155,7 @@
   NEXT ACTION:
   Each blocker above names a concrete gap. Resolve it by:
   - writing the missing artifact, or
-  - re-dispatching the responsible draft worker with the review findings, or
+  - re-loading the responsible phase skill (intake, architecture, test specs, plan) in this session and addressing the review findings, or
   - surfacing a state-machine error to the user.
   
   Then call `telec todo prepare my-slug` to re-derive the lifecycle phase.
@@ -198,6 +220,28 @@
   You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
   
   NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
+  '''
+# ---
+# name: test_plan_drafting_loads_plan_skill
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  NEXT ACTION:
+  Put on the Planner hat. Load the /next-prepare-plan skill in this session:
+  read `agents/commands/next-prepare-plan.md` and follow it as the active
+  instruction set for this turn. Treat the slug above as the input.
+  
+  The wider prepare lifecycle is still yours. This is one focused phase. The
+  skill is loaded inline; no new session is dispatched.
+  
+  EXPECTED DELIVERABLE: an `implementation-plan` artifact or split decision
+  
+  WHEN THE PHASE'S WORK IS COMPLETE:
+  Call `telec todo prepare my-slug` to advance the state machine. The state
+  machine will route the next action — dispatch a reviewer, pause for human
+  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
   '''
 # ---
 # name: test_plan_review_dispatches_to_plan_review
@@ -322,6 +366,28 @@
   NOTE: Required reading for this worker: agents/commands/next-prepare-intake.md
   '''
 # ---
+# name: test_prd_drafting_loads_intake_skill
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  NEXT ACTION:
+  Put on the BA hat. Load the /next-prepare-intake skill in this session:
+  read `agents/commands/next-prepare-intake.md` and follow it as the active
+  instruction set for this turn. Treat the slug above as the input.
+  
+  The wider prepare lifecycle is still yours. This is one focused phase. The
+  skill is loaded inline; no new session is dispatched.
+  
+  EXPECTED DELIVERABLE: a `prd` artifact or an explicit blocker
+  
+  WHEN THE PHASE'S WORK IS COMPLETE:
+  Call `telec todo prepare my-slug` to advance the state machine. The state
+  machine will route the next action — dispatch a reviewer, pause for human
+  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
+  '''
+# ---
 # name: test_prd_human_approval_emits_stamp_instruction
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -398,9 +464,34 @@
   2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
   
   ORCHESTRATION PRINCIPLE:
-  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
-  
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call fr  
   NOTE: Required reading for this worker: agents/commands/next-prepare-specs.md
+  '''
+# ---
+# name: test_test_specs_drafting_loads_specs
+  NOTE: Required reading for this worker: agents/commands/next-prepare-specs.md
+  '''
+# ---
+# name: test_test_specs_drafting_loads_specs_skill
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  SLUG: my-slug
+  
+  NEXT ACTION:
+  Put on the Test Spec Author hat. Load the /next-prepare-specs skill in this session:
+  read `agents/commands/next-prepare-specs.md` and follow it as the active
+  instruction set for this turn. Treat the slug above as the input.
+  
+  The wider prepare lifecycle is still yours. This is one focused phase. The
+  skill is loaded inline; no new session is dispatched.
+  
+  EXPECTED DELIVERABLE: a `test-specs` Gherkin artifact or a `test_specs_skipped` stamp recommendation
+  
+  WHEN THE PHASE'S WORK IS COMPLETE:
+  Call `telec todo prepare my-slug` to advance the state machine. The state
+  machine will route the next action — dispatch a reviewer, pause for human
+  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
   '''
 # ---
 # name: test_test_specs_review_dispatches_to_reviewer

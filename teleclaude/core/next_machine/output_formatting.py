@@ -227,20 +227,21 @@ def format_skill_load(
 
     Used by the prepare state machine when the next phase is a drafting phase
     (intake, architecture, test specs, plan). The same session loads the
-    phase's skill inline and does the phase's work — no separate session is
-    dispatched. Reviewer phases keep using ``format_tool_call`` because they
-    are legitimate cross-model dispatches.
+    phase's skill inline and does the phase's work. Reviewer phases keep
+    using ``format_tool_call`` because they are legitimate cross-model
+    dispatches.
     """
     return f"""IMPORTANT: This output is an execution script. Follow it verbatim.
 
 SLUG: {slug}
 
 NEXT ACTION:
-Put on the {hat} hat. Load the /{command_name} skill in this session and
-follow it as the active instruction set for this turn.
+Put on the {hat} hat. Load the /{command_name} skill in this session:
+read `agents/commands/{command_name}.md` and follow it as the active
+instruction set for this turn. Treat the slug above as the input.
 
-The wider prepare lifecycle is still yours. This is one focused phase. Do not
-dispatch a new session — load the skill inline and do the work.
+The wider prepare lifecycle is still yours. This is one focused phase. The
+skill is loaded inline; no new session is dispatched.
 
 EXPECTED DELIVERABLE: {expected}
 

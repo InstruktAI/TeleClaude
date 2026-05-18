@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from inspect import signature
 
+from syrupy.assertion import SnapshotAssertion
+
 from teleclaude.core.next_machine.runtime.scripts import (
     format_fix_findings_message,
     format_review_ground_shift_script,
@@ -21,7 +23,9 @@ def test_format_review_in_progress_script_reuses_live_reviewer() -> None:
     assert "telec sessions run" not in instruction
 
 
-def test_format_review_needs_work_script_hands_findings_off_without_direct_link() -> None:
+def test_format_review_needs_work_script_hands_findings_off_without_direct_link(
+    snapshot: SnapshotAssertion,
+) -> None:
     instruction = format_review_needs_work_script(
         "slug-a",
         "worker-1",
@@ -30,19 +34,7 @@ def test_format_review_needs_work_script_hands_findings_off_without_direct_link(
         next_step="telec todo prepare slug-a",
     )
 
-    command_lines = [
-        line.strip() for line in instruction.splitlines() if line.strip().startswith("telec sessions send")
-    ]
-    assert command_lines[0].startswith('telec sessions send reviewer-1 "A fixer is active at worker-1.')
-    # The outer reviewer dispatch must not use the --direct flag.
-    assert not command_lines[0].endswith(" --direct")
-    assert " --direct\\n" not in command_lines[0]
-    # The fixer is instructed via the findings artifact, not a --direct link.
-    assert "telec sessions send worker-1" not in command_lines[0]
-    assert "--close-link" not in instruction
-    assert "Wait for reviewer session reviewer-1 to report idle." in instruction
-    assert "telec todo prepare slug-a" in instruction
-    assert "Write your findings to the findings artifact" in instruction
+    assert instruction == snapshot
 
 
 def test_format_fix_findings_message_points_to_artifact_without_count_claim() -> None:
