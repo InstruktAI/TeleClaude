@@ -30,7 +30,7 @@ Skeleton on first commit: structure + lifecycle/spine context events. Per-contex
 
 Every event name follows: `<context>.<noun>.<past-tense-verb>` or `<context>.<past-tense-verb>` when no sub-noun is meaningful.
 
-- `<context>` — one of the eight services (`workflow`, `identity`, `config`, `knowledge`, `agent_runtime`, `session_ledger`, `integration`, `agent_artifacts`).
+- `<context>` — one of the eight services (`workflow`, `identity`, `config`, `knowledge`, `agent_runtime`, `session_mirrors`, `integration`, `agent_artifacts`).
 - `<noun>` — the entity or aggregate the event is about (optional; omitted when the context only has one primary subject).
 - `<past-tense-verb>` — what happened (`created`, `updated`, `deleted`, `started`, `ended`, `received`, `delivered`, `phase_advanced`, etc.).
 
@@ -96,35 +96,35 @@ Each event below carries:
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
-| `agent_runtime.session.started` | agent_runtime | CLUSTER | commit-then-emit |
-| `agent_runtime.session.updated` | agent_runtime | CLUSTER | commit-then-emit |
-| `agent_runtime.session.ended` | agent_runtime | CLUSTER | commit-then-emit |
+| `agent_runtime.session.started` | agent_runtime | CLUSTER | LISTEN/NOTIFY (after batched write commits) |
+| `agent_runtime.session.updated` | agent_runtime | CLUSTER | LISTEN/NOTIFY (batched, may carry many sessions in one event payload) |
+| `agent_runtime.session.ended` | agent_runtime | CLUSTER | LISTEN/NOTIFY (urgent-flushed; payload includes native_file_path for session_mirrors extraction) |
 | `agent_runtime.operation.completed` | agent_runtime | CLUSTER | commit-then-emit |
 
-**Detailed entries:** to be expanded by `project/spec/domain/agent_runtime` authoring.
+Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for the high-volume hook-driven events (started/updated/ended). See `feature/agent_runtime/windowed-batch-write-and-dispatch`.
 
-#### session_ledger
+**Detailed entries:** see `project/spec/domain/agent_runtime`.
+
+#### session_mirrors
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
-| `session_ledger.block.appended` | session_ledger | CLUSTER | commit-then-emit |
-| `session_ledger.projection.updated` | session_ledger | CLUSTER | commit-then-emit |
+| `session_mirrors.mirror.created` | session_mirrors | CLUSTER | commit-then-emit |
 
-**Detailed entries:** to be expanded by `project/spec/domain/session_ledger` authoring.
+**Detailed entries:** see `project/spec/domain/session_mirrors`.
 
 #### integration
 
 | Event | Producer | Visibility | Posture |
 |---|---|---|---|
 | `integration.inbox.received` | integration | CLUSTER | inbox |
-| `integration.inbox.agent_hook_received` | integration | CLUSTER | inbox |
 | `integration.outbox.appended` | integration | CLUSTER | commit-then-emit |
 | `integration.outbox.delivered` | integration | CLUSTER | commit-then-emit |
 | `integration.outbox.dead_lettered` | integration | CLUSTER | commit-then-emit |
 
-Sub-types of `integration.inbox.agent_hook_received` may be flattened into per-hook-kind families: `integration.inbox.session_start`, `integration.inbox.tool_use`, etc. The per-context spec for `integration` decides the granularity.
+Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/integration boundary correction. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via the `telec-hook` subprocess (owned by agent_runtime). Integration's inbox is for true external webhooks only (Telegram, Discord, WhatsApp, GitHub).
 
-**Detailed entries:** to be expanded by `project/spec/domain/integration` authoring.
+**Detailed entries:** see `project/spec/domain/integration`.
 
 #### agent_artifacts
 
@@ -140,11 +140,11 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 
 | Event | Consumers |
 |---|---|
-| `integration.inbox.agent_hook_received` | `agent_runtime` (updates session lifecycle) |
-| `integration.inbox.received` | `agent_runtime` (routes inbound messages to sessions) |
-| `agent_runtime.session.started` | `session_ledger` (opens transcript ingestion), `frontend` (live UI) |
-| `agent_runtime.session.updated` | `session_ledger` (appends blocks) |
-| `agent_runtime.session.ended` | `session_ledger` (closes transcript ingestion) |
+| `integration.inbox.received` | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound) |
+| `agent_runtime.session.started` | `frontend` (live UI), audit log consumers |
+| `agent_runtime.session.updated` | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation) |
+| `agent_runtime.session.ended` | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
+| `session_mirrors.mirror.created` | `frontend` (history search index refresh), audit log consumers |
 | `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step) |
 | `workflow.todo.phase_advanced` | `integration` (outbox notifications to recipients per subscription) |
 | `workflow.todo.delivered` | `integration` (delivery announcement notifications) |

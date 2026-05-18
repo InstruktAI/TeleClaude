@@ -92,7 +92,7 @@ ownership boundaries.
 - `identity` — principals, roles, tokens, auth resolution
 - `agent_runtime` — agent sessions, tmux orchestration, live coordination
 - `workflow` — todos, roadmap, artifacts, state machines
-- `session_ledger` — canonical transcripts, history, replay
+- `session_mirrors` — canonical transcripts, history, replay
 - `knowledge` — snippets, taxonomy, selection policy
 - `integration` — webhooks, outbox/inbox, workers, retries
 - `config` — system, project, person configuration overlays

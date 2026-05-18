@@ -109,7 +109,7 @@ See `auth-model.md` for the resolution and authorization flow.
 **Does not own:**
 
 - local project bookkeeping (workflow)
-- historical session record (session_ledger)
+- historical session record (session_mirrors)
 - knowledge storage
 - UI/business logic
 
@@ -122,13 +122,9 @@ See `auth-model.md` for the resolution and authorization flow.
 `agent_runtime.session.updated`, `agent_runtime.session.ended`,
 `agent_runtime.operation.completed`.
 
-**Subscribes to:** `integration.inbox.agent_hook_*` events emitted by
-`integration` when subprocess hook receivers fire. Reacts by updating
-session lifecycle state. Does NOT own hook ingestion — the `telec-hook`
-binary, payload parsing, and event emission belong to `integration`.
-agent_runtime is downstream of integration for inbound signals; the two
-services have different change axes (session model vs external CLI
-protocol).
+**Owns agent CLI hook reception directly.** The `telec-hook` binary, its IPC delivery to the daemon, the HookReceiver windowed-batch-write, and the LISTEN/NOTIFY dispatch pattern all live here. Per the change-axis test: agent CLI hooks change when agent CLI protocols change, which is agent_runtime's axis (we control the agent CLIs we supervise). Truly external HTTP webhooks (Telegram, GitHub, etc.) remain `integration`'s domain.
+
+**Subscribes to:** `integration.inbox.received` for external messaging routed to sessions (e.g., Telegram inbound). NOT for agent CLI hooks (those bypass integration entirely).
 
 **Why it exists:** This is the genuine daemon-shaped part of the system —
 processes that must stay alive, observable, and connected. The
@@ -171,7 +167,7 @@ The CLI embeds workflow directly.
 
 ---
 
-### 4. `session_ledger`
+### 4. `session_mirrors`
 
 **Owns:**
 
@@ -188,13 +184,13 @@ The CLI embeds workflow directly.
 - auth
 - documentation curation
 
-**Postgres schema:** `session_ledger`
+**Postgres schema:** `session_mirrors`
 - `blocks` (canonical event/message blocks)
 - `cursors` (consumer state)
 - `projections` (read models)
 
-**Emits events:** `session_ledger.block.appended`,
-`session_ledger.projection.updated`.
+**Emits events:** `session_mirrors.block.appended`,
+`session_mirrors.projection.updated`.
 
 **Why it exists:** Consumers should stop parsing transcript files directly.
 The ledger becomes the system of record for session history. Replaces v1
@@ -241,55 +237,51 @@ RAG. The `telec docs` commands route through this service.
 - **Inbound HTTP webhooks** (Telegram, Discord, WhatsApp, future
   third-party platforms) — receive payload, validate, normalize, emit
   typed event.
-- **Inbound subprocess hook receivers** (Claude Code, Codex, Gemini, any
-  future agent CLI) — invoked by the agent CLI as a subprocess; reads
-  payload from stdin, validates, normalizes, emits typed event. The
-  `telec-hook` binary is integration's subprocess entry point.
 - **Outbox/inbox patterns** for at-least-once durable external delivery
-  (notifications going OUT to Telegram, etc.).
+  (notifications going OUT to Telegram, etc., and inbound webhooks).
 - **Retries and dead-letter behavior** for both inbound and outbound.
-- **Async work dispatch** to workers.
+- **Async work dispatch** to workers (outbox dispatchers, per-provider).
 - **Worker process supervision spec** (the daemon spawns workers per this
   service's definitions).
 
-The principle: **anything coming from outside our system is integration's
-domain.** Same code path whether the transport is HTTP, subprocess, or
-anything future. Domain services subscribe to the events integration
-emits — they don't deal with transport.
+The principle (refined): **anything coming from systems we DO NOT control
+is integration's domain.** External providers (Telegram, GitHub) are
+systems we don't control — their protocols change at their pace. Agent
+CLIs are systems we DO control (we supervise, configure, deploy) — they
+belong to `agent_runtime`. The change-axis test, not the "is it
+subprocess vs HTTP" transport question, decides ownership.
 
 **Does not own:**
 
 - domain business rules themselves (each domain service owns its rules)
 - local workflow state
-- long-lived session orchestration (agent_runtime owns sessions; it
-  subscribes to `integration.inbox.agent_hook_*` events to react to
-  agent lifecycle signals)
+- agent CLI hook reception (that's `agent_runtime`'s domain — the
+  `telec-hook` binary is owned by agent_runtime, not integration)
+- long-lived session orchestration (agent_runtime owns sessions)
 
 **Postgres schema:** `integration`
 - `outbox` (outbound external deliveries)
-- `inbox` (inbound events from webhooks and subprocess hooks alike)
+- `inbox` (inbound events from EXTERNAL HTTP webhooks; agent CLI hooks
+  bypass this — they go direct to agent_runtime)
 - `dlq` (dead-letter)
 - `worker_state`
 
 **Emits events:** `integration.outbox.appended`,
 `integration.outbox.delivered`, `integration.outbox.dead_lettered`,
-`integration.inbox.received`, `integration.inbox.agent_hook_received`
-(or per-hook-type channels like `integration.inbox.session_start`).
+`integration.inbox.received` (external webhook arrivals).
 
 **Binary entry points:**
-- `telec-hook` — subprocess entry point for agent CLI hooks. Reads stdin,
-  calls into `integration` crate, exits. Registered with Claude Code etc.
 - `telec-api` (or `telec-daemon`) — HTTP server that hosts webhook routes
   dispatching to `integration` crate functions.
+- Per-provider outbox dispatcher workers (spawned by the daemon).
 
-**Why it exists:** Anything that crosses restart boundaries or comes from
-external systems needs durable handoff. This service turns side effects
-and inbound signals into a reliable system instead of a chain of
-in-process calls.
+**Why it exists:** Anything that crosses restart boundaries from genuinely
+external systems needs durable handoff. The inbox + outbox patterns give
+audit + replay for business events that we cannot replay from upstream.
 
-See `transport-rules.md` for the change-axis heuristic that places ALL
-inbound here (versus splitting hooks into `agent_runtime` based on
-domain-semantic similarity, which was the wrong cut).
+See `transport-rules.md` for the change-axis heuristic. The corrected v2
+placement puts agent CLI hooks in `agent_runtime` (we control them) and
+external webhooks here (we don't control them).
 
 ---
 
@@ -399,7 +391,7 @@ One local Postgres instance. Schema per service:
 | `identity` | `identity` | |
 | `agent_runtime` | `agent_runtime` | |
 | `workflow` | `workflow` (or `<project>_workflow`) | Per-project isolation: see file-layout |
-| `session_ledger` | `session_ledger` | Large transcript data; TOAST handles blobs |
+| `session_mirrors` | `session_mirrors` | Large transcript data; TOAST handles blobs |
 | `knowledge` | `knowledge` | Index only; sources in `docs/` filesystem |
 | `integration` | `integration` | Outbox/inbox/dlq |
 | `config` | `config` (optional, for history only) | Otherwise stateless |
@@ -506,7 +498,7 @@ cutover migrates v1 consumers to read effective config from v2 service.
 
 #### Remaining services — footprint mapping deferred to each migration
 
-`agent_runtime`, `session_ledger`, `knowledge`, `integration`,
+`agent_runtime`, `session_mirrors`, `knowledge`, `integration`,
 `agent_artifacts` — full v1 footprints get mapped here during planning
 of each service's migration. The cutover safety checklist in
 `reconstruction-order.md` references this section.

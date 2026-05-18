@@ -280,8 +280,8 @@ subscribes from there.
 
 **Scope:**
 
-1. `crates/session_ledger/`:
-   - Postgres `session_ledger` schema
+1. `crates/session_mirrors/`:
+   - Postgres `session_mirrors` schema
    - Transcript ingestion
    - Read API for history
 2. `telec history` routes to ledger service.

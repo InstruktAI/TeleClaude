@@ -244,7 +244,7 @@ reintroduces any of these patterns is rejected.
   mechanisms instead of clean architecture (named in journey doc).
 - *Failure*: Brittle consumers tied to transcript format. Multiple
   parsers, multiple drift surfaces.
-- *v2*: `session_ledger` service owns transcript ingestion and exposes
+- *v2*: `session_mirrors` service owns transcript ingestion and exposes
   typed queries. No other code parses transcript files. Mirrors as a
   compensating mechanism don't exist.
 
@@ -258,7 +258,7 @@ reintroduces any of these patterns is rejected.
   input-origin recording, hook signals, transcript availability, and adapter
   delivery state can duplicate user input or replay stale assistant output under
   the wrong turn.
-- *v2*: `session_ledger` owns ordered blocks, per-consumer cursors, projection
+- *v2*: `session_mirrors` owns ordered blocks, per-consumer cursors, projection
   state, and origin metadata. Adapters own only delivery receipts and platform
   mechanics. Signals wake projection; they never define content.
 

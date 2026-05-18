@@ -191,7 +191,7 @@ declares as `pub mod`.
 - **Event names:** `{service}.{aggregate}.{verb_past}` lowercase snake
   (`workflow.todo.updated`).
 - **Postgres schemas:** snake_case matching the crate name where applicable
-  (`workflow`, `agent_runtime`, `session_ledger`).
+  (`workflow`, `agent_runtime`, `session_mirrors`).
 
 ### Install symlinks (decouple crate name from user command)
 
@@ -277,7 +277,7 @@ small per-machine preferences (tui_state).
 
 | v1 location | v2 destination |
 |---|---|
-| `teleclaude.db`, `mirrors.db`, `events.db` | Postgres schemas (`identity`, `agent_runtime`, `session_ledger`, `integration`) |
+| `teleclaude.db`, `mirrors.db`, `events.db` | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`) |
 | `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services |
 | `logs/` | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard) |
 | `tmp/sessions/<id>/` | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned) |

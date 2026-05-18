@@ -6,7 +6,7 @@ scope: project
 visibility: public
 status: target
 delivered_by: [v2-integration, v2-integration-cutover]
-description: Integration bounded context — anything coming from or going to outside the platform. Webhooks, subprocess hooks, outbox delivery, inbox capture, dead-letter. One context for all external boundaries regardless of transport.
+description: Integration bounded context — true external boundaries. Inbound HTTP webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound delivery to those same providers. Agent CLI hook reception lives in agent_runtime, not here.
 ---
 
 # Integration Domain Spec — Spec
@@ -21,18 +21,20 @@ description: Integration bounded context — anything coming from or going to ou
 
 ## What it is
 
-The `integration` bounded context owns EVERY boundary between the platform and the outside world, regardless of transport. Inbound HTTP webhooks (Telegram, Discord, WhatsApp, GitHub), inbound subprocess hooks (`telec-hook` invoked by agent CLIs), outbound delivery to external messaging providers — they all live here. The principle: anything coming from outside our system OR going to a system outside ours is integration's domain.
+The `integration` bounded context owns true external boundaries — inbound from and outbound to systems we do NOT control. Inbound HTTP webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub), outbound delivery to those same providers. Per `transport-rules.md`, the change-axis test places these here because their protocol/format is controlled by the external provider.
 
-Domain services subscribe to integration's events to react; they never deal with transport. Integration provides the durable inbox/outbox pattern that makes external interactions safe across restarts, retries, and provider degradation. The `telec-hook` binary is integration's subprocess entry point; the HTTP webhook routes are integration's HTTP entry point.
+Agent CLI hooks are NOT integration's domain — they're in `agent_runtime`. The agent CLI is a system we control (we supervise, we deploy its config, we own its hook receiver `telec-hook`). When the agent CLI hook format changes, `agent_runtime` changes; when Telegram's webhook format changes, `integration` changes. Different axes, different contexts.
 
-This context does NOT own: domain business rules (each domain service owns its rules — integration just normalizes inputs and dispatches), live session orchestration (`agent_runtime` owns sessions; it subscribes to integration events to react to hooks), workflow state (`workflow`), knowledge curation (`knowledge`).
+Domain services subscribe to integration's events to react; they never deal with transport. Integration provides the durable inbox/outbox pattern that makes external interactions safe across restarts, retries, and provider degradation. For true external events, this gives audit + replay capabilities.
+
+This context does NOT own: domain business rules (each domain service owns its rules — integration just normalizes inputs and dispatches), live session orchestration (`agent_runtime`), agent CLI hook reception (`agent_runtime`), workflow state (`workflow`), knowledge curation (`knowledge`).
 
 ## Canonical fields
 
 ### Ubiquitous language
 
 **Inbound**
-:  Any external system reaching INTO the platform. Two transports: HTTP webhook (provider POST to our endpoint) and subprocess hook (agent CLI invoking `telec-hook` as a subprocess).
+:  External (third-party, non-control) system reaching INTO the platform via HTTP webhook (provider POSTs to our endpoint). Agent CLI hooks are NOT integration's concern — those are in agent_runtime.
 
 **Outbound**
 :  Anything going OUT to an external system. Currently messaging providers (Telegram, Discord, WhatsApp, email).
@@ -40,11 +42,8 @@ This context does NOT own: domain business rules (each domain service owns its r
 **Webhook**
 :  An HTTP POST from an external provider hitting one of our endpoints. Carries provider-specific payload + signature for verification.
 
-**Subprocess hook** (or **agent hook**)
-:  An agent CLI invocation of `telec-hook` as a subprocess. The agent CLI passes payload via stdin; `telec-hook` reads it, validates, and emits a typed event. Same pattern as a webhook — different transport.
-
 **Provider**
-:  An external system the platform integrates with: Telegram, Discord, WhatsApp, email, GitHub, agent CLIs (as hook senders). Each provider has a boundary module that knows its protocol.
+:  A third-party external system the platform integrates with: Telegram, Discord, WhatsApp, email, GitHub. Each provider has a boundary module that knows its protocol. Agent CLIs are NOT providers — they're internal systems supervised by agent_runtime.
 
 **Provider boundary module**
 :  The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment or customer-relations modules.
@@ -87,7 +86,7 @@ This context does NOT own: domain business rules (each domain service owns its r
 #### Inbox Entry (aggregate)
 
 - **Root:** `InboxEntry`
-- **Contains:** `entry_id` (UUID), `provider` (telegram, whatsapp, github, agent_claude, agent_codex, ...), `event_name` (resolved to the canonical event name per provider rules), `payload` (raw, validated), `received_at`, `verified` (bool), `publication_status` (`pending`, `published`, `rejected`), `rejection_reason` (nullable), `idempotency_key`.
+- **Contains:** `entry_id` (UUID), `provider` (telegram, discord, whatsapp, email, github — third-party only), `event_name` (resolved to the canonical event name per provider rules), `payload` (raw, validated), `received_at`, `verified` (bool), `publication_status` (`pending`, `published`, `rejected`), `rejection_reason` (nullable), `idempotency_key`.
 - **Invariants:**
   - Every verified inbound event lands here BEFORE publication (durable-first per the inbox posture).
   - Idempotency_key dedupes duplicate provider deliveries (e.g., GitHub may retry); duplicates land but produce no second publish.
@@ -142,17 +141,6 @@ This context does NOT own: domain business rules (each domain service owns its r
 - **Known consumers:** `agent_runtime` (for inbound messaging targeted at sessions), domain-context handlers per provider.
 - **Idempotency key:** `entry_id` (which is derived from the provider's idempotency_key when available).
 - **Posture:** `inbox` — durable capture first, then publish. If publish fails, the dispatcher retries; the inbox entry guarantees no loss.
-
-#### `integration.inbox.agent_hook_received`
-
-- **Producer:** `integration`
-- **Emitted when:** `telec-hook` is invoked by an agent CLI; the binary reads stdin, validates, normalizes, and emits.
-- **Payload:** `entry_id`, `agent` (claude/codex/gemini), `hook_kind` (session_start, pre_tool_use, post_tool_use, user_prompt_submit, agent_stop, session_end, ...), `session_id` (from the hook payload), `payload_details`, `received_at`.
-- **Visibility:** CLUSTER
-- **Known consumers:** `agent_runtime` (primary consumer — drives session lifecycle).
-- **Idempotency key:** `entry_id`.
-- **Posture:** `inbox`.
-- **Note:** sub-types may be flattened into per-kind families (`integration.inbox.session_start`, `integration.inbox.tool_use`, etc.) for finer subscription granularity. The integration spec chooses granularity per hook_kind based on consumer needs.
 
 #### `integration.outbox.appended`
 
@@ -246,21 +234,6 @@ And NO event is published
 This handshake is invisible to domain consumers
 ```
 
-#### UC-INT-3: Inbound subprocess hook from Claude
-
-```
-Given Claude fires a pre_tool_use hook
-And its settings.json wires the hook to telec-hook (per agent_artifacts deployment)
-When telec-hook is invoked
-Then telec-hook reads the payload from stdin
-And calls into integration with the hook_kind (pre_tool_use) and parsed payload
-And the agent-claude provider boundary module verifies (no signature; trust derives from subprocess invocation) and parses
-And an InboxEntry is created (verified=true, publication_status=pending)
-And integration.inbox.agent_hook_received is published
-And agent_runtime receives the event and updates the session's runtime state (advances cadence to fast, marks activity, etc.)
-And telec-hook exits 0
-```
-
 #### UC-INT-4: Outbound notification cascade
 
 ```
@@ -333,34 +306,31 @@ And the operator receives the notification at ~03:05 with enough detail to act w
 And the canary semantic holds: simulated Telegram outage → DLQ growth surfaces as observable signal
 ```
 
-#### UC-INT-10: Re-pointing agent CLI configs to telec-hook (during cutover)
+#### UC-INT-10: Webhook URL cutover
 
 ```
 Given the v2-integration-cutover delivery happens
-And agent_artifacts deploys updated hook configs pointing at telec-hook
-When integration's webhook routes and subprocess hooks switch to v2 endpoints
-Then the existing v1 hook receivers are retired
-And telec-hook is the authoritative subprocess entry point
-And HTTP webhook URLs (Telegram Bot API webhook URL, etc.) point at v2's HTTP server
-And rollback procedure: revert the deployed hook configs (agent_artifacts redeploy) + revert the cutover PR
+When external HTTP webhook routes switch from v1 to v2 endpoints
+Then HTTP webhook URLs (Telegram Bot API webhook URL, GitHub webhook URL, etc.) point at v2's HTTP server
+And v1 webhook receivers retire
+And rollback procedure: revert the cutover PR + (if URLs were changed at the external provider) reconfigure provider URL back to v1
 ```
 
 ### Context map position
 
-- **Customer-Supplier upstream to `agent_runtime`** — integration normalizes inbound (webhooks + subprocess hooks) and publishes events; agent_runtime is the primary consumer for agent CLI hooks AND for messaging inbound targeted at sessions.
+- **Customer-Supplier upstream to `agent_runtime`** — integration emits `integration.inbox.received` for inbound MESSAGING from external providers (Telegram messages, Discord messages) that target sessions. Agent CLI hooks are NOT in this relationship — agent_runtime receives those directly via `telec-hook`.
 - **Customer-Supplier downstream of `workflow`** — workflow's phase-advance and delivery events drive outbox notifications.
 - **Customer-Supplier downstream of `identity`** — recipient resolution uses person records + notification subscriptions stored in identity (per the inherited notification-dispatch-service requirements).
 - **Customer-Supplier downstream of `config`** — provider rate limits, retention policies, cascade defaults.
-- **Conformist via filesystem from `agent_artifacts`** — agent_artifacts deploys hook configs that point at integration's `telec-hook` binary. Integration owns telec-hook; agent_artifacts owns the deployed configs.
+- **No filesystem relationship with `agent_artifacts`** — `telec-hook` is owned by agent_runtime, not integration. agent_artifacts deploys agent_runtime's hook configs, not integration's.
 - **Anti-corruption layer with v1 (during migration)** — v1 `teleclaude/hooks/` (~1600 lines), `daemon_hook_outbox.py`, `core/hook_outbox_*`, and messaging adapters (`services/{telegram,discord,whatsapp,email}.py`). The v2 ACL is broad: Python shims preserve the v1 import surface during the parallel-capable phase; v2 owns the actual logic. Disappears at `v2-integration-cutover`.
 
 ## Allowed values
 
-- `provider`: `telegram`, `discord`, `whatsapp`, `email`, `github`, `agent_claude`, `agent_codex`, `agent_gemini` (extensible).
+- `provider`: `telegram`, `discord`, `whatsapp`, `email`, `github` (third-party only; extensible). NOT agent CLIs — those are agent_runtime's domain.
 - `publication_status`: `pending`, `published`, `rejected`.
 - `delivery_status`: `pending`, `delivering`, `delivered`, `unreachable`.
 - `cascade channel`: `telegram`, `discord`, `whatsapp`, `email` (subset of provider list, output side).
-- `hook_kind`: `session_start`, `pre_tool_use`, `post_tool_use`, `user_prompt_submit`, `agent_stop`, `session_end`, ... (extensible per agent CLI capabilities).
 - `worker_kind`: `dispatcher`, `provider_listener`, `reconciler`.
 - `dlq origin`: `inbox`, `outbox`.
 
@@ -369,7 +339,7 @@ And rollback procedure: revert the deployed hook configs (agent_artifacts redepl
 - **Email is ALWAYS the final cascade fallback.** Even if the recipient didn't explicitly add email; if email credentials exist for the recipient, it's appended. The system never silently drops a notification to a recipient who has email available.
 - **Admins are subscribed by default.** Above-threshold notifications go to admins without explicit subscription entries. Non-admins require explicit subscriptions.
 - **Allowlist is fail-closed.** Undeclared OR unaccepted events fail at the boundary. No silent acceptance of unknown events.
-- **`telec-hook` is the ONLY subprocess entry point.** All agent CLI hooks route through it (per the cutover plan; v1's per-agent receivers are replaced). New agent CLIs hook into telec-hook the same way.
+- **`telec-hook` is NOT integration's binary.** It is owned by `agent_runtime`. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via IPC from `telec-hook`. Integration's only subprocess concern is binaries it owns for outbound delivery (e.g., per-provider dispatcher workers).
 - **NO cartridge pattern.** v1's domain cartridges are sunset for new work. Consumers subscribe via `event_bus.subscribe(...)` at daemon startup. Provider boundary modules MUST NOT import deployment or customer-relations modules.
 - **Provider URL stability matters.** Webhook URLs registered with external providers (Telegram, GitHub) MUST remain stable across cutover — OR external system updates need to be coordinated (rare and expensive).
 - **Worker binaries are stateless.** All state lives in Postgres (inbox, outbox, DLQ, worker_state) + Redis (leases). Worker crashes and restarts are safe.

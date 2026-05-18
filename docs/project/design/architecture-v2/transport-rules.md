@@ -88,7 +88,7 @@ A binary is a packaging unit, not a domain. Binaries can:
   several services (`telec-cli` embeds workflow + identity + knowledge +
   config because the CLI has commands for all of them).
 - **Exist solely as one library crate's entry point** when the deployment
-  shape is specific (`telec-hook` exists solely as integration's
+  shape is specific (`telec-hook` exists solely as agent_runtime's
   subprocess entry point — Claude Code's config references it directly).
 - **Embed and supervise multiple library crates plus their own logic**
   (`telec-daemon` embeds agent_runtime + integration + spawns workers).
@@ -97,20 +97,42 @@ The binary's identity is "what's the entry point shape" — subprocess,
 long-running daemon, HTTP server, CLI dispatcher. Not "which service does
 this belong to."
 
-#### The split applied to hooks
+#### The change-axis rule for inbound (refined)
 
-- **Hook payload parsing/normalization/emission** → library crate
-  `integration` (change-axis: external CLI protocols change).
-- **`telec-hook` binary** → its own binary crate, depends on `integration`,
-  exists as a fast subprocess entry point that Claude Code invokes by name.
-- **Reaction to hook events** (updating session state, tracking liveness)
-  → library crate `agent_runtime` (change-axis: session model changes).
-  Subscribes to integration's emitted events.
+The rule for placing inbound boundaries:
 
-The binary `telec-hook` is "owned" by integration in the sense that it's
-integration's subprocess entry point, but the binary itself is just a
-deployment crate. Don't conflate "the binary's logic lives in integration"
-with "the binary IS integration."
+- **System we DO NOT control → `integration`.** External providers
+  (Telegram, Discord, WhatsApp, GitHub) have protocols and formats they
+  own and change at their own pace. Their inbound webhooks belong in
+  `integration`. The inbox pattern there gives audit + replay for
+  business events we cannot replay from upstream.
+- **System we DO control → the owning domain context.** Agent CLIs are
+  systems we supervise, configure, and deploy. When their hook format
+  changes, agent_runtime changes (because we're the ones changing it).
+  Their hooks belong in `agent_runtime`. No inbox table — windowed
+  batched writes direct to session records, durability via LISTEN/NOTIFY
+  dispatch (see `feature/agent_runtime/windowed-batch-write-and-dispatch`).
+
+This is the refinement of an earlier over-broad principle ("anything from
+outside is integration"). The correct discriminator is CONTROL, not
+transport. HTTP vs subprocess is irrelevant; who owns the format is what
+matters.
+
+#### Hook ownership applied
+
+- **Agent CLI hook parsing/reception** → `agent_runtime` library crate.
+- **`telec-hook` binary** → owned by agent_runtime; its own binary crate
+  depending on agent_runtime. Fast subprocess entry point Claude Code
+  invokes; delivers payload to daemon via IPC with ~10s retry.
+- **External HTTP webhook receivers (Telegram, GitHub, etc.)** →
+  `integration` library crate. Inbox pattern for durability + audit.
+- **`telec-api` binary** → owned by integration; hosts external webhook
+  HTTP routes.
+
+The binary `telec-hook` is now part of agent_runtime's deployment surface,
+NOT integration's. The earlier framing of "telec-hook is integration's
+subprocess entry point" was based on the over-broad principle; the
+refined rule corrects it.
 
 ### Cross-version Redis bridge (v1 ↔ v2 during migration)
 
@@ -323,7 +345,7 @@ should surface loudly, not be swallowed. Consumers can always refresh
 from DB if they missed an event.
 
 **Used by:** workflow, identity, agent_runtime, knowledge,
-session_ledger, config — every service that emits internal events.
+session_mirrors, config — every service that emits internal events.
 
 **Future:** per-service upgrade to outbox (below) when multi-machine
 or business-critical event-loss tolerance demands it. Don't default
@@ -336,19 +358,28 @@ etc.) fire events ONCE and don't retry on failure. Loud-failing
 would lose the event entirely. Inbox pattern guarantees capture.
 
 ```
-Receiving binary (telec-hook or telec-api) calls integration::ingest_*
+External HTTP webhook (Telegram, GitHub, etc.):
+
+telec-api (receiving binary) calls integration::ingest_*
 
 [integration service]
 Tx: INSERT INTO integration.inbox
     (received_at, source, payload, status='received') RETURNING id
 COMMIT  ← durable capture done
-try: publish 'integration.inbox.<type>_received' to Redis
+try: publish 'integration.inbox.received' to Redis
   success → UPDATE integration.inbox SET status='published'
   fail    → log loudly, leave status='received'
             (dispatcher worker retries when Redis is back)
-return Ok(()) to receiving binary
+return Ok(()) to telec-api
 
-Receiving binary returns success to external system regardless.
+telec-api returns success to external system regardless.
+
+Agent CLI hooks (telec-hook) bypass this pattern — they reach agent_runtime
+directly via IPC. The windowed-batch-write pattern in agent_runtime gives
+throughput optimization without an inbox table; see
+`feature/agent_runtime/windowed-batch-write-and-dispatch` for the
+LISTEN/NOTIFY dispatch mechanism that replaces the inbox-style durability
+for the agent-CLI ingestion path.
 ```
 
 The external system always gets a success response because we

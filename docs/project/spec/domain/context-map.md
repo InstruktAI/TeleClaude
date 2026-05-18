@@ -35,7 +35,7 @@ graph TD
     workflow[workflow<br/>todos, roadmap, lifecycle]
     knowledge[knowledge<br/>snippet index, selection]
     agent_runtime[agent_runtime<br/>live sessions, tmux, CLIs]
-    session_ledger[session_ledger<br/>session history, replay]
+    session_mirrors[session_mirrors<br/>session history, replay]
     integration[integration<br/>inbound + outbound external]
     agent_artifacts[agent_artifacts<br/>artifact sync, deploy]
 
@@ -48,15 +48,15 @@ graph TD
     config -.->|effective config| knowledge
     config -.->|effective config| agent_runtime
     config -.->|effective config| integration
-    config -.->|effective config| session_ledger
+    config -.->|effective config| session_mirrors
     config -.->|effective config| agent_artifacts
 
-    %% Inbound flow
-    integration ==>|integration.inbox.agent_hook_*| agent_runtime
-    integration ==>|integration.inbox.received<br/>messaging events| agent_runtime
+    %% Agent CLI hooks reach agent_runtime directly via telec-hook IPC (internal — not shown)
+    %% External messaging flows through integration → agent_runtime
+    integration ==>|integration.inbox.received<br/>external messaging| agent_runtime
 
     %% Session lifecycle flow
-    agent_runtime ==>|agent_runtime.session.started/updated/ended| session_ledger
+    agent_runtime ==>|agent_runtime.session.started/updated/ended| session_mirrors
     agent_runtime ==>|operation events| workflow
 
     %% Workflow → outbound notifications
@@ -71,7 +71,7 @@ graph TD
     classDef spine fill:#e0e7ff,stroke:#4338ca
     classDef domain fill:#dcfce7,stroke:#15803d
     class identity,config spine
-    class workflow,knowledge,agent_runtime,session_ledger,integration,agent_artifacts domain
+    class workflow,knowledge,agent_runtime,session_mirrors,integration,agent_artifacts domain
 ```
 
 **Legend:**
@@ -98,15 +98,15 @@ The spine has NO upstream — `identity` and `config` are the platform's foundat
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `integration` | `agent_runtime` | Published Language | Integration normalizes external inputs (webhooks AND subprocess hooks) into typed events on the bus. Agent_runtime subscribes to relevant event families: `integration.inbox.agent_hook_*` for agent CLI lifecycle signals (session start/end, tool use, etc.), `integration.inbox.received` for inbound messages targeted at sessions. |
+| `integration` | `agent_runtime` | Published Language | Integration normalizes EXTERNAL inputs (HTTP webhooks from third-party providers) into typed events. Agent_runtime subscribes to `integration.inbox.received` for inbound messages (Telegram, Discord, WhatsApp) targeted at sessions. Agent CLI hooks are NOT in this relationship — they reach agent_runtime directly via `telec-hook` IPC (internal). |
 
-The integration → agent_runtime relationship is the v2 architectural correction: in v1, agent CLI hooks went into `hooks/` which entangled with domain logic. In v2, ALL inbound is integration's domain; agent_runtime is downstream and reacts via events.
+The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which entangled with domain logic. The first v2 framing put ALL inbound in integration; that was too broad. The corrected v2 framing places agent CLI hooks in `agent_runtime` (we control agent CLIs) and keeps `integration` for true external providers (we don't control them). See `transport-rules.md` for the change-axis rationale.
 
 #### Session lifecycle flow
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `agent_runtime` | `session_ledger` | Partnership | These two contexts evolve together as the session story. Agent_runtime emits `session.started`, `session.updated`, `session.ended`; session_ledger appends canonical blocks and projects read models. The session_id namespace is shared. Coordination is tight. |
+| `agent_runtime` | `session_mirrors` | Partnership | These two contexts evolve together as the session story. Agent_runtime emits `session.started`, `session.updated`, `session.ended`; session_mirrors appends canonical blocks and projects read models. The session_id namespace is shared. Coordination is tight. |
 | `agent_runtime` | `workflow` | Customer-Supplier | Long-running operations on sessions (file syncs, builds) emit `operation.completed` events; workflow consumes when an operation completes a todo lifecycle step. |
 
 #### Workflow → outbound notifications
@@ -125,7 +125,7 @@ The integration → agent_runtime relationship is the v2 architectural correctio
 
 | Upstream | Downstream | Relationship | Purpose |
 |---|---|---|---|
-| `agent_artifacts` | `integration` | Conformist (via filesystem) | Agent_artifacts deploys hook configs (e.g., `~/.claude/settings.json:hooks` pointing at `telec-hook`). Integration owns `telec-hook` and reads those configs only insofar as the agent CLI invokes the binary. The handshake is filesystem-mediated, not direct. |
+| `agent_artifacts` | `agent_runtime` | Conformist (via filesystem) | Agent_artifacts deploys hook configs (e.g., `~/.claude/settings.json:hooks` pointing at `telec-hook`). `agent_runtime` owns `telec-hook` and reads those configs only insofar as the agent CLI invokes the binary. The handshake is filesystem-mediated, not direct. |
 
 ### Anti-corruption layers (v1 → v2 migration)
 
@@ -133,7 +133,7 @@ During the migration window, every v2 service maintains an ACL against its v1 co
 
 - v2 `workflow` ↔ v1 `teleclaude/core/todos_db` — v2 reads v1 SQLite during the parallel-capable phase; the ACL translates v1 row shape into v2 aggregates. ACL location: `crates/workflow/src/v1_compat.rs` (planned).
 - v2 `identity` ↔ v1 `teleclaude/core/db/_tokens.py` + `_sessions.py` — token format and principal-resolution rules differ slightly. ACL planned in `crates/identity/src/v1_compat.rs`.
-- v2 `session_ledger` ↔ v1 `teleclaude/mirrors` — block normalization happens at the ACL; v1 transcript shapes get translated.
+- v2 `session_mirrors` ↔ v1 `teleclaude/mirrors` + `teleclaude/history` — text extraction translation; the v2 Mirror aggregate is flat (one row per session, no blocks). v1's CLI surface (`telec history list/search/show`) is preserved via Python shim during the parallel-capable phase.
 - v2 `knowledge` ↔ v1 `teleclaude/docs_index.py` + `context_selector.py` — selection policy translates v1's accumulated edge cases.
 - v2 `integration` ↔ v1 `teleclaude/hooks/` + messaging adapters — both inbound paths and outbox shape need translation.
 
@@ -157,7 +157,7 @@ The context map is the answer to "if a change happens, what triggered it?" — t
 - `workflow` changes when todo lifecycle changes
 - `knowledge` changes when snippet schema or selection policy changes
 - `agent_runtime` changes when session lifecycle, tmux orchestration, or supervision changes
-- `session_ledger` changes when block schema or read-model shape changes
+- `session_mirrors` changes when block schema or read-model shape changes
 - `integration` changes when external protocol (webhook, hook, messaging) changes — irrespective of which external system
 - `agent_artifacts` changes when artifact schema or distribution logic changes
 

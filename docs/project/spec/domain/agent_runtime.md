@@ -26,7 +26,11 @@ Three signal lanes (hook, render, transcript) coordinate the live state — each
 
 This context is the genuine daemon-shaped part of the platform. The `telec-daemon` binary embeds it in long-running form. CLI and TUI also embed for read queries. The cutover from v1 to v2 IS the daemon swap — there's no separate `v2-agent-runtime-cutover`.
 
-This context does NOT own: local project bookkeeping (`workflow`), historical session record (`session_ledger`), knowledge storage (`knowledge`), UI/business logic, hook ingestion (`integration` owns `telec-hook` and the subprocess hook event family).
+This context does NOT own: local project bookkeeping (`workflow`), historical text-only mirrors (`session_mirrors`), knowledge storage (`knowledge`), UI/business logic.
+
+This context DOES own agent CLI hook reception: the `telec-hook` binary, the hook receiver, and the windowed-batch-write mechanism that processes incoming hook events. Per `transport-rules.md` (change-axis test), agent CLI hooks belong here because the agent CLI is a system we control (supervise, deploy, configure) — not an external system. Truly external inputs (HTTP webhooks from Telegram, GitHub, etc.) remain `integration`'s domain.
+
+The runtime ledger (the `sessions` Postgres table this context owns) is operational. It is pruned after a short window (~1-2 weeks). The durable historical record is the mirror in `session_mirrors`, which is eternal and independent. Native session transcript files (owned by the agent CLIs themselves) are the ground truth that both contexts reference; agent_runtime stores the path for live operations, session_mirrors extracts the text at session-end for permanent search.
 
 ## Canonical fields
 
@@ -36,7 +40,7 @@ This context does NOT own: local project bookkeeping (`workflow`), historical se
 :  A unit of agent work in progress. Has a tmux name, native session id, principal binding, status, last activity, project path, additional context. The thing humans see in the session list.
 
 **Session id**
-:  UUID identifying the session. Shared with `session_ledger` (same id, different lens). The wire identifier in events.
+:  UUID identifying the session. Shared with `session_mirrors` (same id, different lens). The wire identifier in events.
 
 **TeleClaude session id**
 :  Same as session_id. Used in cross-context contexts where "session id" alone might be ambiguous.
@@ -57,7 +61,7 @@ This context does NOT own: local project bookkeeping (`workflow`), historical se
 :  Lifecycle state of the live session: `active` (running), `idle` (no recent activity), `closed` (terminated).
 
 **Session lifecycle event**
-:  A change in the session's lifecycle: started, updated, ended. Emitted by agent_runtime; consumed by `session_ledger` and others.
+:  A change in the session's lifecycle: started, updated, ended. Emitted by agent_runtime; consumed by `session_mirrors` and others.
 
 **Operation**
 :  A long-running task tied to a session (file sync, build invocation). Tracked with a durable receipt; consumers wait on the completion event.
@@ -97,19 +101,21 @@ This context does NOT own: local project bookkeeping (`workflow`), historical se
 
 ### Aggregates
 
-#### Session (aggregate, live)
+#### Session (aggregate, the runtime ledger)
 
 - **Root:** `Session`
-- **Contains:** `session_id`, `teleclaude_session_id` (same), `native_session_id`, `tmux_session_name`, `agent` (active), `principal_binding` (the human/machine principal who started the session), `status`, `started_at`, `last_activity`, `closed_at` (nullable), `project_path`, `additional_context` (free-text passed at session start), the bound adapter id (nullable).
+- **Contains:** `session_id`, `teleclaude_session_id` (same), `native_session_id`, `tmux_session_name`, `agent` (active), `principal_binding` (the human/machine principal who started the session), `status`, `started_at`, `last_activity`, `closed_at` (nullable), `project_path` (filesystem path for live operations), `project_slug` (stable identifier for event payloads), `additional_context` (free-text passed at session start), `native_file_path` (transcript file location for live operations + extraction at session-end), the bound adapter id (nullable).
 - **Invariants:**
   - `session_id` is generated at session start; never reused.
   - Tmux session name is unique; the daemon refuses to start a session whose tmux name collides.
   - Status transitions are forward: active → idle → closed. No reactivation; a new session for "the same conversation continued" gets a new session_id.
   - Native session id is set at the moment the agent CLI first emits its identifier (may lag session start by 1-2 seconds).
+  - Native file path is recorded as soon as the agent CLI's transcript file location is known. Required at session-end so session_mirrors can extract.
   - `closed_at` is non-null when status is `closed`; null otherwise.
   - A session has exactly one active agent at any time (swaps are atomic).
+  - Both `project_path` (for live ops) and `project_slug` (for event payloads) are carried.
 - **Identifier:** `session_id` (UUID).
-- **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for historical reference.
+- **Lifecycle:** Created on `telec sessions start`. Status transitions during life. Ended on `telec sessions end` OR detected death (tmux session disappears). Record persists in Postgres after end for an **operational retention window** (~1-2 weeks, configurable). **Pruned after the window** — the durable historical record lives in `session_mirrors`, which extracted at session-end. The mirror persists forever, independent of this row's lifetime.
 
 #### SessionRuntime (aggregate, in-memory per session)
 
@@ -145,35 +151,50 @@ This context does NOT own: local project bookkeeping (`workflow`), historical se
 - **Identifier:** `(agent, machine)`.
 - **Lifecycle:** Initialized at daemon startup. Mutated by `telec agents status <agent> --status ...`. Persists across restarts.
 
+#### HookReceiver (in-memory, daemon-hosted)
+
+- **Root:** `HookReceiver` (one per daemon instance)
+- **Contains:** the IPC listener for `telec-hook` deliveries; the windowed-batch-write coordinator (window timer + dirty-set keyed by session_id); the urgent-flush escape hatch for latency-sensitive hook kinds.
+- **Invariants:**
+  - Exactly one HookReceiver per daemon instance.
+  - Hook events arrive via IPC from `telec-hook` subprocesses. `telec-hook` is part of `agent_runtime`'s binary set (NOT integration's).
+  - `telec-hook` retries delivery with backoff for ~10s if the daemon is unreachable; beyond that, the hook is lost. Accepted trade-off — agent CLIs do not replay hooks.
+  - Hook events collected in a window (e.g., 1s) are coalesced per session_id (one batched update per session, regardless of how many hooks fired for it in the window).
+  - At window tick: batched UPDATE in a single Postgres transaction over the dirty-set.
+  - Urgent hook kinds (`agent_stop`, `session_end`) trigger immediate window flush — they bypass the window for latency reasons.
+  - No `integration.inbox` for agent hooks. The window is the in-memory inbox; durability comes from the database write on commit (LISTEN/NOTIFY trigger for downstream events; see windowed-batch-write-and-dispatch feature spec).
+- **Identifier:** the daemon process itself (singleton per daemon).
+- **Lifecycle:** Created at daemon startup. Receives hooks throughout the daemon's lifetime. Cleaned up at daemon shutdown; in-flight window is lost on crash (~1s of hooks; acceptable per trade-off).
+
 ### Domain events emitted
 
 #### `agent_runtime.session.started`
 
 - **Producer:** `agent_runtime`
 - **Emitted when:** a new session is created and the agent CLI is launched.
-- **Payload:** `session_id`, `teleclaude_session_id`, `native_session_id` (may be null if not yet known; updated event fires when learned), `tmux_session_name`, `agent`, `principal_binding`, `project_path`, `started_at`.
+- **Payload:** `session_id`, `teleclaude_session_id`, `native_session_id` (may be null if not yet known), `tmux_session_name`, `agent`, `principal_binding`, `project_slug`, `started_at`.
 - **Visibility:** CLUSTER
-- **Known consumers:** `session_ledger` (opens transcript ingestion), `frontend` (live session list refresh), `integration` (notification when a session starts on the operator's behalf, optionally).
+- **Known consumers:** `frontend` (live session list refresh), `integration` (notification when a session starts on the operator's behalf, optionally).
 - **Idempotency key:** `session_id`.
-- **Posture:** `commit-then-emit`.
+- **Posture:** dispatched via LISTEN/NOTIFY trigger after the batched write commits (see `feature/agent_runtime/windowed-batch-write-and-dispatch`).
 
 #### `agent_runtime.session.updated`
 
 - **Producer:** `agent_runtime`
-- **Emitted when:** session state changes that aren't lifecycle transitions: `last_activity` advances, `active_agent` swaps, `additional_context` is mutated, native_session_id learned post-start.
-- **Payload:** `session_id`, `change_summary`, `updated_at`, optional `field_changes` map.
+- **Emitted when:** state changes — typically AS A BATCHED EVENT covering all sessions changed in a window. May carry many sessions per event.
+- **Payload:** list of `{session_id, change_summary, updated_at, field_changes}` entries — one per session updated in the window.
 - **Visibility:** CLUSTER
-- **Known consumers:** `session_ledger` (marks dirty for projection), `frontend` (live UI refresh).
-- **Idempotency key:** `(session_id, updated_at)`.
-- **Posture:** `commit-then-emit`.
+- **Known consumers:** `frontend` (live UI refresh — iterates the batch), `telec-tui` (cache invalidation).
+- **Idempotency key:** per-entry `(session_id, updated_at)`; consumer dedups.
+- **Posture:** dispatched via LISTEN/NOTIFY trigger after the batched write commits. The window collects hook events; the batched write fires the trigger; the LISTEN'er publishes the batched Redis event with all updated session records as payload.
 
 #### `agent_runtime.session.ended`
 
 - **Producer:** `agent_runtime`
-- **Emitted when:** the session transitions to `closed` — either by explicit end or detected death.
-- **Payload:** `session_id`, `closed_at`, `closure_reason` (`explicit` | `tmux_died` | `agent_quit` | `operator_terminated`).
+- **Emitted when:** the session transitions to `closed` — either by explicit end or detected death. **Urgent-flushed** (does NOT wait for window).
+- **Payload:** `session_id`, `closed_at`, `closure_reason` (`explicit` | `tmux_died` | `agent_quit` | `operator_terminated`), `agent`, `project_slug`, `human_email`, `started_at`, **`native_file_path`** (required for `session_mirrors` extraction).
 - **Visibility:** CLUSTER
-- **Known consumers:** `session_ledger` (closes ingestion, final projection), `identity` (auto-revoke session token), `frontend` (list update), `integration` (potentially: closure notification).
+- **Known consumers:** `session_mirrors` (closes ingestion, final projection), `identity` (auto-revoke session token), `frontend` (list update), `integration` (potentially: closure notification).
 - **Idempotency key:** `(session_id, closed_at)`.
 - **Posture:** `commit-then-emit`.
 
@@ -187,23 +208,32 @@ This context does NOT own: local project bookkeeping (`workflow`), historical se
 - **Idempotency key:** `operation_id`.
 - **Posture:** `commit-then-emit`.
 
+### Hook ingestion (NOT a consumed event — agent_runtime receives directly)
+
+Agent CLI hooks arrive at `agent_runtime` via the `telec-hook` subprocess (binary owned by agent_runtime). NOT through `integration` — see `transport-rules.md` change-axis correction: agent CLIs are systems we control, not external integration. Hook reception flow:
+
+1. Agent CLI fires hook → spawns `telec-hook` subprocess
+2. `telec-hook` reads payload from stdin, delivers to daemon via IPC (retries ~10s on disconnect)
+3. Daemon's `HookReceiver` collects the event in the current window keyed by session_id
+4. Window tick (or urgent flush for `agent_stop` / `session_end`): batched UPDATE of all dirty sessions in a single Postgres transaction
+5. Trigger on commit fires `NOTIFY` with the affected session_ids
+6. LISTEN'er reads the records and publishes the batched Redis event(s)
+
+Hook kind → reaction:
+- `session_start` → mark session active, set native_session_id, set native_file_path if newly learned
+- `pre_tool_use`, `post_tool_use` → update activity, advance cadence to fast
+- `user_prompt_submit` → mark turn boundary
+- `agent_stop` → **urgent flush** — emit `session.updated` immediately (HOOK LANE AUTHORITATIVE for stop)
+- `session_end` → **urgent flush** — emit `session.ended` with the full payload (carries native_file_path for session_mirrors extraction)
+
+Failure handling: if `telec-hook` cannot deliver within its retry window (~10s), the hook is lost. Acceptable per the design trade-off — agent CLIs do not replay hooks. Render lane and transcript lane act as safety nets for live observability; periodic reconciliation catches drift.
+
 ### Domain events consumed
 
-#### `integration.inbox.agent_hook_received` (and per-kind sub-channels)
+#### `integration.inbox.received` (external inbound only)
 
 - **Producer:** `integration`
-- **Reaction:** agent_runtime is the primary consumer of agent CLI hook signals. Each hook kind triggers specific lifecycle behavior:
-  - `session_start` → mark session active, set native_session_id if newly learned
-  - `pre_tool_use`, `post_tool_use` → update activity, advance cadence to fast
-  - `user_prompt_submit` → mark turn boundary
-  - `agent_stop` → emit `session.updated` reflecting the stop (HOOK LANE AUTHORITATIVE for this)
-  - `session_end` → trigger `session.ended` flow
-- **Failure handling:** missed hooks fall back to render-lane and transcript-lane signals; the three-lane architecture means no single lane's failure breaks live observability. Periodic reconciliation catches drift.
-
-#### `integration.inbox.received`
-
-- **Producer:** `integration`
-- **Reaction:** inbound messages targeted at a session (e.g., Telegram-routed `telec sessions send` from a remote user) are routed through agent_runtime to the appropriate session's input queue.
+- **Reaction:** inbound messages from EXTERNAL providers (Telegram, Discord, WhatsApp) targeted at a session are routed through agent_runtime to the appropriate session's input queue. Note this is NOT agent CLI hooks (those come direct via telec-hook); only true external messaging.
 - **Failure handling:** undeliverable messages (session ended, session not found) are returned to integration's dead-letter.
 
 #### `config.effective.updated`
@@ -335,9 +365,10 @@ And the corpus is the binding parity test against v1's Python parser behavior
 
 ### Context map position
 
-- **Partnership with `session_ledger`** — tightly coordinated; share `session_id` namespace; ledger is downstream consumer of session lifecycle events.
+- **Partnership with `session_mirrors`** — tightly coordinated; share `session_id` namespace; ledger is downstream consumer of session lifecycle events.
 - **Customer-Supplier downstream of `identity`** — sessions bind principals; session tokens come from identity.
-- **Customer-Supplier downstream of `integration`** — subscribes to `integration.inbox.agent_hook_*` for agent CLI lifecycle signals AND `integration.inbox.received` for inbound messages targeted at sessions. Integration owns the hook receiver binary (`telec-hook`); agent_runtime reacts to the events it emits.
+- **Customer-Supplier downstream of `integration`** — for TRUE external messaging only. Subscribes to `integration.inbox.received` for inbound messages from external providers (Telegram, Discord, WhatsApp) targeted at sessions. Agent CLI hook reception is NOT in this relationship — agent_runtime owns `telec-hook` and processes those hooks directly.
+- **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (pruned after ~1-2 weeks); the mirror is the durable historical archive.
 - **Customer-Supplier upstream to `workflow`** — operation.completed events drive todo phase advancement.
 - **Reads from `config`** — cadence parameters, per-agent defaults, tmux configuration.
 - **NO anti-corruption layer with v1 as a separate cutover.** The v2-agent-runtime → v2-daemon-narrow swap IS the cutover. When `v2-daemon-narrow` ships, the v1 daemon is replaced and v1 session management dies with it. There's no parallel-capable session management — only one daemon runs at a time on a machine.
