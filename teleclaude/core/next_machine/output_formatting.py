@@ -149,6 +149,14 @@ Execute these steps in order (FOLLOW TO THE LETTER!):
 
 Based on the above guidance and the work item details, select the best agent and thinking mode.
 
+PARALLELIZATION (pick the one matching your agent choice; append to --additional-context):
+- claude:
+    "Independent sub-tasks MUST be parallelized via TeamCreate — one team, multiple workers in a single call. Sequential dispatch of independent work is a failure mode; default to TeamCreate whenever two or more sub-tasks have no data dependency."
+- codex:
+    "When work decomposes into independent subtasks, immediately spawn bounded explorer/worker sub-agents for them and keep the critical path moving locally. Do not serialize non-blocking discovery, implementation, or verification; wait only when a result blocks integration, then merge/close agents."
+- gemini:
+    "Mandate: Identify independent sub-tasks and concurrently delegate them to sub-agents using `invoke_agent` in a single turn. Ensure parallel sub-agents do not mutate the same files; otherwise, execute them simultaneously without setting `wait_for_previous`."
+
 Dispatch metadata: command="{formatted_command}" args="{args}" project="{project}" subfolder="{subfolder}"
 {additional_context_block}
 telec sessions run --command "{formatted_command}" --args "{args}" --project "{project}" \
