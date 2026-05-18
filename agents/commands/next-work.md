@@ -40,7 +40,8 @@ Run the next-work state machine and execute its instructions verbatim.
 ## Steps
 
 - Call `telec todo work` with the slug if provided.
-- Read `telec todo artifacts read {slug} implementation-plan` before dispatching. Select `--mode`:
+- Read `telec todo artifacts read {slug} implementation-plan` before dispatching, with
+  `prd`, optional `architecture`, and optional `test-specs` as context when present. Select `--mode`:
   - **Reviewers**: always `slow`.
   - **Builders and fixers**: `med` for straightforward work (few tasks, well-defined scope, no architectural decisions); `slow` for complex work (many tasks, cross-cutting changes, architectural decisions).
   - **Finalizers**: always `fast`.

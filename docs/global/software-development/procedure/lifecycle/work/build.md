@@ -21,25 +21,30 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
 ## Preconditions
 
 - `telec todo artifacts read {slug} implementation-plan` exists and is readable.
-- `telec todo artifacts read {slug} requirements` exists and is readable — **unless**
+- `telec todo artifacts read {slug} prd` exists and is readable — **unless**
   the todo is prepped (`state.kind == "prepped"`), in which case there is no
-  requirements artifact and the implementation-plan is the sole spec.
+  PRD artifact and the implementation-plan is the sole spec. Legacy todos may
+  carry `requirements`; use it only when `prd` is absent.
+- `architecture` and `test-specs` are readable when present and not skipped.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.
 
 ## Steps
 
-1. Read the requirements artifact via `telec todo artifacts read {slug} requirements`
-   to confirm intent and constraints. If the todo is prepped (no requirements artifact
-   exists), skip this step — the implementation-plan artifact is the combined
-   spec-and-plan.
-2. Read the implementation-plan artifact via
+1. Read the PRD artifact via `telec todo artifacts read {slug} prd` to confirm
+   intent, success criteria, and scope constraints. If `prd` is absent but legacy
+   `requirements` exists, read `requirements` as the legacy intent contract. If the
+   todo is prepped (no PRD or legacy requirements artifact exists), skip this step —
+   the implementation-plan artifact is the combined spec-and-plan.
+2. Read `architecture` and `test-specs` when present and not skipped. Treat
+   architecture as technical context and test-specs as the verification contract.
+3. Read the implementation-plan artifact via
    `telec todo artifacts read {slug} implementation-plan` and identify unchecked tasks.
-3. Determine the build mode from the nature of the work:
+4. Determine the build mode from the nature of the work:
    - **Spec-satisfaction (default):** Pre-written xfail test specs exist. For each task, remove the expected-failure marker, then write the implementation that makes the test pass. This is the standard RED-GREEN-REFACTOR flow.
    - **Characterization:** The deliverable is test coverage for existing untested code (no pre-written specs). Follow the OBSERVE-ASSERT-VERIFY cycle from the testing policy. Coverage depth at meaningful public boundaries is the primary output — pin actual behavior, verify each test catches mutations, discard shallow tests that survive production faults.
-4. Execute tasks sequentially:
-   - Follow the build mode determined in step 3.
+5. Execute tasks sequentially:
+   - Follow the build mode determined in step 4.
    - Commit changes for the task (one commit per task).
    - Update the task checkbox to `[x]` and include that change in the same commit.
    - Do not use `git stash`/`git stash pop`; keep the flow commit-based inside the current worktree.
@@ -54,8 +59,8 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    with the task. If the diff does not match intent, the code change is wrong:
    fix the code and do not update the snapshot. Concrete idioms and migration
    patterns live in `software-development/procedure/snapshot-testing`.
-5. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
-6. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
+6. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
+7. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
    you to build a classifier, scorer, judge, evaluator, or auto-fixer on
    free-text content, stop. Per `principle/intelligence-boundaries`, the
    principle outranks the plan. Surface as a blocker and report back —

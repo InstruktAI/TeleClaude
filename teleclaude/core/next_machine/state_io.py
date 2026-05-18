@@ -485,7 +485,7 @@ Ownership:
 
 ## Build Gates (Builder)
 
-- [ ] Requirements implemented according to scope
+- [ ] PRD success criteria implemented according to scope
 - [ ] Implementation-plan task checkboxes all `[x]`
 - [ ] Tests pass (`make test`)
 - [ ] Lint passes (`make lint`)
@@ -498,11 +498,11 @@ Ownership:
 
 ## Review Gates (Reviewer)
 
-- [ ] Requirements traced to implemented behavior
+- [ ] PRD success criteria traced to implemented behavior
 - [ ] Deferrals justified and not hiding required scope
 - [ ] Findings written in `review-findings.md`
 - [ ] Verdict recorded (APPROVE or REQUEST CHANGES)
-- [ ] Critical issues resolved or explicitly blocked
+- [ ] Requirement-Violation, Critical, and Important issues resolved or explicitly blocked
 - [ ] Test coverage and regression risk assessed
 - [ ] User-facing verification evidence reviewed
 - [ ] Browser-based frontend or web UI changes verified with Playwright during review, or gap recorded as a finding
@@ -541,7 +541,7 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
 
     Fast-track path used by prepped ``telec todo dump`` to short-circuit
     the full prepare lifecycle.
-    Validates that requirements and implementation-plan artifacts exist and
+    Validates that the PRD (or legacy requirements) and implementation-plan artifacts exist and
     that a git HEAD is reachable BEFORE any state is persisted. Only after
     validation succeeds does the function generate the quality-checklist
     artifact when missing, stamp DOR pass, the prepare review verdicts, the
@@ -765,8 +765,7 @@ def is_prepped_todo(cwd: str, slug: str) -> bool:
     """Check if a todo entered the lifecycle pre-prepared (kind='prepped').
 
     Prepped todos were born with a complete implementation plan and skipped the
-    prepare phase entirely. They have no requirements artifact — the plan is the
-    sole spec.
+    prepare phase entirely. They have no PRD artifact — the plan is the sole spec.
     """
     state = read_phase_state(cwd, slug)
     return state.get("kind") == "prepped"

@@ -22,10 +22,13 @@ itself is artifact-agnostic.
 
 Typical phase/artifact combinations:
 
-- `requirements-review-findings` → target: `requirements`
-- `spec-review-findings` → target: test spec files in the worktree
+- `architecture-review-findings` → target: `architecture`
+- `spec-review-findings` → target: `test-specs`
 - `plan-review-findings` → target: `implementation-plan`
 - `review-findings` → target: source code in the worktree
+
+Legacy todos may still reference `requirements-review-findings` → `requirements`.
+New prepare work uses human `prd_approved` rather than a requirements review phase.
 
 ## Preconditions
 

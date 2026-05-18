@@ -20,7 +20,7 @@ After priming, stay in the current session and load the appropriate command as a
 inline skill when directed:
 
 - `/next-create` for creative work (design spec, art, visuals)
-- `/next-prepare` for preparation (requirements, planning, readiness)
+- `/next-prepare` for preparation (PRD, prepared context, planning, readiness)
 - `/next-work` for implementation (build, review, fix, finalize)
 
 ## Inputs

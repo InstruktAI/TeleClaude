@@ -22,7 +22,8 @@ The Next Machine orchestrates complex development cycles (Phase A: Prepare, Phas
 
 1. **Canonical phase pointer**: It reads the persisted `lifecycle_phase` pointer and routes from that state:
    - `roadmap (todos.db)` (item discovery)
-   - `requirements.md` and `implementation-plan.md` (preparation check)
+   - prepared workflow artifacts: `prd`, optional `architecture` / `test-specs`,
+     and `implementation-plan` (preparation check)
    - `todo state (todos.db)` (build/review phase tracking)
 2. **Phases**:
    - **Phase A (Prepare)**: Sequential artifact production with PRD-only human approval and downstream review gates.
@@ -53,8 +54,10 @@ stateDiagram-v2
 **Inputs:**
 
 - `todos.db` roadmap - Work item registry with priorities
-- `telec todo artifacts read {slug} requirements` - Feature requirements
-- `telec todo artifacts read {slug} implementation-plan` - Technical design
+- `telec todo artifacts read {slug} prd` - Product intent and requirements contract
+- `telec todo artifacts read {slug} architecture` - Optional technical brief
+- `telec todo artifacts read {slug} test-specs` - Optional behavioral specs
+- `telec todo artifacts read {slug} implementation-plan` - Execution plan
 - `todos.db` state - Phase tracking (build, review)
 - `telec todo artifacts read {slug} deferrals` - Identified technical debt
 - `config.yml` (via `app_config.agents`) - Agent availability and strengths
@@ -187,7 +190,7 @@ sequenceDiagram
 | -------- | ------------ | -------------------------------------------------------------------------------- |
 | Prepare  | Orchestrator | `/prime-orchestrator` then route with `telec todo prepare` / `telec todo work`   |
 | Build    | Builder      | `/next-build` in worktree                                                        |
-| Review   | Reviewer     | `/next-review-build` - evaluate against requirements                             |
+| Review   | Reviewer     | `/next-review-build` - evaluate against PRD and prepared artifacts               |
 | Fix      | Fixer        | `/next-fix-review` - address findings                                            |
 | Finalize | Finalizer    | `/next-finalize` - prepare and emit FINALIZE_READY (apply is orchestrator-owned) |
 
@@ -198,7 +201,7 @@ sequenceDiagram
 - **Dependency Cycle**: Circular dependencies detected. Logs error, refuses to dispatch.
 - **No Selectable Agents**: All agents are disabled in `config.yml` or marked unavailable in DB. Next Machine returns a hard error. If some agents are available but degraded, it notes this in the guidance and lets the orchestrator choose whether to proceed.
 - **Git Not Available**: Worktree commands fail. Machine returns error; manual git setup required.
-- **Stale Artifacts**: Requirements updated but plan not regenerated. Reviewer catches mismatch; fix manually.
+- **Stale Artifacts**: PRD or prepared context updated but plan not regenerated. Reviewer catches mismatch; fix manually.
 - **Worker Crash**: Dispatched AI never completes. Orchestrator must timeout and retry or escalate.
 - **Stamp Failure**: `telec todo stamp` fails due to validation (e.g., uncommitted changes for finalize-ready). Worker must resolve before stamping.
 - **Finalize Contention**: Multiple orchestrators reach finalize simultaneously. Serialized by the singleton integrator's lease; each candidate is queued and processed in order.

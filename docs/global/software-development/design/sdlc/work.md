@@ -22,7 +22,8 @@ build-review-fix loops.
 
 **Inputs**
 
-- `requirements`
+- `prd`
+- optional `architecture`
 - `test-specs`
 - `implementation-plan`
 - computed supporting context and evidence where automation can provide it
@@ -60,7 +61,7 @@ Lead/support:
 
 How rigor is preserved:
 
-- execution is constrained by `requirements + test-specs + implementation-plan`
+- execution is constrained by `prd + optional architecture + test-specs + implementation-plan`
 - `A` prevents drift away from intended outcome and user value
 
 Automation supplies:
@@ -146,7 +147,7 @@ Exit condition:
 
 | Step     | Main question                                | Lead | Support | Rigor mechanism                                                  |
 | -------- | -------------------------------------------- | ---- | ------- | ---------------------------------------------------------------- |
-| `build`  | Can we realize the prepared truth correctly? | `B`  | `A`     | build stays bound to requirements, specs, and plan               |
+| `build`  | Can we realize the prepared truth correctly? | `B`  | `A`     | build stays bound to PRD, architecture context, specs, and plan  |
 | `review` | Did we build the right thing correctly?      | `A`  | `B`     | review checks intent, acceptance, and technical quality together |
 | `fix`    | Can we resolve the finding without drift?    | `B`  | `A`     | fixes remain tied to the same artifact chain and are re-reviewed |
 

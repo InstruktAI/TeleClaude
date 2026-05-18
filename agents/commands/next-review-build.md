@@ -1,6 +1,6 @@
 ---
 argument-hint: '[slug]'
-description: Worker command - review code against requirements, output findings with verdict
+description: Worker command - review code against PRD and prepared artifacts, output findings with verdict
 ---
 
 # Review
@@ -14,7 +14,7 @@ You are now the Reviewer.
 
 ## Purpose
 
-Review code changes against requirements and architecture and produce a verdict.
+Review code changes against the PRD, prepared artifacts, and architecture context, then produce a verdict.
 
 ## Inputs
 
@@ -36,16 +36,18 @@ Review code changes against requirements and architecture and produce a verdict.
 
 ## Steps
 
-- Read `telec todo artifacts read {slug} requirements`,
-  `telec todo artifacts read {slug} implementation-plan`, and the diff against main.
-  If the requirements artifact does not exist, this is a prepped todo
-  (`state.kind == "prepped"`) — the implementation-plan artifact is the sole spec.
-  Continue with the plan artifact and diff only.
+- Read `telec todo artifacts read {slug} prd`,
+  `telec todo artifacts read {slug} implementation-plan`, optional `architecture`,
+  optional `test-specs`, and the diff against main. If the PRD artifact does not
+  exist but legacy `requirements` does, treat `requirements` as the legacy intent
+  contract. If neither exists and `state.kind == "prepped"`, the
+  implementation-plan artifact is the sole spec. Continue with the plan artifact
+  and diff only.
 
-- **Prepped item detection:** If the todo is prepped (no requirements artifact), the
+- **Prepped item detection:** If the todo is prepped (no PRD or legacy requirements artifact), the
   implementation-plan was authored as a complete spec-and-plan and the prepare phase
   was intentionally skipped. Treat the plan as the sole intent source. Skip the scope
-  lane (there is no separate requirements document to trace against). Run all other
+  lane (there is no separate PRD document to trace against). Run all other
   lanes against the plan and the diff. Note "Prepped review (kind=prepped)" in the
   findings header.
 - Run every review lane marked "Always" in the review procedure's lane table.
@@ -54,9 +56,9 @@ Review code changes against requirements and architecture and produce a verdict.
   means the review is incomplete — stop and execute it.
 - Each lane must produce a section in `review-findings.md`.
 - Persist the full findings artifact with `telec todo artifacts write {slug} review-findings "<content>"`.
-- Count unresolved Critical and unresolved Important findings.
-- If either count > 0: verdict is REQUEST CHANGES.
-- If both are 0: verdict is APPROVE.
+- Count unresolved Requirement-Violation, Critical, and Important findings.
+- If any count is > 0: verdict is REQUEST CHANGES.
+- If all counts are 0: verdict is APPROVE.
 - Commit findings and report verdict.
 
 ## Discipline

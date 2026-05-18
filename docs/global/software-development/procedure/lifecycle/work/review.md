@@ -1,5 +1,5 @@
 ---
-description: 'Review phase. Verify requirements, code quality, tests, and deliver verdict with findings.'
+description: 'Review phase. Verify PRD intent, prepared artifacts, code quality, tests, and deliver verdict with findings.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/work/review'
 scope: 'domain'
@@ -19,12 +19,14 @@ visibility: 'public'
 
 ## Goal
 
-Verify the implementation against requirements and standards, and deliver a binary verdict with structured findings.
+Verify the implementation against the PRD, prepared artifacts, and standards, and deliver a binary verdict with structured findings.
 
 ## Preconditions
 
-- `telec todo artifacts read {slug} requirements` exists (or `bug.md` for bug fixes).
+- `telec todo artifacts read {slug} prd` exists (or `bug` for bug fixes). Legacy
+  todos may carry `requirements`; use it only when `prd` is absent.
 - `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
+- `architecture` and `test-specs` are readable when present and not skipped.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
 - Build phase completed for the slug.
 
@@ -36,12 +38,20 @@ If no slug provided, select the first item with phase `active` in `todo state (t
 
 Read **in full, not only the diff**:
 
-- `telec todo artifacts read {slug} requirements` (or `bug.md` for bug fixes) — the contract the delivery must satisfy.
+- `telec todo artifacts read {slug} prd` (or `bug` for bug fixes) — the product
+  intent, success criteria, and scope the delivery must satisfy. If `prd` is
+  absent but legacy `requirements` exists, read `requirements` as the legacy
+  intent contract.
+- `telec todo artifacts read {slug} architecture` when present — technical context and constraints.
+- `telec todo artifacts read {slug} test-specs` when present — verification contract derived from the PRD and architecture.
 - `telec todo artifacts read {slug} implementation-plan` — how the builder intended to satisfy the contract.
 - `telec todo artifacts read {slug} plan-review-findings` and `spec-review-findings` — the per-criterion delivery analyses and spec-to-criterion mappings produced upstream. Use these as the ground truth for what the reviewer must verify against the code.
 - `README.md`, `AGENTS.md`, and `docs/*` for project patterns.
 
-The reviewer must be able to state, from the requirements text, what every requirement promises before running any lane. A review that reads only the diff passes scope-narrowed deliveries because the diff looks self-consistent. Reading requirements in full is the safeguard against that failure.
+The reviewer must be able to state, from the PRD success criteria, what every
+required outcome promises before running any lane. A review that reads only the
+diff passes scope-narrowed deliveries because the diff looks self-consistent.
+Reading the PRD in full is the safeguard against that failure.
 
 Use merge-base to focus the diff:
 
@@ -63,7 +73,7 @@ Run lanes in parallel where possible. Each lane produces findings with severity 
 
 | Lane                    | Reference                                                                   | Task                                                                                  |
 | ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| scope                   | § Scope verification                                                        | Verify delivery matches requirements — no gold-plating, no gaps                       |
+| scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                         |
 | code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                      |
 | paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency                                 |
 | principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                   |
@@ -89,11 +99,11 @@ incomplete — stop and execute the missing lane before writing the verdict.
 
 #### Scope verification
 
-The delivery must match the requirements — nothing more, nothing less.
+The delivery must match the PRD — nothing more, nothing less.
 
-For each success criterion in every requirement, produce a `Scope verification` entry in `review-findings.md`:
+For each PRD success criterion, produce a `Scope verification` entry in `review-findings.md`:
 
-1. Quote the criterion verbatim from `requirements.md`.
+1. Quote the criterion verbatim from `prd` (or legacy `requirements` when PRD is absent).
 2. Name the specific code change in the diff that delivers the criterion (file, function, line range).
 3. Name the test whose passing demonstrates the criterion is delivered.
 4. State, in one sentence, how the code change and the passing test together satisfy the criterion.
@@ -104,7 +114,7 @@ Findings:
 - Criterion partially delivered — some criteria sub-points addressed, others silently dropped → **Requirement-Violation**. A delivery that narrows a criterion's scope is as broken as one that omits it.
 - Criterion delivered but the named test would pass even on a broken implementation → **Requirement-Violation**. Weak verification is not verification.
 - Unrequested feature (no criterion drives it) → **Critical**.
-- Gold-plating (scope creep beyond requirements) → Important.
+- Gold-plating (scope creep beyond the PRD) → Important.
 
 A reviewer cannot approve while any Scope verification entry is missing or names "none" for the code change, test, or satisfaction analysis.
 
@@ -344,7 +354,7 @@ Simplification findings are **Important** severity. The simplify lane only flags
 If a review produces 0 Important or higher findings across all lanes, include a "Why No Issues" section in `review-findings.md`:
 
 1. Evidence of paradigm-fit verification (which patterns were checked).
-2. Evidence that requirements were met (which requirements were validated and how).
+2. Evidence that PRD success criteria were met (which criteria were validated and how).
 3. Explicit statement that copy-paste duplication was checked.
 4. Evidence that security was reviewed.
 
@@ -392,7 +402,7 @@ changes.
 
 #### Bug fix review
 
-When `telec todo artifacts read {slug} bug` exists, use it as the requirement source instead of `requirements.md`. Verify:
+When `telec todo artifacts read {slug} bug` exists, use it as the intent source instead of `prd`. Verify:
 
 1. Fix addresses the symptom described in `bug.md`.
 2. Root cause analysis is sound.

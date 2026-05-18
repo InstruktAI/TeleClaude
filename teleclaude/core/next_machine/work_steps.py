@@ -83,6 +83,16 @@ def _reviewer_idle_post_block(slug: str) -> str:
     )
 
 
+def _prepared_artifact_note(slug: str) -> str:
+    """Return the current prepare artifact contract for worker dispatch notes."""
+    return (
+        f"Prepared artifact contract for {slug}: PRD is the canonical intent and "
+        f"requirements source; implementation-plan is the execution spine; "
+        f"architecture and test-specs are optional context when present. "
+        f"Legacy requirements is only a fallback when PRD is absent."
+    )
+
+
 async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
     """List child sessions spawned by the current orchestrator session."""
     if not session_id:
@@ -170,8 +180,8 @@ async def _work_step_build_started(
     """BUILD_STARTED: look up a live builder, otherwise dispatch a fresh one.
 
     Readiness gate is delegated to ``is_ready_for_work`` — the canonical
-    helper checks ``lifecycle_phase`` (which already encodes requirements
-    approval, plan approval, and grounding validity).
+    helper checks ``lifecycle_phase`` (which already encodes PRD approval,
+    plan approval, and grounding validity).
     """
     claim_result = await _handle_build_complete_claim(
         db=db, todos_db=todos_db, slug=slug, worktree_cwd=worktree_cwd, state=state
@@ -214,7 +224,8 @@ async def _work_step_build_started(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             note=(
-                f"Start implementation now. When the build is committed and ready for review, "
+                f"{_prepared_artifact_note(slug)} Start implementation now. "
+                f"When the build is committed and ready for review, "
                 f"run `telec todo stamp {slug} --build-complete`."
             ),
             next_call=f"telec todo work {slug}",
@@ -337,7 +348,7 @@ async def _work_step_build_complete(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             next_call=f"telec todo work {slug}",
-            note=REVIEW_DIFF_NOTE,
+            note=f"{_prepared_artifact_note(slug)} {REVIEW_DIFF_NOTE}",
             post_block=_reviewer_idle_post_block(slug),
         )
     )

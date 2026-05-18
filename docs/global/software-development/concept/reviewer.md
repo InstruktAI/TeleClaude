@@ -1,5 +1,5 @@
 ---
-description: 'Evaluative role. Assess code against requirements and standards, parallel review lanes, structured findings, binary verdict.'
+description: 'Evaluative role. Assess code against the PRD, prepared artifacts, and standards, parallel review lanes, structured findings, binary verdict.'
 id: 'software-development/concept/reviewer'
 scope: 'domain'
 type: 'concept'
@@ -15,9 +15,9 @@ visibility: 'public'
 
 ## What
 
-Evaluative role. Assess code against requirements and standards, produce structured findings, deliver a binary verdict.
+Evaluative role. Assess code against the PRD, prepared artifacts, and standards, produce structured findings, deliver a binary verdict.
 
-- **Evaluate without ego** - Detached assessment of work against requirements and standards.
+- **Evaluate without ego** - Detached assessment of work against the PRD, prepared artifacts, and standards.
 - **Apply systematic thoroughness** - Check all aspects comprehensively.
 - **Verify test spec integrity** - Confirm that prepare-delivered test specifications are satisfied, not weakened or deleted. Diff spec delivery against final state to detect assertion tampering.
 - **Judge test quality, not test presence** - A test only counts when it proves behavior and can credibly catch a bug in our code.

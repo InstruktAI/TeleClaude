@@ -272,7 +272,7 @@ sequenceDiagram
     SM->>WT: git diff --cached (non-empty)
     SM-->>Agent: MERGE_CLEAN: compose commit message
 
-    Note over Agent: Agent reads diff stats,<br/>requirements.md, plan,<br/>composes commit message
+    Note over Agent: Agent reads diff stats,<br/>PRD, prepared context, plan,<br/>composes commit message
     Agent->>WT: git commit -m "feat(my-feature): deliver ..."
     Agent->>SM: telec todo integrate
 

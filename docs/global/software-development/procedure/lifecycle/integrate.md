@@ -56,8 +56,8 @@ The state machine returns one of the following instruction blocks at each step.
 
 The branch has been squash-merged; staged changes are ready.
 
-1. Read the context: diff stats, branch commit history, `requirements.md`,
-   `implementation-plan.md`.
+1. Read the context: diff stats, branch commit history, `prd`, optional
+   `architecture` / `test-specs` when present, and `implementation-plan`.
 2. Compose a commit message capturing the full delivery intent:
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope

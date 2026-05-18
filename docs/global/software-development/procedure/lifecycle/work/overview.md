@@ -18,7 +18,8 @@ instructed by the state machine and supervises their progress.
 ## Preconditions
 
 - Target slug has completed preparation (state: PREPARED).
-- `telec todo artifacts read {slug} requirements` and `telec todo artifacts read {slug} implementation-plan` exist and are approved.
+- `telec todo artifacts read {slug} prd` and `telec todo artifacts read {slug} implementation-plan` exist and are approved.
+- Optional `architecture` and `test-specs` artifacts are approved or explicitly skipped.
 - Worktree is available or can be created for the slug.
 
 ## Steps
