@@ -279,7 +279,6 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-user-1",
             last_message_sent="ship it",
-            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
@@ -443,13 +442,12 @@ class TestProjectSessionFromTranscript:
         mock_db.update_session.assert_awaited_once_with(
             "sess-integrator-1",
             last_message_sent="/next-integrate",
-            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
 
     @pytest.mark.unit
-    async def test_consumes_adapter_origin_hint_once_then_resets_to_terminal(self):
+    async def test_fresh_non_discord_origin_reflects_without_resetting_origin(self):
         session = Session(
             session_id="sess-origin-hint-1",
             computer_name="local",
@@ -458,9 +456,10 @@ class TestProjectSessionFromTranscript:
             active_agent="codex",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="web",
+            last_message_sent="typed in browser",
+            last_message_sent_at=datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC),
         )
         transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
-        refreshed = Session.from_dict(session.to_dict() | {"last_input_origin": "terminal"})
         adapter_client = AsyncMock()
 
         with (
@@ -475,21 +474,20 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=refreshed)
+            mock_db.get_session = AsyncMock(return_value=session)
             result = await project_session_from_transcript(session, adapter_client)
 
         adapter_client.broadcast_user_input.assert_awaited_once_with(session, "typed in browser", "web")
         mock_db.update_session.assert_awaited_once_with(
             "sess-origin-hint-1",
             last_message_sent="typed in browser",
-            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
-        assert result.last_input_origin == "terminal"
+        assert result.last_input_origin == "web"
 
     @pytest.mark.unit
-    async def test_discord_origin_is_suppressed_once_then_resets_to_terminal(self):
+    async def test_fresh_discord_origin_is_skipped_without_resetting_origin(self):
         session = Session(
             session_id="sess-origin-hint-2",
             computer_name="local",
@@ -498,9 +496,10 @@ class TestProjectSessionFromTranscript:
             active_agent="codex",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="discord",
+            last_message_sent="typed in discord",
+            last_message_sent_at=datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC),
         )
         transcript_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
-        refreshed = Session.from_dict(session.to_dict() | {"last_input_origin": "terminal"})
         adapter_client = AsyncMock()
 
         with (
@@ -515,18 +514,56 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=refreshed)
+            mock_db.get_session = AsyncMock(return_value=session)
             result = await project_session_from_transcript(session, adapter_client)
 
         adapter_client.broadcast_user_input.assert_not_awaited()
         mock_db.update_session.assert_awaited_once_with(
             "sess-origin-hint-2",
             last_message_sent="typed in discord",
-            last_input_origin="terminal",
             last_message_sent_at=transcript_ts,
             last_projected_at=transcript_ts,
         )
-        assert result.last_input_origin == "terminal"
+        assert result.last_input_origin == "discord"
+
+    @pytest.mark.unit
+    async def test_stale_non_terminal_origin_defers_user_and_output_projection(self):
+        projected_ts = datetime(2026, 4, 7, 12, 0, 1, tzinfo=UTC)
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        session = Session(
+            session_id="sess-origin-stale",
+            computer_name="local",
+            tmux_session_name="tmux-origin-stale",
+            title="Untitled",
+            active_agent="codex",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="discord",
+            last_message_sent="typed in terminal",
+            last_message_sent_at=projected_ts,
+            last_projected_at=projected_ts,
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=("typed in terminal", transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=("assistant text", transcript_ts, False),
+            ) as build_output,
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await project_session_from_transcript(session, adapter_client)
+
+        adapter_client.broadcast_user_input.assert_not_awaited()
+        adapter_client.send_output_update.assert_not_awaited()
+        build_output.assert_not_called()
+        mock_db.update_session.assert_not_awaited()
+        assert result is session
 
     @pytest.mark.unit
     async def test_projection_dedupe_ignores_last_message_sent_at(self):
@@ -547,7 +584,7 @@ class TestProjectSessionFromTranscript:
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="terminal",
-            last_message_sent="old text",
+            last_message_sent="new input",
             last_message_sent_at=future_ts,
             last_projected_at=None,
         )
@@ -608,6 +645,7 @@ class TestProjectSessionFromTranscript:
         # turn start anchor on every projection so edits accumulate.
         for call in mock_db.update_session.await_args_list:
             assert "last_tool_done_at" not in call.kwargs
+        assert any("last_projected_output_digest" in call.kwargs for call in mock_db.update_session.await_args_list)
         adapter_client.send_output_update.assert_awaited_once_with(
             session,
             "assistant text",
@@ -618,20 +656,19 @@ class TestProjectSessionFromTranscript:
         )
 
     @pytest.mark.unit
-    async def test_projection_always_calls_send_output_update_when_transcript_has_content(self):
-        """Projection is a pure executor — no in-function dedup. Adapter-level
-        idempotency (output_message_id + char_offset) handles same-content re-sends.
-        """
+    async def test_projection_skips_output_when_projected_digest_matches(self):
         session = Session(
-            session_id="sess-output-passthrough-1",
+            session_id="sess-output-dedupe-1",
             computer_name="local",
-            tmux_session_name="tmux-output-passthrough-1",
+            tmux_session_name="tmux-output-dedupe-1",
             title="Title",
             active_agent="claude",
             native_log_file="/tmp/transcript.jsonl",
             last_input_origin="telegram",
         )
         delivery_ts = datetime(2026, 4, 7, 12, 3, 0, tzinfo=UTC)
+        digest = pc._output_projection_digest("assistant text", delivery_ts, False)
+        refreshed = Session.from_dict(session.to_dict() | {"last_projected_output_digest": digest})
         adapter_client = AsyncMock()
 
         with (
@@ -646,13 +683,45 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
+            mock_db.get_session = AsyncMock(return_value=refreshed)
+            first = await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
+            await project_session_from_transcript(first, adapter_client, started_at=1.0, last_changed_at=2.0)
+
+        adapter_client.send_output_update.assert_awaited_once()
+        assert mock_db.update_session.await_count == 1
+
+    @pytest.mark.unit
+    async def test_projection_sends_same_text_again_when_delivery_cursor_changes(self):
+        old_ts = datetime(2026, 4, 7, 12, 3, 0, tzinfo=UTC)
+        new_ts = datetime(2026, 4, 7, 12, 4, 0, tzinfo=UTC)
+        session = Session(
+            session_id="sess-output-new-cursor",
+            computer_name="local",
+            tmux_session_name="tmux-output-new-cursor",
+            title="Title",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin="telegram",
+            last_projected_output_digest=pc._output_projection_digest("assistant text", old_ts, False),
+        )
+        adapter_client = AsyncMock()
+
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=None,
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=("assistant text", new_ts, False),
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.update_session = AsyncMock()
             mock_db.get_session = AsyncMock(return_value=session)
             await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
-            # Second invocation with identical state — projection still fires; the
-            # adapter is the layer that dedupes same-content delivery.
-            await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
 
-        assert adapter_client.send_output_update.await_count == 2
+        adapter_client.send_output_update.assert_awaited_once()
 
     @pytest.mark.unit
     async def test_generate_session_title_preserves_slash_prefixed_titles(self):

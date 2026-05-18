@@ -404,18 +404,27 @@ class AgentCoordinator(
 
         update_kwargs: dict[str, object] = {}  # guard: loose-dict - Dynamic session updates
 
-        # Terminal input bypasses the command pipeline — set origin here.
-        # Acceptance handlers set last_input_origin for adapter-originated
-        # commands. Re-read to see the current value.
+        # Terminal input bypasses command acceptance handlers, so the prompt
+        # hook is the turn-origin signal. If a UI adapter already recorded a
+        # fresh matching acceptance for this prompt, preserve it.
         fresh_origin = await db.get_session(session_id)
         current_origin = (fresh_origin.last_input_origin if fresh_origin else session.last_input_origin) or ""
-        is_terminal_input = current_origin == InputOrigin.TERMINAL.value or not current_origin
-        if is_terminal_input:
+        has_fresh_ui_origin = (
+            bool(fresh_origin)
+            and current_origin != InputOrigin.TERMINAL.value
+            and polling_coordinator.has_fresh_origin_for_user(fresh_origin, prompt_text)
+        )
+        terminal_origin_recorded = not has_fresh_ui_origin
+        if terminal_origin_recorded:
             update_kwargs["last_input_origin"] = InputOrigin.TERMINAL.value
+            update_kwargs["last_message_sent"] = prompt_text[:200]
+            update_kwargs["last_message_sent_at"] = datetime.now(UTC).isoformat()
 
-        # Single DB update for all fields
-        await db.update_session(session_id, **update_kwargs)
+        if update_kwargs:
+            await db.update_session(session_id, **update_kwargs)
         await db.update_last_activity(session_id)
+        if terminal_origin_recorded:
+            await polling_coordinator.schedule_session_projection(session_id, self.client)
         logger.debug(
             "Recorded user input via hook for session %s: %s...",
             session_id,

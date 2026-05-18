@@ -454,10 +454,6 @@ class _DaemonHookOutboxMixin:  # pyright: ignore[reportUnusedClass]
                 )
                 return
             session = await self._ensure_headless_session(session_id, data)
-        elif session.lifecycle_status == "headless" and session.last_input_origin != InputOrigin.TERMINAL.value:
-            await db.update_session(session_id, last_input_origin=InputOrigin.TERMINAL.value)
-            session = await db.get_session(session_id) or session
-
         # Native metadata arrives through the outbox and can legitimately lag
         # behind session close. Persist those row mutations before the generic
         # closed-session guard so revive retains the last known native binding.

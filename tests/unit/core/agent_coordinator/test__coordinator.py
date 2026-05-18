@@ -354,6 +354,10 @@ class TestHandleUserPromptSubmit:
         with (
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ),
         ):
             mock_db.get_session = AsyncMock(return_value=session)
             mock_db.update_session = AsyncMock()
@@ -430,6 +434,10 @@ class TestHandleUserPromptSubmit:
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
             patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ),
+            patch(
                 "teleclaude.core.agent_coordinator._coordinator.read_head_sha",
                 return_value="abc123",
             ) as read_head_mock,
@@ -465,6 +473,10 @@ class TestHandleUserPromptSubmit:
             patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
             patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
             patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ),
+            patch(
                 "teleclaude.core.agent_coordinator._coordinator.read_head_sha",
             ) as read_head_mock,
         ):
@@ -492,6 +504,85 @@ class TestHandleUserPromptSubmit:
         coord, _ = await self._run_normal_prompt()
         called_statuses = [c[0][1] for c in coord._emit_status_event.call_args_list]
         assert "accepted" in called_statuses
+
+    @pytest.mark.unit
+    async def test_terminal_prompt_overwrites_stale_ui_origin_and_signals_projection(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.prompt = "fix the bug"
+        context.data.raw = {}
+        projected_at = datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC)
+        session = _make_session(
+            lifecycle_status="active",
+            active_agent="claude",
+            last_input_origin="discord",
+            last_message_sent="old prompt",
+            last_message_sent_at=projected_at,
+            last_projected_at=projected_at,
+        )
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ) as schedule_projection,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            await coord.handle_user_prompt_submit(context)
+
+        terminal_writes = [
+            call.kwargs for call in mock_db.update_session.await_args_list if "last_input_origin" in call.kwargs
+        ]
+        assert len(terminal_writes) == 1
+        assert terminal_writes[0]["last_input_origin"] == "terminal"
+        assert terminal_writes[0]["last_message_sent"] == "fix the bug"
+        assert "last_message_sent_at" in terminal_writes[0]
+        schedule_projection.assert_awaited_once_with("sess-001", coord.client)
+
+    @pytest.mark.unit
+    async def test_fresh_ui_origin_is_preserved_and_does_not_signal_projection(self):
+        coord = _make_coordinator()
+        context = MagicMock()
+        context.session_id = "sess-001"
+        context.data.prompt = "fix the bug"
+        context.data.raw = {}
+        projected_at = datetime(2026, 4, 7, 12, 0, 0, tzinfo=UTC)
+        accepted_at = datetime(2026, 4, 7, 12, 0, 2, tzinfo=UTC)
+        session = _make_session(
+            lifecycle_status="active",
+            active_agent="claude",
+            last_input_origin="discord",
+            last_message_sent="fix the bug",
+            last_message_sent_at=accepted_at,
+            last_projected_at=projected_at,
+        )
+
+        with (
+            patch("teleclaude.core.agent_coordinator._coordinator.db") as mock_db,
+            patch("teleclaude.core.agent_coordinator._coordinator._is_checkpoint_prompt", return_value=False),
+            patch(
+                "teleclaude.core.agent_coordinator._coordinator.polling_coordinator.schedule_session_projection",
+                AsyncMock(),
+            ) as schedule_projection,
+        ):
+            mock_db.get_session = AsyncMock(return_value=session)
+            mock_db.update_session = AsyncMock()
+            mock_db.update_last_activity = AsyncMock()
+            mock_db.set_notification_flag = AsyncMock()
+            coord._emit_activity_event = MagicMock()
+            coord._emit_status_event = MagicMock()
+            await coord.handle_user_prompt_submit(context)
+
+        assert not any("last_input_origin" in call.kwargs for call in mock_db.update_session.await_args_list)
+        schedule_projection.assert_not_awaited()
 
 
 class TestHandleAgentStop:

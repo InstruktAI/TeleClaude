@@ -332,3 +332,30 @@ async def test_dispatch_hook_event_processes_codex_non_subagent_agent_stop() -> 
 
     assert daemon_instance._handle_agent_event.called
     assert daemon_instance._handle_agent_event.call_count == 1
+
+
+@pytest.mark.unit
+async def test_dispatch_hook_event_does_not_reset_existing_headless_origin() -> None:
+    daemon_instance = _TestDaemon()
+    daemon_instance.shutdown_event = asyncio.Event()
+    session = SimpleNamespace(
+        tmux_session_name=None,
+        lifecycle_status="headless",
+        active_agent="claude",
+        last_input_origin="discord",
+    )
+
+    with patch("teleclaude.daemon_hook_outbox.db") as mock_db:
+        mock_db.get_session = AsyncMock(return_value=session)
+        mock_db.update_session = AsyncMock()
+        daemon_instance._handle_agent_event = AsyncMock()
+        daemon_instance._ensure_output_polling = AsyncMock()
+
+        await daemon_instance._dispatch_hook_event(
+            "sess-headless-ui",
+            daemon_hook_outbox.AgentHookEvents.TOOL_USE,
+            {"agent_name": "claude"},
+        )
+
+    assert not any("last_input_origin" in call.kwargs for call in mock_db.update_session.await_args_list)
+    assert daemon_instance._handle_agent_event.called

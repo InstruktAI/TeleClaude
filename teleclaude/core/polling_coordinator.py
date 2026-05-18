@@ -5,6 +5,7 @@ Handles polling lifecycle orchestration and central transcript-driven delivery.
 """
 
 import asyncio
+import hashlib
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -206,6 +207,52 @@ _pending_headless_projections: set[str] = set()
 _headless_projection_lock = asyncio.Lock()
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    return value.astimezone(UTC) if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _message_preview(text: str) -> str:
+    return text[:200]
+
+
+def _stored_preview_matches(session: "Session", text: str) -> bool:
+    stored = (session.last_message_sent or "").strip()
+    if not stored:
+        return True
+    return stored == _message_preview(text).strip()
+
+
+def has_fresh_origin_for_user(session: "Session", user_text: str) -> bool:
+    """Return whether last_input_origin belongs to this unprojected user turn."""
+
+    origin = (session.last_input_origin or "").strip()
+    if not origin:
+        return False
+    if not _stored_preview_matches(session, user_text):
+        return False
+
+    accepted_at = _as_utc(session.last_message_sent_at)
+    projected_at = _as_utc(session.last_projected_at)
+    if projected_at is None:
+        return accepted_at is not None or origin == InputOrigin.TERMINAL.value
+    if accepted_at is None:
+        return False
+    return accepted_at > projected_at
+
+
+def _output_projection_digest(message: str, delivery_ts: datetime, is_multi: bool) -> str:
+    payload = "\0".join(
+        (
+            delivery_ts.astimezone(UTC).isoformat(),
+            "multi" if is_multi else "single",
+            message,
+        )
+    )
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
 def _handle_background_poller_result(task: asyncio.Task[None], session_id: str) -> None:
     """Consume background poller task exceptions to avoid unretrieved-task noise."""
     try:
@@ -272,34 +319,41 @@ async def _release_headless_projection(session_id: str) -> None:
 async def _project_user_reflection(
     session: "Session",
     adapter_client: "AdapterClient",
-) -> "Session":
+) -> tuple["Session", bool]:
     """Project the latest authoritative user message from transcript into canonical state."""
 
     transcript_path = session.native_log_file
     active_agent = session.active_agent
     if not transcript_path or not active_agent:
-        return session
+        return session, True
 
     try:
         agent_name = AgentName.from_str(active_agent)
     except ValueError:
-        return session
+        return session, True
 
     extracted = await asyncio.to_thread(extract_last_user_message_with_timestamp, transcript_path, agent_name)
     if not extracted:
-        return session
+        return session, True
 
     user_text, transcript_ts = extracted
     if not user_text.strip():
-        return session
+        return session, True
 
-    transcript_dt = transcript_ts.astimezone(UTC) if isinstance(transcript_ts, datetime) else None
+    transcript_dt = _as_utc(transcript_ts) if isinstance(transcript_ts, datetime) else None
     # Dedupe against the projection-owned watermark, not the mixed-purpose last_message_sent_at.
-    watermark_dt = (
-        session.last_projected_at.astimezone(UTC) if isinstance(session.last_projected_at, datetime) else None
-    )
+    watermark_dt = _as_utc(session.last_projected_at)
     if watermark_dt is not None and transcript_dt is not None and transcript_dt <= watermark_dt:
-        return session
+        return session, True
+
+    if not has_fresh_origin_for_user(session, user_text):
+        logger.debug(
+            "Deferring transcript projection until user-turn origin is fresh: session=%s origin=%s projected_at=%s",
+            session.session_id,
+            (session.last_input_origin or "").strip() or "<none>",
+            watermark_dt.isoformat() if watermark_dt else "<none>",
+        )
+        return session, False
 
     source = (session.last_input_origin or "").strip() or InputOrigin.TERMINAL.value
     # Mirror the output-lane admin copy rule: skip only when the origin itself
@@ -313,10 +367,6 @@ async def _project_user_reflection(
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            # last_input_origin is a one-shot hint for the next authoritative
-            # transcript-projected user message. Once consumed, fall back to terminal
-            # so later direct TUI input is not poisoned by a stale adapter origin.
-            last_input_origin=InputOrigin.TERMINAL.value,
             last_message_sent_at=transcript_dt,
             last_projected_at=transcript_dt,
         )
@@ -324,10 +374,9 @@ async def _project_user_reflection(
         await db.update_session(
             session.session_id,
             last_message_sent=user_text[:200],
-            last_input_origin=InputOrigin.TERMINAL.value,
         )
     refreshed = await db.get_session(session.session_id)
-    return refreshed or session
+    return refreshed or session, True
 
 
 async def project_session_from_transcript(
@@ -339,16 +388,20 @@ async def project_session_from_transcript(
 ) -> "Session":
     """Project transcript truth into canonical session state and outbound delivery.
 
-    Pure executor — invoked once per coalesced signal from
-    schedule_headless_projection. Adapter-level idempotency
-    (output_message_id + char_offset in send_threaded_output) handles
-    same-content re-sends without a projection-side gate.
+    Invoked once per coalesced signal. Transcript files are the source of
+    truth; session projection owns source-order gating and output dedupe before
+    adapter delivery mechanics run.
     """
-    session = await _project_user_reflection(session, adapter_client)
+    session, can_project_output = await _project_user_reflection(session, adapter_client)
+    if not can_project_output:
+        return session
 
     transcript_update = await asyncio.to_thread(_build_transcript_output_update, session)
     if transcript_update is not None:
         message, last_ts, is_multi = transcript_update
+        projection_digest = _output_projection_digest(message, last_ts, is_multi)
+        if session.last_projected_output_digest == projection_digest:
+            return session
         changed_at = last_changed_at if last_changed_at is not None else last_ts.timestamp()
         await adapter_client.send_output_update(
             session,
@@ -358,12 +411,21 @@ async def project_session_from_transcript(
             multi_message=is_multi,
             delivery_ts=last_ts,
         )
+        await db.update_session(session.session_id, last_projected_output_digest=projection_digest)
+        refreshed = await db.get_session(session.session_id)
+        if refreshed is not None:
+            session = refreshed
         _record_output_tick(session.session_id, len(message))
     return session
 
 
-async def schedule_headless_projection(session_id: str, adapter_client: "AdapterClient") -> bool:
-    """Schedule a transcript projection pass for a headless session.
+async def schedule_session_projection(
+    session_id: str,
+    adapter_client: "AdapterClient",
+    *,
+    headless_only: bool = False,
+) -> bool:
+    """Schedule a transcript projection pass for a session.
 
     Coalesces overlapping signals: while a projection is in flight, additional
     calls mark the slot pending and the running task re-runs once on completion.
@@ -377,7 +439,7 @@ async def schedule_headless_projection(session_id: str, adapter_client: "Adapter
         try:
             while True:
                 session = await db.get_session(session_id)
-                if not session or session.lifecycle_status != "headless":
+                if not session or (headless_only and session.lifecycle_status != "headless"):
                     return
                 await project_session_from_transcript(session, adapter_client)
                 if not await _consume_pending_projection(session_id):
@@ -385,9 +447,15 @@ async def schedule_headless_projection(session_id: str, adapter_client: "Adapter
         finally:
             await _release_headless_projection(session_id)
 
-    task = asyncio.create_task(_run(), name=f"project-headless-{session_id}")
+    task_name = f"project-headless-{session_id}" if headless_only else f"project-session-{session_id}"
+    task = asyncio.create_task(_run(), name=task_name)
     task.add_done_callback(lambda t, sid=session_id: _handle_background_poller_result(t, sid))  # type: ignore[misc]
     return True
+
+
+async def schedule_headless_projection(session_id: str, adapter_client: "AdapterClient") -> bool:
+    """Schedule a transcript projection pass for a headless session."""
+    return await schedule_session_projection(session_id, adapter_client, headless_only=True)
 
 
 async def schedule_polling(
