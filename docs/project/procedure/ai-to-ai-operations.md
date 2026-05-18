@@ -12,6 +12,7 @@ visibility: 'public'
 
 - @docs/project/spec/command-surface.md
 - @docs/project/spec/command-contracts.md
+- @docs/project/spec/session-subscriptions.md
 
 ## Goal
 
@@ -35,7 +36,8 @@ Delegate work to remote AI sessions safely and predictably.
 4. Follow up on the session:
    - For dispatched workers: `telec sessions tail` for status checks. Workers run autonomously — avoid unnecessary follow-ups.
    - For peer discussions: `telec sessions send <id> "<message>" --direct` establishes a linked conversation where turn-complete outputs are automatically cross-shared. Use for collaborative sessions where both agents need to see each other's output. Sever with `--close-link` when done.
-5. Stop notifications when updates are no longer needed.
+   - If you dispatched the target and now want to talk to it directly, you can hold both subscriptions at once. Your dispatch-time listener is preserved; notifications are silently suppressed while the direct link is active and resume automatically when you close the link. See `project/spec/session-subscriptions` for the contract.
+5. Stop caring about a target with `telec sessions unsubscribe <id>`. This is the umbrella verb: it removes any listener you hold AND closes any direct link you have with that target. Idempotent — empty state returns success. Use `--close-link` instead if you only want to end the conversation but keep passive notifications.
 6. End sessions when work completes.
 7. If context is near capacity, request a summary, end, and restart fresh.
 
@@ -49,3 +51,4 @@ Delegate work to remote AI sessions safely and predictably.
 - Forgetting to end sessions — orphaned sessions consume resources and confuse monitoring.
 - Polling too aggressively with `telec sessions tail` — respect the 5-minute cadence gate.
 - Starting sessions on computers or project paths that aren't in `trusted_dirs` — the command will be rejected.
+- Notifications appear to stop arriving while you are in a direct conversation with the same target — expected. Suppression resumes delivery on link sever.

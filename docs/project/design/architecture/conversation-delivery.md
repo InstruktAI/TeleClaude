@@ -8,11 +8,15 @@ visibility: 'public'
 
 # Conversation Delivery — Design
 
+## Required reads
+
+- @docs/project/spec/session-subscriptions.md
+
 ## Purpose
 
 Keep direct conversations correct across normal turns, human interjections, and daemon restarts.
 
-This system is separate from one-shot session listeners. It owns peer conversation replay for persisted conversation links.
+This system owns the direct-link axis of the subscription model. It is independent of the listener axis (see `session-listeners`). The cross-axis contract — including the link-aware suppression rule that gates listener notifications while a link is active — is canonical in `session-subscriptions`.
 
 - Conversation links persist membership in the database.
 - Session state stores the last TeleClaude conversation injection timestamp.
@@ -60,6 +64,7 @@ This system is separate from one-shot session listeners. It owns peer conversati
 - **Crash-safe handoff via in-flight pending bound**: before sending a bundle, the planned upper-bound timestamp is persisted to `pending_through_ts`. On successful delivery, an atomic upsert advances `delivered_through_ts` and clears `pending_through_ts`. On reconciliation, an orphaned `pending_through_ts > delivered_through_ts` triggers a **bounded replay**: the same range is collected from the transcript, framed into the same bundle, and re-sent under the same transport dedupe key. The receiver dedupes if it already accepted the bundle, or processes it for the first time if the prior send did not reach the queue. Cursor advance happens only after this replay handoff succeeds — pending is never blindly promoted.
 - **Restart reconciliation**: startup runs the same replay logic against active links. The bounded-replay path runs first for any orphaned pending bound; only after its handoff is durable does the cursor advance to the bound, and the next iteration delivers segments past the bound as a fresh bundle.
 - **Deterministic dedupe key**: transport dedupe keys for a bundle derive from link identity, source/target identity, the cursor at bundle start, and the planned upper-bound. The crash-safe pending bound prevents the upper-bound from drifting on replay, so the key remains stable across restart-after-handoff.
+- **Listener records are untouched.** Link creation, reuse, and severance never insert, modify, or delete rows in `session_listeners`. The interaction between the two axes is purely runtime: while an active direct link exists for a `(caller, target)` pair, that caller's listener-driven notifications for that target are suppressed at delivery time. The listener row remains and resumes delivery on the next event after the link is severed. Any code path that calls `register_listener` or `unregister_listener` during link lifecycle is a bug.
 
 ## Primary flows
 

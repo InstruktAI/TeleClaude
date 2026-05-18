@@ -1,5 +1,5 @@
 ---
-description: 'In-memory listener registry that notifies callers when target sessions stop.'
+description: 'Persistent listener registry that notifies callers when target sessions stop or need input, with link-aware suppression.'
 id: 'project/design/architecture/session-listeners'
 scope: 'project'
 type: 'design'
@@ -8,88 +8,95 @@ visibility: 'public'
 
 # Session Listeners — Design
 
+## Required reads
+
+- @docs/project/spec/session-subscriptions.md
+
 ## Purpose
 
-Allow AI sessions to wait on other sessions and receive stop notifications.
+Persist caller-target subscriptions for passive notification (`agent_stop`, input-request), and deliver those notifications into caller tmux sessions — subject to the link-aware suppression rule defined in `session-subscriptions`.
 
-- Callers register a one-shot listener per target session.
-- Stop events pop listeners and inject a notification into caller tmux sessions.
-- Listeners are cleaned up when callers end or unsubscribe.
-- Only one listener per caller-target pair.
-- Listeners are in-memory and not persisted across daemon restarts.
-- Daemon restarts drop listeners; callers must re-register.
-
-This design covers orchestrator-style stop notifications only. It does **not** own persisted peer conversation. Direct conversation uses conversation links plus transcript-based conversation delivery, not session listeners.
+This design owns the listener axis. It does not own the direct-link axis (see `conversation-delivery`) and is not the place to learn the cross-axis contract — see `session-subscriptions` for that.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
-- Listener registration requests from session command handlers (`start_session`, `send_message`, `run_agent_command`)
-- Session stop events from agent_coordinator
-- Session input_request events from agent parsers
-- Unsubscribe requests via the `stop_notifications` command
+- Listener registration requests from session command handlers:
+  - persistent (`one_shot=false`) at orchestrator dispatch time (`create_session` with `initiator_session_id`)
+  - one-shot (`one_shot=true`) at non-direct `send_message` time, so the sender hears back when the target's turn completes
+- Session stop events from `AgentCoordinator`
+- Session input-request events from agent parsers
+- Unsubscribe requests via `POST /sessions/{id}/unsubscribe`
 - Cleanup triggers when caller sessions end
 
 **Outputs:**
 
-- In-memory listener registry (target_session_id → list of listeners)
-- Injected notification messages to caller tmux sessions
-- Listener removal confirmations
+- Rows in `session_listeners` (SQLite table)
+- Injected notification messages to caller tmux sessions via `deliver_listener_message`
+- Boolean confirmations on register / unregister
 
 ## Invariants
 
-- **One-Shot Delivery**: Listeners fire once on stop event, then auto-removed.
-- **In-Memory Only**: Listeners not persisted; daemon restart drops all registrations.
-- **Deduplication by Caller**: Only one listener per (caller, target) pair; duplicates ignored.
-- **Multiple Callers Allowed**: Many callers can listen to same target (e.g., 4 AIs waiting for a dependency).
-- **Caller Cleanup**: All listeners registered by a caller are removed when caller session ends.
-- **Not Used for Peer Conversation**: Direct links survive restart through database-backed conversation links and directional delivery cursors. Listener loss on restart does not define direct-conversation behavior.
+- **Durable storage.** Listeners are persisted in SQLite (`session_listeners` table). They survive daemon restart; callers do not need to re-register after a restart.
+- **One-shot delivery for `one_shot=true` rows.** These fire once on stop event and are auto-removed.
+- **Persistent rows for `one_shot=false`.** Registered at dispatch time. Survive across many turn boundaries. Removed only by explicit unsubscribe or by caller-session cleanup.
+- **Deduplication by `(caller, target)`.** At most one row per pair. Repeat registrations are no-ops; the existing `one_shot` value is preserved.
+- **Multiple callers allowed per target.** Many callers can listen to the same target.
+- **Caller cleanup cascades.** All listeners registered by a caller are removed when the caller session ends.
+- **Link-aware suppression.** Notification delivery to a caller is skipped while an active direct link exists between that caller and the target. The listener row is never mutated by link create / close — only delivery is gated. Canonical rule lives in `session-subscriptions`.
+- **No destructive coupling.** Creating, reusing, or closing a direct link must not call `register_listener` / `unregister_listener`. Earlier code paths that did so are bugs; the contract forbids them.
+- **Cross-restart correctness.** Because rows are durable, restart preserves both persistent and one-shot listeners. A one-shot listener registered before restart will still fire on the next event after restart.
 
 ## Primary flows
 
-### 1. Listener Registration Flow
+### 1. Listener Registration
 
 ```mermaid
 sequenceDiagram
-    participant MasterAI
-    participant CommandAPI
-    participant Registry
-    participant DB
+    participant Initiator
+    participant API as Sessions API
+    participant Registry as session_listeners
+    participant DB as SQLite
 
-    MasterAI->>CommandAPI: start_session(computer="local", message="build feature")
-    CommandAPI->>DB: Create session record
-    CommandAPI->>DB: Get tmux session name
-    CommandAPI->>Registry: register_listener(target=worker_id, caller=master_id, tmux=tc_master_123)
-    Registry->>Registry: Check duplicate (caller, target) pair
-    alt Not duplicate
-        Registry->>Registry: Append listener to target's list
-        Registry->>CommandAPI: True (registered)
-    else Duplicate
-        Registry->>CommandAPI: False (already registered)
+    Initiator->>API: create_session(initiator_session_id=<initiator>, ...)
+    API->>DB: INSERT sessions row
+    API->>Registry: register_listener(target, caller, tmux, one_shot=false)
+    Registry->>DB: INSERT OR IGNORE session_listeners
+    alt Newly inserted
+        Registry->>API: True (registered)
+    else Already present
+        Registry->>API: False (dedup, no change)
     end
-    CommandAPI->>MasterAI: session_id
+    API-->>Initiator: 200 OK
 ```
 
-### 2. Stop Event Notification
+### 2. Stop Event Notification with Suppression Check
 
 ```mermaid
 sequenceDiagram
-    participant WorkerAI
-    participant Coordinator
-    participant Registry
-    participant TmuxDelivery
-    participant MasterAI
+    participant Worker
+    participant Coord as AgentCoordinator
+    participant Registry as session_listeners
+    participant Links as conversation_links
+    participant Tmux as deliver_listener_message
+    participant Caller
 
-    WorkerAI->>WorkerAI: Finish turn
-    WorkerAI->>Coordinator: agent_stop hook
-    Coordinator->>Registry: pop_listeners(target=worker_id)
-    Registry->>Coordinator: [listener1, listener2]
+    Worker->>Coord: agent_stop
+    Coord->>Registry: notify_stop(target=worker_id)
+    Registry->>DB: SELECT listeners WHERE target=worker_id
     loop For each listener
-        Coordinator->>TmuxDelivery: deliver_listener_message(caller_id, tmux_session, notification)
-        TmuxDelivery->>MasterAI: Inject "Session abc finished. Use telec sessions tail <session_id> --thinking --tools"
+        Registry->>Links: active direct link (listener.caller, worker_id)?
+        alt Link present
+            Note over Registry: suppress — skip delivery for this caller
+        else No link
+            Registry->>Tmux: deliver to (caller, caller_tmux_session)
+            Tmux->>Caller: inject notification
+            opt one_shot row
+                Registry->>DB: DELETE session_listeners row
+            end
+        end
     end
-    Note over Registry: Listeners removed (one-shot)
 ```
 
 ### 3. Caller Session Cleanup
@@ -97,37 +104,33 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Daemon
-    participant Registry
+    participant Registry as session_listeners
+    participant DB as SQLite
 
-    Daemon->>Daemon: Detect master session ended
-    Daemon->>Registry: cleanup_caller_listeners(master_id)
-    Registry->>Registry: Remove all listeners where caller == master_id
-    Registry->>Registry: Prune empty target lists
-    Registry->>Daemon: Count of removed listeners
-    Daemon->>Daemon: Log cleanup result
+    Daemon->>Daemon: detect caller session ended
+    Daemon->>Registry: cleanup_caller_listeners(caller_id)
+    Registry->>DB: DELETE FROM session_listeners WHERE caller_session_id=caller_id
+    Registry->>Daemon: count removed
 ```
 
-### 4. Listener Registry Data Structure
+### 4. Unsubscribe (umbrella verb)
 
-```python
-# In-memory storage
-_listeners: dict[str, list[SessionListener]] = {
-    "worker-session-123": [
-        SessionListener(
-            target_session_id="worker-session-123",
-            caller_session_id="master-session-456",
-            caller_tmux_session="tc_master_456",
-            registered_at=datetime(2025, 1, 25, 10, 30)
-        ),
-        SessionListener(
-            target_session_id="worker-session-123",
-            caller_session_id="master-session-789",
-            caller_tmux_session="tc_master_789",
-            registered_at=datetime(2025, 1, 25, 10, 31)
-        )
-    ]
-}
+```mermaid
+sequenceDiagram
+    participant Caller
+    participant API as POST /sessions/{id}/unsubscribe
+    participant Registry as session_listeners
+    participant Links as conversation_links
+
+    Caller->>API: unsubscribe(target_id)
+    API->>Registry: unregister_listener(target_id, caller_id)
+    Registry-->>API: listener_removed: bool
+    API->>Links: close_link_for_member(caller_id, target_id)
+    Links-->>API: link_id | null
+    API-->>Caller: { status: success, listener_removed, link_closed, link_id }
 ```
+
+`unsubscribe` is idempotent — empty state returns success.
 
 ### 5. Notification Message Templates
 
@@ -136,43 +139,18 @@ _listeners: dict[str, list[SessionListener]] = {
 | Stop          | `Session {id} [on {computer}] "{title}" finished its turn. Use: telec sessions tail {id} --thinking --tools` |
 | Input Request | `Session {id} on {computer} needs input: {message}. Reply with: telec sessions send {id} "<your message>"`   |
 
-### 6. Unsubscribe Flow (stop_notifications)
+### 6. Stale Listener Inspection
 
-```mermaid
-sequenceDiagram
-    participant MasterAI
-    participant CommandAPI
-    participant Registry
-
-    MasterAI->>CommandAPI: stop_notifications(computer="local", session_id=worker_id, caller_session_id=master_id)
-    CommandAPI->>Registry: unregister_listener(target=worker_id, caller=master_id)
-    Registry->>Registry: Find and remove listener
-    alt Found
-        Registry->>Registry: Remove from target's list
-        Registry->>Registry: Prune empty target list if needed
-        Registry->>CommandAPI: True (removed)
-    else Not found
-        Registry->>CommandAPI: False (no such listener)
-    end
-    CommandAPI->>MasterAI: Success/Failure
-    Note over WorkerAI: Worker continues running, but master no longer notified
-```
-
-### 7. Stale Listener Inspection
-
-The listener module exposes `get_stale_targets(max_age_minutes=10)` as a helper for
-inspection and diagnostics. There is currently no daemon-side automatic stale-listener
-cleanup loop wired to this helper.
+The listener module exposes `get_stale_targets(max_age_minutes=10)` as a helper for inspection and diagnostics. No daemon-side automatic stale-listener cleanup loop is wired to it today.
 
 ## Failure modes
 
-- **Daemon Restart**: All listeners lost. Callers must re-register. No automatic recovery.
-- **Caller Session Crash**: Cleanup hook may not fire. Listeners remain until caller cleanup paths run or daemon restart.
-- **Target Never Stops**: Listener waits indefinitely until target stop/input-request event, unsubscribe, cleanup, or daemon restart.
-- **Notification Injection Fails**: Tmux session not found or unresponsive. Logged but listener removed (one-shot semantics preserved).
-- **Duplicate Registration**: Silently ignored. Caller receives False but no error. Prevents listener leaks.
-- **Concurrent Pop**: Two events fire for same target. First pop succeeds, second returns empty list. No crash.
-- **Memory Growth**: Listeners accumulate if callers don't clean up. Bounded by active session count \* max dependencies.
-- **Race on Cleanup**: Caller ends while target fires stop event simultaneously. Both operations succeed; no corruption.
+- **Caller session crash with no clean shutdown.** Cleanup hook may not fire. Listener rows remain until a later caller cleanup pass or until the operator manually unsubscribes. Rows are inert — at worst they suppress on a target that no one is reading.
+- **Target session never stops.** Listener row remains until caller cleanup, unsubscribe, or target end.
+- **Notification injection fails (tmux gone).** Logged. A `one_shot=true` row is still removed (one-shot semantics preserved). A persistent row is retained; it becomes silent until tmux is restored or the caller is cleaned up.
+- **Duplicate registration.** No-op. Returns False to caller; no error.
+- **Concurrent stop events for same target.** Listeners load + deliver under per-row locking; double-fire is prevented by the one-shot DELETE being atomic with the SELECT.
+- **Suppression check race.** A link severed mid-notify still suppresses for the current event (suppression evaluated at notify time); the next event delivers normally. Cost is at most one missed notification at the exact moment of sever, acceptable because the caller was actively conversing through the link until that moment.
+- **Daemon restart with pending one-shot rows.** Rows are durable; the next event after restart fires them.
 
-Direct conversation recovery is owned elsewhere. Restart-safe peer replay is handled by the conversation delivery system, not by restoring this in-memory registry.
+Direct conversation recovery is owned elsewhere. Restart-safe peer replay is handled by the conversation delivery system, not by this registry.
