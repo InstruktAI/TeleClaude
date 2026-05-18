@@ -73,6 +73,10 @@ PLAN_ONLY_ARTIFACT_CONTRACT = (
     "Plan-only artifact contract for {slug}: implementation-plan is the intent and execution source "
     "for this {kind} work."
 )
+ARTIFACT_CONTRACT_PREPARED = "prepared"
+ARTIFACT_CONTRACT_BUG = "bug"
+ARTIFACT_CONTRACT_PREPPED = "prepped"
+ARTIFACT_CONTRACT_PLAN_ONLY = "plan_only"
 _PLAN_ONLY_WORK_KINDS = {"refactor", "migration"}
 
 
@@ -114,6 +118,17 @@ def _artifact_contract_note(slug: str, kind: str) -> str:
     if kind in _PLAN_ONLY_WORK_KINDS:
         return PLAN_ONLY_ARTIFACT_CONTRACT.format(slug=slug, kind=kind)
     return _prepared_artifact_note(slug)
+
+
+def _artifact_contract_identity(kind: str) -> str:
+    """Return a stable identity for the artifact contract selected for a todo kind."""
+    if kind == "bug":
+        return ARTIFACT_CONTRACT_BUG
+    if kind == "prepped":
+        return ARTIFACT_CONTRACT_PREPPED
+    if kind in _PLAN_ONLY_WORK_KINDS:
+        return ARTIFACT_CONTRACT_PLAN_ONLY
+    return ARTIFACT_CONTRACT_PREPARED
 
 
 async def _list_child_session_ids(db: Db, session_id: str) -> list[str]:
@@ -246,6 +261,7 @@ async def _work_step_build_started(
             project=_derive_project_root(cwd, slug),
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
+            artifact_contract=_artifact_contract_identity(kind),
             note=(
                 f"{_artifact_contract_note(slug, kind)} Start implementation now. "
                 f"When the build is committed and ready for review, "
@@ -373,6 +389,7 @@ async def _work_step_build_complete(
             guidance=guidance,
             subfolder=f"{WORKTREE_DIR}/{slug}",
             next_call=f"telec todo work {slug}",
+            artifact_contract=_artifact_contract_identity(kind),
             note=f"{_artifact_contract_note(slug, kind)} {REVIEW_DIFF_NOTE}",
             post_block=_reviewer_idle_post_block(slug),
         )

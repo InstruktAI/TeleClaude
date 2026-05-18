@@ -117,9 +117,7 @@ async def test_build_started_dispatch_note_matches_standard_prepared_todo() -> N
     request = await _capture_build_dispatch_request("todo")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.PREPARED_ARTIFACT_CONTRACT.format(slug="todo-slug"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPARED
 
 
 @pytest.mark.asyncio
@@ -127,9 +125,7 @@ async def test_build_started_dispatch_note_matches_prepped_todo() -> None:
     request = await _capture_build_dispatch_request("prepped")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.PREPPED_ARTIFACT_CONTRACT.format(slug="prepped-slug"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPPED
 
 
 @pytest.mark.asyncio
@@ -137,9 +133,7 @@ async def test_build_started_dispatch_note_matches_bug_todo() -> None:
     request = await _capture_build_dispatch_request("bug")
 
     assert request["command"] == SlashCommand.NEXT_BUGS_FIX
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.BUG_ARTIFACT_CONTRACT.format(slug="bug-slug"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_BUG
 
 
 @pytest.mark.asyncio
@@ -147,9 +141,7 @@ async def test_build_started_dispatch_note_matches_plan_only_todo() -> None:
     request = await _capture_build_dispatch_request("refactor")
 
     assert request["command"] == SlashCommand.NEXT_BUILD
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.PLAN_ONLY_ARTIFACT_CONTRACT.format(slug="refactor-slug", kind="refactor"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PLAN_ONLY
 
 
 async def _capture_review_dispatch_request(
@@ -199,9 +191,7 @@ async def test_build_complete_review_dispatch_note_matches_standard_prepared_tod
     request = await _capture_review_dispatch_request("todo")
 
     assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.PREPARED_ARTIFACT_CONTRACT.format(slug="todo-slug"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_PREPARED
 
 
 @pytest.mark.asyncio
@@ -209,9 +199,7 @@ async def test_build_complete_review_dispatch_note_matches_bug_todo() -> None:
     request = await _capture_review_dispatch_request("bug")
 
     assert request["command"] == SlashCommand.NEXT_REVIEW_BUILD
-    note = request.get("note")
-    assert isinstance(note, str)
-    assert note.startswith(work_steps.BUG_ARTIFACT_CONTRACT.format(slug="bug-slug"))
+    assert request["artifact_contract"] == work_steps.ARTIFACT_CONTRACT_BUG
 
 
 @pytest.mark.asyncio
