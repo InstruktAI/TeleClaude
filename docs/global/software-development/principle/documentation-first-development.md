@@ -4,6 +4,8 @@ type: 'principle'
 domain: 'software-development'
 scope: 'global'
 visibility: 'public'
+status: 'mixed'
+delivered_by: ['snippet-status-framework']
 description: 'Documentation leads, implementation catches up. Snippets declare current vs. target state explicitly so the gap stays honest and the design stays shareable.'
 ---
 
