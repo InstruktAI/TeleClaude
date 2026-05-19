@@ -105,6 +105,10 @@ class PreparationViewActionsMixin:
             return
 
         try:
+            # Justification: roadmap reordering has no sync Python service entrypoint
+            # safe to call from the TUI event loop; `telec roadmap move` owns the
+            # main-branch lock + position recompute. Shelling the CLI reuses that
+            # serialization rather than duplicating it here.
             subprocess.run(
                 ["telec", "roadmap", "move", slug, "--before", prev_slug],
                 check=True,
@@ -137,6 +141,8 @@ class PreparationViewActionsMixin:
             return
 
         try:
+            # Justification: see action_move_todo_up — `telec roadmap move` owns the
+            # main-branch lock + position recompute; shelling reuses that serialization.
             subprocess.run(
                 ["telec", "roadmap", "move", slug, "--after", next_slug],
                 check=True,

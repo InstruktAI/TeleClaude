@@ -139,13 +139,15 @@ def assemble_roadmap_from_db(
     Reads state, roadmap entries, and deps from the SQLite database.
 
     ``include_delivered``/``delivered_only`` return delivered entries.
-    ``delivered_since`` optionally restricts those to entries delivered at or
-    after the given ISO-8601 timestamp. Callers own their cutoff: the
-    default/TUI list view passes ``now - RECENTLY_DELIVERED_HOURS`` to avoid
-    flooding the view with the full delivery history; the CLI ``--since`` flag
-    passes the user-requested cutoff; an absent value returns all delivered
-    entries. The value must be a clean ISO timestamp produced by the caller —
-    it is embedded into SQL, never accept raw user text here.
+    ``delivered_since`` optionally restricts delivered entries to those
+    delivered at or after the given ISO-8601 timestamp. It is applied as a
+    post-derivation DISPLAY filter — after holder-status derivation, never in
+    SQL — so a holder whose children delivered outside the window still derives
+    as delivered while the genuine old delivered leaf rows are hidden. Callers
+    own their cutoff: the default/TUI list view passes
+    ``now - RECENTLY_DELIVERED_HOURS``; the CLI ``--since`` flag passes the
+    user-requested cutoff; an absent value returns all delivered entries. The
+    value must be a clean ISO timestamp produced by the caller.
     """
     started_at = time.perf_counter()
     db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))

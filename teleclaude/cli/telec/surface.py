@@ -669,9 +669,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                         "--since",
                         desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
                     ),
-                    Flag("--json", desc="Output as JSON"),
+                    Flag("--json", desc="Output as a sectioned JSON object (active/delivered/icebox trees)"),
                 ],
                 notes=[
+                    "Output is sectioned into active/delivered/icebox dependency trees.",
+                    "CONTRACT CHANGE: --json now emits a nested object keyed by section "
+                    "(active/delivered/icebox), each a tree with `children`; previously a flat "
+                    "list. Empty roadmap emits `{}`. Text output no longer appends a [status] suffix.",
                     "--include-delivered returns the full delivery history; scope it with --since.",
                     "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
                     "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
@@ -684,9 +688,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "add": CommandDef(
                 desc="Add entry to the roadmap",
-                args="<slug> [--group <label>] [--after <slugs>] [--before <slug>] [--description <text>]",
+                args="<slug> [--group <holder-slug>] [--after <slugs>] [--before <slug>] [--description <text>]",
                 flags=[
-                    Flag("--group", desc="Visual grouping label"),
+                    Flag("--group", desc="Nest under an existing roadmap entry (holder slug)"),
                     _FLAG_AFTER_DEPS,
                     Flag("--before", desc="Insert before this slug (default: append)"),
                     Flag("--description", desc="Summary description"),

@@ -87,7 +87,8 @@ def _handle_roadmap_show(args: list[str]) -> None:
 
     if not todos:
         if parsed["json_output"]:
-            print("[]")
+            # Consistently sectioned: empty roadmap has no sections.
+            print("{}")
         else:
             print("Roadmap is empty.")
         return
