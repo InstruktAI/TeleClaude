@@ -96,7 +96,7 @@ def test_format_holder_prepare_instruction_covers_non_runnable_reasons(snapshot:
             HolderResolutionReason.ALL_PREPARED,
             HolderResolutionReason.DEPS_UNSATISFIED,
             HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP,
-            HolderResolutionReason.NOT_HOLDER,
+            HolderResolutionReason.ITEM_NOT_READY,
         )
     }
 

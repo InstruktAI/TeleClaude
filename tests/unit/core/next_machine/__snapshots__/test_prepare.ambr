@@ -5,7 +5,7 @@
     'children_not_in_roadmap': "Holder 'holder' has child todos, but none are active roadmap entries.",
     'complete': "All direct children for 'holder' are delivered. No prepare work remains.",
     'deps_unsatisfied': "Holder 'holder' has direct children, but none are prepare-runnable because their dependencies are not delivered yet.",
-    'not_holder': "Holder 'holder' has direct children, but none are currently prepare-runnable. Children: child-a",
+    'item_not_ready': "Holder 'holder' has direct children, but none are currently prepare-runnable. Children: child-a",
   })
 # ---
 # name: test_next_prepare_holder_with_children_emits_child_prepare_commands
