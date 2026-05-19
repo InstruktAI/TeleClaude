@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-config-cutover]
+delivered_by: [v2-config-cutover, inventory-v1-config]
 description: Config bounded context — effective configuration resolved from layered YAML overlays. Owns the model, validation, and overlay computation. Consumed by every service.
 ---
 
@@ -96,61 +96,31 @@ None. Config is a foundation context with no upstream domain — it watches the 
 
 ### Use cases
 
-#### UC-CFG-1: Daemon resolves effective configuration at startup
+Feature spec index for the `config` bounded context. Each entry names a
+durable capability and points at the feature spec that carries the
+Gherkin acceptance scenarios and implementation grounding. v1 entries are
+inventory snapshots delivered by `inventory-v1-config`; v2 entries will
+be added as `v2-config-cutover` lands the cutover work.
 
-```
-Given the daemon binary is launching
-And global, project, and runtime YAML files exist on disk
-When the daemon's config loader runs
-Then the config service reads all overlay sources
-And applies overlay precedence (person → project → global)
-And validates against the schema
-And returns an EffectiveConfig that the daemon uses for the rest of its lifetime (or until config.effective.updated fires)
-```
+#### v1 features (applies_to: v1)
 
-#### UC-CFG-2: Operator changes a configuration value via the TUI wizard
-
-```
-Given the TUI config wizard is open
-And the operator changes a configuration value (e.g., adds a person to the people list)
-When the operator confirms the change
-Then the wizard calls the config service to validate the new effective configuration
-And on validation success, the wizard writes the change to the appropriate YAML file
-And the filesystem change triggers config.effective.updated
-And every consuming service invalidates its cache
-```
-
-#### UC-CFG-3: CLI applies a patch with validation
-
-```
-Given an agent runs `telec config patch --yaml '<partial yaml>'`
-When the patch command runs
-Then the config service merges the patch into the appropriate YAML source
-And validates the resulting full effective configuration against the schema
-And on validation failure, the patch is rejected with a clear error naming the violated rule
-And on validation success, the patch is persisted to disk
-And config.effective.updated fires
-```
-
-#### UC-CFG-4: Stable-channel rule enforcement
-
-```
-Given a runtime configuration sets release_channel to stable
-And pinned_minor is empty
-When the config service computes the effective runtime configuration
-Then validation fails with the stable-channel rule message
-And the change is rejected before the file is written
-```
-
-#### UC-CFG-5: Deployment executor confirms config still loads post-pull
-
-```
-Given the deployment executor has just pulled a new release
-When the executor restarts the daemon
-Then it first asks the config service to compute the effective configuration
-And on validation failure, the executor halts the restart and surfaces the error
-And on success, the daemon restarts with the validated configuration
-```
+- **Layered Overlay Resolution** — `docs/project/spec/feature/config/layered-overlay-resolution.md` — Three independent `teleclaude.yml` overlays (global, project, per-person) loaded side-by-side into an `AppConfig`; v1 does not merge them.
+- **Machine Config Load** — `docs/project/spec/feature/config/machine-config-load.md` — Per-machine `config.yml` loaded at module import; deep-merged with `DEFAULT_CONFIG`, env-var expanded, optional sibling `experiments.yml` merged into the experiments list.
+- **YAML Env-Var Expansion** — `docs/project/spec/feature/config/yaml-env-var-expansion.md` — `${VAR}` references substituted from `os.environ` before Pydantic or dataclass construction across every config load path; missing variables leave the literal token in place.
+- **Unknown-Key Warning** — `docs/project/spec/feature/config/unknown-key-warning.md` — User-facing Pydantic models declare `extra="allow"`; unknown keys recursively logged as warnings rather than rejected. Legacy `config.yml` raises hard only for unknown `agents.*` keys.
+- **Atomic Project Config Write** — `docs/project/spec/feature/config/atomic-project-config-write.md` — `save_project_config` writes via temp file + fsync + `os.replace`; dumps with `mode="json", exclude_defaults=True` to keep YAML minimal.
+- **Per-Level Key Restriction** — `docs/project/spec/feature/config/per-level-key-restriction.md` — Each config level (global, project, per-person, legacy `config.yml`) rejects keys that belong to other levels via pre-validator guards.
+- **Project Slug Validation** — `docs/project/spec/feature/config/project-slug-validation.md` — `project_slug` is format-validated when set; empty and whitespace-only values normalize to `None` for legacy compatibility.
+- **Agents Inventory Requirement** — `docs/project/spec/feature/config/agents-inventory-requirement.md` — `config.yml:agents` is mandatory; `default` must be a known and enabled agent; at least one agent must be enabled; runtime injects the binary and tmux paths (not user-configurable).
+- **Experiment Matching** — `docs/project/spec/feature/config/experiment-matching.md` — `Config.is_experiment_enabled` ORs same-name entries; agent dimension is strict (None loses), adapter dimension is optimistic (None wins) for coordinator-style queries.
+- **Trusted Bot Fleet Derivation** — `docs/project/spec/feature/config/trusted-bot-fleet-derivation.md` — `telegram.trusted_bots` is the order-preserving dedup'd union of the local computer's `bot_username` + every remote computer's `bot_username` + explicit entries.
+- **WhatsApp Env-Var Override** — `docs/project/spec/feature/config/whatsapp-env-var-override.md` — Six `WHATSAPP_*` environment variables override YAML credential fields; the adapter auto-enables when both `phone_number_id` and `access_token` resolve to truthy values.
+- **Job Schedule Contract** — `docs/project/spec/feature/config/job-schedule-contract.md` — `JobWhenConfig` requires exactly one of `every` (`<int><m|h|d>`, ≥ 1 minute) or `at` (`HH:MM` 24-hour, single or list); `weekdays` is only valid alongside `at`.
+- **Stable Channel Pinning Rule** — `docs/project/spec/feature/config/stable-channel-pinning-rule.md` — Project `deployment.channel = stable` requires a non-empty `pinned_minor`; alpha and beta channels accept empty pins.
+- **Integrator Cutover Gate** — `docs/project/spec/feature/config/integrator-cutover-gate.md` — `integrator.cutover.enabled = true` is rejected unless `parity_evidence_accepted = true`; rollback-on-incomplete-parity defaults on.
+- **Subscription Routing** — `docs/project/spec/feature/config/subscription-routing.md` — Subscriptions are a `type`-discriminated union of `JobSubscription` and `YoutubeSubscription`; each carries a `SubscriptionNotification` with `preferred_channel` (default `telegram`).
+- **Person Identity Schema** — `docs/project/spec/feature/config/person-identity-schema.md` — `PersonEntry` declares per-person identity in the global `people` list with a required non-empty stripped email, role enum, and nested expertise mapping; `proficiency` is the deprecated single-level form.
+- **Runtime TTS Toggle** — `docs/project/spec/feature/config/runtime-tts-toggle.md` — `RuntimeSettings` is a separate mutable layer persisted as JSON with debounced (0.5s) writes; only `tts.enabled` is mutable today; `parse_patch` strictly rejects unknown keys and non-bool values.
 
 ### Context map position
 
