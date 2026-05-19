@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-workflow-cutover]
+delivered_by: [v2-workflow-cutover, inventory-v1-workflow]
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts, lifecycle state machines. The system that organizes what gets built.
 ---
 
@@ -280,6 +280,24 @@ When an orchestrator tries to dispatch work on X
 Then the state machine refuses the transition
 And the orchestrator is told which dependencies are unmet
 ```
+
+### v1 inventory (applies_to: v1)
+
+The following feature spec snippets inventory the v1 workflow capabilities that this v2 target contract eventually supersedes. Each is `applies_to: v1, status: actual` and grounded in current v1 source. They are the parity contract future v2 cutover work must satisfy or intentionally retire.
+
+- [`todo-lifecycle-phase`](../feature/workflow/todo-lifecycle-phase.md) — Canonical `lifecycle_phase` pointer, `mark-phase` operator override, and `reconcile` evidence-driven re-derivation within a stage.
+- [`state-stamping`](../feature/workflow/state-stamping.md) — `telec todo stamp` and the validated state-write boundary (`StateWriter`, `ApprovalsManager`, `ReviewManager`) that owns approvals, verdicts, skip stamps, drift acknowledgments, and finalize handoff.
+- [`artifact-versioning`](../feature/workflow/artifact-versioning.md) — Multi-version workflow artifact storage with SHA256 digest, diff between digests, and cascade delete. Provenance (codebase_sha, referenced_paths) lives on the Todo state, not the artifact row.
+- [`prepare-state-machine`](../feature/workflow/prepare-state-machine.md) — Phase A dispatcher: draft → PRD → architecture (optional) → test specs (optional) → plan → prepared, with PRD as the sole human approval gate and reviewer verdicts gating derived artifacts.
+- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → finalize → handed-off, with per-(repo, slug) single-flight lock and machine-owned `prepared → build_started` handoff.
+- [`integration-state-machine`](../feature/workflow/integration-state-machine.md) — Phase C: lease-serialized 12-state machine that squash-merges from `trees/_integration/` and pushes `origin/main`; durable checkpoint enables crash recovery.
+- [`worktree-prep-lifecycle`](../feature/workflow/worktree-prep-lifecycle.md) — Per-slug git worktree at `trees/<slug>/` with a digest-tracked prep marker; archives binary artifacts on delivery cleanup.
+- [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.
+- [`roadmap-management`](../feature/workflow/roadmap-management.md) — Per-project Roadmap CRUD via `telec roadmap {list,add,remove,move,deliver}`; explicit operator-controlled ordering; delivery transition.
+- [`roadmap-icebox`](../feature/workflow/roadmap-icebox.md) — Frozen-but-recoverable state for Roadmap entries; iceboxed entries do not participate in dependency resolution. In v1, the icebox is fully DB-resident — `migrate-icebox` is a deprecated no-op.
+- [`todo-creation`](../feature/workflow/todo-creation.md) — `create`, `dump`, and `design` paths to scaffold a Todo, with `--draft` and `--prepped` modes plus bug-kind helpers that route to `/next-work`.
+- [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, the parent's `kind` is unchanged and children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The holder role is derived from `roadmap.group_slug` + `state.breakdown.todos`, not an enum value.
+- [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
 
 ### Context map position
 
