@@ -18,6 +18,7 @@ from teleclaude.constants import (
     TYPE_SUFFIX,
 )
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
+from teleclaude.project_root import resolve_state_root
 from teleclaude.resource_validation._models import (
     _CODE_FENCE_LINE,
     _H1_LINE,
@@ -233,10 +234,20 @@ def _validate_activation_trigger(path: Path, meta: Mapping[str, object], *, snip
 
 
 def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
-    """Read roadmap slug status once for snippet validation/reconciliation."""
+    """Read roadmap slug status once for snippet validation/reconciliation.
+
+    Falls back to the canonical state root (main repo) when invoked from a
+    git worktree where ``.teleclaude/todos.db`` is not present.
+    """
     db_path = project_root / ".teleclaude" / "todos.db"
     if not db_path.exists():
-        return {}
+        state_root = resolve_state_root(project_root)
+        if state_root != project_root:
+            fallback = state_root / ".teleclaude" / "todos.db"
+            if fallback.exists():
+                db_path = fallback
+        if not db_path.exists():
+            return {}
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(

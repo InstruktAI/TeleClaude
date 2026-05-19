@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-identity-cutover]
+delivered_by: [v2-identity-cutover, inventory-v1-identity]
 description: Identity bounded context — principals (people, machines, sessions), tokens, and the resolution of any caller into an authenticated Principal. Foundation for every authorization decision.
 ---
 
@@ -124,6 +124,26 @@ This context does NOT own: session lifecycle (`agent_runtime`), workflow state (
 - **Failure handling:** revocation failures are retried; the orphan token stays valid until reconciliation succeeds. Periodic reconciliation job catches drift.
 
 ### Use cases
+
+#### v1 inventory (parity reference)
+
+The bullets below index the v1 feature spec snippets that pin the behavior v2 must satisfy. Each entry describes what v1 actually does today — NOT what v2 provides (v2 is `status: target` at the spec level until cutover lands). Use these as the parity contract for `v2-identity-cutover`.
+
+- v1 inventory: [principal resolution](../feature/identity/principal-resolution.md) — derive the canonical `(principal, role)` pair for a session via inherited → human → system precedence.
+- v1 inventory: [session token issuance](../feature/identity/session-token-issuance.md) — issue a UUID4 session token for `system:*` principals at bootstrap; persist hash, return plaintext once.
+- v1 inventory: [session token validation](../feature/identity/session-token-validation.md) — resolve `x-session-token` to a `CallerIdentity` via the ledger plus a TTL cache and defense-in-depth lifecycle check.
+- v1 inventory: [session token revocation](../feature/identity/session-token-revocation.md) — delete a session's tokens at termination, invalidate auth caches, best-effort with cache safety nets.
+- v1 inventory: [orphan session token cleanup](../feature/identity/orphan-session-token-cleanup.md) — periodic maintenance sweep deleting tokens whose owning session is closed or missing.
+- v1 inventory: [caller verification](../feature/identity/caller-verification.md) — single FastAPI dependency resolving every request to a `CallerIdentity` via token → dual-factor session-id → terminal email precedence.
+- v1 inventory: [command clearance](../feature/identity/command-clearance.md) — per-CLI-command role allowlist enforced server-side via `require_clearance` and `CommandAuth`.
+- v1 inventory: [terminal email login](../feature/identity/terminal-email-login.md) — per-TTY auth file (with global fallback) recording the logged-in email for `x-telec-email` injection.
+- v1 inventory: [whoami resolution](../feature/identity/whoami-resolution.md) — `telec auth whoami` and `GET /auth/whoami` echo the resolved principal/role for the caller.
+- v1 inventory: [session identity file](../feature/identity/session-identity-file.md) — per-session `$TMPDIR/teleclaude_identity.json` carrying session_id, session_token, system_role, human_role.
+- v1 inventory: [identity header trust boundary](../feature/identity/identity-header-trust-boundary.md) — middleware rejects `x-web-user-*` headers from non-trusted hosts (loopback/socket only).
+- v1 inventory: [session access visibility](../feature/identity/session-access-visibility.md) — owner / `member`-with-shared / admin gating for web-frontend session-scoped API routes.
+- v1 inventory: [human identity resolution](../feature/identity/human-identity-resolution.md) — singleton `IdentityResolver` mapping email / Telegram / Discord / WhatsApp signals to `PersonEntry` from the `people` config.
+- v1 inventory: [TUI multi-user login gate](../feature/identity/tui-multi-user-login-gate.md) — `telec` startup refuses to launch the TUI without prior `telec auth login` when the config has multiple registered people.
+- v1 inventory: [self restart authorization bypass](../feature/identity/self-restart-authorization-bypass.md) — any session may restart itself via `POST /sessions/{id}/agent-restart` with `self_restart: true`, bypassing the normal role check.
 
 #### UC-IDN-1: Resolve caller from HTTP request
 
