@@ -170,7 +170,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 self._slug_to_project_path[t.slug] = p.path
                 self._slug_to_computer[t.slug] = p.computer or "local"
 
-        def _item_from_dto(dto: TodoDTO, *, is_holder: bool = False) -> TodoItem:
+        def _item_from_dto(dto: TodoDTO, *, project_path: str, is_holder: bool = False) -> TodoItem:
             valid = {s.value for s in TodoStatus}
             return TodoItem(
                 slug=dto.slug,
@@ -187,7 +187,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 lifecycle_phase=dto.lifecycle_phase,
                 integration_phase=dto.integration_phase,
                 finalize_status=dto.finalize_status,
-                project_path=dto.project_path,
+                project_path=dto.project_path or project_path,
                 is_holder=is_holder,
             )
 
@@ -195,7 +195,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         # it does not derive hierarchy, grouping, or section membership.
         project_sections = {p.path: build_roadmap_sections(list(p.todos or [])) for p in self._projects_with_todos}
 
-        all_items = [_item_from_dto(t) for p in self._projects_with_todos for t in (p.todos or [])]
+        all_items = [_item_from_dto(t, project_path=p.path) for p in self._projects_with_todos for t in (p.todos or [])]
         slug_width = max((len(i.slug) for i in all_items), default=0)
         col_widths = TodoRow.compute_col_widths(all_items)
 
@@ -208,7 +208,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         def _emit_row(row: FlatRow, project_path: str) -> None:
             # Depth-0 items always use ├─ because GroupSeparator closes the tree
             is_last = False if row.depth == 0 else row.is_last
-            item = _item_from_dto(row.todo, is_holder=row.is_holder)
+            item = _item_from_dto(row.todo, project_path=project_path, is_holder=row.is_holder)
             todo_row = TodoRow(
                 todo=item,
                 is_last=is_last,
@@ -289,13 +289,13 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 sections = project_sections[project.path]
                 rendered_any = False
 
-                for flat_row in flatten(sections.active):
+                for flat_row in flatten(sections.active, force_root_branch=True):
                     _emit_row(flat_row, project.path)
                     rendered_any = True
 
                 # Delivered section — collapsible, rendered above icebox
                 if project.path in self._delivered_projects:
-                    delivered_rows = flatten(sections.delivered)
+                    delivered_rows = flatten(sections.delivered, force_root_branch=True)
                     if delivered_rows:
                         widgets_to_mount.append(DeliveredSeparator(line_width=_sep_width()))
                         for flat_row in delivered_rows:
@@ -304,7 +304,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
 
                 # Icebox section — collapsible
                 if project.path in self._icebox_projects:
-                    icebox_rows = flatten(sections.icebox)
+                    icebox_rows = flatten(sections.icebox, force_root_branch=True)
                     if icebox_rows:
                         widgets_to_mount.append(IceboxSeparator(line_width=_sep_width()))
                         for flat_row in icebox_rows:

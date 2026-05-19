@@ -51,7 +51,7 @@ def test_lifecycle_phase_label_prd_drafting_maps_to_prd_drafting() -> None:
     assert result is not None
     prefix, value, _ = result
     assert prefix == "P"
-    assert value == "PRD drafting"
+    assert value == "prd drafting"
 
 
 @pytest.mark.unit
@@ -61,7 +61,7 @@ def test_lifecycle_phase_label_prd_human_approval_maps_to_prd_approval() -> None
     assert result is not None
     prefix, value, _ = result
     assert prefix == "P"
-    assert value == "PRD approval"
+    assert value == "prd approval"
 
 
 @pytest.mark.unit

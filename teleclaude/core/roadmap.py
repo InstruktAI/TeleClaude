@@ -157,10 +157,10 @@ def assemble_roadmap_from_db(
     conn = db._sync_conn()
     conn_open_dt = time.perf_counter() - conn_open_started_at
     try:
-        # Build roadmap entries
+        # Build roadmap entries. `delivered_since` is a DISPLAY window applied
+        # after holder-status derivation — never in SQL — so a holder whose
+        # children delivered outside the window still derives as delivered.
         delivered_clause = "status = 'delivered'"
-        if delivered_since is not None:
-            delivered_clause = f"(status = 'delivered' AND delivered_at >= '{delivered_since}')"
 
         conditions = []
         if delivered_only:
@@ -308,6 +308,15 @@ def assemble_roadmap_from_db(
             todo_build_total_dt += time.perf_counter() - todo_build_started_at
 
         todos = _apply_holder_status(todos)
+
+        # Display window: drop genuine delivered entries older than the cutoff.
+        # Holders (derived 'delivered', no own delivered_at) are unaffected.
+        if delivered_since is not None:
+            todos = [
+                t
+                for t in todos
+                if not (t.status == RoadmapStatus.DELIVERED and t.delivered_at and t.delivered_at < delivered_since)
+            ]
 
         total_dt = time.perf_counter() - started_at
         if total_dt >= 2.0:

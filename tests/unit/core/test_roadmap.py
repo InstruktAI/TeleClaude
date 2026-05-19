@@ -470,6 +470,45 @@ async def test_in_prepare_draft_kind_todo_projects_in_progress_not_pending(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_holder_derives_delivered_from_children_outside_delivered_window(tmp_path: Path) -> None:
+    """Regression: `delivered_since` is a display window, not a derivation filter.
+
+    A holder whose children were delivered before the cutoff must still derive
+    as 'delivered'; only the genuine old delivered leaf rows are windowed out.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    old_at = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("old-holder", description="Container, children long delivered")
+        await database.write_state(
+            "old-holder", {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "prepared"}
+        )
+        for child in ("old-child-a", "old-child-b"):
+            await database.add_to_roadmap(child, description=child, group_slug="old-holder")
+            await database.write_state(
+                child, {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "handed_off"}
+            )
+            await database.deliver(child, commit=f"{child}-sha", delivered_at=old_at)
+    finally:
+        await database.close()
+
+    cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+    todos = assemble_roadmap_from_db(str(project), include_delivered=True, delivered_since=cutoff)
+
+    by_slug = {t.slug: t for t in todos}
+    assert by_slug["old-holder"].status == "delivered"
+    assert "old-child-a" not in by_slug
+    assert "old-child-b" not in by_slug
+
+
+@pytest.mark.asyncio
 async def test_delivered_wins_over_never_advanced_draft_lifecycle(tmp_path: Path) -> None:
     """Regression: a delivered todo whose lifecycle_phase never left 'draft'
     must project status 'delivered', not 'pending'.

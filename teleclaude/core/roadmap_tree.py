@@ -172,21 +172,37 @@ def build_roadmap_sections(todos: list[TodoDTO]) -> RoadmapSections:
     )
 
 
-def flatten(nodes: list[RoadmapNode], _tree_lines: list[bool] | None = None) -> list[FlatRow]:
-    """DFS-flatten a forest into rows with depth/is_last/tree_lines for rendering."""
+def flatten(
+    nodes: list[RoadmapNode],
+    _tree_lines: list[bool] | None = None,
+    *,
+    force_root_branch: bool = False,
+) -> list[FlatRow]:
+    """DFS-flatten a forest into rows with depth/is_last/tree_lines for rendering.
+
+    ``force_root_branch`` keeps every root rendered as a continued branch
+    (``├─`` with a vertical line through its subtree). The TUI sets this
+    because a section separator always closes the section below the roots; the
+    CLI leaves it off so the last root terminates with ``└─``.
+    """
     tree_lines = _tree_lines or []
+    is_root_level = _tree_lines is None
     rows: list[FlatRow] = []
     for index, node in enumerate(nodes):
-        is_last = index == len(nodes) - 1
+        last = index == len(nodes) - 1
+        if is_root_level and force_root_branch:
+            row_is_last, child_continues = False, True
+        else:
+            row_is_last, child_continues = last, not last
         rows.append(
             FlatRow(
                 todo=node.todo,
                 depth=len(tree_lines),
-                is_last=is_last,
+                is_last=row_is_last,
                 tree_lines=tree_lines,
                 is_holder=bool(node.children),
             )
         )
         if node.children:
-            rows.extend(flatten(node.children, [*tree_lines, not is_last]))
+            rows.extend(flatten(node.children, [*tree_lines, child_continues]))
     return rows

@@ -40,8 +40,8 @@ _TODO_STATUS_ICEBOX = "icebox"
 
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.DRAFT: "intake",
-    LifecyclePhase.PRD_DRAFTING: "PRD drafting",
-    LifecyclePhase.PRD_HUMAN_APPROVAL: "PRD approval",
+    LifecyclePhase.PRD_DRAFTING: "prd drafting",
+    LifecyclePhase.PRD_HUMAN_APPROVAL: "prd approval",
     LifecyclePhase.ARCHITECTURE_DRAFTING: "arch drafting",
     LifecyclePhase.ARCHITECTURE_REVIEW: "arch review",
     LifecyclePhase.TEST_SPECS_DRAFTING: "specs drafting",
@@ -415,9 +415,15 @@ class TodoRow(TelecMixin, Widget):
         # Property columns
         line.append_text(self._build_columns())
 
-        # Clamp to content area — prevents column filler from overflowing a narrow pane
+        # Fill to the current window width, reserving exactly 2 trailing spaces
+        # (not dots) as the right gutter. Responsive to the live pane width.
         if outer_w > 0:
-            line.truncate(available)
+            fill_to = max(0, available - 2)
+            gap = fill_to - len(line)
+            if gap > 0:
+                line.append("·" * gap, style=Style(color=_muted_color()))
+            line.truncate(fill_to)
+            line.append("  ")
 
         return line
 
