@@ -8,7 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from teleclaude.core.roadmap import RECENTLY_DELIVERED_HOURS, assemble_roadmap_from_db
+from teleclaude.core.roadmap import (
+    RECENTLY_DELIVERED_HOURS,
+    assemble_roadmap_from_db,
+    parse_since_to_cutoff,
+)
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
@@ -260,12 +264,61 @@ async def test_include_delivered_returns_all_delivered_regardless_of_age(tmp_pat
     all_delivered = assemble_roadmap_from_db(str(project), include_delivered=True)
     assert [t.slug for t in all_delivered if t.slug == "old-delivered"] == ["old-delivered"]
 
+    cutoff = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS)).isoformat()
     windowed = assemble_roadmap_from_db(
         str(project),
         include_delivered=True,
-        delivered_window_hours=RECENTLY_DELIVERED_HOURS,
+        delivered_since=cutoff,
     )
     assert "old-delivered" not in [t.slug for t in windowed]
+
+
+@pytest.mark.asyncio
+async def test_delivered_since_scopes_delivered_entries(tmp_path: Path) -> None:
+    """`delivered_since` keeps entries delivered at/after the cutoff, drops older ones."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    recent_at = (datetime.now(UTC) - timedelta(days=2)).isoformat()
+    old_at = (datetime.now(UTC) - timedelta(days=30)).isoformat()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        for slug, at in (("recent-d", recent_at), ("old-d", old_at)):
+            await database.add_to_roadmap(slug, description=slug)
+            await database.write_state(slug, {"schema_version": 2, "phase": "in_progress"})
+            await database.deliver(slug, commit=f"{slug}-sha", delivered_at=at)
+    finally:
+        await database.close()
+
+    cutoff = (datetime.now(UTC) - timedelta(days=7)).isoformat()
+    scoped = assemble_roadmap_from_db(str(project), include_delivered=True, delivered_since=cutoff)
+    slugs = {t.slug for t in scoped}
+    assert "recent-d" in slugs
+    assert "old-d" not in slugs
+
+
+def test_parse_since_to_cutoff_durations_and_dates() -> None:
+    """`--since` parsing accepts durations and ISO dates, rejects garbage."""
+    now = datetime.now(UTC)
+    h72 = datetime.fromisoformat(parse_since_to_cutoff("72h"))
+    assert timedelta(hours=71) < now - h72 < timedelta(hours=73)
+
+    d7 = datetime.fromisoformat(parse_since_to_cutoff("7d"))
+    assert timedelta(days=6, hours=23) < now - d7 < timedelta(days=7, hours=1)
+
+    w2 = datetime.fromisoformat(parse_since_to_cutoff("2w"))
+    assert timedelta(days=13, hours=23) < now - w2 < timedelta(days=14, hours=1)
+
+    iso = datetime.fromisoformat(parse_since_to_cutoff("2026-05-01"))
+    assert iso == datetime(2026, 5, 1, tzinfo=UTC)
+
+    for bad in ("", "soon", "7y", "-3d", "2026-13-99"):
+        with pytest.raises(ValueError):
+            parse_since_to_cutoff(bad)
 
 
 @pytest.mark.asyncio

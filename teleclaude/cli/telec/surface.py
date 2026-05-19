@@ -659,13 +659,26 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "list": CommandDef(
                 desc="List roadmap entries (source of truth for todo status)",
-                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--json]",
+                args="[--include-icebox] [--icebox-only] [--include-delivered] [--delivered-only] [--since <when>] [--json]",
                 flags=[
                     Flag("--include-icebox", "-i", "Include icebox items"),
                     Flag("--icebox-only", "-o", "Show only icebox items"),
                     Flag("--include-delivered", "-d", "Include delivered items"),
                     Flag("--delivered-only", desc="Show only delivered items"),
+                    Flag(
+                        "--since",
+                        desc="Only delivered entries at/after this point: duration (7d, 72h, 2w) or ISO date (2026-05-01). Implies --include-delivered.",
+                    ),
                     Flag("--json", desc="Output as JSON"),
+                ],
+                notes=[
+                    "--include-delivered returns the full delivery history; scope it with --since.",
+                    "--since accepts a relative duration (7d, 72h, 2w) or an ISO date/timestamp.",
+                    "--since alone implies --include-delivered; combine with --delivered-only to exclude active items.",
+                ],
+                examples=[
+                    "telec roadmap list --include-delivered --since 7d",
+                    "telec roadmap list --delivered-only --since 2026-05-01",
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),

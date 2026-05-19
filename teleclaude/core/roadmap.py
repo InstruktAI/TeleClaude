@@ -26,6 +26,48 @@ logger = get_logger(__name__)
 RECENTLY_DELIVERED_HOURS = 72
 
 
+def recently_delivered_cutoff() -> str:
+    """ISO-8601 cutoff for the default/TUI 'recently delivered' window.
+
+    The default list view and TUI scope delivered entries to this window so
+    they are not flooded with the full delivery history. The explicit CLI
+    ``--since`` flag overrides it with a user-requested cutoff.
+    """
+    return (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS)).isoformat()
+
+
+def parse_since_to_cutoff(value: str) -> str:
+    """Parse a user ``--since`` value into a clean ISO-8601 cutoff timestamp.
+
+    Accepts a relative duration (``<int><unit>`` where unit is ``h`` hours,
+    ``d`` days, or ``w`` weeks — e.g. ``72h``, ``7d``, ``2w``) or an absolute
+    date / ISO timestamp (``2026-05-01`` or ``2026-05-01T12:30:00+00:00``).
+    Naive datetimes are assumed UTC. The return is always re-serialised via
+    ``isoformat()`` so callers never embed raw user text into SQL.
+
+    Raises ``ValueError`` with an actionable message on unparseable input.
+    """
+    raw = value.strip()
+    if not raw:
+        raise ValueError("--since requires a value (e.g. 7d, 72h, 2w, or 2026-05-01)")
+
+    unit_hours = {"h": 1, "d": 24, "w": 24 * 7}
+    if raw[-1].lower() in unit_hours and raw[:-1].lstrip("-").isdigit():
+        amount = int(raw[:-1])
+        if amount < 0:
+            raise ValueError(f"--since duration must not be negative: {value!r}")
+        delta = timedelta(hours=amount * unit_hours[raw[-1].lower()])
+        return (datetime.now(UTC) - delta).isoformat()
+
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError as exc:
+        raise ValueError(f"--since value {value!r} is not a duration (7d, 72h, 2w) or ISO date (2026-05-01)") from exc
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.isoformat()
+
+
 def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
 
@@ -36,17 +78,20 @@ def assemble_roadmap_from_db(
     icebox_only: bool = False,
     include_delivered: bool = False,
     delivered_only: bool = False,
-    delivered_window_hours: int | None = None,
+    delivered_since: str | None = None,
 ) -> list[TodoDTO]:
     """Assemble roadmap from todos.db using sync methods.
 
     Reads state, roadmap entries, and deps from the SQLite database.
 
-    ``include_delivered`` returns every delivered entry. ``delivered_window_hours``
-    optionally restricts delivered entries to those delivered within that many
-    hours — used by the default/TUI list view to avoid flooding it with the full
-    delivery history, while the explicit ``--include-delivered`` CLI flag passes
-    no window and gets all delivered entries.
+    ``include_delivered``/``delivered_only`` return delivered entries.
+    ``delivered_since`` optionally restricts those to entries delivered at or
+    after the given ISO-8601 timestamp. Callers own their cutoff: the
+    default/TUI list view passes ``now - RECENTLY_DELIVERED_HOURS`` to avoid
+    flooding the view with the full delivery history; the CLI ``--since`` flag
+    passes the user-requested cutoff; an absent value returns all delivered
+    entries. The value must be a clean ISO timestamp produced by the caller —
+    it is embedded into SQL, never accept raw user text here.
     """
     started_at = time.perf_counter()
     db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))
@@ -59,9 +104,13 @@ def assemble_roadmap_from_db(
     conn_open_dt = time.perf_counter() - conn_open_started_at
     try:
         # Build roadmap entries
+        delivered_clause = "status = 'delivered'"
+        if delivered_since is not None:
+            delivered_clause = f"(status = 'delivered' AND delivered_at >= '{delivered_since}')"
+
         conditions = []
         if delivered_only:
-            conditions.append("status = 'delivered'")
+            conditions.append(delivered_clause)
         elif icebox_only:
             conditions.append("status = 'icebox'")
         else:
@@ -69,11 +118,7 @@ def assemble_roadmap_from_db(
             if include_icebox:
                 parts.append("status = 'icebox'")
             if include_delivered:
-                if delivered_window_hours is not None:
-                    cutoff = (datetime.now(UTC) - timedelta(hours=delivered_window_hours)).isoformat()
-                    parts.append(f"(status = 'delivered' AND delivered_at >= '{cutoff}')")
-                else:
-                    parts.append("status = 'delivered'")
+                parts.append(delivered_clause)
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"

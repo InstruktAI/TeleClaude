@@ -16,6 +16,7 @@ import asyncio
 import json
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
+from teleclaude.core.roadmap import parse_since_to_cutoff
 from teleclaude.services.work import get_work_service
 
 __all__ = [
@@ -69,12 +70,20 @@ def _handle_roadmap_show(args: list[str]) -> None:
     parsed = _parse_roadmap_show_args(args)
     project_root = _resolve_roadmap_project_root()
 
+    since_cutoff = parsed["since_cutoff"]
+    include_delivered = parsed["include_delivered"]
+    # `--since` on its own means "delivered since X" — imply --include-delivered
+    # so agents don't have to pass both flags for the obvious intent.
+    if since_cutoff and not include_delivered and not parsed["delivered_only"]:
+        include_delivered = True
+
     svc = get_work_service(str(project_root))
     todos = svc.roadmap.entries(
         include_icebox=parsed["include_icebox"],
         icebox_only=parsed["icebox_only"],
-        include_delivered=parsed["include_delivered"],
+        include_delivered=include_delivered,
         delivered_only=parsed["delivered_only"],
+        delivered_since=since_cutoff or None,
     )
 
     if not todos:
@@ -91,7 +100,16 @@ def _handle_roadmap_show(args: list[str]) -> None:
     _print_grouped_roadmap(todos)
 
 
-def _parse_roadmap_show_args(args: list[str]) -> dict[str, bool]:
+class _RoadmapShowArgs(TypedDict):
+    include_icebox: bool
+    icebox_only: bool
+    include_delivered: bool
+    delivered_only: bool
+    json_output: bool
+    since_cutoff: str
+
+
+def _parse_roadmap_show_args(args: list[str]) -> _RoadmapShowArgs:
     options = {
         "--include-icebox": "include_icebox",
         "-i": "include_icebox",
@@ -102,17 +120,34 @@ def _parse_roadmap_show_args(args: list[str]) -> dict[str, bool]:
         "--delivered-only": "delivered_only",
         "--json": "json_output",
     }
-    parsed = {
+    parsed: _RoadmapShowArgs = {
         "include_icebox": False,
         "icebox_only": False,
         "include_delivered": False,
         "delivered_only": False,
         "json_output": False,
+        "since_cutoff": "",
     }
-    for arg in args:
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--since":
+            if i + 1 >= len(args):
+                print("--since requires a value (e.g. 7d, 72h, 2w, or 2026-05-01)")
+                print(_usage("roadmap", "list"))
+                raise SystemExit(1)
+            try:
+                parsed["since_cutoff"] = parse_since_to_cutoff(args[i + 1])
+            except ValueError as exc:
+                print(str(exc))
+                print(_usage("roadmap", "list"))
+                raise SystemExit(1) from exc
+            i += 2
+            continue
         option = options.get(arg)
         if option:
-            parsed[option] = True
+            parsed[option] = True  # type: ignore[literal-required]
+            i += 1
             continue
         error_kind = "option" if arg.startswith("-") else "argument"
         print(f"Unknown {error_kind}: {arg}")
