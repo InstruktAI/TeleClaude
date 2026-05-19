@@ -191,6 +191,7 @@ export interface ComputerInfo {
   host?: string | null;
   is_local: boolean;
   tmux_binary?: string | null;
+  bot_username?: string | null;
 }
 
 export interface CreateSessionResponse {
@@ -409,6 +410,7 @@ export interface TodoInfo {
   review_status?: string | null;
   deferrals_status?: string | null;
   files: string[];
+  version_total?: number;
   after?: string[];
   group?: string | null;
   delivered_at?: string | null;

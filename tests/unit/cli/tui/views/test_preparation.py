@@ -13,6 +13,10 @@ from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.views.preparation import PreparationView
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 
+_FINGERPRINT_SLUG = "todo-1"
+_VERSION_BEFORE = 1
+_VERSION_AFTER = 2
+
 
 class _PreparationHarness(App[None]):
     """Minimal app harness for exercising PreparationView key bindings."""
@@ -55,9 +59,37 @@ def _build_project(project_path: str) -> ProjectWithTodosDTO:
     )
 
 
+def _fingerprint_project(version_total: int) -> ProjectWithTodosDTO:
+    """Build the minimal object graph consumed by _todo_fingerprint."""
+    return ProjectWithTodosDTO(
+        computer="local",
+        name="Test Project",
+        path="/tmp/project",
+        todos=[
+            TodoDTO(
+                slug=_FINGERPRINT_SLUG,
+                status="pending",
+                has_requirements=True,
+                has_impl_plan=False,
+                files=["requirements"],
+                lifecycle_phase="prepared",
+                version_total=version_total,
+            )
+        ],
+    )
+
+
 @pytest.mark.unit
 def test_preparation_view_is_importable() -> None:
     assert PreparationView is not None
+
+
+@pytest.mark.unit
+def test_todo_fingerprint_changes_when_only_artifact_version_total_changes() -> None:
+    before = PreparationView._todo_fingerprint([_fingerprint_project(_VERSION_BEFORE)])
+    after = PreparationView._todo_fingerprint([_fingerprint_project(_VERSION_AFTER)])
+
+    assert before != after
 
 
 @pytest.mark.unit

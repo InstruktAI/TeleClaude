@@ -6,7 +6,7 @@ This command is launched in a tmux pane by the preparation view.
 - Edit mode runs a themed Textual markdown editor with TeleClaude-owned save
   semantics. Escape saves if changed and exits.
 - For DB-backed artifacts, content is materialized into a temporary file before
-  editing and persisted back into todos.db on save/exit.
+  editing and persisted back through the daemon API on save/exit.
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -26,13 +27,14 @@ from textual.containers import VerticalScroll
 from textual.events import AppBlur
 from textual.widgets import Label, Markdown, TextArea
 
+from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.cli.tui.theme import (
     _TELECLAUDE_DARK_AGENT_THEME,
     _TELECLAUDE_DARK_THEME,
     _TELECLAUDE_LIGHT_AGENT_THEME,
     _TELECLAUDE_LIGHT_THEME,
 )
-from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content, write_artifact_content
+from teleclaude.todo_artifacts import artifact_display_filename, read_artifact_content
 
 
 @dataclass
@@ -65,8 +67,16 @@ class MaterializedArtifact:
         return artifact_display_filename(self.artifact_name)
 
     def persist(self, content: str) -> None:
-        """Write updated temp-file content back to todos.db."""
-        write_artifact_content(self.project_root, self.slug, self.artifact_name, content)
+        """Write updated temp-file content through the daemon artifact API."""
+        tool_api_request(
+            "POST",
+            f"/todos/artifacts/{quote(self.slug, safe='')}/{quote(self.artifact_name, safe='')}",
+            json_body={
+                "content": content,
+                "cwd": str(self.project_root),
+                "updated_by": "teleclaude.cli.editor",
+            },
+        )
 
     def cleanup(self) -> None:
         """Remove the temporary file backing this artifact."""

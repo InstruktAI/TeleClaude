@@ -218,6 +218,7 @@ class TodoDTO(BaseModel):
     review_status: str | None = None
     deferrals_status: str | None = None
     files: list[str] = Field(default_factory=list)
+    version_total: int = 0
     after: list[str] = Field(default_factory=list)
     group: str | None = None
     delivered_at: str | None = None

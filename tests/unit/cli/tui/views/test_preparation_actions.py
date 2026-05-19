@@ -6,8 +6,19 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
+from teleclaude.cli.tui.todos import TodoItem
+from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
+
+_ARTIFACTS = ["architecture", "implementation-plan"]
+_HTTP_POST = "POST"
+_REMOVE_SLUG = "my-slug"
+_REMOVE_ENDPOINT = "/todos/remove"
+_REMOVE_OPERATION_ID = "op-remove-123"
+_REPO_PATH = "/repo"
+_VERSION_TOTAL = 12
 
 # --- PreparationViewActionsMixin._next_command (static method) ---
 
@@ -33,9 +44,12 @@ def test_next_command_with_different_base_and_slug() -> None:
 class _DummyPreparationView(PreparationViewActionsMixin):
     def __init__(self, context: tuple[str, str, str | None] | None) -> None:
         self._context = context
-        self.app = SimpleNamespace(notify=Mock(), _refresh_data=Mock())
+        self.app = SimpleNamespace(notify=Mock(), _refresh_data=Mock(), push_screen=self._push_screen)
         self._todo_row = None
+        self._slug_to_project_path = {_REMOVE_SLUG: _REPO_PATH}
         self.opened_modal: dict[str, str] | None = None
+        self.pushed_screen: object | None = None
+        self.pushed_callback: object | None = None
 
     def _resolve_cursor_context(self) -> tuple[str, str, str | None] | None:
         return self._context
@@ -43,8 +57,18 @@ class _DummyPreparationView(PreparationViewActionsMixin):
     def _resolve_todo_for_cursor(self):
         return self._todo_row
 
+    def _current_todo_row(self):
+        return self._todo_row
+
+    def _current_file_row(self):
+        return None
+
     def _open_session_modal(self, **kwargs):
         self.opened_modal = kwargs
+
+    def _push_screen(self, screen: object, callback: object | None = None) -> None:
+        self.pushed_screen = screen
+        self.pushed_callback = callback
 
 
 @pytest.mark.unit
@@ -134,3 +158,77 @@ def test_action_start_work_allows_resume_during_build() -> None:
 
     assert view.opened_modal is not None
     view.app.notify.assert_not_called()
+
+
+@pytest.mark.unit
+def test_action_remove_todo_confirmation_includes_artifact_and_version_counts(
+    snapshot: SnapshotAssertion,
+) -> None:
+    view = _DummyPreparationView(("local", "/repo", _REMOVE_SLUG))
+    view._todo_row = SimpleNamespace(
+        slug=_REMOVE_SLUG,
+        todo=TodoItem(
+            slug=_REMOVE_SLUG,
+            status=TodoStatus.PENDING,
+            description=None,
+            has_requirements=True,
+            has_impl_plan=True,
+            files=list(_ARTIFACTS),
+            version_total=_VERSION_TOTAL,
+        ),
+    )
+
+    view.action_remove_todo()
+
+    assert view.pushed_screen is not None
+    assert view.pushed_screen._message == snapshot
+
+
+@pytest.mark.unit
+def test_action_remove_todo_confirm_posts_daemon_remove_and_notifies_pending_operation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    view = _DummyPreparationView(("local", _REPO_PATH, _REMOVE_SLUG))
+    view._todo_row = SimpleNamespace(
+        slug=_REMOVE_SLUG,
+        todo=TodoItem(
+            slug=_REMOVE_SLUG,
+            status=TodoStatus.PENDING,
+            description=None,
+            has_requirements=True,
+            has_impl_plan=True,
+            files=list(_ARTIFACTS),
+            version_total=_VERSION_TOTAL,
+        ),
+    )
+    requests: list[tuple[str, str, object, float | None]] = []
+
+    def _fake_tool_api_request(
+        method: str,
+        path: str,
+        *,
+        json_body: object = None,
+        timeout: float | None = None,
+    ) -> dict[str, str]:
+        requests.append((method, path, json_body, timeout))
+        return {"operation_id": _REMOVE_OPERATION_ID}
+
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+        _fake_tool_api_request,
+    )
+
+    view.action_remove_todo()
+    assert callable(view.pushed_callback)
+    view.pushed_callback(True)
+
+    assert requests == [
+        (
+            _HTTP_POST,
+            _REMOVE_ENDPOINT,
+            {"slug": _REMOVE_SLUG, "cwd": _REPO_PATH},
+            10.0,
+        )
+    ]
+    view.app.notify.assert_called_once_with(f"Removing {_REMOVE_SLUG}...")
+    view.app._refresh_data.assert_not_called()
