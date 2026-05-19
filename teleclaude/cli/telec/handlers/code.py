@@ -390,7 +390,10 @@ def _check_partial_staging(project_root: Path) -> None:
         print("Pre-commit stash/restore would corrupt these files.\n", file=sys.stderr)
         for f in sorted(overlap):
             print(f"  {f}", file=sys.stderr)
-        print("\nStage remaining hunks (git add -p) or use --staged.", file=sys.stderr)
+        print(
+            "\nFully stage each file, then re-run telec code commit:\n  git add -- " + " ".join(sorted(overlap)),
+            file=sys.stderr,
+        )
         raise SystemExit(1)
 
 
