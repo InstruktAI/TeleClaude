@@ -626,7 +626,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 desc="Stamp a verdict or readiness marker into todo state",
                 args=(
                     "<slug> [--verdict <v> --phase <p>] [--prd-approved]"
-                    " [--architecture-skipped <reason>] [--test-specs-skipped <reason>]"
+                    " [--architecture-skipped <reason>]"
                     " [--drift-reviewed <artifact> <verdict> <reason>] [--finalize-ready]"
                 ),
                 flags=[
@@ -634,14 +634,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--verdict", desc="approve | changes_requested | needs_work | needs_decision"),
                     Flag(
                         "--phase",
-                        desc=(
-                            "Review phase the verdict belongs to "
-                            "(architecture_review, test_spec_review, plan_review, build_review)"
-                        ),
+                        desc=("Review phase the verdict belongs to (architecture_review, plan_review, build_review)"),
                     ),
                     Flag("--prd-approved", desc="Mark PRD as approved by the human"),
                     Flag("--architecture-skipped", desc="Skip architecture phase with a reason"),
-                    Flag("--test-specs-skipped", desc="Skip test-specs phase with a reason"),
                     Flag("--drift-reviewed", desc="Record drift review: <artifact> <substantive|cosmetic> <reason>"),
                     Flag("--finalize-ready", desc="Mark worktree as ready for finalize handoff"),
                 ],
@@ -1108,11 +1104,16 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "commit": CommandDef(
                 desc="Stage workspace-scoped files, lint, format, and commit",
-                args="[<git-commit-args>]",
+                args='"<message>" [--approved]',
                 flags=[
                     _H,
-                    Flag("-m", desc="Commit message"),
                     Flag("--approved", desc="Human-approved Path B commit", hidden=True),
+                ],
+                notes=[
+                    "Takes exactly one quoted commit message; nothing is forwarded to git "
+                    "(no -m/-F/--/pathspecs/flags). Staging is automatic and pathspec-scoped.",
+                    "Without --approved on main: prints Path A/B/C classification and exits.",
+                    "The 🤖/Co-Authored-By trailer is appended automatically (idempotent).",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

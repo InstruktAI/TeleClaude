@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 from teleclaude.cli.telec.handlers.quality import handle_format, handle_lint, handle_test
@@ -17,6 +18,14 @@ from teleclaude.quality.scope import (
     resolve_workspace_scope_resolution,
 )
 from teleclaude.session_identity import get_system_role
+
+# Mandated commit trailer (repo Commits policy). Auto-appended so it can never
+# be forgotten; idempotent — skipped if the message already carries it.
+_COMMIT_TRAILER = (
+    "🤖 Generated with [TeleClaude](https://github.com/InstruktAI/TeleClaude)\n\n"
+    "Co-Authored-By: TeleClaude <noreply@instrukt.ai>"
+)
+_TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
 
 # Extensions and filenames that indicate functional (runtime-affecting) code.
 # Mirrors the wrapper's classification for consistency.
@@ -58,6 +67,14 @@ _FUNCTIONAL_EXTENSIONS = frozenset(
 _FUNCTIONAL_NAMES = frozenset({"Makefile", "Dockerfile"})
 
 
+def _with_trailer(message: str) -> str:
+    """Return the message with the mandated trailer appended (idempotent)."""
+    body = message.rstrip()
+    if _TRAILER_MARKER not in body:
+        body = f"{body}\n\n{_COMMIT_TRAILER}"
+    return body + "\n"
+
+
 def handle_code(args: list[str]) -> None:
     """Route ``telec code <subcommand>`` to the correct handler."""
     if not args:
@@ -95,7 +112,10 @@ def handle_code_changed(args: list[str]) -> None:
 def handle_code_commit(args: list[str]) -> None:
     """Stage workspace-scoped files and commit them with a pathspec-scoped commit.
 
-    Flags: -m <message>. Everything else passes through to git commit.
+    Sealed contract — exactly one quoted commit message, optionally
+    ``--approved``. No ``-m``, no ``-F``, no ``--``, no pathspecs, no git
+    flags: nothing is forwarded to git. Staging and the pathspec commit are
+    internal implementation details.
 
     Caller paths:
     - Outside tmux: the wrapper passes through to plain git; this command is
@@ -119,21 +139,20 @@ def handle_code_commit(args: list[str]) -> None:
           when the index holds files outside this session's scope, unless the
           explicit ``TELECLAUDE_COMMIT_APPROVED`` override is set.
     """
-    # Parse -m <message> and --approved, pass everything else through to git.
-    # The literal "--" separator is consumed (this command appends its own
-    # pathspec separator before the staged files).
     approved = "--approved" in args
-    message: str | None = None
-    git_args: list[str] = []
-    i = 0
-    filtered = [a for a in args if a not in ("--approved", "--")]
-    while i < len(filtered):
-        if filtered[i] == "-m" and i + 1 < len(filtered):
-            message = filtered[i + 1]
-            i += 2
-        else:
-            git_args.append(filtered[i])
-            i += 1
+    positionals = [a for a in args if a != "--approved"]
+    if len(positionals) != 1 or positionals[0].startswith("-"):
+        print(
+            "ERROR: telec code commit takes exactly one quoted commit message and "
+            "optionally --approved. No other arguments are accepted (no -m, -F, --, "
+            "pathspecs, or git flags — nothing is forwarded to git; staging is "
+            "automatic and scoped).\n"
+            '  telec code commit "type(scope): subject"\n'
+            '  telec code commit --approved "type(scope): subject"',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+    message = positionals[0]
 
     system_role = get_system_role()
     project_root = resolve_workspace_root(resolve_invocation_cwd())
@@ -141,7 +160,6 @@ def handle_code_commit(args: list[str]) -> None:
     with main_branch_lock():
         _commit_under_lock(
             message=message,
-            git_args=git_args,
             project_root=project_root,
             system_role=system_role,
             approved=approved,
@@ -150,8 +168,7 @@ def handle_code_commit(args: list[str]) -> None:
 
 def _commit_under_lock(
     *,
-    message: str | None,
-    git_args: list[str],
+    message: str,
     project_root: Path,
     system_role: str | None,
     approved: bool = False,
@@ -186,10 +203,6 @@ def _commit_under_lock(
 
     _check_partial_staging(project_root)
 
-    # Path A/B/C classification on main
-    commit_args = ["-m", message] if message else []
-    commit_args.extend(git_args)
-
     # Two independent gates on shared main, ordered. Stage 1 (Path A/B/C)
     # decides "is this the right commit strategy" and is answered by
     # --approved or [skip ci]. Stage 2 (session scope) decides "is this
@@ -199,30 +212,38 @@ def _commit_under_lock(
     current_branch = _current_branch(project_root)
     if current_branch == "main" and system_role != "integrator":
         if not approved:
-            _classify_main_commit(commit_args, staged_for_commit)
+            _classify_main_commit(message, staged_for_commit)
         _enforce_session_scope(staged_for_commit, scope_resolution)
+
+    # Auto-append the mandated trailer (idempotent) and commit via a message
+    # file — robust against multi-line content, no shell arg-splitting.
+    final_message = _with_trailer(message)
 
     # Pathspec scopes the commit to exactly what telec staged for this scope;
     # anything else in the index is left alone for its owner to commit or for
     # a human to clean up. Deletions must be included so they make it in.
-    commit_args.extend(["--", *staged_for_commit])
+    with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
+        msg_file.write(final_message)
+        msg_path = msg_file.name
 
     # Commit via gitpython (uses real binary, bypasses wrapper). The pre-commit
     # hook runs format and lint inside git's own atomicity. Surface git's own
     # output so callers see the commit summary and any hook output.
     repo = Repo(str(project_root))
     try:
-        _, stdout, stderr = repo.git.commit(*commit_args, with_extended_output=True)
+        _, stdout, stderr = repo.git.commit("-F", msg_path, "--", *staged_for_commit, with_extended_output=True)
     except GitCommandError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
+    finally:
+        os.unlink(msg_path)
     if stdout:
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
 
 
-def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
+def _classify_main_commit(message: str, staged: list[str]) -> None:
     """Apply Path A/B/C classification for commits on main.
 
     Path A: all staged files non-functional + commit message contains [skip ci] → proceed.
@@ -231,7 +252,7 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
     """
     has_functional = any(_is_functional(f) for f in staged)
 
-    cli_has_skip_ci = any("[skip ci]" in a for a in git_args)
+    cli_has_skip_ci = "[skip ci]" in message
 
     if not has_functional and cli_has_skip_ci:
         return  # Path A: autonomous non-functional commit
@@ -244,15 +265,15 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         "\n"
         "  A) NON-FUNCTIONAL FILES ONLY (Markdown, YAML, doc snippets, state):\n"
         "     Include [skip ci] in the subject:\n"
-        "       telec code commit -m 'chore(scope): <subject> [skip ci]'\n"
+        "       telec code commit 'chore(scope): <subject> [skip ci]'\n"
         "\n"
         "  B) SMALL, SELF-EVIDENT FUNCTIONAL CHANGE (human is present):\n"
         "     State recommendation to the human, wait for approval, then:\n"
-        "       telec code commit --approved -m '<type>(<scope>): <subject>'\n"
+        "       telec code commit --approved '<type>(<scope>): <subject>'\n"
         "\n"
         "  C) FUNCTIONAL CHANGE + REVIEW:\n"
         "     Commit with human approval:\n"
-        "       telec code commit --approved -m '<type>(<scope>): <subject>'\n"
+        "       telec code commit --approved '<type>(<scope>): <subject>'\n"
         "     If this patch series has no /next-review-commits reviewer yet, dispatch one:\n"
         "       telec sessions run --command /next-review-commits --args '<sha1,sha2,...>'"
         " --agent <agent>\n"
@@ -306,14 +327,18 @@ def _enforce_session_scope(
     print("ERROR: staged files outside this session's scope:\n", file=sys.stderr)
     for path in foreign:
         print(f"  {path}", file=sys.stderr)
+    own = sorted(scoped & set(staged_for_commit)) or ["<your file1>", "<your file2>"]
     print(
         "\nThese files were staged by another session. Committing them here "
         "would sweep another agent's work into this commit.\n"
-        "\nUnstage them, then retry:\n"
-        "  git reset HEAD -- <file>\n"
-        "\nOr, if you deliberately intend to commit them, re-run with the "
+        "\nIf those files are NOT yours: leave them, get human approval, then "
+        "commit only your scope surgically (space-separated paths, '--' required; "
+        "this commits exactly those and leaves every other staged file untouched):\n"
+        "  git add -- " + " ".join(own) + "\n"
+        "  TELECLAUDE_COMMIT_APPROVED=1 git commit -F <msgfile> -- " + " ".join(own) + "\n"
+        "\nOr, if you deliberately intend to commit them too, re-run with the "
         "explicit scope override:\n"
-        "  TELECLAUDE_COMMIT_APPROVED=1 telec code commit --approved -m '<message>'",
+        "  TELECLAUDE_COMMIT_APPROVED=1 telec code commit --approved '<message>'",
         file=sys.stderr,
     )
     raise SystemExit(2)

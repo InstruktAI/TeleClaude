@@ -15,7 +15,9 @@ from teleclaude.cli.telec.handlers.code import (
     _current_branch,
     _get_staged_files,
     _stage_files,
+    _with_trailer,
     handle_code_changed,
+    handle_code_commit,
 )
 from teleclaude.git import GitCommandError
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
@@ -29,19 +31,19 @@ class TestClassifyMainCommit:
     @pytest.mark.unit
     def test_path_a_passes_for_non_functional_with_skip_ci(self) -> None:
         """Non-functional files with [skip ci] in message proceed silently."""
-        _classify_main_commit(["-m", "chore: update docs [skip ci]"], ["README.md", "docs/guide.yaml"])
+        _classify_main_commit("chore: update docs [skip ci]", ["README.md", "docs/guide.yaml"])
 
     @pytest.mark.unit
     def test_path_a_blocks_non_functional_without_skip_ci(self) -> None:
         """Non-functional files without [skip ci] still require classification."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "chore: update docs"], ["README.md"])
+            _classify_main_commit("chore: update docs", ["README.md"])
 
     @pytest.mark.unit
     def test_functional_files_require_classification(self) -> None:
         """Functional files trigger the classification gate."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "fix: something"], ["teleclaude/foo.py"])
+            _classify_main_commit("fix: something", ["teleclaude/foo.py"])
 
     @pytest.mark.unit
     def test_functional_classification_guidance_reuses_commit_reviewer(
@@ -49,7 +51,7 @@ class TestClassifyMainCommit:
     ) -> None:
         """Path C guidance must send follow-up commits to the same reviewer."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "fix: something"], ["teleclaude/foo.py"])
+            _classify_main_commit("fix: something", ["teleclaude/foo.py"])
 
         err = capsys.readouterr().err
         assert "If this patch series has no /next-review-commits reviewer yet, dispatch one" in err
@@ -62,19 +64,19 @@ class TestClassifyMainCommit:
     def test_functional_with_skip_ci_still_requires_classification(self) -> None:
         """Functional files are not bypassed by [skip ci]."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "fix: something [skip ci]"], ["teleclaude/foo.py"])
+            _classify_main_commit("fix: something [skip ci]", ["teleclaude/foo.py"])
 
     @pytest.mark.unit
     def test_makefile_is_functional(self) -> None:
         """Makefile is classified as functional."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "chore: update [skip ci]"], ["Makefile"])
+            _classify_main_commit("chore: update [skip ci]", ["Makefile"])
 
     @pytest.mark.unit
     def test_dockerfile_is_functional(self) -> None:
         """Dockerfile is classified as functional."""
         with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit(["-m", "chore: update [skip ci]"], ["Dockerfile"])
+            _classify_main_commit("chore: update [skip ci]", ["Dockerfile"])
 
 
 class TestGitHelpers:
@@ -168,20 +170,12 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="feat(scope): centralize scope",
-                git_args=[],
                 project_root=tmp_path,
                 system_role=None,
             )
 
         assert staged_files == [["teleclaude/changed.py", "teleclaude/deleted.py"]]
-        repo.git.commit.assert_called_once_with(
-            "-m",
-            "feat(scope): centralize scope",
-            "--",
-            "teleclaude/changed.py",
-            "teleclaude/deleted.py",
-            with_extended_output=True,
-        )
+        _assert_pathspec_commit(repo, ["teleclaude/changed.py", "teleclaude/deleted.py"])
 
     @pytest.mark.unit
     def test_commit_skips_already_staged_paths_and_includes_them_in_pathspec(self, tmp_path: Path) -> None:
@@ -216,7 +210,6 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="fix(scope): handle shared deletion",
-                git_args=[],
                 project_root=tmp_path,
                 system_role=None,
             )
@@ -224,14 +217,7 @@ class TestCommitWorkspaceScope:
         # deleted.py was already staged (pre_staged) → not re-staged; touched.py was not → staged.
         assert staged_files == [["teleclaude/touched.py"]]
         # Pathspec includes both — the index has both, and both are in scope.
-        repo.git.commit.assert_called_once_with(
-            "-m",
-            "fix(scope): handle shared deletion",
-            "--",
-            "teleclaude/deleted.py",
-            "teleclaude/touched.py",
-            with_extended_output=True,
-        )
+        _assert_pathspec_commit(repo, ["teleclaude/deleted.py", "teleclaude/touched.py"])
 
     @pytest.mark.unit
     def test_non_main_branch_trusts_index_with_foreign_pre_staged_file(self, tmp_path: Path) -> None:
@@ -275,20 +261,12 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="fix: own change",
-                git_args=[],
                 project_root=tmp_path,
                 system_role=None,
             )
 
         assert staged_files == [["teleclaude/touched.py"]]
-        repo.git.commit.assert_called_once_with(
-            "-m",
-            "fix: own change",
-            "--",
-            "teleclaude/foreign_deleted.py",
-            "teleclaude/touched.py",
-            with_extended_output=True,
-        )
+        _assert_pathspec_commit(repo, ["teleclaude/foreign_deleted.py", "teleclaude/touched.py"])
 
 
 class TestSessionScopeGate:
@@ -342,7 +320,6 @@ class TestSessionScopeGate:
                 stack.enter_context(cm)
             _commit_under_lock(
                 message=message,
-                git_args=[],
                 project_root=tmp_path,
                 system_role=system_role,
                 approved=approved,
@@ -378,14 +355,7 @@ class TestSessionScopeGate:
             system_role=None,
             message="chore: deliberate sweep",
         )
-        repo.git.commit.assert_called_once_with(
-            "-m",
-            "chore: deliberate sweep",
-            "--",
-            "teleclaude/foreign.py",
-            "teleclaude/mine.py",
-            with_extended_output=True,
-        )
+        _assert_pathspec_commit(repo, ["teleclaude/foreign.py", "teleclaude/mine.py"])
 
     @pytest.mark.unit
     def test_scoped_only_commit_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -501,7 +471,6 @@ class TestRustCommitBoundary:
         ):
             _commit_under_lock(
                 message="chore(rust): smoke test",
-                git_args=[],
                 project_root=tmp_path,
                 system_role=None,
             )
@@ -510,13 +479,7 @@ class TestRustCommitBoundary:
         lint_handler.assert_not_called()
         test_handler.assert_not_called()
         format_handler.assert_not_called()
-        repo.git.commit.assert_called_once_with(
-            "-m",
-            "chore(rust): smoke test",
-            "--",
-            "crates/workflow/src/lib.rs",
-            with_extended_output=True,
-        )
+        _assert_pathspec_commit(repo, ["crates/workflow/src/lib.rs"])
 
     @pytest.mark.unit
     def test_excluded_pre_commit_config_has_no_branch_diff(self) -> None:
@@ -579,6 +542,17 @@ class TestChangedWorkspaceScope:
         assert capsys.readouterr().out.splitlines() == ["teleclaude/touched.py"]
 
 
+def _assert_pathspec_commit(repo, expected_files: list[str]) -> None:
+    """Assert the commit ran as a pathspec commit via a message file (-F)."""
+    repo.git.commit.assert_called_once()
+    args, kwargs = repo.git.commit.call_args
+    assert args[0] == "-F"
+    assert isinstance(args[1], str) and args[1]
+    assert args[2] == "--"
+    assert list(args[3:]) == expected_files
+    assert kwargs == {"with_extended_output": True}
+
+
 def _branch_diff(path: str) -> list[str]:
     merge_base = subprocess.run(
         ["git", "merge-base", "HEAD", "main"],
@@ -599,3 +573,52 @@ def _branch_diff(path: str) -> list[str]:
     if diff.returncode != 0:
         pytest.skip("git diff is unavailable for structural branch-diff check")
     return [line for line in diff.stdout.splitlines() if line]
+
+
+class TestWithTrailer:
+    @pytest.mark.unit
+    def test_appends_trailer_when_absent(self) -> None:
+        out = _with_trailer("fix(x): y")
+        assert out.startswith("fix(x): y\n\n")
+        assert "Co-Authored-By: TeleClaude <noreply@instrukt.ai>" in out
+        assert out.endswith("\n")
+
+    @pytest.mark.unit
+    def test_idempotent_when_trailer_present(self) -> None:
+        already = "fix(x): y\n\n\U0001f916 Generated with [TeleClaude](u)\n\nCo-Authored-By: X <a@b>"
+        assert _with_trailer(already).count("Generated with [TeleClaude]") == 1
+
+
+class TestHandleCodeCommitContract:
+    @pytest.mark.unit
+    def test_rejects_no_message(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit([])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_rejects_dash_m_flag(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["-m", "fix: x"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_rejects_extra_positional(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["fix: x", "extra"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_accepts_message_and_forwards_to_commit(self) -> None:
+        with (
+            patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
+            patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+        ):
+            handle_code_commit(["fix(x): y", "--approved"])
+        assert under_lock.call_count == 1
+        kw = under_lock.call_args.kwargs
+        assert kw["message"] == "fix(x): y"
+        assert kw["approved"] is True

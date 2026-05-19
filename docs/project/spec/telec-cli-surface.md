@@ -193,10 +193,9 @@ subcommands:
           - slug: 'string'
         flags:
           --verdict: 'approve | changes_requested | needs_work | needs_decision'
-          --phase: 'Review phase for --verdict: architecture_review | test_spec_review | plan_review | build_review'
+          --phase: 'Review phase for --verdict: architecture_review | plan_review | build_review'
           --prd-approved: 'Mark PRD approved by the real human.'
           --architecture-skipped: 'Skip architecture phase with a reason.'
-          --test-specs-skipped: 'Skip test-specs phase with a reason.'
           --drift-reviewed: 'Record drift review: artifact, substantive|cosmetic, reason.'
           --deferrals-processed: 'Mark the deferrals artifact as processed.'
           --design-spec-confirmed: 'Confirm creative design-spec human gate.'
