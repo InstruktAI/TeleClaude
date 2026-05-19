@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
 
 from teleclaude.api_models import TodoDumpRequest
-from teleclaude.cli.tool_client import tool_api_request
+from teleclaude.cli.tool_client import ToolAPIError, tool_api_request
 from teleclaude.cli.tui.messages import DocEditRequest, DocPreviewRequest
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sync_default_footer_action
@@ -411,34 +411,31 @@ class PreparationViewActionsMixin:
         )
 
     def action_remove_artifact(self) -> None:
-        """R: remove the selected artifact (any artifact except 'input')."""
+        """R: on an artifact row remove that artifact (≠ 'input'); on a todo row remove the todo."""
         file_row = self._current_file_row()  # type: ignore[attr-defined]
-        if file_row is None:
-            self.app.notify(  # type: ignore[attr-defined]
-                "Select an artifact row to remove (R targets artifacts, not the todo).",
-                severity="warning",
-            )
-            return
-
-        artifact_name = file_row.artifact_name
-        slug = file_row.slug
-        if artifact_name == ARTIFACT_INPUT:
-            self.app.notify("The 'input' artifact cannot be removed.", severity="warning")  # type: ignore[attr-defined]
-            return
-
-        project_path = self._slug_to_project_path.get(slug, "") or (file_row.project_path or "")  # type: ignore[attr-defined]
-        if not project_path:
-            return
-
-        def _on_confirm(confirmed: bool | None) -> None:
-            if not confirmed:
+        if file_row is not None:
+            artifact_name = file_row.artifact_name
+            slug = file_row.slug
+            if artifact_name == ARTIFACT_INPUT:
+                self.app.notify("The 'input' artifact cannot be removed.", severity="warning")  # type: ignore[attr-defined]
                 return
-            try:
-                result = tool_api_request(
-                    "DELETE",
-                    f"/artifacts/{quote(slug)}/{quote(artifact_name)}?cwd={quote(project_path)}",
-                    timeout=10.0,
-                )
+            project_path = self._slug_to_project_path.get(slug, "") or (file_row.project_path or "")  # type: ignore[attr-defined]
+            if not project_path:
+                return
+
+            def _on_confirm_artifact(confirmed: bool | None) -> None:
+                if not confirmed:
+                    return
+                try:
+                    result = tool_api_request(
+                        "DELETE",
+                        f"/todos/artifacts/{quote(slug)}/{quote(artifact_name)}",
+                        params={"cwd": project_path},
+                        timeout=10.0,
+                    )
+                except ToolAPIError as exc:
+                    self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+                    return
                 if isinstance(result, dict) and result.get("status") == "ok":
                     self.app.notify(f"Removed artifact '{artifact_name}' from {slug}")  # type: ignore[attr-defined]
                     self.app._refresh_data()  # type: ignore[attr-defined]
@@ -446,15 +443,51 @@ class PreparationViewActionsMixin:
                     self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
                 else:
                     self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
-            except Exception as exc:
+
+            self.app.push_screen(  # type: ignore[attr-defined]
+                ConfirmModal(
+                    title="Remove Artifact",
+                    message=f"Remove artifact '{artifact_name}' from '{slug}'?\n\nThis deletes its version history and cannot be undone.",
+                ),
+                _on_confirm_artifact,
+            )
+            return
+
+        # Todo row → remove the whole todo (original behavior).
+        row = self._current_todo_row()  # type: ignore[attr-defined]
+        slug = row.slug if row else None
+        if not slug:
+            return
+        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        if not project_path:
+            return
+
+        def _on_confirm_todo(confirmed: bool | None) -> None:
+            if not confirmed:
+                return
+            try:
+                result = tool_api_request(
+                    "POST",
+                    "/todos/remove",
+                    json_body={"slug": slug, "cwd": project_path},
+                    timeout=10.0,
+                )
+            except ToolAPIError as exc:
                 self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+                return
+            if isinstance(result, dict) and result.get("operation_id"):
+                self.app.notify(f"Removing {slug}...")  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            else:
+                self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
-                title="Remove Artifact",
-                message=f"Remove artifact '{artifact_name}' from '{slug}'?\n\nThis deletes its version history and cannot be undone.",
+                title="Remove Todo",
+                message=f"Remove todo '{slug}' and all its files?\n\nThis action cannot be undone.",
             ),
-            _on_confirm,
+            _on_confirm_todo,
         )
 
     def action_prepare(self) -> None:

@@ -85,6 +85,20 @@ def test_handle_roadmap_show_prints_json_when_requested(
     assert json.loads(capsys.readouterr().out) == {"active": [{"slug": "sample", "status": "ready"}]}
 
 
+def test_handle_roadmap_show_empty_json_emits_sectioned_object(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """An empty roadmap with --json emits `{}` (sectioned-consistent), not `[]`."""
+    _, worktree = _make_worktree(tmp_path)
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
+    monkeypatch.chdir(worktree)
+    service = SimpleNamespace(roadmap=SimpleNamespace(entries=MagicMock(return_value=[])))
+    with patch("teleclaude.cli.telec.handlers.roadmap.get_work_service", return_value=service):
+        roadmap._handle_roadmap_show(["--json"])
+
+    assert json.loads(capsys.readouterr().out) == {}
+
+
 def test_handle_roadmap_add_forwards_parsed_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     db_called: list[tuple[Path, str, str]] = []
     repo_root, worktree = _make_worktree(tmp_path)

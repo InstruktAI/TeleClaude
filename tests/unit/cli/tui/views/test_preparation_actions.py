@@ -134,3 +134,50 @@ def test_action_start_work_allows_resume_during_build() -> None:
 
     assert view.opened_modal is not None
     view.app.notify.assert_not_called()
+
+
+class _ArtifactRemovalView(PreparationViewActionsMixin):
+    def __init__(self, file_row: object) -> None:
+        self._file_row = file_row
+        self._slug_to_project_path = {"my-slug": "/repo"}
+        self.app = SimpleNamespace(
+            notify=Mock(),
+            _refresh_data=Mock(),
+            push_screen=lambda _modal, cb: cb(True),
+        )
+
+    def _current_file_row(self) -> object:
+        return self._file_row
+
+
+@pytest.mark.unit
+def test_action_remove_artifact_deletes_selected_non_input_artifact() -> None:
+    view = _ArtifactRemovalView(SimpleNamespace(artifact_name="prd", slug="my-slug", project_path="/repo"))
+
+    with (
+        patch("teleclaude.cli.tui.views.preparation_actions.ConfirmModal"),
+        patch(
+            "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+            return_value={"status": "ok"},
+        ) as mock_request,
+    ):
+        view.action_remove_artifact()
+
+    mock_request.assert_called_once_with(
+        "DELETE",
+        "/todos/artifacts/my-slug/prd",
+        params={"cwd": "/repo"},
+        timeout=10.0,
+    )
+    view.app._refresh_data.assert_called_once_with()
+
+
+@pytest.mark.unit
+def test_action_remove_artifact_blocks_input_artifact() -> None:
+    view = _ArtifactRemovalView(SimpleNamespace(artifact_name="input", slug="my-slug", project_path="/repo"))
+
+    with patch("teleclaude.cli.tui.views.preparation_actions.tool_api_request") as mock_request:
+        view.action_remove_artifact()
+
+    mock_request.assert_not_called()
+    view.app.notify.assert_called_once_with("The 'input' artifact cannot be removed.", severity="warning")

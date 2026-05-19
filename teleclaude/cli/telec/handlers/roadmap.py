@@ -67,7 +67,7 @@ def _handle_roadmap(args: list[str]) -> None:
 
 
 def _handle_roadmap_show(args: list[str]) -> None:
-    """Display the roadmap grouped by group, with deps and state."""
+    """Display the roadmap as sectioned active/delivered/icebox dependency trees."""
     parsed = _parse_roadmap_show_args(args)
     project_root = _resolve_roadmap_project_root()
 
