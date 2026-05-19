@@ -18,7 +18,7 @@ from teleclaude.core.next_machine.runtime.sessions import (
 def _session(
     session_id: str,
     title: str,
-    subdir: str,
+    subdir: str | None,
     *,
     last_activity: datetime | None = None,
     last_message_sent_at: datetime | None = None,
@@ -65,6 +65,29 @@ async def test_find_live_session_with_status_for_slug_returns_idle_status() -> N
     session_id, status = await find_live_session_with_status_for_slug(db, "slug-a", "/next-review-")
 
     assert session_id == "rev-build"
+    assert status == "idle"
+
+
+@pytest.mark.asyncio
+async def test_find_live_session_with_status_matches_none_subdir_for_empty_override() -> None:
+    stopped_at = datetime(2026, 4, 13, tzinfo=UTC)
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session(
+            "rev-specs",
+            "/next-review-specs slug-a",
+            None,
+            last_activity=stopped_at,
+            last_message_sent_at=stopped_at,
+            last_agent_stop_at=stopped_at,
+        )
+    ]
+
+    session_id, status = await find_live_session_with_status_for_slug(
+        db, "slug-a", "/next-review-specs", subdir_override=""
+    )
+
+    assert session_id == "rev-specs"
     assert status == "idle"
 
 

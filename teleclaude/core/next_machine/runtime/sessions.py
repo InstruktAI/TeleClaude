@@ -22,10 +22,16 @@ def _matches_title_prefix(title: str | None, title_prefixes: TitlePrefixes) -> b
     return any(normalized_title.startswith(prefix) for prefix in _normalize_prefixes(title_prefixes))
 
 
-def _expected_subdir(slug: str, subdir_override: str | None) -> str:
-    """Resolve the canonical subdir used to scope live-session ownership."""
+def _expected_subdir(slug: str, subdir_override: str | None) -> str | None:
+    """Resolve the canonical subdir used to scope live-session ownership.
+
+    ``subdir_override=""`` and ``subdir_override=None`` both mean "session has
+    no subdir". The API stores ``subfolder or None``, so an empty override must
+    normalize to ``None`` to match. A non-empty override is returned as-is. A
+    missing override defaults to the per-slug worktree path.
+    """
     if subdir_override is not None:
-        return subdir_override
+        return subdir_override or None
     return f"{WORKTREE_DIR}/{slug}"
 
 
