@@ -935,6 +935,47 @@ class TestSessionsActionsRoutes:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_orchestrator_can_dispatch_prepare(self) -> None:
+        """Orchestrator system_role can dispatch /next-prepare on a child slug.
+
+        Required by the holder-dispatch pattern: when a split holder resolves
+        runnable children, the holder orchestrator spawns a dedicated prepare
+        orchestrator per child via `sessions run --command /next-prepare`.
+        """
+        request = RunSessionRequest(command="/next-prepare", args="some-child", project="/repo/demo")
+        identity = _system_identity("sess-orch", system_role=ROLE_ORCHESTRATOR)
+
+        service = MagicMock()
+        service.create_session = AsyncMock(
+            return_value={"session_id": "sess-child-prep", "tmux_session_name": "tmux-prep"},
+        )
+
+        with patch.object(sessions_actions_routes, "get_command_service", return_value=service):
+            response = await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert response.session_id == "sess-child-prep"
+        service.create_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_orchestrator_can_dispatch_work(self) -> None:
+        """Orchestrator system_role can dispatch /next-work on a child slug (holder-dispatch)."""
+        request = RunSessionRequest(command="/next-work", args="some-child", project="/repo/demo")
+        identity = _system_identity("sess-orch", system_role=ROLE_ORCHESTRATOR)
+
+        service = MagicMock()
+        service.create_session = AsyncMock(
+            return_value={"session_id": "sess-child-work", "tmux_session_name": "tmux-work"},
+        )
+
+        with patch.object(sessions_actions_routes, "get_command_service", return_value=service):
+            response = await sessions_actions_routes.run_session(request, identity=identity)
+
+        assert response.session_id == "sess-child-work"
+        service.create_session.assert_awaited_once()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_orchestrator_cannot_dispatch_integrate(self) -> None:
         """Orchestrator system_role is blocked from dispatching /next-integrate."""
         request = RunSessionRequest(command="/next-integrate", args="some-slug", project="/repo/demo")
