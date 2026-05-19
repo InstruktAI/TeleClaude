@@ -912,26 +912,21 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
     async def _start_workflow_bridge(self) -> None:
         """Attach the v2 ``workflow.*`` Redis subscriber to the daemon loop.
 
-        The bridge is best-effort: a missing or empty ``REDIS_URL`` simply
-        skips startup with a warning. The subscriber's internal reconnect
-        loop handles transient Redis outages once it is running.
+        The bridge reuses the daemon's single ``RedisTransport`` adapter — the
+        same connection pool that the rest of the daemon already authenticated
+        against. No parallel client, no parallel URL/password resolution.
         """
         # startup boundary lazy imports to keep cold import cheap
-        from teleclaude.transport.redis_client import create_redis_client  # startup boundary
+        from teleclaude.transport.redis_transport import RedisTransport  # startup boundary
 
-        redis_url = os.getenv("REDIS_URL") or getattr(config.redis, "url", "") or "redis://localhost:6379"
-        password = getattr(config.redis, "password", None)
-        max_connections = int(getattr(config.redis, "max_connections", 10) or 10)
-        socket_timeout_raw = getattr(config.redis, "socket_timeout", None)
-        socket_timeout = float(socket_timeout_raw) if socket_timeout_raw else None
+        redis_adapter = self.client.adapters.get("redis")
+        if not isinstance(redis_adapter, RedisTransport):
+            raise RuntimeError(
+                "Workflow bridge requires the v1 RedisTransport adapter to be configured before bridge startup."
+            )
 
         def _factory() -> Any:
-            return create_redis_client(
-                redis_url,
-                password=password,
-                max_connections=max_connections,
-                socket_timeout=socket_timeout,
-            )
+            return redis_adapter.redis
 
         bridge = WorkflowBridge(
             redis_factory=_factory,
@@ -940,7 +935,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._workflow_bridge = bridge
         self._workflow_bridge_task = asyncio.create_task(bridge.run(), name="workflow-bridge")
         self._workflow_bridge_task.add_done_callback(self._log_background_task_exception("workflow_bridge"))
-        logger.info("Workflow Redis bridge started", redis_url=redis_url)
+        logger.info("Workflow Redis bridge attached to shared RedisTransport")
 
     def _dispatch_workflow_event(self, envelope: WorkflowEnvelope) -> None:
         """Translate a decoded v2 workflow envelope into v1 cache invalidation.
@@ -969,27 +964,24 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
     async def _start_identity_bridge(self) -> None:
         """Attach the v2 ``identity.*`` Redis subscriber to the daemon loop.
 
-        Mirrors :meth:`_start_workflow_bridge`. The current v1 daemon has
-        no identity cache that benefits from invalidation, so the dispatch
-        callback logs each envelope and otherwise no-ops; future v1 code
-        that needs to react to identity events extends the callback.
+        Mirrors :meth:`_start_workflow_bridge` — reuses the shared
+        ``RedisTransport`` adapter rather than constructing a parallel client.
+        The current v1 daemon has no identity cache that benefits from
+        invalidation, so the dispatch callback logs each envelope and
+        otherwise no-ops; future v1 code that needs to react to identity
+        events extends the callback.
         """
         # startup boundary lazy imports to keep cold import cheap
-        from teleclaude.transport.redis_client import create_redis_client  # startup boundary
+        from teleclaude.transport.redis_transport import RedisTransport  # startup boundary
 
-        redis_url = os.getenv("REDIS_URL") or getattr(config.redis, "url", "") or "redis://localhost:6379"
-        password = getattr(config.redis, "password", None)
-        max_connections = int(getattr(config.redis, "max_connections", 10) or 10)
-        socket_timeout_raw = getattr(config.redis, "socket_timeout", None)
-        socket_timeout = float(socket_timeout_raw) if socket_timeout_raw else None
+        redis_adapter = self.client.adapters.get("redis")
+        if not isinstance(redis_adapter, RedisTransport):
+            raise RuntimeError(
+                "Identity bridge requires the v1 RedisTransport adapter to be configured before bridge startup."
+            )
 
         def _factory() -> Any:
-            return create_redis_client(
-                redis_url,
-                password=password,
-                max_connections=max_connections,
-                socket_timeout=socket_timeout,
-            )
+            return redis_adapter.redis
 
         bridge = IdentityBridge(
             redis_factory=_factory,
@@ -998,7 +990,7 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         self._identity_bridge = bridge
         self._identity_bridge_task = asyncio.create_task(bridge.run(), name="identity-bridge")
         self._identity_bridge_task.add_done_callback(self._log_background_task_exception("identity_bridge"))
-        logger.info("Identity Redis bridge started", redis_url=redis_url)
+        logger.info("Identity Redis bridge attached to shared RedisTransport")
 
     def _dispatch_identity_event(self, envelope: IdentityEnvelope) -> None:
         """Log a decoded v2 identity envelope.
