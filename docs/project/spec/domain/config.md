@@ -5,8 +5,11 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-config-cutover, inventory-v1-config]
-description: Config bounded context — effective configuration resolved from layered YAML overlays. Owns the model, validation, and overlay computation. Consumed by every service.
+delivered_by:
+  - v2-config-cutover
+description: Config bounded context — effective configuration resolved from layered
+  YAML overlays. Owns the model, validation, and overlay computation. Consumed by
+  every service.
 ---
 
 # Config Domain Spec — Spec
@@ -29,25 +32,25 @@ This context does NOT own: identity policy semantics (`identity`), workflow stat
 ### Ubiquitous language
 
 **Configuration**
-:  The full set of declared settings for a machine, project, or person. Stored as YAML on disk; resolved into an effective configuration in memory.
+: The full set of declared settings for a machine, project, or person. Stored as YAML on disk; resolved into an effective configuration in memory.
 
 **Effective configuration**
-:  The configuration produced by overlaying global → project → person sources, with later sources overriding earlier ones for matching keys. The output that consumers actually read.
+: The configuration produced by overlaying global → project → person sources, with later sources overriding earlier ones for matching keys. The output that consumers actually read.
 
 **Overlay**
-:  One layer in the effective-configuration computation. Three overlays exist: global (`~/.teleclaude/teleclaude.yml`), project (`<project>/teleclaude.yml`), person (`~/.teleclaude/people/<name>/teleclaude.yml`).
+: One layer in the effective-configuration computation. Three overlays exist: global (`~/.teleclaude/teleclaude.yml`), project (`<project>/teleclaude.yml`), person (`~/.teleclaude/people/<name>/teleclaude.yml`).
 
 **Runtime configuration**
-:  Per-machine settings that live in `config.yml` (separate from `teleclaude.yml`). Computer identity, agent inventory, Redis URL, daemon socket path, deployment release channel. Distinct from the YAML overlays — runtime config is one file per machine, not layered.
+: Per-machine settings that live in `config.yml` (separate from `teleclaude.yml`). Computer identity, agent inventory, Redis URL, daemon socket path, deployment release channel. Distinct from the YAML overlays — runtime config is one file per machine, not layered.
 
 **Release channel** (per glossary)
-:  `alpha` / `beta` / `stable`. Per-machine; owned by config (lives in `config.yml`). Gates the daemon's auto-update behavior. `pinned_minor` is required when the channel is `stable`.
+: `alpha` / `beta` / `stable`. Per-machine; owned by config (lives in `config.yml`). Gates the daemon's auto-update behavior. `pinned_minor` is required when the channel is `stable`.
 
 **Config schema**
-:  The typed model declaring valid configuration shape. Source of truth for what keys exist, their types, and validation rules. Implemented as Pydantic in v1, as a Rust struct + validation in v2.
+: The typed model declaring valid configuration shape. Source of truth for what keys exist, their types, and validation rules. Implemented as Pydantic in v1, as a Rust struct + validation in v2.
 
 **Effective-config snapshot** (optional, for history)
-:  A point-in-time record of the effective configuration. Persisted to `config.effective_config_snapshots` table only if history matters; otherwise the service is stateless and computes on demand.
+: A point-in-time record of the effective configuration. Persisted to `config.effective_config_snapshots` table only if history matters; otherwise the service is stateless and computes on demand.
 
 ### Aggregates
 
@@ -137,6 +140,6 @@ be added as `v2-config-cutover` lands the cutover work.
 
 - Config persistence is filesystem-first. Postgres is OPTIONAL (`effective_config_snapshots` table) and only used if effective-config history must be queryable across time. Until that use case surfaces, the service is stateless and config "lives" in YAML.
 - The `~30+ consumer surface` in v1 is the broadest of any service. The v2 shim's job is to keep that surface byte-stable during migration; consumer code changes happen gradually, not as part of the cutover.
-- v1 `teleclaude/config/_remote_computers.py` is being retired entirely (per the `fleet-redis-discovery` inheritance in `v2-daemon-narrow`); fleet topology moves out of config and into Redis self-advertisement. The schema field `remote_computers` is dropped.
+- v1 `teleclaude/config/_remote_computers.py` is being retired entirely (per the `fleet-redis-discovery` inheritance in `v2-agent-runtime`); fleet topology moves out of config and into Redis self-advertisement. The schema field `remote_computers` is dropped.
 - v1 `DeploymentConfig` was misplaced on `ProjectConfig`. The v2-config-cutover relocates it to runtime config (see the cutover input). Until the cutover lands, the misplacement persists.
 - Validation is schema-driven, not freeform. Adding a new config field requires updating the schema in the same PR as the consumer that reads it. Unknown keys log a warning today; v2 may tighten to errors.

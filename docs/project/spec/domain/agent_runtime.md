@@ -5,8 +5,11 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-agent-runtime, v2-daemon-narrow, inventory-v1-agent-runtime]
-description: Agent Runtime bounded context — live agent sessions, tmux orchestration, agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine daemon-shaped part of the platform.
+delivered_by:
+  - v2-agent-runtime
+description: Agent Runtime bounded context — live agent sessions, tmux orchestration,
+  agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine
+  daemon-shaped part of the platform.
 ---
 
 # Agent Runtime Domain Spec — Spec
@@ -37,67 +40,67 @@ The runtime ledger (the `sessions` Postgres table this context owns) is operatio
 ### Ubiquitous language
 
 **Session** (per glossary — live dimension)
-:  A unit of agent work in progress. Has a tmux name, native session id, principal binding, status, last activity, project path, additional context. The thing humans see in the session list.
+: A unit of agent work in progress. Has a tmux name, native session id, principal binding, status, last activity, project path, additional context. The thing humans see in the session list.
 
 **Session id**
-:  UUID identifying the session. Shared with `session_mirrors` (same id, different lens). The wire identifier in events.
+: UUID identifying the session. Shared with `session_mirrors` (same id, different lens). The wire identifier in events.
 
 **TeleClaude session id**
-:  Same as session_id. Used in cross-context contexts where "session id" alone might be ambiguous.
+: Same as session_id. Used in cross-context contexts where "session id" alone might be ambiguous.
 
 **Native session id**
-:  The agent CLI's internal session identifier. Different per agent: Claude has one format, Codex another, Gemini another. Stored explicitly to enable correct correlation.
+: The agent CLI's internal session identifier. Different per agent: Claude has one format, Codex another, Gemini another. Stored explicitly to enable correct correlation.
 
 **Tmux session name**
-:  The tmux session housing the agent CLI process. One tmux session per agent_runtime session. Naming convention: `tc_<session_id_short>`.
+: The tmux session housing the agent CLI process. One tmux session per agent*runtime session. Naming convention: `tc*<session_id_short>`.
 
 **Agent** (per glossary — running-process lens)
-:  The agent CLI process — Claude, Codex, or Gemini — supervised within a tmux session.
+: The agent CLI process — Claude, Codex, or Gemini — supervised within a tmux session.
 
 **Active agent**
-:  The agent CLI currently bound to the session. Sessions may swap agents (e.g., a quota'd Gemini swapped for a Codex) but only one is active at a time.
+: The agent CLI currently bound to the session. Sessions may swap agents (e.g., a quota'd Gemini swapped for a Codex) but only one is active at a time.
 
 **Session status**
-:  Lifecycle state of the live session: `active` (running), `idle` (no recent activity), `closed` (terminated).
+: Lifecycle state of the live session: `active` (running), `idle` (no recent activity), `closed` (terminated).
 
 **Session lifecycle event**
-:  A change in the session's lifecycle: started, updated, ended. Emitted by agent_runtime; consumed by `session_mirrors` and others.
+: A change in the session's lifecycle: started, updated, ended. Emitted by agent_runtime; consumed by `session_mirrors` and others.
 
 **Operation**
-:  A long-running task tied to a session (file sync, build invocation). Tracked with a durable receipt; consumers wait on the completion event.
+: A long-running task tied to a session (file sync, build invocation). Tracked with a durable receipt; consumers wait on the completion event.
 
 **Operation receipt**
-:  The persistent record of an operation: id, kind, status, started_at, completed_at, result. Consumers reference by id.
+: The persistent record of an operation: id, kind, status, started_at, completed_at, result. Consumers reference by id.
 
 **Agent availability**
-:  Per-agent dispatch readiness state: available, unavailable (with reason), with an optional `until` recovery timestamp. Used by orchestrators to decide which agent to dispatch.
+: Per-agent dispatch readiness state: available, unavailable (with reason), with an optional `until` recovery timestamp. Used by orchestrators to decide which agent to dispatch.
 
 **Session runtime**
-:  The per-session actor owning live state: codex_input, codex_turn, metrics, cadence, wake_dirty, active_agent, control_queue. v2 replaces v1's scattered module-level dicts with this explicit actor.
+: The per-session actor owning live state: codex_input, codex_turn, metrics, cadence, wake_dirty, active_agent, control_queue. v2 replaces v1's scattered module-level dicts with this explicit actor.
 
 **Session runtime registry**
-:  The map from session_id to SessionRuntime. Owned by the daemon binary. Replaces v1's module-level globals.
+: The map from session_id to SessionRuntime. Owned by the daemon binary. Replaces v1's module-level globals.
 
 **Hook lane**
-:  One of three signal lanes. Authoritative for events where native agent hooks exist (Claude's pre-tool-use, post-tool-use, etc.). Never replaced by other lanes.
+: One of three signal lanes. Authoritative for events where native agent hooks exist (Claude's pre-tool-use, post-tool-use, etc.). Never replaced by other lanes.
 
 **Render lane**
-:  One of three signal lanes. Authoritative for Codex live semantic inference from tmux `capture-pane` snapshots. Codex emits no native hooks, so rendered terminal state is the only live source.
+: One of three signal lanes. Authoritative for Codex live semantic inference from tmux `capture-pane` snapshots. Codex emits no native hooks, so rendered terminal state is the only live source.
 
 **Transcript lane**
-:  One of three signal lanes. Durable reconciliation/backfill only. NOT live authority. Used for post-turn access, restart recovery, safety-net backfill.
+: One of three signal lanes. Durable reconciliation/backfill only. NOT live authority. Used for post-turn access, restart recovery, safety-net backfill.
 
 **Wake signal**
-:  The dirty-marking mechanism. `pipe-pane -o` is attached to Codex sessions; bytes arriving set `wake_dirty = true`. Triggers a capture-pane snapshot on the next cadence cycle.
+: The dirty-marking mechanism. `pipe-pane -o` is attached to Codex sessions; bytes arriving set `wake_dirty = true`. Triggers a capture-pane snapshot on the next cadence cycle.
 
 **Cadence**
-:  The polling cadence state of a session: `fast` (0.5s), `slow` (5.0s), `audit` (30.0s). State machine transitions: fast → slow after idle window; slow → fast on wake/input/trigger.
+: The polling cadence state of a session: `fast` (0.5s), `slow` (5.0s), `audit` (30.0s). State machine transitions: fast → slow after idle window; slow → fast on wake/input/trigger.
 
 **Control queue**
-:  Per-session ephemeral async queue routing compound control actions (escape-with-args style). Returns a `ControlReceipt` immediately; an internal worker drains sequentially handling tmux timing. Simple single-key controls remain direct.
+: Per-session ephemeral async queue routing compound control actions (escape-with-args style). Returns a `ControlReceipt` immediately; an internal worker drains sequentially handling tmux timing. Simple single-key controls remain direct.
 
 **Replay corpus**
-:  Codex pane snapshot fixtures (`tests/fixtures/codex_pane_snapshots/`) used as the parity safety net for the Rust rewrite of the Codex semantic parser. Includes: startup_prompt, typing_partial, spinner_active, tool_action_read, tool_done_prompt, compact_fast_turn, stale_scrollback, seeded_prompt.
+: Codex pane snapshot fixtures (`tests/fixtures/codex_pane_snapshots/`) used as the parity safety net for the Rust rewrite of the Codex semantic parser. Includes: startup_prompt, typing_partial, spinner_active, tool_action_read, tool_done_prompt, compact_fast_turn, stale_scrollback, seeded_prompt.
 
 ### Aggregates
 
@@ -246,6 +249,7 @@ Agent CLI hooks arrive at `agent_runtime` via the `telec-hook` subprocess (binar
 6. LISTEN'er reads the records and publishes the batched Redis event(s)
 
 Hook kind → reaction:
+
 - `session_start` → mark session active, set native_session_id, set native_file_path if newly learned
 - `pre_tool_use`, `post_tool_use` → update activity, advance cadence to fast
 - `user_prompt_submit` → mark turn boundary
@@ -419,7 +423,7 @@ And the corpus is the binding parity test against v1's Python parser behavior
 - **Partnership with `session_mirrors`** — agent_runtime emits `session.ended` with native_file_path + identity fields; session_mirrors consumes to extract the eternal text mirror. The runtime ledger is operational (pruned after ~1-2 weeks); the mirror is the durable historical archive.
 - **Customer-Supplier upstream to `workflow`** — operation.completed events drive todo phase advancement.
 - **Reads from `config`** — cadence parameters, per-agent defaults, tmux configuration.
-- **NO anti-corruption layer with v1 as a separate cutover.** The v2-agent-runtime → v2-daemon-narrow swap IS the cutover. When `v2-daemon-narrow` ships, the v1 daemon is replaced and v1 session management dies with it. There's no parallel-capable session management — only one daemon runs at a time on a machine.
+- **NO anti-corruption layer with v1 as a separate cutover.** The v2-agent-runtime → v2-agent-runtime swap IS the cutover. When `v2-agent-runtime` ships, the v1 daemon is replaced and v1 session management dies with it. There's no parallel-capable session management — only one daemon runs at a time on a machine.
 
 ## Allowed values
 
@@ -441,4 +445,4 @@ And the corpus is the binding parity test against v1's Python parser behavior
 - **Reducing tmux load is the cadence state machine's job.** Not parallelism. Offloading subprocess work to another worker without throttling doesn't help — the cost is the subprocess count, which the cadence machine reduces.
 - **Three lanes never replace each other.** The hook lane is authoritative where native hooks exist; the render lane is authoritative for Codex semantics; the transcript lane is durable backup. Trying to make one lane "replace" another is a design defect.
 - **The control queue is for compound actions only.** Simple single-key controls (just escape) remain direct because they're latency-sensitive and queue overhead helps nothing.
-- **Cutover IS the daemon swap.** No standalone v2-agent-runtime-cutover. v2-daemon-narrow ships the new daemon binary that hosts v2-agent-runtime; v1 daemon dies the same day.
+- **Cutover IS the daemon swap.** No standalone v2-agent-runtime-cutover. v2-agent-runtime ships the new daemon binary that hosts v2-agent-runtime; v1 daemon dies the same day.

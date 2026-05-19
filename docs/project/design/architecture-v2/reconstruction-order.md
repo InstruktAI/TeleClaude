@@ -77,6 +77,7 @@ written; v1 paths that wrote to SQLite are deleted.
 
 The trap is that **v1 typically has many write paths into a service's
 data**, not just the CLI. For workflow:
+
 - `teleclaude/api/todo_routes.py` (HTTP API → daemon writes)
 - `teleclaude/cli/tui/widgets/todo_row.py` + `views/preparation_actions.py`
   (TUI mutations)
@@ -375,30 +376,30 @@ cut over** v1 → v2 (delete v1 paths, run data migration, swap consumer
 references). The separation is dictated by the cutover-safety pattern
 (see "What makes a cutover safe" earlier in this doc):
 
-| Service | Implementation todo | Cutover todo |
-|---|---|---|
-| Workflow | `v2-mvp-bootstrap` (delivered) | `v2-workflow-cutover` |
-| Identity | `v2-spine-completion` (delivers identity + config + observability) | `v2-identity-cutover` |
-| Config | `v2-spine-completion` (same) | `v2-config-cutover` |
-| Knowledge | `v2-knowledge` | `v2-knowledge-cutover` |
-| Session ledger | `v2-session-ledger` | `v2-session-ledger-cutover` |
-| Integration | `v2-integration` (includes telec-hook binary) | `v2-integration-cutover` |
-| Agent runtime | `v2-agent-runtime` | folded into `v2-daemon-narrow` (daemon cutover IS agent_runtime cutover) |
-| Agent artifacts | `v2-agent-artifacts` | `v2-agent-artifacts-cutover` |
+| Service         | Implementation todo                                                | Cutover todo                                                             |
+| --------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
+| Workflow        | `v2-mvp-bootstrap` (delivered)                                     | `v2-workflow-cutover`                                                    |
+| Identity        | `v2-spine-completion` (delivers identity + config + observability) | `v2-identity-cutover`                                                    |
+| Config          | `v2-spine-completion` (same)                                       | `v2-config-cutover`                                                      |
+| Knowledge       | `v2-knowledge`                                                     | `v2-knowledge-cutover`                                                   |
+| Session ledger  | `v2-session-ledger`                                                | `v2-session-ledger-cutover`                                              |
+| Integration     | `v2-integration` (includes telec-hook binary)                      | `v2-integration-cutover`                                                 |
+| Agent runtime   | `v2-agent-runtime`                                                 | folded into `v2-agent-runtime` (daemon cutover IS agent_runtime cutover) |
+| Agent artifacts | `v2-agent-artifacts`                                               | `v2-agent-artifacts-cutover`                                             |
 
 Plus the binary cutovers:
 
-| Binary | Implementation todo | Cutover note |
-|---|---|---|
-| `telec-tui` | `v2-tui-rewrite` | Parallel-capable; v1 TUI continues until trusted |
-| `telec-daemon` | `v2-daemon-narrow` | Single-PR cutover (cannot run two daemons) |
-| `telec-api` | `v2-api-rewrite` | Single-PR cutover (frontend bridge swap) |
-| `telec-hook` | part of `v2-integration` | Cutover involves agent CLI config re-pointing |
+| Binary         | Implementation todo      | Cutover note                                     |
+| -------------- | ------------------------ | ------------------------------------------------ |
+| `telec-tui`    | `v2-tui-rewrite`         | Parallel-capable; v1 TUI continues until trusted |
+| `telec-daemon` | `v2-agent-runtime`       | Single-PR cutover (cannot run two daemons)       |
+| `telec-api`    | `v2-api-rewrite`         | Single-PR cutover (frontend bridge swap)         |
+| `telec-hook`   | part of `v2-integration` | Cutover involves agent CLI config re-pointing    |
 
 Plus the supporting v1 tooling change:
 
-| Todo | Purpose |
-|---|---|
+| Todo                      | Purpose                                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
 | `telec-code-rust-support` | Add Rust to the `telec code` Python quality pipeline so future v2 work uses the same ergonomic CLI |
 
 ### Dependency graph (full)
@@ -427,7 +428,7 @@ ledger            (includes telec-hook binary)
                       ↓
    ┌──────────────────┼─────────────┐
    ↓                  ↓             ↓
-v2-daemon-narrow  v2-api-rewrite  Per-service CUTOVER todos:
+v2-agent-runtime  v2-api-rewrite  Per-service CUTOVER todos:
 (replaces v1      (HTTP server     - v2-workflow-cutover
 daemon hosting    binary)          - v2-identity-cutover
 agent_runtime)                     - v2-config-cutover

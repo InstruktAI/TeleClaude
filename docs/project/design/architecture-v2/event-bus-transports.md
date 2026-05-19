@@ -1,9 +1,10 @@
 ---
-description: 'Single-transport Redis event bus for v2. Local in-coroutine sync uses Tokio channels — not events.'
+description: 'Three-scope Redis event bus for v2 (Local mandatory + Cluster/Public optional). Explicit per-emit scoping, subscriber-side merge across configured scopes. In-coroutine sync uses Tokio channels — not events.'
 id: 'project/design/architecture-v2/event-bus-transports'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+applies_to: 'v2'
 ---
 
 # Event Bus Transports — Design
@@ -16,58 +17,135 @@ visibility: 'public'
 
 ## Purpose
 
-Define the event bus contract for v2: one transport, one contract, one set of
-guarantees. Replaces v1's dual-transport (LOCAL in-process + CLUSTER Redis)
-model — that pattern is on the redesign list as the bug-factory it was.
+Define the event bus contract for v2: one transport TYPE (Redis), three
+SCOPES (Local, Cluster, Public) each served by a separate Redis client
+instance. The bus routes events by the explicit scope on the envelope.
+Single-computer installs run with Local only — Cluster and Public are
+opt-in infrastructure for multi-host meshes and cross-mesh federation
+respectively.
+
+Replaces v1's dual-transport (LOCAL in-process + CLUSTER Redis) model.
+v1's "LOCAL" meant in-process direct dispatch — that's the bug-factory on
+the redesign list. v2's "LOCAL" means a local-host Redis instance: still
+real Redis with real pub/sub semantics, still durable behavior, just an
+instance the daemon talks to locally (not the cluster mesh). The in-process
+fast-path stays gone.
 
 ## Inputs/Outputs
 
 **Inputs:**
 
 - the v2 architectural rule that services are crates consumed as SDK
-- the v1 dual-transport bus and its failure modes (visibility misclassification,
-  silent cross-process delivery loss)
-- the actual concurrency story: Tokio + Postgres MVCC handles the writer load
-  Python could not, removing the original reason for the LOCAL fast-path
+- the v1 dual-transport bus and its failure modes (visibility
+  misclassification, silent cross-process delivery loss, in-process
+  fast-path conflated with scope)
+- the actual concurrency story: Tokio + Postgres MVCC handles the writer
+  load Python could not, removing the original reason for any in-process
+  fast-path
+- the three deployment shapes the platform supports: single-computer
+  install (Local only), personal mesh (Local + Cluster), federated mesh
+  (Local + Cluster + Public)
 
 **Outputs:**
 
-- the single transport for events (Redis Streams + pub/sub)
+- the three-scope transport model (three Redis clients, one bus)
+- the explicit scope on every event envelope
+- the routing rules (emit → one scope; subscribe → scope-set)
+- the graceful-degradation semantics (silent drop on absent optional scope)
 - the local-coroutine sync primitive that is explicitly not an event
 - the event naming convention
-- the visibility/scope model (or lack thereof)
 
 ## Invariants
 
-- **One transport for events: Redis.** No in-process fast-path. No "LOCAL"
-  visibility. Every event goes through Redis Streams (durable events) or
-  Redis pub/sub (ephemeral notifications), depending on the contract the
-  channel needs.
+- **One transport TYPE: Redis. Three SCOPES via separate Redis client
+  instances.** Local is a local-host Redis. Cluster is the personal mesh's
+  Redis. Public is a cloud-hosted hub Redis. All three are real Redis with
+  Streams + Pub/Sub semantics. There is no in-process fast-path under any
+  scope.
+- **Local is mandatory. Cluster and Public are optional.** Single-computer
+  installs configure only Local. Adding a mesh adds Cluster. Joining
+  federation adds Public. Operators opt in per scope.
+- **Explicit scoping on emit.** Every event carries `envelope.scope: Local
+  | Cluster | Public`. The bus routes that emit to the matching client
+  only. Emitting at scope=Cluster does NOT also fire on Local. The
+  application chooses scope at emit time and the bus respects it
+  literally.
+- **Subscriber-side merge across configured scopes.** A subscription is
+  `{channel pattern, scope-set}`. The bus reads from each configured
+  client in the set and merges the streams under one subscription handle.
+  A subscriber that wants everything declares `{Local, Cluster, Public}`;
+  on a Local-only deployment it just receives Local events. The bus
+  never errors on a subscription declaring scopes not configured —
+  absent clients are silently skipped in the merge.
+- **Emit-side rules per scope:**
+  - `emit(scope=Local)` with Local client missing → **raise.** Local is
+    mandatory; missing it is a misconfiguration that must fail loudly.
+  - `emit(scope=Cluster)` with Cluster client missing → **silent drop**
+    with a debug/trace log. The operator's choice to not configure
+    Cluster IS the signal of disinterest.
+  - `emit(scope=Public)` with Public client missing → same as Cluster:
+    silent drop, debug/trace log.
+  - This is NOT v1's broken silent-no-op pattern. v1 claimed CLUSTER was
+    required and then silently dropped when Redis was absent. v2
+    explicitly types Cluster and Public as optional, making silent drop
+    on absent client the contract — not a contract violation.
 - **In-coroutine completion signals are not events.** They use Tokio
   primitives (`oneshot`, `broadcast`, `mpsc`) and are named accordingly.
-  They never use `event_bus.emit()`.
-- **The bus surface is one shape.** `event_bus::emit(event)` and
-  `event_bus::subscribe(channel)` have one contract: same envelope, same
-  durability semantics per channel, same idempotency rules.
-- **Idempotency by envelope key.** Every event carries an `idempotency_key`
-  so consumer-group redelivery converges to at-most-once handler firing.
-- **Cross-process delivery is the default.** Any event emitted is visible to
-  any process subscribed to the channel. There is no opt-out for "local
-  only."
-- **Redis pool sizing is operational, not architectural.** If Redis pool
-  exhausts under load, tune the pool — don't invent a second transport to
-  avoid it.
+  They never use `event_bus.emit()`. This rule predates and is orthogonal
+  to the three-scope model: scope is about WHICH Redis instance carries
+  the event, not whether to use the bus at all.
+- **The bus surface is one shape per scope.** `event_bus::emit(envelope)`
+  and `event_bus::subscribe(channel, scopes)` have one contract: same
+  envelope, same durability semantics per channel, same idempotency rules.
+  The bus internally fans the work to the right client(s).
+- **Idempotency by envelope key spans scopes.** Every event carries an
+  `idempotency_key`. The bus records handler successes keyed by it. A
+  multi-scope subscriber reading the same logical event from two or
+  three clients (e.g., a Cluster event that's federated to Public) does
+  not double-fire its handler.
+- **Cross-process delivery is the default within a scope.** Any event
+  emitted at a given scope is visible to any process subscribed to that
+  scope's channel via that scope's Redis. There is no per-process
+  opt-out within a scope.
+- **Redis pool sizing is operational, not architectural.** If any scope's
+  Redis pool exhausts under load, tune the pool — don't invent a fourth
+  transport or in-process fast-path to avoid it.
 
 ## Primary flows
 
-### The two Redis surfaces (one transport)
+### The three scopes (each its own Redis client)
 
-Redis offers two delivery mechanisms; both are part of the bus:
-
-| Surface | Use | Durability | Replay |
+| Scope | Reach | Required? | Typical deployment |
 |---|---|---|---|
-| **Redis Streams** (`XADD`/`XREADGROUP`) | Domain events with consumer groups, retry, DLQ | Durable | Yes |
-| **Redis Pub/Sub** (`PUBLISH`/`SUBSCRIBE`) | Live notifications, cache invalidation, ephemeral fanout | Ephemeral | No |
+| **Local** | Single host (this computer) | YES | Always present. Single-computer install runs Local-only. |
+| **Cluster** | Single owner's mesh (multi-host fleet) | NO | A user with multiple machines configures Cluster to coordinate across them. |
+| **Public** | Cross-mesh federation hub | NO | Multiple owners' clusters meet via a cloud-hosted hub. Spoke (cluster) → hub (public) → spoke (other cluster) topology. |
+
+Each scope is a separate Redis client instance. The bus is constructed
+with all three:
+
+```rust
+let bus = EventBus::new(EventBusConfig {
+    local:   RedisConfig { url: "redis://127.0.0.1:6379", .. },  // required
+    cluster: Some(RedisConfig { url: "redis://mesh.example:6379", .. }),  // opt-in
+    public:  Some(RedisConfig { url: "rediss://public-hub.example:6379", .. }),  // opt-in
+}).await?;
+```
+
+Missing Local raises at construction. Missing Cluster or Public leaves
+the corresponding internal client `None`; emits to those scopes silently
+drop per the invariant above; subscriptions silently skip those scopes
+in the merge.
+
+### The two Redis surfaces (per scope)
+
+Each scope's Redis offers two delivery mechanisms; both are part of the
+bus and available on every scope:
+
+| Surface                                   | Use                                                      | Durability | Replay |
+| ----------------------------------------- | -------------------------------------------------------- | ---------- | ------ |
+| **Redis Streams** (`XADD`/`XREADGROUP`)   | Domain events with consumer groups, retry, DLQ           | Durable    | Yes    |
+| **Redis Pub/Sub** (`PUBLISH`/`SUBSCRIBE`) | Live notifications, cache invalidation, ephemeral fanout | Ephemeral  | No     |
 
 A channel's contract picks the surface:
 
@@ -76,14 +154,16 @@ A channel's contract picks the surface:
 - `tui.snapshot.refresh` — Pub/Sub. Live notifications to subscribed TUIs;
   fine to drop if no subscriber is alive.
 
-The bus crate exposes both via one consistent API. Service authors specify the
-surface at channel definition time (or per-emit if needed). The bus is one
-transport with two delivery modes, both Redis-backed.
+The bus crate exposes both via one consistent API across all three scopes.
+Service authors specify the surface at channel definition time (or per-emit
+if needed). The bus is one transport TYPE with two delivery modes and
+three scope instances, all Redis-backed.
 
 ### What is and isn't an event
 
 **Events** are domain facts emitted by services for other interested parties to
 react to:
+
 - `workflow.todo.created`
 - `agent_runtime.session.started`
 - `identity.token.issued`
@@ -94,6 +174,7 @@ the emitting service's `events.rs`. They go through the bus.
 
 **Non-events** are in-coroutine coordination signals that have one waiter and
 no fanout:
+
 - "Wait for this child task to complete" → `tokio::sync::oneshot`
 - "Notify many waiters when a value is available" → `tokio::sync::broadcast`
 - "Producer-consumer queue between two tasks" → `tokio::sync::mpsc`
@@ -124,11 +205,14 @@ channel name that doesn't match.
 
 ### Event envelope
 
-Every event is an envelope:
+Every event is an envelope. `scope` is required:
 
 ```rust
+pub enum EventScope { Local, Cluster, Public }
+
 pub struct EventEnvelope {
     pub channel: String,           // workflow.todo.created
+    pub scope: EventScope,         // routing directive — required
     pub idempotency_key: String,   // unique per logical event
     pub emitted_at: DateTime<Utc>,
     pub principal: Option<Principal>,  // who triggered this
@@ -137,13 +221,20 @@ pub struct EventEnvelope {
 ```
 
 The bus serializes/deserializes envelopes. Services pattern-match on
-`channel` and deserialize `payload` to the expected type.
+`channel` and deserialize `payload` to the expected type. The bus uses
+`scope` to choose the Redis client for emit and to filter on subscribe.
+
+The event catalog (`project/spec/domain/event-catalog`) defines the
+**default scope** per channel via its `visibility` column. Emitters
+typically inherit this default; they may override per-emit only when the
+domain genuinely requires it.
 
 ### Emitting
 
 ```rust
 event_bus.emit(EventEnvelope {
     channel: "workflow.todo.created".into(),
+    scope: EventScope::Cluster,    // explicit; routes via Cluster Redis only
     idempotency_key: format!("todo-{}-created", todo.id),
     emitted_at: Utc::now(),
     principal: Some(ctx.principal.clone()),
@@ -151,13 +242,24 @@ event_bus.emit(EventEnvelope {
 }).await?;
 ```
 
-The bus crate writes to the configured Redis surface (Streams or Pub/Sub) for
-that channel.
+The bus routes to the Redis client matching `scope`. If that scope's
+client is configured, the event is written to the configured surface
+(Streams or Pub/Sub). If the scope is optional (Cluster or Public) and
+not configured, the bus drops silently with a debug/trace log. If the
+scope is Local and Local is not configured (misconfiguration), the bus
+raises.
+
+Emitting at scope=Cluster does NOT also fire on Local. If an event has
+relevance at multiple scopes, the emitter calls `emit` once per scope.
+This is rare and intentional — most events have one true scope.
 
 ### Subscribing
 
 ```rust
-let mut sub = event_bus.subscribe("workflow.todo.*").await?;
+let mut sub = event_bus.subscribe(
+    "workflow.todo.*",
+    SubscriptionScopes::all(),   // Local + Cluster + Public; bus skips unconfigured
+).await?;
 while let Some(envelope) = sub.next().await {
     if event_bus.already_handled(&envelope.idempotency_key) {
         continue;
@@ -167,8 +269,19 @@ while let Some(envelope) = sub.next().await {
 }
 ```
 
-The bus tracks handler successes by idempotency key to prevent redelivery
-from causing duplicate handler firing.
+The bus merges streams from each configured scope in the requested set
+under one subscription handle. The subscriber sees one logical stream
+regardless of how many scopes contributed events. The bus tracks handler
+successes by idempotency key to prevent redelivery — and to prevent
+double-firing when the same logical event arrives via two scopes (e.g.,
+a Cluster event federated to Public and consumed by a subscriber on
+both scopes).
+
+A subscriber that genuinely wants only local events declares
+`SubscriptionScopes::local()`; one wanting cluster-only declares
+`SubscriptionScopes::cluster()`; etc. `SubscriptionScopes::all()` is
+the default and works on any deployment shape — the bus reads from
+whatever clients are configured.
 
 ### Idempotency
 
@@ -180,19 +293,31 @@ succeeded.
 This is the dedup primitive that makes "at-least-once delivery" (Streams'
 contract) safe for handlers that want "at-most-once execution."
 
-### Redis as failure mode
+### Redis as failure mode (per scope)
 
-If Redis is down, events can't emit. Services that need to emit will fail
-their operation. That is the correct behavior — the failure is the signal.
+The "Redis down = fail hard" rule applies **per scope, on emit**:
+
+- **Local Redis down** → `emit(scope=Local)` raises. Local is mandatory;
+  this is a real outage that must surface. Services emitting at Local
+  scope fail their operation. The failure is the signal.
+- **Cluster Redis down** with Cluster client configured → `emit(scope=Cluster)`
+  raises. Same rationale: the operator opted in to Cluster, so an outage
+  of configured infrastructure is a real failure.
+- **Cluster client not configured at all** → `emit(scope=Cluster)` silent
+  drops with debug/trace log. This is the opt-out path — not a failure.
+- **Public Redis** — same shape as Cluster: configured-but-down raises;
+  unconfigured drops.
 
 There is no in-memory fallback queue. There is no local-file outbox for
-events. (The legitimate outbox pattern for *external delivery* lives in the
-integration service's `outbox` schema — that's about reliable delivery to
-external systems like Telegram, not about internal event bus durability.)
+events. There is no cross-scope fallback (no "if Cluster is down, fall
+back to Local" — that would violate explicit scoping). The legitimate
+outbox pattern for _external delivery_ lives in the integration service's
+`outbox` schema — that's about reliable delivery to external systems
+like Telegram, not about internal event bus durability.
 
 Services that need to be resilient to brief Redis outages can retry; the bus
-crate provides retry helpers. Long Redis outages are operational incidents,
-not application-handled failures.
+crate provides retry helpers per scope. Long Redis outages are operational
+incidents, not application-handled failures.
 
 ### Connection pooling
 
@@ -215,7 +340,7 @@ The answer is never "add an in-process fast-path." That's the v1 mistake.
 For TUI/browser live updates:
 
 - TUI subscribes to Redis pub/sub channels for live events relevant to its
-  views (workflow.*, agent_runtime.session.*, etc.).
+  views (workflow._, agent_runtime.session._, etc.).
 - Browser cannot subscribe to Redis directly. The frontend custom server in
   `frontend/server.ts` subscribes to Redis on the browser's behalf and pushes
   via WebSocket. Same event source, different delivery mechanism for clients
@@ -233,14 +358,35 @@ For services consuming other services' events:
 
 ## Failure modes
 
-- **Reintroducing dual-transport "for performance."** Tempting when one
-  channel feels expensive. The performance cost of going through Redis is
-  almost always negligible compared to the operations the event represents.
-  Tune Redis, not the architecture.
-- **Naming Tokio channels as events.** `let (tx, rx) = oneshot::channel::<AgentReady>()` is a non-event. Don't call it `agent_ready_event`. Don't put it in `events.rs`. Don't tempt anyone to extract it to the bus later.
+- **Reintroducing in-process fast-path "for performance."** Tempting when
+  one channel feels expensive. The performance cost of going through
+  Local-scope Redis (a local-host instance) is almost always negligible
+  compared to the operations the event represents. Tune the Local pool,
+  not the architecture. v1's in-process LOCAL was the bug-factory; do not
+  bring it back under any name.
+- **Cumulative scope emit.** "If I emit at Cluster, Local should also see
+  it." No. Explicit scoping means one emit → one scope. If an event has
+  multi-scope relevance, the emitter calls `emit` once per scope. This is
+  rare in practice; most events belong to one scope.
+- **Cross-scope fallback on outage.** "Cluster is down, fall back to Local
+  so the event at least lands somewhere." No. Cluster down = the operator-
+  configured infrastructure is failing; raise. Falling back silently
+  hides the outage and breaks subscriber expectations.
+- **Treating Cluster/Public as required.** Single-computer installs run
+  Local-only. Code that assumes Cluster is always present is wrong. Use
+  capability checks (`bus.has_scope(Public)`) when gating optional
+  behavior, not assumptions.
+- **Treating Cluster/Public's silent drop as v1's broken silent-no-op.**
+  v1's silent drop hid a contract violation (CLUSTER was claimed required).
+  v2's silent drop on unconfigured optional scopes IS the contract. The
+  rule maps to operator intent: configure it = you care; don't configure
+  it = you don't.
+- **Naming Tokio channels as events.** `let (tx, rx) = oneshot::channel::<AgentReady>()`
+  is a non-event. Don't call it `agent_ready_event`. Don't put it in
+  `events.rs`. Don't tempt anyone to extract it to the bus later.
 - **Misusing pub/sub for durable events.** Pub/sub drops messages if no
   subscriber is alive. Domain events that must be processed reliably go on
-  Streams, not pub/sub.
+  Streams, not pub/sub. This applies per scope.
 - **Misusing Streams for live UI notifications.** Streams persist
   indefinitely (until pruned), build up consumer-group state, are heavier
   than pub/sub. UI freshness notifications use pub/sub.
@@ -251,7 +397,8 @@ For services consuming other services' events:
   coordination.
 - **Skipping idempotency keys.** "This emit is one-time, doesn't need a
   key." Consumer-group redelivery is real; idempotency keys are how
-  handlers stay at-most-once.
+  handlers stay at-most-once. With multi-scope subscriptions, the same
+  logical event arriving via two scopes is also deduped by the key.
 - **Adding a fallback queue for Redis downtime.** Same anti-pattern as the
   hook outbox DB. Redis being down is an operational incident; the bus
   doesn't paper over it.

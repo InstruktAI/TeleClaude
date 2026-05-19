@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/trusted-bot-fleet-derivation
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: The Telegram trusted_bots list is auto-derived at config load time as the ordered union of the local computer's bot_username, every remote computer's bot_username, and explicit trusted_bots entries — with nulls filtered and duplicates removed preserving first-seen order.
+id: 'project/spec/feature/config/trusted-bot-fleet-derivation'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'The Telegram trusted_bots list is auto-derived at config load time as the ordered union of the local computer''s bot_username, every remote computer''s bot_username, and explicit trusted_bots entries — with nulls filtered and duplicates removed preserving first-seen order.'
 ---
 
 # Trusted Bot Fleet Derivation — Spec
@@ -124,7 +124,7 @@ And TelegramConfig.trusted_bots == [] (no error raised; empty allowlist is valid
 ### Cross-context references
 
 - Consumed by the Telegram adapter to allow-list inbound messages from known bots in the fleet.
-- v2 inheritance: `fleet-redis-discovery` (per `v2-daemon-narrow`) replaces the YAML-declared remote_computers list with Redis-based self-advertisement. The `remote_computers` schema field and its contribution to fleet bot derivation are slated for full removal in v2; the v2 trusted-bot list will be derived from live fleet topology in Redis instead of static YAML.
+- v2 inheritance: `fleet-redis-discovery` (per `v2-agent-runtime`) replaces the YAML-declared remote_computers list with Redis-based self-advertisement. The `remote_computers` schema field and its contribution to fleet bot derivation are slated for full removal in v2; the v2 trusted-bot list will be derived from live fleet topology in Redis instead of static YAML.
 
 ## Allowed values
 

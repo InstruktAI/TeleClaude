@@ -55,31 +55,31 @@ Each event below carries:
 
 #### identity
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `identity.principal.created` | identity | CLUSTER | commit-then-emit |
-| `identity.token.issued` | identity | CLUSTER | commit-then-emit |
-| `identity.token.revoked` | identity | CLUSTER | commit-then-emit |
+| Event                        | Producer | Visibility | Posture          |
+| ---------------------------- | -------- | ---------- | ---------------- |
+| `identity.principal.created` | identity | CLUSTER    | commit-then-emit |
+| `identity.token.issued`      | identity | CLUSTER    | commit-then-emit |
+| `identity.token.revoked`     | identity | CLUSTER    | commit-then-emit |
 
 **Detailed entries:** to be expanded by `project/spec/domain/identity` authoring.
 
 #### config
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `config.effective.updated` | config | CLUSTER | commit-then-emit |
+| Event                      | Producer | Visibility | Posture          |
+| -------------------------- | -------- | ---------- | ---------------- |
+| `config.effective.updated` | config   | CLUSTER    | commit-then-emit |
 
 **Detailed entries:** to be expanded by `project/spec/domain/config` authoring.
 
 #### workflow
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `workflow.todo.created` | workflow | CLUSTER | commit-then-emit |
-| `workflow.todo.updated` | workflow | CLUSTER | commit-then-emit |
-| `workflow.todo.phase_advanced` | workflow | CLUSTER | commit-then-emit |
-| `workflow.todo.delivered` | workflow | CLUSTER | commit-then-emit |
-| `workflow.roadmap.entry_moved` | workflow | CLUSTER | commit-then-emit |
+| Event                          | Producer | Visibility | Posture          |
+| ------------------------------ | -------- | ---------- | ---------------- |
+| `workflow.todo.created`        | workflow | CLUSTER    | commit-then-emit |
+| `workflow.todo.updated`        | workflow | CLUSTER    | commit-then-emit |
+| `workflow.todo.phase_advanced` | workflow | CLUSTER    | commit-then-emit |
+| `workflow.todo.delivered`      | workflow | CLUSTER    | commit-then-emit |
+| `workflow.roadmap.entry_moved` | workflow | CLUSTER    | commit-then-emit |
 
 **Detailed entries:** to be expanded by `project/spec/domain/workflow` authoring.
 
@@ -91,22 +91,22 @@ NO events emitted. `context` is filesystem-driven. Consumers re-read source/inde
 
 #### memory
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `memory.observation.saved` | memory | CLUSTER | commit-then-emit |
-| `memory.observation.deleted` | memory | CLUSTER | commit-then-emit |
+| Event                        | Producer | Visibility | Posture          |
+| ---------------------------- | -------- | ---------- | ---------------- |
+| `memory.observation.saved`   | memory   | CLUSTER    | commit-then-emit |
+| `memory.observation.deleted` | memory   | CLUSTER    | commit-then-emit |
 
 **Detailed entries:** see `project/spec/domain/memory`.
 
 #### agent_runtime
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `agent_runtime.session.started` | agent_runtime | CLUSTER | LISTEN/NOTIFY (after batched write commits) |
-| `agent_runtime.session.updated` | agent_runtime | CLUSTER | LISTEN/NOTIFY (batched, may carry many sessions in one event payload) |
-| `agent_runtime.session.ended` | agent_runtime | CLUSTER | LISTEN/NOTIFY (urgent-flushed; payload includes native_file_path for session_mirrors extraction) |
-| `agent_runtime.operation.completed` | agent_runtime | CLUSTER | commit-then-emit |
-| `agent_runtime.agent.restarted` | agent_runtime | CLUSTER | commit-then-emit (emitted after a successful in-place agent CLI restart) |
+| Event                               | Producer      | Visibility | Posture                                                                                          |
+| ----------------------------------- | ------------- | ---------- | ------------------------------------------------------------------------------------------------ |
+| `agent_runtime.session.started`     | agent_runtime | CLUSTER    | LISTEN/NOTIFY (after batched write commits)                                                      |
+| `agent_runtime.session.updated`     | agent_runtime | CLUSTER    | LISTEN/NOTIFY (batched, may carry many sessions in one event payload)                            |
+| `agent_runtime.session.ended`       | agent_runtime | CLUSTER    | LISTEN/NOTIFY (urgent-flushed; payload includes native_file_path for session_mirrors extraction) |
+| `agent_runtime.operation.completed` | agent_runtime | CLUSTER    | commit-then-emit                                                                                 |
+| `agent_runtime.agent.restarted`     | agent_runtime | CLUSTER    | commit-then-emit (emitted after a successful in-place agent CLI restart)                         |
 
 Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for the high-volume hook-driven events (started/updated/ended). See `feature/agent_runtime/windowed-batch-write-and-dispatch`.
 
@@ -114,21 +114,21 @@ Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for th
 
 #### session_mirrors
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `session_mirrors.mirror.created` | session_mirrors | CLUSTER | commit-then-emit (first window for a session — INSERT) |
-| `session_mirrors.mirror.updated` | session_mirrors | CLUSTER | commit-then-emit (subsequent windows — UPDATE appending text_content) |
+| Event                            | Producer        | Visibility | Posture                                                               |
+| -------------------------------- | --------------- | ---------- | --------------------------------------------------------------------- |
+| `session_mirrors.mirror.created` | session_mirrors | CLUSTER    | commit-then-emit (first window for a session — INSERT)                |
+| `session_mirrors.mirror.updated` | session_mirrors | CLUSTER    | commit-then-emit (subsequent windows — UPDATE appending text_content) |
 
 **Detailed entries:** see `project/spec/domain/session_mirrors`.
 
 #### integration
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `integration.inbox.received` | integration | CLUSTER | inbox |
-| `integration.outbox.appended` | integration | CLUSTER | commit-then-emit |
-| `integration.outbox.delivered` | integration | CLUSTER | commit-then-emit |
-| `integration.outbox.dead_lettered` | integration | CLUSTER | commit-then-emit |
+| Event                              | Producer    | Visibility | Posture          |
+| ---------------------------------- | ----------- | ---------- | ---------------- |
+| `integration.inbox.received`       | integration | CLUSTER    | inbox            |
+| `integration.outbox.appended`      | integration | CLUSTER    | commit-then-emit |
+| `integration.outbox.delivered`     | integration | CLUSTER    | commit-then-emit |
+| `integration.outbox.dead_lettered` | integration | CLUSTER    | commit-then-emit |
 
 Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/integration boundary correction. Agent CLI hooks bypass integration entirely — they reach agent_runtime directly via the `telec-hook` subprocess (owned by agent_runtime). Integration's inbox is for true external webhooks only (Telegram, Discord, WhatsApp, GitHub).
 
@@ -136,11 +136,11 @@ Note: `integration.inbox.agent_hook_received` was REMOVED in the agent_runtime/i
 
 #### scheduler (infrastructure crate, not a service)
 
-| Event | Producer | Visibility | Posture |
-|---|---|---|---|
-| `scheduler.tick.minute` | scheduler bridge | CLUSTER | commit-then-emit (the tick fires per OS cron entry every minute) |
-| `scheduler.tick.hour` | scheduler bridge | CLUSTER | derived — fires on the minute-tick that crosses an hour boundary |
-| `scheduler.tick.day` | scheduler bridge | CLUSTER | derived — fires on the minute-tick that crosses a day boundary |
+| Event                   | Producer         | Visibility | Posture                                                          |
+| ----------------------- | ---------------- | ---------- | ---------------------------------------------------------------- |
+| `scheduler.tick.minute` | scheduler bridge | CLUSTER    | commit-then-emit (the tick fires per OS cron entry every minute) |
+| `scheduler.tick.hour`   | scheduler bridge | CLUSTER    | derived — fires on the minute-tick that crosses an hour boundary |
+| `scheduler.tick.day`    | scheduler bridge | CLUSTER    | derived — fires on the minute-tick that crosses a day boundary   |
 
 The scheduler bridge is one OS cron entry that fires `telec cron tick` every minute, emitting the events above. Per-pillar listeners subscribe and consult their own cadence policy + cursor state to decide whether to act. See `transport-rules.md` "Recurring jobs" section. NOT a bounded context; one-line infrastructure crate.
 
@@ -148,19 +148,19 @@ The scheduler bridge is one OS cron entry that fires `telec cron tick` every min
 
 Inverse view: for each event, which consumers act on it. Populated as per-context specs land.
 
-| Event | Consumers |
-|---|---|
-| `integration.inbox.received` | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound) |
-| `agent_runtime.session.started` | `frontend` (live UI), audit log consumers |
-| `agent_runtime.session.updated` | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation) |
-| `agent_runtime.session.ended` | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
-| `session_mirrors.mirror.created` | `frontend` (history search index refresh), audit log consumers |
-| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step) |
-| `workflow.todo.phase_advanced` | `integration` (outbox notifications to recipients per subscription) |
-| `workflow.todo.delivered` | `integration` (delivery announcement notifications) |
-| `memory.observation.saved` | audit log consumers; future memory miner correlating observations |
-| `scheduler.tick.minute` | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.) |
-| `config.effective.updated` | every service that caches config (re-read on next access) |
+| Event                               | Consumers                                                                                                                        |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                           |
+| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                        |
+| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                 |
+| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
+| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                   |
+| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                 |
+| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                              |
+| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                              |
+| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                |
+| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                  |
+| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                        |
 
 ### v1 → v2 event-name mapping
 
@@ -172,24 +172,24 @@ spec body and flags it for catalog completion.
 
 #### Direct renames
 
-| v1 event name | v2 event name |
-|---|---|
-| `domain.software-development.planning.todo_dumped` | `workflow.todo.created` |
+| v1 event name                                              | v2 event name                                                           |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `domain.software-development.planning.todo_dumped`         | `workflow.todo.created`                                                 |
 | `domain.software-development.planning.todo_finalize_ready` | `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) |
-| `agent_runtime.session.spawn` | `agent_runtime.session.started` |
-| `agent.restart_dispatched` | `agent_runtime.agent.restarted` |
+| `agent_runtime.session.spawn`                              | `agent_runtime.session.started`                                         |
+| `agent.restart_dispatched`                                 | `agent_runtime.agent.restarted`                                         |
 
 #### Internal v1 tokens (not events — describe semantically)
 
 In-process tokens or hook names from v1, not cross-process events. Describe
 their semantic intent in v2 spec bodies rather than naming them.
 
-| v1 internal token | v2 semantic description |
-|---|---|
-| `AGENT_READY` | "the agent signals readiness after startup" |
-| `_on_mutation` | "state mutation notification" (replaced by Redis subscription in v2) |
-| `SessionStart` hook | "agent CLI lifecycle hook fired at session start" |
-| `SIGTERM` to PID | "agent process terminated cleanly" |
+| v1 internal token   | v2 semantic description                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| `AGENT_READY`       | "the agent signals readiness after startup"                          |
+| `_on_mutation`      | "state mutation notification" (replaced by Redis subscription in v2) |
+| `SessionStart` hook | "agent CLI lifecycle hook fired at session start"                    |
+| `SIGTERM` to PID    | "agent process terminated cleanly"                                   |
 
 #### TBD — v2 owner not yet decided
 
@@ -199,18 +199,18 @@ workflow-pillar concern or a separate concern. Until the v2 integrate-phase
 design lands, the porting agent describes these events semantically in v2
 spec bodies and flags them for catalog completion.
 
-| v1 event name | v2 owner (TBD) | Semantic intent |
-|---|---|---|
-| `integration.candidate.committed` | workflow integrate-phase | "a branch is committed and queued for integration into main" |
-| `integration.candidate.dequeued` | workflow integrate-phase | "an integration candidate is removed from the queue without merging" |
-| `integration.candidate.blocked` | workflow integrate-phase | "an integration candidate is blocked pending resolution" |
-| `integration.candidate.already_merged` | workflow integrate-phase | "an integration candidate's branch is already part of main; no-op" |
-| `integration.candidate.delivered` | workflow integrate-phase | "an integration candidate has been successfully delivered" |
-| `integration.merge.succeeded` | workflow integrate-phase | "a branch was merged into main successfully" |
-| `integration.merge.conflicted` | workflow integrate-phase | "a merge attempt failed due to conflicts" |
-| `integration.push.succeeded` | workflow integrate-phase | "a push to origin/main succeeded" |
-| `integration.push.rejected` | workflow integrate-phase | "a push to origin/main was rejected (non-fast-forward or hook block)" |
-| `integration.started` | workflow integrate-phase | "the integration process began for a delivered candidate" |
+| v1 event name                          | v2 owner (TBD)           | Semantic intent                                                       |
+| -------------------------------------- | ------------------------ | --------------------------------------------------------------------- |
+| `integration.candidate.committed`      | workflow integrate-phase | "a branch is committed and queued for integration into main"          |
+| `integration.candidate.dequeued`       | workflow integrate-phase | "an integration candidate is removed from the queue without merging"  |
+| `integration.candidate.blocked`        | workflow integrate-phase | "an integration candidate is blocked pending resolution"              |
+| `integration.candidate.already_merged` | workflow integrate-phase | "an integration candidate's branch is already part of main; no-op"    |
+| `integration.candidate.delivered`      | workflow integrate-phase | "an integration candidate has been successfully delivered"            |
+| `integration.merge.succeeded`          | workflow integrate-phase | "a branch was merged into main successfully"                          |
+| `integration.merge.conflicted`         | workflow integrate-phase | "a merge attempt failed due to conflicts"                             |
+| `integration.push.succeeded`           | workflow integrate-phase | "a push to origin/main succeeded"                                     |
+| `integration.push.rejected`            | workflow integrate-phase | "a push to origin/main was rejected (non-fast-forward or hook block)" |
+| `integration.started`                  | workflow integrate-phase | "the integration process began for a delivered candidate"             |
 
 The v2 `integration` bounded context owns external boundaries (Telegram,
 Discord, WhatsApp, GitHub webhooks). The events above belong to the workflow
@@ -219,7 +219,7 @@ is incidental.
 
 ## Allowed values
 
-- `visibility`: `LOCAL` (in-process only, never published to Redis), `CLUSTER` (cross-process via Redis, the default for domain events that cross context boundaries), `PUBLIC` (exposed to external mesh — reserved for federation use cases, currently unused).
+- `visibility`: `LOCAL` (single-host Redis scope — events confined to this computer), `CLUSTER` (single-owner mesh Redis scope — cross-host within one user's fleet), `PUBLIC` (federation hub Redis scope — cross-mesh). Three real Redis client instances in v2; routing is explicit per envelope. See `project/design/architecture-v2/event-bus-transports` for the bus semantics. Single-computer installs run Local-only; emits to Cluster/Public silently drop when those scopes aren't configured.
 - `posture` (emit safety pattern): `commit-then-emit` (the producer commits its state change in Postgres, THEN publishes the event; loud-fail on publish failure — caller treats it as a defect since the state change already landed), `outbox` (the event is written to the producing context's outbox table atomically with the caller's state change; a dispatcher publishes asynchronously — used for outbound external delivery and for cross-context events where at-least-once matters), `inbox` (the event represents an external input captured durably first then published; used for ingress paths from external systems).
 
 ## Known caveats
