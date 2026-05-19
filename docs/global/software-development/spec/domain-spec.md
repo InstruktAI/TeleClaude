@@ -4,8 +4,6 @@ type: 'spec'
 domain: 'software-development'
 scope: 'global'
 visibility: 'public'
-status: 'mixed'
-delivered_by: ['snippet-status-framework']
 description: 'Template every bounded context''s canonical domain spec must follow — ubiquitous language, aggregates, events, use cases, context map position.'
 ---
 

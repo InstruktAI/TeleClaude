@@ -51,6 +51,54 @@ documented conventions — not invented abstractions.
 - Artifacts that prescribe approaches contradicting codebase patterns or
   documented specs are defective.
 
+### Input artifact quality
+
+The `input` artifact is the human's intent dropped into the workflow before
+intake. It describes WHAT the human wants and WHY. It does NOT prescribe
+WHERE durable docs land — that's intake's classification job
+(see `software-development/procedure/lifecycle/prepare/intake` step 1.5).
+
+Concrete signals of leakage in `input` — each is a defect:
+
+- **Naming specific feature-spec, domain-spec, or design-doc paths.** Inputs
+  that say "author `docs/project/spec/feature/<x>/<y>.md`" are prescribing
+  doc routing the author may have classified wrong. Especially toxic when
+  the path contains the todo slug, because the intake worker takes the
+  string literally and creates a slug-named non-feature snippet — exactly
+  the failure that
+  `documentation-first-development` section 8a/8b exists to prevent.
+- **Naming specific implementation paths or file locations.** Same leakage
+  shape as PRD-quality rules below; input is upstream of PRD, so the rule
+  applies harder.
+- **Prescribing specific event names, schema fields, CLI verb names, or
+  config keys** that aren't directly observable user behavior. These belong
+  in the architecture phase (after classification + grounding), not in the
+  intent capture.
+
+The discriminator: could intake classify this work into Category A/B/C
+freely, or has the input already foreclosed the routing decision by naming
+specific docs? If foreclosed, it's leakage.
+
+What inputs SHOULD contain instead of doc paths:
+
+- **Intent in user/operator language** — "agents should be able to rename a
+  todo without losing dependency edges," not "add `telec workflow todo
+  rename` in `crates/telec-cli/src/todo.rs`".
+- **Affected actors and surfaces** at the level of "which audience" — "this
+  is for agents preparing todos," "this is for end users in the dashboard,"
+  "this is internal cleanup with no user-facing surface."
+- **Acceptance shape** — what observably needs to be true for the work to
+  count as done.
+- **Brownfield context** — what code/docs already exist that the work
+  touches, named for grounding (not for prescribing destinations).
+- **An explicit note that this is NOT a feature** when the author knows the
+  work is Category B (contract/surface refinement) or Category C
+  (implementation-only). Saves intake from misclassifying.
+
+A correctly-shaped input lets intake classify and route. An input that
+prescribes doc paths skips classification and bakes in the author's
+(possibly wrong) routing guess.
+
 ### PRD quality
 
 The PRD states what and why, never how. Architecture and plans state how. The

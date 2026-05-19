@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from teleclaude.constants import TAXONOMY_TYPES
+from teleclaude.resource_validation import clear_errors, get_errors, validate_all_snippets
 from teleclaude.snippet_validation import (
     expected_snippet_id_for_path,
     load_domains,
@@ -169,6 +170,13 @@ def _validate_frontmatter(file_path: Path, metadata: Mapping[str, object], *, do
     return errors
 
 
+def _format_validation_finding(finding: Mapping[str, str]) -> str:
+    extras = ", ".join(f"{key}={value}" for key, value in finding.items() if key not in {"code", "path"})
+    if extras:
+        return f"{finding['code']}: {finding['path']} ({extras})"
+    return f"{finding['code']}: {finding['path']}"
+
+
 def _find_markdown_files(repo_root: Path) -> list[Path]:
     """Find all markdown files to validate."""
     files: list[Path] = []
@@ -227,6 +235,10 @@ def main() -> int:
                     all_errors.extend(frontmatter_errors)
             except Exception as exc:
                 all_errors.append(f"{file_path}: Failed to parse frontmatter: {exc}")
+
+    clear_errors()
+    validate_all_snippets(repo_root)
+    all_errors.extend(_format_validation_finding(finding) for finding in get_errors())
 
     if all_errors:
         print("\n❌ Markdown validation failed:\n", file=sys.stderr)

@@ -4,8 +4,6 @@ type: 'principle'
 domain: 'software-development'
 scope: 'global'
 visibility: 'public'
-status: 'mixed'
-delivered_by: ['snippet-status-framework']
 description: 'Documentation leads, implementation catches up. Snippets declare current vs. target state explicitly so the gap stays honest and the design stays shareable.'
 ---
 
@@ -115,6 +113,49 @@ Documentation organizes around two snippet kinds with one-directional flow:
 - **Domain spec** (the spokes) — describes a bounded context's ubiquitous language, aggregates, events, and design. Its Use cases section indexes the feature specs that touch this context.
 
 Authoring flows from hub to spokes: an intake agent processes a human's input as a feature need (the hub), then identifies and updates the affected domain specs (the spokes). The reverse direction (spokes inferring hubs) is forbidden — domain concepts don't carry business value standalone; that's the feature's job.
+
+#### 8a. Not every todo deserves a feature spec — classify first
+
+Feature specs exist for **user-visible product capabilities**. They are NOT
+the default output of every prepared todo. Three categories of work flow
+through prepare; only ONE produces a feature spec:
+
+| Category | What it is | Durable doc home | Feature spec? |
+|---|---|---|---|
+| **A. Product capability** | User-visible business behavior. CRM dedup, pipeline stages, image generation, a new search. | `docs/project/spec/feature/<context>/<concept-name>.md` | **YES** |
+| **B. Contract / surface refinement** | Agent-facing or operator-facing surface change. New CLI verbs, new service methods, new events, renamed verbs, refined invariants. | Existing domain spec + CLI-surface spec + architecture docs | **NO** |
+| **C. Implementation-only** | Refactor, migration, tooling, infrastructure with no contract change. | None — workflow.artifacts only | **NO** |
+
+A Category B or C todo that produces a feature spec is a defect. The
+namespace becomes polluted with slug-named non-features, the
+`delivered_by` flip ceremony fires on docs nobody needed, and future
+readers can no longer tell which feature specs describe real product
+capabilities.
+
+#### 8b. Concept-name derivation (Category A only)
+
+The `<concept-name>` in the feature-spec path is the durable domain noun
+for the capability — short, noun-shaped, descriptive of what users get,
+stable across multiple deliveries that may shape it. Derived from the
+capability, NEVER from the todo slug.
+
+- RIGHT: `docs/project/spec/feature/agent_runtime/session-revival.md`
+- RIGHT: `docs/project/spec/feature/workflow/multi-pillar-split.md`
+- RIGHT: `docs/project/spec/feature/identity/principal-invitation.md`
+- WRONG: `docs/project/spec/feature/workflow/v2-workflow-cli-refinement-commands.md` (todo slug verbatim)
+- WRONG: `docs/project/spec/feature/identity/add-invite-flow.md` (verb-led and ephemeral; the durable noun is "principal invitation")
+
+**Smell test.** If the proposed concept name equals, contains, or is an
+obvious rewording of the todo slug, you have not named a concept — you
+have copied a slug. Stop. Either re-derive the concept name from the
+durable capability, or recognize the work is Category B/C and produce no
+feature spec at all.
+
+**Tie-breaker — when in doubt, don't author.** A spurious feature spec is
+worse than a missing one. A spurious spec lies to future readers about
+what's a real product capability. A missing spec for true Category A work
+surfaces as a gap that the next delivery in that capability fills
+naturally. Default to skip when classification is uncertain.
 
 **`delivered_by` is many-to-many.** A single delivery may shape multiple snippets; a single snippet may be shaped over time by multiple deliveries. The `delivered_by` list accumulates slugs while in flight; each slug clears as it delivers. The snippet flips to `actual` only when the list empties.
 

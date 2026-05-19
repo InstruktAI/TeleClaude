@@ -400,13 +400,17 @@ CLI_SURFACE: dict[str, CommandDef] = {
         subcommands={
             "index": CommandDef(
                 desc="List snippet IDs and metadata (phase 1)",
-                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>]",
+                args=f"[--baseline-only] [--third-party] [--areas <{'|'.join(TAXONOMY_TYPES)}>] [--domains <{'|'.join(DOMAIN_SCOPES)}>] [--target <slug>]",
                 flags=[
                     _H,
                     Flag("--baseline-only", "-b", "Show only baseline snippets"),
                     Flag("--third-party", "-t", "Include third-party docs"),
                     Flag("--areas", "-a", f"Filter by taxonomy type ({'|'.join(TAXONOMY_TYPES)}); omit for all"),
                     Flag("--domains", "-d", f"Filter by domain ({'|'.join(DOMAIN_SCOPES)}); omit for all"),
+                    Flag("--target", desc="Filter to snippets delivered by slug"),
+                ],
+                notes=[
+                    "Non-actual snippets render with a [target → slug] or [mixed → slug] prefix in phase 1 output.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),

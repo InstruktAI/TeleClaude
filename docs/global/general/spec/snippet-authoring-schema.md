@@ -4,8 +4,6 @@ id: 'general/spec/snippet-authoring-schema'
 scope: 'global'
 type: 'spec'
 visibility: 'public'
-status: 'mixed'
-delivered_by: ['snippet-status-framework']
 ---
 
 # Snippet Authoring Schema — Spec

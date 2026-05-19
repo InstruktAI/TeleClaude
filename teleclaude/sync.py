@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from teleclaude.docs_index import build_all_indexes
+from teleclaude.docs_reconcile import reconcile_snippet_status
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.resource_validation import (
@@ -21,6 +22,7 @@ from teleclaude.resource_validation import (
     validate_all_snippets,
     validate_jobs_config,
 )
+from teleclaude.resource_validation._snippet import build_roadmap_status_map
 
 
 def sync(
@@ -37,9 +39,14 @@ def sync(
         _repair_broken_docs_links(project_root)
     clear_errors()
     errors: list[str] = []
+    roadmap_status_map = build_roadmap_status_map(project_root)
 
     # Phase 1: Validate
-    validate_all_snippets(project_root)
+    validate_all_snippets(
+        project_root,
+        roadmap_status_map=roadmap_status_map,
+        enforce_delivered_drift=validate_only,
+    )
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
@@ -56,6 +63,29 @@ def sync(
 
     if validate_only:
         return warn_only or not errors
+
+    # Phase 1b: Reconcile snippet lifecycle frontmatter, then assert drift-clean state.
+    reconciled = reconcile_snippet_status(project_root, roadmap_status_map)
+    for result in reconciled:
+        try:
+            rel_path = result.path.relative_to(project_root)
+        except ValueError:
+            rel_path = result.path
+        print(f"Reconcile: {rel_path} flipped (delivered: {','.join(result.removed_slugs)})")
+
+    clear_errors()
+    validate_all_snippets(
+        project_root,
+        roadmap_status_map=roadmap_status_map,
+        enforce_delivered_drift=True,
+    )
+    post_reconcile_findings = get_errors()
+    if post_reconcile_findings:
+        _print_findings(post_reconcile_findings, quiet=warn_only)
+        for finding in post_reconcile_findings:
+            print(_format_finding(finding))
+        if not warn_only:
+            return False
 
     # Phase 2: Build indexes
     written = build_all_indexes(project_root)

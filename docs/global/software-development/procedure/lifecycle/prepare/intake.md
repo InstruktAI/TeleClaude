@@ -21,16 +21,21 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is the intake phase: interview the Product Owner, fill
-the PRD template, write the PRD, AND author/enrich the feature spec snippet
-that captures the business value + Gherkin acceptance scenarios in the
-durable docs layer. The wider prepare lifecycle is still yours; this phase
-is one focused part of it.
+the PRD template, write the PRD, AND — **only when classification says so** —
+author/enrich the feature spec snippet that captures the business value +
+Gherkin acceptance scenarios in the durable docs layer. The wider prepare
+lifecycle is still yours; this phase is one focused part of it.
+
+Feature spec authoring is **not** an unconditional intake output. Most work
+shapes do NOT produce a feature spec. See "Classify the work shape" (step 1.5
+below) for the hard gate that decides.
 
 ### Output targets (per `documentation-first-development`)
 
 - **`prd` workflow.artifact (scaffolding, ephemeral)** — captures work
   guidance for THIS delivery: MoSCoW scope, Why, affected actors, risks,
   brownfield context. Stays in `workflow.artifacts`. Retires after delivery.
+  **Always produced.**
 - **Feature spec snippet (durable contract, hub)** — author or enrich the
   feature spec(s) at
   `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
@@ -38,24 +43,32 @@ is one focused part of it.
   acceptance scenarios. Frontmatter `status: target`,
   `delivered_by` accumulates this slug. The Gherkin lives here from intake
   onward; the test-specs phase later VERIFIES it rather than re-authoring.
+  **Produced ONLY when the work is a user-visible product capability** (see
+  classification step). Skipped for contract/CLI-surface refinements,
+  implementation-only work, and infrastructure work.
 - **Domain spec touchpoints** — if intake identifies that a delivery WILL
   require domain spec updates (new aggregates, new events, refined
   invariants), note them in the PRD scope. The architecture phase authors
   those updates.
 
-The PRD is scaffolding. The feature spec snippet is the durable behavioral
-contract that survives delivery.
+The PRD is scaffolding. The feature spec snippet — when warranted — is the
+durable behavioral contract that survives delivery.
 
 ### Outcome
 
 Take a human's intent (in-session conversation, an existing dumped input, or
 anything in between) and produce:
 1. A **PRD (Product Requirements Document)** workflow.artifact — structured
-   work guidance, ready for human approval.
-2. An authored/enriched **feature spec snippet** at the concept-named path
-   above, containing the business value framing + initial Gherkin
-   acceptance scenarios. This snippet is the durable hub the rest of the
-   lifecycle (and future deliveries) reference.
+   work guidance, ready for human approval. Always produced.
+2. **If and only if classification identifies a user-visible product
+   capability:** an authored/enriched **feature spec snippet** at the
+   concept-named path above, containing the business value framing +
+   initial Gherkin acceptance scenarios. This snippet is the durable hub
+   the rest of the lifecycle (and future deliveries) reference. For
+   contract/CLI-surface refinements and implementation-only work, NO
+   feature spec is produced — the PRD's "Docs to author or update" section
+   names the relevant domain spec / CLI surface spec / architecture doc
+   instead.
 3. If the input touches MULTIPLE pillars (bounded contexts) with
    independently-deliverable slices, a **proactive split** of this todo into
    a container + per-pillar children (see Pillar identification + split
@@ -131,6 +144,52 @@ Two cases determine who plays the PO role:
   that point with `--direct` and hand off the PO role.
 
 If no slug exists yet, create one before dispatching the emulator.
+
+### 1.5 Classify the work shape (hard gate before any feature-spec authoring)
+
+Before any feature spec is touched, classify the work into ONE of the three
+categories below. The classification decides where the durable docs land. Get
+this wrong and you pollute the feature-spec namespace with slug-named
+non-features — the exact failure this gate exists to prevent.
+
+| Category | What it looks like | Durable doc home | Feature spec? |
+|---|---|---|---|
+| **A. User-visible product capability** | A business-domain capability the human (end user, operator, customer) experiences directly. CRM contact dedup. Pipeline stages. Email templates. Image generation. A new dashboard. A new kind of search. Anything you would put on a product roadmap and demo to a customer. | `docs/project/spec/feature/<context>/<concept-name>.md` (concept-named) | **YES** — author/enrich. |
+| **B. Domain model / service contract / CLI surface refinement** | An agent-facing or operator-facing surface change. New CLI verbs. New service methods. New events. Renamed verbs. Removed deprecated paths. Refined invariants. Tightened validation. Adjusted defaults. The kind of work whose audience is *agents and operators*, not end users. | Existing `docs/project/spec/domain/<context>.md` (the domain spec) + existing CLI surface spec / `docs/project/design/architecture-v2/*.md` as relevant | **NO**. |
+| **C. Implementation-only / refactor / tooling / infrastructure** | Internal reshape with no contract change. A migration step. A test refactor. A dependency bump. A build-tooling fix. A one-shot data backfill. Work that leaves no durable behavioral contract behind. | None — workflow.artifacts only (PRD, plan, etc.). Existing docs that happen to change get touched in `actual` status as part of the build. | **NO**. |
+
+**Concept-name derivation (Category A only).** The `<concept-name>` in the
+feature-spec path is the durable domain noun for the capability. NOT the todo
+slug. Derive it from how a Product Owner would name the capability on a
+roadmap — short, noun-shaped, descriptive of what users get, stable across
+multiple deliveries that may shape it. Examples:
+
+- RIGHT: `docs/project/spec/feature/agent_runtime/session-revival.md`
+- RIGHT: `docs/project/spec/feature/workflow/multi-pillar-split.md`
+- RIGHT: `docs/project/spec/feature/identity/principal-invitation.md`
+- WRONG: `docs/project/spec/feature/workflow/v2-workflow-cli-refinement-commands.md` (todo slug)
+- WRONG: `docs/project/spec/feature/agent_runtime/fix-session-revive-bug-2026.md` (todo slug + date)
+- WRONG: `docs/project/spec/feature/identity/add-invite-flow.md` (verb-led, ephemeral; the durable concept is "principal invitation," not "add invite flow")
+
+**Smell test.** If the proposed concept name equals, contains, or is an
+obvious rewording of the todo slug, you have not named a concept — you have
+copied a slug. Stop. Either re-derive the concept name from the durable
+capability, or recognize the work is Category B/C and produce no feature
+spec at all.
+
+**Tie-breaker — when in doubt, don't author.** A spurious feature spec is
+worse than a missing one. A spurious spec pollutes the namespace, lies to
+future readers about what's a real product capability, and ties the
+`delivered_by` flip ceremony to a doc nobody needed. A missing spec for true
+Category A work surfaces as a gap that the next delivery in that capability
+naturally fills. Default to skip when classification is uncertain.
+
+**Inputs are not authoritative for doc routing.** If the input artifact
+prescribes a specific feature-spec path (especially one containing the todo
+slug), treat it as a hint at most. Classify from the work's actual shape and
+the durable concept it concerns, not from path strings in the input. Input
+authors must not prescribe doc paths — see `preparation-artifact-quality` for
+the rule.
 
 ### 2. Interview the Product Owner to fill the PRD template
 
@@ -235,7 +294,10 @@ re-engages and stamps approval.
 
 ## Outputs
 
-- **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure.
+- **`prd` artifact** — written via `telec todo artifacts write {slug} prd <content>`, following the PRD template structure. **Always produced.**
+- **Feature spec snippet** at `docs/project/spec/feature/<context>/<concept-name>.md` — **produced ONLY for Category A work** (user-visible product capability per step 1.5). Concept-named, never slug-named. Frontmatter `status: target`, `delivered_by` includes this slug.
+- **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — for Category B work (contract/CLI-surface refinement). The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
+- **No durable doc** for Category C work (implementation-only / refactor / tooling). PRD only.
 - **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.
 - **Skip stamps** when applicable: `architecture_skipped`, `test_specs_skipped`, each with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.

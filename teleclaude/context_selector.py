@@ -13,7 +13,15 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config.loader import load_project_config
 from teleclaude.config.schema import AppConfig
-from teleclaude.constants import DOMAIN_SCOPES, HUMAN_ROLE_ADMIN, SNIPPET_VISIBILITY_INTERNAL, TAXONOMY_TYPES
+from teleclaude.constants import (
+    DOMAIN_SCOPES,
+    HUMAN_ROLE_ADMIN,
+    SNIPPET_STATUS_ACTUAL,
+    SNIPPET_STATUS_MIXED,
+    SNIPPET_STATUS_TARGET,
+    SNIPPET_VISIBILITY_INTERNAL,
+    TAXONOMY_TYPES,
+)
 from teleclaude.docs_index import extract_required_reads, get_project_slug
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.required_reads import strip_required_reads_section
@@ -36,6 +44,8 @@ class SnippetMeta:
     source_project: str = ""
     project_root: Path | None = None
     visibility: str = SNIPPET_VISIBILITY_INTERNAL
+    status: str = SNIPPET_STATUS_ACTUAL
+    delivered_by: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -303,6 +313,16 @@ def _load_index(
             raw_visibility = item.get("visibility")
             visibility = raw_visibility if isinstance(raw_visibility, str) else SNIPPET_VISIBILITY_INTERNAL
             raw_source_project = item.get("source_project")
+            raw_status = item.get("status")
+            status = (
+                raw_status if raw_status in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED) else SNIPPET_STATUS_ACTUAL
+            )
+            raw_delivered_by = item.get("delivered_by")
+            delivered_by = (
+                tuple(raw_delivered_by)
+                if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by)
+                else ()
+            )
             loaded_entries.append(
                 SnippetMeta(
                     snippet_id=snippet_id,
@@ -313,6 +333,8 @@ def _load_index(
                     source_project=raw_source_project if isinstance(raw_source_project, str) else "",
                     project_root=root_path,
                     visibility=visibility,
+                    status=status,
+                    delivered_by=delivered_by,
                 )
             )
         _index_cache[cache_key] = (mtime, loaded_entries)
@@ -333,6 +355,8 @@ def _load_index(
                 source_project=source_project or snippet.source_project,
                 project_root=project_root or snippet.project_root,
                 visibility=snippet.visibility or SNIPPET_VISIBILITY_INTERNAL,
+                status=snippet.status,
+                delivered_by=snippet.delivered_by,
             )
         )
 
@@ -668,7 +692,7 @@ def _build_phase1_output(
         test_csv_path=test_csv_path,
     )
     for snippet in ordered:
-        parts.append(f"{snippet.snippet_id}: {snippet.description or ''}".strip())
+        parts.append(f"{_status_prefix(snippet)}{snippet.snippet_id}: {snippet.description or ''}".strip())
     if third_party_entries:
         parts.append("")
         parts.append("# Third-party documentation (not part of taxonomy)")
@@ -676,6 +700,18 @@ def _build_phase1_output(
             parts.append(f"{entry.snippet_id}: {entry.description or ''}".strip())
     parts.extend(["", "# ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!"])
     return "\n".join(parts)
+
+
+def _status_prefix(snippet: SnippetMeta) -> str:
+    if snippet.status not in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED):
+        return ""
+    if not snippet.delivered_by:
+        return ""
+    visible_slugs = ", ".join(snippet.delivered_by[:3])
+    remaining = len(snippet.delivered_by) - 3
+    if remaining > 0:
+        visible_slugs = f"{visible_slugs} +{remaining} more"
+    return f"[{snippet.status} → {visible_slugs}] "
 
 
 def _partition_selected_ids(
@@ -729,6 +765,7 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
     test_mode: str | None = None,
     test_request: str | None = None,
     test_csv_path: str | None = None,
+    target_slug: str | None = None,
 ) -> str:
     if list_projects:
         return _build_project_catalog_output()
@@ -824,6 +861,9 @@ def build_context_output(  # noqa: C901 # TODO: refactor to reduce complexity
         global_root=global_root,
         snippets_by_path=snippets_by_path,
     )
+    if target_slug is not None:
+        snippets = [snippet for snippet in snippets if target_slug in snippet.delivered_by]
+        third_party_entries = []
 
     areas_set = set(areas)
     if areas_set:
