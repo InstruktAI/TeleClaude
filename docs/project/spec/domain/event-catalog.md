@@ -106,6 +106,7 @@ NO events emitted. `context` is filesystem-driven. Consumers re-read source/inde
 | `agent_runtime.session.updated` | agent_runtime | CLUSTER | LISTEN/NOTIFY (batched, may carry many sessions in one event payload) |
 | `agent_runtime.session.ended` | agent_runtime | CLUSTER | LISTEN/NOTIFY (urgent-flushed; payload includes native_file_path for session_mirrors extraction) |
 | `agent_runtime.operation.completed` | agent_runtime | CLUSTER | commit-then-emit |
+| `agent_runtime.agent.restarted` | agent_runtime | CLUSTER | commit-then-emit (emitted after a successful in-place agent CLI restart) |
 
 Note: agent_runtime uses windowed batched writes + LISTEN/NOTIFY dispatch for the high-volume hook-driven events (started/updated/ended). See `feature/agent_runtime/windowed-batch-write-and-dispatch`.
 
@@ -161,6 +162,61 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `scheduler.tick.minute` | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.) |
 | `config.effective.updated` | every service that caches config (re-read on next access) |
 
+### v1 → v2 event-name mapping
+
+Canonical reference for translating v1 event names found in v1 feature
+snippets into v2 names. Used by the `v1-to-v2-snippet-port` instruction set
+(rule 4). When the v2 name is fixed, the porting agent substitutes directly.
+When marked **TBD**, the agent describes the event semantically in the v2
+spec body and flags it for catalog completion.
+
+#### Direct renames
+
+| v1 event name | v2 event name |
+|---|---|
+| `domain.software-development.planning.todo_dumped` | `workflow.todo.created` |
+| `domain.software-development.planning.todo_finalize_ready` | `workflow.todo.phase_advanced` (with `phase=finalize_ready` in payload) |
+| `agent_runtime.session.spawn` | `agent_runtime.session.started` |
+| `agent.restart_dispatched` | `agent_runtime.agent.restarted` |
+
+#### Internal v1 tokens (not events — describe semantically)
+
+In-process tokens or hook names from v1, not cross-process events. Describe
+their semantic intent in v2 spec bodies rather than naming them.
+
+| v1 internal token | v2 semantic description |
+|---|---|
+| `AGENT_READY` | "the agent signals readiness after startup" |
+| `_on_mutation` | "state mutation notification" (replaced by Redis subscription in v2) |
+| `SessionStart` hook | "agent CLI lifecycle hook fired at session start" |
+| `SIGTERM` to PID | "agent process terminated cleanly" |
+
+#### TBD — v2 owner not yet decided
+
+These v1 events belong to the workflow integrate-lifecycle (merging
+delivered branches into main) which v2 has not finalized as either a
+workflow-pillar concern or a separate concern. Until the v2 integrate-phase
+design lands, the porting agent describes these events semantically in v2
+spec bodies and flags them for catalog completion.
+
+| v1 event name | v2 owner (TBD) | Semantic intent |
+|---|---|---|
+| `integration.candidate.committed` | workflow integrate-phase | "a branch is committed and queued for integration into main" |
+| `integration.candidate.dequeued` | workflow integrate-phase | "an integration candidate is removed from the queue without merging" |
+| `integration.candidate.blocked` | workflow integrate-phase | "an integration candidate is blocked pending resolution" |
+| `integration.candidate.already_merged` | workflow integrate-phase | "an integration candidate's branch is already part of main; no-op" |
+| `integration.candidate.delivered` | workflow integrate-phase | "an integration candidate has been successfully delivered" |
+| `integration.merge.succeeded` | workflow integrate-phase | "a branch was merged into main successfully" |
+| `integration.merge.conflicted` | workflow integrate-phase | "a merge attempt failed due to conflicts" |
+| `integration.push.succeeded` | workflow integrate-phase | "a push to origin/main succeeded" |
+| `integration.push.rejected` | workflow integrate-phase | "a push to origin/main was rejected (non-fast-forward or hook block)" |
+| `integration.started` | workflow integrate-phase | "the integration process began for a delivered candidate" |
+
+The v2 `integration` bounded context owns external boundaries (Telegram,
+Discord, WhatsApp, GitHub webhooks). The events above belong to the workflow
+integrate-phase, NOT to the v2 `integration` pillar. The v1 naming overlap
+is incidental.
+
 ## Allowed values
 
 - `visibility`: `LOCAL` (in-process only, never published to Redis), `CLUSTER` (cross-process via Redis, the default for domain events that cross context boundaries), `PUBLIC` (exposed to external mesh — reserved for federation use cases, currently unused).
@@ -174,3 +230,9 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 - v1 events that don't fit the v2 naming convention will be carried through the v1→v2 ACL with translation. The ACL maps v1 event names to v2 catalog entries. v1 names are NOT included in this catalog.
 - Event payload schemas live in the producing context's spec, not here. This catalog gives the name + the field set in domain terms; the per-context spec gives the wire schema.
 - Consumer lists in the subscription map are aspirational pending per-context spec authoring. They're listed here so cross-context coordination is visible from one place.
+- The v1 → v2 mapping subsection in "Canonical fields" is the authoritative reference for the v1→v2 snippet port (rule 4 of `v1-to-v2-snippet-port`). When a v2 name is marked TBD, the porting agent describes the event semantically in the v2 spec body and flags it for catalog completion later.
+
+Note: the **v2 `integration` bounded context** owns external boundaries
+(Telegram, Discord, WhatsApp, GitHub webhooks). The events above belong to
+the workflow integrate-phase, NOT to the v2 `integration` pillar. The
+v1 naming overlap is incidental.
