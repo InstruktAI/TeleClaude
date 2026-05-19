@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -32,7 +33,26 @@ def test_parse_roadmap_show_args_sets_requested_flags() -> None:
         "include_delivered": False,
         "delivered_only": True,
         "json_output": True,
+        "since_cutoff": "",
     }
+
+
+def test_parse_roadmap_show_args_parses_since_duration() -> None:
+    parsed = roadmap._parse_roadmap_show_args(["--include-delivered", "--since", "7d"])
+
+    assert parsed["include_delivered"] is True
+    assert parsed["since_cutoff"]  # non-empty ISO cutoff string
+    # cutoff is a parseable ISO timestamp roughly 7 days in the past
+    cutoff = datetime.fromisoformat(parsed["since_cutoff"])
+    age = datetime.now(UTC) - cutoff
+    assert timedelta(days=6, hours=23) < age < timedelta(days=7, hours=1)
+
+
+def test_parse_roadmap_show_args_rejects_bad_since() -> None:
+    with pytest.raises(SystemExit):
+        roadmap._parse_roadmap_show_args(["--since", "not-a-date"])
+    with pytest.raises(SystemExit):
+        roadmap._parse_roadmap_show_args(["--since"])
 
 
 def test_handle_roadmap_show_prints_json_when_requested(
@@ -62,6 +82,7 @@ def test_handle_roadmap_show_prints_json_when_requested(
         icebox_only=False,
         include_delivered=False,
         delivered_only=False,
+        delivered_since=None,
     )
     assert json.loads(capsys.readouterr().out) == [{"slug": "sample", "status": "ready"}]
 
