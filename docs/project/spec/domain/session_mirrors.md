@@ -203,6 +203,24 @@ And agent_runtime's event is not failed (the session ended either way)
 And operators may manually trigger re-extraction if the file becomes readable later
 ```
 
+#### v1 inventory snippets (applies_to: v1)
+
+The following concept-named feature spec snippets document the v1 implementation as it actually behaves. They are parity targets for v2 deliveries and historical reference once cutover lands.
+
+- `project/spec/feature/session_mirrors/historical-conversation-search` — Full-text search across stored mirrors via `telec history search` and `/api/mirrors/search`.
+- `project/spec/feature/session_mirrors/mirror-detail-retrieval` — Fetch one mirror by exact or prefix session id (`telec history show`, `/api/mirrors/{session_id}`).
+- `project/spec/feature/session_mirrors/historical-mirror-listing` — List mirrors with identity / project / role filters (`telec history list`).
+- `project/spec/feature/session_mirrors/raw-transcript-passthrough` — Stream the original transcript file via `--raw` and `/api/mirrors/{session_id}/transcript`.
+- `project/spec/feature/session_mirrors/role-scoped-history-access` — Admin / member / non-member SQL filters applied to CLI search / list / show.
+- `project/spec/feature/session_mirrors/cross-computer-history-federation` — `--computer` fan-out to remote mirror APIs via the local daemon's computer cache.
+- `project/spec/feature/session_mirrors/mirror-reconciliation-loop` — Periodic background worker that refreshes mirrors from transcript files every 5 minutes.
+- `project/spec/feature/session_mirrors/empty-transcript-tombstone` — Tombstone rows that short-circuit re-extraction for known-empty transcripts.
+- `project/spec/feature/session_mirrors/session-end-mirror-fanout` — AGENT_STOP and SESSION_CLOSED dispatch through a processor registry to refresh mirrors.
+- `project/spec/feature/session_mirrors/conversation-text-extraction` — Normalization rules that turn a structured transcript into the mirror's flat conversation text.
+- `project/spec/feature/session_mirrors/session-summary-generation` — Best-effort one-paragraph LLM summary stored on the mirror row.
+- `project/spec/feature/session_mirrors/mirror-identity-enrichment` — Cross-DB lookup of session identity + adapter channel identifier extraction.
+- `project/spec/feature/session_mirrors/mirror-schema-bootstrap` — Idempotent SQLite schema + FTS5 triggers + ALTER-based column migration.
+
 ### Context map position
 
 - **Customer-Supplier downstream of `agent_runtime`** — session_mirrors subscribes to `agent_runtime.session.ended` for the extraction trigger. agent_runtime owns the runtime ledger + native file references; session_mirrors consumes events.
