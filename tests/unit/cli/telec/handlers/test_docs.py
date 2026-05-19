@@ -19,6 +19,7 @@ class ContextCall(TypedDict):
     baseline_only: bool
     include_third_party: bool
     domains: list[str] | None
+    target_slug: str | None
     effective_human_role: str
     config: AppConfig
 
@@ -58,7 +59,16 @@ def test_handle_docs_index_builds_context_with_filters(
     monkeypatch.setattr(docs, "get_identity_resolver", lambda: mock_resolver)
 
     docs._handle_docs_index(
-        ["--baseline-only", "--third-party", "--areas", "policy,procedure", "--domains", "software-development"]
+        [
+            "--baseline-only",
+            "--third-party",
+            "--areas",
+            "policy,procedure",
+            "--domains",
+            "software-development",
+            "--target",
+            "snippet-status-framework",
+        ]
     )
 
     assert received == [
@@ -69,6 +79,7 @@ def test_handle_docs_index_builds_context_with_filters(
             "baseline_only": True,
             "include_third_party": True,
             "domains": ["software-development"],
+            "target_slug": "snippet-status-framework",
             "effective_human_role": "member",
             "config": mock_config,
         }
@@ -102,6 +113,22 @@ def test_handle_docs_get_splits_snippet_ids(
     assert received[0]["snippet_ids"] == ["a", "b", "c"]
     assert received[0]["project_root"] == tmp_path
     assert capsys.readouterr().out == "GET\n"
+
+
+def test_handle_docs_index_requires_target_value(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        docs,
+        "_usage",
+        lambda *args: f"usage:{'/'.join(args)}",  # pyright: ignore[reportUnknownLambdaType]
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        docs._handle_docs_index(["--target"])
+
+    assert exc_info.value.code == 1
+    assert capsys.readouterr().out == "Missing value for --target.\nusage:docs/index\n"
 
 
 def test_handle_docs_get_requires_at_least_one_id(

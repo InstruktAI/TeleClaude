@@ -50,6 +50,7 @@ def _handle_docs_index(args: list[str]) -> None:
     third_party = False
     areas: list[str] = []
     domains: list[str] | None = None
+    target_slug: str | None = None
 
     i = 0
     while i < len(args):
@@ -74,6 +75,13 @@ def _handle_docs_index(args: list[str]) -> None:
             print("Missing value for --domains.")
             print(_usage("docs", "index"))
             raise SystemExit(1)
+        elif arg == "--target" and i + 1 < len(args):
+            target_slug = args[i + 1].strip()
+            i += 2
+        elif arg == "--target":
+            print("Missing value for --target.")
+            print(_usage("docs", "index"))
+            raise SystemExit(1)
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
             print(_usage("docs", "index"))
@@ -92,6 +100,7 @@ def _handle_docs_index(args: list[str]) -> None:
         baseline_only=baseline_only,
         include_third_party=third_party,
         domains=domains,
+        target_slug=target_slug,
         effective_human_role=effective_role,
         config=config,
     )

@@ -7,7 +7,34 @@ from pathlib import Path
 import yaml
 
 import teleclaude.docs_index as docs_index
+from teleclaude.constants import SNIPPET_STATUS_ACTUAL, SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET
 from teleclaude.slug import normalize_slug
+
+
+def _write_snippet(snippets_root: Path, name: str, frontmatter_lines: list[str]) -> Path:
+    snippet_path = snippets_root / name
+    snippet_path.parent.mkdir(parents=True, exist_ok=True)
+    snippet_path.write_text(
+        "\n".join(
+            [
+                "---",
+                *frontmatter_lines,
+                "---",
+                "# API Surface",
+                "Body.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return snippet_path
+
+
+def _payload_entry(project_root: Path, snippet_path: Path) -> docs_index.SnippetEntry:
+    snippets_root = project_root / "docs" / "project"
+    payload = docs_index.build_index_payload(project_root, snippets_root)
+    relative_path = str(snippet_path.relative_to(project_root))
+    return next(entry for entry in payload["snippets"] if entry["path"] == relative_path)
 
 
 def test_normalize_frontmatter_single_quotes_renders_scalar_values_as_strings() -> None:
@@ -86,6 +113,87 @@ def test_build_index_payload_for_global_root_includes_baseline_and_rewrites_path
     # ``source_project`` is the project slug (the canonical machine identity
     # used for cross-project snippet lookups), not the raw directory name.
     assert {entry["source_project"] for entry in payload["snippets"]} == {normalize_slug(project_root.name)}
+
+
+def test_build_index_payload_emits_target_status_metadata(tmp_path: Path) -> None:
+    snippets_root = tmp_path / "docs" / "project"
+    snippet_path = _write_snippet(
+        snippets_root,
+        "api.md",
+        [
+            "id: project/spec/api",
+            "description: API surface",
+            "type: spec",
+            "scope: project",
+            f"status: {SNIPPET_STATUS_TARGET}",
+            "delivered_by: [work-a]",
+        ],
+    )
+
+    entry = _payload_entry(tmp_path, snippet_path)
+
+    assert entry["status"] == SNIPPET_STATUS_TARGET
+    assert entry["delivered_by"] == ["work-a"]
+
+
+def test_build_index_payload_emits_mixed_status_metadata_in_source_order(tmp_path: Path) -> None:
+    snippets_root = tmp_path / "docs" / "project"
+    snippet_path = _write_snippet(
+        snippets_root,
+        "api.md",
+        [
+            "id: project/spec/api",
+            "description: API surface",
+            "type: spec",
+            "scope: project",
+            f"status: {SNIPPET_STATUS_MIXED}",
+            "delivered_by: [work-a, work-b]",
+        ],
+    )
+
+    entry = _payload_entry(tmp_path, snippet_path)
+
+    assert entry["status"] == SNIPPET_STATUS_MIXED
+    assert entry["delivered_by"] == ["work-a", "work-b"]
+
+
+def test_build_index_payload_omits_implicit_actual_status_metadata(tmp_path: Path) -> None:
+    snippets_root = tmp_path / "docs" / "project"
+    snippet_path = _write_snippet(
+        snippets_root,
+        "api.md",
+        [
+            "id: project/spec/api",
+            "description: API surface",
+            "type: spec",
+            "scope: project",
+        ],
+    )
+
+    entry = _payload_entry(tmp_path, snippet_path)
+
+    assert "status" not in entry
+    assert "delivered_by" not in entry
+
+
+def test_build_index_payload_omits_explicit_actual_status_metadata(tmp_path: Path) -> None:
+    snippets_root = tmp_path / "docs" / "project"
+    snippet_path = _write_snippet(
+        snippets_root,
+        "api.md",
+        [
+            "id: project/spec/api",
+            "description: API surface",
+            "type: spec",
+            "scope: project",
+            f"status: {SNIPPET_STATUS_ACTUAL}",
+        ],
+    )
+
+    entry = _payload_entry(tmp_path, snippet_path)
+
+    assert "status" not in entry
+    assert "delivered_by" not in entry
 
 
 def test_write_third_party_index_yaml_writes_entries_and_removes_empty_index(tmp_path: Path) -> None:

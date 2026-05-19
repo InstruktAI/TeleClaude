@@ -9,7 +9,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude import project_manifest, sync
+from teleclaude.docs_reconcile import SnippetStatusReconcileResult
 from teleclaude.git import GitCommandError
+from teleclaude.resource_validation import _snippet
 
 pytestmark = pytest.mark.unit
 
@@ -135,7 +137,9 @@ class TestSyncBootstrapOrdering:
         """Pins R2: build_all_indexes must precede _run_distribute in the sync pipeline."""
         call_order: list[str] = []
 
-        monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
+        monkeypatch.setattr(sync, "build_roadmap_status_map", lambda _project_root: {})
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _project_root, **_kwargs: None)
+        monkeypatch.setattr(sync, "reconcile_snippet_status", lambda _project_root, _roadmap_status_map: [])
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
         monkeypatch.setattr(sync, "get_errors", lambda: [])
@@ -158,6 +162,92 @@ class TestSyncBootstrapOrdering:
         assert result is True
         assert call_order.index("build_all_indexes") < call_order.index("_run_distribute")
 
+    def test_full_sync_reconciles_between_validation_and_index(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        call_order: list[str] = []
+        roadmap_status_map = {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _project_root: None)
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _project_root: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _project_root: [])
+        monkeypatch.setattr(sync, "build_roadmap_status_map", lambda _project_root: roadmap_status_map)
+
+        def fake_validate_all_snippets(
+            project_root: Path,
+            *,
+            roadmap_status_map: dict[str, str],
+            enforce_delivered_drift: bool,
+        ) -> None:
+            assert project_root == tmp_path
+            assert roadmap_status_map == {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+            call_order.append(f"validate:{enforce_delivered_drift}")
+
+        def fake_reconcile(project_root: Path, passed_map: dict[str, str]) -> list[SnippetStatusReconcileResult]:
+            assert project_root == tmp_path
+            assert passed_map == roadmap_status_map
+            call_order.append("reconcile")
+            return []
+
+        def fake_build_all_indexes(project_root: Path) -> list[Path]:
+            assert project_root == tmp_path
+            call_order.append("build_all_indexes")
+            return []
+
+        monkeypatch.setattr(sync, "validate_all_snippets", fake_validate_all_snippets)
+        monkeypatch.setattr(sync, "reconcile_snippet_status", fake_reconcile)
+        monkeypatch.setattr(sync, "build_all_indexes", fake_build_all_indexes)
+        monkeypatch.setattr(
+            sync,
+            "_run_distribute",
+            lambda _project_root, **_kwargs: call_order.append("_run_distribute"),
+        )
+
+        assert sync.sync(tmp_path) is True
+        assert call_order == [
+            "validate:False",
+            "reconcile",
+            "validate:True",
+            "build_all_indexes",
+            "_run_distribute",
+        ]
+
+    def test_validate_only_enforces_drift_and_skips_reconcile(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        call_order: list[str] = []
+        roadmap_status_map = {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _project_root: None)
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _project_root: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _project_root: [])
+        monkeypatch.setattr(sync, "build_roadmap_status_map", lambda _project_root: roadmap_status_map)
+
+        def fake_validate_all_snippets(
+            project_root: Path,
+            *,
+            roadmap_status_map: dict[str, str],
+            enforce_delivered_drift: bool,
+        ) -> None:
+            assert project_root == tmp_path
+            assert roadmap_status_map == {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+            call_order.append(f"validate:{enforce_delivered_drift}")
+
+        def fail_reconcile(
+            _project_root: Path, _roadmap_status_map: dict[str, str]
+        ) -> list[SnippetStatusReconcileResult]:
+            raise AssertionError("validate-only must not reconcile snippets")
+
+        monkeypatch.setattr(sync, "validate_all_snippets", fake_validate_all_snippets)
+        monkeypatch.setattr(sync, "reconcile_snippet_status", fail_reconcile)
+
+        assert sync.sync(tmp_path, validate_only=True) is True
+        assert call_order == ["validate:True"]
+
 
 class TestSyncDoesNotRegisterProject:
     """Post-migration: ``telec sync`` MUST NOT write to the project registry.
@@ -177,7 +267,9 @@ class TestSyncDoesNotRegisterProject:
         manifest_path = tmp_path / "state" / "projects.yaml"
         monkeypatch.setattr(project_manifest, "MANIFEST_PATH", manifest_path)
 
-        monkeypatch.setattr(sync, "validate_all_snippets", lambda _: None)
+        monkeypatch.setattr(sync, "build_roadmap_status_map", lambda _project_root: {})
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _project_root, **_kwargs: None)
+        monkeypatch.setattr(sync, "reconcile_snippet_status", lambda _project_root, _roadmap_status_map: [])
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _: [])
         monkeypatch.setattr(sync, "get_errors", lambda: [])
