@@ -20,7 +20,7 @@ from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionCloseCompletedPayload, SessionLifecycleContext, TeleClaudeEvents
 from teleclaude.core.identity import IdentityContext, get_identity_resolver
 from teleclaude.core.models import ComputerInfo, ProjectInfo, Session, SessionSnapshot
-from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.roadmap import RECENTLY_DELIVERED_HOURS, assemble_roadmap_from_db
 from teleclaude.core.session_cleanup import TMUX_SESSION_PREFIX, terminate_session
 from teleclaude.core.session_listeners import register_listener
 from teleclaude.core.session_title import initial_session_title
@@ -338,7 +338,12 @@ async def list_todos(project_path: str) -> list[TodoDTO]:
     Returns:
         List of todo objects.
     """
-    return assemble_roadmap_from_db(project_path, include_icebox=True, include_delivered=True)
+    return assemble_roadmap_from_db(
+        project_path,
+        include_icebox=True,
+        include_delivered=True,
+        delivered_window_hours=RECENTLY_DELIVERED_HOURS,
+    )
 
 
 async def get_computer_info() -> ComputerInfo:

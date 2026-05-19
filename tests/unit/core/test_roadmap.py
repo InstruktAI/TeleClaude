@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from teleclaude.core.roadmap import assemble_roadmap_from_db
+from teleclaude.core.roadmap import RECENTLY_DELIVERED_HOURS, assemble_roadmap_from_db
 from teleclaude.core.todos_db import TodosDb
 from teleclaude.types.todos import TodoState
 
@@ -231,6 +232,40 @@ async def test_roadmap_normalizes_delivered_stale_integration_phase_to_delivered
     delivered = [t for t in todos if t.slug == "delivered-item"]
     assert len(delivered) == 1
     assert delivered[0].integration_phase == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_include_delivered_returns_all_delivered_regardless_of_age(tmp_path: Path) -> None:
+    """`--include-delivered` (no window) must return delivered entries of any age.
+
+    Regression: a 72h `delivered_at` window meant for the default/TUI list view
+    leaked into the explicit include_delivered branch and hid older deliveries.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    old_delivered_at = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS + 48)).isoformat()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("old-delivered", description="Delivered long ago")
+        await database.write_state("old-delivered", {"schema_version": 2, "phase": "in_progress"})
+        await database.deliver("old-delivered", commit="old123", delivered_at=old_delivered_at)
+    finally:
+        await database.close()
+
+    all_delivered = assemble_roadmap_from_db(str(project), include_delivered=True)
+    assert [t.slug for t in all_delivered if t.slug == "old-delivered"] == ["old-delivered"]
+
+    windowed = assemble_roadmap_from_db(
+        str(project),
+        include_delivered=True,
+        delivered_window_hours=RECENTLY_DELIVERED_HOURS,
+    )
+    assert "old-delivered" not in [t.slug for t in windowed]
 
 
 @pytest.mark.asyncio

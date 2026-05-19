@@ -36,10 +36,17 @@ def assemble_roadmap_from_db(
     icebox_only: bool = False,
     include_delivered: bool = False,
     delivered_only: bool = False,
+    delivered_window_hours: int | None = None,
 ) -> list[TodoDTO]:
     """Assemble roadmap from todos.db using sync methods.
 
     Reads state, roadmap entries, and deps from the SQLite database.
+
+    ``include_delivered`` returns every delivered entry. ``delivered_window_hours``
+    optionally restricts delivered entries to those delivered within that many
+    hours — used by the default/TUI list view to avoid flooding it with the full
+    delivery history, while the explicit ``--include-delivered`` CLI flag passes
+    no window and gets all delivered entries.
     """
     started_at = time.perf_counter()
     db = TodosDb(str(Path(project_path) / ".teleclaude" / "todos.db"))
@@ -62,8 +69,11 @@ def assemble_roadmap_from_db(
             if include_icebox:
                 parts.append("status = 'icebox'")
             if include_delivered:
-                cutoff = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS)).isoformat()
-                parts.append(f"(status = 'delivered' AND delivered_at >= '{cutoff}')")
+                if delivered_window_hours is not None:
+                    cutoff = (datetime.now(UTC) - timedelta(hours=delivered_window_hours)).isoformat()
+                    parts.append(f"(status = 'delivered' AND delivered_at >= '{cutoff}')")
+                else:
+                    parts.append("status = 'delivered'")
             conditions.append(" OR ".join(parts))
 
         where = conditions[0] if conditions else "1=1"
