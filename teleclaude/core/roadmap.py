@@ -12,6 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
 from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
     derive_build_status,
     derive_review_status,
     is_ready_for_work,
@@ -142,6 +143,7 @@ def assemble_roadmap_from_db(
                 context=f"assemble_roadmap_from_db({slug})",
             )
             current_value = lifecycle.value
+            is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
             state_phase = state.get("phase", "")
             is_delivered = state_phase == "delivered"
@@ -160,7 +162,7 @@ def assemble_roadmap_from_db(
                 integration_phase = raw_integration_phase
 
             todo_status = row[5]  # active/icebox/delivered
-            if is_draft:
+            if is_draft or is_draft_lifecycle:
                 todo_status = "pending"
             elif todo_status == "delivered":
                 integration_phase = "delivered"

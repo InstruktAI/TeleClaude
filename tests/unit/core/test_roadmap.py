@@ -9,6 +9,7 @@ import pytest
 
 from teleclaude.core.roadmap import assemble_roadmap_from_db
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.types.todos import TodoState
 
 
 @pytest.mark.asyncio
@@ -37,6 +38,32 @@ async def test_roadmap_projection_returns_pending_status_for_draft_todos(tmp_pat
     assert todos[0].slug == "draft-item"
     assert todos[0].status == "pending"
     assert todos[0].lifecycle_phase == "draft"
+
+
+@pytest.mark.asyncio
+async def test_roadmap_projection_returns_pending_status_for_feature_drafts(tmp_path: Path) -> None:
+    """Feature draft todos created without input artifacts must not appear in progress."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+    state = TodoState.defaults()
+    state.kind = "feature"
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("feature-draft", description="A feature skeleton")
+        await database.write_state("feature-draft", state.model_dump(exclude_none=True))
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+
+    assert len(todos) == 1
+    assert todos[0].slug == "feature-draft"
+    assert todos[0].status == state.phase
+    assert todos[0].lifecycle_phase == state.lifecycle_phase
 
 
 @pytest.mark.asyncio

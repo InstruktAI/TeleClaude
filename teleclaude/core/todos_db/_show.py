@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, TypedDict
 
 from teleclaude.constants import WORKTREE_DIR
-from teleclaude.core.next_machine._types import PreparePhase, StateValue, WorkPhase
+from teleclaude.core.next_machine._types import ItemPhase, PreparePhase, StateValue, WorkPhase
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, require_lifecycle_phase
 
 if TYPE_CHECKING:
@@ -157,8 +157,14 @@ def _derive_current_block(current_value: str, state: dict[str, StateValue]) -> C
     """Build the ``current`` block for the payload."""
     phase = _PHASE_LABEL.get(current_value, current_value)
     done = current_value in _DONE_PHASE_VALUES
+    if done:
+        current_state = ItemPhase.DONE.value
+    elif state.get("phase") == ItemPhase.PENDING.value:
+        current_state = ItemPhase.PENDING.value
+    else:
+        current_state = ItemPhase.IN_PROGRESS.value
 
-    block = CurrentBlock(phase=phase, state="done" if done else "in_progress")
+    block = CurrentBlock(phase=phase, state=current_state)
 
     if current_value == WorkPhase.REVIEW_APPROVED.value:
         block["status"] = "approved"
