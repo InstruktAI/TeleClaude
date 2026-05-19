@@ -111,11 +111,13 @@ def handle_code_commit(args: list[str]) -> None:
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
-    3. Pathspec on the final ``git commit`` scopes the commit to exactly the
-       files telec staged.
-    4. Pre-commit hook owns format + lint inside git's own atomicity.
-    5. Path A/B/C classification on main for non-integrator, non-approved
-       commits.
+    3. Pre-commit hook owns format + lint inside git's own atomicity.
+    4. Shared-main gate, two ordered stages for non-integrator commits:
+       a. Path A/B/C classification — answered by ``--approved`` / ``[skip
+          ci]``; decides whether this is the right commit strategy.
+       b. Session-scope assertion — independent of ``--approved``; hard-fails
+          when the index holds files outside this session's scope, unless the
+          explicit ``TELECLAUDE_COMMIT_APPROVED`` override is set.
     """
     # Parse -m <message> and --approved, pass everything else through to git.
     # The literal "--" separator is consumed (this command appends its own
@@ -188,9 +190,17 @@ def _commit_under_lock(
     commit_args = ["-m", message] if message else []
     commit_args.extend(git_args)
 
+    # Two independent gates on shared main, ordered. Stage 1 (Path A/B/C)
+    # decides "is this the right commit strategy" and is answered by
+    # --approved or [skip ci]. Stage 2 (session scope) decides "is this
+    # commit contaminated with another session's staged work" and is
+    # answered only by the explicit TELECLAUDE_COMMIT_APPROVED override.
+    # --approved never buys past stage 2; the integrator is exempt from both.
     current_branch = _current_branch(project_root)
-    if current_branch == "main" and system_role != "integrator" and not approved:
-        _classify_main_commit(commit_args, staged_for_commit)
+    if current_branch == "main" and system_role != "integrator":
+        if not approved:
+            _classify_main_commit(commit_args, staged_for_commit)
+        _enforce_session_scope(staged_for_commit, scope_resolution)
 
     # Pathspec scopes the commit to exactly what telec staged for this scope;
     # anything else in the index is left alone for its owner to commit or for
@@ -264,6 +274,49 @@ def _classify_main_commit(git_args: list[str], staged: list[str]) -> None:
         file=sys.stderr,
     )
     raise SystemExit(1)
+
+
+def _enforce_session_scope(
+    staged_for_commit: list[str],
+    scope_resolution: WorkspaceScopeResolution,
+) -> None:
+    """Block commits whose index includes files outside this session's scope.
+
+    Stage 2 of the shared-main gate. Runs after Path A/B/C classification is
+    satisfied and is independent of ``--approved``. The session scope is the
+    set of files this agent's transcript touched plus any pending deletions.
+    Any staged file outside that set was staged by another session (or is
+    crash residue); committing it here would sweep another agent's work into
+    this commit.
+
+    No-ops when the session scope is unavailable (no transcript signal:
+    integrator, fresh shell, or human manual staging) — that path is owned by
+    the tolerant pre-staged fallback. ``TELECLAUDE_COMMIT_APPROVED=1`` is the
+    explicit, deliberate override to commit the out-of-scope files anyway; it
+    is a separate authorization from the ``--approved`` strategy flag.
+    """
+    scoped = set(scope_resolution.scoped_dirty_paths)
+    if not scoped:
+        return
+    foreign = sorted(set(staged_for_commit) - scoped)
+    if not foreign:
+        return
+    if os.environ.get("TELECLAUDE_COMMIT_APPROVED") == "1":
+        return
+    print("ERROR: staged files outside this session's scope:\n", file=sys.stderr)
+    for path in foreign:
+        print(f"  {path}", file=sys.stderr)
+    print(
+        "\nThese files were staged by another session. Committing them here "
+        "would sweep another agent's work into this commit.\n"
+        "\nUnstage them, then retry:\n"
+        "  git reset HEAD -- <file>\n"
+        "\nOr, if you deliberately intend to commit them, re-run with the "
+        "explicit scope override:\n"
+        "  TELECLAUDE_COMMIT_APPROVED=1 telec code commit --approved -m '<message>'",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
 
 
 def _is_functional(filepath: str) -> bool:
