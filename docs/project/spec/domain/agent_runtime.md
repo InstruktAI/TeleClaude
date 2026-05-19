@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-agent-runtime, v2-daemon-narrow]
+delivered_by: [v2-agent-runtime, v2-daemon-narrow, inventory-v1-agent-runtime]
 description: Agent Runtime bounded context — live agent sessions, tmux orchestration, agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine daemon-shaped part of the platform.
 ---
 
@@ -275,6 +275,28 @@ Failure handling: if `telec-hook` cannot deliver within its retry window (~10s),
 - **Failure handling:** retry the cleanup; orphan adapter bindings get caught by reconciliation.
 
 ### Use cases
+
+#### Feature spec index
+
+The bounded context's feature specs (hub-and-spoke spokes — see `software-development/principle/documentation-first-development`):
+
+- **v1 (`applies_to: v1`, `status: actual`)** — authored by `inventory-v1-agent-runtime`. Source-grounded inventory of live v1 behavior; authoritative until the daemon swap.
+  - [agent-restart](../feature/agent_runtime/agent-restart.md) — restart the agent process inside an existing live session.
+  - [daemon-lifecycle](../feature/agent_runtime/daemon-lifecycle.md) — daemon startup, shutdown, session/projects cache warming, API-server restart loop.
+  - [direct-conversation-links](../feature/agent_runtime/direct-conversation-links.md) — bidirectional session-to-session message routing via `--direct` ignition.
+  - [output-polling-and-delivery](../feature/agent_runtime/output-polling-and-delivery.md) — per-session background polling, transcript projection, dedup digest, delivery.
+  - [run-session-with-command](../feature/agent_runtime/run-session-with-command.md) — start a session preloaded with a slash command as its first agent message.
+  - [session-cleanup-and-reaping](../feature/agent_runtime/session-cleanup-and-reaping.md) — terminate sessions, free tmux/workspace/tmpdir resources, sweep orphans.
+  - [session-input-delivery](../feature/agent_runtime/session-input-delivery.md) — deliver text and keystroke input into running sessions via tmux.
+  - [session-lifecycle](../feature/agent_runtime/session-lifecycle.md) — start, list, and explicitly end agent sessions over the HTTP API.
+  - [session-revival](../feature/agent_runtime/session-revival.md) — revive an ended or unbound session by binding the prior transcript chain to a fresh agent process.
+  - [session-subscriptions](../feature/agent_runtime/session-subscriptions.md) — listener-based stop / input-request notification fan-out.
+  - [session-transcript-retrieval](../feature/agent_runtime/session-transcript-retrieval.md) — on-demand read of a session's native transcript via the messages endpoint.
+  - [tmux-pane-orchestration](../feature/agent_runtime/tmux-pane-orchestration.md) — the tmux-bridge primitive surface used to host agent CLI processes.
+- **v2 (`applies_to: v2`, `status: target`)** — authored alongside the v2 rewrite.
+  - [windowed-batch-write-and-dispatch](../feature/agent_runtime/windowed-batch-write-and-dispatch.md) — windowed batched write + LISTEN/NOTIFY dispatch for agent CLI hook events.
+
+The Gherkin scenarios below (UC-ART-1 through UC-ART-9) describe the v2 target behavior of the bounded context. Per-capability v1-vs-v2 contracts live in the feature specs above.
 
 #### UC-ART-1: Start a new session with an agent CLI
 
