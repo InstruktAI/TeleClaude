@@ -89,6 +89,8 @@ When a todo reaches `delivered`, the integrator (or the finalize step, depending
 
 A worker preparing or building a slug runs `telec docs index --target <slug>` to see exactly which snippets it owns. This is the canonical query that makes the doc-first discipline operational rather than aspirational: the worker asks the system what it has been put on the hook for, and the system answers.
 
+Companion filters for forward-state discovery: `telec docs index --status target` lists all in-flight target snippets across the tree (regardless of owning slug), and `telec docs index --applies-to <v1|v2|both>` filters by implementation version. Combine freely — `--applies-to v2 --status target` returns the v2 snippets still pending delivery.
+
 ### 5. Domain specs are typically target before they're actual
 
 A per-context domain spec (see `software-development/spec/domain-spec`) for a service that is being rewritten is authored as a `target` snippet, with `delivered_by` listing the slugs that will deliver the rewrite. Workers on the new implementation build against the target spec. When the new implementation ships and cuts over, the domain spec flips to `actual`. The parity check verifies the flip is honest — that the running system actually satisfies what the spec describes.
