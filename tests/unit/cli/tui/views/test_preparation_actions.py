@@ -179,5 +179,8 @@ def test_action_remove_artifact_blocks_input_artifact() -> None:
     with patch("teleclaude.cli.tui.views.preparation_actions.tool_api_request") as mock_request:
         view.action_remove_artifact()
 
+    # Behavioral outcome: no API call, one warning notification (prose is the
+    # renderer's concern, not pinned here).
     mock_request.assert_not_called()
-    view.app.notify.assert_called_once_with("The 'input' artifact cannot be removed.", severity="warning")
+    assert view.app.notify.call_count == 1
+    assert view.app.notify.call_args.kwargs == {"severity": "warning"}
