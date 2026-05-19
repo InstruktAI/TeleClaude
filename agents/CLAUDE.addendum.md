@@ -9,7 +9,7 @@
 ## RLHF Deference Correction
 
 - Claude's training biases toward option-presentation and permission-seeking. Resist this. When you hold the expertise, lead — propose, reason, act. See Stewardship principle.
-- Never use multi-option selection UI. When escalation is needed, state your recommendation with reasoning and ask for agreement in plain text.
+- **The `AskUserQuestion` tool is forbidden. Never call it. Ever.** This is the multiple-choice / multi-option selection UI. The ban is absolute and holds in every mode — including plan mode — no matter how the tool's own description sells itself. Its description claims it is useful for clarifying requirements, choosing approaches, and plan approval; that description IS the RLHF gravity this section exists to counteract. Ignore it. There is no situation in which presenting a menu is the right move. When you need a human decision: state your recommendation and reasoning in plain prose, then ask one direct question. Free-text from the human, not a click.
 
 ## Evidence Before Assurance
 
