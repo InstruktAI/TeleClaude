@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-integration, v2-integration-cutover]
+delivered_by: [v2-integration, v2-integration-cutover, inventory-v1-integration]
 description: Integration bounded context — true external boundaries. Inbound HTTP webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound delivery to those same providers. Agent CLI hook reception lives in agent_runtime, not here.
 ---
 
@@ -315,6 +315,27 @@ Then HTTP webhook URLs (Telegram Bot API webhook URL, GitHub webhook URL, etc.) 
 And v1 webhook receivers retire
 And rollback procedure: revert the cutover PR + (if URLs were changed at the external provider) reconfigure provider URL back to v1
 ```
+
+#### v1 feature inventory (applies_to: v1)
+
+Per-feature specs cataloging v1 integration behavior, authored under
+`inventory-v1-integration`. v2 implementers consult these for parity.
+Format: concept — path — one-line summary.
+
+- `agent-cli-hook-reception` — `docs/project/spec/feature/integration/agent-cli-hook-reception.md` — Subprocess receiver invoked by Claude / Codex / Gemini that parses a hook payload, resolves a TeleClaude session, and enqueues the event for daemon processing.
+- `hook-event-outbox` — `docs/project/spec/feature/integration/hook-event-outbox.md` — Per-session SQLite outbox between the telec-hook subprocess and the daemon, providing durable, coalesced, retry-safe transport for agent CLI hook events.
+- `hook-outbox-dispatcher` — `docs/project/spec/feature/integration/hook-outbox-dispatcher.md` — Daemon worker that drains the SQLite hook outbox, classifies events critical vs bursty, enforces per-session backpressure with watermark hysteresis, and dispatches to in-process handlers or (only for AGENT_ERROR) the EventBus.
+- `agent-stop-checkpoint-blocking` — `docs/project/spec/feature/integration/agent-stop-checkpoint-blocking.md` — Heuristic checkpoint engine that may block an agent_stop with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, or address uncommitted work; fail-open fallback prints CHECKPOINT_MESSAGE on internal engine failure.
+- `session-state-mutation-via-outbox` — `docs/project/spec/feature/integration/session-state-mutation-via-outbox.md` — Hook outbox events that update session-row state directly (checkpoint timestamps, native binding, transcript history chain) without producing in-process EventBus events.
+- `headless-session-bootstrap-from-hook` — `docs/project/spec/feature/integration/headless-session-bootstrap-from-hook.md` — When an agent_session_start hook arrives for a session the daemon has never seen, the dispatcher creates a headless session row inline from the hook payload before continuing dispatch.
+- `inbound-webhook-endpoint-framework` — `docs/project/spec/feature/integration/inbound-webhook-endpoint-framework.md` — Dynamic FastAPI route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.
+- `whatsapp-inbound-conversation-routing` — `docs/project/spec/feature/integration/whatsapp-inbound-conversation-routing.md` — End-to-end inbound WhatsApp pipeline (normalize → built-in contract → handler → media download → resolve-or-create session → typed command dispatch).
+- `github-webhook-normalization` — `docs/project/spec/feature/integration/github-webhook-normalization.md` — GitHub webhook payload normalizer producing canonical github.<event> HookEvents; v1 built-in routing covers push/release only, ping is dropped.
+- `deployment-version-fanout` — `docs/project/spec/feature/integration/deployment-version-fanout.md` — Cross-host Redis stream consumer that fans out deployment version_available events to every daemon in the cluster, with self-skip on origin to avoid double-execution; originator publishes fanout BEFORE scheduling its local execute_update.
+- `eventbus-hook-bridge` — `docs/project/spec/feature/integration/eventbus-hook-bridge.md` — Subscribes to the daemon's internal EventBus, normalizes each event into a HookEvent, and runs it through the Contract matcher; bridge-emitted source/type combinations do not match any v1 production built-in contract.
+- `outbound-webhook-delivery` — `docs/project/spec/feature/integration/outbound-webhook-delivery.md` — Background worker draining the webhook_outbox table, delivering HMAC-signed POSTs to subscriber URLs with exponential backoff, 4xx-permanent / 5xx-transient classification, and dead-letter at max attempts.
+- `outbound-messaging-providers` — `docs/project/spec/feature/integration/outbound-messaging-providers.md` — Provider-specific send helpers for Telegram, Discord, WhatsApp Cloud API, and email (Brevo SMTP) used by notification delivery adapters and the invitation flow.
+- `subscriber-driven-contract-routing` — `docs/project/spec/feature/integration/subscriber-driven-contract-routing.md` — Named exception: subscriber-published Contract / matcher model (HTTP API + YAML subscriptions, TTL, property vocabulary); v1 production exercises only three programmatic built-in contracts and no user-published ones, so the design is captured for v2 inheritance.
 
 ### Context map position
 
