@@ -397,13 +397,10 @@ class EventBus:
           ``idempotency_key``) is shared across both legs so that when the
           consumer-group redelivers the envelope back to this process, the
           existing dedup at ``_subscriber_process`` skips handlers already
-          fired by the local leg.
-
-        When the bus has no Redis client configured (CLI helpers that import
-        the singleton without going through ``configure_event_bus``), emit
-        returns a resolved no-op task instead of raising. This prevents the
-        recurring ``EventBus.emit requires a configured Redis client`` errors
-        from CLI processes that have no handlers to dispatch anyway.
+          fired by the local leg. Requires a configured Redis client; emit
+          raises ``RuntimeError`` if Redis is unconfigured, matching the
+          hard-fail policy that ``_start_event_platform`` already enforces
+          at startup.
         """
         loop = asyncio.get_running_loop()
 
@@ -421,17 +418,8 @@ class EventBus:
 
         # CLUSTER: same-process subscribers already got the event via local
         # dispatch above. The Redis publish leg is for cross-host fan-out.
-        # When Redis is unconfigured (CLI helpers that import the singleton
-        # without going through configure_event_bus, or daemon startup that
-        # took the Redis-unreachable degraded branch in
-        # daemon_event_platform._start_event_platform), the bus carries on
-        # serving same-process subscribers and skips the cross-host leg.
         if self._redis is None:
-            logger.debug(
-                "EventBus.emit skipping cross-host publish (no Redis configured) event=%s",
-                event,
-            )
-            return local_task
+            raise RuntimeError("EventBus.emit requires a configured Redis client")
 
         self._cluster_publish_count += 1
         publish_task = loop.create_task(

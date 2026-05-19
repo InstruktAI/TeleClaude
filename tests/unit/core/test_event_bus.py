@@ -1197,15 +1197,9 @@ class TestEventBusVisibilityAwareDispatch:
         assert bus.cluster_publish_count == before + 1, "CLUSTER must increment cluster_publish once per emit"
 
     @pytest.mark.unit
-    async def test_emit_dispatches_locally_when_redis_unconfigured(self) -> None:
-        """``emit`` with no Redis client must still dispatch to local subscribers.
-
-        Same-process subscribers (e.g. the api_server WS-push handler) do not
-        depend on Redis. The earlier guard short-circuited the entire emit
-        when ``_redis is None``, which silently cut off TUI updates when the
-        daemon started up while Redis was unreachable. The bus must serve
-        same-process subscribers regardless of Redis state; only the
-        cross-host publish leg is skipped.
+    async def test_emit_local_visibility_dispatches_without_redis(self) -> None:
+        """``emit(visibility=LOCAL)`` must dispatch to in-process subscribers
+        even when no Redis is configured — LOCAL never touches Redis.
         """
         bus = EventBus()  # no redis_client
         received: list[str] = []
@@ -1217,9 +1211,28 @@ class TestEventBusVisibilityAwareDispatch:
         task = bus.emit(
             "session_started",
             SessionLifecycleContext(session_id="sess-1"),
+            visibility=EventVisibility.LOCAL,
         )
         await task
-        assert received == ["session_started"], "local dispatch must run even when Redis is unconfigured"
+        assert received == ["session_started"], "LOCAL dispatch must run without Redis"
+
+    @pytest.mark.unit
+    async def test_emit_cluster_without_redis_raises(self) -> None:
+        """``emit(visibility=CLUSTER)`` with no Redis client must hard-fail.
+
+        Redis is never optional for cross-host events. Daemon startup already
+        raises in ``_start_event_platform`` when Redis is unreachable; emit
+        matches the same contract instead of silently swallowing the cluster
+        leg.
+        """
+        bus = EventBus()  # no redis_client
+
+        with pytest.raises(RuntimeError, match="requires a configured Redis client"):
+            bus.emit(
+                "session_started",
+                SessionLifecycleContext(session_id="sess-1"),
+                visibility=EventVisibility.CLUSTER,
+            )
 
     @pytest.mark.unit
     async def test_redis_redelivery_does_not_refire_locally_dispatched_handler(self) -> None:
