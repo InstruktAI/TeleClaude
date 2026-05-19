@@ -108,8 +108,8 @@ work that will fail gate validation. Split first:
 - create focused child todos
 - seed them from the human-approved parent PRD and any reviewer-approved architecture/spec slices
 - add dependency ordering in `todos.db` roadmap
-- call `telec todo split <slug> --into <child1> <child2> ...`
-- stop treating the parent as directly builder-ready
+- call `telec todo split <slug> --into <child1> --into <child2> ...`
+- stop treating the parent as directly prepare/work-ready
 
 If the work passes the scope/size gate, continue to plan drafting.
 
@@ -177,8 +177,10 @@ metadata and current worktree state.
 
 If the todo is split instead:
 
-- Call `telec todo split <slug> --into <child1> <child2> ...`
+- Call `telec todo split <slug> --into <child1> --into <child2> ...`
+- Preserve the parent artifacts as source material while child scope is being plucked and transferred.
 - Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture/spec context.
+- Treat only the children as prepare/work targets. The parent is a holder and must not be prepared or worked as an implementation item.
 
 ### 6. Enforce boundaries
 

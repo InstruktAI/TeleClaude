@@ -1,0 +1,12 @@
+# serializer version: 1
+# name: test_resolve_explicit_holder_emits_child_work_commands
+  '''
+  HOLDER_WORK: Holder 'holder' has runnable child work.
+  
+  Execute these child work commands. They may be run in parallel:
+  
+  telec todo work child-a
+  
+  Do not dispatch build/review/fix/finalize for holder 'holder' itself.
+  '''
+# ---

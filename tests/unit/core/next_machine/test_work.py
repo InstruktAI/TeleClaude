@@ -5,9 +5,15 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.next_machine._types import ItemPhase
-from teleclaude.core.next_machine.work import _advance_prepared_to_build_started, _resolve_explicit_work_slug
+from teleclaude.core.next_machine.work import (
+    _advance_prepared_to_build_started,
+    _resolve_explicit_work_slug,
+    _resolve_work_slug,
+)
+from teleclaude.core.todos_db import TodosDb
 
 _WORK = "teleclaude.core.next_machine.work"
 
@@ -54,6 +60,45 @@ async def test_resolve_explicit_work_slug_still_auto_adds_missing_active_slug() 
     assert resolved == "ready-slug"
     assert error is None
     todos_db.add_to_roadmap.assert_awaited_once_with("ready-slug")
+
+
+@pytest.mark.asyncio
+async def test_resolve_explicit_holder_emits_child_work_commands(
+    todos_db: TodosDb,
+    snapshot: SnapshotAssertion,
+) -> None:
+    """Explicit holder work resolves to child commands instead of working the holder."""
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.write_state(
+        "holder",
+        {"schema_version": 3, "lifecycle_phase": "prepared", "breakdown": {"assessed": True, "todos": ["child-a"]}},
+    )
+    await todos_db.add_to_roadmap("child-a", group_slug="holder")
+    await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "prepared"})
+
+    resolved, instruction = await _resolve_explicit_work_slug(todos_db, "holder", "holder", 0.0)
+
+    assert resolved == ""
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_no_slug_work_skips_holder_without_runnable_children(todos_db: TodosDb) -> None:
+    """Automatic work pickup must not starve later ready work behind a blocked holder."""
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.write_state(
+        "holder",
+        {"schema_version": 3, "lifecycle_phase": "prepared", "breakdown": {"assessed": True, "todos": ["child-a"]}},
+    )
+    await todos_db.add_to_roadmap("child-a", group_slug="holder")
+    await todos_db.write_state("child-a", {"schema_version": 3, "lifecycle_phase": "draft"})
+    await todos_db.add_to_roadmap("later-ready")
+    await todos_db.write_state("later-ready", {"schema_version": 3, "lifecycle_phase": "prepared"})
+
+    resolved, instruction = await _resolve_work_slug(todos_db, None, "<auto>")
+
+    assert resolved == "later-ready"
+    assert instruction is None
 
 
 @pytest.mark.asyncio

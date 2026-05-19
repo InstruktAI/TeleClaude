@@ -5,15 +5,40 @@ No imports from core.py (circular-import guard).
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from teleclaude.core.next_machine._types import ItemPhase
-from teleclaude.core.next_machine.lifecycle import is_ready_for_work
+from teleclaude.core.next_machine._types import ItemPhase, StateValue
+from teleclaude.core.next_machine.lifecycle import (
+    LifecyclePhase,
+    coerce_lifecycle_phase,
+    is_ready_for_work,
+    lifecycle_phase_index,
+)
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_state
 from teleclaude.core.todos_db import get_todos_db_sync
+
+
+@dataclass(frozen=True)
+class HolderChildResolution:
+    """Resolved direct children for a holder and the runnable subset."""
+
+    children: tuple[str, ...]
+    runnable: tuple[str, ...]
+    reason: str
+
+
+@dataclass(frozen=True)
+class WorkQueueResolution:
+    """Resolved work queue target for no-slug work pickup."""
+
+    slug: str | None
+    holder_slug: str | None = None
+    child_slugs: tuple[str, ...] = ()
+    reason: str = ""
 
 
 async def resolve_slug_async(
@@ -107,6 +132,22 @@ async def _is_ready_for_work_db(todos_db: TodosDb, slug: str) -> bool:
     return ready
 
 
+def _deps_satisfied(dependencies: dict[str, list[str]], delivered: set[str], slug: str) -> bool:
+    """Return whether all roadmap dependencies for ``slug`` have delivered."""
+    slug_deps = dependencies.get(slug, [])
+    return not slug_deps or all(dep in delivered for dep in slug_deps)
+
+
+def _is_prepare_runnable_lifecycle(state: dict[str, StateValue] | None) -> bool:
+    """Return True when a child still needs prepare and can be targeted by prepare."""
+    if state is None:
+        return False
+    phase = coerce_lifecycle_phase(state.get("lifecycle_phase"))
+    if phase is None:
+        return False
+    return lifecycle_phase_index(phase) < lifecycle_phase_index(LifecyclePhase.PREPARED)
+
+
 async def set_item_phase_db(todos_db: TodosDb, slug: str, phase: str) -> None:
     """Set phase for a work item in todos.db."""
     state = await todos_db.read_state(slug)
@@ -142,25 +183,35 @@ async def resolve_holder_children_db(todos_db: TodosDb, holder_slug: str) -> lis
     return ordered
 
 
-async def resolve_first_runnable_holder_child_db(
+async def resolve_runnable_holder_children_db(
     todos_db: TodosDb,
     holder_slug: str,
     dependencies: dict[str, list[str]],
-) -> tuple[str | None, str]:
-    """Resolve first runnable child for a holder slug from DB."""
-    children = await resolve_holder_children_db(todos_db, holder_slug)
-    reason = "not_holder"
-    if not children:
-        return None, reason
+    *,
+    mode: str,
+) -> HolderChildResolution:
+    """Resolve runnable direct children for a holder in prepare or work mode."""
+    if mode not in {"prepare", "work"}:
+        raise ValueError(f"unknown holder child resolution mode: {mode!r}")
 
+    children = await resolve_holder_children_db(todos_db, holder_slug)
+    if not children:
+        return HolderChildResolution(children=(), runnable=(), reason="not_holder")
+
+    entries = await todos_db.list_roadmap()
+    active_slugs = {entry["slug"] for entry in entries}
     delivered = await todos_db.delivered_slugs()
+    runnable: list[str] = []
     has_children_in_roadmap = False
     has_incomplete_children = False
     has_deps_blocked = False
     has_not_ready = False
 
     for child in children:
-        if not await todos_db.slug_in_roadmap(child):
+        if child in delivered:
+            has_children_in_roadmap = True
+            continue
+        if child not in active_slugs:
             continue
 
         has_children_in_roadmap = True
@@ -169,27 +220,93 @@ async def resolve_first_runnable_holder_child_db(
             continue
 
         has_incomplete_children = True
-        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, child)
-        if not is_ready:
-            has_not_ready = True
-            continue
+        if mode == "prepare":
+            state = await todos_db.read_state(child)
+            if not _is_prepare_runnable_lifecycle(state):
+                has_not_ready = True
+                continue
+        else:
+            is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, child)
+            if not is_ready:
+                has_not_ready = True
+                continue
 
-        child_deps = dependencies.get(child, [])
-        if child_deps and not all(d in delivered for d in child_deps):
+        if not _deps_satisfied(dependencies, delivered, child):
             has_deps_blocked = True
             continue
 
-        return child, "ok"
+        runnable.append(child)
 
-    if has_children_in_roadmap:
-        reason = "complete" if not has_incomplete_children else "item_not_ready"
-        if has_deps_blocked:
-            reason = "deps_unsatisfied"
-        elif has_not_ready:
-            reason = "item_not_ready"
-    else:
-        reason = "children_not_in_roadmap"
-    return None, reason
+    if runnable:
+        return HolderChildResolution(children=tuple(children), runnable=tuple(runnable), reason="ok")
+    if not has_children_in_roadmap:
+        return HolderChildResolution(children=tuple(children), runnable=(), reason="children_not_in_roadmap")
+    if not has_incomplete_children:
+        return HolderChildResolution(children=tuple(children), runnable=(), reason="complete")
+    if has_deps_blocked:
+        return HolderChildResolution(children=tuple(children), runnable=(), reason="deps_unsatisfied")
+    if mode == "prepare" and has_not_ready:
+        return HolderChildResolution(children=tuple(children), runnable=(), reason="all_prepared")
+    return HolderChildResolution(children=tuple(children), runnable=(), reason="item_not_ready")
+
+
+async def resolve_first_runnable_holder_child_db(
+    todos_db: TodosDb,
+    holder_slug: str,
+    dependencies: dict[str, list[str]],
+) -> tuple[str | None, str]:
+    """Resolve first runnable child for a holder slug from DB."""
+    resolution = await resolve_runnable_holder_children_db(todos_db, holder_slug, dependencies, mode="work")
+    if resolution.runnable:
+        return resolution.runnable[0], "ok"
+    return None, resolution.reason
+
+
+async def resolve_next_work_queue_db(
+    todos_db: TodosDb,
+    dependencies: dict[str, list[str]],
+) -> WorkQueueResolution:
+    """Resolve the next runnable work item, skipping blocked holders."""
+    entries = await todos_db.list_roadmap()
+    delivered = await todos_db.delivered_slugs()
+    saw_deps_blocked = False
+
+    for entry in entries:
+        found_slug = entry["slug"]
+        holder_resolution = await resolve_runnable_holder_children_db(
+            todos_db,
+            found_slug,
+            dependencies,
+            mode="work",
+        )
+        if holder_resolution.children:
+            if holder_resolution.runnable:
+                return WorkQueueResolution(
+                    slug=None,
+                    holder_slug=found_slug,
+                    child_slugs=holder_resolution.runnable,
+                    reason="holder_children",
+                )
+            if holder_resolution.reason == "deps_unsatisfied":
+                saw_deps_blocked = True
+            continue
+
+        phase = await _get_item_phase_db(todos_db, found_slug, delivered)
+        if phase == ItemPhase.DONE.value:
+            continue
+
+        is_ready = phase == ItemPhase.IN_PROGRESS.value or await _is_ready_for_work_db(todos_db, found_slug)
+        if not is_ready:
+            continue
+
+        if not _deps_satisfied(dependencies, delivered, found_slug):
+            saw_deps_blocked = True
+            continue
+
+        return WorkQueueResolution(slug=found_slug, reason="ready")
+
+    reason = "deps_unsatisfied" if saw_deps_blocked else "no_ready_items"
+    return WorkQueueResolution(slug=None, reason=reason)
 
 
 # ── Legacy sync functions (retained for callers not yet migrated) ────────
@@ -237,11 +354,15 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 
 
 __all__ = [
+    "HolderChildResolution",
+    "WorkQueueResolution",
     "_get_item_phase_db",
     "_is_ready_for_work_db",
     "get_item_phase",
     "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",
+    "resolve_next_work_queue_db",
+    "resolve_runnable_holder_children_db",
     "resolve_slug_async",
     "set_item_phase",
     "set_item_phase_db",

@@ -548,7 +548,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     Flag("--into", desc="Child slug (repeatable, at least one required)"),
                 ],
                 notes=[
-                    "Scaffolds children, cleans parent artifacts, sets container state.",
+                    (
+                        "Scaffolds children and marks the parent as a holder/container. Parent artifacts "
+                        "are preserved as source material for plucking and seeding child todos."
+                    ),
                     (
                         "Children inherit parent's approved prepare phase: if requirements were approved, "
                         "children start at plan_drafting; if the plan was approved, children start at "

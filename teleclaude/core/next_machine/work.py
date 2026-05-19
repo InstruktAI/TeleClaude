@@ -33,7 +33,8 @@ from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authori
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.slug_resolution import (
     _get_item_phase_db,
-    resolve_slug_async,
+    resolve_next_work_queue_db,
+    resolve_runnable_holder_children_db,
     set_item_phase_db,
 )
 from teleclaude.core.next_machine.state_mutation import StateWriter
@@ -43,7 +44,6 @@ from teleclaude.project_root import resolve_state_root
 
 if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
-from teleclaude.core.next_machine.slug_resolution import resolve_first_runnable_holder_child_db
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.todos_db import get_todos_db
 
@@ -83,6 +83,17 @@ def _log_next_work_phase(slug: str, phase: str, started_at: float, decision: str
         emit_operation_progress(phase, decision, reason)
     except Exception:
         logger.debug("Operation progress emission skipped", exc_info=True)
+
+
+def _format_holder_work_commands(holder_slug: str, child_slugs: tuple[str, ...]) -> str:
+    """Format child work commands for a holder entrypoint."""
+    commands = "\n".join(f"telec todo work {child}" for child in child_slugs)
+    return (
+        f"HOLDER_WORK: Holder '{holder_slug}' has runnable child work.\n\n"
+        "Execute these child work commands. They may be run in parallel:\n\n"
+        f"{commands}\n\n"
+        f"Do not dispatch build/review/fix/finalize for holder '{holder_slug}' itself."
+    )
 
 
 async def next_work(db: Db, slug: str | None, cwd: str) -> str:
@@ -234,13 +245,15 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         return resolved_slug, None
 
     deps = await todos_db.load_deps()
-    found_slug, _, _ = await resolve_slug_async(todos_db, None, True, deps)
-    if found_slug:
-        _log_next_work_phase(found_slug, "slug_resolution", slug_resolution_started, "run", "resolved")
-        return found_slug, None
+    queue = await resolve_next_work_queue_db(todos_db, deps)
+    if queue.child_slugs and queue.holder_slug:
+        _log_next_work_phase(queue.holder_slug, "slug_resolution", slug_resolution_started, "run", "holder_children")
+        return "", _format_holder_work_commands(queue.holder_slug, queue.child_slugs)
+    if queue.slug:
+        _log_next_work_phase(queue.slug, "slug_resolution", slug_resolution_started, "run", "resolved")
+        return queue.slug, None
 
-    has_ready_items, _, _ = await resolve_slug_async(todos_db, None, True)
-    if has_ready_items:
+    if queue.reason == "deps_unsatisfied":
         _log_next_work_phase(
             phase_slug, "slug_resolution", slug_resolution_started, "error", "ready_but_deps_unsatisfied"
         )
@@ -299,9 +312,12 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_child, holder_reason = await resolve_first_runnable_holder_child_db(todos_db, slug, deps)
-    if holder_child:
-        return holder_child, None
+    holder_resolution = await resolve_runnable_holder_children_db(todos_db, slug, deps, mode="work")
+    holder_reason = holder_resolution.reason
+    if holder_resolution.runnable:
+        return "", _format_holder_work_commands(slug, holder_resolution.runnable)
+    if holder_reason == "not_holder":
+        return slug, None
     if holder_reason == "complete":
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "holder_complete")
         return "", f"COMPLETE: Holder '{slug}' has no remaining child work."

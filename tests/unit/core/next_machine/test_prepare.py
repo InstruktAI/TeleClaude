@@ -8,9 +8,14 @@ import pytest
 from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.next_machine.prepare import _find_next_prepare_slug_db, next_prepare
+from teleclaude.core.next_machine.slug_resolution import HolderChildResolution
 from teleclaude.core.todos_db import TodosDb
 
 _PREPARE = "teleclaude.core.next_machine.prepare"
+
+
+def _not_holder() -> HolderChildResolution:
+    return HolderChildResolution(children=(), runnable=(), reason="not_holder")
 
 
 def _mock_todos_db(**overrides: object) -> AsyncMock:
@@ -32,7 +37,7 @@ async def test_next_prepare_canonicalizes_cwd_from_worktree_path() -> None:
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo") as mock_resolve,
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}.resolve_runnable_holder_children_db", return_value=_not_holder()),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
     ):
         await next_prepare(db, "my-slug", "/repo/trees/my-slug")
@@ -57,14 +62,21 @@ async def test_next_prepare_no_active_work_emits_blocker_resolution(snapshot: Sn
 
 
 @pytest.mark.asyncio
-async def test_next_prepare_holder_with_children_emits_blocker_resolution(snapshot: SnapshotAssertion) -> None:
+async def test_next_prepare_holder_with_children_emits_child_prepare_commands(snapshot: SnapshotAssertion) -> None:
     db = AsyncMock()
     todos_db = _mock_todos_db()
 
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=["child-a", "child-b"]),
+        patch(
+            f"{_PREPARE}.resolve_runnable_holder_children_db",
+            return_value=HolderChildResolution(
+                children=("child-a", "child-b"),
+                runnable=("child-a", "child-b"),
+                reason="ok",
+            ),
+        ),
     ):
         result = await next_prepare(db, "holder", "/repo")
 
@@ -79,7 +91,7 @@ async def test_next_prepare_reads_stored_phase_and_returns_dispatch_instruction(
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}.resolve_runnable_holder_children_db", return_value=_not_holder()),
         patch(f"{_PREPARE}._prepare_dispatch", return_value=(False, "dispatch")),
     ):
         result = await next_prepare(db, "slug-a", "/repo")
@@ -96,7 +108,7 @@ async def test_next_prepare_raises_on_missing_state() -> None:
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}.resolve_runnable_holder_children_db", return_value=_not_holder()),
         pytest.raises(RuntimeError, match="Contract violation: no state record"),
     ):
         await next_prepare(db, "stateless-slug", "/repo")
@@ -118,7 +130,7 @@ async def test_next_prepare_adopts_draft_with_input_to_prd_drafting(todos_db: To
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
         patch(f"{_PREPARE}.get_todos_db", return_value=todos_db),
-        patch(f"{_PREPARE}.resolve_holder_children_db", return_value=[]),
+        patch(f"{_PREPARE}.resolve_runnable_holder_children_db", return_value=_not_holder()),
         patch(f"{_PREPARE}._prepare_dispatch", side_effect=_dispatch),
     ):
         result = await next_prepare(db, "draft-item", "/repo")

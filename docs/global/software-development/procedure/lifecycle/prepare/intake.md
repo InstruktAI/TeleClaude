@@ -88,8 +88,9 @@ dispatched. Do not split without explicit human approval — auto-splitting
 risks fragmenting features the human wanted atomic.
 
 When splitting, the feature spec snippet's `delivered_by` lists the children
-(not the container). The container's role is to hold the feature identity
-and reach `delivered` when all children deliver.
+(not the container). The container's role is to hold the feature identity and
+source material until child scope is seeded, then reach `delivered` when all
+children deliver.
 
 The stakeholder being interviewed is the **Product Owner role** — either the
 real human directly, or a dispatched AI PO emulator standing in. The emulator
@@ -183,7 +184,7 @@ As the conversation progresses, the BA senses the size and nature of the work an
 
 - **Small work** (single-file change, copy edit, simple modification) → BA may stamp `architecture_skipped` and/or `test_specs_skipped` with reason at the end of intake. Downstream goes from PRD straight to plan (or PRD → specs → plan).
 - **Standard work** (typical feature) → full chain: PRD → Architecture → Test specs → Plan.
-- **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me split it into N parts we can tackle independently"). Uses `telec todo split` to spawn children. Each child gets its own track.
+- **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me split it into N parts we can tackle independently"). Uses `telec todo split` to spawn children. Each child gets its own prepare/work track.
 
 Skip stamps carry a `reason` field describing why the phase isn't needed for this work.
 

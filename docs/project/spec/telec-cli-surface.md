@@ -144,7 +144,7 @@ subcommands:
         flags:
           --project-root: 'Project root (default: cwd).'
       split:
-        description: 'Split a todo into child items. Children inherit the parent reviewed prepare phase: requirements-reviewed → children start at plan_drafting; plan-reviewed → children start at prepared (ready for build).'
+        description: 'Split a todo into child items. Marks the parent as a holder/container while preserving parent artifacts as source material for child seeding. Children inherit the parent reviewed prepare phase: requirements-reviewed → children start at plan_drafting; plan-reviewed → children start at prepared (ready for build).'
         args:
           - slug: 'string'
         flags:

@@ -1,5 +1,5 @@
 # serializer version: 1
-# name: test_next_prepare_holder_with_children_emits_blocker_resolution
+# name: test_next_prepare_holder_with_children_emits_child_prepare_commands
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
   
@@ -9,8 +9,10 @@
   - split holder has children: child-a, child-b
   
   NEXT ACTION:
-  This slug is a split holder. Run work to trigger finalize and integration:
-    telec todo work holder
+  This slug is a split holder. The holder is not a prepare/work target.
+  Run prepare on these direct child todos:
+  telec todo prepare child-a
+  telec todo prepare child-b
   '''
 # ---
 # name: test_next_prepare_no_active_work_emits_blocker_resolution
