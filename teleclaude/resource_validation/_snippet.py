@@ -16,6 +16,7 @@ from teleclaude.constants import (
     SNIPPET_STATUS_VALUES,
     SNIPPET_VISIBILITY_VALUES,
     TYPE_SUFFIX,
+    RoadmapStatus,
 )
 from teleclaude.paths import GLOBAL_SNIPPETS_DIR
 from teleclaude.project_root import resolve_state_root
@@ -46,14 +47,11 @@ from teleclaude.snippet_validation import (
 _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
-ROADMAP_STATUS_ACTIVE = "active"
-ROADMAP_STATUS_ICEBOX = "icebox"
-ROADMAP_STATUS_DELIVERED = "delivered"
-_ROADMAP_STATUS_VALUES = (ROADMAP_STATUS_ACTIVE, ROADMAP_STATUS_ICEBOX, ROADMAP_STATUS_DELIVERED)
+_ROADMAP_STATUS_VALUES = (RoadmapStatus.ACTIVE, RoadmapStatus.ICEBOX, RoadmapStatus.DELIVERED)
 _ROADMAP_STATUS_PRIORITY = {
-    ROADMAP_STATUS_DELIVERED: 0,
-    ROADMAP_STATUS_ACTIVE: 1,
-    ROADMAP_STATUS_ICEBOX: 1,
+    RoadmapStatus.DELIVERED: 0,
+    RoadmapStatus.ACTIVE: 1,
+    RoadmapStatus.ICEBOX: 1,
 }
 SNIPPET_STATUS_INVALID_VALUE = "snippet_status_invalid_value"
 SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY = "snippet_status_target_missing_delivered_by"
@@ -308,7 +306,7 @@ def _validate_status_and_delivered_by(
     if unknown_slugs or not enforce_delivered_drift:
         return
 
-    delivered_slugs = [slug for slug in delivered_by if roadmap_status_map.get(slug) == ROADMAP_STATUS_DELIVERED]
+    delivered_slugs = [slug for slug in delivered_by if roadmap_status_map.get(slug) == RoadmapStatus.DELIVERED]
     if len(delivered_slugs) == len(delivered_by):
         _error(SNIPPET_STATUS_UNFLIPPED_DRIFT, path=str(path), delivered_slugs=",".join(delivered_slugs))
 

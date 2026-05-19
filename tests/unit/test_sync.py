@@ -9,9 +9,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude import project_manifest, sync
+from teleclaude.constants import RoadmapStatus
 from teleclaude.docs_reconcile import SnippetStatusReconcileResult
 from teleclaude.git import GitCommandError
-from teleclaude.resource_validation import _snippet
 
 pytestmark = pytest.mark.unit
 
@@ -166,7 +166,7 @@ class TestSyncBootstrapOrdering:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         call_order: list[str] = []
-        roadmap_status_map = {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+        roadmap_status_map = {"work-a": RoadmapStatus.DELIVERED}
 
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _project_root: None)
         monkeypatch.setattr(sync, "clear_errors", lambda: None)
@@ -182,7 +182,7 @@ class TestSyncBootstrapOrdering:
             enforce_delivered_drift: bool,
         ) -> None:
             assert project_root == tmp_path
-            assert roadmap_status_map == {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+            assert roadmap_status_map == {"work-a": RoadmapStatus.DELIVERED}
             call_order.append(f"validate:{enforce_delivered_drift}")
 
         def fake_reconcile(project_root: Path, passed_map: dict[str, str]) -> list[SnippetStatusReconcileResult]:
@@ -218,7 +218,7 @@ class TestSyncBootstrapOrdering:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         call_order: list[str] = []
-        roadmap_status_map = {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+        roadmap_status_map = {"work-a": RoadmapStatus.DELIVERED}
 
         monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _project_root: None)
         monkeypatch.setattr(sync, "clear_errors", lambda: None)
@@ -234,7 +234,7 @@ class TestSyncBootstrapOrdering:
             enforce_delivered_drift: bool,
         ) -> None:
             assert project_root == tmp_path
-            assert roadmap_status_map == {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+            assert roadmap_status_map == {"work-a": RoadmapStatus.DELIVERED}
             call_order.append(f"validate:{enforce_delivered_drift}")
 
         def fail_reconcile(

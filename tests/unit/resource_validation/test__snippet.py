@@ -12,6 +12,7 @@ from teleclaude.constants import (
     SNIPPET_STATUS_ACTUAL,
     SNIPPET_STATUS_MIXED,
     SNIPPET_STATUS_TARGET,
+    RoadmapStatus,
 )
 from teleclaude.resource_validation import _models as resource_models
 from teleclaude.resource_validation import _snippet
@@ -178,7 +179,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_ACTUAL, "delivered_by": ["some-slug"]},
-            roadmap_status_map={"some-slug": _snippet.ROADMAP_STATUS_ACTIVE},
+            roadmap_status_map={"some-slug": RoadmapStatus.ACTIVE},
             enforce_delivered_drift=True,
         )
 
@@ -224,7 +225,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["gamma"]},
-            roadmap_status_map={"alpha": _snippet.ROADMAP_STATUS_ACTIVE, "beta": _snippet.ROADMAP_STATUS_ACTIVE},
+            roadmap_status_map={"alpha": RoadmapStatus.ACTIVE, "beta": RoadmapStatus.ACTIVE},
             enforce_delivered_drift=True,
         )
 
@@ -243,7 +244,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["alpha", "ghost"]},
-            roadmap_status_map={"alpha": _snippet.ROADMAP_STATUS_ACTIVE},
+            roadmap_status_map={"alpha": RoadmapStatus.ACTIVE},
             enforce_delivered_drift=True,
         )
 
@@ -262,7 +263,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["frozen-work"]},
-            roadmap_status_map={"frozen-work": _snippet.ROADMAP_STATUS_ICEBOX},
+            roadmap_status_map={"frozen-work": RoadmapStatus.ICEBOX},
             enforce_delivered_drift=True,
         )
 
@@ -276,8 +277,8 @@ class TestStatusAndDeliveredByValidation:
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a", "work-b"]},
             roadmap_status_map={
-                "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-                "work-b": _snippet.ROADMAP_STATUS_DELIVERED,
+                "work-a": RoadmapStatus.DELIVERED,
+                "work-b": RoadmapStatus.DELIVERED,
             },
             enforce_delivered_drift=True,
         )
@@ -297,7 +298,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_MIXED, "delivered_by": ["work-a"]},
-            roadmap_status_map={"work-a": _snippet.ROADMAP_STATUS_DELIVERED},
+            roadmap_status_map={"work-a": RoadmapStatus.DELIVERED},
             enforce_delivered_drift=True,
         )
 
@@ -312,8 +313,8 @@ class TestStatusAndDeliveredByValidation:
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a", "work-b"]},
             roadmap_status_map={
-                "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-                "work-b": _snippet.ROADMAP_STATUS_ACTIVE,
+                "work-a": RoadmapStatus.DELIVERED,
+                "work-b": RoadmapStatus.ACTIVE,
             },
             enforce_delivered_drift=True,
         )
@@ -327,7 +328,7 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a"]},
-            roadmap_status_map={"work-a": _snippet.ROADMAP_STATUS_DELIVERED},
+            roadmap_status_map={"work-a": RoadmapStatus.DELIVERED},
             enforce_delivered_drift=False,
         )
 
@@ -342,28 +343,28 @@ class TestRoadmapStatusMap:
         _write_roadmap_db(
             tmp_path,
             [
-                ("alpha", _snippet.ROADMAP_STATUS_ACTIVE),
-                ("beta", _snippet.ROADMAP_STATUS_ICEBOX),
-                ("gamma", _snippet.ROADMAP_STATUS_DELIVERED),
+                ("alpha", RoadmapStatus.ACTIVE),
+                ("beta", RoadmapStatus.ICEBOX),
+                ("gamma", RoadmapStatus.DELIVERED),
             ],
         )
 
         assert _snippet.build_roadmap_status_map(tmp_path) == {
-            "alpha": _snippet.ROADMAP_STATUS_ACTIVE,
-            "beta": _snippet.ROADMAP_STATUS_ICEBOX,
-            "gamma": _snippet.ROADMAP_STATUS_DELIVERED,
+            "alpha": RoadmapStatus.ACTIVE,
+            "beta": RoadmapStatus.ICEBOX,
+            "gamma": RoadmapStatus.DELIVERED,
         }
 
     def test_current_roadmap_entry_wins_over_historical_delivery(self, tmp_path: Path) -> None:
         _write_roadmap_db(
             tmp_path,
             [
-                ("reused-slug", _snippet.ROADMAP_STATUS_DELIVERED),
-                ("reused-slug", _snippet.ROADMAP_STATUS_ACTIVE),
+                ("reused-slug", RoadmapStatus.DELIVERED),
+                ("reused-slug", RoadmapStatus.ACTIVE),
             ],
         )
 
-        assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == _snippet.ROADMAP_STATUS_ACTIVE
+        assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == RoadmapStatus.ACTIVE
 
     def test_validate_all_snippets_builds_roadmap_status_map_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -379,8 +380,8 @@ class TestRoadmapStatusMap:
             calls += 1
             assert project_root == tmp_path
             return {
-                "alpha": _snippet.ROADMAP_STATUS_ACTIVE,
-                "beta": _snippet.ROADMAP_STATUS_ACTIVE,
+                "alpha": RoadmapStatus.ACTIVE,
+                "beta": RoadmapStatus.ACTIVE,
             }
 
         monkeypatch.setattr(_snippet, "build_roadmap_status_map", fake_build_roadmap_status_map)

@@ -12,6 +12,7 @@ from teleclaude.cli.tui.widgets.todo_row import (
     _COL_GAP,
     _WIDGET_PADDING_HORZ,
     TodoRow,
+    _muted_color,
     _ok_color,
     _pad,
     integration_phase_label,
@@ -45,8 +46,27 @@ def test_prepare_phase_label_returns_none_for_unknown_phase() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_prd_drafting_maps_to_intake() -> None:
+def test_lifecycle_phase_label_prd_drafting_maps_to_prd_drafting() -> None:
     result = lifecycle_phase_label(LifecyclePhase.PRD_DRAFTING.value)
+    assert result is not None
+    prefix, value, _ = result
+    assert prefix == "P"
+    assert value == "PRD drafting"
+
+
+@pytest.mark.unit
+def test_lifecycle_phase_label_prd_human_approval_maps_to_prd_approval() -> None:
+    """PRD_HUMAN_APPROVAL is distinct from PRD_DRAFTING — no longer collapsed."""
+    result = lifecycle_phase_label(LifecyclePhase.PRD_HUMAN_APPROVAL.value)
+    assert result is not None
+    prefix, value, _ = result
+    assert prefix == "P"
+    assert value == "PRD approval"
+
+
+@pytest.mark.unit
+def test_lifecycle_phase_label_draft_maps_to_intake() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.DRAFT.value)
     assert result is not None
     prefix, value, _ = result
     assert prefix == "P"
@@ -54,30 +74,35 @@ def test_lifecycle_phase_label_prd_drafting_maps_to_intake() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_draft_maps_to_draft() -> None:
-    result = lifecycle_phase_label(LifecyclePhase.DRAFT.value)
+def test_lifecycle_phase_label_test_specs_drafting_maps_to_specs_drafting() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.TEST_SPECS_DRAFTING.value)
     assert result is not None
-    prefix, value, _ = result
-    assert prefix == "P"
-    assert value == "draft"
+    _, value, _ = result
+    assert value == "specs drafting"
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_test_spec_phases_map_to_specs() -> None:
-    for phase in (LifecyclePhase.TEST_SPECS_DRAFTING, LifecyclePhase.TEST_SPECS_REVIEW):
-        result = lifecycle_phase_label(phase.value)
-        assert result is not None
-        _, value, _ = result
-        assert value == "specs"
+def test_lifecycle_phase_label_test_specs_review_maps_to_specs_review() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.TEST_SPECS_REVIEW.value)
+    assert result is not None
+    _, value, _ = result
+    assert value == "specs review"
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_planning_phases_map_to_planning() -> None:
-    for phase in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
-        result = lifecycle_phase_label(phase.value)
-        assert result is not None
-        _, value, _ = result
-        assert value == "planning"
+def test_lifecycle_phase_label_plan_drafting_maps_to_plan_drafting() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.PLAN_DRAFTING.value)
+    assert result is not None
+    _, value, _ = result
+    assert value == "plan drafting"
+
+
+@pytest.mark.unit
+def test_lifecycle_phase_label_plan_review_maps_to_plan_review() -> None:
+    result = lifecycle_phase_label(LifecyclePhase.PLAN_REVIEW.value)
+    assert result is not None
+    _, value, _ = result
+    assert value == "plan review"
 
 
 # --- integration_phase_label ---
@@ -105,7 +130,7 @@ def test_integration_phase_label_delivered() -> None:
     prefix, value, color = result
     assert prefix == "I"
     assert value == "delivered"
-    assert color == _ok_color()
+    assert color == _muted_color()
 
 
 @pytest.mark.unit
@@ -176,7 +201,7 @@ def test_compute_col_widths_includes_col_gap() -> None:
         lifecycle_phase="prepared",
     )
     widths = TodoRow.compute_col_widths([todo])
-    assert widths["P"] == len("P:ready") + _COL_GAP
+    assert widths["P"] == len("P:prepared") + _COL_GAP
 
 
 # --- _pad ---
@@ -218,11 +243,11 @@ def test_all_rows_render_same_width_regardless_of_phase() -> None:
     )
     holder = TodoItem(
         slug="holder-parent",
-        status=TodoStatus.PENDING,
+        status=TodoStatus.DELIVERED,
         description=None,
         has_requirements=False,
         has_impl_plan=False,
-        children_statuses=["delivered"],
+        is_holder=True,
     )
     prepare_item = TodoItem(
         slug="prep-item",

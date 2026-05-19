@@ -78,13 +78,11 @@ def test_handle_roadmap_show_prints_json_when_requested(
 
     get_service.assert_called_once_with(str(repo_root))
     service.roadmap.entries.assert_called_once_with(
-        include_icebox=False,
-        icebox_only=False,
-        include_delivered=False,
-        delivered_only=False,
+        include_icebox=True,
+        include_delivered=True,
         delivered_since=None,
     )
-    assert json.loads(capsys.readouterr().out) == [{"slug": "sample", "status": "ready"}]
+    assert json.loads(capsys.readouterr().out) == {"active": [{"slug": "sample", "status": "ready"}]}
 
 
 def test_handle_roadmap_add_forwards_parsed_options(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

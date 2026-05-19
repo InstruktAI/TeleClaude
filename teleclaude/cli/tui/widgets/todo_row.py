@@ -24,12 +24,6 @@ _DIM = Style(dim=True)
 _PHASE_PREFIX_LIFECYCLE = "P"
 _PHASE_PREFIX_INTEGRATION = "I"
 
-_LIFECYCLE_LABEL_INTAKE = "intake"
-_LIFECYCLE_LABEL_ARCHITECTURE = "architecture"
-_LIFECYCLE_LABEL_SPECS = "specs"
-_LIFECYCLE_LABEL_PLANNING = "planning"
-_LIFECYCLE_LABEL_READY = "ready"
-
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
 _INTEGRATION_LABEL_READY = "ready"
@@ -45,16 +39,16 @@ _TODO_STATUS_DELIVERED = "delivered"
 _TODO_STATUS_ICEBOX = "icebox"
 
 _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
-    LifecyclePhase.DRAFT: "draft",
-    LifecyclePhase.PRD_DRAFTING: _LIFECYCLE_LABEL_INTAKE,
-    LifecyclePhase.PRD_HUMAN_APPROVAL: _LIFECYCLE_LABEL_INTAKE,
-    LifecyclePhase.ARCHITECTURE_DRAFTING: _LIFECYCLE_LABEL_ARCHITECTURE,
-    LifecyclePhase.ARCHITECTURE_REVIEW: _LIFECYCLE_LABEL_ARCHITECTURE,
-    LifecyclePhase.TEST_SPECS_DRAFTING: _LIFECYCLE_LABEL_SPECS,
-    LifecyclePhase.TEST_SPECS_REVIEW: _LIFECYCLE_LABEL_SPECS,
-    LifecyclePhase.PLAN_DRAFTING: _LIFECYCLE_LABEL_PLANNING,
-    LifecyclePhase.PLAN_REVIEW: _LIFECYCLE_LABEL_PLANNING,
-    LifecyclePhase.PREPARED: _LIFECYCLE_LABEL_READY,
+    LifecyclePhase.DRAFT: "intake",
+    LifecyclePhase.PRD_DRAFTING: "PRD drafting",
+    LifecyclePhase.PRD_HUMAN_APPROVAL: "PRD approval",
+    LifecyclePhase.ARCHITECTURE_DRAFTING: "arch drafting",
+    LifecyclePhase.ARCHITECTURE_REVIEW: "arch review",
+    LifecyclePhase.TEST_SPECS_DRAFTING: "specs drafting",
+    LifecyclePhase.TEST_SPECS_REVIEW: "specs review",
+    LifecyclePhase.PLAN_DRAFTING: "plan drafting",
+    LifecyclePhase.PLAN_REVIEW: "plan review",
+    LifecyclePhase.PREPARED: "prepared",
     LifecyclePhase.BLOCKED: "blocked",
 }
 
@@ -121,7 +115,7 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
     if phase == "started":
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_STARTED, _ok_color()
     if phase == "delivered":
-        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _ok_color()
+        return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _muted_color()
     if not phase:
         finalize_to_label = {
             _FINALIZE_LABEL_QUEUED: _INTEGRATION_LABEL_QUEUED,
@@ -288,18 +282,10 @@ class TodoRow(TelecMixin, Widget):
         return self.todo.slug
 
     def _status_style(self) -> Style:
+        # Status is authoritative from the projection (holders already carry their
+        # leaf-derived status). The TUI never re-derives it.
         label = self.todo.status.display_label
-        # Holders derive color from children
-        if self.todo.children_statuses:
-            if all(s == "delivered" for s in self.todo.children_statuses):
-                label = _TODO_STATUS_DELIVERED
-            elif any(s == "in_progress" for s in self.todo.children_statuses):
-                label = _TODO_STATUS_ACTIVE
-            elif all(s == "ready" for s in self.todo.children_statuses):
-                label = _TODO_STATUS_READY
-            else:
-                label = _TODO_STATUS_DRAFT
-        elif self.todo.integration_phase == "started":
+        if self.todo.integration_phase == "started":
             label = _TODO_STATUS_ACTIVE
         colors = _STATUS_COLORS_DARK if is_dark_mode() else _STATUS_COLORS_LIGHT
         color = colors.get(label, colors[_TODO_STATUS_DRAFT])
@@ -323,8 +309,8 @@ class TodoRow(TelecMixin, Widget):
         """Build aligned property columns. Prepare rows use P, work rows use B/R/F/D."""
         target = self._total_col_width()
 
-        # Holders show no phase columns — their status block derives from children
-        if self.todo.children_statuses:
+        # Holders show no phase columns — status is the projection's leaf aggregate
+        if self.todo.is_holder:
             return _pad(Text(), target)
 
         # Icebox items show P:icebox only — no work-phase columns

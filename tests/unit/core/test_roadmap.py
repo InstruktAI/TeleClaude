@@ -389,3 +389,148 @@ async def test_roadmap_projection_defaults_missing_state_row_to_draft(tmp_path: 
     assert len(todos) == 1
     assert todos[0].slug == "stateless-item"
     assert todos[0].lifecycle_phase == "draft"
+
+
+@pytest.mark.asyncio
+async def test_delivered_draft_kind_todo_projects_delivered_not_pending(tmp_path: Path) -> None:
+    """Regression: a delivered todo whose kind is still 'draft' must project status
+    'delivered' (filled square), not 'pending' (empty square).
+
+    The status projection must reflect lifecycle position, not the kind triage
+    attribute. Previously a `kind == "draft"` gate forced status='pending' even
+    after full delivery, desyncing the square glyph from the I:delivered column.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("delivered-draft-kind", description="Done, never kind-upgraded")
+        await database.write_state(
+            "delivered-draft-kind",
+            {
+                "schema_version": 2,
+                "kind": "draft",
+                "phase": "delivered",
+                "lifecycle_phase": "handed_off",
+                "integration_phase": "delivered",
+            },
+        )
+        await database.deliver("delivered-draft-kind", commit="abc123")
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_delivered=True)
+
+    match = [t for t in todos if t.slug == "delivered-draft-kind"]
+    assert len(match) == 1
+    assert match[0].status == "delivered"
+    assert match[0].integration_phase == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_in_prepare_draft_kind_todo_projects_in_progress_not_pending(tmp_path: Path) -> None:
+    """Regression: a draft-kind todo that has started the prepare lifecycle must
+    project status 'in_progress', not 'pending'.
+
+    A brain-dump todo keeps kind='draft' until triaged; once prepare starts its
+    lifecycle_phase advances past DRAFT. The status projection must follow the
+    lifecycle pointer, not the stale kind.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("preparing-draft-kind", description="Brain dump, prepare started")
+        await database.write_state(
+            "preparing-draft-kind",
+            {
+                "schema_version": 2,
+                "kind": "draft",
+                "phase": "in_progress",
+                "lifecycle_phase": "prd_drafting",
+            },
+        )
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project))
+
+    assert len(todos) == 1
+    assert todos[0].slug == "preparing-draft-kind"
+    assert todos[0].status == "in_progress"
+    assert todos[0].lifecycle_phase == "prd_drafting"
+
+
+@pytest.mark.asyncio
+async def test_delivered_wins_over_never_advanced_draft_lifecycle(tmp_path: Path) -> None:
+    """Regression: a delivered todo whose lifecycle_phase never left 'draft'
+    must project status 'delivered', not 'pending'.
+
+    A brain-dump delivered without lifecycle progression keeps
+    lifecycle_phase='draft'; the draft gate must not override the delivered
+    roadmap status / delivered state phase.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("delivered-draft-lifecycle", description="Shipped, never triaged")
+        await database.write_state(
+            "delivered-draft-lifecycle",
+            {"schema_version": 2, "kind": "draft", "phase": "delivered", "lifecycle_phase": "draft"},
+        )
+        await database.deliver("delivered-draft-lifecycle", commit="def456")
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_delivered=True)
+
+    match = [t for t in todos if t.slug == "delivered-draft-lifecycle"]
+    assert len(match) == 1
+    assert match[0].status == "delivered"
+    assert match[0].integration_phase == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_holder_status_is_derived_from_leaf_children(tmp_path: Path) -> None:
+    """A holder has no status of its own — it is the aggregate of its leaf
+    children. All children delivered ⇒ the holder projects 'delivered' even
+    when its own roadmap/lifecycle row is stale ('active'/'prepared').
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("holder", description="Container")
+        await database.write_state(
+            "holder", {"schema_version": 2, "phase": "in_progress", "lifecycle_phase": "prepared"}
+        )
+        for child in ("child-a", "child-b"):
+            await database.add_to_roadmap(child, description=child, group_slug="holder")
+            await database.write_state(
+                child,
+                {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "handed_off"},
+            )
+            await database.deliver(child, commit=f"{child}-sha")
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_delivered=True)
+    holder = next(t for t in todos if t.slug == "holder")
+    assert holder.status == "delivered"

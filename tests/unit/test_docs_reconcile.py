@@ -8,8 +8,7 @@ from typing import cast
 import frontmatter
 
 from teleclaude import docs_reconcile
-from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET
-from teleclaude.resource_validation import _snippet
+from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET, RoadmapStatus
 
 
 def _write_snippet(
@@ -62,8 +61,8 @@ def test_reconcile_flips_fully_delivered_target_to_implicit_actual(tmp_path: Pat
     results = docs_reconcile.reconcile_snippet_status(
         tmp_path,
         {
-            "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-            "work-b": _snippet.ROADMAP_STATUS_DELIVERED,
+            "work-a": RoadmapStatus.DELIVERED,
+            "work-b": RoadmapStatus.DELIVERED,
         },
     )
 
@@ -87,7 +86,7 @@ def test_reconcile_flips_fully_delivered_mixed_to_implicit_actual(tmp_path: Path
 
     docs_reconcile.reconcile_snippet_status(
         tmp_path,
-        {"work-a": _snippet.ROADMAP_STATUS_DELIVERED},
+        {"work-a": RoadmapStatus.DELIVERED},
     )
 
     assert "status" not in _metadata(snippet_path)
@@ -104,8 +103,8 @@ def test_reconcile_removes_only_delivered_slug_from_partial_snippet(tmp_path: Pa
     docs_reconcile.reconcile_snippet_status(
         tmp_path,
         {
-            "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-            "work-b": _snippet.ROADMAP_STATUS_ACTIVE,
+            "work-a": RoadmapStatus.DELIVERED,
+            "work-b": RoadmapStatus.ACTIVE,
         },
     )
 
@@ -136,8 +135,8 @@ def test_reconcile_preserves_unicode_description_bytes_during_partial_flip(tmp_p
     docs_reconcile.reconcile_snippet_status(
         tmp_path,
         {
-            "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-            "work-b": _snippet.ROADMAP_STATUS_ACTIVE,
+            "work-a": RoadmapStatus.DELIVERED,
+            "work-b": RoadmapStatus.ACTIVE,
         },
     )
 
@@ -169,8 +168,8 @@ def test_reconcile_preserves_non_lifecycle_frontmatter_values_during_partial_fli
     docs_reconcile.reconcile_snippet_status(
         tmp_path,
         {
-            "work-a": _snippet.ROADMAP_STATUS_DELIVERED,
-            "work-b": _snippet.ROADMAP_STATUS_ACTIVE,
+            "work-a": RoadmapStatus.DELIVERED,
+            "work-b": RoadmapStatus.ACTIVE,
         },
     )
 
@@ -192,7 +191,7 @@ def test_reconcile_preserves_body_bytes_when_flipping_frontmatter(tmp_path: Path
 
     docs_reconcile.reconcile_snippet_status(
         tmp_path,
-        {"work-a": _snippet.ROADMAP_STATUS_DELIVERED},
+        {"work-a": RoadmapStatus.DELIVERED},
     )
 
     body_after = snippet_path.read_text(encoding="utf-8").split("---\n", 2)[2]
@@ -210,8 +209,8 @@ def test_reconcile_is_noop_when_no_slugs_are_delivered(tmp_path: Path) -> None:
     results = docs_reconcile.reconcile_snippet_status(
         tmp_path,
         {
-            "work-a": _snippet.ROADMAP_STATUS_ACTIVE,
-            "work-b": _snippet.ROADMAP_STATUS_ICEBOX,
+            "work-a": RoadmapStatus.ACTIVE,
+            "work-b": RoadmapStatus.ICEBOX,
         },
     )
 
@@ -230,7 +229,7 @@ def test_reconcile_leaves_snippets_without_delivered_by_unchanged(tmp_path: Path
 
     results = docs_reconcile.reconcile_snippet_status(
         tmp_path,
-        {"work-a": _snippet.ROADMAP_STATUS_DELIVERED},
+        {"work-a": RoadmapStatus.DELIVERED},
     )
 
     assert results == []
@@ -243,7 +242,7 @@ def test_reconcile_is_idempotent_across_runs(tmp_path: Path) -> None:
         "docs/project/spec/snippet.md",
         delivered_by=["work-a"],
     )
-    roadmap_status_map = {"work-a": _snippet.ROADMAP_STATUS_DELIVERED}
+    roadmap_status_map = {"work-a": RoadmapStatus.DELIVERED}
 
     first_results = docs_reconcile.reconcile_snippet_status(tmp_path, roadmap_status_map)
     second_results = docs_reconcile.reconcile_snippet_status(tmp_path, roadmap_status_map)

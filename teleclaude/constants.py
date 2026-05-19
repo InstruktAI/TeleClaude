@@ -4,7 +4,7 @@ This module defines shared constants to ensure consistency.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import Enum, StrEnum
 
 # Domain scopes (single source of truth)
 # Used for snippet validation — every docs/global/<domain>/ must be listed here
@@ -62,6 +62,29 @@ SNIPPET_STATUS_ACTUAL = "actual"
 SNIPPET_STATUS_TARGET = "target"
 SNIPPET_STATUS_MIXED = "mixed"
 SNIPPET_STATUS_VALUES = (SNIPPET_STATUS_ACTUAL, SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED)
+
+
+class RoadmapStatus(StrEnum):
+    """Roadmap table `status` column and projected todo status (CLI/API/TUI)."""
+
+    DRAFT = "draft"
+    PENDING = "pending"
+    ACTIVE = "active"
+    READY = "ready"
+    IN_PROGRESS = "in_progress"
+    ICEBOX = "icebox"
+    DELIVERED = "delivered"
+
+
+class IntegrationPhase(StrEnum):
+    """Canonical integration-phase pointer values."""
+
+    STARTED = "started"
+    DELIVERED = "delivered"
+
+
+# Fallback todo kind when state.kind is absent or non-string (singular use).
+TODO_KIND_DEFAULT = "todo"
 
 # Todo artifact names — canonical values for the `name` column of todo_artifacts.
 ARTIFACT_INPUT = "input"

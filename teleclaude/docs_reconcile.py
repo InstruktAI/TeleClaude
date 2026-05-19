@@ -9,7 +9,7 @@ from typing import TypedDict, cast
 
 import yaml
 
-from teleclaude.resource_validation._snippet import ROADMAP_STATUS_DELIVERED
+from teleclaude.constants import RoadmapStatus
 from teleclaude.snippet_roots import iter_snippet_roots, snippet_files
 
 
@@ -88,7 +88,7 @@ def _reconciled_metadata(
     delivered_by: list[str],
     roadmap_status_map: Mapping[str, str],
 ) -> tuple[SnippetFrontmatter | None, tuple[str, ...]]:
-    delivered_slugs = tuple(slug for slug in delivered_by if roadmap_status_map.get(slug) == ROADMAP_STATUS_DELIVERED)
+    delivered_slugs = tuple(slug for slug in delivered_by if roadmap_status_map.get(slug) == RoadmapStatus.DELIVERED)
     if not delivered_slugs:
         return None, ()
     next_metadata = cast(SnippetFrontmatter, dict(metadata))

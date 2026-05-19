@@ -578,6 +578,36 @@ class PreparationViewActionsMixin:
         self.post_message(StateChanged())  # type: ignore[attr-defined]
         self._rebuild()  # type: ignore[attr-defined]
 
+    def action_toggle_delivered(self) -> None:
+        """d: toggle the delivered section visibility, scoped to computer or project."""
+        item = self._current_item()  # type: ignore[attr-defined]
+        if isinstance(item, ComputerHeader):
+            comp_name = item.data.computer.name
+            project_paths = [
+                p.path
+                for p in self._projects_with_todos  # type: ignore[attr-defined]
+                if (p.computer or "local") == comp_name
+            ]
+            # Toggle: if all are visible, hide all; otherwise show all
+            all_visible = all(p in self._delivered_projects for p in project_paths)  # type: ignore[attr-defined]
+            for path in project_paths:
+                if all_visible:
+                    self._delivered_projects.discard(path)  # type: ignore[attr-defined]
+                else:
+                    self._delivered_projects.add(path)  # type: ignore[attr-defined]
+        else:
+            context = self._resolve_cursor_context()  # type: ignore[attr-defined]
+            if not context:
+                return
+            _, project_path, _ = context
+            if project_path in self._delivered_projects:  # type: ignore[attr-defined]
+                self._delivered_projects.discard(project_path)  # type: ignore[attr-defined]
+            else:
+                self._delivered_projects.add(project_path)  # type: ignore[attr-defined]
+
+        self.post_message(StateChanged())  # type: ignore[attr-defined]
+        self._rebuild()  # type: ignore[attr-defined]
+
     def action_unfreeze(self) -> None:
         """u: unfreeze an icebox todo back to active roadmap."""
         row = self._current_todo_row()  # type: ignore[attr-defined]

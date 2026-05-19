@@ -26,4 +26,4 @@ class TodoItem:
     integration_phase: str | None = None
     finalize_status: str | None = None
     project_path: str | None = None
-    children_statuses: list[str] = field(default_factory=list)
+    is_holder: bool = False

@@ -17,6 +17,7 @@ import json
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.roadmap import parse_since_to_cutoff
+from teleclaude.core.roadmap_tree import RoadmapNode, build_roadmap_sections, flatten
 from teleclaude.services.work import get_work_service
 
 __all__ = [
@@ -71,18 +72,16 @@ def _handle_roadmap_show(args: list[str]) -> None:
     project_root = _resolve_roadmap_project_root()
 
     since_cutoff = parsed["since_cutoff"]
-    include_delivered = parsed["include_delivered"]
-    # `--since` on its own means "delivered since X" — imply --include-delivered
-    # so agents don't have to pass both flags for the obvious intent.
-    if since_cutoff and not include_delivered and not parsed["delivered_only"]:
-        include_delivered = True
+    show_delivered = parsed["include_delivered"] or parsed["delivered_only"] or bool(since_cutoff)
+    show_icebox = parsed["include_icebox"] or parsed["icebox_only"]
 
+    # Fetch the full roadmap so holder status derives correctly (a holder's raw
+    # row status is stale; it only becomes delivered via the derivation pass).
+    # Flags then select which sections to display — not which rows to fetch.
     svc = get_work_service(str(project_root))
     todos = svc.roadmap.entries(
-        include_icebox=parsed["include_icebox"],
-        icebox_only=parsed["icebox_only"],
-        include_delivered=include_delivered,
-        delivered_only=parsed["delivered_only"],
+        include_icebox=True,
+        include_delivered=True,
         delivered_since=since_cutoff or None,
     )
 
@@ -93,11 +92,24 @@ def _handle_roadmap_show(args: list[str]) -> None:
             print("Roadmap is empty.")
         return
 
+    sections = build_roadmap_sections(todos)
+    if parsed["delivered_only"]:
+        section_items = [("delivered", sections.delivered)]
+    elif parsed["icebox_only"]:
+        section_items = [("icebox", sections.icebox)]
+    else:
+        section_items = [("active", sections.active)]
+        if show_delivered:
+            section_items.append(("delivered", sections.delivered))
+        if show_icebox:
+            section_items.append(("icebox", sections.icebox))
+
     if parsed["json_output"]:
-        print(json.dumps([_todo_to_trimmed_dict(t) for t in todos], indent=2))
+        payload = {name: [_node_to_dict(n) for n in nodes] for name, nodes in section_items if nodes}
+        print(json.dumps(payload, indent=2))
         return
 
-    _print_grouped_roadmap(todos)
+    _print_sectioned_roadmap(section_items)
 
 
 class _RoadmapShowArgs(TypedDict):
@@ -156,28 +168,21 @@ def _parse_roadmap_show_args(args: list[str]) -> _RoadmapShowArgs:
     return parsed
 
 
-def _print_grouped_roadmap(todos: list[TodoDTO]) -> None:
-    groups: dict[str, list[TodoDTO]] = {}
-    for todo in todos:
-        groups.setdefault(todo.group or "", []).append(todo)
-
+def _print_sectioned_roadmap(sections: list[tuple[str, list[RoadmapNode]]]) -> None:
     first = True
-    for group_name, group_todos in groups.items():
+    for name, nodes in sections:
+        if not nodes:
+            continue
         if not first:
             print()
         first = False
-        if group_name:
-            print(f"  {group_name}")
-            print(f"  {'─' * len(group_name)}")
-        elif len(groups) > 1:
-            print()
-
-        for todo in group_todos:
-            parts = [f"    {todo.slug} [{todo.status}]"]
-            if todo.description:
-                parts.append(f" {todo.description}")
-            if todo.after:
-                parts.append(f" (after: {', '.join(todo.after)})")
+        print(f"{name}:")
+        for row in flatten(nodes):
+            parts = [f"    {'  ' * row.depth}{row.todo.slug}"]
+            if row.todo.description:
+                parts.append(f" {row.todo.description}")
+            if row.todo.after:
+                parts.append(f" (after: {', '.join(row.todo.after)})")
             print("".join(parts))
 
 
@@ -190,6 +195,7 @@ class _TrimmedTodoDict(TypedDict, total=False):
     after: list[str]
     group: str
     delivered_at: str
+    children: list[_TrimmedTodoDict]
 
 
 def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
@@ -203,6 +209,14 @@ def _todo_to_trimmed_dict(todo: TodoDTO) -> _TrimmedTodoDict:
         result["group"] = todo.group
     if todo.delivered_at:
         result["delivered_at"] = todo.delivered_at
+    return result
+
+
+def _node_to_dict(node: RoadmapNode) -> _TrimmedTodoDict:
+    """Nested JSON node: trimmed todo fields plus recursive children."""
+    result = _todo_to_trimmed_dict(node.todo)
+    if node.children:
+        result["children"] = [_node_to_dict(child) for child in node.children]
     return result
 
 

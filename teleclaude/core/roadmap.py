@@ -11,6 +11,7 @@ from pathlib import Path
 from instrukt_ai_logging import get_logger
 
 from teleclaude.api_models import TodoDTO
+from teleclaude.constants import TODO_KIND_DEFAULT, IntegrationPhase, RoadmapStatus
 from teleclaude.core.next_machine.lifecycle import (
     LifecyclePhase,
     derive_build_status,
@@ -74,6 +75,55 @@ def parse_since_to_cutoff(value: str) -> str:
 
 def _non_empty_str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _apply_holder_status(todos: list[TodoDTO]) -> list[TodoDTO]:
+    """Override each holder's status with the aggregate of its leaf children.
+
+    A holder carries no status of its own — it is always the recursive
+    leaf-children aggregate. Derived here so every consumer reads one
+    authoritative value.
+    """
+    by_slug = {t.slug: t for t in todos}
+    children_by_parent: dict[str, list[str]] = {}
+    for todo in todos:
+        if todo.group:
+            children_by_parent.setdefault(todo.group, []).append(todo.slug)
+
+    def _leaf_statuses(slug: str, seen: set[str]) -> list[str]:
+        if slug in seen:
+            return []
+        seen.add(slug)
+        kids = children_by_parent.get(slug)
+        if not kids:
+            leaf = by_slug.get(slug)
+            if leaf is None or leaf.status == RoadmapStatus.ICEBOX:
+                return []
+            return [leaf.status]
+        collected: list[str] = []
+        for kid in kids:
+            collected.extend(_leaf_statuses(kid, seen))
+        return collected
+
+    for parent_slug in children_by_parent:
+        holder = by_slug.get(parent_slug)
+        if holder is None:
+            continue
+        leaf_statuses = _leaf_statuses(parent_slug, set())
+        if not leaf_statuses:
+            continue
+        if all(s == RoadmapStatus.DELIVERED for s in leaf_statuses):
+            derived = RoadmapStatus.DELIVERED
+        elif any(s == RoadmapStatus.IN_PROGRESS for s in leaf_statuses):
+            derived = RoadmapStatus.IN_PROGRESS
+        elif all(s == RoadmapStatus.READY for s in leaf_statuses):
+            derived = RoadmapStatus.READY
+        else:
+            derived = RoadmapStatus.PENDING
+        if derived != holder.status:
+            by_slug[parent_slug] = holder.model_copy(update={"status": derived})
+
+    return [by_slug[t.slug] for t in todos]
 
 
 def assemble_roadmap_from_db(
@@ -191,7 +241,6 @@ def assemble_roadmap_from_db(
             # --- Derive display values from canonical lifecycle state ---
 
             kind = state.get("kind")
-            is_draft = kind == "draft"
 
             finalize_raw = state.get("finalize")
             finalize = finalize_raw if isinstance(finalize_raw, dict) else {}
@@ -205,36 +254,38 @@ def assemble_roadmap_from_db(
             is_draft_lifecycle = lifecycle == LifecyclePhase.DRAFT
 
             state_phase = state.get("phase", "")
-            is_delivered = state_phase == "delivered"
+            is_delivered = state_phase == RoadmapStatus.DELIVERED
 
             # Build/review status and lifecycle display phase derive from the
             # canonical lifecycle pointer via shared lifecycle helpers.
-            build_status = derive_build_status(current_value, is_draft=is_draft, is_delivered=is_delivered)
-            review_status = derive_review_status(current_value, is_draft=is_draft, is_delivered=is_delivered)
+            build_status = derive_build_status(current_value, is_draft=is_draft_lifecycle, is_delivered=is_delivered)
+            review_status = derive_review_status(current_value, is_draft=is_draft_lifecycle, is_delivered=is_delivered)
             lifecycle_phase = None if is_delivered else current_value
 
             raw_integration_phase = _non_empty_str(state.get("integration_phase"))
             # Normalize legacy 12-phase mirror values to the two canonical values.
-            if raw_integration_phase and raw_integration_phase not in ("started", "delivered"):
-                integration_phase: str | None = "started"
+            if raw_integration_phase and raw_integration_phase not in tuple(IntegrationPhase):
+                integration_phase: str | None = IntegrationPhase.STARTED
             else:
                 integration_phase = raw_integration_phase
 
             todo_status = row[5]  # active/icebox/delivered
-            if is_draft or is_draft_lifecycle:
-                todo_status = "pending"
-            elif todo_status == "delivered":
-                integration_phase = "delivered"
+            if todo_status == RoadmapStatus.DELIVERED or is_delivered:
+                # Delivered wins over a never-advanced draft lifecycle pointer.
+                todo_status = RoadmapStatus.DELIVERED
+                integration_phase = IntegrationPhase.DELIVERED
+            elif is_draft_lifecycle:
+                todo_status = RoadmapStatus.PENDING
             ready, _ = is_ready_for_work(
-                kind=kind if isinstance(kind, str) else "todo",
+                kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
                 lifecycle_phase=lifecycle_phase,
             )
-            if not is_draft and todo_status == "active" and build_status:
-                todo_status = "in_progress"
-            elif not is_draft and todo_status == "active" and ready:
-                todo_status = "ready"
-            elif not is_draft and todo_status == "active" and lifecycle_phase:
-                todo_status = "in_progress"
+            if todo_status == RoadmapStatus.ACTIVE and build_status:
+                todo_status = RoadmapStatus.IN_PROGRESS
+            elif todo_status == RoadmapStatus.ACTIVE and ready:
+                todo_status = RoadmapStatus.READY
+            elif todo_status == RoadmapStatus.ACTIVE and lifecycle_phase:
+                todo_status = RoadmapStatus.IN_PROGRESS
 
             todos.append(
                 TodoDTO(
@@ -255,6 +306,8 @@ def assemble_roadmap_from_db(
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at
+
+        todos = _apply_holder_status(todos)
 
         total_dt = time.perf_counter() - started_at
         if total_dt >= 2.0:

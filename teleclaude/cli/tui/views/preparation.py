@@ -13,20 +13,21 @@ from textual.containers import VerticalScroll
 from textual.reactive import reactive
 from textual.widget import Widget
 
-from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO
+from teleclaude.api_models import AgentAvailabilityDTO, ComputerDTO, ProjectDTO, ProjectWithTodosDTO, TodoDTO
 from teleclaude.cli.tui.messages import CreateSessionRequest, StateChanged
-from teleclaude.cli.tui.prep_tree import build_dep_tree
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.tree import ComputerDisplayInfo
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
+from teleclaude.cli.tui.widgets.delivered_separator import DeliveredSeparator
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
 from teleclaude.cli.tui.widgets.icebox_separator import IceboxSeparator
 from teleclaude.cli.tui.widgets.modals import StartSessionModal
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow, row_content_width
+from teleclaude.core.roadmap_tree import FlatRow, build_roadmap_sections, flatten
 from teleclaude.todo_artifacts import artifact_display_filename
 
 
@@ -54,7 +55,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("left", "collapse", "Collapse", key_display="←", group=Binding.Group("Fold", compact=True), show=False),
         Binding("right", "expand", "Expand", key_display="→", group=Binding.Group("Fold", compact=True), show=False),
         Binding("enter", "activate", "Toggle/Edit", show=False),
-        Binding("space", "preview_file", "View"),
+        Binding("space", "preview_file", "View", show=False),
         Binding(
             "equals_sign", "expand_all", "All", key_display="+", group=Binding.Group("Fold", compact=True), show=False
         ),
@@ -69,8 +70,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("r", "reconcile", "Reconcile"),
         Binding("R", "remove_todo", "Remove"),
         Binding("f", "freeze", "Freeze"),
-        Binding("i", "toggle_icebox", "Icebox"),
         Binding("u", "unfreeze", "Unfreeze"),
+        Binding("d", "toggle_delivered", "Delivered"),
+        Binding("i", "toggle_icebox", "Icebox"),
         Binding("shift+up", "move_todo_up", "Move Up", key_display="Shift+↑"),
         Binding("shift+down", "move_todo_down", "Move Down", key_display="Shift+↓"),
     ]
@@ -83,6 +85,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         self._projects_with_todos: list[ProjectWithTodosDTO] = []
         self._expanded_todos: set[str] = set()
         self._icebox_projects: set[str] = set()
+        self._delivered_projects: set[str] = set()
         self._nav_items: list[Widget] = []
         self._slug_to_project_path: dict[str, str] = {}
         self._slug_to_computer: dict[str, str] = {}
@@ -147,6 +150,9 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         icebox_projects = data.get("icebox_projects", [])
         if isinstance(icebox_projects, list):
             self._icebox_projects = {str(item) for item in icebox_projects}
+        delivered_projects = data.get("delivered_projects", [])
+        if isinstance(delivered_projects, list):
+            self._delivered_projects = {str(item) for item in delivered_projects}
 
     def _rebuild(self) -> None:  # noqa: C901
         """Rebuild the todo display from current data (Computer → Project → Todo)."""
@@ -164,63 +170,74 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 self._slug_to_project_path[t.slug] = p.path
                 self._slug_to_computer[t.slug] = p.computer or "local"
 
-        # Build all TodoItems once for width computation and reuse
-        all_todo_items: list[TodoItem] = []
-        icebox_items_by_project: dict[str, list[TodoItem]] = {}
-        for p in self._projects_with_todos:
-            for t in p.todos or []:
-                item = TodoItem(
-                    slug=t.slug,
-                    status=TodoStatus(t.status) if t.status in {s.value for s in TodoStatus} else TodoStatus.PENDING,
-                    description=t.description,
-                    has_requirements=t.has_requirements,
-                    has_impl_plan=t.has_impl_plan,
-                    build_status=t.build_status,
-                    review_status=t.review_status,
-                    deferrals_status=t.deferrals_status,
-                    files=t.files,
-                    after=t.after,
-                    group=t.group,
-                    lifecycle_phase=t.lifecycle_phase,
-                    integration_phase=t.integration_phase,
-                    finalize_status=t.finalize_status,
-                    project_path=t.project_path or p.path,
-                )
-                all_todo_items.append(item)
-                if item.status == TodoStatus.ICEBOX:
-                    icebox_items_by_project.setdefault(p.path, []).append(item)
-
-        # Populate children_statuses for holder todos (active only)
-        active_items = [t for t in all_todo_items if t.status != TodoStatus.ICEBOX]
-        item_by_slug = {t.slug: t for t in active_items}
-
-        # Inject synthetic parent items for label groups (group value not a real slug)
-        label_groups: set[str] = set()
-        for item in active_items:
-            if item.group and item.group not in item_by_slug:
-                label_groups.add(item.group)
-        for group_slug in label_groups:
-            synthetic = TodoItem(
-                slug=group_slug,
-                status=TodoStatus.PENDING,
-                description=None,
-                has_requirements=False,
-                has_impl_plan=False,
-                group=None,
+        def _item_from_dto(dto: TodoDTO, *, is_holder: bool = False) -> TodoItem:
+            valid = {s.value for s in TodoStatus}
+            return TodoItem(
+                slug=dto.slug,
+                status=TodoStatus(dto.status) if dto.status in valid else TodoStatus.PENDING,
+                description=dto.description,
+                has_requirements=dto.has_requirements,
+                has_impl_plan=dto.has_impl_plan,
+                build_status=dto.build_status,
+                review_status=dto.review_status,
+                deferrals_status=dto.deferrals_status,
+                files=dto.files,
+                after=dto.after,
+                group=dto.group,
+                lifecycle_phase=dto.lifecycle_phase,
+                integration_phase=dto.integration_phase,
+                finalize_status=dto.finalize_status,
+                project_path=dto.project_path,
+                is_holder=is_holder,
             )
-            active_items.append(synthetic)
-            item_by_slug[group_slug] = synthetic
 
-        for item in active_items:
-            if item.group and item.group in item_by_slug:
-                item_by_slug[item.group].children_statuses.append(item.status.value)
+        # Sectioned dependency trees come from the projection — the view renders;
+        # it does not derive hierarchy, grouping, or section membership.
+        project_sections = {p.path: build_roadmap_sections(list(p.todos or [])) for p in self._projects_with_todos}
 
-        slug_width = max((len(t.slug) for t in all_todo_items), default=0)
-        col_widths = TodoRow.compute_col_widths(all_todo_items)
+        all_items = [_item_from_dto(t) for p in self._projects_with_todos for t in (p.todos or [])]
+        slug_width = max((len(i.slug) for i in all_items), default=0)
+        col_widths = TodoRow.compute_col_widths(all_items)
 
-        # Build dependency tree from `after` graph (active items only)
-        tree_nodes = build_dep_tree(active_items)
-        max_depth = max((node.depth for node in tree_nodes), default=0) if tree_nodes else 0
+        max_depth = 0
+        for sections in project_sections.values():
+            for nodes in (sections.active, sections.delivered, sections.icebox):
+                for flat_row in flatten(nodes):
+                    max_depth = max(max_depth, flat_row.depth)
+
+        def _emit_row(row: FlatRow, project_path: str) -> None:
+            # Depth-0 items always use ├─ because GroupSeparator closes the tree
+            is_last = False if row.depth == 0 else row.is_last
+            item = _item_from_dto(row.todo, is_holder=row.is_holder)
+            todo_row = TodoRow(
+                todo=item,
+                is_last=is_last,
+                slug_width=slug_width,
+                col_widths=col_widths,
+                tree_lines=row.tree_lines,
+                max_depth=max_depth,
+            )
+            widgets_to_mount.append(todo_row)
+            self._nav_items.append(todo_row)
+            if row.todo.slug in self._expanded_todos and item.files:
+                file_tree_lines = [*row.tree_lines, not is_last]
+                sorted_files = sorted(item.files)
+                file_widgets: list[Widget] = [
+                    TodoFileRow(
+                        artifact_name=artifact_name,
+                        filename=artifact_display_filename(artifact_name),
+                        slug=row.todo.slug,
+                        project_path=project_path,
+                        is_last=(fi == len(sorted_files) - 1),
+                        tree_lines=file_tree_lines,
+                    )
+                    for fi, artifact_name in enumerate(sorted_files)
+                ]
+                widgets_to_mount.extend(file_widgets)
+                expanded_file_rows.append((todo_row, file_widgets))
+
+        def _sep_width() -> int:
+            return row_content_width(slug_width, max_depth, col_widths.get("_max", 0)) - 3
 
         # Group projects by computer, preserving trusted_dirs order from config
         computer_order: list[str] = []
@@ -269,70 +286,32 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
                 widgets_to_mount.append(header)
                 self._nav_items.append(header)
 
-                # Filter tree nodes to this project's active todos (include label group parents)
-                project_slugs = {td.slug for td in (project.todos or []) if td.status != "icebox"}
-                for lg in label_groups:
-                    if any(td.group == lg for td in (project.todos or []) if td.status != "icebox"):
-                        project_slugs.add(lg)
-                project_nodes = [node for node in tree_nodes if node.slug in project_slugs]
+                sections = project_sections[project.path]
+                rendered_any = False
 
-                for node in project_nodes:
-                    # Depth-0 items always use ├─ because GroupSeparator closes the tree
-                    is_last_sibling = False if node.depth == 0 else node.is_last
+                for flat_row in flatten(sections.active):
+                    _emit_row(flat_row, project.path)
+                    rendered_any = True
 
-                    row = TodoRow(
-                        todo=node.todo,
-                        is_last=is_last_sibling,
-                        slug_width=slug_width,
-                        col_widths=col_widths,
-                        tree_lines=node.tree_lines,
-                        max_depth=max_depth,
-                    )
-                    widgets_to_mount.append(row)
-                    self._nav_items.append(row)
+                # Delivered section — collapsible, rendered above icebox
+                if project.path in self._delivered_projects:
+                    delivered_rows = flatten(sections.delivered)
+                    if delivered_rows:
+                        widgets_to_mount.append(DeliveredSeparator(line_width=_sep_width()))
+                        for flat_row in delivered_rows:
+                            _emit_row(flat_row, project.path)
+                        rendered_any = True
 
-                    # Collect file rows for expanded todos
-                    if node.slug in self._expanded_todos and node.todo.files:
-                        # File tree_lines = parent's lines + parent's own branch continuation
-                        file_tree_lines = node.tree_lines + [not is_last_sibling]
-                        sorted_files = sorted(node.todo.files)
-                        file_widgets: list[Widget] = []
-                        for fi, artifact_name in enumerate(sorted_files):
-                            f_last = fi == len(sorted_files) - 1
-                            file_row = TodoFileRow(
-                                artifact_name=artifact_name,
-                                filename=artifact_display_filename(artifact_name),
-                                slug=node.slug,
-                                project_path=project.path,
-                                is_last=f_last,
-                                tree_lines=file_tree_lines,
-                            )
-                            file_widgets.append(file_row)
-                            widgets_to_mount.append(file_row)
-                        expanded_file_rows.append((row, file_widgets))
+                # Icebox section — collapsible
+                if project.path in self._icebox_projects:
+                    icebox_rows = flatten(sections.icebox)
+                    if icebox_rows:
+                        widgets_to_mount.append(IceboxSeparator(line_width=_sep_width()))
+                        for flat_row in icebox_rows:
+                            _emit_row(flat_row, project.path)
+                        rendered_any = True
 
-                # Render icebox section when toggled on for this project
-                project_icebox = icebox_items_by_project.get(project.path, [])
-                show_icebox = project.path in self._icebox_projects and project_icebox
-                if show_icebox:
-                    # IceboxSeparator renders "  ├" (3 chars) + line_width dashes.
-                    # Total matches the shared natural todo-row width.
-                    sep_width = row_content_width(slug_width, max_depth, col_widths.get("_max", 0)) - 3
-                    widgets_to_mount.append(IceboxSeparator(line_width=sep_width))
-                    for ice_item in project_icebox:
-                        # Depth-0: use ├─ (GroupSeparator closes the tree)
-                        ice_row = TodoRow(
-                            todo=ice_item,
-                            is_last=False,
-                            slug_width=slug_width,
-                            col_widths=col_widths,
-                            tree_lines=[],
-                            max_depth=max_depth,
-                        )
-                        widgets_to_mount.append(ice_row)
-                        self._nav_items.append(ice_row)
-
-                if project_nodes or show_icebox:
+                if rendered_any:
                     widgets_to_mount.append(GroupSeparator(connector_col=ProjectHeader.CONNECTOR_COL))
 
         # Single batch mount - one layout reflow instead of N
@@ -597,6 +576,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         return {
             "expanded_todos": sorted(self._expanded_todos),
             "icebox_projects": sorted(self._icebox_projects),
+            "delivered_projects": sorted(self._delivered_projects),
         }
 
 
