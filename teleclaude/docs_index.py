@@ -145,12 +145,14 @@ class ThirdPartyIndexPayload(TypedDict):
 
 def _copy_status_metadata(entry: SnippetEntry, metadata: Mapping[str, object]) -> None:
     raw_status = metadata.get("status")
+    if not isinstance(raw_status, str):
+        return
     if raw_status not in (SNIPPET_STATUS_TARGET, SNIPPET_STATUS_MIXED):
         return
     entry["status"] = raw_status
     raw_delivered_by = metadata.get("delivered_by")
     if isinstance(raw_delivered_by, list) and all(isinstance(slug, str) for slug in raw_delivered_by):
-        entry["delivered_by"] = raw_delivered_by
+        entry["delivered_by"] = list(raw_delivered_by)
 
 
 # ---------------------------------------------------------------------------
