@@ -301,9 +301,10 @@ async def test_delivered_since_scopes_delivered_entries(tmp_path: Path) -> None:
     assert "old-d" not in slugs
 
 
-def test_parse_since_to_cutoff_durations_and_dates() -> None:
-    """`--since` parsing accepts durations and ISO dates, rejects garbage."""
+def test_parse_since_to_cutoff_duration_units() -> None:
+    """`--since` duration units (h/d/w) resolve to the right past offset."""
     now = datetime.now(UTC)
+
     h72 = datetime.fromisoformat(parse_since_to_cutoff("72h"))
     assert timedelta(hours=71) < now - h72 < timedelta(hours=73)
 
@@ -313,9 +314,56 @@ def test_parse_since_to_cutoff_durations_and_dates() -> None:
     w2 = datetime.fromisoformat(parse_since_to_cutoff("2w"))
     assert timedelta(days=13, hours=23) < now - w2 < timedelta(days=14, hours=1)
 
+
+def test_parse_since_to_cutoff_iso_date_is_utc() -> None:
+    """A bare ISO date is interpreted as midnight UTC."""
     iso = datetime.fromisoformat(parse_since_to_cutoff("2026-05-01"))
     assert iso == datetime(2026, 5, 1, tzinfo=UTC)
 
+
+def test_parse_since_to_cutoff_normalises_tz_aware_to_utc() -> None:
+    """Regression: a non-UTC offset must be normalised to UTC.
+
+    Stored delivered_at values are UTC ISO strings compared lexicographically
+    in SQLite. A preserved +05:00 offset would make the string comparison
+    disagree with chronological order and wrongly exclude rows.
+    """
+    cutoff = parse_since_to_cutoff("2026-05-01T00:00:00+05:00")
+    # 2026-05-01T00:00:00+05:00 == 2026-04-30T19:00:00Z, normalised to UTC.
+    assert datetime.fromisoformat(cutoff) == datetime(2026, 4, 30, 19, 0, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_delivered_since_tz_offset_filters_chronologically(tmp_path: Path) -> None:
+    """Regression: a tz-offset --since must filter by real chronology, not raw ISO text.
+
+    delivered_at is stored as a UTC ISO string and compared lexicographically
+    in SQLite. An entry delivered 2026-04-30T20:00:00Z is chronologically
+    after the cutoff 2026-05-01T00:00:00+05:00 (== 2026-04-30T19:00:00Z), so it
+    MUST be returned. Without UTC normalisation the cutoff string sorts after
+    the row and the entry is wrongly excluded.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("after-cutoff", description="delivered 20:00Z")
+        await database.write_state("after-cutoff", {"schema_version": 2, "phase": "in_progress"})
+        await database.deliver("after-cutoff", commit="ac-sha", delivered_at="2026-04-30T20:00:00+00:00")
+    finally:
+        await database.close()
+
+    cutoff = parse_since_to_cutoff("2026-05-01T00:00:00+05:00")
+    scoped = assemble_roadmap_from_db(str(project), include_delivered=True, delivered_since=cutoff)
+    assert "after-cutoff" in {t.slug for t in scoped}
+
+
+def test_parse_since_to_cutoff_rejects_invalid_input() -> None:
+    """Empty, non-numeric, unknown-unit, negative, and bad-date input all raise."""
     for bad in ("", "soon", "7y", "-3d", "2026-13-99"):
         with pytest.raises(ValueError):
             parse_since_to_cutoff(bad)

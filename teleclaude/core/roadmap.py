@@ -41,8 +41,12 @@ def parse_since_to_cutoff(value: str) -> str:
 
     Accepts a relative duration (``<int><unit>`` where unit is ``h`` hours,
     ``d`` days, or ``w`` weeks — e.g. ``72h``, ``7d``, ``2w``) or an absolute
-    date / ISO timestamp (``2026-05-01`` or ``2026-05-01T12:30:00+00:00``).
-    Naive datetimes are assumed UTC. The return is always re-serialised via
+    date / ISO timestamp (``2026-05-01`` or ``2026-05-01T12:30:00+05:00``).
+    Naive datetimes are assumed UTC; timezone-aware inputs are normalised to
+    UTC. Stored ``delivered_at`` values are UTC ISO strings compared
+    lexicographically in SQLite, so the cutoff MUST also be a UTC (``+00:00``)
+    ISO string — a non-UTC offset would make the string comparison disagree
+    with chronological order. The return is always re-serialised via
     ``isoformat()`` so callers never embed raw user text into SQL.
 
     Raises ``ValueError`` with an actionable message on unparseable input.
@@ -65,7 +69,7 @@ def parse_since_to_cutoff(value: str) -> str:
         raise ValueError(f"--since value {value!r} is not a duration (7d, 72h, 2w) or ISO date (2026-05-01)") from exc
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=UTC)
-    return parsed.isoformat()
+    return parsed.astimezone(UTC).isoformat()
 
 
 def _non_empty_str(value: object) -> str | None:
