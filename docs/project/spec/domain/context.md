@@ -5,7 +5,7 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-context]
+delivered_by: [v2-context, inventory-v1-context]
 description: Context bounded context — file-based context engineering. Owns docs, skills, commands, and agent files. Validates, deploys, exposes CRUD. Foundation for self-improvement loops.
 ---
 
@@ -160,6 +160,37 @@ Then context returns snippet metadata for matching snippets, with status prefixe
 When the agent runs `telec context docs get <id> [<id>...]`
 Then context returns the full snippet content for those ids, with any cross-snippet "Required reads (not loaded)" listed for explicit follow-up fetch
 ```
+
+#### v1 inventory (applies_to: v1)
+
+The v1 implementation behavior is inventoried in concept-named feature specs under `docs/project/spec/feature/context/`. These describe what v1 actually does today across the knowledge surface and the agent_artifacts surface that v2 folds into this single bounded context. They are NOT a v2 target — they are the parity contract v2 work satisfies or intentionally sheds.
+
+Knowledge / doc surface:
+
+- `docs/project/spec/feature/context/doc-snippet-index-build.md`
+- `docs/project/spec/feature/context/doc-snippet-three-phase-retrieval.md`
+- `docs/project/spec/feature/context/doc-selection-policy.md`
+- `docs/project/spec/feature/context/baseline-snippet-manifests.md`
+- `docs/project/spec/feature/context/third-party-snippet-curation.md`
+
+Validation and reconciliation:
+
+- `docs/project/spec/feature/context/snippet-frontmatter-validation.md`
+- `docs/project/spec/feature/context/lifecycle-marker-reconciliation.md`
+- `docs/project/spec/feature/context/agent-artifact-validation.md`
+
+Agent artifacts (skills, commands, agents, addenda):
+
+- `docs/project/spec/feature/context/agents-master-inflation.md`
+- `docs/project/spec/feature/context/agent-addendum-composition.md`
+- `docs/project/spec/feature/context/per-agent-artifact-transpilation.md`
+- `docs/project/spec/feature/context/hooks-frontmatter-per-agent-transform.md`
+
+Distribution and orchestration:
+
+- `docs/project/spec/feature/context/mother-project-publishing-gate.md`
+- `docs/project/spec/feature/context/agent-runtime-deployment.md`
+- `docs/project/spec/feature/context/sync-pipeline-orchestration.md`
 
 ### CLI surface
 

@@ -1,0 +1,121 @@
+---
+id: 'project/spec/feature/context/doc-selection-policy'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Pure-function curation of doc snippets by role visibility, taxonomy areas/domains, scope, baseline manifest anchoring, and target-slug filter.'
+---
+
+# Doc Selection Policy — Spec
+
+## Required reads
+
+- @docs/project/spec/domain/context.md
+
+## What it is
+
+The Selection policy is the single pure-function composition point for every
+filter that narrows the Index down to the snippets a caller actually wants.
+Visibility (role gating), taxonomy areas, business domains, scope (global vs.
+project), baseline-manifest anchoring, and target-slug filtering all flow
+through one place. Given the same Index and the same inputs, the policy
+produces a byte-identical set of snippet IDs every time. This determinism is
+what lets the retrieval flow be cached, replayed, and reasoned about.
+
+## Canonical fields
+
+### Use cases
+
+```
+Given a caller with a non-admin role
+When the Selection policy resolves visibility
+Then only snippets with visibility: public are included
+And visibility: internal snippets are excluded
+```
+
+```
+Given a caller with the admin role
+When the Selection policy resolves visibility
+Then snippets of every visibility (public and internal) are included
+```
+
+```
+Given an anonymous caller with no resolved identity
+When the Selection policy resolves visibility
+Then the caller is treated as non-admin and only public snippets are returned
+```
+
+```
+Given a global snippet under ~/.teleclaude/docs/ whose ID is project-prefixed
+When the Selection policy filters the global tree
+Then the snippet is excluded
+And only general/* or domain-prefixed IDs survive
+```
+
+```
+Given --areas policy passed by the caller
+When the Selection policy applies the type filter
+Then only snippets with frontmatter type: policy are returned
+```
+
+```
+Given no --domains flag and no business.domains in teleclaude.yml
+When the Selection policy resolves the domain list
+Then the policy defaults to software-development
+```
+
+```
+Given --baseline-only is set
+When the Selection policy applies baseline anchoring
+Then it loads the relevant baseline.md manifest(s) and keeps only IDs reachable via @-refs
+```
+
+```
+Given --target <slug> is set
+When the Selection policy applies the target filter
+Then only snippets whose delivered_by includes <slug> are returned
+And third-party snippets are silenced
+```
+
+```
+Given a snippet ID whose prefix matches a known project slug in the cross-project catalog
+When the caller references that ID without --projects
+Then the cross-project Source is loaded
+And visibility gating still applies
+```
+
+### Implementation pointers (v1)
+
+- `teleclaude/context_selector.py:610-638` — `_include_snippet_factory()` predicate builder (visibility + global filter + domain match)
+- `teleclaude/context_selector.py:641-660` — `_apply_baseline_filter()` reduces to manifest-reachable IDs
+- `teleclaude/context_selector.py:825-836` — domain filter resolution chain (flag → config → default)
+- `teleclaude/context_selector.py:864-872` — target slug filter and area filter composition
+- `teleclaude/context_selector.py:184-196` — `_load_project_domains()` reads `business.domains` from config
+- `teleclaude/context_selector.py:205-218` — cross-project manifest lookup via project catalog
+- `teleclaude/context_selector.py:221-231` — `_is_cross_project_snippet_id()` prefix classifier
+
+### Cross-context references
+
+- **identity** — terminal-session role is resolved upstream by the CLI handler and passed in; the predicate factory uses it to filter visibility.
+- **config** — `_load_project_domains()` reads `teleclaude.yml` `business.domains`; the project catalog supplies known project slugs for cross-project ID classification; `project_slug` determines which IDs are "own" vs. "cross-project".
+
+## Known caveats
+
+- Snippet visibility defaults to `internal` when frontmatter omits the field.
+  Public exposure is an explicit opt-in, not the default — so a freshly
+  authored snippet without `visibility: public` is invisible to non-admin
+  callers until the field is added.
+- Global-domain filtering of the global tree is path-dependent. A project
+  with no `business.domains` configured falls back to `software-development`,
+  so cross-domain snippets (e.g., `creative/*`, `marketing/*`) are filtered
+  out of that project's view unless `business.domains` is explicitly set.
+- Cross-project snippet `delivered_by` slugs are NOT normalized against the
+  consuming project's roadmap. A snippet that references a slug from a
+  foreign project appears in the consuming project's index with a phantom
+  dependency that no local lifecycle will ever resolve.
+- Baseline manifest resolution matches snippets by `@`-ref file path; ID
+  matching is secondary. Refactoring a snippet's filesystem path without
+  updating the manifest silently drops it from the baseline set.
