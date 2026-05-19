@@ -13,8 +13,8 @@ description: Memory bounded context — durable observations agents store and qu
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/glossary.md
 - @docs/project/spec/domain/context-map.md
 
@@ -172,6 +172,18 @@ And for each pattern worth remembering, the miner calls `telec memory save "<obs
 And the miner calls `telec sessions ack --consumer memory-miner --position <X>` to advance its cursor
 And memory accumulates observations without knowing the miner exists — the miner is just another CLI caller
 ```
+
+### v1 inventory (applies_to: v1, status: actual)
+
+- `docs/project/spec/feature/memory/observation-save.md` — Save a memory observation: default-project fallback, auto-title derivation, per-project manual-session reuse, identity tagging.
+- `docs/project/spec/feature/memory/observation-recent-list.md` — `telec memories list` — CLI-only verb implemented as an empty-query search that lands in the LIKE fallback.
+- `docs/project/spec/feature/memory/observation-full-text-search.md` — `GET /api/memory/search` — FTS5 primary path with LIKE fallback; project, type, and identity filters.
+- `docs/project/spec/feature/memory/observation-timeline.md` — `GET /api/memory/timeline` — chronological window of observations around an anchor id.
+- `docs/project/spec/feature/memory/observation-delete.md` — `DELETE /api/memory/{id}` — hard delete; FTS5 trigger keeps the index in sync.
+- `docs/project/spec/feature/memory/observation-bulk-fetch.md` — `POST /api/memory/batch` — HTTP-only convenience over `SELECT … IN (…)`.
+- `docs/project/spec/feature/memory/memory-context-injection.md` — Render recent observations as Markdown for agent context injection (async HTTP `/inject` and sync in-process via the hook receiver).
+- `docs/project/spec/feature/memory/observation-type-taxonomy.md` — The closed seven-value v1 type set (`preference, decision, discovery, gotcha, pattern, friction, context`) with `discovery` as default.
+- `docs/project/spec/feature/memory/identity-key-ownership.md` — v1's per-row identity ownership: opaque string at save, inclusion-of-unscoped semantic at query, HTTP-only access surface.
 
 ### Context map position
 
