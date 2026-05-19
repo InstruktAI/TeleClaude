@@ -7,15 +7,19 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from syrupy.assertion import SnapshotAssertion
 
-from teleclaude.core.next_machine.prepare import _find_next_prepare_slug_db, next_prepare
-from teleclaude.core.next_machine.slug_resolution import HolderChildResolution
+from teleclaude.core.next_machine.prepare import (
+    _find_next_prepare_slug_db,
+    _format_holder_prepare_instruction,
+    next_prepare,
+)
+from teleclaude.core.next_machine.slug_resolution import HolderChildResolution, HolderResolutionReason
 from teleclaude.core.todos_db import TodosDb
 
 _PREPARE = "teleclaude.core.next_machine.prepare"
 
 
 def _not_holder() -> HolderChildResolution:
-    return HolderChildResolution(children=(), runnable=(), reason="not_holder")
+    return HolderChildResolution(children=(), runnable=(), reason=HolderResolutionReason.NOT_HOLDER)
 
 
 def _mock_todos_db(**overrides: object) -> AsyncMock:
@@ -74,13 +78,29 @@ async def test_next_prepare_holder_with_children_emits_child_prepare_commands(sn
             return_value=HolderChildResolution(
                 children=("child-a", "child-b"),
                 runnable=("child-a", "child-b"),
-                reason="ok",
+                reason=HolderResolutionReason.OK,
             ),
         ),
     ):
         result = await next_prepare(db, "holder", "/repo")
 
     assert result == snapshot
+
+
+def test_format_holder_prepare_instruction_covers_non_runnable_reasons(snapshot: SnapshotAssertion) -> None:
+    children = ("child-a",)
+    outputs = {
+        reason.value: _format_holder_prepare_instruction("holder", children, (), reason)
+        for reason in (
+            HolderResolutionReason.COMPLETE,
+            HolderResolutionReason.ALL_PREPARED,
+            HolderResolutionReason.DEPS_UNSATISFIED,
+            HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP,
+            HolderResolutionReason.NOT_HOLDER,
+        )
+    }
+
+    assert outputs == snapshot
 
 
 @pytest.mark.asyncio

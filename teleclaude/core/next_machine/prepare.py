@@ -41,7 +41,11 @@ if TYPE_CHECKING:
     from teleclaude.core.todos_db import TodosDb
 
 from teleclaude.core.next_machine._types import PreparePhase as _PP
-from teleclaude.core.next_machine.slug_resolution import resolve_runnable_holder_children_db
+from teleclaude.core.next_machine.slug_resolution import (
+    HolderResolutionMode,
+    HolderResolutionReason,
+    resolve_runnable_holder_children_db,
+)
 from teleclaude.core.todos_db import get_todos_db
 
 logger = get_logger(__name__)
@@ -60,7 +64,7 @@ def _format_holder_prepare_instruction(
     holder_slug: str,
     children: tuple[str, ...],
     runnable: tuple[str, ...],
-    reason: str,
+    reason: HolderResolutionReason,
 ) -> str:
     """Return the next prepare action for a holder entrypoint."""
     if runnable:
@@ -70,19 +74,19 @@ def _format_holder_prepare_instruction(
             "Run prepare on these direct child todos:\n"
             f"{commands}"
         )
-    if reason == "complete":
+    if reason is HolderResolutionReason.COMPLETE:
         return f"All direct children for '{holder_slug}' are delivered. No prepare work remains."
-    if reason == "all_prepared":
+    if reason is HolderResolutionReason.ALL_PREPARED:
         return (
             f"All direct children for '{holder_slug}' are already prepared or in work. "
             f"Run `telec todo work {holder_slug}` to resolve child work."
         )
-    if reason == "deps_unsatisfied":
+    if reason is HolderResolutionReason.DEPS_UNSATISFIED:
         return (
             f"Holder '{holder_slug}' has direct children, but none are prepare-runnable because "
             "their dependencies are not delivered yet."
         )
-    if reason == "children_not_in_roadmap":
+    if reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
         return f"Holder '{holder_slug}' has child todos, but none are active roadmap entries."
     return (
         f"Holder '{holder_slug}' has direct children, but none are currently prepare-runnable. "
@@ -164,7 +168,7 @@ async def next_prepare(db: Db, slug: str | None, cwd: str) -> str:
         todos_db,
         resolved_slug,
         await todos_db.load_deps(),
-        mode="prepare",
+        mode=HolderResolutionMode.PREPARE,
     )
     if holder_resolution.children:
         instruction = _format_holder_prepare_instruction(

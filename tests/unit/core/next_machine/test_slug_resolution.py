@@ -5,6 +5,9 @@ from __future__ import annotations
 import pytest
 
 from teleclaude.core.next_machine.slug_resolution import (
+    HolderResolutionMode,
+    HolderResolutionReason,
+    WorkQueueResolutionReason,
     resolve_next_work_queue_db,
     resolve_runnable_holder_children_db,
 )
@@ -12,9 +15,6 @@ from teleclaude.core.todos_db import TodosDb
 
 pytestmark = [pytest.mark.unit, pytest.mark.asyncio]
 
-REASON_COMPLETE = "complete"
-REASON_OK = "ok"
-REASON_READY = "ready"
 SLUG_LATER_READY = "later-ready"
 
 
@@ -40,12 +40,12 @@ async def test_prepare_holder_children_are_filtered_by_dependencies(todos_db: To
         todos_db,
         "holder",
         await todos_db.load_deps(),
-        mode="prepare",
+        mode=HolderResolutionMode.PREPARE,
     )
 
     assert resolution.children == ("child-a", "child-b")
     assert resolution.runnable == ("child-a",)
-    assert resolution.reason == REASON_OK
+    assert resolution.reason is HolderResolutionReason.OK
 
 
 async def test_work_holder_children_are_filtered_by_dependencies(todos_db: TodosDb) -> None:
@@ -70,12 +70,12 @@ async def test_work_holder_children_are_filtered_by_dependencies(todos_db: Todos
         todos_db,
         "holder",
         await todos_db.load_deps(),
-        mode="work",
+        mode=HolderResolutionMode.WORK,
     )
 
     assert resolution.children == ("child-a", "child-b")
     assert resolution.runnable == ("child-a",)
-    assert resolution.reason == REASON_OK
+    assert resolution.reason is HolderResolutionReason.OK
 
 
 async def test_no_slug_work_queue_skips_unrunnable_holder_and_continues(todos_db: TodosDb) -> None:
@@ -99,7 +99,7 @@ async def test_no_slug_work_queue_skips_unrunnable_holder_and_continues(todos_db
     assert resolution.slug == SLUG_LATER_READY
     assert resolution.holder_slug is None
     assert resolution.child_slugs == ()
-    assert resolution.reason == REASON_READY
+    assert resolution.reason is WorkQueueResolutionReason.READY
 
 
 async def test_holder_with_only_delivered_children_resolves_complete(todos_db: TodosDb) -> None:
@@ -121,9 +121,9 @@ async def test_holder_with_only_delivered_children_resolves_complete(todos_db: T
         todos_db,
         "holder",
         await todos_db.load_deps(),
-        mode="work",
+        mode=HolderResolutionMode.WORK,
     )
 
     assert resolution.children == ("child-a",)
     assert resolution.runnable == ()
-    assert resolution.reason == REASON_COMPLETE
+    assert resolution.reason is HolderResolutionReason.COMPLETE

@@ -32,6 +32,9 @@ from teleclaude.core.next_machine.git_ops import _merge_origin_main_into_worktre
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, apply_authoritative_signal, require_lifecycle_phase
 from teleclaude.core.next_machine.output_formatting import format_error, format_stash_debt
 from teleclaude.core.next_machine.slug_resolution import (
+    HolderResolutionMode,
+    HolderResolutionReason,
+    WorkQueueResolutionReason,
     _get_item_phase_db,
     resolve_next_work_queue_db,
     resolve_runnable_holder_children_db,
@@ -253,7 +256,7 @@ async def _resolve_work_slug(todos_db: TodosDb, slug: str | None, phase_slug: st
         _log_next_work_phase(queue.slug, "slug_resolution", slug_resolution_started, "run", "resolved")
         return queue.slug, None
 
-    if queue.reason == "deps_unsatisfied":
+    if queue.reason is WorkQueueResolutionReason.DEPS_UNSATISFIED:
         _log_next_work_phase(
             phase_slug, "slug_resolution", slug_resolution_started, "error", "ready_but_deps_unsatisfied"
         )
@@ -312,30 +315,30 @@ async def _resolve_holder_slug(
     slug_resolution_started: float,
 ) -> tuple[str, str | None]:
     """Resolve runnable child work for holder todos."""
-    holder_resolution = await resolve_runnable_holder_children_db(todos_db, slug, deps, mode="work")
+    holder_resolution = await resolve_runnable_holder_children_db(todos_db, slug, deps, mode=HolderResolutionMode.WORK)
     holder_reason = holder_resolution.reason
     if holder_resolution.runnable:
         return "", _format_holder_work_commands(slug, holder_resolution.runnable)
-    if holder_reason == "not_holder":
+    if holder_reason is HolderResolutionReason.NOT_HOLDER:
         return slug, None
-    if holder_reason == "complete":
+    if holder_reason is HolderResolutionReason.COMPLETE:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "skip", "holder_complete")
         return "", f"COMPLETE: Holder '{slug}' has no remaining child work."
-    if holder_reason == "deps_unsatisfied":
+    if holder_reason is HolderResolutionReason.DEPS_UNSATISFIED:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_deps_unsatisfied")
         return "", format_error(
             "DEPS_UNSATISFIED",
             f"Holder '{slug}' has children, but none are currently runnable due to unsatisfied dependencies.",
             next_call="Complete dependency items first.",
         )
-    if holder_reason == "item_not_ready":
+    if holder_reason is HolderResolutionReason.ITEM_NOT_READY:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_not_ready")
         return "", format_error(
             "ITEM_NOT_READY",
             f"Holder '{slug}' has children, but none are ready to start work.",
             next_call=f"Call telec todo prepare on the child items for '{slug}' first.",
         )
-    if holder_reason == "children_not_in_roadmap":
+    if holder_reason is HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP:
         _log_next_work_phase(phase_slug, "slug_resolution", slug_resolution_started, "error", "holder_children_missing")
         return "", format_error(
             "NOT_PREPARED",

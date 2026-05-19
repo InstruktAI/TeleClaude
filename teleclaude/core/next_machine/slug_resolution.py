@@ -6,6 +6,7 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import TYPE_CHECKING
 
 from teleclaude.core.next_machine._types import ItemPhase, StateValue
@@ -22,13 +23,41 @@ from teleclaude.core.next_machine.state_io import read_phase_state, write_phase_
 from teleclaude.core.todos_db import get_todos_db_sync
 
 
+class HolderResolutionMode(StrEnum):
+    """Valid holder child resolution modes."""
+
+    PREPARE = "prepare"
+    WORK = "work"
+
+
+class HolderResolutionReason(StrEnum):
+    """Reason codes for holder child resolution outcomes."""
+
+    NOT_HOLDER = "not_holder"
+    OK = "ok"
+    CHILDREN_NOT_IN_ROADMAP = "children_not_in_roadmap"
+    COMPLETE = "complete"
+    DEPS_UNSATISFIED = "deps_unsatisfied"
+    ALL_PREPARED = "all_prepared"
+    ITEM_NOT_READY = "item_not_ready"
+
+
+class WorkQueueResolutionReason(StrEnum):
+    """Reason codes for no-slug work queue resolution outcomes."""
+
+    HOLDER_CHILDREN = "holder_children"
+    READY = "ready"
+    DEPS_UNSATISFIED = "deps_unsatisfied"
+    NO_READY_ITEMS = "no_ready_items"
+
+
 @dataclass(frozen=True)
 class HolderChildResolution:
     """Resolved direct children for a holder and the runnable subset."""
 
     children: tuple[str, ...]
     runnable: tuple[str, ...]
-    reason: str
+    reason: HolderResolutionReason
 
 
 @dataclass(frozen=True)
@@ -38,7 +67,7 @@ class WorkQueueResolution:
     slug: str | None
     holder_slug: str | None = None
     child_slugs: tuple[str, ...] = ()
-    reason: str = ""
+    reason: WorkQueueResolutionReason | None = None
 
 
 async def resolve_slug_async(
@@ -188,15 +217,12 @@ async def resolve_runnable_holder_children_db(
     holder_slug: str,
     dependencies: dict[str, list[str]],
     *,
-    mode: str,
+    mode: HolderResolutionMode,
 ) -> HolderChildResolution:
     """Resolve runnable direct children for a holder in prepare or work mode."""
-    if mode not in {"prepare", "work"}:
-        raise ValueError(f"unknown holder child resolution mode: {mode!r}")
-
     children = await resolve_holder_children_db(todos_db, holder_slug)
     if not children:
-        return HolderChildResolution(children=(), runnable=(), reason="not_holder")
+        return HolderChildResolution(children=(), runnable=(), reason=HolderResolutionReason.NOT_HOLDER)
 
     entries = await todos_db.list_roadmap()
     active_slugs = {entry["slug"] for entry in entries}
@@ -220,7 +246,7 @@ async def resolve_runnable_holder_children_db(
             continue
 
         has_incomplete_children = True
-        if mode == "prepare":
+        if mode is HolderResolutionMode.PREPARE:
             state = await todos_db.read_state(child)
             if not _is_prepare_runnable_lifecycle(state):
                 has_not_ready = True
@@ -238,28 +264,22 @@ async def resolve_runnable_holder_children_db(
         runnable.append(child)
 
     if runnable:
-        return HolderChildResolution(children=tuple(children), runnable=tuple(runnable), reason="ok")
+        return HolderChildResolution(
+            children=tuple(children), runnable=tuple(runnable), reason=HolderResolutionReason.OK
+        )
     if not has_children_in_roadmap:
-        return HolderChildResolution(children=tuple(children), runnable=(), reason="children_not_in_roadmap")
+        return HolderChildResolution(
+            children=tuple(children), runnable=(), reason=HolderResolutionReason.CHILDREN_NOT_IN_ROADMAP
+        )
     if not has_incomplete_children:
-        return HolderChildResolution(children=tuple(children), runnable=(), reason="complete")
+        return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.COMPLETE)
     if has_deps_blocked:
-        return HolderChildResolution(children=tuple(children), runnable=(), reason="deps_unsatisfied")
-    if mode == "prepare" and has_not_ready:
-        return HolderChildResolution(children=tuple(children), runnable=(), reason="all_prepared")
-    return HolderChildResolution(children=tuple(children), runnable=(), reason="item_not_ready")
-
-
-async def resolve_first_runnable_holder_child_db(
-    todos_db: TodosDb,
-    holder_slug: str,
-    dependencies: dict[str, list[str]],
-) -> tuple[str | None, str]:
-    """Resolve first runnable child for a holder slug from DB."""
-    resolution = await resolve_runnable_holder_children_db(todos_db, holder_slug, dependencies, mode="work")
-    if resolution.runnable:
-        return resolution.runnable[0], "ok"
-    return None, resolution.reason
+        return HolderChildResolution(
+            children=tuple(children), runnable=(), reason=HolderResolutionReason.DEPS_UNSATISFIED
+        )
+    if mode is HolderResolutionMode.PREPARE and has_not_ready:
+        return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.ALL_PREPARED)
+    return HolderChildResolution(children=tuple(children), runnable=(), reason=HolderResolutionReason.ITEM_NOT_READY)
 
 
 async def resolve_next_work_queue_db(
@@ -277,7 +297,7 @@ async def resolve_next_work_queue_db(
             todos_db,
             found_slug,
             dependencies,
-            mode="work",
+            mode=HolderResolutionMode.WORK,
         )
         if holder_resolution.children:
             if holder_resolution.runnable:
@@ -285,9 +305,9 @@ async def resolve_next_work_queue_db(
                     slug=None,
                     holder_slug=found_slug,
                     child_slugs=holder_resolution.runnable,
-                    reason="holder_children",
+                    reason=WorkQueueResolutionReason.HOLDER_CHILDREN,
                 )
-            if holder_resolution.reason == "deps_unsatisfied":
+            if holder_resolution.reason is HolderResolutionReason.DEPS_UNSATISFIED:
                 saw_deps_blocked = True
             continue
 
@@ -303,9 +323,11 @@ async def resolve_next_work_queue_db(
             saw_deps_blocked = True
             continue
 
-        return WorkQueueResolution(slug=found_slug, reason="ready")
+        return WorkQueueResolution(slug=found_slug, reason=WorkQueueResolutionReason.READY)
 
-    reason = "deps_unsatisfied" if saw_deps_blocked else "no_ready_items"
+    reason = (
+        WorkQueueResolutionReason.DEPS_UNSATISFIED if saw_deps_blocked else WorkQueueResolutionReason.NO_READY_ITEMS
+    )
     return WorkQueueResolution(slug=None, reason=reason)
 
 
@@ -355,11 +377,13 @@ def set_item_phase(cwd: str, slug: str, phase: str) -> None:
 
 __all__ = [
     "HolderChildResolution",
+    "HolderResolutionMode",
+    "HolderResolutionReason",
     "WorkQueueResolution",
+    "WorkQueueResolutionReason",
     "_get_item_phase_db",
     "_is_ready_for_work_db",
     "get_item_phase",
-    "resolve_first_runnable_holder_child_db",
     "resolve_holder_children_db",
     "resolve_next_work_queue_db",
     "resolve_runnable_holder_children_db",
