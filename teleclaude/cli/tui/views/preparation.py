@@ -68,7 +68,7 @@ class PreparationView(PreparationViewActionsMixin, Widget, can_focus=True):
         Binding("p", "prepare", "Prep"),
         Binding("s", "start_work", "Start"),
         Binding("r", "reconcile", "Reconcile"),
-        Binding("R", "remove_todo", "Remove"),
+        Binding("R", "remove_artifact", "Remove"),
         Binding("f", "freeze", "Freeze"),
         Binding("u", "unfreeze", "Unfreeze"),
         Binding("d", "toggle_delivered", "Delivered"),

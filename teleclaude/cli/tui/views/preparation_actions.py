@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import subprocess
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.tool_client import tool_api_request
@@ -18,7 +19,7 @@ from teleclaude.cli.tui.widgets.modals import ConfirmModal, CreateSlugModal, New
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
-from teleclaude.constants import SlashCommand
+from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
 from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
@@ -159,7 +160,7 @@ class PreparationViewActionsMixin:
         computer_only = {
             "new_todo",
             "new_bug",
-            "remove_todo",
+            "remove_artifact",
             "activate",
             "preview_file",
             "prepare",
@@ -171,7 +172,7 @@ class PreparationViewActionsMixin:
             "move_todo_down",
         }
         project_disallowed = {
-            "remove_todo",
+            "remove_artifact",
             "activate",
             "preview_file",
             "new_project",
@@ -403,18 +404,23 @@ class PreparationViewActionsMixin:
             callback=_on_result,
         )
 
-    def action_remove_todo(self) -> None:
-        """R: remove a todo and all its files."""
-        row = self._current_todo_row()  # type: ignore[attr-defined]
-        slug = row.slug if row else None
-        if not slug:
-            file_row = self._current_file_row()  # type: ignore[attr-defined]
-            if file_row:
-                slug = file_row.slug
-        if not slug:
+    def action_remove_artifact(self) -> None:
+        """R: remove the selected artifact (any artifact except 'input')."""
+        file_row = self._current_file_row()  # type: ignore[attr-defined]
+        if file_row is None:
+            self.app.notify(  # type: ignore[attr-defined]
+                "Select an artifact row to remove (R targets artifacts, not the todo).",
+                severity="warning",
+            )
             return
 
-        project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
+        artifact_name = file_row.artifact_name
+        slug = file_row.slug
+        if artifact_name == ARTIFACT_INPUT:
+            self.app.notify("The 'input' artifact cannot be removed.", severity="warning")  # type: ignore[attr-defined]
+            return
+
+        project_path = self._slug_to_project_path.get(slug, "") or (file_row.project_path or "")  # type: ignore[attr-defined]
         if not project_path:
             return
 
@@ -423,13 +429,13 @@ class PreparationViewActionsMixin:
                 return
             try:
                 result = tool_api_request(
-                    "POST",
-                    "/todos/remove",
-                    json_body={"slug": slug, "cwd": project_path},
+                    "DELETE",
+                    f"/artifacts/{quote(slug)}/{quote(artifact_name)}?cwd={quote(project_path)}",
                     timeout=10.0,
                 )
-                if isinstance(result, dict) and result.get("operation_id"):
-                    self.app.notify(f"Removing {slug}...")  # type: ignore[attr-defined]
+                if isinstance(result, dict) and result.get("status") == "ok":
+                    self.app.notify(f"Removed artifact '{artifact_name}' from {slug}")  # type: ignore[attr-defined]
+                    self.app._refresh_data()  # type: ignore[attr-defined]
                 elif isinstance(result, dict) and result.get("detail"):
                     self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
                 else:
@@ -439,8 +445,8 @@ class PreparationViewActionsMixin:
 
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
-                title="Remove Todo",
-                message=f"Remove todo '{slug}' and all its files?\n\nThis action cannot be undone.",
+                title="Remove Artifact",
+                message=f"Remove artifact '{artifact_name}' from '{slug}'?\n\nThis deletes its version history and cannot be undone.",
             ),
             _on_confirm,
         )
