@@ -16,6 +16,7 @@ from teleclaude.api.auth import (
     clearance_sessions_agent_restart,
     clearance_sessions_run,
     clearance_sessions_start,
+    clearance_todos_reconcile,
     verify_caller,
 )
 from teleclaude.cli.telec import CommandAuth, is_command_allowed
@@ -342,6 +343,35 @@ async def test_orchestrator_token_passes_clearance_sessions_start() -> None:
 async def test_orchestrator_token_passes_clearance_sessions_run() -> None:
     """clearance_sessions_run admits a token-authenticated orchestrator identity."""
     await _orchestrator_token_passes_clearance(clearance_sessions_run)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_orchestrator_token_passes_clearance_todos_reconcile() -> None:
+    """clearance_todos_reconcile admits a token-authenticated orchestrator identity.
+
+    Regression guard for the dual-factor / RBAC boundary on the mutating
+    POST /todos/reconcile endpoint — when this was first added the handler
+    had no Depends(...) clearance binding, which bypassed the security
+    contract documented at the top of todo_routes.py.
+    """
+    await _orchestrator_token_passes_clearance(clearance_todos_reconcile)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_clearance_todos_reconcile_rejects_caller_without_identity() -> None:
+    """An unauthenticated caller (no token, no terminal login) must be denied.
+
+    Without either factor verify_caller raises 401, so the clearance dependency
+    is never reached for an anonymous caller — that is the documented fail-closed
+    behavior of the dual-factor boundary on every mutating todo endpoint, and
+    POST /todos/reconcile inherits it via Depends(clearance_todos_reconcile).
+    """
+    with patch("teleclaude.api.auth._requires_terminal_login", return_value=True):
+        with pytest.raises(HTTPException) as exc_info:
+            await verify_caller(x_session_token=None, x_telec_email=None)
+    assert exc_info.value.status_code == 401
 
 
 # ---------------------------------------------------------------------------
