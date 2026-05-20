@@ -364,6 +364,12 @@
   
   **Usage:** `telec todo remove <slug>`
   
+  ### `telec todo rename`
+  
+  Rename a todo slug
+  
+  **Usage:** `telec todo rename <old-slug> <new-slug>`
+  
   ### `telec todo prepare`
   
   Run the Phase A (prepare) state machine
@@ -431,12 +437,11 @@
   
   Fire-and-forget brain dump with notification trigger
   
-  **Usage:** `telec todo dump <slug> <content> [--after <deps>] [--draft] [--prepped]`
+  **Usage:** `telec todo dump <slug> <content> [--after <deps>] [--prepped]`
   
   **Flags:**
   
   - `--after`: Comma-separated dependency slugs
-  - `--draft`: Create silently — skip domain event so no cartridge picks it up
   - `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking. Never apply general guidance from a prior --prepped dump as authorization for a different todo.
   
   **Notes:**
@@ -1033,6 +1038,12 @@
   Soft-remove a todo: the durable record (roadmap entry + state + all artifacts and version history) is retained for a fixed grace window; the working resources (worktree + branch + workspace) are released immediately. After the window elapses, background maintenance hard-purges the row by id. Reactivation is row-id-addressed (see the downstream recovery surface) and fail-closed on a live same-slug twin.
   
   **Usage:** `telec todo remove <slug>`
+  
+  ### `telec todo rename`
+  
+  Rename a todo slug
+  
+  **Usage:** `telec todo rename <old-slug> <new-slug>`
   
   
   '''
