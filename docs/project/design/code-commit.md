@@ -49,7 +49,7 @@ tmux session. `telec code commit` runs on top of these guarantees:
   and branch-switching `git checkout` are blocked.
 - `git commit` is redirected to `telec code commit` with no bypass.
 - `git push` from main is integrator-only; `git merge`/`rebase`/`cherry-pick`
-  on main require integrator role or `TELECLAUDE_COMMIT_APPROVED=1` (a
+  on main require integrator role or `TELECLAUDE_OVERRIDE_APPROVED=1` (a
   replay-only escape; it does not affect plain `git commit`).
 
 ## Inputs / Outputs

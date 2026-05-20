@@ -10,10 +10,10 @@
 #   RESTRICTED   — orchestrator cannot commit on any branch
 #
 # Commit-producing subcmds (commit, cherry-pick, rebase, merge) are gated:
-#   commit (any branch)              → use 'telec code commit' or set
-#                                      TELECLAUDE_COMMIT_APPROVED=1
+#   commit (any branch)              → use 'telec code commit'. No env-var
+#                                      bypass exists on the commit branch.
 #   cherry-pick/rebase/merge on main → integrator role bypass, otherwise
-#                                       set TELECLAUDE_COMMIT_APPROVED=1
+#                                       set TELECLAUDE_OVERRIDE_APPROVED=1
 #   cherry-pick/rebase/merge on other branches → pass through
 #
 # Identity source: $TMPDIR/teleclaude_identity.json (written by daemon).
@@ -360,7 +360,7 @@ case "$_subcmd" in
                     ;;
             esac
         done
-        if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_COMMIT_APPROVED:-}" != "1" ] && [ "$_role" != "integrator" ]; then
+        if [ "$_produces_commit" -eq 1 ] && [ "${TELECLAUDE_OVERRIDE_APPROVED:-}" != "1" ] && [ "$_role" != "integrator" ]; then
             _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
             if [ "$_current_branch" = "main" ]; then
                 cat >&2 <<MSG
@@ -369,7 +369,7 @@ ERROR: 'git $_subcmd' on main produces commits without going through the approva
 This bypasses telec code commit's main-branch lock, scope checks, and Path A/B/C.
 
 To proceed (human-approved, one-shot):
-  TELECLAUDE_COMMIT_APPROVED=1 git $_subcmd <args>
+  TELECLAUDE_OVERRIDE_APPROVED=1 git $_subcmd <args>
 MSG
                 exit 1
             fi

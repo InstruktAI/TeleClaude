@@ -45,7 +45,7 @@ def _run(
     human_role: str | None = None,
     branch: str = "feature",
     no_identity_file: bool = False,
-    commit_approved: bool = False,
+    override_approved: bool = False,
 ) -> tuple[int, str]:
     """Run the bash wrapper via subprocess with mocked identity and fake git.
 
@@ -73,7 +73,7 @@ def _run(
         "TMPDIR": str(session_tmpdir),
         "TMUX": "test-session",  # simulate being inside tmux — enables restriction checks
         "TELECLAUDE_SYSTEM_ROLE": "",
-        "TELECLAUDE_COMMIT_APPROVED": "1" if commit_approved else "",
+        "TELECLAUDE_OVERRIDE_APPROVED": "1" if override_approved else "",
         "PATH": f"{fake_bin_dir}:{os.environ.get('PATH', '')}",
         "FAKE_BRANCH": branch,
     }
@@ -122,30 +122,35 @@ class TestHumanSession:
 
 
 class TestDestructive:
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_restore_blocked(self, role: str) -> None:
         code, stderr = _run(["restore", "file.txt"], role=role)
         assert code != 0
         assert "destructive" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_clean_blocked(self, role: str) -> None:
         code, stderr = _run(["clean", "-fd"], role=role)
         assert code != 0
         assert "destructive" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_switch_blocked(self, role: str) -> None:
         code, stderr = _run(["switch", "main"], role=role)
         assert code != 0
         assert "destructive" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_revert_without_confirmed_blocked(self, role: str) -> None:
         code, stderr = _run(["revert", "abc123"], role=role)
         assert code != 0
         assert "inspection required" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_reset_hard_blocked(self, role: str) -> None:
         code, _ = _run(["reset", "--hard"], role=role)
@@ -168,6 +173,7 @@ class TestDestructive:
 
 
 class TestProtectedStash:
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
     def test_non_integrator_blocked(self, role: str) -> None:
         code, stderr = _run(["stash"], role=role)
@@ -183,12 +189,14 @@ class TestProtectedStash:
 
 
 class TestCheckoutPermissions:
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_bare_checkout_blocked_for_all(self, role: str) -> None:
         code, stderr = _run(["checkout", "main"], role=role)
         assert code != 0
         assert "protected" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_file_scoped_checkout_allowed_for_all(self, role: str) -> None:
         _, stderr = _run(["checkout", "HEAD", "--", "f.txt"], role=role)
@@ -201,12 +209,14 @@ class TestCheckoutPermissions:
 class TestCommitRedirect:
     """All git commit calls are redirected to telec code commit."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_all_roles_redirected_on_branch(self, role: str) -> None:
         code, stderr = _run(["commit", "-m", "test"], role=role, branch="feature")
         assert code != 0
         assert "telec code commit" in stderr
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_all_roles_redirected_on_main(self, role: str) -> None:
         code, stderr = _run(["commit", "-m", "test"], role=role, branch="main")
@@ -226,31 +236,39 @@ class TestReplayGateOnMain:
     """cherry-pick/rebase/merge produce commits via paths the commit gate
     misses; on main they need explicit approval."""
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
     def test_blocked_on_main_without_approval(self, subcmd: str, role: str) -> None:
         code, stderr = _run([subcmd, "abc123"], role=role, branch="main")
         assert code != 0
         assert "approval gate" in stderr.lower()
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator", "integrator"])
     def test_allowed_on_main_with_approval(self, subcmd: str, role: str) -> None:
-        code, _ = _run([subcmd, "abc123"], role=role, branch="main", commit_approved=True)
+        code, _ = _run([subcmd, "abc123"], role=role, branch="main", override_approved=True)
         assert code == 0
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
     def test_integrator_bypasses_gate_on_main(self, subcmd: str) -> None:
-        """Integrator role merges to main without exporting TELECLAUDE_COMMIT_APPROVED."""
+        """Integrator role merges to main without exporting TELECLAUDE_OVERRIDE_APPROVED."""
         code, _ = _run([subcmd, "abc123"], role="integrator", branch="main")
         assert code == 0
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
     def test_allowed_on_feature_branch_without_approval(self, subcmd: str) -> None:
         code, _ = _run([subcmd, "abc123"], role="worker", branch="feature")
         assert code == 0
 
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("subcmd", ["cherry-pick", "rebase", "merge"])
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("noop_arg", ["--abort", "--skip", "--quit"])
     def test_noop_args_allowed_on_main(self, subcmd: str, noop_arg: str) -> None:
         code, _ = _run([subcmd, noop_arg], role="worker", branch="main")
@@ -270,6 +288,7 @@ class TestReplayGateOnMain:
 
 
 class TestProtectedPushFromMain:
+    # guard: parametrize-cleanup-pending
     @pytest.mark.parametrize("role", ["worker", "system", "orchestrator"])
     def test_non_integrator_blocked(self, role: str) -> None:
         code, stderr = _run(["push", "origin", "main"], role=role, branch="main")
