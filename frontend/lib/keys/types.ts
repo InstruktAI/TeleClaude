@@ -8,12 +8,7 @@
 /**
  * View context where a key binding is active
  */
-export type ViewContext =
-  | 'global'
-  | 'sessions'
-  | 'preparation'
-  | 'configuration'
-  | 'jobs'
+export type ViewContext = 'global' | 'sessions' | 'preparation' | 'configuration' | 'jobs';
 
 /**
  * A single keyboard binding definition
@@ -23,28 +18,28 @@ export type ViewContext =
  */
 export interface KeyBinding {
   /** The key character or name ('q', 'upArrow', 'space', etc.) */
-  key: string
+  key: string;
 
   /** Requires Ctrl modifier */
-  ctrl?: boolean
+  ctrl?: boolean;
 
   /** Requires Shift modifier */
-  shift?: boolean
+  shift?: boolean;
 
   /** Requires Meta/Alt modifier */
-  meta?: boolean
+  meta?: boolean;
 
   /** Human-readable description for help/footer */
-  description: string
+  description: string;
 
   /** Action identifier (e.g., 'quit', 'navigate_up', 'toggle_sticky') */
-  action: string
+  action: string;
 
   /** Where this binding is active */
-  context: ViewContext
+  context: ViewContext;
 
   /** Don't show in footer/help display */
-  hidden?: boolean
+  hidden?: boolean;
 }
 
 /**
@@ -52,24 +47,24 @@ export interface KeyBinding {
  * Used for mapping between Ink and our binding system
  */
 export interface InkKeyInput {
-  upArrow: boolean
-  downArrow: boolean
-  leftArrow: boolean
-  rightArrow: boolean
-  return: boolean
-  escape: boolean
-  tab: boolean
-  backspace: boolean
-  delete: boolean
-  pageUp: boolean
-  pageDown: boolean
+  upArrow: boolean;
+  downArrow: boolean;
+  leftArrow: boolean;
+  rightArrow: boolean;
+  return: boolean;
+  escape: boolean;
+  tab: boolean;
+  backspace: boolean;
+  delete: boolean;
+  pageUp: boolean;
+  pageDown: boolean;
 }
 
 /**
  * Modifier keys that can be pressed with a key
  */
 export interface KeyModifiers {
-  ctrl?: boolean
-  shift?: boolean
-  meta?: boolean
+  ctrl?: boolean;
+  shift?: boolean;
+  meta?: boolean;
 }

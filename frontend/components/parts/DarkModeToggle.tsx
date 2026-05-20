@@ -1,35 +1,39 @@
-'use client'
+'use client';
 
-import { Moon, Sun, Monitor } from 'lucide-react'
-import { useTheme } from 'next-themes'
-import { useSyncExternalStore } from 'react'
+import { Moon, Sun, Monitor } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { useSyncExternalStore } from 'react';
 
 function subscribe(): () => void {
-  return () => {}
+  return () => {};
 }
 
 export function DarkModeToggle() {
-  const { theme, setTheme, resolvedTheme } = useTheme()
-  const mounted = useSyncExternalStore(subscribe, () => true, () => false)
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const mounted = useSyncExternalStore(
+    subscribe,
+    () => true,
+    () => false,
+  );
 
   if (!mounted) {
-    return <div className="h-8 w-8" />
+    return <div className="h-8 w-8" />;
   }
 
   const cycleTheme = () => {
     if (theme === 'system') {
-      setTheme('light')
+      setTheme('light');
     } else if (theme === 'light') {
-      setTheme('dark')
+      setTheme('dark');
     } else {
-      setTheme('system')
+      setTheme('system');
     }
-  }
+  };
 
   // Determine which icon to show based on the CURRENT setting (theme)
   // but we can also use resolvedTheme to show what's actually active.
   // The user specifically mentioned "Setting it to system doesn't work".
-  const Icon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun
+  const Icon = theme === 'system' ? Monitor : theme === 'dark' ? Moon : Sun;
 
   return (
     <button
@@ -40,5 +44,5 @@ export function DarkModeToggle() {
     >
       <Icon className="h-4 w-4" />
     </button>
-  )
+  );
 }

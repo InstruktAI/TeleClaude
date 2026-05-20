@@ -5,14 +5,14 @@
  * Does NOT handle tmux attachment - that's the caller's responsibility.
  */
 
-import { TelecAPIClient, APIError } from "@/lib/api/client.js";
+import { TelecAPIClient, APIError } from '@/lib/api/client.js';
 import type {
   CreateSessionRequest,
   CreateSessionResponse,
   SessionInfo,
   AgentName,
   ThinkingMode,
-} from "@/lib/api/types.js";
+} from '@/lib/api/types.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -73,10 +73,10 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
     const response: CreateSessionResponse = await client.createSession(request);
 
     // Check response status
-    if (response.status === "error") {
+    if (response.status === 'error') {
       return {
         success: false,
-        error: response.error ?? "Session creation failed (no error details)",
+        error: response.error ?? 'Session creation failed (no error details)',
       };
     }
 
@@ -88,12 +88,12 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
       session_id: response.session_id,
       detached: false,
       tmux_session_name: response.tmux_session_name,
-      title: "Untitled",
+      title: 'Untitled',
       project_path: params.projectPath,
       subdir: params.subfolder ?? null,
       thinking_mode: params.thinkingMode,
       active_agent: response.agent ?? params.agent,
-      status: "running",
+      status: 'running',
       computer: params.computer,
       created_at: new Date().toISOString(),
       last_activity: new Date().toISOString(),
@@ -119,21 +119,21 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
       const errorMsg = err.detail || err.message;
 
       // Classify error types for better user feedback
-      if (errorMsg.includes("Connection") || errorMsg.includes("ENOENT")) {
+      if (errorMsg.includes('Connection') || errorMsg.includes('ENOENT')) {
         return {
           success: false,
           error: "Daemon is not running. Please start it with 'make restart'.",
         };
       }
 
-      if (errorMsg.includes("unavailable") || errorMsg.includes("agent")) {
+      if (errorMsg.includes('unavailable') || errorMsg.includes('agent')) {
         return {
           success: false,
           error: `Agent "${params.agent}" is unavailable: ${errorMsg}`,
         };
       }
 
-      if (errorMsg.includes("project") || errorMsg.includes("not found")) {
+      if (errorMsg.includes('project') || errorMsg.includes('not found')) {
         return {
           success: false,
           error: `Project not found: ${params.projectPath}`,
@@ -149,7 +149,7 @@ export async function launchSession(params: LaunchSessionParams): Promise<Launch
     // Unknown error type
     return {
       success: false,
-      error: err instanceof Error ? err.message : "Unknown error occurred",
+      error: err instanceof Error ? err.message : 'Unknown error occurred',
     };
   }
 }

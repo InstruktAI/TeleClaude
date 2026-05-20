@@ -1,25 +1,25 @@
-"use client"
+'use client';
 
-import type { ReactNode } from "react"
-import { cn } from "@/lib/utils"
+import type { ReactNode } from 'react';
+import { cn } from '@/lib/utils';
 
-export type TabValue = "sessions" | "preparation" | "configuration" | "jobs"
+export type TabValue = 'sessions' | 'preparation' | 'configuration' | 'jobs';
 
 interface TabBarProps {
-  value: TabValue
-  onValueChange: (value: TabValue) => void
-  sessionsContent: ReactNode
-  preparationContent: ReactNode
-  configurationContent: ReactNode
-  jobsContent: ReactNode
+  value: TabValue;
+  onValueChange: (value: TabValue) => void;
+  sessionsContent: ReactNode;
+  preparationContent: ReactNode;
+  configurationContent: ReactNode;
+  jobsContent: ReactNode;
 }
 
 const TABS: Array<{ value: TabValue; label: string; shortcut: string }> = [
-  { value: "sessions", label: "Sessions", shortcut: "1" },
-  { value: "preparation", label: "Preparation", shortcut: "2" },
-  { value: "configuration", label: "Configuration", shortcut: "3" },
-  { value: "jobs", label: "Jobs", shortcut: "4" },
-]
+  { value: 'sessions', label: 'Sessions', shortcut: '1' },
+  { value: 'preparation', label: 'Preparation', shortcut: '2' },
+  { value: 'configuration', label: 'Configuration', shortcut: '3' },
+  { value: 'jobs', label: 'Jobs', shortcut: '4' },
+];
 
 export function TabBar({
   value,
@@ -34,7 +34,7 @@ export function TabBar({
     preparation: preparationContent,
     configuration: configurationContent,
     jobs: jobsContent,
-  }
+  };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -45,22 +45,16 @@ export function TabBar({
             role="tab"
             type="button"
             aria-selected={value === tab.value}
-            data-state={value === tab.value ? "active" : "inactive"}
+            data-state={value === tab.value ? 'active' : 'inactive'}
             onClick={() => onValueChange(tab.value)}
             className={cn(
-              "relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors",
-              value === tab.value
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground/80",
+              'relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors',
+              value === tab.value ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
             {tab.label}
-            <span className="text-[10px] text-muted-foreground/60">
-              {tab.shortcut}
-            </span>
-            {value === tab.value && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-            )}
+            <span className="text-[10px] text-muted-foreground/60">{tab.shortcut}</span>
+            {value === tab.value && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
           </button>
         ))}
       </div>
@@ -70,16 +64,13 @@ export function TabBar({
           <div
             key={tab.value}
             role="tabpanel"
-            className={cn(
-              "absolute inset-0",
-              tab.value === "sessions" ? "overflow-hidden" : "overflow-auto",
-            )}
-            style={{ display: value === tab.value ? "block" : "none" }}
+            className={cn('absolute inset-0', tab.value === 'sessions' ? 'overflow-hidden' : 'overflow-auto')}
+            style={{ display: value === tab.value ? 'block' : 'none' }}
           >
             {contentByTab[tab.value]}
           </div>
         ))}
       </div>
     </div>
-  )
+  );
 }

@@ -1,27 +1,25 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from '@playwright/test';
 
-const SMOKE_URL = "/?panel=preparation&fixtures=smoke";
+const SMOKE_URL = '/?panel=preparation&fixtures=smoke';
 
-test("preparation pane renders the todo tree (SC-2/SC-8)", async ({ page }) => {
+test('preparation pane renders the todo tree (SC-2/SC-8)', async ({ page }) => {
   await page.goto(SMOKE_URL);
 
-  const treeNodes = page.getByTestId("preparation-todo-node");
+  const treeNodes = page.getByTestId('preparation-todo-node');
   await expect(treeNodes.first()).toBeVisible();
   expect(await treeNodes.count()).toBeGreaterThanOrEqual(2);
 });
 
-test("preparation pane renders status block characters (SC-5)", async ({ page }) => {
+test('preparation pane renders status block characters (SC-5)', async ({ page }) => {
   await page.goto(SMOKE_URL);
 
-  const block = page.getByTestId("status-block").first();
+  const block = page.getByTestId('status-block').first();
   await expect(block).toBeVisible();
-  const text = (await block.textContent()) ?? "";
+  const text = (await block.textContent()) ?? '';
   expect(text).toMatch(/[█□]/);
 });
 
-test("preparation pane aligns phase indicators across todos with different slug lengths (SC-6)", async ({
-  page,
-}) => {
+test('preparation pane aligns phase indicators across todos with different slug lengths (SC-6)', async ({ page }) => {
   await page.goto(SMOKE_URL);
 
   // smoke-active-row (16 chars) and smoke-x (8 chars) both render the same
@@ -46,7 +44,7 @@ test("preparation pane aligns phase indicators across todos with different slug 
   expect(Math.abs(longBox!.x - shortBox!.x)).toBeLessThanOrEqual(1);
 });
 
-test("preparation pane encodes status-block colors for delivered, active, and draft rows (SC-5/SC-7)", async ({
+test('preparation pane encodes status-block colors for delivered, active, and draft rows (SC-5/SC-7)', async ({
   page,
 }) => {
   await page.goto(SMOKE_URL);
@@ -65,7 +63,7 @@ test("preparation pane encodes status-block colors for delivered, active, and dr
   await expect(active).toBeVisible();
   await expect(draft).toBeVisible();
 
-  await expect(delivered).toHaveAttribute("data-color", "green");
-  await expect(active).toHaveAttribute("data-color", "gold");
-  await expect(draft).toHaveAttribute("data-color", "gray");
+  await expect(delivered).toHaveAttribute('data-color', 'green');
+  await expect(active).toHaveAttribute('data-color', 'gold');
+  await expect(draft).toHaveAttribute('data-color', 'gray');
 });

@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useCallback, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { validateWorkItemSlug } from "@/lib/work-items/validation";
-import { toast } from "@/lib/hooks/useToast";
+import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { validateWorkItemSlug } from '@/lib/work-items/validation';
+import { toast } from '@/lib/hooks/useToast';
 
 interface NewTodoModalProps {
   open: boolean;
@@ -12,12 +12,12 @@ interface NewTodoModalProps {
 
 export function NewTodoModal({ open, onOpenChange }: NewTodoModalProps) {
   const queryClient = useQueryClient();
-  const [slug, setSlug] = useState("");
+  const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const reset = useCallback(() => {
-    setSlug("");
+    setSlug('');
     setError(null);
     setSubmitting(false);
   }, []);
@@ -34,7 +34,7 @@ export function NewTodoModal({ open, onOpenChange }: NewTodoModalProps) {
 
       const validation = validateWorkItemSlug(slug);
       if (!validation.ok) {
-        setError("Slug must use lowercase letters, numbers, and hyphens only");
+        setError('Slug must use lowercase letters, numbers, and hyphens only');
         return;
       }
 
@@ -42,24 +42,22 @@ export function NewTodoModal({ open, onOpenChange }: NewTodoModalProps) {
       setError(null);
 
       try {
-        const res = await fetch("/api/todos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug: validation.slug }),
         });
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error ?? `HTTP ${res.status}`,
-          );
+          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
         }
 
-        queryClient.invalidateQueries({ queryKey: ["todos"] });
-        toast({ title: "Todo created", description: validation.slug, variant: "success" });
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
+        toast({ title: 'Todo created', description: validation.slug, variant: 'success' });
         close();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create todo");
+        setError(err instanceof Error ? err.message : 'Failed to create todo');
       } finally {
         setSubmitting(false);
       }
@@ -70,13 +68,13 @@ export function NewTodoModal({ open, onOpenChange }: NewTodoModalProps) {
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
         close();
       }
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
   }, [open, close]);
 
   if (!open) return null;
@@ -115,7 +113,7 @@ export function NewTodoModal({ open, onOpenChange }: NewTodoModalProps) {
               disabled={submitting || !slug.trim()}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : "Create"}
+              {submitting ? 'Creating...' : 'Create'}
             </button>
           </div>
         </form>

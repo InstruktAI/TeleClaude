@@ -2,13 +2,7 @@
 
 // --- Section-level common fields ---
 
-export type SectionVariant =
-  | "default"
-  | "info"
-  | "success"
-  | "warning"
-  | "error"
-  | "muted";
+export type SectionVariant = 'default' | 'info' | 'success' | 'warning' | 'error' | 'muted';
 
 interface SectionBase {
   label?: string;
@@ -19,14 +13,14 @@ interface SectionBase {
 // --- Per-section types ---
 
 export interface TextSection extends SectionBase {
-  type: "text";
+  type: 'text';
   content: string;
 }
 
 export interface InputField {
   name: string;
   label: string;
-  input: "text" | "select" | "checkbox" | "number" | "date";
+  input: 'text' | 'select' | 'checkbox' | 'number' | 'date';
   options?: string[];
   required?: boolean;
   placeholder?: string;
@@ -34,7 +28,7 @@ export interface InputField {
   helpText?: string;
   disabled?: boolean;
   readonly?: boolean;
-  width?: "half" | "full";
+  width?: 'half' | 'full';
   validation?: {
     min?: number;
     max?: number;
@@ -44,27 +38,27 @@ export interface InputField {
 }
 
 export interface InputSection extends SectionBase {
-  type: "input";
+  type: 'input';
   fields: InputField[];
 }
 
 export interface Button {
   label: string;
   action: string;
-  style?: "primary" | "secondary" | "destructive";
+  style?: 'primary' | 'secondary' | 'destructive';
   icon?: string;
   disabled?: boolean;
   confirm?: string;
 }
 
 export interface ActionsSection extends SectionBase {
-  type: "actions";
+  type: 'actions';
   buttons: Button[];
-  layout?: "horizontal" | "vertical";
+  layout?: 'horizontal' | 'vertical';
 }
 
 export interface ImageSection extends SectionBase {
-  type: "image";
+  type: 'image';
   src: string;
   alt?: string;
   width?: number;
@@ -73,7 +67,7 @@ export interface ImageSection extends SectionBase {
 }
 
 export interface TableSection extends SectionBase {
-  type: "table";
+  type: 'table';
   headers: string[];
   rows: (string | number)[][];
   caption?: string;
@@ -83,7 +77,7 @@ export interface TableSection extends SectionBase {
 }
 
 export interface FileSection extends SectionBase {
-  type: "file";
+  type: 'file';
   path: string;
   label?: string;
   size?: number;
@@ -92,7 +86,7 @@ export interface FileSection extends SectionBase {
 }
 
 export interface CodeSection extends SectionBase {
-  type: "code";
+  type: 'code';
   content: string;
   language?: string;
   title?: string;
@@ -101,7 +95,7 @@ export interface CodeSection extends SectionBase {
 }
 
 export interface DividerSection extends SectionBase {
-  type: "divider";
+  type: 'divider';
 }
 
 // --- Discriminated union ---
@@ -118,7 +112,7 @@ export type Section =
 
 // --- Expression-level types ---
 
-export type WidgetStatus = "info" | "success" | "warning" | "error";
+export type WidgetStatus = 'info' | 'success' | 'warning' | 'error';
 
 export interface WidgetExpression {
   name?: string;

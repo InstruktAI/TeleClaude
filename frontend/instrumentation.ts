@@ -8,18 +8,18 @@ export async function register() {
   //
   // We replace it with a tiny in-memory implementation so development SSR keeps
   // working. This is not browser persistence and should never run in production.
-  if (process.env.NODE_ENV !== "development") {
+  if (process.env.NODE_ENV !== 'development') {
     return;
   }
 
   // Avoid accessing the getter directly because doing so emits a noisy Node warning.
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
   if (!descriptor?.get) {
     return;
   }
 
   const store = new Map<string, string>();
-  Object.defineProperty(globalThis, "localStorage", {
+  Object.defineProperty(globalThis, 'localStorage', {
     value: {
       getItem: (key: string) => store.get(key) ?? null,
       setItem: (key: string, value: string) => store.set(key, String(value)),

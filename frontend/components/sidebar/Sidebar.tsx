@@ -1,26 +1,18 @@
-"use client";
+'use client';
 
-import { Suspense } from "react";
-import { Plus } from "lucide-react";
-import { SessionList } from "./SessionList";
-import { UserButton } from "./UserButton";
-import { useSidebar } from "./SidebarProvider";
-import { useWS } from "@/lib/ws/WebSocketProvider";
+import { Suspense } from 'react';
+import { Plus } from 'lucide-react';
+import { SessionList } from './SessionList';
+import { UserButton } from './UserButton';
+import { useSidebar } from './SidebarProvider';
+import { useWS } from '@/lib/ws/WebSocketProvider';
 
 function ConnectionBadge() {
   const { status } = useWS();
-  if (status === "connected") return null;
+  if (status === 'connected') return null;
   const label =
-    status === "connecting"
-      ? "Connecting..."
-      : status === "reconnecting"
-        ? "Reconnecting..."
-        : "Disconnected";
-  return (
-    <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] text-yellow-600">
-      {label}
-    </span>
-  );
+    status === 'connecting' ? 'Connecting...' : status === 'reconnecting' ? 'Reconnecting...' : 'Disconnected';
+  return <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] text-yellow-600">{label}</span>;
 }
 
 interface SidebarProps {
@@ -33,12 +25,7 @@ export function Sidebar({ onNewSession }: SidebarProps) {
   return (
     <>
       {/* Mobile overlay */}
-      {open && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
-          onClick={close}
-        />
-      )}
+      {open && <div className="fixed inset-0 z-40 bg-black/40 md:hidden" onClick={close} />}
 
       {/* Sidebar panel */}
       <aside
@@ -46,7 +33,7 @@ export function Sidebar({ onNewSession }: SidebarProps) {
           fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-sidebar text-sidebar-foreground
           transition-transform duration-200
           md:static md:z-0 md:translate-x-0
-          ${open ? "translate-x-0" : "-translate-x-full"}
+          ${open ? 'translate-x-0' : '-translate-x-full'}
         `}
       >
         {/* Header */}
@@ -70,10 +57,7 @@ export function Sidebar({ onNewSession }: SidebarProps) {
             fallback={
               <div className="flex flex-col gap-2 p-3">
                 {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-14 animate-pulse rounded-lg bg-muted"
-                  />
+                  <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
                 ))}
               </div>
             }

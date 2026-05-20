@@ -7,8 +7,8 @@
  * Implements simple caching (30s stale-while-revalidate) to reduce API calls.
  */
 
-import { TelecAPIClient, APIError } from "@/lib/api/client.js";
-import type { AgentName, AgentAvailabilityInfo } from "@/lib/api/types.js";
+import { TelecAPIClient, APIError } from '@/lib/api/client.js';
+import type { AgentName, AgentAvailabilityInfo } from '@/lib/api/types.js';
 
 // ---------------------------------------------------------------------------
 // Cache
@@ -42,9 +42,7 @@ export function clearAgentCache(): void {
  * @returns Map of agent name to availability info
  * @throws APIError if daemon is unreachable
  */
-export async function checkAgentAvailability(): Promise<
-  Record<AgentName, AgentAvailabilityInfo>
-> {
+export async function checkAgentAvailability(): Promise<Record<AgentName, AgentAvailabilityInfo>> {
   const now = Date.now();
 
   // Return cached data if still fresh
@@ -96,7 +94,7 @@ export function isAgentAvailable(availability: AgentAvailabilityInfo): boolean {
   }
 
   // Fallback: check status field
-  if (availability.status === "available") {
+  if (availability.status === 'available') {
     return true;
   }
 
@@ -110,9 +108,7 @@ export function isAgentAvailable(availability: AgentAvailabilityInfo): boolean {
  * @param all Map of all agent availability info
  * @returns Array of agent names that are available
  */
-export function getAvailableAgents(
-  all: Record<AgentName, AgentAvailabilityInfo>,
-): AgentName[] {
+export function getAvailableAgents(all: Record<AgentName, AgentAvailabilityInfo>): AgentName[] {
   const available: AgentName[] = [];
 
   for (const [name, info] of Object.entries(all)) {
@@ -135,9 +131,7 @@ export function getAvailableAgents(
  * @param all Map of all agent availability info
  * @returns Default agent name or null
  */
-export function getDefaultAgent(
-  all: Record<AgentName, AgentAvailabilityInfo>,
-): AgentName | null {
+export function getDefaultAgent(all: Record<AgentName, AgentAvailabilityInfo>): AgentName | null {
   const available = getAvailableAgents(all);
 
   if (available.length === 0) {
@@ -145,8 +139,8 @@ export function getDefaultAgent(
   }
 
   // Prefer 'claude' if available
-  if (available.includes("claude")) {
-    return "claude";
+  if (available.includes('claude')) {
+    return 'claude';
   }
 
   // Return first available (alphabetical)

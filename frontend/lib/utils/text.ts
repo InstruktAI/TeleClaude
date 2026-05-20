@@ -10,9 +10,7 @@ function cleanRawText(text: string): string {
   let cleaned = text;
   // Full match: [{'text': '...'}]
   // Using [\s\S] instead of . with /s flag for maximum compatibility
-  const fullMatch = cleaned.match(
-    /^\[\s*\{\s*['"]text['"]\s*:\s*['"]([\s\S]*)['"]\s*\}\s*\]$/,
-  );
+  const fullMatch = cleaned.match(/^\[\s*\{\s*['"]text['"]\s*:\s*['"]([\s\S]*)['"]\s*\}\s*\]$/);
   if (fullMatch) {
     cleaned = fullMatch[1];
   } else {
@@ -24,16 +22,13 @@ function cleanRawText(text: string): string {
     }
   }
 
-  return cleaned
-    .replace(/\\n/g, "\n")
-    .replace(/\\'/g, "'")
-    .replace(/\\"/g, '"');
+  return cleaned.replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\"/g, '"');
 }
 
 /**
  * Clean up text content and format command messages.
  */
 export function cleanMessageText(text: string): string {
-  if (typeof text !== "string") return text;
+  if (typeof text !== 'string') return text;
   return cleanRawText(text);
 }

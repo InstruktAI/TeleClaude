@@ -1,24 +1,15 @@
-import type { HumanRole } from "@/lib/api/types";
+import type { HumanRole } from '@/lib/api/types';
 
-export type ConfigurationAccessPresentation =
-  | "full"
-  | "hidden"
-  | "disabled"
-  | "denied";
+export type ConfigurationAccessPresentation = 'full' | 'hidden' | 'disabled' | 'denied';
 
 export interface ConfigurationAccess {
   canOpen: boolean;
   presentation: ConfigurationAccessPresentation;
 }
 
-export type ConfigurationSubtabId =
-  | "adapters"
-  | "people"
-  | "notifications"
-  | "environment"
-  | "validate";
+export type ConfigurationSubtabId = 'adapters' | 'people' | 'notifications' | 'environment' | 'validate';
 
-export type ConfigurationActionState = "read_only" | "cli_only_placeholder";
+export type ConfigurationActionState = 'read_only' | 'cli_only_placeholder';
 
 export interface ConfigurationSubtab {
   id: ConfigurationSubtabId;
@@ -39,54 +30,52 @@ export interface ConfigurationEnvironmentEntry {
 
 const CONFIGURATION_SUBTABS: readonly ConfigurationSubtab[] = [
   {
-    id: "adapters",
-    label: "Adapters",
+    id: 'adapters',
+    label: 'Adapters',
     readOnly: true,
-    actionState: "read_only",
+    actionState: 'read_only',
   },
   {
-    id: "people",
-    label: "People",
+    id: 'people',
+    label: 'People',
     readOnly: true,
-    actionState: "read_only",
+    actionState: 'read_only',
   },
   {
-    id: "notifications",
-    label: "Notifications",
+    id: 'notifications',
+    label: 'Notifications',
     readOnly: true,
-    actionState: "read_only",
+    actionState: 'read_only',
   },
   {
-    id: "environment",
-    label: "Environment",
+    id: 'environment',
+    label: 'Environment',
     readOnly: true,
-    actionState: "read_only",
+    actionState: 'read_only',
   },
   {
-    id: "validate",
-    label: "Validate",
+    id: 'validate',
+    label: 'Validate',
     readOnly: true,
-    actionState: "cli_only_placeholder",
+    actionState: 'cli_only_placeholder',
   },
 ] as const;
 
 function maskValue(value: string): string {
-  return "•".repeat(Math.max(6, Math.min(value.length, 12)));
+  return '•'.repeat(Math.max(6, Math.min(value.length, 12)));
 }
 
-export function resolveConfigurationAccess(
-  role?: HumanRole | null,
-): ConfigurationAccess {
-  if (role === "admin") {
+export function resolveConfigurationAccess(role?: HumanRole | null): ConfigurationAccess {
+  if (role === 'admin') {
     return {
       canOpen: true,
-      presentation: "full",
+      presentation: 'full',
     };
   }
 
   return {
     canOpen: false,
-    presentation: "denied",
+    presentation: 'denied',
   };
 }
 

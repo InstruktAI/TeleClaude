@@ -1,14 +1,10 @@
-import { QueryProvider } from "@/lib/query/QueryProvider";
-import { WebSocketProvider } from "@/lib/ws/WebSocketProvider";
-import { CacheInvalidation } from "@/lib/ws/CacheInvalidation";
-import { SidebarProvider } from "@/components/sidebar/SidebarProvider";
-import { Toaster } from "@/components/ui/sonner";
+import { QueryProvider } from '@/lib/query/QueryProvider';
+import { WebSocketProvider } from '@/lib/ws/WebSocketProvider';
+import { CacheInvalidation } from '@/lib/ws/CacheInvalidation';
+import { SidebarProvider } from '@/components/sidebar/SidebarProvider';
+import { Toaster } from '@/components/ui/sonner';
 
-export default function ChatLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function ChatLayout({ children }: { children: React.ReactNode }) {
   return (
     <QueryProvider>
       <WebSocketProvider>

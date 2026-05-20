@@ -1,7 +1,7 @@
-import { writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { createTransport } from "nodemailer";
+import { writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createTransport } from 'nodemailer';
 
 interface SendVerificationRequestParams {
   identifier: string;
@@ -22,31 +22,29 @@ interface SendVerificationRequestParams {
 // scraping server stdout. Production builds short-circuit before this path is
 // reached because the env var is unset and the sender takes the SMTP branch.
 function maybeRecordOtpForTest(email: string, token: string, url: string): void {
-  if (process.env.NODE_ENV === "production") return;
-  if (process.env.NEXT_PUBLIC_E2E_FIXTURES !== "1") return;
+  if (process.env.NODE_ENV === 'production') return;
+  if (process.env.NEXT_PUBLIC_E2E_FIXTURES !== '1') return;
   const path = join(tmpdir(), `teleclaude-e2e-otp-${encodeURIComponent(email)}.json`);
   const payload = JSON.stringify({ email, token, url, ts: Date.now() });
-  writeFileSync(path, payload, { encoding: "utf8" });
+  writeFileSync(path, payload, { encoding: 'utf8' });
 }
 
-export async function sendVerificationRequest(
-  params: SendVerificationRequestParams,
-) {
+export async function sendVerificationRequest(params: SendVerificationRequestParams) {
   const { identifier: email, token, url, provider } = params;
-  if (process.env.NODE_ENV === "development") {
+  if (process.env.NODE_ENV === 'development') {
     console.log(`[AUTH DEV] Verification code for ${email}: ${token}`);
     maybeRecordOtpForTest(email, token, url);
     return;
   }
 
-  if (!provider.server) throw new Error("SMTP server not configured");
+  if (!provider.server) throw new Error('SMTP server not configured');
 
   const transport = createTransport(provider.server as object);
 
   const result = await transport.sendMail({
     to: email,
     from: provider.from,
-    subject: "Your TeleClaude login code",
+    subject: 'Your TeleClaude login code',
     text: `Your verification code is: ${token}\n\nThis code expires in 3 minutes.\n\nIf you did not request this code, please ignore this email.`,
     html: `
       <body style="background:#f4f4f5;margin:0;padding:40px 0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
@@ -71,6 +69,6 @@ export async function sendVerificationRequest(
 
   const failed = result.rejected.concat(result.pending).filter(Boolean);
   if (failed.length) {
-    throw new Error(`Email(s) (${failed.join(", ")}) could not be sent`);
+    throw new Error(`Email(s) (${failed.join(', ')}) could not be sent`);
   }
 }

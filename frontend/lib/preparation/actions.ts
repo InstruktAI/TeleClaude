@@ -1,10 +1,8 @@
-import type { TodoInfo } from "@/lib/api/types";
+import type { TodoInfo } from '@/lib/api/types';
 
-export type PreparationSelectionKind = "computer" | "project" | "todo" | "file";
+export type PreparationSelectionKind = 'computer' | 'project' | 'todo' | 'file';
 
-export type PreparationActionReason =
-  | "selection_required"
-  | "daemon_endpoint_unavailable";
+export type PreparationActionReason = 'selection_required' | 'daemon_endpoint_unavailable';
 
 export interface PreparationActionState {
   enabled: boolean;
@@ -27,31 +25,21 @@ export interface PreparationActionAvailabilityInput {
 }
 
 function selectableAction(enabled: boolean): PreparationActionState {
-  return enabled
-    ? { enabled: true }
-    : { enabled: false, reason: "selection_required" };
+  return enabled ? { enabled: true } : { enabled: false, reason: 'selection_required' };
 }
 
 export function getPreparationActionAvailability(
   input: PreparationActionAvailabilityInput,
 ): PreparationActionAvailability {
-  const hasTodoSelection = input.kind === "todo" && input.todo !== undefined;
+  const hasTodoSelection = input.kind === 'todo' && input.todo !== undefined;
 
   return {
     prepare: selectableAction(hasTodoSelection),
     startWork: selectableAction(hasTodoSelection),
     refine: selectableAction(hasTodoSelection),
-    remove: hasTodoSelection
-      ? { enabled: false, reason: "daemon_endpoint_unavailable" }
-      : selectableAction(false),
-    freeze: hasTodoSelection
-      ? { enabled: false, reason: "daemon_endpoint_unavailable" }
-      : selectableAction(false),
-    moveUp: hasTodoSelection
-      ? { enabled: false, reason: "daemon_endpoint_unavailable" }
-      : selectableAction(false),
-    moveDown: hasTodoSelection
-      ? { enabled: false, reason: "daemon_endpoint_unavailable" }
-      : selectableAction(false),
+    remove: hasTodoSelection ? { enabled: false, reason: 'daemon_endpoint_unavailable' } : selectableAction(false),
+    freeze: hasTodoSelection ? { enabled: false, reason: 'daemon_endpoint_unavailable' } : selectableAction(false),
+    moveUp: hasTodoSelection ? { enabled: false, reason: 'daemon_endpoint_unavailable' } : selectableAction(false),
+    moveDown: hasTodoSelection ? { enabled: false, reason: 'daemon_endpoint_unavailable' } : selectableAction(false),
   };
 }

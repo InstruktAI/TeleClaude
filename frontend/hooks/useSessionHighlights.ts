@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { AgentActivityEvent, SessionClosedEvent, SessionInfo } from "@/lib/api/types";
-import { useWS } from "@/lib/ws/WebSocketProvider";
-import { usePersistentState } from "@/hooks/usePersistentState";
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { AgentActivityEvent, SessionClosedEvent, SessionInfo } from '@/lib/api/types';
+import { useWS } from '@/lib/ws/WebSocketProvider';
+import { usePersistentState } from '@/hooks/usePersistentState';
 
 const PREVIEW_HIGHLIGHT_DURATION_MS = 3_000;
-const SESSION_HIGHLIGHTS_STORAGE_KEY = "teleclaude.chat.session-highlights";
+const SESSION_HIGHLIGHTS_STORAGE_KEY = 'teleclaude.chat.session-highlights';
 
-type SessionHighlightType = "input" | "output";
+type SessionHighlightType = 'input' | 'output';
 
 interface PersistedHighlightState {
   highlightType?: SessionHighlightType;
@@ -32,10 +32,7 @@ export interface SessionHighlightViewState {
 type PersistedHighlightMap = Record<string, PersistedHighlightState>;
 type VolatileHighlightMap = Record<string, VolatileHighlightState>;
 
-function sameViewState(
-  left: SessionHighlightViewState | undefined,
-  right: SessionHighlightViewState,
-): boolean {
+function sameViewState(left: SessionHighlightViewState | undefined, right: SessionHighlightViewState): boolean {
   return (
     left?.highlightType === right.highlightType &&
     left?.activityEvent === right.activityEvent &&
@@ -45,17 +42,13 @@ function sameViewState(
   );
 }
 
-function isToolUseEvent(
-  event: AgentActivityEvent,
-): event is Extract<AgentActivityEvent, { type: "tool_use" }> {
-  return event.type === "tool_use";
+function isToolUseEvent(event: AgentActivityEvent): event is Extract<AgentActivityEvent, { type: 'tool_use' }> {
+  return event.type === 'tool_use';
 }
 
-function buildToolActivityText(
-  event: Extract<AgentActivityEvent, { type: "tool_use" }>,
-): string {
-  if (!event.tool_name) return "";
-  const preview = event.tool_preview ?? "";
+function buildToolActivityText(event: Extract<AgentActivityEvent, { type: 'tool_use' }>): string {
+  if (!event.tool_name) return '';
+  const preview = event.tool_preview ?? '';
   if (preview.startsWith(event.tool_name)) {
     const trimmed = preview.slice(event.tool_name.length).trimStart();
     return trimmed ? `${event.tool_name}: ${trimmed}` : event.tool_name;
@@ -70,16 +63,12 @@ function omitSession<T>(state: Record<string, T>, sessionId: string): Record<str
   return next;
 }
 
-export function useSessionHighlights(
-  sessions: SessionInfo[],
-  activeSessionId?: string | null,
-) {
+export function useSessionHighlights(sessions: SessionInfo[], activeSessionId?: string | null) {
   const { onEvent } = useWS();
-  const [persistedState, setPersistedState, persistence] =
-    usePersistentState<PersistedHighlightMap>(
-      SESSION_HIGHLIGHTS_STORAGE_KEY,
-      {},
-    );
+  const [persistedState, setPersistedState, persistence] = usePersistentState<PersistedHighlightMap>(
+    SESSION_HIGHLIGHTS_STORAGE_KEY,
+    {},
+  );
   const [volatileState, setVolatileState] = useState<VolatileHighlightMap>({});
   const timersRef = useRef<Map<string, number>>(new Map());
   const activeSessionIdRef = useRef<string | null>(activeSessionId ?? null);
@@ -96,42 +85,51 @@ export function useSessionHighlights(
     }
   }, []);
 
-  const clearHighlightVisual = useCallback((sessionId: string) => {
-    cancelHighlightTimer(sessionId);
-    setPersistedState((prev) => {
-      const entry = prev[sessionId];
-      if (!entry?.highlightType) return prev;
+  const clearHighlightVisual = useCallback(
+    (sessionId: string) => {
+      cancelHighlightTimer(sessionId);
+      setPersistedState((prev) => {
+        const entry = prev[sessionId];
+        if (!entry?.highlightType) return prev;
 
-      const nextEntry: PersistedHighlightState = { ...entry };
-      delete nextEntry.highlightType;
+        const nextEntry: PersistedHighlightState = { ...entry };
+        delete nextEntry.highlightType;
 
-      if (!nextEntry.lastOutputSummary && !nextEntry.lastOutputSummaryAt) {
-        return omitSession(prev, sessionId);
-      }
+        if (!nextEntry.lastOutputSummary && !nextEntry.lastOutputSummaryAt) {
+          return omitSession(prev, sessionId);
+        }
 
-      return {
-        ...prev,
-        [sessionId]: nextEntry,
-      };
-    });
-  }, [cancelHighlightTimer, setPersistedState]);
+        return {
+          ...prev,
+          [sessionId]: nextEntry,
+        };
+      });
+    },
+    [cancelHighlightTimer, setPersistedState],
+  );
 
-  const removeSessionState = useCallback((sessionId: string) => {
-    cancelHighlightTimer(sessionId);
-    setPersistedState((prev) => omitSession(prev, sessionId));
-    setVolatileState((prev) => omitSession(prev, sessionId));
-  }, [cancelHighlightTimer, setPersistedState]);
+  const removeSessionState = useCallback(
+    (sessionId: string) => {
+      cancelHighlightTimer(sessionId);
+      setPersistedState((prev) => omitSession(prev, sessionId));
+      setVolatileState((prev) => omitSession(prev, sessionId));
+    },
+    [cancelHighlightTimer, setPersistedState],
+  );
 
-  const schedulePreviewClear = useCallback((sessionId: string) => {
-    cancelHighlightTimer(sessionId);
-    timersRef.current.set(
-      sessionId,
-      window.setTimeout(() => {
-        timersRef.current.delete(sessionId);
-        clearHighlightVisual(sessionId);
-      }, PREVIEW_HIGHLIGHT_DURATION_MS),
-    );
-  }, [cancelHighlightTimer, clearHighlightVisual]);
+  const schedulePreviewClear = useCallback(
+    (sessionId: string) => {
+      cancelHighlightTimer(sessionId);
+      timersRef.current.set(
+        sessionId,
+        window.setTimeout(() => {
+          timersRef.current.delete(sessionId);
+          clearHighlightVisual(sessionId);
+        }, PREVIEW_HIGHLIGHT_DURATION_MS),
+      );
+    },
+    [cancelHighlightTimer, clearHighlightVisual],
+  );
 
   useEffect(() => {
     if (!persistence.isHydrated) return;
@@ -143,8 +141,7 @@ export function useSessionHighlights(
       for (const session of sessions) {
         const previous = prev[session.session_id];
         const summary = session.last_output_summary ?? previous?.lastOutputSummary ?? null;
-        const summaryAt =
-          session.last_output_summary_at ?? previous?.lastOutputSummaryAt ?? null;
+        const summaryAt = session.last_output_summary_at ?? previous?.lastOutputSummaryAt ?? null;
         const highlightType = previous?.highlightType;
 
         if (highlightType || summary || summaryAt) {
@@ -169,11 +166,7 @@ export function useSessionHighlights(
       }
       return next;
     });
-  }, [
-    persistence.isHydrated,
-    sessions,
-    setPersistedState,
-  ]);
+  }, [persistence.isHydrated, sessions, setPersistedState]);
 
   useEffect(() => {
     if (!activeSessionId || !persistence.isHydrated) return;
@@ -181,13 +174,13 @@ export function useSessionHighlights(
   }, [activeSessionId, clearHighlightVisual, persistence.isHydrated]);
 
   useEffect(() => {
-    const cleanupClosed = onEvent("session_closed", (event) => {
-      if (event.event !== "session_closed") return;
+    const cleanupClosed = onEvent('session_closed', (event) => {
+      if (event.event !== 'session_closed') return;
       removeSessionState((event as SessionClosedEvent).data.session_id);
     });
 
-    const cleanupActivity = onEvent("agent_activity", (event) => {
-      if (event.event !== "agent_activity") return;
+    const cleanupActivity = onEvent('agent_activity', (event) => {
+      if (event.event !== 'agent_activity') return;
       const activityEvent = event as AgentActivityEvent;
       const sessionId = activityEvent.session_id;
 
@@ -195,21 +188,20 @@ export function useSessionHighlights(
         ...prev,
         [sessionId]: {
           activityEvent: activityEvent.type,
-          activityText:
-            isToolUseEvent(activityEvent)
-              ? buildToolActivityText(activityEvent)
-              : activityEvent.type === "agent_stop"
-                ? activityEvent.summary ?? ""
-                : "",
+          activityText: isToolUseEvent(activityEvent)
+            ? buildToolActivityText(activityEvent)
+            : activityEvent.type === 'agent_stop'
+              ? (activityEvent.summary ?? '')
+              : '',
         },
       }));
 
-      if (activityEvent.type === "user_prompt_submit") {
+      if (activityEvent.type === 'user_prompt_submit') {
         setPersistedState((prev) => ({
           ...prev,
           [sessionId]: {
             ...prev[sessionId],
-            highlightType: "input",
+            highlightType: 'input',
           },
         }));
         if (activeSessionIdRef.current === sessionId) {
@@ -218,18 +210,14 @@ export function useSessionHighlights(
         return;
       }
 
-      if (activityEvent.type === "agent_stop") {
+      if (activityEvent.type === 'agent_stop') {
         setPersistedState((prev) => ({
           ...prev,
           [sessionId]: {
             ...prev[sessionId],
-            highlightType: "output",
-            lastOutputSummary:
-              activityEvent.summary ?? prev[sessionId]?.lastOutputSummary ?? null,
-            lastOutputSummaryAt:
-              activityEvent.timestamp ??
-              prev[sessionId]?.lastOutputSummaryAt ??
-              null,
+            highlightType: 'output',
+            lastOutputSummary: activityEvent.summary ?? prev[sessionId]?.lastOutputSummary ?? null,
+            lastOutputSummaryAt: activityEvent.timestamp ?? prev[sessionId]?.lastOutputSummaryAt ?? null,
           },
         }));
         if (activeSessionIdRef.current === sessionId) {
@@ -256,13 +244,8 @@ export function useSessionHighlights(
   }, []);
 
   const computedState = useMemo(() => {
-    const sessionById = new Map(
-      sessions.map((session) => [session.session_id, session]),
-    );
-    const sessionIds = new Set<string>([
-      ...sessionById.keys(),
-      ...Object.keys(persistedState),
-    ]);
+    const sessionById = new Map(sessions.map((session) => [session.session_id, session]));
+    const sessionIds = new Set<string>([...sessionById.keys(), ...Object.keys(persistedState)]);
     const next = new Map<string, SessionHighlightViewState>();
 
     for (const sessionId of sessionIds) {
@@ -274,10 +257,8 @@ export function useSessionHighlights(
         highlightType: persisted?.highlightType ?? null,
         activityEvent: volatile?.activityEvent ?? null,
         activityText: volatile?.activityText ?? null,
-        lastOutputSummary:
-          persisted?.lastOutputSummary ?? session?.last_output_summary ?? null,
-        lastOutputSummaryAt:
-          persisted?.lastOutputSummaryAt ?? session?.last_output_summary_at ?? null,
+        lastOutputSummary: persisted?.lastOutputSummary ?? session?.last_output_summary ?? null,
+        lastOutputSummaryAt: persisted?.lastOutputSummaryAt ?? session?.last_output_summary_at ?? null,
       };
 
       if (

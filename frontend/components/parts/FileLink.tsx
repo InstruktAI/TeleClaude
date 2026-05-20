@@ -1,10 +1,10 @@
-"use client";
+'use client';
 
-import { FileIcon } from "lucide-react";
-import type { FileMessagePartProps } from "@assistant-ui/react";
+import { FileIcon } from 'lucide-react';
+import type { FileMessagePartProps } from '@assistant-ui/react';
 
 export function FileLink({ filename, data, mimeType }: FileMessagePartProps) {
-  const displayName = filename ?? "Untitled file";
+  const displayName = filename ?? 'Untitled file';
 
   return (
     <a
@@ -14,9 +14,7 @@ export function FileLink({ filename, data, mimeType }: FileMessagePartProps) {
     >
       <FileIcon className="h-4 w-4 text-muted-foreground" />
       <span>{displayName}</span>
-      {mimeType && (
-        <span className="text-xs text-muted-foreground">({mimeType})</span>
-      )}
+      {mimeType && <span className="text-xs text-muted-foreground">({mimeType})</span>}
     </a>
   );
 }

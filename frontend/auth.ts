@@ -1,15 +1,10 @@
-import NextAuth from "next-auth";
-import Nodemailer from "next-auth/providers/nodemailer";
-import { DrizzleAdapter } from "@auth/drizzle-adapter";
-import { db } from "@/lib/db";
-import {
-  users,
-  accounts,
-  sessions,
-  verificationTokens,
-} from "@/lib/db/schema";
-import { sendVerificationRequest } from "@/lib/identity/email";
-import { findPersonByEmail } from "@/lib/identity/people";
+import NextAuth from 'next-auth';
+import Nodemailer from 'next-auth/providers/nodemailer';
+import { DrizzleAdapter } from '@auth/drizzle-adapter';
+import { db } from '@/lib/db';
+import { users, accounts, sessions, verificationTokens } from '@/lib/db/schema';
+import { sendVerificationRequest } from '@/lib/identity/email';
+import { findPersonByEmail } from '@/lib/identity/people';
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: DrizzleAdapter(db, {
@@ -39,13 +34,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
 
   pages: {
-    signIn: "/login",
-    verifyRequest: "/login?verify=1",
-    error: "/login?error=1",
+    signIn: '/login',
+    verifyRequest: '/login?verify=1',
+    error: '/login?error=1',
   },
 
   session: {
-    strategy: "database",
+    strategy: 'database',
     maxAge: 30 * 24 * 60 * 60,
   },
 

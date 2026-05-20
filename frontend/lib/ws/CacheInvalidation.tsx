@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useCacheInvalidation } from "./useCacheInvalidation";
+import { useCacheInvalidation } from './useCacheInvalidation';
 
 export function CacheInvalidation() {
   useCacheInvalidation();

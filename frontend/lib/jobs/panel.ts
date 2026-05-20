@@ -1,8 +1,8 @@
-import type { JobInfo } from "@/lib/api/types";
+import type { JobInfo } from '@/lib/api/types';
 
 export interface JobsPanelRow {
   name: string;
-  type: JobInfo["type"];
+  type: JobInfo['type'];
   scheduleLabel: string;
   lastRun: string | null;
   status: string;
@@ -14,7 +14,7 @@ export interface JobsSections {
 }
 
 export interface JobTriggerRequest {
-  method: "POST";
+  method: 'POST';
   path: string;
 }
 
@@ -22,7 +22,7 @@ function toRow(job: JobInfo): JobsPanelRow {
   return {
     name: job.name,
     type: job.type,
-    scheduleLabel: job.schedule ?? "one-shot",
+    scheduleLabel: job.schedule ?? 'one-shot',
     lastRun: job.last_run,
     status: job.status,
   };
@@ -44,7 +44,7 @@ export function buildJobsSections(jobs: readonly JobInfo[]): JobsSections {
 
 export function buildJobTriggerRequest(name: string): JobTriggerRequest {
   return {
-    method: "POST",
+    method: 'POST',
     path: `/api/jobs/${encodeURIComponent(name)}/run`,
   };
 }

@@ -1,49 +1,47 @@
-"use client";
+'use client';
 
-import { useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const isVerify = searchParams?.get("verify") === "1";
-  const errorParam = searchParams?.get("error");
+  const isVerify = searchParams?.get('verify') === '1';
+  const errorParam = searchParams?.get('error');
 
-  const [selectedEmail, setSelectedEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [step, setStep] = useState<"email" | "verify">(
-    isVerify ? "verify" : "email",
-  );
+  const [selectedEmail, setSelectedEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'email' | 'verify'>(isVerify ? 'verify' : 'email');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(errorParam ? "Authentication failed" : "");
+  const [error, setError] = useState(errorParam ? 'Authentication failed' : '');
 
   async function handleEmailSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!selectedEmail) return;
     setLoading(true);
-    setError("");
+    setError('');
 
     try {
-      const csrfRes = await fetch("/api/auth/csrf");
+      const csrfRes = await fetch('/api/auth/csrf');
       const { csrfToken } = await csrfRes.json();
 
-      const res = await fetch("/api/auth/signin/nodemailer", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      const res = await fetch('/api/auth/signin/nodemailer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({
           email: selectedEmail,
           csrfToken,
-          callbackUrl: "/",
+          callbackUrl: '/',
         }),
-        redirect: "manual",
+        redirect: 'manual',
       });
 
-      if (res.ok || res.type === "opaqueredirect" || res.status === 302) {
-        setStep("verify");
+      if (res.ok || res.type === 'opaqueredirect' || res.status === 302) {
+        setStep('verify');
       } else {
-        setError("Failed to send verification code");
+        setError('Failed to send verification code');
       }
     } catch {
-      setError("Network error");
+      setError('Network error');
     } finally {
       setLoading(false);
     }
@@ -53,13 +51,10 @@ function LoginForm() {
     e.preventDefault();
     if (!code || code.length !== 6) return;
 
-    const callbackUrl = new URL(
-      "/api/auth/callback/nodemailer",
-      window.location.origin,
-    );
-    callbackUrl.searchParams.set("token", code);
-    callbackUrl.searchParams.set("email", selectedEmail);
-    callbackUrl.searchParams.set("callbackUrl", "/");
+    const callbackUrl = new URL('/api/auth/callback/nodemailer', window.location.origin);
+    callbackUrl.searchParams.set('token', code);
+    callbackUrl.searchParams.set('email', selectedEmail);
+    callbackUrl.searchParams.set('callbackUrl', '/');
     window.location.href = callbackUrl.toString();
   }
 
@@ -71,13 +66,9 @@ function LoginForm() {
           <p className="mt-1 text-sm text-muted-foreground">Sign in to continue</p>
         </div>
 
-        {error && (
-          <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
+        {error && <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{error}</div>}
 
-        {step === "email" ? (
+        {step === 'email' ? (
           <form onSubmit={handleEmailSubmit} className="space-y-4">
             <div>
               <label htmlFor="login-email" className="mb-1 block text-sm font-medium">
@@ -99,14 +90,13 @@ function LoginForm() {
               disabled={!selectedEmail || loading}
               className="w-full rounded-md bg-primary py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {loading ? "Sending code..." : "Send verification code"}
+              {loading ? 'Sending code...' : 'Send verification code'}
             </button>
           </form>
         ) : (
           <form onSubmit={handleCodeSubmit} className="space-y-4">
             <p className="text-center text-sm text-muted-foreground">
-              Enter the 6-digit code sent to{" "}
-              <strong>{selectedEmail}</strong>
+              Enter the 6-digit code sent to <strong>{selectedEmail}</strong>
             </p>
 
             <div>
@@ -116,9 +106,7 @@ function LoginForm() {
                 pattern="[0-9]{6}"
                 maxLength={6}
                 value={code}
-                onChange={(e) =>
-                  setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
-                }
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                 placeholder="000000"
                 className="w-full rounded-md border bg-background px-3 py-3 text-center text-2xl tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-ring"
                 autoFocus
@@ -137,9 +125,9 @@ function LoginForm() {
             <button
               type="button"
               onClick={() => {
-                setStep("email");
-                setCode("");
-                setError("");
+                setStep('email');
+                setCode('');
+                setError('');
               }}
               className="w-full text-sm text-muted-foreground hover:underline"
             >

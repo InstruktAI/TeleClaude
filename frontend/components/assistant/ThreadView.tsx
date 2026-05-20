@@ -1,27 +1,19 @@
-"use client";
+'use client';
 
-import {
-  ThreadPrimitive,
-  ComposerPrimitive,
-  MessagePrimitive,
-  useThread,
-} from "@assistant-ui/react";
-import { MarkdownContent } from "@/components/parts/MarkdownContent";
-import { PlainTextContent } from "@/components/parts/PlainTextContent";
-import { ThinkingBlock } from "@/components/parts/ThinkingBlock";
-import { ToolCallBlock } from "@/components/parts/ToolCallBlock";
-import { FileLink } from "@/components/parts/FileLink";
-import {
-  RenderWidgetUI,
-  AskUserQuestionUI,
-} from "@/app/components/widgets";
-import { StatusIndicator } from "@/components/parts/StatusIndicator";
-import { useSessionAgent } from "@/hooks/useSessionAgent";
-import { useAgentColors } from "@/hooks/useAgentColors";
+import { ThreadPrimitive, ComposerPrimitive, MessagePrimitive, useThread } from '@assistant-ui/react';
+import { MarkdownContent } from '@/components/parts/MarkdownContent';
+import { PlainTextContent } from '@/components/parts/PlainTextContent';
+import { ThinkingBlock } from '@/components/parts/ThinkingBlock';
+import { ToolCallBlock } from '@/components/parts/ToolCallBlock';
+import { FileLink } from '@/components/parts/FileLink';
+import { RenderWidgetUI, AskUserQuestionUI } from '@/app/components/widgets';
+import { StatusIndicator } from '@/components/parts/StatusIndicator';
+import { useSessionAgent } from '@/hooks/useSessionAgent';
+import { useAgentColors } from '@/hooks/useAgentColors';
 
 function ThreadStatus() {
   const thread = useThread();
-  const status = thread.isRunning ? "streaming" : "idle";
+  const status = thread.isRunning ? 'streaming' : 'idle';
   return <StatusIndicator status={status} />;
 }
 
@@ -35,9 +27,7 @@ export function ThreadView() {
       <ThreadPrimitive.Viewport className="flex flex-1 flex-col overflow-y-auto px-4 pt-8">
         <ThreadPrimitive.Empty>
           <div className="flex flex-1 items-center justify-center">
-            <p className="text-muted-foreground text-sm">
-              Send a message to start
-            </p>
+            <p className="text-muted-foreground text-sm">Send a message to start</p>
           </div>
         </ThreadPrimitive.Empty>
 
@@ -108,7 +98,7 @@ function AssistantMessage() {
             File: FileLink,
             tools: {
               by_name: {
-                "telec sessions widget": RenderWidgetUI,
+                'telec sessions widget': RenderWidgetUI,
                 AskUserQuestion: AskUserQuestionUI,
               },
               Fallback: ToolCallBlock,

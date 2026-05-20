@@ -1,18 +1,18 @@
-"use client";
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSession } from "next-auth/react";
-import { useSettings } from "@/lib/hooks/useSettings";
-import { usePeople } from "@/lib/hooks/usePeople";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { useSettings } from '@/lib/hooks/useSettings';
+import { usePeople } from '@/lib/hooks/usePeople';
 import {
   resolveConfigurationAccess,
   getConfigurationSubtabs,
   buildEnvironmentEntries,
   type ConfigurationSubtabId,
-} from "@/lib/configuration/panel";
-import { findBinding } from "@/lib/keys/bindings";
-import type { HumanRole } from "@/lib/api/types";
-import { cn } from "@/lib/utils";
+} from '@/lib/configuration/panel';
+import { findBinding } from '@/lib/keys/bindings';
+import type { HumanRole } from '@/lib/api/types';
+import { cn } from '@/lib/utils';
 
 function AdaptersTab() {
   const { data: settings } = useSettings();
@@ -55,15 +55,11 @@ function PeopleTab() {
       {people.map((person) => (
         <div key={person.email ?? person.name} className="flex items-center gap-3 py-1 text-sm">
           <span className="font-medium">{person.name}</span>
-          {person.email && (
-            <span className="text-muted-foreground">{person.email}</span>
-          )}
+          {person.email && <span className="text-muted-foreground">{person.email}</span>}
           <span
             className={cn(
-              "rounded px-1.5 py-0.5 text-[10px] font-medium",
-              person.role === "admin"
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground",
+              'rounded px-1.5 py-0.5 text-[10px] font-medium',
+              person.role === 'admin' ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
             )}
           >
             {person.role}
@@ -122,9 +118,7 @@ function EnvironmentTab() {
           }}
         >
           <span className="font-mono text-muted-foreground">{entry.key}</span>
-          <span className={entry.masked ? "text-muted-foreground" : "text-foreground"}>
-            {entry.value}
-          </span>
+          <span className={entry.masked ? 'text-muted-foreground' : 'text-foreground'}>{entry.value}</span>
         </div>
       ))}
     </div>
@@ -158,45 +152,37 @@ interface ConfigViewProps {
 
 export function ConfigView({ isActive = true }: ConfigViewProps) {
   const { data: session } = useSession();
-  const role = (session?.user?.role ?? "member") as HumanRole;
+  const role = (session?.user?.role ?? 'member') as HumanRole;
   const access = resolveConfigurationAccess(role);
   const subtabs = useMemo(() => getConfigurationSubtabs(), []);
   const [activeSubtabIndex, setActiveSubtabIndex] = useState(0);
 
   const activeSubtab = subtabs[activeSubtabIndex];
-  const ActiveComponent = activeSubtab
-    ? SUBTAB_COMPONENTS[activeSubtab.id]
-    : null;
+  const ActiveComponent = activeSubtab ? SUBTAB_COMPONENTS[activeSubtab.id] : null;
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (!isActive) return;
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
-      const binding = findBinding(
-        e.key,
-        { ctrl: e.ctrlKey, shift: e.shiftKey, meta: e.metaKey },
-        "configuration",
-      );
+      const binding = findBinding(e.key, { ctrl: e.ctrlKey, shift: e.shiftKey, meta: e.metaKey }, 'configuration');
       if (!binding) return;
 
       switch (binding.action) {
-        case "next_subtab":
-        case "next_tab":
+        case 'next_subtab':
+        case 'next_tab':
           e.preventDefault();
           setActiveSubtabIndex((prev) => (prev + 1) % subtabs.length);
           break;
-        case "prev_subtab":
-        case "prev_tab":
+        case 'prev_subtab':
+        case 'prev_tab':
           e.preventDefault();
-          setActiveSubtabIndex(
-            (prev) => (prev - 1 + subtabs.length) % subtabs.length,
-          );
+          setActiveSubtabIndex((prev) => (prev - 1 + subtabs.length) % subtabs.length);
           break;
-        case "navigate_up":
-        case "navigate_down":
-        case "select_item":
+        case 'navigate_up':
+        case 'navigate_down':
+        case 'select_item':
           e.preventDefault();
           break;
         default:
@@ -207,8 +193,8 @@ export function ConfigView({ isActive = true }: ConfigViewProps) {
   );
 
   useEffect(() => {
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleKeyDown]);
 
   if (!access.canOpen) {
@@ -216,9 +202,7 @@ export function ConfigView({ isActive = true }: ConfigViewProps) {
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
           <p className="text-sm font-medium text-foreground">Admin access required</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Configuration is restricted to admin users
-          </p>
+          <p className="mt-1 text-xs text-muted-foreground">Configuration is restricted to admin users</p>
         </div>
       </div>
     );
@@ -234,22 +218,16 @@ export function ConfigView({ isActive = true }: ConfigViewProps) {
             aria-selected={index === activeSubtabIndex}
             onClick={() => setActiveSubtabIndex(index)}
             className={cn(
-              "relative px-3 py-2 text-sm font-medium transition-colors",
-              index === activeSubtabIndex
-                ? "text-foreground"
-                : "text-muted-foreground hover:text-foreground/80",
+              'relative px-3 py-2 text-sm font-medium transition-colors',
+              index === activeSubtabIndex ? 'text-foreground' : 'text-muted-foreground hover:text-foreground/80',
             )}
           >
             {tab.label}
-            {index === activeSubtabIndex && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
-            )}
+            {index === activeSubtabIndex && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />}
           </button>
         ))}
       </div>
-      <div className="flex-1 overflow-auto p-4">
-        {ActiveComponent && <ActiveComponent />}
-      </div>
+      <div className="flex-1 overflow-auto p-4">{ActiveComponent && <ActiveComponent />}</div>
     </div>
   );
 }

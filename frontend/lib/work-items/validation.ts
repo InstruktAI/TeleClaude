@@ -3,7 +3,7 @@ export const WORK_ITEM_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export interface WorkItemSlugValidationResult {
   ok: boolean;
   slug: string;
-  reason: "invalid_slug" | null;
+  reason: 'invalid_slug' | null;
 }
 
 export function validateWorkItemSlug(slug: string): WorkItemSlugValidationResult {
@@ -13,6 +13,6 @@ export function validateWorkItemSlug(slug: string): WorkItemSlugValidationResult
   return {
     ok: isValid,
     slug: normalizedSlug,
-    reason: isValid ? null : "invalid_slug",
+    reason: isValid ? null : 'invalid_slug',
   };
 }

@@ -1,20 +1,20 @@
-"use client";
+'use client';
 
-import { useQuery } from "@tanstack/react-query";
-import { useSearchParams, useRouter } from "next/navigation";
-import { Brain, Sparkles, Code2 } from "lucide-react";
-import { fetchSessions } from "@/lib/api/sessions";
-import { displayTitle } from "@/lib/sessions/displayTitle";
-import { useAgentTheming } from "@/hooks/useAgentTheming";
-import { useAgentColors } from "@/hooks/useAgentColors";
-import { safeAgent, type AgentType } from "@/lib/theme/tokens";
+import { useQuery } from '@tanstack/react-query';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { Brain, Sparkles, Code2 } from 'lucide-react';
+import { fetchSessions } from '@/lib/api/sessions';
+import { displayTitle } from '@/lib/sessions/displayTitle';
+import { useAgentTheming } from '@/hooks/useAgentTheming';
+import { useAgentColors } from '@/hooks/useAgentColors';
+import { safeAgent, type AgentType } from '@/lib/theme/tokens';
 
 function agentIcon(agent: string | null | undefined, color: string) {
-  const className = "h-3.5 w-3.5";
+  const className = 'h-3.5 w-3.5';
   switch (agent) {
-    case "gemini":
+    case 'gemini':
       return <Sparkles className={className} style={{ color }} />;
-    case "codex":
+    case 'codex':
       return <Code2 className={className} style={{ color }} />;
     default:
       return <Brain className={className} style={{ color }} />;
@@ -22,24 +22,22 @@ function agentIcon(agent: string | null | undefined, color: string) {
 }
 
 function statusDot(status: string) {
-  if (status === "active" || status === "running")
+  if (status === 'active' || status === 'running')
     return <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />;
-  if (status === "idle")
-    return <span className="h-2 w-2 rounded-full bg-yellow-500" />;
+  if (status === 'idle') return <span className="h-2 w-2 rounded-full bg-yellow-500" />;
   return <span className="h-2 w-2 rounded-full bg-gray-400" />;
 }
 
 function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "";
+  if (!iso) return '';
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "now";
+  if (mins < 1) return 'now';
   if (mins < 60) return `${mins}m`;
   const hours = Math.floor(mins / 60);
   if (hours < 24) return `${hours}h`;
   return `${Math.floor(hours / 24)}d`;
 }
-
 
 function SessionItem({ session, isActive }: { session: any; isActive: boolean }) {
   const router = useRouter();
@@ -53,29 +51,20 @@ function SessionItem({ session, isActive }: { session: any; isActive: boolean })
     <button
       onClick={() => router.push(`/?sessionId=${session.session_id}`)}
       className={`flex items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${
-        isActive
-          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-          : "hover:bg-sidebar-accent/50"
+        isActive ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent/50'
       }`}
     >
       {agentIcon(session.active_agent, colors.sidebarText)}
       <div className="min-w-0 flex-1">
-        <p
-          className="truncate font-medium text-xs"
-          style={isThemed ? { color: colors.sidebarText } : undefined}
-        >
+        <p className="truncate font-medium text-xs" style={isThemed ? { color: colors.sidebarText } : undefined}>
           {title}
         </p>
         {session.project_path && (
-          <p className="truncate text-[10px] text-muted-foreground">
-            {session.project_path.split("/").pop()}
-          </p>
+          <p className="truncate text-[10px] text-muted-foreground">{session.project_path.split('/').pop()}</p>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <span className="text-[10px] text-muted-foreground">
-          {relativeTime(session.last_activity)}
-        </span>
+        <span className="text-[10px] text-muted-foreground">{relativeTime(session.last_activity)}</span>
         {statusDot(session.status)}
       </div>
     </button>
@@ -84,10 +73,14 @@ function SessionItem({ session, isActive }: { session: any; isActive: boolean })
 
 export function SessionList() {
   const searchParams = useSearchParams();
-  const activeId = searchParams?.get("sessionId");
+  const activeId = searchParams?.get('sessionId');
 
-  const { data: sessions, isLoading, error } = useQuery({
-    queryKey: ["sessions"],
+  const {
+    data: sessions,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['sessions'],
     queryFn: fetchSessions,
     refetchInterval: 15_000,
   });
@@ -103,19 +96,17 @@ export function SessionList() {
   }
 
   if (error) {
-    console.error("SessionList query error:", error);
+    console.error('SessionList query error:', error);
     return (
       <div className="p-3">
-        <p className="text-xs text-destructive">
-          Failed to load sessions
-        </p>
+        <p className="text-xs text-destructive">Failed to load sessions</p>
       </div>
     );
   }
 
   const sorted = [...(sessions ?? [])].sort((a, b) => {
-    const ta = a.last_activity ?? a.created_at ?? "";
-    const tb = b.last_activity ?? b.created_at ?? "";
+    const ta = a.last_activity ?? a.created_at ?? '';
+    const tb = b.last_activity ?? b.created_at ?? '';
     return tb.localeCompare(ta);
   });
 
@@ -123,9 +114,7 @@ export function SessionList() {
     return (
       <div className="flex flex-col items-center justify-center gap-2 p-6 text-center">
         <p className="text-sm text-muted-foreground">No active sessions</p>
-        <p className="text-xs text-muted-foreground">
-          Create one to get started
-        </p>
+        <p className="text-xs text-muted-foreground">Create one to get started</p>
       </div>
     );
   }
@@ -133,11 +122,7 @@ export function SessionList() {
   return (
     <div className="flex flex-col gap-1 p-2">
       {sorted.map((s) => (
-        <SessionItem
-          key={s.session_id}
-          session={s}
-          isActive={s.session_id === activeId}
-        />
+        <SessionItem key={s.session_id} session={s} isActive={s.session_id === activeId} />
       ))}
     </div>
   );

@@ -8,7 +8,7 @@
  * No React, no DOM -- pure TypeScript with injectable timers.
  */
 
-import type { AnimationEngine } from './engine'
+import type { AnimationEngine } from './engine';
 
 // ---------------------------------------------------------------------------
 // Callback type
@@ -19,7 +19,7 @@ import type { AnimationEngine } from './engine'
  *
  * Receives the engine instance so it can call engine.play() directly.
  */
-export type TriggerCallback = (engine: AnimationEngine) => void
+export type TriggerCallback = (engine: AnimationEngine) => void;
 
 // ---------------------------------------------------------------------------
 // PeriodicTrigger
@@ -31,67 +31,67 @@ export type TriggerCallback = (engine: AnimationEngine) => void
  * Use for ambient/idle animations that run on a timer regardless of activity.
  */
 export class PeriodicTrigger {
-  private _interval: number
-  private _timerId: ReturnType<typeof setInterval> | null = null
-  private _engine: AnimationEngine | null = null
-  private _callback: TriggerCallback | null = null
+  private _interval: number;
+  private _timerId: ReturnType<typeof setInterval> | null = null;
+  private _engine: AnimationEngine | null = null;
+  private _callback: TriggerCallback | null = null;
 
   // Injectable for testing
-  private _setInterval: typeof setInterval
-  private _clearInterval: typeof clearInterval
+  private _setInterval: typeof setInterval;
+  private _clearInterval: typeof clearInterval;
 
   constructor(
     intervalSeconds: number = 60,
     opts?: {
-      setInterval?: typeof setInterval
-      clearInterval?: typeof clearInterval
+      setInterval?: typeof setInterval;
+      clearInterval?: typeof clearInterval;
     },
   ) {
-    this._interval = intervalSeconds * 1000
-    this._setInterval = opts?.setInterval ?? globalThis.setInterval
-    this._clearInterval = opts?.clearInterval ?? globalThis.clearInterval
+    this._interval = intervalSeconds * 1000;
+    this._setInterval = opts?.setInterval ?? globalThis.setInterval;
+    this._clearInterval = opts?.clearInterval ?? globalThis.clearInterval;
   }
 
   /** Start the periodic timer. */
   start(engine: AnimationEngine, callback: TriggerCallback): void {
-    this.stop()
-    this._engine = engine
-    this._callback = callback
+    this.stop();
+    this._engine = engine;
+    this._callback = callback;
     this._timerId = this._setInterval(() => {
       if (this._engine && this._callback) {
-        this._callback(this._engine)
+        this._callback(this._engine);
       }
-    }, this._interval)
+    }, this._interval);
   }
 
   /** Stop the periodic timer. */
   stop(): void {
     if (this._timerId !== null) {
-      this._clearInterval(this._timerId)
-      this._timerId = null
+      this._clearInterval(this._timerId);
+      this._timerId = null;
     }
-    this._engine = null
-    this._callback = null
+    this._engine = null;
+    this._callback = null;
   }
 
   /** Whether the trigger is active. */
   isActive(): boolean {
-    return this._timerId !== null
+    return this._timerId !== null;
   }
 
   /** Current interval in seconds. */
   get intervalSeconds(): number {
-    return this._interval / 1000
+    return this._interval / 1000;
   }
 
   /** Update the interval (restarts the timer if running). */
   setInterval(seconds: number): void {
-    this._interval = seconds * 1000
+    this._interval = seconds * 1000;
     if (this._timerId !== null && this._engine && this._callback) {
-      const engine = this._engine
-      const callback = this._callback
-      this.stop()
-      this.start(engine, callback)
+      const engine = this._engine;
+      const callback = this._callback;
+      this.stop();
+      this.start(engine, callback);
     }
   }
 }
@@ -101,13 +101,7 @@ export class PeriodicTrigger {
 // ---------------------------------------------------------------------------
 
 /** Agent activity event types that can fire animations. */
-export type ActivityEvent =
-  | 'tool_use'
-  | 'streaming'
-  | 'message'
-  | 'error'
-  | 'connected'
-  | 'disconnected'
+export type ActivityEvent = 'tool_use' | 'streaming' | 'message' | 'error' | 'connected' | 'disconnected';
 
 /**
  * Fires an animation in response to agent activity events.
@@ -117,35 +111,35 @@ export type ActivityEvent =
  * callbacks.
  */
 export class ActivityTrigger {
-  private _engine: AnimationEngine | null = null
-  private _defaultCallback: TriggerCallback | null = null
-  private _eventCallbacks: Map<ActivityEvent, TriggerCallback> = new Map()
-  private _cooldownMs: number
-  private _lastFireTime: number = 0
-  private _active: boolean = false
+  private _engine: AnimationEngine | null = null;
+  private _defaultCallback: TriggerCallback | null = null;
+  private _eventCallbacks: Map<ActivityEvent, TriggerCallback> = new Map();
+  private _cooldownMs: number;
+  private _lastFireTime: number = 0;
+  private _active: boolean = false;
 
   constructor(cooldownMs: number = 500) {
-    this._cooldownMs = cooldownMs
+    this._cooldownMs = cooldownMs;
   }
 
   /** Start the trigger. Subsequent emit() calls will invoke the callback. */
   start(engine: AnimationEngine, callback: TriggerCallback): void {
-    this._engine = engine
-    this._defaultCallback = callback
-    this._active = true
+    this._engine = engine;
+    this._defaultCallback = callback;
+    this._active = true;
   }
 
   /** Stop the trigger. emit() calls become no-ops. */
   stop(): void {
-    this._engine = null
-    this._defaultCallback = null
-    this._eventCallbacks.clear()
-    this._active = false
+    this._engine = null;
+    this._defaultCallback = null;
+    this._eventCallbacks.clear();
+    this._active = false;
   }
 
   /** Whether the trigger is active. */
   isActive(): boolean {
-    return this._active
+    return this._active;
   }
 
   /**
@@ -154,7 +148,7 @@ export class ActivityTrigger {
    * Falls back to the default callback when no event-specific one is registered.
    */
   on(event: ActivityEvent, callback: TriggerCallback): void {
-    this._eventCallbacks.set(event, callback)
+    this._eventCallbacks.set(event, callback);
   }
 
   /**
@@ -164,15 +158,15 @@ export class ActivityTrigger {
    * fire, the event is silently dropped.
    */
   emit(event: ActivityEvent): void {
-    if (!this._active || !this._engine) return
+    if (!this._active || !this._engine) return;
 
-    const now = Date.now()
-    if (now - this._lastFireTime < this._cooldownMs) return
-    this._lastFireTime = now
+    const now = Date.now();
+    if (now - this._lastFireTime < this._cooldownMs) return;
+    this._lastFireTime = now;
 
-    const callback = this._eventCallbacks.get(event) ?? this._defaultCallback
+    const callback = this._eventCallbacks.get(event) ?? this._defaultCallback;
     if (callback) {
-      callback(this._engine)
+      callback(this._engine);
     }
   }
 }
@@ -188,29 +182,29 @@ export class ActivityTrigger {
  * callback fires. Useful for connection status, agent mode, etc.
  */
 export class StateDrivenTrigger {
-  private _engine: AnimationEngine | null = null
-  private _callback: TriggerCallback | null = null
-  private _state: Map<string, string> = new Map()
-  private _active: boolean = false
+  private _engine: AnimationEngine | null = null;
+  private _callback: TriggerCallback | null = null;
+  private _state: Map<string, string> = new Map();
+  private _active: boolean = false;
 
   /** Start the trigger. */
   start(engine: AnimationEngine, callback: TriggerCallback): void {
-    this._engine = engine
-    this._callback = callback
-    this._active = true
+    this._engine = engine;
+    this._callback = callback;
+    this._active = true;
   }
 
   /** Stop the trigger and clear tracked state. */
   stop(): void {
-    this._engine = null
-    this._callback = null
-    this._state.clear()
-    this._active = false
+    this._engine = null;
+    this._callback = null;
+    this._state.clear();
+    this._active = false;
   }
 
   /** Whether the trigger is active. */
   isActive(): boolean {
-    return this._active
+    return this._active;
   }
 
   /**
@@ -220,23 +214,23 @@ export class StateDrivenTrigger {
    * the callback fires. First-time sets also fire.
    */
   setState(key: string, value: string): void {
-    const previous = this._state.get(key)
-    if (previous === value) return
+    const previous = this._state.get(key);
+    if (previous === value) return;
 
-    this._state.set(key, value)
+    this._state.set(key, value);
 
     if (this._active && this._engine && this._callback) {
-      this._callback(this._engine)
+      this._callback(this._engine);
     }
   }
 
   /** Get the current value of a tracked state key. */
   getState(key: string): string | undefined {
-    return this._state.get(key)
+    return this._state.get(key);
   }
 
   /** Clear a specific state key (next set will fire). */
   clearState(key: string): void {
-    this._state.delete(key)
+    this._state.delete(key);
   }
 }

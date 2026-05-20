@@ -9,12 +9,11 @@
  * - Clean teardown when either side disconnects
  */
 
-import http from "node:http";
-import WebSocket from "ws";
+import http from 'node:http';
+import WebSocket from 'ws';
 
-const DAEMON_SOCKET_PATH =
-  process.env.DAEMON_SOCKET_PATH ?? "/tmp/teleclaude-api.sock";
-const DAEMON_WS_PATH = "/ws";
+const DAEMON_SOCKET_PATH = process.env.DAEMON_SOCKET_PATH ?? '/tmp/teleclaude-api.sock';
+const DAEMON_WS_PATH = '/ws';
 
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -57,7 +56,7 @@ function connectToDaemon(client: BridgeClient): void {
 
   const daemon = createDaemonConnection();
 
-  daemon.on("open", () => {
+  daemon.on('open', () => {
     // Client may have disconnected while daemon connection was in-flight
     if (!client.running) {
       daemon.close();
@@ -69,27 +68,23 @@ function connectToDaemon(client: BridgeClient): void {
 
     // Notify browser of reconnection
     if (client.browser.readyState === WebSocket.OPEN) {
-      client.browser.send(
-        JSON.stringify({ event: "_bridge_connected", data: {} }),
-      );
+      client.browser.send(JSON.stringify({ event: '_bridge_connected', data: {} }));
     }
   });
 
-  daemon.on("message", (data) => {
+  daemon.on('message', (data) => {
     // Forward daemon -> browser
     if (client.browser.readyState === WebSocket.OPEN) {
-      client.browser.send(
-        typeof data === "string" ? data : data.toString("utf-8"),
-      );
+      client.browser.send(typeof data === 'string' ? data : data.toString('utf-8'));
     }
   });
 
-  daemon.on("close", () => {
+  daemon.on('close', () => {
     client.daemon = null;
     if (client.browser.readyState === WebSocket.OPEN) {
       client.browser.send(
         JSON.stringify({
-          event: "_bridge_disconnected",
+          event: '_bridge_disconnected',
           data: { reconnecting: client.running },
         }),
       );
@@ -97,7 +92,7 @@ function connectToDaemon(client: BridgeClient): void {
     scheduleDaemonReconnect(client);
   });
 
-  daemon.on("error", () => {
+  daemon.on('error', () => {
     // Close event follows; reconnect happens there
   });
 }
@@ -109,10 +104,7 @@ function scheduleDaemonReconnect(client: BridgeClient): void {
   const delay = jitteredDelay(client.backoff);
   client.reconnectTimer = setTimeout(() => {
     client.reconnectTimer = null;
-    client.backoff = Math.min(
-      client.backoff * BACKOFF_MULTIPLIER,
-      MAX_BACKOFF_MS,
-    );
+    client.backoff = Math.min(client.backoff * BACKOFF_MULTIPLIER, MAX_BACKOFF_MS);
     connectToDaemon(client);
   }, delay);
 }
@@ -152,8 +144,8 @@ export function bridgeConnection(
   };
 
   // Browser -> daemon message forwarding
-  browserWs.on("message", (data) => {
-    const text = typeof data === "string" ? data : data.toString("utf-8");
+  browserWs.on('message', (data) => {
+    const text = typeof data === 'string' ? data : data.toString('utf-8');
 
     // Track subscriptions for replay on reconnect
     try {
@@ -172,11 +164,11 @@ export function bridgeConnection(
     }
   });
 
-  browserWs.on("close", () => {
+  browserWs.on('close', () => {
     teardown(client);
   });
 
-  browserWs.on("error", () => {
+  browserWs.on('error', () => {
     teardown(client);
   });
 

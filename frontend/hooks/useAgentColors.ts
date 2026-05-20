@@ -1,4 +1,4 @@
-'use client'
+'use client';
 
 /**
  * Hook for resolving agent and user colors based on theming mode.
@@ -8,20 +8,20 @@
  *   - Peaceful mode: neutral grays for everything
  */
 
-import { useAgentTheming } from './useAgentTheming'
-import type { AgentType } from '@/lib/theme/tokens'
+import { useAgentTheming } from './useAgentTheming';
+import type { AgentType } from '@/lib/theme/tokens';
 
 export interface AgentColors {
   /** Background color for assistant messages (CSS var reference) */
-  assistantBubbleBg: string
+  assistantBubbleBg: string;
   /** Text color for assistant messages (CSS var reference) */
-  assistantBubbleText: string
+  assistantBubbleText: string;
   /** Background color for user messages (CSS var reference) */
-  userBubbleBg: string
+  userBubbleBg: string;
   /** Text color for user messages (CSS var reference) */
-  userBubbleText: string
+  userBubbleText: string;
   /** Text color for sidebar session items (CSS var reference) */
-  sidebarText: string
+  sidebarText: string;
 }
 
 /**
@@ -34,7 +34,7 @@ export interface AgentColors {
  * @returns Object with CSS var references for different UI elements
  */
 export function useAgentColors(agent: AgentType): AgentColors {
-  const { isThemed } = useAgentTheming()
+  const { isThemed } = useAgentTheming();
 
   if (isThemed) {
     // Themed mode: agent-colored assistant bubbles, orange user bubbles, agent sidebar
@@ -44,7 +44,7 @@ export function useAgentColors(agent: AgentType): AgentColors {
       userBubbleBg: 'var(--tc-user-bubble-bg)',
       userBubbleText: 'var(--tc-user-bubble-text)',
       sidebarText: `var(--tc-agent-${agent}-normal)`,
-    }
+    };
   } else {
     // Peaceful mode: distinct neutral backgrounds for assistant vs user
     return {
@@ -53,6 +53,6 @@ export function useAgentColors(agent: AgentType): AgentColors {
       userBubbleBg: 'var(--tc-peaceful-muted)',
       userBubbleText: 'var(--tc-text-primary)',
       sidebarText: 'var(--tc-text-secondary)',
-    }
+    };
   }
 }

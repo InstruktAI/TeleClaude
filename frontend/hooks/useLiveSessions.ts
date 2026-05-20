@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from 'react';
 import type {
   SessionClosedEvent,
   SessionInfo,
@@ -8,25 +8,18 @@ import type {
   SessionStatusEvent,
   SessionsInitialEvent,
   SessionUpdatedEvent,
-} from "@/lib/api/types";
-import { useSessions } from "@/lib/hooks/useSessions";
-import { useWS } from "@/lib/ws/WebSocketProvider";
+} from '@/lib/api/types';
+import { useSessions } from '@/lib/hooks/useSessions';
+import { useWS } from '@/lib/ws/WebSocketProvider';
 
-const HIDDEN_SESSION_STATUSES = new Set(["closing", "closed"]);
+const HIDDEN_SESSION_STATUSES = new Set(['closing', 'closed']);
 
-function matchesComputer(
-  session: Pick<SessionInfo, "computer">,
-  computer?: string,
-): boolean {
+function matchesComputer(session: Pick<SessionInfo, 'computer'>, computer?: string): boolean {
   if (!computer) return true;
   return session.computer === computer;
 }
 
-function upsertSession(
-  sessions: SessionInfo[],
-  nextSession: SessionInfo,
-  computer?: string,
-): SessionInfo[] {
+function upsertSession(sessions: SessionInfo[], nextSession: SessionInfo, computer?: string): SessionInfo[] {
   if (!matchesComputer(nextSession, computer)) {
     return sessions;
   }
@@ -35,9 +28,7 @@ function upsertSession(
     return sessions.filter((session) => session.session_id !== nextSession.session_id);
   }
 
-  const index = sessions.findIndex(
-    (session) => session.session_id === nextSession.session_id,
-  );
+  const index = sessions.findIndex((session) => session.session_id === nextSession.session_id);
   if (index === -1) {
     return [...sessions, nextSession];
   }
@@ -47,17 +38,11 @@ function upsertSession(
   return next;
 }
 
-function removeSession(
-  sessions: SessionInfo[],
-  sessionId: string,
-): SessionInfo[] {
+function removeSession(sessions: SessionInfo[], sessionId: string): SessionInfo[] {
   return sessions.filter((session) => session.session_id !== sessionId);
 }
 
-function patchSessionStatus(
-  sessions: SessionInfo[],
-  event: SessionStatusEvent,
-): SessionInfo[] {
+function patchSessionStatus(sessions: SessionInfo[], event: SessionStatusEvent): SessionInfo[] {
   let changed = false;
   const next = sessions.map((session) => {
     if (session.session_id !== event.session_id) return session;
@@ -89,8 +74,8 @@ export function useLiveSessions(computer?: string) {
   }
 
   useEffect(() => {
-    const cleanupInitial = onEvent("sessions_initial", (event) => {
-      if (event.event !== "sessions_initial") return;
+    const cleanupInitial = onEvent('sessions_initial', (event) => {
+      if (event.event !== 'sessions_initial') return;
       const initialEvent = event as SessionsInitialEvent;
       if (computer && initialEvent.data.computer && initialEvent.data.computer !== computer) {
         return;
@@ -98,26 +83,26 @@ export function useLiveSessions(computer?: string) {
       setSessions(initialEvent.data.sessions);
     });
 
-    const cleanupStarted = onEvent("session_started", (event) => {
-      if (event.event !== "session_started") return;
+    const cleanupStarted = onEvent('session_started', (event) => {
+      if (event.event !== 'session_started') return;
       const startedEvent = event as SessionStartedEvent;
       setSessions((prev) => upsertSession(prev, startedEvent.data, computer));
     });
 
-    const cleanupUpdated = onEvent("session_updated", (event) => {
-      if (event.event !== "session_updated") return;
+    const cleanupUpdated = onEvent('session_updated', (event) => {
+      if (event.event !== 'session_updated') return;
       const updatedEvent = event as SessionUpdatedEvent;
       setSessions((prev) => upsertSession(prev, updatedEvent.data, computer));
     });
 
-    const cleanupClosed = onEvent("session_closed", (event) => {
-      if (event.event !== "session_closed") return;
+    const cleanupClosed = onEvent('session_closed', (event) => {
+      if (event.event !== 'session_closed') return;
       const closedEvent = event as SessionClosedEvent;
       setSessions((prev) => removeSession(prev, closedEvent.data.session_id));
     });
 
-    const cleanupStatus = onEvent("session_status", (event) => {
-      if (event.event !== "session_status") return;
+    const cleanupStatus = onEvent('session_status', (event) => {
+      if (event.event !== 'session_status') return;
       setSessions((prev) => patchSessionStatus(prev, event as SessionStatusEvent));
     });
 

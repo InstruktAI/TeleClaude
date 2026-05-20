@@ -1,22 +1,22 @@
-const fs = require("node:fs");
-const path = require("node:path");
+const fs = require('node:fs');
+const path = require('node:path');
 
 const AUTHORING_GUIDE =
-  "software-development/procedure/snapshot-testing (docs/global/software-development/procedure/snapshot-testing.md)";
+  'software-development/procedure/snapshot-testing (docs/global/software-development/procedure/snapshot-testing.md)';
 
-const EXEMPTIONS_PATH = ".teleclaude/snapshot-testing-exemptions.txt";
-const FORBIDDEN_MATCHERS = new Set(["toBe", "toEqual", "toContain", "toMatch", "toStartWith", "toEndWith"]);
-const BINARY_OPERATORS = new Set(["==", "==="]);
+const EXEMPTIONS_PATH = '.teleclaude/snapshot-testing-exemptions.txt';
+const FORBIDDEN_MATCHERS = new Set(['toBe', 'toEqual', 'toContain', 'toMatch', 'toStartWith', 'toEndWith']);
+const BINARY_OPERATORS = new Set(['==', '===']);
 
 function normalizePath(filename) {
-  return filename.replaceAll("\\", "/");
+  return filename.replaceAll('\\', '/');
 }
 
 function isTestFile(filename) {
   const normalized = normalizePath(filename);
   return (
     (/\/__tests__\/.*\.(ts|tsx)$/.test(normalized) || /(^|\/)[^/]+\.test\.(ts|tsx)$/.test(normalized)) &&
-    !normalized.endsWith(".d.ts")
+    !normalized.endsWith('.d.ts')
   );
 }
 
@@ -39,20 +39,20 @@ function loadExemptions(projectRoot) {
   if (!fs.existsSync(exemptionsFile)) {
     return new Set();
   }
-  const content = fs.readFileSync(exemptionsFile, "utf8");
+  const content = fs.readFileSync(exemptionsFile, 'utf8');
   return new Set(
     content
       .split(/\r?\n/)
-      .map((line) => line.split("#", 1)[0].trim())
+      .map((line) => line.split('#', 1)[0].trim())
       .filter(Boolean)
-      .map((line) => normalizePath(line))
+      .map((line) => normalizePath(line)),
   );
 }
 
 function displayPath(filename, projectRoot) {
   const absolute = path.resolve(filename);
   const relative = path.relative(projectRoot, absolute);
-  if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+  if (relative && !relative.startsWith('..') && !path.isAbsolute(relative)) {
     return normalizePath(relative);
   }
   return normalizePath(absolute);
@@ -67,10 +67,10 @@ function propertyName(node) {
   if (!node) {
     return null;
   }
-  if (node.type === "Identifier") {
+  if (node.type === 'Identifier') {
     return node.name;
   }
-  if (node.type === "Literal" && typeof node.value === "string") {
+  if (node.type === 'Literal' && typeof node.value === 'string') {
     return node.value;
   }
   return null;
@@ -80,34 +80,34 @@ function isStringLiteral(node) {
   if (!node) {
     return false;
   }
-  if (node.type === "Literal") {
-    return typeof node.value === "string" || Boolean(node.regex);
+  if (node.type === 'Literal') {
+    return typeof node.value === 'string' || Boolean(node.regex);
   }
-  return node.type === "TemplateLiteral" && node.expressions.length === 0;
+  return node.type === 'TemplateLiteral' && node.expressions.length === 0;
 }
 
 function isMemberExpression(node) {
-  return node && node.type === "MemberExpression";
+  return node && node.type === 'MemberExpression';
 }
 
 function isExpectChain(node) {
   if (!node) {
     return false;
   }
-  if (node.type === "CallExpression" && node.callee.type === "Identifier" && node.callee.name === "expect") {
+  if (node.type === 'CallExpression' && node.callee.type === 'Identifier' && node.callee.name === 'expect') {
     return true;
   }
-  if (node.type === "MemberExpression") {
+  if (node.type === 'MemberExpression') {
     return isExpectChain(node.object);
   }
   return false;
 }
 
 function isCaughtExceptionMessage(node, catchBindings) {
-  if (!isMemberExpression(node) || propertyName(node.property) !== "message") {
+  if (!isMemberExpression(node) || propertyName(node.property) !== 'message') {
     return false;
   }
-  return node.object.type === "Identifier" && catchBindings.has(node.object.name);
+  return node.object.type === 'Identifier' && catchBindings.has(node.object.name);
 }
 
 function report(context, node, pattern) {
@@ -119,15 +119,14 @@ function report(context, node, pattern) {
 
 const noStringAssertionsRule = {
   meta: {
-    type: "problem",
+    type: 'problem',
     docs: {
-      description: "Detect forbidden string assertions in test files.",
+      description: 'Detect forbidden string assertions in test files.',
     },
     schema: [],
   },
   create(context) {
-    const filename =
-      typeof context.getFilename === "function" ? context.getFilename() : context.filename || "";
+    const filename = typeof context.getFilename === 'function' ? context.getFilename() : context.filename || '';
     const projectRoot = findProjectRoot(path.dirname(filename) || process.cwd());
     const exemptions = loadExemptions(projectRoot);
     if (!isTestFile(filename) || isExemptFile(filename, exemptions, projectRoot)) {
@@ -142,7 +141,7 @@ const noStringAssertionsRule = {
           return;
         }
         if (isStringLiteral(node.left) || isStringLiteral(node.right)) {
-          report(context, node, "assert_str_eq");
+          report(context, node, 'assert_str_eq');
         }
       },
       CallExpression(node) {
@@ -154,22 +153,22 @@ const noStringAssertionsRule = {
           return;
         }
         if (node.arguments.some((argument) => isStringLiteral(argument))) {
-          report(context, node, "vitest_matcher");
+          report(context, node, 'vitest_matcher');
         }
       },
       CatchClause(node) {
-        if (node.param && node.param.type === "Identifier") {
+        if (node.param && node.param.type === 'Identifier') {
           catchBindings.add(node.param.name);
         }
       },
-      "CatchClause:exit"(node) {
-        if (node.param && node.param.type === "Identifier") {
+      'CatchClause:exit'(node) {
+        if (node.param && node.param.type === 'Identifier') {
           catchBindings.delete(node.param.name);
         }
       },
       MemberExpression(node) {
         if (isCaughtExceptionMessage(node, catchBindings)) {
-          report(context, node, "exception_message");
+          report(context, node, 'exception_message');
         }
       },
     };
@@ -178,6 +177,6 @@ const noStringAssertionsRule = {
 
 module.exports = {
   rules: {
-    "no-string-assertions": noStringAssertionsRule,
+    'no-string-assertions': noStringAssertionsRule,
   },
 };

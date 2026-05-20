@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useSessionHighlights } from "../useSessionHighlights";
-import type { SessionInfo } from "@/lib/api/types";
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useSessionHighlights } from '../useSessionHighlights';
+import type { SessionInfo } from '@/lib/api/types';
 
 const capturedHandlers = new Map<string, (event: unknown) => void>();
 
-vi.mock("@/lib/ws/WebSocketProvider", () => ({
+vi.mock('@/lib/ws/WebSocketProvider', () => ({
   useWS: () => ({
     onEvent: (type: string, handler: (event: unknown) => void) => {
       capturedHandlers.set(type, handler);
@@ -17,21 +17,21 @@ vi.mock("@/lib/ws/WebSocketProvider", () => ({
 
 const sessions: SessionInfo[] = [
   {
-    session_id: "sess-1",
+    session_id: 'sess-1',
     detached: false,
-    title: "Session Alpha",
-    status: "running",
-    active_agent: "claude",
-    last_input: "Run planner",
-    project_path: "/work/project",
-    computer: "local",
+    title: 'Session Alpha',
+    status: 'running',
+    active_agent: 'claude',
+    last_input: 'Run planner',
+    project_path: '/work/project',
+    computer: 'local',
   },
 ];
 
 function installLocalStorageMock() {
   const store = new Map<string, string>();
 
-  Object.defineProperty(window, "localStorage", {
+  Object.defineProperty(window, 'localStorage', {
     configurable: true,
     value: {
       getItem: (key: string) => store.get(key) ?? null,
@@ -60,7 +60,7 @@ function emit(type: string, event: unknown) {
   });
 }
 
-describe("useSessionHighlights", () => {
+describe('useSessionHighlights', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     installLocalStorageMock();
@@ -72,81 +72,75 @@ describe("useSessionHighlights", () => {
     vi.useRealTimers();
   });
 
-  it("keeps non-preview output highlights until the session is opened", () => {
+  it('keeps non-preview output highlights until the session is opened', () => {
     const { result, rerender } = renderHook(
-      ({ activeSessionId }: { activeSessionId: string | null }) =>
-        useSessionHighlights(sessions, activeSessionId),
+      ({ activeSessionId }: { activeSessionId: string | null }) => useSessionHighlights(sessions, activeSessionId),
       { initialProps: { activeSessionId: null as string | null } },
     );
 
-    emit("agent_activity", {
-      event: "agent_activity",
-      session_id: "sess-1",
-      type: "agent_stop",
-      summary: "Build complete",
-      timestamp: "2026-03-30T12:05:00Z",
+    emit('agent_activity', {
+      event: 'agent_activity',
+      session_id: 'sess-1',
+      type: 'agent_stop',
+      summary: 'Build complete',
+      timestamp: '2026-03-30T12:05:00Z',
     });
 
-    expect(result.current.get("sess-1")?.highlightType).toBe("output");
-    expect(result.current.get("sess-1")?.lastOutputSummary).toBe("Build complete");
+    expect(result.current.get('sess-1')?.highlightType).toBe('output');
+    expect(result.current.get('sess-1')?.lastOutputSummary).toBe('Build complete');
 
     act(() => {
       vi.advanceTimersByTime(3_100);
     });
 
-    expect(result.current.get("sess-1")?.highlightType).toBe("output");
+    expect(result.current.get('sess-1')?.highlightType).toBe('output');
 
     act(() => {
-      rerender({ activeSessionId: "sess-1" });
+      rerender({ activeSessionId: 'sess-1' });
     });
 
-    expect(result.current.get("sess-1")?.highlightType).toBeNull();
-    expect(result.current.get("sess-1")?.lastOutputSummary).toBe("Build complete");
+    expect(result.current.get('sess-1')?.highlightType).toBeNull();
+    expect(result.current.get('sess-1')?.lastOutputSummary).toBe('Build complete');
   });
 
-  it("auto-clears preview-session highlights after three seconds", () => {
-    const { result } = renderHook(() =>
-      useSessionHighlights(sessions, "sess-1"),
-    );
+  it('auto-clears preview-session highlights after three seconds', () => {
+    const { result } = renderHook(() => useSessionHighlights(sessions, 'sess-1'));
 
-    emit("agent_activity", {
-      event: "agent_activity",
-      session_id: "sess-1",
-      type: "user_prompt_submit",
-      timestamp: "2026-03-30T12:06:00Z",
+    emit('agent_activity', {
+      event: 'agent_activity',
+      session_id: 'sess-1',
+      type: 'user_prompt_submit',
+      timestamp: '2026-03-30T12:06:00Z',
     });
 
-    expect(result.current.get("sess-1")?.highlightType).toBe("input");
-    expect(result.current.get("sess-1")?.activityEvent).toBe("user_prompt_submit");
+    expect(result.current.get('sess-1')?.highlightType).toBe('input');
+    expect(result.current.get('sess-1')?.activityEvent).toBe('user_prompt_submit');
 
     act(() => {
       vi.advanceTimersByTime(3_100);
     });
 
-    expect(result.current.get("sess-1")?.highlightType).toBeNull();
-    expect(result.current.get("sess-1")?.activityEvent).toBe("user_prompt_submit");
+    expect(result.current.get('sess-1')?.highlightType).toBeNull();
+    expect(result.current.get('sess-1')?.activityEvent).toBe('user_prompt_submit');
   });
 
-  it("removes highlight state when the session closes", () => {
-    const { result } = renderHook(() =>
-      useSessionHighlights(sessions, null),
-    );
+  it('removes highlight state when the session closes', () => {
+    const { result } = renderHook(() => useSessionHighlights(sessions, null));
 
-    emit("agent_activity", {
-      event: "agent_activity",
-      session_id: "sess-1",
-      type: "agent_stop",
-      summary: "Done",
-      timestamp: "2026-03-30T12:07:00Z",
+    emit('agent_activity', {
+      event: 'agent_activity',
+      session_id: 'sess-1',
+      type: 'agent_stop',
+      summary: 'Done',
+      timestamp: '2026-03-30T12:07:00Z',
     });
-    expect(result.current.get("sess-1")?.lastOutputSummary).toBe("Done");
+    expect(result.current.get('sess-1')?.lastOutputSummary).toBe('Done');
 
-    emit("session_closed", {
-      event: "session_closed",
-      data: { session_id: "sess-1" },
+    emit('session_closed', {
+      event: 'session_closed',
+      data: { session_id: 'sess-1' },
     });
 
-    expect(result.current.get("sess-1")).toBeUndefined();
+    expect(result.current.get('sess-1')).toBeUndefined();
   });
-
 });

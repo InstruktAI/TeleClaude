@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useSyncExternalStore, useCallback } from "react";
-import type { ToastVariant } from "@/components/ui/toast";
+import { useSyncExternalStore, useCallback } from 'react';
+import type { ToastVariant } from '@/components/ui/toast';
 
 export interface ToastData {
   id: string;
@@ -33,7 +33,7 @@ function getServerSnapshot(): ToastData[] {
   return [];
 }
 
-export function toast(data: Omit<ToastData, "id">): string {
+export function toast(data: Omit<ToastData, 'id'>): string {
   toastCounter += 1;
   const id = `toast-${toastCounter}`;
   toasts = [...toasts, { ...data, id }];
@@ -47,11 +47,7 @@ export function dismissToast(id: string): void {
 }
 
 export function useToast() {
-  const currentToasts = useSyncExternalStore(
-    subscribe,
-    getSnapshot,
-    getServerSnapshot,
-  );
+  const currentToasts = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const dismiss = useCallback((id: string) => {
     dismissToast(id);

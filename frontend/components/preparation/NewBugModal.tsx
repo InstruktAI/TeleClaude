@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useState, useCallback, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { validateWorkItemSlug } from "@/lib/work-items/validation";
-import { toast } from "@/lib/hooks/useToast";
+import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { validateWorkItemSlug } from '@/lib/work-items/validation';
+import { toast } from '@/lib/hooks/useToast';
 
 interface NewBugModalProps {
   open: boolean;
@@ -12,12 +12,12 @@ interface NewBugModalProps {
 
 export function NewBugModal({ open, onOpenChange }: NewBugModalProps) {
   const queryClient = useQueryClient();
-  const [slug, setSlug] = useState("");
+  const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const reset = useCallback(() => {
-    setSlug("");
+    setSlug('');
     setError(null);
     setSubmitting(false);
   }, []);
@@ -32,10 +32,10 @@ export function NewBugModal({ open, onOpenChange }: NewBugModalProps) {
       e?.preventDefault();
       if (!slug.trim()) return;
 
-      const fullSlug = slug.startsWith("bug-") ? slug : `bug-${slug}`;
+      const fullSlug = slug.startsWith('bug-') ? slug : `bug-${slug}`;
       const validation = validateWorkItemSlug(fullSlug);
       if (!validation.ok) {
-        setError("Slug must use lowercase letters, numbers, and hyphens only");
+        setError('Slug must use lowercase letters, numbers, and hyphens only');
         return;
       }
 
@@ -43,28 +43,26 @@ export function NewBugModal({ open, onOpenChange }: NewBugModalProps) {
       setError(null);
 
       try {
-        const res = await fetch("/api/todos", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+        const res = await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ slug: validation.slug }),
         });
 
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error ?? `HTTP ${res.status}`,
-          );
+          throw new Error((data as { error?: string }).error ?? `HTTP ${res.status}`);
         }
 
-        queryClient.invalidateQueries({ queryKey: ["todos"] });
+        queryClient.invalidateQueries({ queryKey: ['todos'] });
         toast({
-          title: "Bug created",
+          title: 'Bug created',
           description: `${validation.slug} (full bug workflow via CLI: telec bugs report)`,
-          variant: "success",
+          variant: 'success',
         });
         close();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to create bug");
+        setError(err instanceof Error ? err.message : 'Failed to create bug');
       } finally {
         setSubmitting(false);
       }
@@ -75,13 +73,13 @@ export function NewBugModal({ open, onOpenChange }: NewBugModalProps) {
   useEffect(() => {
     if (!open) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      if (e.key === 'Escape') {
         e.preventDefault();
         close();
       }
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
   }, [open, close]);
 
   if (!open) return null;
@@ -126,7 +124,7 @@ export function NewBugModal({ open, onOpenChange }: NewBugModalProps) {
               disabled={submitting || !slug.trim()}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : "Create Bug"}
+              {submitting ? 'Creating...' : 'Create Bug'}
             </button>
           </div>
         </form>

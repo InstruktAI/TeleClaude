@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useState, useCallback } from "react";
-import { useComposerRuntime } from "@assistant-ui/react";
-import type { InputSection as InputSectionType, InputField } from "@/lib/widgets";
+import { useState, useCallback } from 'react';
+import { useComposerRuntime } from '@assistant-ui/react';
+import type { InputSection as InputSectionType, InputField } from '@/lib/widgets';
 
 export function InputSectionRenderer({ section }: { section: InputSectionType }) {
   const composer = useComposerRuntime();
   const [values, setValues] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
     for (const field of section.fields) {
-      initial[field.name] = field.default ?? "";
+      initial[field.name] = field.default ?? '';
     }
     return initial;
   });
@@ -21,9 +21,9 @@ export function InputSectionRenderer({ section }: { section: InputSectionType })
 
   const handleSubmit = useCallback(() => {
     const parts = Object.entries(values)
-      .filter(([, v]) => v.trim() !== "")
+      .filter(([, v]) => v.trim() !== '')
       .map(([k, v]) => `${k}: ${v}`);
-    const message = `Form submission:\n${parts.join("\n")}`;
+    const message = `Form submission:\n${parts.join('\n')}`;
     composer.setText(message);
     composer.send();
     setSubmitted(true);
@@ -35,7 +35,7 @@ export function InputSectionRenderer({ section }: { section: InputSectionType })
         <FieldRenderer
           key={field.name}
           field={field}
-          value={values[field.name] ?? ""}
+          value={values[field.name] ?? ''}
           onChange={handleChange}
           disabled={submitted}
         />
@@ -45,7 +45,7 @@ export function InputSectionRenderer({ section }: { section: InputSectionType })
         disabled={submitted}
         className="inline-flex items-center rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
       >
-        {submitted ? "Submitted" : "Submit"}
+        {submitted ? 'Submitted' : 'Submit'}
       </button>
     </div>
   );
@@ -63,33 +63,33 @@ function FieldRenderer({
   disabled: boolean;
 }) {
   const baseClass =
-    "w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50";
+    'w-full rounded-md border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50';
 
   return (
-    <div className={field.width === "half" ? "w-1/2" : "w-full"}>
+    <div className={field.width === 'half' ? 'w-1/2' : 'w-full'}>
       <label className="mb-1 block text-sm font-medium">
         {field.label}
         {field.required && <span className="text-destructive"> *</span>}
       </label>
-      {field.input === "select" ? (
+      {field.input === 'select' ? (
         <select
           value={value}
           onChange={(e) => onChange(field.name, e.target.value)}
           disabled={disabled || field.disabled}
           className={baseClass}
         >
-          <option value="">{field.placeholder || "Select..."}</option>
+          <option value="">{field.placeholder || 'Select...'}</option>
           {field.options?.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
         </select>
-      ) : field.input === "checkbox" ? (
+      ) : field.input === 'checkbox' ? (
         <label className="flex items-center gap-2">
           <input
             type="checkbox"
-            checked={value === "true"}
+            checked={value === 'true'}
             onChange={(e) => onChange(field.name, String(e.target.checked))}
             disabled={disabled || field.disabled}
             className="h-4 w-4 rounded border"
@@ -98,7 +98,7 @@ function FieldRenderer({
         </label>
       ) : (
         <input
-          type={field.input === "number" ? "number" : field.input === "date" ? "date" : "text"}
+          type={field.input === 'number' ? 'number' : field.input === 'date' ? 'date' : 'text'}
           value={value}
           onChange={(e) => onChange(field.name, e.target.value)}
           placeholder={field.placeholder}
@@ -107,7 +107,7 @@ function FieldRenderer({
           className={baseClass}
         />
       )}
-      {field.helpText && field.input !== "checkbox" && (
+      {field.helpText && field.input !== 'checkbox' && (
         <p className="mt-0.5 text-xs text-muted-foreground">{field.helpText}</p>
       )}
     </div>

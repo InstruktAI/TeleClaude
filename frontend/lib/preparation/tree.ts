@@ -1,8 +1,4 @@
-import type {
-  ComputerInfo,
-  ProjectWithTodosInfo,
-  TodoInfo,
-} from "@/lib/api/types";
+import type { ComputerInfo, ProjectWithTodosInfo, TodoInfo } from '@/lib/api/types';
 
 export interface PreparationFileNode {
   id: string;
@@ -26,8 +22,8 @@ export interface PreparationGroupNode {
 }
 
 export type PreparationRootChild =
-  | { kind: "group"; node: PreparationGroupNode }
-  | { kind: "todo"; node: PreparationTodoNode };
+  | { kind: 'group'; node: PreparationGroupNode }
+  | { kind: 'todo'; node: PreparationTodoNode };
 
 export interface PreparationProjectNode {
   id: string;
@@ -51,10 +47,7 @@ function sortAlphabetically(values: readonly string[]): string[] {
   return [...values].sort((left, right) => left.localeCompare(right));
 }
 
-function resolveComputer(
-  computersByName: Map<string, ComputerInfo>,
-  project: ProjectWithTodosInfo,
-): ComputerInfo {
+function resolveComputer(computersByName: Map<string, ComputerInfo>, project: ProjectWithTodosInfo): ComputerInfo {
   const existing = computersByName.get(project.computer);
   if (existing) {
     return existing;
@@ -62,8 +55,8 @@ function resolveComputer(
 
   const synthesized: ComputerInfo = {
     name: project.computer,
-    status: "unknown",
-    is_local: project.computer === "local",
+    status: 'unknown',
+    is_local: project.computer === 'local',
   };
   computersByName.set(project.computer, synthesized);
   return synthesized;
@@ -74,114 +67,104 @@ function resolveComputer(
 // cascade is eligible (the phase still needs an entry in `LIFECYCLE_DISPLAY_LABELS`
 // to actually emit a tag — see `requirements_human_approval`).
 const PREPARE_LANE_PHASES: ReadonlySet<string> = new Set([
-  "draft",
-  "input_assessment",
-  "triangulation",
-  "requirements_review",
-  "requirements_human_approval",
-  "test_spec_build",
-  "test_spec_review",
-  "plan_drafting",
-  "plan_review",
-  "gate",
-  "grounding_check",
-  "re_grounding",
-  "prepared",
+  'draft',
+  'input_assessment',
+  'triangulation',
+  'requirements_review',
+  'requirements_human_approval',
+  'test_spec_build',
+  'test_spec_review',
+  'plan_drafting',
+  'plan_review',
+  'gate',
+  'grounding_check',
+  're_grounding',
+  'prepared',
 ]);
 
 // Mirrors `_LIFECYCLE_PHASE_LABELS` in teleclaude/cli/tui/widgets/todo_row.py:47-60.
 // Phases absent from this map (e.g., `requirements_human_approval`) emit no
 // prepare-lane indicator — the cascade falls through to the next priority.
 const LIFECYCLE_DISPLAY_LABELS: Readonly<Record<string, string>> = {
-  draft: "draft",
-  input_assessment: "discovery",
-  triangulation: "discovery",
-  requirements_review: "requirements",
-  test_spec_build: "requirements",
-  test_spec_review: "requirements",
-  plan_drafting: "planning",
-  plan_review: "planning",
-  gate: "planning",
-  grounding_check: "planning",
-  re_grounding: "planning",
-  prepared: "ready",
+  draft: 'draft',
+  input_assessment: 'discovery',
+  triangulation: 'discovery',
+  requirements_review: 'requirements',
+  test_spec_build: 'requirements',
+  test_spec_review: 'requirements',
+  plan_drafting: 'planning',
+  plan_review: 'planning',
+  gate: 'planning',
+  grounding_check: 'planning',
+  re_grounding: 'planning',
+  prepared: 'ready',
 };
 
-const SUCCESS_VALUES: ReadonlySet<string> = new Set([
-  "complete",
-  "approved",
-  "delivered",
-  "ready",
-  "prepared",
-]);
+const SUCCESS_VALUES: ReadonlySet<string> = new Set(['complete', 'approved', 'delivered', 'ready', 'prepared']);
 
 const IN_PROGRESS_VALUES: ReadonlySet<string> = new Set([
-  "input_assessment",
-  "discovery",
-  "requirements",
-  "planning",
-  "queued",
-  "started",
+  'input_assessment',
+  'discovery',
+  'requirements',
+  'planning',
+  'queued',
+  'started',
 ]);
 
-const FAILURE_VALUES: ReadonlySet<string> = new Set(["blocked", "failed"]);
+const FAILURE_VALUES: ReadonlySet<string> = new Set(['blocked', 'failed']);
 
-export type PhaseTagColor = "green" | "gold" | "red" | "gray";
+export type PhaseTagColor = 'green' | 'gold' | 'red' | 'gray';
 
 export function getPhaseTagColor(value: string): PhaseTagColor {
-  if (SUCCESS_VALUES.has(value)) return "green";
-  if (IN_PROGRESS_VALUES.has(value)) return "gold";
-  if (FAILURE_VALUES.has(value)) return "red";
-  return "gray";
+  if (SUCCESS_VALUES.has(value)) return 'green';
+  if (IN_PROGRESS_VALUES.has(value)) return 'gold';
+  if (FAILURE_VALUES.has(value)) return 'red';
+  return 'gray';
 }
 
 export interface TodoStatusBlock {
-  color: "green" | "gold" | "gray";
+  color: 'green' | 'gold' | 'gray';
   filled: boolean;
 }
 
 export function getTodoStatusBlock(todo: TodoInfo): TodoStatusBlock {
   // Rule 1: delivered (terminal success).
-  if (todo.status === "delivered" || todo.delivered_at) {
-    return { color: "green", filled: true };
+  if (todo.status === 'delivered' || todo.delivered_at) {
+    return { color: 'green', filled: true };
   }
 
   // Rule 2: prepare-lane lifecycle. PREPARED is a settled-success terminal → green.
   const lifecyclePhase = todo.lifecycle_phase ?? null;
   if (lifecyclePhase && PREPARE_LANE_PHASES.has(lifecyclePhase)) {
-    if (lifecyclePhase === "prepared") {
-      return { color: "green", filled: true };
+    if (lifecyclePhase === 'prepared') {
+      return { color: 'green', filled: true };
     }
-    return { color: "gold", filled: true };
+    return { color: 'gold', filled: true };
   }
 
   // Rule 3: integration phase. `delivered` is terminal-success → green.
   const integrationPhase = todo.integration_phase ?? null;
   const finalizeStatus = todo.finalize_status ?? null;
-  if (integrationPhase === "delivered") {
-    return { color: "green", filled: true };
+  if (integrationPhase === 'delivered') {
+    return { color: 'green', filled: true };
   }
-  if (
-    integrationPhase ||
-    finalizeStatus === "ready" ||
-    finalizeStatus === "handed_off"
-  ) {
-    return { color: "gold", filled: true };
+  if (integrationPhase || finalizeStatus === 'ready' || finalizeStatus === 'handed_off') {
+    return { color: 'gold', filled: true };
   }
 
   // Rule 4: work in progress.
   const buildStatus = todo.build_status ?? null;
-  if (buildStatus && buildStatus !== "pending") {
-    return { color: "gold", filled: true };
+  if (buildStatus && buildStatus !== 'pending') {
+    return { color: 'gold', filled: true };
   }
 
   // Rule 5: status-derived active/ready (no lifecycle/integration/build signal).
-  if (todo.status === "active" || todo.status === "ready") {
-    return { color: "gold", filled: true };
+  if (todo.status === 'active' || todo.status === 'ready') {
+    return { color: 'gold', filled: true };
   }
 
   // Rule 6: default.
-  return { color: "gray", filled: false };
+  return { color: 'gray', filled: false };
 }
 
 export function deriveTodoPhaseTags(todo: TodoInfo): string[] {
@@ -199,24 +182,24 @@ export function deriveTodoPhaseTags(todo: TodoInfo): string[] {
   // Priority 2: integration phase active, or finalize-status-derived integration value.
   const integrationPhase = todo.integration_phase ?? null;
   const finalizeStatus = todo.finalize_status ?? null;
-  if (integrationPhase === "started") {
-    return ["integration:started"];
+  if (integrationPhase === 'started') {
+    return ['integration:started'];
   }
-  if (integrationPhase === "delivered") {
-    return ["integration:delivered"];
+  if (integrationPhase === 'delivered') {
+    return ['integration:delivered'];
   }
   if (!integrationPhase) {
-    if (finalizeStatus === "ready") {
-      return ["integration:ready"];
+    if (finalizeStatus === 'ready') {
+      return ['integration:ready'];
     }
-    if (finalizeStatus === "handed_off") {
-      return ["integration:queued"];
+    if (finalizeStatus === 'handed_off') {
+      return ['integration:queued'];
     }
   }
 
   // Priority 3: work phase active (build_status non-pending).
   const buildStatus = todo.build_status ?? null;
-  if (buildStatus && buildStatus !== "pending") {
+  if (buildStatus && buildStatus !== 'pending') {
     const tags: string[] = [`build:${buildStatus}`];
     if (todo.review_status) {
       tags.push(`review:${todo.review_status}`);
@@ -246,7 +229,7 @@ function readFindingsCount(todo: TodoInfo): number | null {
   // assembled DTO may carry it once the backend extends TodoDTO. Read it via
   // structural access without weakening the static type.
   const candidate = (todo as unknown as { findings_count?: unknown }).findings_count;
-  return typeof candidate === "number" && Number.isFinite(candidate) ? candidate : null;
+  return typeof candidate === 'number' && Number.isFinite(candidate) ? candidate : null;
 }
 
 interface TopoSortResult {
@@ -254,10 +237,7 @@ interface TopoSortResult {
   hadCycle: boolean;
 }
 
-function topoSortSiblings(
-  slugs: readonly string[],
-  afterMap: ReadonlyMap<string, readonly string[]>,
-): TopoSortResult {
+function topoSortSiblings(slugs: readonly string[], afterMap: ReadonlyMap<string, readonly string[]>): TopoSortResult {
   const siblingSet = new Set(slugs);
   const indexOf = new Map<string, number>(slugs.map((s, i) => [s, i]));
   const inDegree = new Map<string, number>(slugs.map((s) => [s, 0]));
@@ -320,7 +300,7 @@ interface ProjectTopology {
   hadCycle: boolean;
 }
 
-const GROUP_PREFIX = "group:";
+const GROUP_PREFIX = 'group:';
 
 function isGroupRootId(rootId: string): boolean {
   return rootId.startsWith(GROUP_PREFIX);
@@ -328,9 +308,7 @@ function isGroupRootId(rootId: string): boolean {
 
 function buildProjectTopology(project: ProjectWithTodosInfo): ProjectTopology {
   const todos = project.todos ?? [];
-  const todoBySlug = new Map<string, TodoInfo>(
-    todos.map((todo) => [todo.slug, todo]),
-  );
+  const todoBySlug = new Map<string, TodoInfo>(todos.map((todo) => [todo.slug, todo]));
   const visibleSlugs = new Set(todoBySlug.keys());
 
   // Phase 1: hierarchy from `group`.
@@ -401,13 +379,9 @@ function buildProjectTopology(project: ProjectWithTodosInfo): ProjectTopology {
   }
 
   // Phase 2: cross-root after-deps promote one root before another.
-  const afterMap = new Map<string, string[]>(
-    todos.map((todo) => [todo.slug, [...(todo.after ?? [])]]),
-  );
+  const afterMap = new Map<string, string[]>(todos.map((todo) => [todo.slug, [...(todo.after ?? [])]]));
 
-  const rootAfter = new Map<string, string[]>(
-    rootCandidatesInOrder.map((id) => [id, []]),
-  );
+  const rootAfter = new Map<string, string[]>(rootCandidatesInOrder.map((id) => [id, []]));
   for (const todo of todos) {
     const itemRoot = rootIdOf.get(todo.slug);
     if (!itemRoot) continue;
@@ -452,10 +426,7 @@ function buildProjectTopology(project: ProjectWithTodosInfo): ProjectTopology {
   };
 }
 
-function buildTodoNode(
-  slug: string,
-  topology: ProjectTopology,
-): PreparationTodoNode {
+function buildTodoNode(slug: string, topology: ProjectTopology): PreparationTodoNode {
   const todo = topology.todoBySlug.get(slug);
   if (!todo) {
     throw new Error(
@@ -477,9 +448,7 @@ function buildTodoNode(
   };
 }
 
-function buildProjectNode(
-  project: ProjectWithTodosInfo,
-): PreparationProjectNode {
+function buildProjectNode(project: ProjectWithTodosInfo): PreparationProjectNode {
   const topology = buildProjectTopology(project);
 
   const rootChildren: PreparationRootChild[] = [];
@@ -496,11 +465,11 @@ function buildProjectNode(
         todos: childSlugs.map((childSlug) => buildTodoNode(childSlug, topology)),
       };
       groups.push(groupNode);
-      rootChildren.push({ kind: "group", node: groupNode });
+      rootChildren.push({ kind: 'group', node: groupNode });
     } else {
       const todoNode = buildTodoNode(rootId, topology);
       todos.push(todoNode);
-      rootChildren.push({ kind: "todo", node: todoNode });
+      rootChildren.push({ kind: 'todo', node: todoNode });
     }
   }
 
@@ -527,9 +496,7 @@ export function buildPreparationTree(
   projects: readonly ProjectWithTodosInfo[],
   computers: readonly ComputerInfo[],
 ): PreparationComputerNode[] {
-  const computersByName = new Map<string, ComputerInfo>(
-    computers.map((computer) => [computer.name, computer]),
-  );
+  const computersByName = new Map<string, ComputerInfo>(computers.map((computer) => [computer.name, computer]));
   const treeByComputer = new Map<string, PreparationComputerNode>();
 
   for (const computer of computers) {

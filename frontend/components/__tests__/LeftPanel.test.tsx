@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach } from 'vitest'
-import { render, screen, cleanup } from '@testing-library/react'
-import { LeftPanel } from '../LeftPanel'
+import { describe, it, expect, afterEach } from 'vitest';
+import { render, screen, cleanup } from '@testing-library/react';
+import { LeftPanel } from '../LeftPanel';
 
 describe('LeftPanel', () => {
-  afterEach(() => cleanup())
+  afterEach(() => cleanup());
 
-  function renderLeftPanel(activeTab?: "sessions" | "preparation" | "configuration" | "jobs") {
+  function renderLeftPanel(activeTab?: 'sessions' | 'preparation' | 'configuration' | 'jobs') {
     return render(
       <LeftPanel
         activeTab={activeTab}
@@ -16,20 +16,20 @@ describe('LeftPanel', () => {
         jobsContent={<div>jobs</div>}
         footer={<div>footer</div>}
       />,
-    )
+    );
   }
 
   it('renders with 40% width', () => {
-    const { container } = renderLeftPanel()
-    const panel = container.firstElementChild as HTMLElement
-    expect(panel.style.width).toBe('40%')
-  })
+    const { container } = renderLeftPanel();
+    const panel = container.firstElementChild as HTMLElement;
+    expect(panel.style.width).toBe('40%');
+  });
 
   it('contains a tab bar with tablist role', () => {
-    renderLeftPanel()
-    const tablists = screen.getAllByRole('tablist')
-    expect(tablists.length).toBeGreaterThanOrEqual(1)
-  })
+    renderLeftPanel();
+    const tablists = screen.getAllByRole('tablist');
+    expect(tablists.length).toBeGreaterThanOrEqual(1);
+  });
 
   it('renders footer slot', () => {
     render(
@@ -40,16 +40,16 @@ describe('LeftPanel', () => {
         jobsContent={<div>jobs</div>}
         footer={<div data-testid="test-footer">footer content</div>}
       />,
-    )
-    expect(screen.getByTestId('test-footer')).toBeDefined()
-  })
+    );
+    expect(screen.getByTestId('test-footer')).toBeDefined();
+  });
 
   it('renders active tab based on activeTab prop', () => {
-    renderLeftPanel('preparation')
-    const tabs = screen.getAllByRole('tab')
+    renderLeftPanel('preparation');
+    const tabs = screen.getAllByRole('tab');
     const activePrepTab = tabs.find(
       (t) => t.textContent?.includes('Preparation') && t.getAttribute('data-state') === 'active',
-    )
-    expect(activePrepTab).toBeDefined()
-  })
-})
+    );
+    expect(activePrepTab).toBeDefined();
+  });
+});

@@ -5,7 +5,7 @@
  * but provides typed, domain-specific methods.
  */
 
-import http from "node:http";
+import http from 'node:http';
 
 import type {
   AgentAvailabilityInfo,
@@ -22,13 +22,13 @@ import type {
   SettingsPatch,
   StatusResponse,
   TodoInfo,
-} from "./types.js";
+} from './types.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SOCKET_PATH = "/tmp/teleclaude-api.sock";
+const DEFAULT_SOCKET_PATH = '/tmp/teleclaude-api.sock';
 const DEFAULT_TIMEOUT_MS = 5_000;
 const SESSION_CREATE_TIMEOUT_MS = 30_000;
 
@@ -42,7 +42,7 @@ export class APIError extends Error {
 
   constructor(message: string, statusCode?: number, detail?: string) {
     super(message);
-    this.name = "APIError";
+    this.name = 'APIError';
     this.statusCode = statusCode;
     this.detail = detail ?? message;
   }
@@ -68,12 +68,12 @@ interface RawResponse {
 
 function buildQueryString(params: Record<string, string>): string {
   const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null);
-  if (entries.length === 0) return "";
-  return "?" + entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join("&");
+  if (entries.length === 0) return '';
+  return '?' + entries.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
 }
 
 function rawRequest(socketPath: string, opts: RequestOptions): Promise<RawResponse> {
-  const qs = opts.params ? buildQueryString(opts.params) : "";
+  const qs = opts.params ? buildQueryString(opts.params) : '';
   const fullPath = opts.path + qs;
   const payload = opts.body !== undefined ? JSON.stringify(opts.body) : undefined;
   const timeout = opts.timeout ?? DEFAULT_TIMEOUT_MS;
@@ -85,38 +85,32 @@ function rawRequest(socketPath: string, opts: RequestOptions): Promise<RawRespon
         method: opts.method,
         path: fullPath,
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
         },
         timeout,
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => {
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
           resolve({
             status: res.statusCode ?? 500,
             headers: res.headers,
-            body: Buffer.concat(chunks).toString("utf-8"),
+            body: Buffer.concat(chunks).toString('utf-8'),
           });
         });
-        res.on("error", reject);
+        res.on('error', reject);
       },
     );
 
-    req.on("timeout", () => {
+    req.on('timeout', () => {
       req.destroy();
-      reject(new APIError("Request timed out", undefined, "Request timed out"));
+      reject(new APIError('Request timed out', undefined, 'Request timed out'));
     });
 
-    req.on("error", (err) => {
-      reject(
-        new APIError(
-          `Connection error: ${err.message}`,
-          undefined,
-          err.message,
-        ),
-      );
+    req.on('error', (err) => {
+      reject(new APIError(`Connection error: ${err.message}`, undefined, err.message));
     });
 
     if (payload) {
@@ -139,16 +133,12 @@ function parseJsonBody<T>(raw: RawResponse): T {
     } catch {
       detail = raw.body;
     }
-    throw new APIError(
-      `API error ${raw.status}: ${detail}`,
-      raw.status,
-      detail,
-    );
+    throw new APIError(`API error ${raw.status}: ${detail}`, raw.status, detail);
   }
   try {
     return JSON.parse(raw.body) as T;
   } catch {
-    throw new APIError("Invalid JSON response", raw.status, raw.body);
+    throw new APIError('Invalid JSON response', raw.status, raw.body);
   }
 }
 
@@ -161,11 +151,7 @@ function assertOk(raw: RawResponse): void {
     } catch {
       detail = raw.body;
     }
-    throw new APIError(
-      `API error ${raw.status}: ${detail}`,
-      raw.status,
-      detail,
-    );
+    throw new APIError(`API error ${raw.status}: ${detail}`, raw.status, detail);
   }
 }
 
@@ -181,10 +167,7 @@ export class TelecAPIClient {
   private readonly socketPath: string;
 
   constructor(opts?: TelecAPIClientOptions) {
-    this.socketPath =
-      opts?.socketPath ??
-      process.env.DAEMON_SOCKET_PATH ??
-      DEFAULT_SOCKET_PATH;
+    this.socketPath = opts?.socketPath ?? process.env.DAEMON_SOCKET_PATH ?? DEFAULT_SOCKET_PATH;
   }
 
   // ---- generic request plumbing -----------------------------------------
@@ -203,7 +186,7 @@ export class TelecAPIClient {
   // ---- health -----------------------------------------------------------
 
   async health(): Promise<HealthResponse> {
-    return this.request<HealthResponse>({ method: "GET", path: "/health" });
+    return this.request<HealthResponse>({ method: 'GET', path: '/health' });
   }
 
   // ---- sessions ---------------------------------------------------------
@@ -212,16 +195,16 @@ export class TelecAPIClient {
     const params: Record<string, string> = {};
     if (computer) params.computer = computer;
     return this.request<SessionInfo[]>({
-      method: "GET",
-      path: "/sessions",
+      method: 'GET',
+      path: '/sessions',
       params,
     });
   }
 
   async createSession(req: CreateSessionRequest): Promise<CreateSessionResponse> {
     return this.request<CreateSessionResponse>({
-      method: "POST",
-      path: "/sessions",
+      method: 'POST',
+      path: '/sessions',
       body: req,
       timeout: SESSION_CREATE_TIMEOUT_MS,
     });
@@ -229,7 +212,7 @@ export class TelecAPIClient {
 
   async endSession(sessionId: string, computer: string): Promise<boolean> {
     return this.requestOk({
-      method: "DELETE",
+      method: 'DELETE',
       path: `/sessions/${encodeURIComponent(sessionId)}`,
       params: { computer },
     });
@@ -237,23 +220,18 @@ export class TelecAPIClient {
 
   async sendMessage(sessionId: string, computer: string, message: string): Promise<boolean> {
     return this.requestOk({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/message`,
       params: { computer },
       body: { message },
     });
   }
 
-  async sendKeys(
-    sessionId: string,
-    computer: string,
-    key: string,
-    count?: number,
-  ): Promise<boolean> {
+  async sendKeys(sessionId: string, computer: string, key: string, count?: number): Promise<boolean> {
     const body: Record<string, unknown> = { key };
     if (count !== undefined) body.count = count;
     return this.requestOk({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/keys`,
       params: { computer },
       body,
@@ -267,7 +245,7 @@ export class TelecAPIClient {
     opts?: { duration?: number; messageId?: string; messageThreadId?: number },
   ): Promise<boolean> {
     return this.requestOk({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/voice`,
       params: { computer },
       body: {
@@ -287,7 +265,7 @@ export class TelecAPIClient {
     opts?: { caption?: string; fileSize?: number },
   ): Promise<boolean> {
     return this.requestOk({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/file`,
       params: { computer },
       body: {
@@ -301,14 +279,14 @@ export class TelecAPIClient {
 
   async agentRestart(sessionId: string): Promise<StatusResponse> {
     return this.request<StatusResponse>({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/agent-restart`,
     });
   }
 
   async reviveSession(sessionId: string): Promise<CreateSessionResponse> {
     return this.request<CreateSessionResponse>({
-      method: "POST",
+      method: 'POST',
       path: `/sessions/${encodeURIComponent(sessionId)}/revive`,
       timeout: SESSION_CREATE_TIMEOUT_MS,
     });
@@ -320,10 +298,10 @@ export class TelecAPIClient {
   ): Promise<SessionMessagesResponse> {
     const params: Record<string, string> = {};
     if (opts?.since) params.since = opts.since;
-    if (opts?.includeTools) params.include_tools = "true";
-    if (opts?.includeThinking) params.include_thinking = "true";
+    if (opts?.includeTools) params.include_tools = 'true';
+    if (opts?.includeThinking) params.include_thinking = 'true';
     return this.request<SessionMessagesResponse>({
-      method: "GET",
+      method: 'GET',
       path: `/sessions/${encodeURIComponent(sessionId)}/messages`,
       params,
     });
@@ -332,7 +310,7 @@ export class TelecAPIClient {
   // ---- computers --------------------------------------------------------
 
   async getComputers(): Promise<ComputerInfo[]> {
-    return this.request<ComputerInfo[]>({ method: "GET", path: "/computers" });
+    return this.request<ComputerInfo[]>({ method: 'GET', path: '/computers' });
   }
 
   // ---- projects ---------------------------------------------------------
@@ -341,8 +319,8 @@ export class TelecAPIClient {
     const params: Record<string, string> = {};
     if (computer) params.computer = computer;
     return this.request<ProjectInfo[]>({
-      method: "GET",
-      path: "/projects",
+      method: 'GET',
+      path: '/projects',
       params,
     });
   }
@@ -354,18 +332,15 @@ export class TelecAPIClient {
     if (opts?.project) params.project = opts.project;
     if (opts?.computer) params.computer = opts.computer;
     return this.request<TodoInfo[]>({
-      method: "GET",
-      path: "/todos",
+      method: 'GET',
+      path: '/todos',
       params,
     });
   }
 
   /** Convenience: fetch projects then enrich each with its todos. */
   async getProjectsWithTodos(): Promise<ProjectWithTodosInfo[]> {
-    const [projects, todos] = await Promise.all([
-      this.getProjects(),
-      this.getTodos(),
-    ]);
+    const [projects, todos] = await Promise.all([this.getProjects(), this.getTodos()]);
     const todoMap = new Map<string, TodoInfo[]>();
     for (const todo of todos) {
       if (!todo.computer || !todo.project_path) continue;
@@ -384,27 +359,27 @@ export class TelecAPIClient {
 
   async getAgentAvailability(): Promise<Record<string, AgentAvailabilityInfo>> {
     return this.request<Record<string, AgentAvailabilityInfo>>({
-      method: "GET",
-      path: "/agents/availability",
+      method: 'GET',
+      path: '/agents/availability',
     });
   }
 
   // ---- people -----------------------------------------------------------
 
   async getPeople(): Promise<PersonInfo[]> {
-    return this.request<PersonInfo[]>({ method: "GET", path: "/api/people" });
+    return this.request<PersonInfo[]>({ method: 'GET', path: '/api/people' });
   }
 
   // ---- settings ---------------------------------------------------------
 
   async getSettings(): Promise<Settings> {
-    return this.request<Settings>({ method: "GET", path: "/settings" });
+    return this.request<Settings>({ method: 'GET', path: '/settings' });
   }
 
   async patchSettings(patch: SettingsPatch): Promise<Settings> {
     return this.request<Settings>({
-      method: "PATCH",
-      path: "/settings",
+      method: 'PATCH',
+      path: '/settings',
       body: patch,
     });
   }

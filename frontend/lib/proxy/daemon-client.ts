@@ -1,7 +1,6 @@
-import http from "node:http";
+import http from 'node:http';
 
-const SOCKET_PATH =
-  process.env.DAEMON_SOCKET_PATH ?? "/tmp/teleclaude-api.sock";
+const SOCKET_PATH = process.env.DAEMON_SOCKET_PATH ?? '/tmp/teleclaude-api.sock';
 
 interface ProxyOptions {
   method: string;
@@ -30,35 +29,31 @@ export async function daemonRequest(opts: ProxyOptions): Promise<ProxyResponse> 
         method: opts.method,
         path: opts.path,
         headers: {
-          "Content-Type": "application/json",
-          "X-Request-Id": requestId,
+          'Content-Type': 'application/json',
+          'X-Request-Id': requestId,
           ...opts.headers,
         },
         signal: opts.signal,
       },
       (res) => {
         const chunks: Buffer[] = [];
-        res.on("data", (chunk: Buffer) => chunks.push(chunk));
-        res.on("end", () => {
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => {
           const elapsed = Math.round(performance.now() - start);
-          console.log(
-            `[proxy] ${opts.method} ${opts.path} -> ${res.statusCode} (${elapsed}ms) req=${requestId}`,
-          );
+          console.log(`[proxy] ${opts.method} ${opts.path} -> ${res.statusCode} (${elapsed}ms) req=${requestId}`);
           resolve({
             status: res.statusCode ?? 500,
             headers: res.headers,
-            body: Buffer.concat(chunks).toString("utf-8"),
+            body: Buffer.concat(chunks).toString('utf-8'),
           });
         });
-        res.on("error", reject);
+        res.on('error', reject);
       },
     );
 
-    req.on("error", (err) => {
+    req.on('error', (err) => {
       const elapsed = Math.round(performance.now() - start);
-      console.error(
-        `[proxy] ${opts.method} ${opts.path} -> ERROR (${elapsed}ms) req=${requestId}: ${err.message}`,
-      );
+      console.error(`[proxy] ${opts.method} ${opts.path} -> ERROR (${elapsed}ms) req=${requestId}: ${err.message}`);
       reject(err);
     });
 
@@ -84,8 +79,8 @@ export async function daemonStream(
         method: opts.method,
         path: opts.path,
         headers: {
-          "Content-Type": "application/json",
-          "X-Request-Id": requestId,
+          'Content-Type': 'application/json',
+          'X-Request-Id': requestId,
           ...opts.headers,
         },
         signal: opts.signal,
@@ -103,7 +98,7 @@ export async function daemonStream(
       },
     );
 
-    req.on("error", (err) => {
+    req.on('error', (err) => {
       const elapsed = Math.round(performance.now() - start);
       console.error(
         `[proxy-stream] ${opts.method} ${opts.path} -> ERROR (${elapsed}ms) req=${requestId}: ${err.message}`,
@@ -118,11 +113,8 @@ export async function daemonStream(
   });
 }
 
-export function normalizeUpstreamError(
-  status: number,
-  body: string,
-): { error: string; upstream_status: number } {
-  let message = "Upstream service error";
+export function normalizeUpstreamError(status: number, body: string): { error: string; upstream_status: number } {
+  let message = 'Upstream service error';
   try {
     const parsed = JSON.parse(body);
     if (parsed.detail) message = String(parsed.detail);

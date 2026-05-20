@@ -1,3 +1,3 @@
-import { enableMapSet } from 'immer'
+import { enableMapSet } from 'immer';
 
-enableMapSet()
+enableMapSet();

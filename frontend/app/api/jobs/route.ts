@@ -1,37 +1,31 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { daemonRequest, normalizeUpstreamError } from "@/lib/proxy/daemon-client";
-import { buildIdentityHeaders } from "@/lib/proxy/identity-headers";
+import { NextResponse } from 'next/server';
+import { auth } from '@/auth';
+import { daemonRequest, normalizeUpstreamError } from '@/lib/proxy/daemon-client';
+import { buildIdentityHeaders } from '@/lib/proxy/identity-headers';
 
 export async function GET() {
   const session = await auth();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const res = await daemonRequest({
-      method: "GET",
-      path: "/jobs",
+      method: 'GET',
+      path: '/jobs',
       headers: buildIdentityHeaders(session),
     });
 
     if (res.status >= 400) {
-      return NextResponse.json(
-        normalizeUpstreamError(res.status, res.body),
-        { status: res.status },
-      );
+      return NextResponse.json(normalizeUpstreamError(res.status, res.body), { status: res.status });
     }
 
     return new NextResponse(res.body, {
       status: res.status,
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch (err) {
-    console.error("[api/jobs GET] daemon unreachable:", (err as Error).message);
-    return NextResponse.json(
-      { error: "Service unavailable" },
-      { status: 503 },
-    );
+    console.error('[api/jobs GET] daemon unreachable:', (err as Error).message);
+    return NextResponse.json({ error: 'Service unavailable' }, { status: 503 });
   }
 }

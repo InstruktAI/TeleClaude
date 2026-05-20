@@ -1,29 +1,26 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useLiveSessions } from "../useLiveSessions";
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useLiveSessions } from '../useLiveSessions';
 
 const capturedHandlers = new Map<string, (event: unknown) => void>();
 
-const {
-  sessionsData,
-  refetchMock,
-} = vi.hoisted(() => ({
+const { sessionsData, refetchMock } = vi.hoisted(() => ({
   sessionsData: [
     {
-      session_id: "sess-1",
-      title: "Session Alpha",
-      status: "running",
-      active_agent: "claude",
-      project_path: "/work/project",
-      computer: "local",
-      last_activity: "2026-03-30T12:00:00Z",
+      session_id: 'sess-1',
+      title: 'Session Alpha',
+      status: 'running',
+      active_agent: 'claude',
+      project_path: '/work/project',
+      computer: 'local',
+      last_activity: '2026-03-30T12:00:00Z',
     },
   ],
   refetchMock: vi.fn(),
 }));
 
-vi.mock("@/lib/hooks/useSessions", () => ({
+vi.mock('@/lib/hooks/useSessions', () => ({
   useSessions: () => ({
     data: sessionsData,
     isLoading: false,
@@ -32,7 +29,7 @@ vi.mock("@/lib/hooks/useSessions", () => ({
   }),
 }));
 
-vi.mock("@/lib/ws/WebSocketProvider", () => ({
+vi.mock('@/lib/ws/WebSocketProvider', () => ({
   useWS: () => ({
     onEvent: (type: string, handler: (event: unknown) => void) => {
       capturedHandlers.set(type, handler);
@@ -51,7 +48,7 @@ function emit(type: string, event: unknown) {
   });
 }
 
-describe("useLiveSessions", () => {
+describe('useLiveSessions', () => {
   beforeEach(() => {
     refetchMock.mockReset();
   });
@@ -61,64 +58,64 @@ describe("useLiveSessions", () => {
     vi.clearAllMocks();
   });
 
-  it("starts from the query snapshot", () => {
+  it('starts from the query snapshot', () => {
     const { result } = renderHook(() => useLiveSessions());
     expect(result.current.data).toHaveLength(1);
-    expect(result.current.data[0]?.session_id).toBe("sess-1");
+    expect(result.current.data[0]?.session_id).toBe('sess-1');
   });
 
-  it("upserts session updates from websocket events", () => {
+  it('upserts session updates from websocket events', () => {
     const { result } = renderHook(() => useLiveSessions());
 
-    emit("session_updated", {
-      event: "session_updated",
+    emit('session_updated', {
+      event: 'session_updated',
       data: {
-        session_id: "sess-1",
-        title: "Renamed Session",
-        status: "active",
-        active_agent: "claude",
-        project_path: "/work/project",
-        computer: "local",
+        session_id: 'sess-1',
+        title: 'Renamed Session',
+        status: 'active',
+        active_agent: 'claude',
+        project_path: '/work/project',
+        computer: 'local',
       },
     });
 
-    expect(result.current.data[0]?.title).toBe("Renamed Session");
-    expect(result.current.data[0]?.status).toBe("active");
+    expect(result.current.data[0]?.title).toBe('Renamed Session');
+    expect(result.current.data[0]?.status).toBe('active');
   });
 
-  it("patches lifecycle status events without refetching", () => {
+  it('patches lifecycle status events without refetching', () => {
     const { result } = renderHook(() => useLiveSessions());
 
-    emit("session_status", {
-      event: "session_status",
-      session_id: "sess-1",
-      status: "active_output",
-      reason: "agent_output",
-      timestamp: "2026-03-30T12:03:00Z",
-      last_activity_at: "2026-03-30T12:03:00Z",
+    emit('session_status', {
+      event: 'session_status',
+      session_id: 'sess-1',
+      status: 'active_output',
+      reason: 'agent_output',
+      timestamp: '2026-03-30T12:03:00Z',
+      last_activity_at: '2026-03-30T12:03:00Z',
     });
 
-    expect(result.current.data[0]?.status).toBe("active_output");
-    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:00:00Z");
+    expect(result.current.data[0]?.status).toBe('active_output');
+    expect(result.current.data[0]?.last_activity).toBe('2026-03-30T12:00:00Z');
   });
 
-  it("keeps the canonical session list stable on agent activity", () => {
+  it('keeps the canonical session list stable on agent activity', () => {
     const { result } = renderHook(() => useLiveSessions());
     const before = result.current.data[0];
 
-    expect(capturedHandlers.has("agent_activity")).toBe(false);
+    expect(capturedHandlers.has('agent_activity')).toBe(false);
 
     expect(result.current.data[0]).toBe(before);
-    expect(result.current.data[0]?.last_activity).toBe("2026-03-30T12:00:00Z");
+    expect(result.current.data[0]?.last_activity).toBe('2026-03-30T12:00:00Z');
     expect(result.current.data[0]?.last_output_summary).toBeUndefined();
   });
 
-  it("removes closed sessions from the live list", () => {
+  it('removes closed sessions from the live list', () => {
     const { result } = renderHook(() => useLiveSessions());
 
-    emit("session_closed", {
-      event: "session_closed",
-      data: { session_id: "sess-1" },
+    emit('session_closed', {
+      event: 'session_closed',
+      data: { session_id: 'sess-1' },
     });
 
     expect(result.current.data).toHaveLength(0);

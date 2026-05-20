@@ -1,14 +1,8 @@
-"use client";
+'use client';
 
-import type { ImageSection as ImageSectionType } from "@/lib/widgets";
+import type { ImageSection as ImageSectionType } from '@/lib/widgets';
 
-export function ImageSectionRenderer({
-  section,
-  sessionId,
-}: {
-  section: ImageSectionType;
-  sessionId: string;
-}) {
+export function ImageSectionRenderer({ section, sessionId }: { section: ImageSectionType; sessionId: string }) {
   const src = `/data/${sessionId}?file=${encodeURIComponent(section.src)}`;
 
   return (
@@ -16,16 +10,12 @@ export function ImageSectionRenderer({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
-        alt={section.alt || ""}
+        alt={section.alt || ''}
         width={section.width}
         height={section.height}
         className="max-w-full rounded-md"
       />
-      {section.caption && (
-        <figcaption className="mt-1 text-xs text-muted-foreground">
-          {section.caption}
-        </figcaption>
-      )}
+      {section.caption && <figcaption className="mt-1 text-xs text-muted-foreground">{section.caption}</figcaption>}
     </figure>
   );
 }

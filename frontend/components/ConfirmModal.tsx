@@ -1,4 +1,4 @@
-"use client"
+'use client';
 
 import {
   Dialog,
@@ -7,23 +7,17 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog';
 
 interface ConfirmModalProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  title: string
-  message: string
-  onConfirm: () => void
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  message: string;
+  onConfirm: () => void;
 }
 
-export function ConfirmModal({
-  open,
-  onOpenChange,
-  title,
-  message,
-  onConfirm,
-}: ConfirmModalProps) {
+export function ConfirmModal({ open, onOpenChange, title, message, onConfirm }: ConfirmModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-sm">
@@ -42,8 +36,8 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={() => {
-              onOpenChange(false)
-              onConfirm()
+              onOpenChange(false);
+              onConfirm();
             }}
             className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90"
           >
@@ -52,5 +46,5 @@ export function ConfirmModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

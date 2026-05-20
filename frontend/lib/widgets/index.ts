@@ -15,4 +15,4 @@ export type {
   WidgetStatus,
   RenderWidgetArgs,
   RenderWidgetResult,
-} from "./types";
+} from './types';

@@ -1,16 +1,16 @@
-"use client"
+'use client';
 
-import { useState, type ReactNode } from "react"
-import { TabBar, type TabValue } from "./TabBar"
+import { useState, type ReactNode } from 'react';
+import { TabBar, type TabValue } from './TabBar';
 
 interface LeftPanelProps {
-  sessionsContent: ReactNode
-  preparationContent: ReactNode
-  configurationContent: ReactNode
-  jobsContent: ReactNode
-  footer: ReactNode
-  activeTab?: TabValue
-  onTabChange?: (tab: TabValue) => void
+  sessionsContent: ReactNode;
+  preparationContent: ReactNode;
+  configurationContent: ReactNode;
+  jobsContent: ReactNode;
+  footer: ReactNode;
+  activeTab?: TabValue;
+  onTabChange?: (tab: TabValue) => void;
 }
 
 export function LeftPanel({
@@ -22,15 +22,12 @@ export function LeftPanel({
   activeTab,
   onTabChange,
 }: LeftPanelProps) {
-  const [internalTab, setInternalTab] = useState<TabValue>("sessions")
-  const tab = activeTab ?? internalTab
-  const setTab = onTabChange ?? setInternalTab
+  const [internalTab, setInternalTab] = useState<TabValue>('sessions');
+  const tab = activeTab ?? internalTab;
+  const setTab = onTabChange ?? setInternalTab;
 
   return (
-    <div
-      className="flex flex-col border-r bg-sidebar text-sidebar-foreground"
-      style={{ width: "40%" }}
-    >
+    <div className="flex flex-col border-r bg-sidebar text-sidebar-foreground" style={{ width: '40%' }}>
       <TabBar
         value={tab}
         onValueChange={setTab}
@@ -41,5 +38,5 @@ export function LeftPanel({
       />
       <div className="border-t px-2 py-1.5">{footer}</div>
     </div>
-  )
+  );
 }

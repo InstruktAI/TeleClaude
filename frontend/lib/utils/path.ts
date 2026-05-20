@@ -143,7 +143,7 @@ export function shortenPath(path: string | null | undefined, maxLen: number): st
   }
 
   // Split into segments
-  const segments = result.split('/').filter(s => s.length > 0);
+  const segments = result.split('/').filter((s) => s.length > 0);
 
   // Handle edge cases
   if (segments.length === 0) {
@@ -169,7 +169,7 @@ export function shortenPath(path: string | null | undefined, maxLen: number): st
 
   // Build shortened path: prefix/first/.../lastTwo[0]/lastTwo[1]
   const parts = [prefix, first, '...', ...lastTwo];
-  const shortened = parts.filter(p => p).join('/');
+  const shortened = parts.filter((p) => p).join('/');
 
   // If still too long, we've done our best
   return shortened.length <= maxLen ? shortened : shortened.slice(0, maxLen);

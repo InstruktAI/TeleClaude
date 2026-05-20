@@ -5,7 +5,7 @@
  * Frontend-only unions and client message wrappers stay here.
  */
 
-export * from "./generated-types";
+export * from './generated-types';
 
 import type {
   AgentActivityEvent,
@@ -18,16 +18,9 @@ import type {
   SessionStatusEvent,
   SessionUpdatedEvent,
   SessionsInitialEvent,
-} from "./generated-types";
+} from './generated-types';
 
-export type PaneThemingMode =
-  | "off"
-  | "highlight"
-  | "highlight2"
-  | "agent"
-  | "agent_plus"
-  | "full"
-  | "semi";
+export type PaneThemingMode = 'off' | 'highlight' | 'highlight2' | 'agent' | 'agent_plus' | 'full' | 'semi';
 
 /** Discriminated union of all WebSocket events. Discriminator: `event` field. */
 export type WsEvent =
@@ -43,7 +36,7 @@ export type WsEvent =
   | AgentActivityEvent;
 
 /** All possible values for the `event` discriminator field. */
-export type WsEventType = WsEvent["event"];
+export type WsEventType = WsEvent['event'];
 
 export interface SubscribeMessage {
   subscribe: {
@@ -70,5 +63,5 @@ export interface StatusResponse {
 }
 
 export interface HealthResponse {
-  status: "ok";
+  status: 'ok';
 }

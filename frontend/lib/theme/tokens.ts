@@ -13,56 +13,56 @@
 // Type definitions
 // ---------------------------------------------------------------------------
 
-export type AgentType = 'claude' | 'gemini' | 'codex'
-export type ThemeMode = 'dark' | 'light'
-export type AgentColorLevel = 'subtle' | 'muted' | 'normal' | 'highlight'
+export type AgentType = 'claude' | 'gemini' | 'codex';
+export type ThemeMode = 'dark' | 'light';
+export type AgentColorLevel = 'subtle' | 'muted' | 'normal' | 'highlight';
 
 export interface AgentPalette {
-  readonly subtle: string
-  readonly muted: string
-  readonly normal: string
-  readonly highlight: string
+  readonly subtle: string;
+  readonly muted: string;
+  readonly normal: string;
+  readonly highlight: string;
   /** Hex color for tmux pane background hazes. */
-  readonly haze: string
+  readonly haze: string;
 }
 
 export interface ThemeTokens {
   readonly bg: {
-    readonly base: string
-    readonly surface: string
-    readonly elevated: string
-    readonly overlay: string
-  }
+    readonly base: string;
+    readonly surface: string;
+    readonly elevated: string;
+    readonly overlay: string;
+  };
   readonly text: {
-    readonly primary: string
-    readonly secondary: string
-    readonly muted: string
-  }
+    readonly primary: string;
+    readonly secondary: string;
+    readonly muted: string;
+  };
   readonly border: {
-    readonly default: string
-    readonly subtle: string
-    readonly modal: string
-    readonly input: string
-  }
+    readonly default: string;
+    readonly subtle: string;
+    readonly modal: string;
+    readonly input: string;
+  };
   readonly selection: {
-    readonly base: string
-    readonly surface: string
-    readonly elevated: string
-  }
+    readonly base: string;
+    readonly surface: string;
+    readonly elevated: string;
+  };
   readonly status: {
-    readonly active: string
-    readonly idle: string
-    readonly error: string
-    readonly ready: string
-    readonly warning: string
-  }
-  readonly banner: string
-  readonly tabLine: string
+    readonly active: string;
+    readonly idle: string;
+    readonly error: string;
+    readonly ready: string;
+    readonly warning: string;
+  };
+  readonly banner: string;
+  readonly tabLine: string;
   readonly peaceful: {
-    readonly normal: string
-    readonly muted: string
-  }
-  readonly statusBarFg: string
+    readonly normal: string;
+    readonly muted: string;
+  };
+  readonly statusBarFg: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,7 @@ const AGENT_COLORS_DARK = {
     highlight: '#ffffff',
     haze: '#87afaf',
   },
-} as const satisfies Record<AgentType, AgentPalette>
+} as const satisfies Record<AgentType, AgentPalette>;
 
 const AGENT_COLORS_LIGHT = {
   claude: {
@@ -115,23 +115,23 @@ const AGENT_COLORS_LIGHT = {
     highlight: '#000000',
     haze: '#5f8787',
   },
-} as const satisfies Record<AgentType, AgentPalette>
+} as const satisfies Record<AgentType, AgentPalette>;
 
 /** Mode-resolved agent color map. */
 export const AGENT_COLORS: Record<ThemeMode, Record<AgentType, AgentPalette>> = {
   dark: AGENT_COLORS_DARK,
   light: AGENT_COLORS_LIGHT,
-}
+};
 
 /** All known agent names. */
-export const AGENT_NAMES: readonly AgentType[] = ['claude', 'gemini', 'codex'] as const
+export const AGENT_NAMES: readonly AgentType[] = ['claude', 'gemini', 'codex'] as const;
 
 /** Default fallback agent when an unknown name is provided. */
-export const DEFAULT_AGENT: AgentType = 'codex'
+export const DEFAULT_AGENT: AgentType = 'codex';
 
 /** Normalize unknown agent names to a stable default. */
 export function safeAgent(agent: string): AgentType {
-  return AGENT_NAMES.includes(agent as AgentType) ? (agent as AgentType) : DEFAULT_AGENT
+  return AGENT_NAMES.includes(agent as AgentType) ? (agent as AgentType) : DEFAULT_AGENT;
 }
 
 // ---------------------------------------------------------------------------
@@ -141,7 +141,7 @@ export function safeAgent(agent: string): AgentType {
 export const USER_COLORS = {
   bubbleBg: '#e07030',
   bubbleText: '#ffffff',
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Animation palettes
@@ -157,30 +157,8 @@ export const ANIMATION_PALETTES = {
     '#ff00ff', // Magenta
     '#ffffff', // White
   ],
-  fire: [
-    '#330000',
-    '#661100',
-    '#993300',
-    '#cc5500',
-    '#ff6600',
-    '#ff8800',
-    '#ffaa00',
-    '#ffcc33',
-    '#ffee66',
-    '#ffffaa',
-  ],
-  ocean: [
-    '#001133',
-    '#002255',
-    '#003366',
-    '#005588',
-    '#0077aa',
-    '#0099bb',
-    '#00bbcc',
-    '#00dddd',
-    '#66eeee',
-    '#aaffff',
-  ],
+  fire: ['#330000', '#661100', '#993300', '#cc5500', '#ff6600', '#ff8800', '#ffaa00', '#ffcc33', '#ffee66', '#ffffaa'],
+  ocean: ['#001133', '#002255', '#003366', '#005588', '#0077aa', '#0099bb', '#00bbcc', '#00dddd', '#66eeee', '#aaffff'],
   forest: [
     '#1a0f00',
     '#332200',
@@ -213,9 +191,9 @@ export const ANIMATION_PALETTES = {
   notifications: ['#ffff00', '#ffffff'],
   environment: ['#00ff00', '#00ffff'],
   validate: ['#00ff00', '#ff0000'],
-} as const
+} as const;
 
-export type AnimationPaletteName = keyof typeof ANIMATION_PALETTES
+export type AnimationPaletteName = keyof typeof ANIMATION_PALETTES;
 
 // ---------------------------------------------------------------------------
 // Theme mode tokens (Synced with tokens.css)
@@ -258,7 +236,7 @@ const DARK_TOKENS: ThemeTokens = {
     muted: '#585858',
   },
   statusBarFg: '#727578',
-}
+};
 
 const LIGHT_TOKENS: ThemeTokens = {
   bg: {
@@ -297,13 +275,13 @@ const LIGHT_TOKENS: ThemeTokens = {
     muted: '#808080',
   },
   statusBarFg: '#727578',
-}
+};
 
 /** Mode-resolved theme tokens. */
 export const THEME_TOKENS: Record<ThemeMode, ThemeTokens> = {
   dark: DARK_TOKENS,
   light: LIGHT_TOKENS,
-}
+};
 
 // ---------------------------------------------------------------------------
 // Haze / blend configuration
@@ -317,7 +295,7 @@ export const HAZE_CONFIG = {
   tuiInactiveLight: 0.06,
   tuiInactiveDark: 0.12,
   terminalHintWeight: 0.35,
-} as const
+} as const;
 
 // ---------------------------------------------------------------------------
 // Theme detection
@@ -325,16 +303,16 @@ export const HAZE_CONFIG = {
 
 export function detectThemeMode(): ThemeMode {
   if (typeof process !== 'undefined' && process.env?.APPEARANCE_MODE) {
-    const env = process.env.APPEARANCE_MODE.trim().toLowerCase()
-    if (env === 'light') return 'light'
-    if (env === 'dark') return 'dark'
+    const env = process.env.APPEARANCE_MODE.trim().toLowerCase();
+    if (env === 'light') return 'light';
+    if (env === 'dark') return 'dark';
   }
   if (typeof window !== 'undefined' && window.matchMedia) {
     if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-      return 'light'
+      return 'light';
     }
   }
-  return 'dark'
+  return 'dark';
 }
 
 // ---------------------------------------------------------------------------
@@ -342,25 +320,17 @@ export function detectThemeMode(): ThemeMode {
 // ---------------------------------------------------------------------------
 
 export function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace('#', '')
-  return [
-    parseInt(h.slice(0, 2), 16),
-    parseInt(h.slice(2, 4), 16),
-    parseInt(h.slice(4, 6), 16),
-  ]
+  const h = hex.replace('#', '');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 export function rgbToHex(r: number, g: number, b: number): string {
-  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)))
-  return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  return `#${clamp(r).toString(16).padStart(2, '0')}${clamp(g).toString(16).padStart(2, '0')}${clamp(b).toString(16).padStart(2, '0')}`;
 }
 
 export function blendColors(base: string, overlay: string, pct: number): string {
-  const [br, bg, bb] = hexToRgb(base)
-  const [or, og, ob] = hexToRgb(overlay)
-  return rgbToHex(
-    br * (1 - pct) + or * pct,
-    bg * (1 - pct) + og * pct,
-    bb * (1 - pct) + ob * pct,
-  )
+  const [br, bg, bb] = hexToRgb(base);
+  const [or, og, ob] = hexToRgb(overlay);
+  return rgbToHex(br * (1 - pct) + or * pct, bg * (1 - pct) + og * pct, bb * (1 - pct) + ob * pct);
 }

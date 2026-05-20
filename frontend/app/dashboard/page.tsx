@@ -1,25 +1,20 @@
-"use client";
+'use client';
 
-import { useQuery } from "@tanstack/react-query";
-import { LayoutDashboard, ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import { ComputerCard } from "@/components/dashboard/ComputerCard";
-import { fetchSessions } from "@/lib/api/sessions";
-import type { ComputerInfo, ProjectInfo } from "@/lib/api/types";
+import { useQuery } from '@tanstack/react-query';
+import { LayoutDashboard, ArrowLeft } from 'lucide-react';
+import Link from 'next/link';
+import { ComputerCard } from '@/components/dashboard/ComputerCard';
+import { fetchSessions } from '@/lib/api/sessions';
+import type { ComputerInfo, ProjectInfo } from '@/lib/api/types';
 
 async function fetchComputers(): Promise<ComputerInfo[]> {
-  const res = await fetch("/api/computers");
+  const res = await fetch('/api/computers');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
-
-async function fetchProjectsForComputer(
-  computer: string,
-): Promise<ProjectInfo[]> {
-  const res = await fetch(
-    `/api/projects?computer=${encodeURIComponent(computer)}`,
-  );
+async function fetchProjectsForComputer(computer: string): Promise<ProjectInfo[]> {
+  const res = await fetch(`/api/projects?computer=${encodeURIComponent(computer)}`);
   if (!res.ok) return [];
   return res.json();
 }
@@ -30,19 +25,19 @@ export default function DashboardPage() {
     isLoading: computersLoading,
     error: computersError,
   } = useQuery({
-    queryKey: ["computers"],
+    queryKey: ['computers'],
     queryFn: fetchComputers,
     refetchInterval: 30_000,
   });
 
   const { data: sessions, isLoading: sessionsLoading } = useQuery({
-    queryKey: ["sessions"],
+    queryKey: ['sessions'],
     queryFn: fetchSessions,
     refetchInterval: 15_000,
   });
 
   const { data: projectsByComputer } = useQuery({
-    queryKey: ["dashboard-projects", computers?.map((c) => c.name)],
+    queryKey: ['dashboard-projects', computers?.map((c) => c.name)],
     queryFn: async () => {
       if (!computers) return {};
       const results: Record<string, ProjectInfo[]> = {};
@@ -63,10 +58,7 @@ export default function DashboardPage() {
     <div className="flex h-screen flex-col">
       {/* Header */}
       <header className="flex items-center gap-3 border-b px-6 py-3">
-        <Link
-          href="/"
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent"
-        >
+        <Link href="/" className="inline-flex h-8 w-8 items-center justify-center rounded-md hover:bg-accent">
           <ArrowLeft className="h-4 w-4" />
         </Link>
         <LayoutDashboard className="h-5 w-5 text-muted-foreground" />
@@ -74,12 +66,12 @@ export default function DashboardPage() {
         <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
           <span>
             {computers?.length ?? 0} computer
-            {(computers?.length ?? 0) !== 1 ? "s" : ""}
+            {(computers?.length ?? 0) !== 1 ? 's' : ''}
           </span>
           <span className="text-muted-foreground/50">·</span>
           <span>
             {totalSessions} active session
-            {totalSessions !== 1 ? "s" : ""}
+            {totalSessions !== 1 ? 's' : ''}
           </span>
         </div>
       </header>
@@ -89,19 +81,14 @@ export default function DashboardPage() {
         {isLoading && (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[1, 2, 3].map((i) => (
-              <div
-                key={i}
-                className="h-40 animate-pulse rounded-xl border bg-muted"
-              />
+              <div key={i} className="h-40 animate-pulse rounded-xl border bg-muted" />
             ))}
           </div>
         )}
 
         {computersError && (
           <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-4 text-center">
-            <p className="text-sm text-destructive">
-              Failed to load computers
-            </p>
+            <p className="text-sm text-destructive">Failed to load computers</p>
           </div>
         )}
 
@@ -123,9 +110,7 @@ export default function DashboardPage() {
 
         {!isLoading && computers?.length === 0 && (
           <div className="flex items-center justify-center py-16">
-            <p className="text-sm text-muted-foreground">
-              No computers configured
-            </p>
+            <p className="text-sm text-muted-foreground">No computers configured</p>
           </div>
         )}
       </main>

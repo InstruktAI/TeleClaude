@@ -14,12 +14,12 @@
  * - teleclaude/cli/tui/views/configuration.py (configuration view)
  */
 
-import { KeyBinding, ViewContext, KeyModifiers } from './types'
+import { KeyBinding, ViewContext, KeyModifiers } from './types';
 
 export interface FooterHint {
-  action: string
-  key: string
-  description: string
+  action: string;
+  key: string;
+  description: string;
 }
 
 /**
@@ -440,15 +440,13 @@ export const BINDINGS: KeyBinding[] = [
     action: 'run_job',
     context: 'jobs',
   },
-]
+];
 
 /**
  * Get all bindings for a specific context
  */
 export function getBindingsForContext(context: ViewContext): KeyBinding[] {
-  return BINDINGS.filter(
-    (binding) => binding.context === context || binding.context === 'global'
-  )
+  return BINDINGS.filter((binding) => binding.context === context || binding.context === 'global');
 }
 
 /**
@@ -464,48 +462,42 @@ const BROWSER_KEY_MAP: Record<string, string> = {
   Tab: 'tab',
   PageUp: 'pageUp',
   PageDown: 'pageDown',
-}
+};
 
-export function findBinding(
-  key: string,
-  modifiers: KeyModifiers,
-  context: ViewContext
-): KeyBinding | undefined {
-  const normalizedKey = BROWSER_KEY_MAP[key] ?? key
+export function findBinding(key: string, modifiers: KeyModifiers, context: ViewContext): KeyBinding | undefined {
+  const normalizedKey = BROWSER_KEY_MAP[key] ?? key;
 
   const matches = (binding: KeyBinding): boolean => {
-    if (binding.key !== normalizedKey) return false
+    if (binding.key !== normalizedKey) return false;
 
-    const ctrlMatch = (binding.ctrl ?? false) === (modifiers.ctrl ?? false)
-    const shiftMatch = (binding.shift ?? false) === (modifiers.shift ?? false)
-    const metaMatch = (binding.meta ?? false) === (modifiers.meta ?? false)
+    const ctrlMatch = (binding.ctrl ?? false) === (modifiers.ctrl ?? false);
+    const shiftMatch = (binding.shift ?? false) === (modifiers.shift ?? false);
+    const metaMatch = (binding.meta ?? false) === (modifiers.meta ?? false);
 
-    return ctrlMatch && shiftMatch && metaMatch
-  }
+    return ctrlMatch && shiftMatch && metaMatch;
+  };
 
   return (
-    BINDINGS.find((binding) => binding.context === context && matches(binding))
-    ?? BINDINGS.find((binding) => binding.context === 'global' && matches(binding))
-  )
+    BINDINGS.find((binding) => binding.context === context && matches(binding)) ??
+    BINDINGS.find((binding) => binding.context === 'global' && matches(binding))
+  );
 }
 
 /**
  * Get footer hints for a specific context (non-hidden bindings only)
  */
-export function getFooterHints(
-  context: ViewContext
-): FooterHint[] {
-  const contextBindings = getBindingsForContext(context)
+export function getFooterHints(context: ViewContext): FooterHint[] {
+  const contextBindings = getBindingsForContext(context);
 
   // Filter out hidden bindings and format for footer display
   return contextBindings
     .filter((binding) => !binding.hidden)
     .map((binding) => {
       // Format key with modifiers for display
-      let displayKey = binding.key
-      if (binding.ctrl) displayKey = `Ctrl+${displayKey}`
-      if (binding.shift) displayKey = `Shift+${displayKey}`
-      if (binding.meta) displayKey = `Meta+${displayKey}`
+      let displayKey = binding.key;
+      if (binding.ctrl) displayKey = `Ctrl+${displayKey}`;
+      if (binding.shift) displayKey = `Shift+${displayKey}`;
+      if (binding.meta) displayKey = `Meta+${displayKey}`;
 
       // Map special keys to readable names
       const keyMap: Record<string, string> = {
@@ -518,13 +510,13 @@ export function getFooterHints(
         pageUp: 'PgUp',
         pageDown: 'PgDn',
         ' ': 'Space',
-      }
-      displayKey = keyMap[displayKey] ?? displayKey
+      };
+      displayKey = keyMap[displayKey] ?? displayKey;
 
       return {
         action: binding.action,
         key: displayKey,
         description: binding.description,
-      }
-    })
+      };
+    });
 }

@@ -1,15 +1,10 @@
 // @vitest-environment happy-dom
-import { useState } from "react"
-import { describe, it, expect, vi, afterEach } from "vitest"
-import { render, screen, fireEvent, cleanup } from "@testing-library/react"
-import { SessionTree } from "../SessionTree"
-import type { SessionHighlightViewState } from "@/hooks/useSessionHighlights"
-import {
-  computerNodeId,
-  projectNodeId,
-  type ComputerGroup,
-  type NodeId,
-} from "@/lib/sessions/tree"
+import { useState } from 'react';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { SessionTree } from '../SessionTree';
+import type { SessionHighlightViewState } from '@/hooks/useSessionHighlights';
+import { computerNodeId, projectNodeId, type ComputerGroup, type NodeId } from '@/lib/sessions/tree';
 
 function makeTree(): ComputerGroup[] {
   return [
@@ -41,7 +36,7 @@ function makeTree(): ComputerGroup[] {
                 computer: 'local',
               },
               index: 1,
-              displayIndex: "1",
+              displayIndex: '1',
               children: [
                 {
                   type: 'session',
@@ -57,7 +52,7 @@ function makeTree(): ComputerGroup[] {
                     initiator_session_id: 'sess-1',
                   },
                   index: 1,
-                  displayIndex: "1.1",
+                  displayIndex: '1.1',
                   children: [],
                 },
               ],
@@ -74,7 +69,7 @@ function makeTree(): ComputerGroup[] {
                 computer: 'local',
               },
               index: 2,
-              displayIndex: "2",
+              displayIndex: '2',
               children: [],
             },
           ],
@@ -96,25 +91,25 @@ function makeTree(): ComputerGroup[] {
                 computer: 'local',
               },
               index: 1,
-              displayIndex: "1",
+              displayIndex: '1',
               children: [],
             },
           ],
         },
       ],
     },
-  ]
+  ];
 }
 
 function makeExpandedSet(tree: ComputerGroup[]): Set<NodeId> {
-  const expanded = new Set<NodeId>()
+  const expanded = new Set<NodeId>();
   for (const computer of tree) {
-    expanded.add(computerNodeId(computer.name))
+    expanded.add(computerNodeId(computer.name));
     for (const project of computer.projects) {
-      expanded.add(projectNodeId(computer.name, project.path))
+      expanded.add(projectNodeId(computer.name, project.path));
     }
   }
-  return expanded
+  return expanded;
 }
 
 function renderWithControlledExpansion(
@@ -122,154 +117,100 @@ function renderWithControlledExpansion(
   props: Partial<React.ComponentProps<typeof SessionTree>> = {},
 ) {
   function Wrapper() {
-    const [expandedSet, setExpandedSet] = useState(makeExpandedSet(tree))
+    const [expandedSet, setExpandedSet] = useState(makeExpandedSet(tree));
     return (
       <SessionTree
         tree={tree}
         expandedSet={expandedSet}
         onToggle={(nodeId) => {
           setExpandedSet((prev) => {
-            const next = new Set(prev)
-            if (next.has(nodeId)) next.delete(nodeId)
-            else next.add(nodeId)
-            return next
-          })
+            const next = new Set(prev);
+            if (next.has(nodeId)) next.delete(nodeId);
+            else next.add(nodeId);
+            return next;
+          });
         }}
         {...props}
       />
-    )
+    );
   }
 
-  return render(<Wrapper />)
+  return render(<Wrapper />);
 }
 
-describe("SessionTree", () => {
-  afterEach(() => cleanup())
+describe('SessionTree', () => {
+  afterEach(() => cleanup());
 
-  it("renders computer header with name and status badge", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByTestId("computer-header-local")).toBeDefined()
-  })
+  it('renders computer header with name and status badge', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByTestId('computer-header-local')).toBeDefined();
+  });
 
-  it("renders project header with session count", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    const projectHeader = screen.getByTestId("project-header-/home/user/my-project")
-    expect(projectHeader).toBeDefined()
-    expect(projectHeader.textContent).toContain("my-project")
-    expect(projectHeader.textContent).toContain("~/my-project")
-  })
+  it('renders project header with session count', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    const projectHeader = screen.getByTestId('project-header-/home/user/my-project');
+    expect(projectHeader).toBeDefined();
+    expect(projectHeader.textContent).toContain('my-project');
+    expect(projectHeader.textContent).toContain('~/my-project');
+  });
 
-  it("renders session rows with titles", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByTestId("session-row-sess-1")).toBeDefined()
-    expect(screen.getByText("Session Alpha")).toBeDefined()
-    expect(screen.getByText("Session Beta")).toBeDefined()
-  })
+  it('renders session rows with titles', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByTestId('session-row-sess-1')).toBeDefined();
+    expect(screen.getByText('Session Alpha')).toBeDefined();
+    expect(screen.getByText('Session Beta')).toBeDefined();
+  });
 
-  it("renders orphan project node", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByTestId("project-header-__orphan__")).toBeDefined()
-  })
+  it('renders orphan project node', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByTestId('project-header-__orphan__')).toBeDefined();
+  });
 
-  it("renders child sessions nested under parent", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByText("Child Session")).toBeDefined()
-  })
+  it('renders child sessions nested under parent', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByText('Child Session')).toBeDefined();
+  });
 
-  it("renders dotted display indices for child sessions", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
+  it('renders dotted display indices for child sessions', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
 
-    expect(screen.getByText("1.1")).toBeDefined()
-  })
+    expect(screen.getByText('1.1')).toBeDefined();
+  });
 
-  it("renders subdir slug on session row", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByText("web-tui-panels")).toBeDefined()
-    expect(screen.queryByText("trees/web-tui-panels")).toBeNull()
-  })
+  it('renders subdir slug on session row', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByText('web-tui-panels')).toBeDefined();
+    expect(screen.queryByText('trees/web-tui-panels')).toBeNull();
+  });
 
-  it("renders thinking mode on session row", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByText("med")).toBeDefined()
-  })
+  it('renders thinking mode on session row', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
+    expect(screen.getByText('med')).toBeDefined();
+  });
 
-  it("toggles computer expand/collapse on click", () => {
-    renderWithControlledExpansion()
-    const header = screen.getByTestId("computer-header-local")
-    expect(screen.getByText("Session Alpha")).toBeDefined()
-    fireEvent.click(header)
-    expect(screen.queryByText("Session Alpha")).toBeNull()
-    fireEvent.click(header)
-    expect(screen.getByText("Session Alpha")).toBeDefined()
-  })
+  it('toggles computer expand/collapse on click', () => {
+    renderWithControlledExpansion();
+    const header = screen.getByTestId('computer-header-local');
+    expect(screen.getByText('Session Alpha')).toBeDefined();
+    fireEvent.click(header);
+    expect(screen.queryByText('Session Alpha')).toBeNull();
+    fireEvent.click(header);
+    expect(screen.getByText('Session Alpha')).toBeDefined();
+  });
 
-  it("uses agent color CSS variable, not hardcoded hex", () => {
+  it('uses agent color CSS variable, not hardcoded hex', () => {
     const { container } = render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
-    const svgs = container.querySelectorAll("svg")
-    const agentSvgs = Array.from(svgs).filter(
-      (svg) => svg.style.color && svg.style.color.includes("var(--tc-agent-"),
-    )
-    expect(agentSvgs.length).toBeGreaterThan(0)
-  })
+      <SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />,
+    );
+    const svgs = container.querySelectorAll('svg');
+    const agentSvgs = Array.from(svgs).filter((svg) => svg.style.color && svg.style.color.includes('var(--tc-agent-'));
+    expect(agentSvgs.length).toBeGreaterThan(0);
+  });
 
-  it("keeps collapsed session rows visually quiet while summary lines carry activity", () => {
+  it('keeps collapsed session rows visually quiet while summary lines carry activity', () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-1", { activityEvent: "tool_use", activityText: "bash: telec todo work" }],
-    ])
+      ['sess-1', { activityEvent: 'tool_use', activityText: 'bash: telec todo work' }],
+    ]);
     render(
       <SessionTree
         tree={makeTree()}
@@ -277,18 +218,16 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
-    const row = screen.getByTestId("session-row-sess-1")
-    expect(row.style.backgroundColor).toBe("")
-    expect(screen.getByTestId("session-summary-output-sess-1").textContent).toContain(
-      "out: bash: telec todo work",
-    )
-  })
+    );
+    const row = screen.getByTestId('session-row-sess-1');
+    expect(row.style.backgroundColor).toBe('');
+    expect(screen.getByTestId('session-summary-output-sess-1').textContent).toContain('out: bash: telec todo work');
+  });
 
-  it("renders persisted output summaries in the collapsed session summary", () => {
+  it('renders persisted output summaries in the collapsed session summary', () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-2", { lastOutputSummary: "Build complete", highlightType: "output" }],
-    ])
+      ['sess-2', { lastOutputSummary: 'Build complete', highlightType: 'output' }],
+    ]);
 
     render(
       <SessionTree
@@ -297,17 +236,17 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
+    );
 
-    const output = screen.getByTestId("session-summary-output-sess-2")
-    expect(output.textContent).toContain("out: Build complete")
-    expect(output.style.color).toBe("var(--tc-agent-codex-highlight)")
-  })
+    const output = screen.getByTestId('session-summary-output-sess-2');
+    expect(output.textContent).toContain('out: Build complete');
+    expect(output.style.color).toBe('var(--tc-agent-codex-highlight)');
+  });
 
-  it("renders input and output activity in the collapsed session summary", () => {
+  it('renders input and output activity in the collapsed session summary', () => {
     const sessionStateMap = new Map<string, SessionHighlightViewState>([
-      ["sess-1", { highlightType: "input", activityEvent: "user_prompt_submit" }],
-    ])
+      ['sess-1', { highlightType: 'input', activityEvent: 'user_prompt_submit' }],
+    ]);
 
     render(
       <SessionTree
@@ -316,65 +255,57 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
+    );
 
-    const input = screen.getByTestId("session-summary-input-sess-1")
-    const output = screen.getByTestId("session-summary-output-sess-1")
+    const input = screen.getByTestId('session-summary-input-sess-1');
+    const output = screen.getByTestId('session-summary-output-sess-1');
 
-    expect(input.textContent).toContain("in: Run the planner")
-    expect(input.style.color).toBe("var(--tc-agent-claude-highlight)")
-    expect(output.textContent).toContain("out: ...")
-    expect(output.style.color).toBe("var(--tc-agent-claude-highlight)")
-  })
+    expect(input.textContent).toContain('in: Run the planner');
+    expect(input.style.color).toBe('var(--tc-agent-claude-highlight)');
+    expect(output.textContent).toContain('out: ...');
+    expect(output.style.color).toBe('var(--tc-agent-claude-highlight)');
+  });
 
-  it("keeps technical session ids in the expanded detail block only", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
+  it('keeps technical session ids in the expanded detail block only', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
 
-    expect(screen.queryByTestId("session-detail-id-sess-2")).toBeNull()
-  })
+    expect(screen.queryByTestId('session-detail-id-sess-2')).toBeNull();
+  });
 
-  it("expands a leaf session row through its toggle button", () => {
-    renderWithControlledExpansion()
+  it('expands a leaf session row through its toggle button', () => {
+    renderWithControlledExpansion();
 
-    expect(screen.queryByTestId("session-detail-id-sess-2")).toBeNull()
-    fireEvent.click(screen.getByTestId("session-toggle-sess-2"))
-    expect(screen.getByTestId("session-detail-id-sess-2").textContent).toContain("sess-2")
-  })
+    expect(screen.queryByTestId('session-detail-id-sess-2')).toBeNull();
+    fireEvent.click(screen.getByTestId('session-toggle-sess-2'));
+    expect(screen.getByTestId('session-detail-id-sess-2').textContent).toContain('sess-2');
+  });
 
-  it("shows created time in the expanded technical id row", () => {
-    const tree = makeTree()
-    tree[0].projects[0].sessions[0].session.created_at = "2026-03-31T12:00:00Z"
-    const createdTime = new Date("2026-03-31T12:00:00Z").toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    })
+  it('shows created time in the expanded technical id row', () => {
+    const tree = makeTree();
+    tree[0].projects[0].sessions[0].session.created_at = '2026-03-31T12:00:00Z';
+    const createdTime = new Date('2026-03-31T12:00:00Z').toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
 
-    renderWithControlledExpansion(tree)
-    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
+    renderWithControlledExpansion(tree);
+    fireEvent.click(screen.getByTestId('session-toggle-sess-1'));
 
-    expect(screen.getByTestId("session-detail-id-sess-1").textContent).toContain(createdTime)
-  })
+    expect(screen.getByTestId('session-detail-id-sess-1').textContent).toContain(createdTime);
+  });
 
-  it("renders the expanded technical id row before summary lines", () => {
-    renderWithControlledExpansion()
-    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
+  it('renders the expanded technical id row before summary lines', () => {
+    renderWithControlledExpansion();
+    fireEvent.click(screen.getByTestId('session-toggle-sess-1'));
 
-    const detail = screen.getByTestId("session-detail-id-sess-1")
-    const input = screen.getByTestId("session-summary-input-sess-1")
+    const detail = screen.getByTestId('session-detail-id-sess-1');
+    const input = screen.getByTestId('session-summary-input-sess-1');
 
-    expect(
-      Boolean(detail.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING),
-    ).toBe(true)
-  })
+    expect(Boolean(detail.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
 
-  it("applies agent-specific cursor highlight colors when themed", () => {
+  it('applies agent-specific cursor highlight colors when themed', () => {
     render(
       <SessionTree
         tree={makeTree()}
@@ -382,49 +313,37 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
+    );
 
-    const row = screen.getByTestId("session-row-sess-1")
-    expect(row.style.backgroundColor).toContain("var(--tc-agent-claude-normal)")
-    expect(row.style.color).toContain("var(--tc-primary-fg)")
-    const subdirBadge = screen.getByTestId("session-subdir-sess-1")
-    expect(subdirBadge.style.backgroundColor).toContain("var(--tc-agent-claude-normal)")
-    expect(subdirBadge.style.color).toContain("var(--tc-agent-badge-fg)")
-  })
+    const row = screen.getByTestId('session-row-sess-1');
+    expect(row.style.backgroundColor).toContain('var(--tc-agent-claude-normal)');
+    expect(row.style.color).toContain('var(--tc-primary-fg)');
+    const subdirBadge = screen.getByTestId('session-subdir-sess-1');
+    expect(subdirBadge.style.backgroundColor).toContain('var(--tc-agent-claude-normal)');
+    expect(subdirBadge.style.color).toContain('var(--tc-agent-badge-fg)');
+  });
 
-  it("uses mode-aware themed badge colors in the left pane", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
+  it('uses mode-aware themed badge colors in the left pane', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
 
-    const indexBadge = screen.getByTestId("session-index-sess-1")
-    const subdirBadge = screen.getByTestId("session-subdir-sess-1")
+    const indexBadge = screen.getByTestId('session-index-sess-1');
+    const subdirBadge = screen.getByTestId('session-subdir-sess-1');
 
-    expect(indexBadge.style.backgroundColor).toContain("var(--tc-agent-claude-muted)")
-    expect(indexBadge.style.color).toContain("var(--tc-agent-badge-fg)")
-    expect(subdirBadge.style.backgroundColor).toContain("var(--tc-agent-claude-muted)")
-    expect(subdirBadge.style.color).toContain("var(--tc-agent-badge-fg)")
-  })
+    expect(indexBadge.style.backgroundColor).toContain('var(--tc-agent-claude-muted)');
+    expect(indexBadge.style.color).toContain('var(--tc-agent-badge-fg)');
+    expect(subdirBadge.style.backgroundColor).toContain('var(--tc-agent-claude-muted)');
+    expect(subdirBadge.style.color).toContain('var(--tc-agent-badge-fg)');
+  });
 
-  it("renders the session badge column aligned under the project chevron", () => {
-    render(
-      <SessionTree
-        tree={makeTree()}
-        expandedSet={makeExpandedSet(makeTree())}
-        onToggle={vi.fn()}
-      />,
-    )
+  it('renders the session badge column aligned under the project chevron', () => {
+    render(<SessionTree tree={makeTree()} expandedSet={makeExpandedSet(makeTree())} onToggle={vi.fn()} />);
 
-    const row = screen.getByTestId("session-row-sess-1")
-    expect(row.style.paddingLeft).toBe("16px")
-  })
+    const row = screen.getByTestId('session-row-sess-1');
+    expect(row.style.paddingLeft).toBe('16px');
+  });
 
-  it("calls onSelectSession when session row clicked", () => {
-    const onSelect = vi.fn()
+  it('calls onSelectSession when session row clicked', () => {
+    const onSelect = vi.fn();
     render(
       <SessionTree
         tree={makeTree()}
@@ -432,13 +351,13 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
-    fireEvent.click(screen.getByTestId("session-row-sess-2"))
-    expect(onSelect).toHaveBeenCalledWith("sess-2")
-  })
+    );
+    fireEvent.click(screen.getByTestId('session-row-sess-2'));
+    expect(onSelect).toHaveBeenCalledWith('sess-2');
+  });
 
-  it("calls onSelectSession when collapsed summary area is clicked", () => {
-    const onSelect = vi.fn()
+  it('calls onSelectSession when collapsed summary area is clicked', () => {
+    const onSelect = vi.fn();
     render(
       <SessionTree
         tree={makeTree()}
@@ -446,15 +365,15 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
+    );
 
-    fireEvent.click(screen.getByTestId("session-summary-input-sess-1"))
+    fireEvent.click(screen.getByTestId('session-summary-input-sess-1'));
 
-    expect(onSelect).toHaveBeenCalledWith("sess-1")
-  })
+    expect(onSelect).toHaveBeenCalledWith('sess-1');
+  });
 
-  it("calls onCursorChange with the clicked node id", () => {
-    const onCursorChange = vi.fn()
+  it('calls onCursorChange with the clicked node id', () => {
+    const onCursorChange = vi.fn();
     render(
       <SessionTree
         tree={makeTree()}
@@ -462,64 +381,56 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(makeTree())}
         onToggle={vi.fn()}
       />,
-    )
+    );
 
-    fireEvent.click(screen.getByTestId("session-row-sess-2"))
+    fireEvent.click(screen.getByTestId('session-row-sess-2'));
 
-    expect(onCursorChange).toHaveBeenCalledWith("session:sess-2")
-  })
+    expect(onCursorChange).toHaveBeenCalledWith('session:sess-2');
+  });
 
-  it("clicking expanded technical details still selects the session", () => {
-    const onSelect = vi.fn()
-    renderWithControlledExpansion(makeTree(), { onSelectSession: onSelect })
+  it('clicking expanded technical details still selects the session', () => {
+    const onSelect = vi.fn();
+    renderWithControlledExpansion(makeTree(), { onSelectSession: onSelect });
 
-    fireEvent.click(screen.getByTestId("session-toggle-sess-1"))
-    fireEvent.click(screen.getByTestId("session-detail-id-sess-1"))
+    fireEvent.click(screen.getByTestId('session-toggle-sess-1'));
+    fireEvent.click(screen.getByTestId('session-detail-id-sess-1'));
 
-    expect(onSelect).toHaveBeenCalledWith("sess-1")
-  })
+    expect(onSelect).toHaveBeenCalledWith('sess-1');
+  });
 
-  it("delegates expansion state to the caller via expandedSet and onToggle", () => {
-    const onToggle = vi.fn()
-    const tree = makeTree()
-    const expandedSet = new Set<NodeId>([computerNodeId("local")])
+  it('delegates expansion state to the caller via expandedSet and onToggle', () => {
+    const onToggle = vi.fn();
+    const tree = makeTree();
+    const expandedSet = new Set<NodeId>([computerNodeId('local')]);
 
-    render(
-      <SessionTree tree={tree} expandedSet={expandedSet} onToggle={onToggle} />,
-    )
+    render(<SessionTree tree={tree} expandedSet={expandedSet} onToggle={onToggle} />);
 
-    expect(screen.queryByText("Session Alpha")).toBeNull()
-    fireEvent.click(screen.getByTestId("project-header-/home/user/my-project"))
-    expect(onToggle).toHaveBeenCalledWith("project:local:/home/user/my-project")
-    expect(screen.queryByText("Session Alpha")).toBeNull()
-  })
+    expect(screen.queryByText('Session Alpha')).toBeNull();
+    fireEvent.click(screen.getByTestId('project-header-/home/user/my-project'));
+    expect(onToggle).toHaveBeenCalledWith('project:local:/home/user/my-project');
+    expect(screen.queryByText('Session Alpha')).toBeNull();
+  });
 
-  it("shows empty state when tree is empty", () => {
-    render(<SessionTree tree={[]} expandedSet={new Set()} onToggle={vi.fn()} />)
-    expect(screen.getByText("No sessions")).toBeDefined()
-  })
+  it('shows empty state when tree is empty', () => {
+    render(<SessionTree tree={[]} expandedSet={new Set()} onToggle={vi.fn()} />);
+    expect(screen.getByText('No sessions')).toBeDefined();
+  });
 
-  it("renders the human identity line from role and name only", () => {
-    const tree = makeTree()
-    tree[0].projects[0].sessions[0].session.human_name = "Maurice Faber"
-    tree[0].projects[0].sessions[0].session.human_role = "admin"
+  it('renders the human identity line from role and name only', () => {
+    const tree = makeTree();
+    tree[0].projects[0].sessions[0].session.human_name = 'Maurice Faber';
+    tree[0].projects[0].sessions[0].session.human_role = 'admin';
 
-    render(
-      <SessionTree
-        tree={tree}
-        expandedSet={makeExpandedSet(tree)}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.getByText("Maurice Faber")).toBeDefined()
-    expect(screen.getByText(/^admin:/)).toBeDefined()
-  })
+    render(<SessionTree tree={tree} expandedSet={makeExpandedSet(tree)} onToggle={vi.fn()} />);
+    expect(screen.getByText('Maurice Faber')).toBeDefined();
+    expect(screen.getByText(/^admin:/)).toBeDefined();
+  });
 
   it("hides the identity line for the logged-in user's own session", () => {
-    const tree = makeTree()
-    tree[0].projects[0].sessions[0].session.human_name = "Maurice Faber"
-    tree[0].projects[0].sessions[0].session.human_role = "admin"
-    tree[0].projects[0].sessions[0].session.human_email = "maurice@instrukt.ai"
+    const tree = makeTree();
+    tree[0].projects[0].sessions[0].session.human_name = 'Maurice Faber';
+    tree[0].projects[0].sessions[0].session.human_role = 'admin';
+    tree[0].projects[0].sessions[0].session.human_email = 'maurice@instrukt.ai';
 
     render(
       <SessionTree
@@ -528,39 +439,27 @@ describe("SessionTree", () => {
         expandedSet={makeExpandedSet(tree)}
         onToggle={vi.fn()}
       />,
-    )
-    expect(screen.queryByTestId("session-identity-sess-1")).toBeNull()
-  })
+    );
+    expect(screen.queryByTestId('session-identity-sess-1')).toBeNull();
+  });
 
-  it("hides unresolved customer sessions", () => {
-    const tree = makeTree()
-    tree[0].projects[0].sessions[0].session.human_role = "customer"
-    tree[0].projects[0].sessions[0].session.system_role = "worker"
-    tree[0].projects[0].sessions[0].session.job = "next-build"
+  it('hides unresolved customer sessions', () => {
+    const tree = makeTree();
+    tree[0].projects[0].sessions[0].session.human_role = 'customer';
+    tree[0].projects[0].sessions[0].session.system_role = 'worker';
+    tree[0].projects[0].sessions[0].session.job = 'next-build';
 
-    render(
-      <SessionTree
-        tree={tree}
-        expandedSet={makeExpandedSet(tree)}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.queryByTestId("session-identity-sess-1")).toBeNull()
-  })
+    render(<SessionTree tree={tree} expandedSet={makeExpandedSet(tree)} onToggle={vi.fn()} />);
+    expect(screen.queryByTestId('session-identity-sess-1')).toBeNull();
+  });
 
-  it("does not render the system fallback for unresolved non-customer sessions", () => {
-    const tree = makeTree()
-    tree[0].projects[0].sessions[0].session.human_role = "member"
-    tree[0].projects[0].sessions[0].session.system_role = "worker"
-    tree[0].projects[0].sessions[0].session.job = "next-build"
+  it('does not render the system fallback for unresolved non-customer sessions', () => {
+    const tree = makeTree();
+    tree[0].projects[0].sessions[0].session.human_role = 'member';
+    tree[0].projects[0].sessions[0].session.system_role = 'worker';
+    tree[0].projects[0].sessions[0].session.job = 'next-build';
 
-    render(
-      <SessionTree
-        tree={tree}
-        expandedSet={makeExpandedSet(tree)}
-        onToggle={vi.fn()}
-      />,
-    )
-    expect(screen.queryByTestId("session-identity-sess-1")).toBeNull()
-  })
-})
+    render(<SessionTree tree={tree} expandedSet={makeExpandedSet(tree)} onToggle={vi.fn()} />);
+    expect(screen.queryByTestId('session-identity-sess-1')).toBeNull();
+  });
+});

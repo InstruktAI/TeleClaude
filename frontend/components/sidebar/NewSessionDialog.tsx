@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -10,13 +10,8 @@ import {
   DialogDescription,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import type {
-  ComputerInfo,
-  ProjectInfo,
-  AgentName,
-  ThinkingMode,
-} from "@/lib/api/types";
+} from '@/components/ui/dialog';
+import type { ComputerInfo, ProjectInfo, AgentName, ThinkingMode } from '@/lib/api/types';
 
 interface Prefill {
   computer?: string;
@@ -37,13 +32,13 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
   const [projectsError, setProjectsError] = useState(false);
-  const [computer, setComputer] = useState(prefill?.computer ?? "");
-  const [projectPath, setProjectPath] = useState(prefill?.project ?? "");
-  const [agent, setAgent] = useState<AgentName>("claude");
-  const [thinkingMode, setThinkingMode] = useState<ThinkingMode>("med");
-  const [message, setMessage] = useState("");
-  const [nativeSessionId, setNativeSessionId] = useState("");
-  const [subdir, setSubdir] = useState("");
+  const [computer, setComputer] = useState(prefill?.computer ?? '');
+  const [projectPath, setProjectPath] = useState(prefill?.project ?? '');
+  const [agent, setAgent] = useState<AgentName>('claude');
+  const [thinkingMode, setThinkingMode] = useState<ThinkingMode>('med');
+  const [message, setMessage] = useState('');
+  const [nativeSessionId, setNativeSessionId] = useState('');
+  const [subdir, setSubdir] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -57,7 +52,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    fetch("/api/computers", { signal: controller.signal })
+    fetch('/api/computers', { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((data: ComputerInfo[]) => {
         setComputers(data);
@@ -69,7 +64,9 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
           });
         }
       })
-      .catch((err) => { if (err.name !== "AbortError") setComputers([]); });
+      .catch((err) => {
+        if (err.name !== 'AbortError') setComputers([]);
+      });
     return () => controller.abort();
   }, [open]);
 
@@ -77,7 +74,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   useEffect(() => {
     if (!computer) return;
     setProjects([]);
-    if (!prefill?.project) setProjectPath("");
+    if (!prefill?.project) setProjectPath('');
     setProjectsLoading(true);
     setProjectsError(false);
     const controller = new AbortController();
@@ -92,7 +89,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
         setProjectsLoading(false);
       })
       .catch((err) => {
-        if (err.name !== "AbortError") {
+        if (err.name !== 'AbortError') {
           setProjectsError(true);
           setProjectsLoading(false);
         }
@@ -101,9 +98,9 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
   }, [computer, prefill?.project]);
 
   function reset() {
-    setMessage("");
-    setNativeSessionId("");
-    setSubdir("");
+    setMessage('');
+    setNativeSessionId('');
+    setSubdir('');
     setError(null);
     setSubmitting(false);
   }
@@ -121,16 +118,16 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
         project_path: projectPath,
         agent,
         thinking_mode: thinkingMode,
-        launch_kind: message ? "agent_then_message" : "agent",
+        launch_kind: message ? 'agent_then_message' : 'agent',
         message: message || null,
       };
 
       if (nativeSessionId) body.native_session_id = nativeSessionId;
       if (subdir) body.subdir = subdir;
 
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
@@ -140,19 +137,25 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
       }
 
       const data = await res.json();
-      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      queryClient.invalidateQueries({ queryKey: ['sessions'] });
       onOpenChange(false);
       reset();
       router.push(`/?sessionId=${data.session_id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create session");
+      setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-      <Dialog open={open} onOpenChange={(v) => { if (!v) reset(); onOpenChange(v); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) reset();
+        onOpenChange(v);
+      }}
+    >
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>New Session</DialogTitle>
@@ -170,7 +173,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
             >
               {computers.map((c) => (
                 <option key={c.name} value={c.name}>
-                  {c.name} {c.is_local ? "(local)" : ""}
+                  {c.name} {c.is_local ? '(local)' : ''}
                 </option>
               ))}
             </select>
@@ -202,14 +205,14 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
           <fieldset className="flex flex-col gap-1">
             <legend className="text-xs font-medium text-muted-foreground">Agent</legend>
             <div className="flex gap-2">
-              {(["claude", "gemini", "codex"] as AgentName[]).map((a) => (
+              {(['claude', 'gemini', 'codex'] as AgentName[]).map((a) => (
                 <label
                   key={a}
                   className="flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-all"
                   style={{
                     borderColor: agent === a ? `var(--tc-agent-${a}-normal)` : undefined,
                     backgroundColor: agent === a ? `var(--tc-agent-${a}-subtle)` : undefined,
-                    color: agent === a ? "var(--tc-text-primary)" : undefined,
+                    color: agent === a ? 'var(--tc-text-primary)' : undefined,
                     fontWeight: agent === a ? 600 : undefined,
                   }}
                 >
@@ -231,13 +234,11 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
           <fieldset className="flex flex-col gap-1">
             <legend className="text-xs font-medium text-muted-foreground">Thinking Mode</legend>
             <div className="flex gap-2">
-              {(["fast", "med", "slow"] as ThinkingMode[]).map((m) => (
+              {(['fast', 'med', 'slow'] as ThinkingMode[]).map((m) => (
                 <label
                   key={m}
                   className={`flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition-colors ${
-                    thinkingMode === m
-                      ? "border-primary bg-primary/5 font-medium"
-                      : "hover:bg-accent"
+                    thinkingMode === m ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-accent'
                   }`}
                 >
                   <input
@@ -295,7 +296,10 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
           <DialogFooter>
             <button
               type="button"
-              onClick={() => { onOpenChange(false); reset(); }}
+              onClick={() => {
+                onOpenChange(false);
+                reset();
+              }}
               className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-accent"
             >
               Cancel
@@ -305,7 +309,7 @@ export function NewSessionDialog({ open, onOpenChange, prefill }: Props) {
               disabled={submitting || !computer || !projectPath}
               className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
-              {submitting ? "Creating..." : "Create Session"}
+              {submitting ? 'Creating...' : 'Create Session'}
             </button>
           </DialogFooter>
         </form>

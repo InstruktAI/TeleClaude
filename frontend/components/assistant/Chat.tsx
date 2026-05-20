@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { MyRuntimeProvider } from "./MyRuntimeProvider";
-import { ThreadView } from "./ThreadView";
+import { MyRuntimeProvider } from './MyRuntimeProvider';
+import { ThreadView } from './ThreadView';
 
 interface Props {
   sessionId: string;

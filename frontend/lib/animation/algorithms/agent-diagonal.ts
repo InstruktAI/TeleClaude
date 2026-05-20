@@ -6,34 +6,34 @@
  * and the rest get subtle. Creates a rain-like diagonal wash effect.
  */
 
-import type { AnimationAlgorithm } from '../types.js'
-import { colorKey } from '../types.js'
+import type { AnimationAlgorithm } from '../types.js';
+import { colorKey } from '../types.js';
 
 export const agentDiagonal: AnimationAlgorithm = (frame, config, target) => {
-  const grid = new Map<string, number>()
-  const paletteLen = config.palette.length
-  if (paletteLen === 0) return grid
+  const grid = new Map<string, number>();
+  const paletteLen = config.palette.length;
+  if (paletteLen === 0) return grid;
 
-  const maxVal = target.width + target.height
-  if (maxVal === 0) return grid
+  const maxVal = target.width + target.height;
+  if (maxVal === 0) return grid;
 
-  const active = frame % maxVal
+  const active = frame % maxVal;
 
-  const highlightIdx = Math.min(2, paletteLen - 1)
-  const normalIdx = Math.min(1, paletteLen - 1)
-  const subtleIdx = 0
+  const highlightIdx = Math.min(2, paletteLen - 1);
+  const normalIdx = Math.min(1, paletteLen - 1);
+  const subtleIdx = 0;
 
   for (const [x, y] of target.pixels) {
-    const dist = Math.abs((x + y) - active)
-    let colorIdx: number
+    const dist = Math.abs(x + y - active);
+    let colorIdx: number;
     if (dist === 0) {
-      colorIdx = highlightIdx
+      colorIdx = highlightIdx;
     } else if (dist < 3) {
-      colorIdx = normalIdx
+      colorIdx = normalIdx;
     } else {
-      colorIdx = subtleIdx
+      colorIdx = subtleIdx;
     }
-    grid.set(colorKey(x, y), colorIdx)
+    grid.set(colorKey(x, y), colorIdx);
   }
-  return grid
-}
+  return grid;
+};

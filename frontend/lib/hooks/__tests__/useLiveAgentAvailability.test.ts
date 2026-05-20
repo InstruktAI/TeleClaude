@@ -1,14 +1,14 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, vi, afterEach } from "vitest";
-import { renderHook, act } from "@testing-library/react";
-import { useLiveAgentAvailability } from "../useLiveAgentAvailability";
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { renderHook, act } from '@testing-library/react';
+import { useLiveAgentAvailability } from '../useLiveAgentAvailability';
 
 const capturedHandlers = new Map<string, (event: unknown) => void>();
 
-vi.mock("@/lib/hooks/useAgentAvailability", () => ({
+vi.mock('@/lib/hooks/useAgentAvailability', () => ({
   useAgentAvailability: () => ({
     data: {
-      claude: { agent: "claude", available: true, status: "available" },
+      claude: { agent: 'claude', available: true, status: 'available' },
     },
     isLoading: false,
     error: null,
@@ -16,7 +16,7 @@ vi.mock("@/lib/hooks/useAgentAvailability", () => ({
   }),
 }));
 
-vi.mock("@/lib/ws/WebSocketProvider", () => ({
+vi.mock('@/lib/ws/WebSocketProvider', () => ({
   useWS: () => ({
     onEvent: (type: string, handler: (event: unknown) => void) => {
       capturedHandlers.set(type, handler);
@@ -35,28 +35,28 @@ function emit(type: string, event: unknown) {
   });
 }
 
-describe("useLiveAgentAvailability", () => {
+describe('useLiveAgentAvailability', () => {
   afterEach(() => {
     capturedHandlers.clear();
     vi.clearAllMocks();
   });
 
-  it("starts from the availability query snapshot and applies websocket updates", () => {
+  it('starts from the availability query snapshot and applies websocket updates', () => {
     const { result } = renderHook(() => useLiveAgentAvailability());
 
-    expect(result.current.data.claude?.status).toBe("available");
+    expect(result.current.data.claude?.status).toBe('available');
 
-    emit("agent_availability", {
-      event: "agent_availability",
+    emit('agent_availability', {
+      event: 'agent_availability',
       data: {
-        agent: "codex",
+        agent: 'codex',
         available: false,
-        status: "unavailable",
-        unavailable_until: "2026-04-02T12:00:00Z",
+        status: 'unavailable',
+        unavailable_until: '2026-04-02T12:00:00Z',
       },
     });
 
-    expect(result.current.data.codex?.status).toBe("unavailable");
-    expect(result.current.data.codex?.unavailable_until).toBe("2026-04-02T12:00:00Z");
+    expect(result.current.data.codex?.status).toBe('unavailable');
+    expect(result.current.data.codex?.unavailable_until).toBe('2026-04-02T12:00:00Z');
   });
 });

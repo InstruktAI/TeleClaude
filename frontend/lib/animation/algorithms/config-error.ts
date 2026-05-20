@@ -6,26 +6,26 @@
  * is tied to frame progression -- approximately 5 blinks per cycle.
  */
 
-import type { AnimationAlgorithm } from '../types.js'
-import { colorKey } from '../types.js'
+import type { AnimationAlgorithm } from '../types.js';
+import { colorKey } from '../types.js';
 
-const BLINK_DIVISOR = 2
+const BLINK_DIVISOR = 2;
 
 export const configError: AnimationAlgorithm = (frame, config, target) => {
-  const grid = new Map<string, number>()
-  const width = target.width
-  if (width === 0) return grid
+  const grid = new Map<string, number>();
+  const width = target.width;
+  if (width === 0) return grid;
 
-  const paletteLen = config.palette.length
-  if (paletteLen === 0) return grid
+  const paletteLen = config.palette.length;
+  if (paletteLen === 0) return grid;
 
   // Alternate between on and off every other frame
-  const isOn = Math.floor(frame / BLINK_DIVISOR) % 2 === 0
+  const isOn = Math.floor(frame / BLINK_DIVISOR) % 2 === 0;
 
   if (isOn) {
     for (let x = 0; x < width; x++) {
-      grid.set(colorKey(x, 0), 0)
+      grid.set(colorKey(x, 0), 0);
     }
   }
-  return grid
-}
+  return grid;
+};

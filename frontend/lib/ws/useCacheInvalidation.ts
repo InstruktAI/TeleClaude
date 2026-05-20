@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { useWS } from "./WebSocketProvider";
-import type { WsEvent } from "./types";
+import { useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { useWS } from './WebSocketProvider';
+import type { WsEvent } from './types';
 
 /**
  * Listens to WebSocket events and invalidates relevant React Query caches.
@@ -15,23 +15,23 @@ export function useCacheInvalidation(): void {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const unsub = onEvent("*", (event: WsEvent) => {
+    const unsub = onEvent('*', (event: WsEvent) => {
       switch (event.event) {
-        case "projects_initial":
-        case "project_updated":
-        case "projects_updated":
-          queryClient.invalidateQueries({ queryKey: ["projects"] });
+        case 'projects_initial':
+        case 'project_updated':
+        case 'projects_updated':
+          queryClient.invalidateQueries({ queryKey: ['projects'] });
           break;
 
-        case "computer_updated":
-          queryClient.invalidateQueries({ queryKey: ["computers"] });
+        case 'computer_updated':
+          queryClient.invalidateQueries({ queryKey: ['computers'] });
           break;
 
-        case "todos_updated":
-        case "todo_created":
-        case "todo_updated":
-        case "todo_removed":
-          queryClient.invalidateQueries({ queryKey: ["todos"] });
+        case 'todos_updated':
+        case 'todo_created':
+        case 'todo_updated':
+        case 'todo_removed':
+          queryClient.invalidateQueries({ queryKey: ['todos'] });
           break;
       }
     });

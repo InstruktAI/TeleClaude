@@ -1,22 +1,18 @@
-import type { Metadata } from "next";
-import { SessionProvider } from "next-auth/react";
-import { ThemeProvider } from "@/components/providers/ThemeProvider";
-import { AgentThemingProvider } from "@/hooks/useAgentTheming";
-import "./globals.css";
-import "./theme.local.css";
+import type { Metadata } from 'next';
+import { SessionProvider } from 'next-auth/react';
+import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { AgentThemingProvider } from '@/hooks/useAgentTheming';
+import './globals.css';
+import './theme.local.css';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
-  title: "TeleClaude",
-  description: "TeleClaude Web Interface",
+  title: 'TeleClaude',
+  description: 'TeleClaude Web Interface',
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">

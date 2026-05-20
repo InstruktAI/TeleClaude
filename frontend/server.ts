@@ -10,15 +10,15 @@
  *   Production:  node server.js (after next build)
  */
 
-import { createServer } from "node:http";
-import { parse } from "node:url";
-import next from "next";
-import { WebSocketServer, type WebSocket } from "ws";
-import { bridgeConnection } from "./lib/proxy/ws-bridge.js";
+import { createServer } from 'node:http';
+import { parse } from 'node:url';
+import next from 'next';
+import { WebSocketServer, type WebSocket } from 'ws';
+import { bridgeConnection } from './lib/proxy/ws-bridge.js';
 
-const dev = process.env.NODE_ENV !== "production";
-const hostname = process.env.HOSTNAME ?? "0.0.0.0";
-const port = parseInt(process.env.PORT ?? "3000", 10);
+const dev = process.env.NODE_ENV !== 'production';
+const hostname = process.env.HOSTNAME ?? '0.0.0.0';
+const port = parseInt(process.env.PORT ?? '3000', 10);
 
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
@@ -31,21 +31,21 @@ app.prepare().then(() => {
 
   const wss = new WebSocketServer({ noServer: true });
 
-  server.on("upgrade", async (req, socket, head) => {
-    const { pathname } = parse(req.url ?? "", true);
+  server.on('upgrade', async (req, socket, head) => {
+    const { pathname } = parse(req.url ?? '', true);
 
-    if (pathname !== "/api/ws") {
+    if (pathname !== '/api/ws') {
       socket.destroy();
       return;
     }
 
     // Validate auth by checking session cookie
     // NextAuth stores session in a cookie — extract and validate it
-    const cookieHeader = req.headers.cookie ?? "";
+    const cookieHeader = req.headers.cookie ?? '';
     const extracted = extractSessionToken(cookieHeader);
 
     if (!extracted) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
       return;
     }
@@ -53,13 +53,13 @@ app.prepare().then(() => {
     // Validate the session token by calling the NextAuth session API
     const identity = await validateSession(extracted.token, extracted.cookieName, req.headers.host);
     if (!identity) {
-      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
       return;
     }
 
     wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
-      wss.emit("connection", ws, req);
+      wss.emit('connection', ws, req);
       bridgeConnection(ws, identity);
     });
   });
@@ -69,28 +69,26 @@ app.prepare().then(() => {
   });
 });
 
-function extractSessionToken(
-  cookieHeader: string,
-): { token: string; cookieName: string } | null {
-  const cookies = cookieHeader.split(";").reduce(
+function extractSessionToken(cookieHeader: string): { token: string; cookieName: string } | null {
+  const cookies = cookieHeader.split(';').reduce(
     (acc, cookie) => {
-      const [key, ...valParts] = cookie.trim().split("=");
-      if (key) acc[key] = valParts.join("=");
+      const [key, ...valParts] = cookie.trim().split('=');
+      if (key) acc[key] = valParts.join('=');
       return acc;
     },
     {} as Record<string, string>,
   );
 
-  if (cookies["__Secure-authjs.session-token"]) {
+  if (cookies['__Secure-authjs.session-token']) {
     return {
-      token: cookies["__Secure-authjs.session-token"],
-      cookieName: "__Secure-authjs.session-token",
+      token: cookies['__Secure-authjs.session-token'],
+      cookieName: '__Secure-authjs.session-token',
     };
   }
-  if (cookies["authjs.session-token"]) {
+  if (cookies['authjs.session-token']) {
     return {
-      token: cookies["authjs.session-token"],
-      cookieName: "authjs.session-token",
+      token: cookies['authjs.session-token'],
+      cookieName: 'authjs.session-token',
     };
   }
   return null;
@@ -103,7 +101,7 @@ async function validateSession(
 ): Promise<{ email: string; name?: string; role?: string } | null> {
   try {
     // Call the NextAuth session endpoint to validate the token
-    const protocol = process.env.NODE_ENV === "production" ? "https" : "http";
+    const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     const baseUrl = `${protocol}://${host ?? `localhost:${port}`}`;
     const res = await fetch(`${baseUrl}/api/auth/session`, {
       headers: {

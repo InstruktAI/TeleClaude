@@ -6,21 +6,17 @@
  * subscribe/unsubscribe, and typed event dispatch.
  */
 
-import http from "node:http";
-import WebSocket from "ws";
+import http from 'node:http';
+import WebSocket from 'ws';
 
-import type {
-  WsClientMessage,
-  WsEvent,
-  WsEventType,
-} from "./types.js";
+import type { WsClientMessage, WsEvent, WsEventType } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
 
-const DEFAULT_SOCKET_PATH = "/tmp/teleclaude-api.sock";
-const WS_PATH = "/ws";
+const DEFAULT_SOCKET_PATH = '/tmp/teleclaude-api.sock';
+const WS_PATH = '/ws';
 
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
@@ -46,27 +42,27 @@ export interface WebSocketManagerOptions {
 // ---------------------------------------------------------------------------
 
 const KNOWN_EVENT_TYPES = new Set<string>([
-  "sessions_initial",
-  "projects_initial",
-  "preparation_initial",
-  "session_started",
-  "session_updated",
-  "session_closed",
-  "computer_updated",
-  "project_updated",
-  "projects_updated",
-  "todos_updated",
-  "todo_created",
-  "todo_updated",
-  "todo_removed",
-  "error",
-  "agent_activity",
+  'sessions_initial',
+  'projects_initial',
+  'preparation_initial',
+  'session_started',
+  'session_updated',
+  'session_closed',
+  'computer_updated',
+  'project_updated',
+  'projects_updated',
+  'todos_updated',
+  'todo_created',
+  'todo_updated',
+  'todo_removed',
+  'error',
+  'agent_activity',
 ]);
 
 function isWsEvent(data: unknown): data is WsEvent {
-  if (typeof data !== "object" || data === null) return false;
+  if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
-  return typeof obj.event === "string" && KNOWN_EVENT_TYPES.has(obj.event);
+  return typeof obj.event === 'string' && KNOWN_EVENT_TYPES.has(obj.event);
 }
 
 // ---------------------------------------------------------------------------
@@ -83,20 +79,14 @@ export class WebSocketManager {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Event handlers: per-event-type + wildcard
-  private handlers = new Map<WsEventType | "*", Set<EventHandler>>();
+  private handlers = new Map<WsEventType | '*', Set<EventHandler>>();
   private connectHandlers = new Set<LifecycleHandler>();
   private disconnectHandlers = new Set<LifecycleHandler>();
   private errorHandlers = new Set<ErrorHandler>();
 
   constructor(opts?: WebSocketManagerOptions) {
-    this.socketPath =
-      opts?.socketPath ??
-      process.env.DAEMON_SOCKET_PATH ??
-      DEFAULT_SOCKET_PATH;
-    this.initialSubscriptions = opts?.initialSubscriptions ?? [
-      "sessions",
-      "preparation",
-    ];
+    this.socketPath = opts?.socketPath ?? process.env.DAEMON_SOCKET_PATH ?? DEFAULT_SOCKET_PATH;
+    this.initialSubscriptions = opts?.initialSubscriptions ?? ['sessions', 'preparation'];
   }
 
   // ---- lifecycle --------------------------------------------------------
@@ -148,10 +138,7 @@ export class WebSocketManager {
   // ---- event registration -----------------------------------------------
 
   /** Register a handler for a specific event type. Returns an unsubscribe function. */
-  onEvent<T extends WsEvent = WsEvent>(
-    type: WsEventType | "*",
-    handler: EventHandler<T>,
-  ): () => void {
+  onEvent<T extends WsEvent = WsEvent>(type: WsEventType | '*', handler: EventHandler<T>): () => void {
     const set = this.handlers.get(type) ?? new Set();
     set.add(handler as EventHandler);
     this.handlers.set(type, set);
@@ -206,7 +193,7 @@ export class WebSocketManager {
       agent,
     });
 
-    wsInstance.on("open", () => {
+    wsInstance.on('open', () => {
       this.ws = wsInstance;
       this.backoff = INITIAL_BACKOFF_MS;
 
@@ -214,7 +201,7 @@ export class WebSocketManager {
       if (this.initialSubscriptions.length > 0) {
         this.send({
           subscribe: {
-            computer: "local",
+            computer: 'local',
             types: this.initialSubscriptions,
           },
         });
@@ -229,11 +216,11 @@ export class WebSocketManager {
       }
     });
 
-    wsInstance.on("message", (data: WebSocket.Data) => {
+    wsInstance.on('message', (data: WebSocket.Data) => {
       this.handleMessage(data);
     });
 
-    wsInstance.on("close", () => {
+    wsInstance.on('close', () => {
       this.ws = null;
       for (const handler of this.disconnectHandlers) {
         try {
@@ -245,7 +232,7 @@ export class WebSocketManager {
       this.scheduleReconnect();
     });
 
-    wsInstance.on("error", (err: Error) => {
+    wsInstance.on('error', (err: Error) => {
       for (const handler of this.errorHandlers) {
         try {
           handler(err);
@@ -260,7 +247,7 @@ export class WebSocketManager {
   private handleMessage(data: WebSocket.Data): void {
     let parsed: unknown;
     try {
-      const text = typeof data === "string" ? data : data.toString("utf-8");
+      const text = typeof data === 'string' ? data : data.toString('utf-8');
       parsed = JSON.parse(text);
     } catch {
       return; // invalid JSON, discard
@@ -283,7 +270,7 @@ export class WebSocketManager {
     }
 
     // Dispatch to wildcard handlers
-    const wildcardHandlers = this.handlers.get("*");
+    const wildcardHandlers = this.handlers.get('*');
     if (wildcardHandlers) {
       for (const handler of wildcardHandlers) {
         try {

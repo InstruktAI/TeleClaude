@@ -1,6 +1,6 @@
-"use client";
+'use client';
 
-import type { TableSection as TableSectionType } from "@/lib/widgets";
+import type { TableSection as TableSectionType } from '@/lib/widgets';
 
 export function TableSectionRenderer({ section }: { section: TableSectionType }) {
   return (
@@ -27,9 +27,7 @@ export function TableSectionRenderer({ section }: { section: TableSectionType })
           ))}
         </tbody>
       </table>
-      {section.caption && (
-        <p className="mt-1 text-xs text-muted-foreground">{section.caption}</p>
-      )}
+      {section.caption && <p className="mt-1 text-xs text-muted-foreground">{section.caption}</p>}
     </div>
   );
 }

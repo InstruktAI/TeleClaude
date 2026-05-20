@@ -8,11 +8,11 @@
  * All tests are marked as expected failures (it.fails) until implementation exists.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from 'vitest';
 
 interface JobInfo {
   name: string;
-  type: "agent" | "script";
+  type: 'agent' | 'script';
   schedule: string | null;
   last_run: string | null;
   status: string;
@@ -20,56 +20,56 @@ interface JobInfo {
 
 function makeJob(overrides?: Partial<JobInfo>): JobInfo {
   return {
-    name: "nightly-sync",
-    type: "script",
-    schedule: "0 2 * * *",
-    last_run: "2025-01-15T02:00:00Z",
-    status: "idle",
+    name: 'nightly-sync',
+    type: 'script',
+    schedule: '0 2 * * *',
+    last_run: '2025-01-15T02:00:00Z',
+    status: 'idle',
     ...overrides,
   };
 }
 
-describe("buildJobsSections", () => {
-  it("splits jobs into scheduled and one-shot sections", async () => {
-    const modulePath = "@/lib/jobs/panel" as string;
+describe('buildJobsSections', () => {
+  it('splits jobs into scheduled and one-shot sections', async () => {
+    const modulePath = '@/lib/jobs/panel' as string;
     const { buildJobsSections } = await import(modulePath);
 
     const sections = buildJobsSections([
-      makeJob({ name: "nightly-sync", schedule: "0 2 * * *" }),
-      makeJob({ name: "manual-backfill", schedule: null, type: "agent" }),
+      makeJob({ name: 'nightly-sync', schedule: '0 2 * * *' }),
+      makeJob({ name: 'manual-backfill', schedule: null, type: 'agent' }),
     ]);
 
     expect(sections).toEqual({
       scheduled: [
         {
-          name: "nightly-sync",
-          type: "script",
-          scheduleLabel: "0 2 * * *",
-          lastRun: "2025-01-15T02:00:00Z",
-          status: "idle",
+          name: 'nightly-sync',
+          type: 'script',
+          scheduleLabel: '0 2 * * *',
+          lastRun: '2025-01-15T02:00:00Z',
+          status: 'idle',
         },
       ],
       oneShot: [
         {
-          name: "manual-backfill",
-          type: "agent",
-          scheduleLabel: "one-shot",
-          lastRun: "2025-01-15T02:00:00Z",
-          status: "idle",
+          name: 'manual-backfill',
+          type: 'agent',
+          scheduleLabel: 'one-shot',
+          lastRun: '2025-01-15T02:00:00Z',
+          status: 'idle',
         },
       ],
     });
   });
 });
 
-describe("buildJobTriggerRequest", () => {
-  it("formats the selected job for the trigger proxy call", async () => {
-    const modulePath = "@/lib/jobs/panel" as string;
+describe('buildJobTriggerRequest', () => {
+  it('formats the selected job for the trigger proxy call', async () => {
+    const modulePath = '@/lib/jobs/panel' as string;
     const { buildJobTriggerRequest } = await import(modulePath);
 
-    expect(buildJobTriggerRequest("nightly-sync")).toEqual({
-      method: "POST",
-      path: "/api/jobs/nightly-sync/run",
+    expect(buildJobTriggerRequest('nightly-sync')).toEqual({
+      method: 'POST',
+      path: '/api/jobs/nightly-sync/run',
     });
   });
 });

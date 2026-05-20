@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-type SessionStatus = "streaming" | "idle" | "closed" | "error";
+type SessionStatus = 'streaming' | 'idle' | 'closed' | 'error';
 
 const statusConfig: Record<SessionStatus, { color: string; label: string }> = {
-  streaming: { color: "bg-green-500", label: "Streaming" },
-  idle: { color: "bg-gray-400", label: "Idle" },
-  closed: { color: "bg-gray-300", label: "Closed" },
-  error: { color: "bg-red-500", label: "Error" },
+  streaming: { color: 'bg-green-500', label: 'Streaming' },
+  idle: { color: 'bg-gray-400', label: 'Idle' },
+  closed: { color: 'bg-gray-300', label: 'Closed' },
+  error: { color: 'bg-red-500', label: 'Error' },
 };
 
 interface Props {
