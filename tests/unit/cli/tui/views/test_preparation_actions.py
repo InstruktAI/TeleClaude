@@ -219,7 +219,7 @@ def test_action_remove_artifact_blocks_input_artifact() -> None:
 
 
 @pytest.mark.unit
-def test_action_remove_artifact_todo_row_confirmation_includes_artifact_and_version_counts(
+def test_action_remove_artifact_todo_row_confirmation_message(
     snapshot: SnapshotAssertion,
 ) -> None:
     view = _DummyPreparationView(("local", "/repo", _REMOVE_SLUG))

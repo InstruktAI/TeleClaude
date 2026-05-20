@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import pytest
 from rich.text import Text
-from syrupy.assertion import SnapshotAssertion
 from textual.geometry import Size
 
 from teleclaude.cli.tui.todos import TodoItem
@@ -21,11 +20,6 @@ from teleclaude.cli.tui.widgets.todo_row import (
     row_content_width,
 )
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase
-
-_ARTIFACT_COLUMN = "A"
-_ARTIFACT_NAMES = ["architecture", "implementation-plan"]
-_EMPTY_SLUG = "empty-row"
-_WITH_ARTIFACTS_SLUG = "with-artifacts"
 
 
 def _make_todo(*, slug: str = "test-slug", status: TodoStatus = TodoStatus.PENDING) -> TodoItem:
@@ -371,46 +365,3 @@ def test_render_work_row_does_not_include_prepare_phase_column() -> None:
     assert "B:complete" in rendered
     assert "R:approved" in rendered
     assert "P:" not in rendered
-
-
-@pytest.mark.unit
-def test_collapsed_row_exposes_artifact_count_signal(snapshot: SnapshotAssertion) -> None:
-    todo_with_artifacts = TodoItem(
-        slug=_WITH_ARTIFACTS_SLUG,
-        status=TodoStatus.PENDING,
-        description=None,
-        has_requirements=True,
-        has_impl_plan=True,
-        files=list(_ARTIFACT_NAMES),
-    )
-    empty_todo = TodoItem(
-        slug=_EMPTY_SLUG,
-        status=TodoStatus.PENDING,
-        description=None,
-        has_requirements=False,
-        has_impl_plan=False,
-    )
-    all_items = [todo_with_artifacts, empty_todo]
-    slug_width = max(len(t.slug) for t in all_items)
-    col_widths = TodoRow.compute_col_widths(all_items)
-
-    assert col_widths.get(_ARTIFACT_COLUMN, 0) > 0
-    rendered = {
-        "with_artifacts": TodoRow(
-            todo=todo_with_artifacts,
-            slug_width=slug_width,
-            col_widths=col_widths,
-            max_depth=0,
-        )
-        .render()
-        .plain,
-        "empty": TodoRow(
-            todo=empty_todo,
-            slug_width=slug_width,
-            col_widths=col_widths,
-            max_depth=0,
-        )
-        .render()
-        .plain,
-    }
-    assert rendered == snapshot

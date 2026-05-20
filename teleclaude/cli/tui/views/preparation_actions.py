@@ -461,8 +461,6 @@ class PreparationViewActionsMixin:
         project_path = self._slug_to_project_path.get(slug, "")  # type: ignore[attr-defined]
         if not project_path:
             return
-        artifact_count = len(row.todo.files) if row else 0
-        version_total = row.todo.version_total if row else 0
 
         def _on_confirm_todo(confirmed: bool | None) -> None:
             if not confirmed:
@@ -487,10 +485,7 @@ class PreparationViewActionsMixin:
         self.app.push_screen(  # type: ignore[attr-defined]
             ConfirmModal(
                 title="Remove Todo",
-                message=(
-                    f"Remove todo '{slug}' and its {artifact_count} artifacts "
-                    f"({version_total} versions)?\n\nThis action cannot be undone."
-                ),
+                message=f"Remove todo '{slug}'?\n\nThis action cannot be undone.",
             ),
             _on_confirm_todo,
         )
