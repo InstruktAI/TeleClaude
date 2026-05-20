@@ -45,6 +45,7 @@ class TodosDbArtifactsMixin:
         result = await session.exec(
             select(TodoRoadmap.id)
             .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status != "removed")
             .order_by(
                 # active/icebox first, delivered last
                 (ROADMAP_TABLE.c.status == "delivered").asc()
@@ -63,14 +64,19 @@ class TodosDbArtifactsMixin:
         result = await session.exec(
             select(TodoRoadmap)
             .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status != "delivered")
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
             .limit(1)
         )
         entry = result.first()
         if entry is not None:
             return entry.id
 
-        delivered = await session.exec(select(TodoRoadmap.id).where(ROADMAP_TABLE.c.slug == slug).limit(1))
+        delivered = await session.exec(
+            select(TodoRoadmap.id)
+            .where(ROADMAP_TABLE.c.slug == slug)
+            .where(ROADMAP_TABLE.c.status == "delivered")
+            .limit(1)
+        )
         if delivered.first() is not None:
             raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
         raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")
@@ -90,6 +96,7 @@ class TodosDbArtifactsMixin:
             roadmap_id = session.exec(
                 select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
                 .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
@@ -101,6 +108,7 @@ class TodosDbArtifactsMixin:
             roadmap_id = session.exec(
                 select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
                 .order_by((ROADMAP_TABLE.c.status == "delivered").asc())
                 .limit(1)
             ).first()
@@ -185,12 +193,17 @@ class TodosDbArtifactsMixin:
             result = session.exec(
                 select(TodoRoadmap)
                 .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "delivered")
+                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             )
             entry = result.first()
             if entry is None:
-                delivered = session.exec(select(TodoRoadmap.id).where(ROADMAP_TABLE.c.slug == slug).limit(1)).first()
+                delivered = session.exec(
+                    select(TodoRoadmap.id)
+                    .where(ROADMAP_TABLE.c.slug == slug)
+                    .where(ROADMAP_TABLE.c.status == "delivered")
+                    .limit(1)
+                ).first()
                 if delivered is not None:
                     raise ValueError(f"Cannot write artifact: todo {slug!r} is delivered (read-only)")
                 raise ValueError(f"Cannot write artifact: unknown todo {slug!r}")

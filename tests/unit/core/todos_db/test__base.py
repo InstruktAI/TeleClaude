@@ -180,3 +180,37 @@ def test_uuid_migration_assigns_uuid_to_artifacts_without_roadmap_entry(
 
     assert row is not None, "orphan artifact row should survive migration"
     assert _is_uuid(row[0]), f"artifact id must be a UUID, got {row[0]!r}"
+
+
+def test_initialize_adds_roadmap_tombstone_columns_to_preexisting_db(tmp_path: Path) -> None:
+    """A pre-existing roadmap table without tombstone columns must gain them additively,
+    preserving existing rows."""
+    db_path = str(tmp_path / "todos.db")
+
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE roadmap (id TEXT PRIMARY KEY, slug TEXT NOT NULL, "
+        "position INTEGER NOT NULL, group_slug TEXT, description TEXT, "
+        "status TEXT NOT NULL DEFAULT 'active', delivered_at TEXT, "
+        "delivered_commit TEXT, children TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "INSERT INTO roadmap (id, slug, position, status, created_at, updated_at) "
+        "VALUES ('row-1', 'kept-slug', 0, 'active', '2026-01-01T00:00:00', '2026-01-01T00:00:00')"
+    )
+    conn.commit()
+    conn.close()
+
+    TodosDb(db_path).initialize_sync()
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(roadmap)").fetchall()}
+        preserved = conn.execute(
+            "SELECT slug, status, removed_at, prev_status, removed_deps FROM roadmap WHERE id = 'row-1'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert {"removed_at", "prev_status", "removed_deps"} <= columns
+    assert preserved == ("kept-slug", "active", None, None, None)

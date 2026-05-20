@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from teleclaude.config import TrustedDir
 from teleclaude.core.models import Session
+from teleclaude.core.todos_db import TodosDb, _instances
+from teleclaude.core.todos_db._models import TodoRoadmap
 from teleclaude.services import maintenance_service
 from teleclaude.services.maintenance_service import COMPACTION_IDLE_THRESHOLD_S, MaintenanceService
 
@@ -373,3 +378,249 @@ class TestMaintenanceService:
 
         assert warning_mock.call_count == 2
         debug_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Removed-todo retention sweep
+# ---------------------------------------------------------------------------
+
+
+async def _seed_project_with_removed_rows(
+    tmp_path: Path,
+    *,
+    rows: list[tuple[str, str, str, datetime | None]],
+) -> Path:
+    """Create a project layout with a populated todos.db.
+
+    Each `rows` tuple is (id, slug, status, removed_at). When status='removed'
+    and removed_at is provided, the row gets a real tombstone; when removed_at
+    is None for status='removed', it simulates a legacy partial row.
+    """
+    project = tmp_path / "project"
+    (project / ".teleclaude").mkdir(parents=True)
+    db = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    await db.initialize()
+    try:
+        with db._sync_session() as session:
+            for idx, (row_id, slug, status, removed_at) in enumerate(rows):
+                session.add(
+                    TodoRoadmap(
+                        id=row_id,
+                        slug=slug,
+                        position=idx,
+                        status=status,
+                        removed_at=removed_at.isoformat() if removed_at else None,
+                        created_at="2026-04-01T00:00:00+00:00",
+                        updated_at="2026-04-01T00:00:00+00:00",
+                    )
+                )
+            session.commit()
+    finally:
+        await db.close()
+    # Drop the cached instance so the maintenance service opens a fresh one.
+    _instances.pop(str(project / ".teleclaude" / "todos.db"), None)
+    return project
+
+
+def _patch_trusted_dirs(monkeypatch: pytest.MonkeyPatch, paths: list[Path]) -> None:
+    dirs = [TrustedDir(name=f"d{i}", desc="", path=str(p)) for i, p in enumerate(paths)]
+    monkeypatch.setattr(
+        "teleclaude.services.maintenance_service.config.computer.get_all_trusted_dirs",
+        lambda: dirs,
+    )
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_purges_only_rows_past_retention(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    inside = now - (maintenance_service.RETENTION_WINDOW - timedelta(hours=1))
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[
+            ("row-keep", "kept-slug", "removed", inside),
+            ("row-purge", "purged-slug", "removed", outside),
+            ("row-live", "live-slug", "active", None),
+        ],
+    )
+    _patch_trusted_dirs(monkeypatch, [project])
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    db = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    db.initialize_sync()
+    try:
+        conn = db._sync_conn()
+        try:
+            rows = {
+                str(row[0]): str(row[1])
+                for row in conn.execute("SELECT id, status FROM roadmap").fetchall()  # guard: raw-sql
+            }
+        finally:
+            conn.close()
+    finally:
+        await db.close()
+    assert rows == {"row-keep": "removed", "row-live": "active"}
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_cascades_to_state_artifacts_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """FK ON DELETE CASCADE handles state/artifacts/versions; the purge runs
+    strictly row-id-addressed and performs no slug-keyed work."""
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = tmp_path / "project"
+    (project / ".teleclaude").mkdir(parents=True)
+    db = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    await db.initialize()
+    try:
+        await db.add_to_roadmap("doomed")
+        await db.write_state("doomed", {"kind": "todo", "lifecycle_phase": "prepared"})
+        await db.write_artifact("doomed", "prd", "v1")
+        await db.write_artifact("doomed", "prd", "v2")
+        row_id = await db.resolve_id("doomed")
+        assert row_id is not None
+        with db._sync_session() as session:
+            entry = session.get(TodoRoadmap, row_id)
+            assert entry is not None
+            entry.status = "removed"
+            entry.removed_at = outside.isoformat()
+            entry.prev_status = "active"
+            session.add(entry)
+            session.commit()
+    finally:
+        await db.close()
+    _instances.pop(str(project / ".teleclaude" / "todos.db"), None)
+    _patch_trusted_dirs(monkeypatch, [project])
+
+    service = _make_service()
+    with patch("teleclaude.services.maintenance_service.logger.info") as logger_info:
+        await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        roadmap_rows = conn.execute("SELECT COUNT(*) FROM roadmap").fetchone()[0]
+        state_rows = conn.execute("SELECT COUNT(*) FROM todo_state").fetchone()[0]
+        artifact_rows = conn.execute("SELECT COUNT(*) FROM todo_artifacts").fetchone()[0]
+        version_rows = conn.execute("SELECT COUNT(*) FROM todo_artifact_versions").fetchone()[0]
+    finally:
+        conn.close()
+    assert (roadmap_rows, state_rows, artifact_rows, version_rows) == (0, 0, 0, 0)
+    purge_log = next(call for call in logger_info.call_args_list if "removed_age_seconds" in call.kwargs)
+    assert purge_log.kwargs["removed_age_seconds"] >= maintenance_service.RETENTION_WINDOW.total_seconds()
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_preserves_same_slug_live_twin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A reused slug must keep its own roadmap_deps and resources intact when the
+    tombstoned twin is purged — proves zero slug-keyed operations at purge time."""
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = tmp_path / "project"
+    (project / ".teleclaude").mkdir(parents=True)
+    db = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    await db.initialize()
+    try:
+        # Removed twin past the retention window
+        with db._sync_session() as session:
+            session.add(
+                TodoRoadmap(
+                    id="row-removed",
+                    slug="reused",
+                    position=0,
+                    status="removed",
+                    removed_at=outside.isoformat(),
+                    prev_status="active",
+                    created_at="2026-04-01T00:00:00+00:00",
+                    updated_at="2026-04-01T00:00:00+00:00",
+                )
+            )
+            session.commit()
+        # Live row with the same slug, plus an outgoing edge
+        await db.add_to_roadmap("upstream")
+        await db.add_to_roadmap("reused")
+        await db.set_deps("reused", after=["upstream"])
+    finally:
+        await db.close()
+    resource_sentinel = project / "workspace" / "reused" / "sentinel.txt"
+    resource_sentinel.parent.mkdir(parents=True)
+    resource_sentinel.write_text("live resource", encoding="utf-8")
+    _instances.pop(str(project / ".teleclaude" / "todos.db"), None)
+    _patch_trusted_dirs(monkeypatch, [project])
+    cleanup = MagicMock(side_effect=AssertionError("purge must not run slug-keyed cleanup"))
+    monkeypatch.setattr("teleclaude.core.todos_db._roadmap.cleanup_delivered_slug", cleanup, raising=False)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    db2 = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    db2.initialize_sync()
+    try:
+        live_deps = await db2.get_deps("reused")
+        conn = db2._sync_conn()
+        try:
+            statuses = {
+                str(row[0]): str(row[1])
+                for row in conn.execute("SELECT id, status FROM roadmap").fetchall()  # guard: raw-sql
+            }
+        finally:
+            conn.close()
+    finally:
+        await db2.close()
+    assert "row-removed" not in statuses  # tombstone gone
+    assert live_deps == ["upstream"]  # live row's edges untouched
+    assert resource_sentinel.exists()
+    cleanup.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_self_heals_legacy_partial_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[("legacy-id", "legacy-slug", "removed", None)],
+    )
+    _patch_trusted_dirs(monkeypatch, [project])
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        row = conn.execute(
+            "SELECT status, removed_at FROM roadmap WHERE id = 'legacy-id'"  # guard: raw-sql
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    assert row[0] == "removed"
+    assert row[1] is not None  # self-healed timestamp
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_skips_directories_without_todos_db(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Discovery silently skips trusted directories that are not project roots."""
+    bare_dir = tmp_path / "bare"
+    bare_dir.mkdir()
+    nonexistent = tmp_path / "does-not-exist"
+    _patch_trusted_dirs(monkeypatch, [bare_dir, nonexistent])
+
+    service = _make_service()
+    await service._cleanup_removed_todos()  # must not raise
+
+
+@pytest.mark.unit
+def test_retention_window_is_shared_between_session_and_todo_cleanup() -> None:
+    """A single module-level constant governs both retention sweeps so the
+    operator can never accidentally let the two windows drift apart."""
+    assert maintenance_service.RETENTION_WINDOW == timedelta(days=7)

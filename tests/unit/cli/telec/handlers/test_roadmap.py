@@ -131,3 +131,21 @@ def test_handle_roadmap_deliver_calls_db_and_cleanup(monkeypatch: pytest.MonkeyP
 
     assert db_called[0] == (repo_root, "sample", "deliver")
     cleanup.assert_called_once_with(str(repo_root), "sample")
+
+
+def test_handle_roadmap_remove_routes_through_soft_primitive(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """The direct `telec roadmap remove` verb dispatches the shared DB soft-remove
+    primitive and threads the resolved project root as cwd."""
+    db_called: list[tuple[Path, str, str, dict]] = []
+    repo_root, worktree = _make_worktree(tmp_path)
+    monkeypatch.setenv("TELEC_INVOCATION_CWD", str(worktree))
+    monkeypatch.chdir(worktree)
+    monkeypatch.setattr(
+        roadmap,
+        "_run_db",
+        lambda project_root, slug, method, **kw: db_called.append((project_root, slug, method, kw)) or True,
+    )
+
+    roadmap._handle_roadmap_remove(["sample"])
+
+    assert db_called == [(repo_root, "sample", "soft_remove_from_roadmap", {"cwd": str(repo_root)})]

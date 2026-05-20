@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import pytest
+from sqlmodel import select
 from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_PRD, ARTIFACT_REQUIREMENTS
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._models import TodoRoadmap
 
 pytestmark = pytest.mark.asyncio
 
@@ -209,3 +211,40 @@ async def test_delete_artifact_is_noop_for_missing_artifact(todos_db: TodosDb) -
 async def test_delete_artifact_raises_for_unknown_slug(todos_db: TodosDb) -> None:
     with pytest.raises(ValueError):
         await todos_db.delete_artifact("nonexistent-slug", ARTIFACT_REQUIREMENTS)
+
+
+def _mark_removed(db: TodosDb, slug: str) -> None:
+    """Force a slug's live row into the persisted removed state (artifacts retained)."""
+    with db._sync_session() as session:
+        entry = session.exec(
+            select(TodoRoadmap).where(TodoRoadmap.slug == slug).where(TodoRoadmap.status != "removed").limit(1)
+        ).one()
+        entry.prev_status = entry.status
+        entry.status = "removed"
+        entry.removed_at = "2026-05-19T00:00:00+00:00"
+        session.add(entry)
+        session.commit()
+
+
+async def test_read_artifact_excludes_removed(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, ARTIFACT_REQUIREMENTS, "body")
+    _mark_removed(todos_db, _SLUG)
+
+    # Default read surfaces treat a removed todo as absent — the same shape as
+    # an unknown slug (empty content from read, False from exists, [] from list).
+    assert not await todos_db.read_artifact(_SLUG, ARTIFACT_REQUIREMENTS)
+    assert not todos_db.read_artifact_sync(_SLUG, ARTIFACT_REQUIREMENTS)
+    assert await todos_db.artifact_exists(_SLUG, ARTIFACT_REQUIREMENTS) is False
+    assert await todos_db.list_artifacts(_SLUG) == []
+
+
+async def test_write_artifact_rejects_removed(todos_db: TodosDb) -> None:
+    await _ensure_roadmap_entry(todos_db)
+    await todos_db.write_artifact(_SLUG, ARTIFACT_REQUIREMENTS, "body")
+    _mark_removed(todos_db, _SLUG)
+
+    with pytest.raises(ValueError):
+        await todos_db.write_artifact(_SLUG, ARTIFACT_REQUIREMENTS, "new body")
+    with pytest.raises(ValueError):
+        todos_db.write_artifact_sync(_SLUG, ARTIFACT_REQUIREMENTS, "new body")

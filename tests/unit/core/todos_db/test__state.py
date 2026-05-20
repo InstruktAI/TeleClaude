@@ -5,8 +5,10 @@ from __future__ import annotations
 import json
 
 import pytest
+from sqlmodel import select
 
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._models import TodoRoadmap
 
 pytestmark = pytest.mark.asyncio
 
@@ -240,3 +242,46 @@ async def test_async_deliver_stamps_integration_phase_delivered(todos_db: TodosD
     result = await todos_db.read_state_delivered("my-slug")
     assert result is not None
     assert result["integration_phase"] == "delivered"
+
+
+def _mark_removed(todos_db: TodosDb, slug: str) -> None:
+    """Force a slug's live row into the persisted removed state (state row retained)."""
+    with todos_db._sync_session() as session:
+        entry = session.exec(
+            select(TodoRoadmap).where(TodoRoadmap.slug == slug).where(TodoRoadmap.status != "removed").limit(1)
+        ).one()
+        entry.prev_status = entry.status
+        entry.status = "removed"
+        entry.removed_at = "2026-05-19T00:00:00+00:00"
+        session.add(entry)
+        session.commit()
+
+
+async def test_read_state_excludes_removed(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("doomed")
+    await todos_db.write_state("doomed", {"lifecycle_phase": "prepared", "kind": "todo"})
+    _mark_removed(todos_db, "doomed")
+
+    assert await todos_db.read_state("doomed") is None
+    assert todos_db.read_state_sync("doomed") is None
+
+
+async def test_write_state_rejects_removed(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("doomed")
+    await todos_db.write_state("doomed", {"lifecycle_phase": "prepared", "kind": "todo"})
+    _mark_removed(todos_db, "doomed")
+
+    with pytest.raises(ValueError):
+        await todos_db.write_state("doomed", {"lifecycle_phase": "build", "kind": "todo"})
+    with pytest.raises(ValueError):
+        todos_db.write_state_sync("doomed", {"lifecycle_phase": "build", "kind": "todo"})
+
+
+async def test_list_slugs_excludes_removed(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("kept")
+    await todos_db.write_state("kept", {"lifecycle_phase": "prepared", "kind": "todo"})
+    await todos_db.add_to_roadmap("gone")
+    await todos_db.write_state("gone", {"lifecycle_phase": "prepared", "kind": "todo"})
+    _mark_removed(todos_db, "gone")
+
+    assert await todos_db.list_slugs() == ["kept"]

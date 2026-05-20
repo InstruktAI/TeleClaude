@@ -74,11 +74,15 @@ class TodosDbStateMixin:
         return True
 
     async def _resolve_active_row_id(self, session: SqlAsyncSession, slug: str) -> str | None:
-        """Resolve an active or icebox roadmap slug to its stable row id."""
+        """Resolve a live (active or icebox) roadmap slug to its stable row id.
+
+        Excludes delivered and removed rows so state reads/writes never resolve
+        a soft-removed todo.
+        """
         result = await session.exec(
             select(TodoRoadmap.id)
             .where(ROADMAP_TABLE.c.slug == slug)
-            .where(ROADMAP_TABLE.c.status != "delivered")
+            .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
             .limit(1)
         )
         row_id = result.one_or_none()
@@ -200,9 +204,19 @@ class TodosDbStateMixin:
                 await db_session.close()
 
     async def list_slugs(self) -> list[str]:
-        """Return all slugs with stored state."""
+        """Return all slugs with stored state, excluding soft-removed todos.
+
+        State rows are retained when a todo is removed, so this enumeration must
+        join the roadmap row and gate out ``removed`` — otherwise a removed todo
+        leaks back in through the state-derived slug list.
+        """
         async with self._session() as session:  # type: ignore[attr-defined]
-            result = await session.exec(select(TodoStateModel.slug).order_by(TODO_STATE_TABLE.c.slug))
+            result = await session.exec(
+                select(TodoStateModel.slug)
+                .join(TodoRoadmap, TODO_STATE_TABLE.c.id == ROADMAP_TABLE.c.id)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .order_by(TODO_STATE_TABLE.c.slug)
+            )
             return [str(slug) for slug in result.all()]
 
     async def is_bug_todo(self, slug: str) -> bool:
@@ -228,7 +242,7 @@ class TodosDbStateMixin:
             row_id = session.exec(
                 select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "delivered")
+                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
             if row_id is None:
@@ -253,7 +267,7 @@ class TodosDbStateMixin:
             row_id = session.exec(
                 select(TodoRoadmap.id)
                 .where(ROADMAP_TABLE.c.slug == slug)
-                .where(ROADMAP_TABLE.c.status != "delivered")
+                .where(ROADMAP_TABLE.c.status.in_(("active", "icebox")))
                 .limit(1)
             ).one_or_none()
             if row_id is None:

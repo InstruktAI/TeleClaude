@@ -459,7 +459,14 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 hidden=True,
             ),
             "remove": CommandDef(
-                desc="Remove a todo and its roadmap entry",
+                desc=(
+                    "Soft-remove a todo: the durable record (roadmap entry + state + all "
+                    "artifacts and version history) is retained for a fixed grace window; "
+                    "the working resources (worktree + branch + workspace) are released "
+                    "immediately. After the window elapses, background maintenance hard-"
+                    "purges the row by id. Reactivation is row-id-addressed (see the "
+                    "downstream recovery surface) and fail-closed on a live same-slug twin."
+                ),
                 args="<slug>",
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
@@ -698,7 +705,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "remove": CommandDef(
-                desc="Remove entry from the roadmap",
+                desc=(
+                    "Soft-remove a roadmap entry: identical semantics to `telec todo remove`. "
+                    "The durable record and full history survive removal for a fixed grace "
+                    "window before background maintenance hard-purges by row id. "
+                    "Reactivation is row-id-addressed and fail-closed on live same-slug twins."
+                ),
                 args="<slug>",
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),

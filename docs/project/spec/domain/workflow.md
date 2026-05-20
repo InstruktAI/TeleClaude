@@ -155,6 +155,7 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   - Artifact content is append-only at the version level; replacing content creates a new version, never mutates an existing one.
   - Each artifact kind is unique per **roadmap row** (one `prd` per row, one `implementation-plan` per row, etc.) — keyed by durable row identity, so a retained `removed` row and a fresh same-slug live row each hold their own independent artifact set.
   - Removing an artifact (`telec todo artifacts remove`) deletes the artifact + its full version history.
+  - Soft-removing a todo does NOT remove artifact rows or version history; they remain retained on the todo row id until retention purge.
   - The current version pointer is the most-recently-written version.
 - **Identifier:** `(durable roadmap row identity, artifact_kind)`. Slug is only the alias used to resolve the live row; it is never the artifact's durable key (same-slug retained/live rows would otherwise collide).
 - **Lifecycle:** Created by `telec todo artifacts write` or as a side effect of state-machine transitions. Versioned on every write. Removed by explicit `telec todo artifacts remove`.
@@ -713,7 +714,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`roadmap-icebox`](../feature/workflow/roadmap-icebox.md) — Frozen-but-recoverable state for Roadmap entries; iceboxed entries do not participate in dependency resolution. In v1, the icebox is fully DB-resident — `migrate-icebox` is a deprecated no-op.
 - [`todo-creation`](../feature/workflow/todo-creation.md) — `create`, `dump`, and `design` paths to scaffold a Todo, with `--draft` and `--prepped` modes plus bug-kind helpers that route to `/next-work`.
 - [`todo-split`](../feature/workflow/todo-split.md) — Split a Todo into children; in v1, the parent's `kind` is unchanged and children bootstrap with fresh `default_state` (lifecycle_phase=`draft`). The holder role is derived from `roadmap.group_slug` + `state.breakdown.todos`, not an enum value.
-- [`todo-removal`](../feature/workflow/todo-removal.md) — Delete Todo state, cascade-delete artifact versions, scrub inbound dependency edges, and remove the git worktree and branches; async receipt-backed.
+- [`todo-removal`](../feature/workflow/todo-removal.md) — Soft-remove Todo rows, hide them from default reads, retain state/artifact history through the grace window, support row-id reactivation, and hard-purge expired tombstones; async receipt-backed.
 
 ### Context map position
 

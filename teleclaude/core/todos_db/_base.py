@@ -247,6 +247,20 @@ def _migrate_foreign_key_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_roadmap_tombstone_columns(conn: sqlite3.Connection) -> None:
+    """Additively add the soft-delete tombstone columns to a pre-existing roadmap table.
+
+    Idempotent: each column is added only when absent, leaving existing rows
+    untouched. No uniqueness-index change — ``removed`` already sits outside the
+    ``status IN ('active', 'icebox')`` partial-unique predicate.
+    """
+    columns = _table_columns(conn, "roadmap")
+    for column in ("removed_at", "prev_status", "removed_deps"):
+        if column not in columns:
+            conn.execute(f"ALTER TABLE roadmap ADD COLUMN {column} TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -257,6 +271,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         _migrate_artifact_versions_schema(conn)
         if _table_exists(conn, "roadmap"):
             _migrate_foreign_key_schema(conn)
+            _migrate_roadmap_tombstone_columns(conn)
         conn.commit()
     finally:
         conn.close()
