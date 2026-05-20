@@ -235,9 +235,10 @@ def _commit_instruction(on_main: bool) -> str:
     if on_main:
         return (
             "Collect your changes (what changed, why, file types, scope) "
-            "Then execute `telec code commit -m '…'` to trigger options and present result."
+            "Then execute `telec code commit` (no flags) to surface Path A/B/C; "
+            "after picking, re-run with `--approved '<message>'`."
         )
-    return "Commit your changes with `telec code commit`"
+    return "Commit your changes with `telec code commit --approved '<message>'`"
 
 
 def _docs_check_instruction() -> str:
