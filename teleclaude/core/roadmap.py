@@ -324,11 +324,20 @@ def assemble_roadmap_from_db(
 
         # Display window: drop genuine delivered entries older than the cutoff.
         # Holders (derived 'delivered', no own delivered_at) are unaffected.
+        # Children of holders ride along with their holder regardless of age —
+        # filtering them out would orphan the holder row from the work that
+        # produced its derived 'delivered' status.
         if delivered_since is not None:
+            all_slugs = {t.slug for t in todos}
             todos = [
                 t
                 for t in todos
-                if not (t.status == RoadmapStatus.DELIVERED and t.delivered_at and t.delivered_at < delivered_since)
+                if not (
+                    t.status == RoadmapStatus.DELIVERED
+                    and t.delivered_at
+                    and t.delivered_at < delivered_since
+                    and not (t.group and t.group in all_slugs)
+                )
             ]
 
         total_dt = time.perf_counter() - started_at

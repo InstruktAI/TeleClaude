@@ -23,6 +23,7 @@ from teleclaude.api.auth import (
     clearance_todos_create,
     clearance_todos_integrate,
     clearance_todos_prepare,
+    clearance_todos_reconcile,
     clearance_todos_remove,
     clearance_todos_set_deps,
     clearance_todos_work,
@@ -699,6 +700,7 @@ async def todo_reconcile(
     slug: str,
     cwd: Annotated[str | None, Body(embed=True)] = None,
     stage: Annotated[str | None, Body(embed=True)] = None,
+    _identity: CallerIdentity = Depends(clearance_todos_reconcile),
 ) -> _ReconcileResponse:
     """Re-align lifecycle_phase to the best match for the current state.
 

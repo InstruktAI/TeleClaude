@@ -308,6 +308,40 @@ async def test_include_delivered_returns_all_delivered_regardless_of_age(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_delivered_since_keeps_old_children_of_holders(tmp_path: Path) -> None:
+    """Delivered children of a holder ride along regardless of cutoff age.
+
+    A split todo (holder) has no own ``delivered_at`` — its delivered status is
+    derived from its children. Filtering the children out by age would orphan
+    the holder row from the work that produced its derived status, and would
+    expose the holder's stale lifecycle phase in the UI.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    old_at = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS + 48)).isoformat()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("holder", description="container")
+        await database.write_state("holder", {"schema_version": 2, "phase": "plan_drafting"})
+        for child in ("child-a", "child-b"):
+            await database.add_to_roadmap(child, group_slug="holder", description=child)
+            await database.write_state(child, {"schema_version": 2, "phase": "in_progress"})
+            await database.deliver(child, commit=f"{child}-sha", delivered_at=old_at)
+    finally:
+        await database.close()
+
+    cutoff = (datetime.now(UTC) - timedelta(hours=RECENTLY_DELIVERED_HOURS)).isoformat()
+    scoped = assemble_roadmap_from_db(str(project), include_delivered=True, delivered_since=cutoff)
+    slugs = {t.slug for t in scoped}
+    assert {"holder", "child-a", "child-b"} <= slugs
+
+
+@pytest.mark.asyncio
 async def test_delivered_since_scopes_delivered_entries(tmp_path: Path) -> None:
     """`delivered_since` keeps entries delivered at/after the cutoff, drops older ones."""
     project = tmp_path / "project"
