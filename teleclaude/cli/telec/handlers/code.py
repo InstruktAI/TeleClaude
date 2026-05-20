@@ -53,8 +53,92 @@ def handle_code(args: list[str]) -> None:
         handle_code_commit(rest)
     elif sub == "changed":
         handle_code_changed(rest)
+    elif sub == "add":
+        handle_code_add(rest)
     else:
         print(_usage("code"))
+
+
+def handle_code_add(args: list[str]) -> None:
+    """Stage NEW (untracked or unmerged) files for the next commit.
+
+    The sealed equivalent of ``git add`` for the one case that requires it:
+    NEW files (git doesn't know about them yet) and conflict-resolved files
+    (git's index is in unmerged state). Modified-tracked files don't need
+    staging — the pathspec commit picks them up from the working tree.
+
+    Rejects clean paths and modified-tracked paths with friendly guidance so
+    the agent learns the distinction without surprise.
+    """
+    positionals: list[str] = []
+    for token in args:
+        if token.startswith("-"):
+            print(
+                f"ERROR: unknown flag: {token}\nUsage: telec code add <path> [<path> ...]",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        positionals.append(token)
+
+    if not positionals:
+        print(
+            "Usage: telec code add <path> [<path> ...]\n"
+            "\n"
+            "Stages NEW files (untracked) so the next `telec code commit` includes them.\n"
+            "Modified files don't need to be added — pathspec commits them straight from\n"
+            "the working tree.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    untracked = set(_get_untracked_files(project_root))
+    unmerged = set(_get_unmerged_files(project_root))
+    dirty = _dirty_paths(project_root)
+
+    stageable: list[str] = []
+    already_tracked: list[str] = []
+    clean: list[str] = []
+    missing: list[str] = []
+
+    for path in positionals:
+        full = project_root / path
+        if not full.exists():
+            missing.append(path)
+        elif path in untracked or path in unmerged:
+            stageable.append(path)
+        elif path in dirty:
+            already_tracked.append(path)
+        else:
+            clean.append(path)
+
+    if missing:
+        print(
+            "ERROR: path(s) not found in working tree:\n  " + "\n  ".join(missing),
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if clean:
+        print(
+            "ERROR: path(s) have no changes to stage:\n  " + "\n  ".join(clean),
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    if already_tracked:
+        # Friendly no-op explanation: modified-tracked files don't need add.
+        print(
+            "Note: already tracked + modified, no `add` needed (the pathspec\n"
+            "commit takes them straight from the working tree):\n  " + "\n  ".join(already_tracked),
+            file=sys.stderr,
+        )
+
+    if stageable:
+        _stage_files(stageable, project_root)
+        print(f"Staged {len(stageable)} new file(s):")
+        for path in stageable:
+            print(f"  {path}")
 
 
 def handle_code_changed(args: list[str]) -> None:
@@ -197,11 +281,22 @@ def _commit_under_lock(
     scope_resolution = resolve_workspace_scope_resolution(project_root)
     scope_paths = _commit_stage_paths(scope_resolution)
 
-    # Merge scope plus includes, preserving order, deduped. The result is both
-    # the staging target and the commit pathspec.
+    # Untracked-NEW files in scope are NOT auto-included. The agent must
+    # declare them explicitly via `telec code add` (which stages them) or
+    # `--include` here. This catches the temp/scratch/debug-artifact failure
+    # mode: an agent's tool calls touch incidental files that happen to land
+    # in scope; the autodiscover model would commit them silently. Explicit
+    # declaration is the safety net.
+    untracked = set(_get_untracked_files(project_root))
+    staged = set(_get_staged_files(project_root, include_deletions=True))
+    untracked_unstaged_in_scope = sorted(p for p in scope_paths if p in untracked and p not in staged)
+
+    auto_scope_paths = [p for p in scope_paths if not (p in untracked and p not in staged)]
+
+    # Merge auto-scope plus includes, preserving order, deduped.
     seen: set[str] = set()
     pathspec: list[str] = []
-    for path in scope_paths:
+    for path in auto_scope_paths:
         if path not in seen:
             seen.add(path)
             pathspec.append(path)
@@ -213,22 +308,35 @@ def _commit_under_lock(
     if not pathspec:
         print(
             "Nothing in workspace scope to commit. Run `telec code changed` to "
-            "see what telec would stage, and use `--include <path>` to add files "
-            "outside that list.",
+            "see what telec would stage. For NEW files, declare them with "
+            "`telec code add <path>` first, or pass `--include <path>` here.",
             file=sys.stderr,
         )
         raise SystemExit(1)
 
-    # `git commit -- <pathspec>` commits the working-tree state of paths in
-    # the pathspec; it does NOT require modified-tracked files to be staged.
-    # The one case where git refuses without prior staging is brand-new
-    # untracked files: `git commit -- newfile` errors with "pathspec did not
-    # match any file(s) known to git" because git's index is what knows
-    # about a path. So we stage exactly that subset — untracked-in-pathspec
-    # — and leave modified-tracked files alone. This eliminates partial-
-    # staging cycles entirely (we never re-stage a file already touched).
-    untracked = set(_get_untracked_files(project_root))
-    to_stage = [path for path in pathspec if path in untracked]
+    # Surface the auto-skip so the agent sees the choice instead of wondering.
+    if untracked_unstaged_in_scope:
+        print(
+            f"Note: {len(untracked_unstaged_in_scope)} new file(s) in scope were not included in this commit:",
+            file=sys.stderr,
+        )
+        for path in untracked_unstaged_in_scope:
+            print(f"  {path}", file=sys.stderr)
+        print(
+            "\nIf intentional, declare them:\n"
+            "  telec code add " + " ".join(untracked_unstaged_in_scope) + "  # then re-run commit\n"
+            "  telec code commit --approved '<msg>' --include " + " ".join(untracked_unstaged_in_scope) + "\n"
+            "If temp/scratch, leave them — they stay untracked.\n",
+            file=sys.stderr,
+        )
+
+    # Stage what git's data model genuinely requires before commit:
+    #  - untracked files in our pathspec (must enter the index for git to know them)
+    #  - unmerged files in our pathspec (must be marked resolved)
+    # Modified-tracked files are committed straight from the working tree by
+    # pathspec and need no staging.
+    unmerged = set(_get_unmerged_files(project_root))
+    to_stage = [path for path in pathspec if (path in untracked or path in unmerged) and path not in staged]
     if to_stage:
         _stage_files(to_stage, project_root)
 
@@ -237,10 +345,10 @@ def _commit_under_lock(
     # (was-untracked, just added). A clean path is an agent error.
     if includes:
         dirty_set = _dirty_paths(project_root)
-        missing = [path for path in includes if path not in dirty_set]
-        if missing:
+        missing_inc = [path for path in includes if path not in dirty_set]
+        if missing_inc:
             print(
-                "ERROR: --include path(s) have no changes to commit:\n  " + "\n  ".join(missing),
+                "ERROR: --include path(s) have no changes to commit:\n  " + "\n  ".join(missing_inc),
                 file=sys.stderr,
             )
             raise SystemExit(2)
@@ -286,10 +394,10 @@ def _print_abc_classification() -> None:
         "First, see what telec will stage and commit:\n"
         "  telec code changed\n"
         "\n"
-        "If files outside that list also need to be in this commit (e.g., a file\n"
-        "the human collaboratively edited that the scope heuristic missed),\n"
-        "declare them explicitly with --include:\n"
-        "  telec code commit --approved '<message>' --include <path> [<path> ...]\n"
+        "NEW files in scope are NOT auto-committed (catches temp/scratch artifacts).\n"
+        "Declare new files explicitly before commit:\n"
+        "  telec code add <path> [<path> ...]                    # stage then commit later\n"
+        "  telec code commit --approved '<msg>' --include <path> # one-shot at commit time\n"
         "\n"
         "Foreign files left in the index (staged by another session) are NOT\n"
         "committed by telec — the pathspec excludes them. Do not unstage them.\n"
@@ -361,6 +469,38 @@ def _get_untracked_files(project_root: Path) -> list[str]:
     return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 
+def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:
+    """Return list of staged file paths (those currently in the index).
+
+    Used to distinguish "agent explicitly staged this via `telec code add`"
+    from "untouched-untracked, drop from pathspec." Resurrected after the
+    earlier deletion now that the explicit-add model needs the distinction.
+    """
+    repo = Repo(str(project_root))
+    diff_filter = "ACMRD" if include_deletions else "ACMR"
+    output: str = repo.git.diff("--cached", "--name-only", f"--diff-filter={diff_filter}")
+    return [f.strip() for f in output.strip().splitlines() if f.strip()]
+
+
+def _get_unmerged_files(project_root: Path) -> list[str]:
+    """Return paths in unmerged-index state (post-conflict, pre-resolution-stage).
+
+    `git ls-files -u` emits one row per conflict stage (1=base, 2=ours,
+    3=theirs); dedupe by path. These paths must be `git add`-ed after
+    manual conflict resolution so git can complete the commit — the seal
+    routes that through `_stage_files` internally.
+    """
+    repo = Repo(str(project_root))
+    output: str = repo.git.ls_files("-u")
+    paths: set[str] = set()
+    for line in output.splitlines():
+        # Format: "<mode> <hash> <stage>\t<path>"
+        tab = line.find("\t")
+        if tab >= 0:
+            paths.add(line[tab + 1 :].strip())
+    return sorted(paths)
+
+
 def _dirty_paths(project_root: Path) -> set[str]:
     """Return paths with any pending change — staged, unstaged, or untracked.
 
@@ -374,8 +514,9 @@ def _dirty_paths(project_root: Path) -> set[str]:
         f.strip() for f in repo.git.diff("--cached", "--name-only", "--diff-filter=ACMRD").splitlines() if f.strip()
     )
     parts.update(f.strip() for f in repo.git.diff("--name-only", "--diff-filter=ACMRD").splitlines() if f.strip())
-    # Untracked files.
+    # Untracked files and unmerged-index files (post-conflict).
     parts.update(_get_untracked_files(project_root))
+    parts.update(_get_unmerged_files(project_root))
     return parts
 
 

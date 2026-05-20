@@ -12,9 +12,12 @@ from teleclaude.cli.telec.handlers.code import (
     _commit_under_lock,
     _current_branch,
     _dirty_paths,
+    _get_staged_files,
+    _get_unmerged_files,
     _get_untracked_files,
     _stage_files,
     _with_trailer,
+    handle_code_add,
     handle_code_changed,
     handle_code_commit,
 )
@@ -42,6 +45,31 @@ class TestGitHelpers:
             result = _get_untracked_files(tmp_path)
         assert result == ["new1.py", "new2.py"]
         mock_repo.git.ls_files.assert_called_once_with("--others", "--exclude-standard")
+
+    @pytest.mark.unit
+    def test_get_staged_files_parses_diff_output(self, tmp_path: Path) -> None:
+        mock_repo = MagicMock()
+        mock_repo.git.diff.return_value = "a.py\nb.py\n"
+        with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
+            result = _get_staged_files(tmp_path)
+        assert result == ["a.py", "b.py"]
+        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACMR")
+
+    @pytest.mark.unit
+    def test_get_unmerged_files_dedupes_across_stages(self, tmp_path: Path) -> None:
+        """`git ls-files -u` emits a row per conflict stage; dedupe by path."""
+        mock_repo = MagicMock()
+        # Three rows for the same file (stages 1/2/3) + one row for another file.
+        mock_repo.git.ls_files.return_value = (
+            "100644 abc123 1\tconflicted.py\n"
+            "100644 def456 2\tconflicted.py\n"
+            "100644 789xyz 3\tconflicted.py\n"
+            "100644 aaa000 2\tother.py\n"
+        )
+        with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
+            result = _get_unmerged_files(tmp_path)
+        assert result == ["conflicted.py", "other.py"]
+        mock_repo.git.ls_files.assert_called_once_with("-u")
 
     @pytest.mark.unit
     def test_dirty_paths_unions_staged_unstaged_and_untracked(self, tmp_path: Path) -> None:
@@ -77,10 +105,12 @@ class TestCommitWorkspaceScope:
     """Commit staging consumes the centralized workspace scope and uses pathspec on commit."""
 
     @pytest.mark.unit
-    def test_commit_stages_only_untracked_files_in_pathspec(self, tmp_path: Path) -> None:
-        """Modified-tracked files are committed straight from the working tree
-        via pathspec; only truly untracked files need `git add` so git knows
-        about them."""
+    def test_untracked_in_scope_dropped_unless_pre_staged(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """NEW files (untracked) in scope are NOT auto-committed. The agent must
+        declare them via `telec code add` (which stages them) or `--include`.
+        Without declaration: dropped from pathspec, surfaced as a reminder."""
         resolution = WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.WORKTREE,
             has_session_identity=False,
@@ -101,6 +131,8 @@ class TestCommitWorkspaceScope:
                 "teleclaude.cli.telec.handlers.code._get_untracked_files",
                 return_value=["teleclaude/brand_new.py"],
             ),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -115,9 +147,61 @@ class TestCommitWorkspaceScope:
                 system_role=None,
             )
 
-        # Only the untracked file gets staged; the modified one rides the pathspec.
-        assert staged_files == [["teleclaude/brand_new.py"]]
-        _assert_pathspec_commit(repo, ["teleclaude/modified.py", "teleclaude/brand_new.py"])
+        # Nothing staged (untracked dropped, modified doesn't need staging).
+        assert staged_files == []
+        # Pathspec contains ONLY the modified file; brand_new dropped.
+        _assert_pathspec_commit(repo, ["teleclaude/modified.py"])
+        # Reminder surfaced with the dropped file named.
+        err = capsys.readouterr().err
+        assert "teleclaude/brand_new.py" in err
+        assert "telec code add" in err
+
+    @pytest.mark.unit
+    def test_pre_staged_untracked_in_scope_is_committed(self, tmp_path: Path) -> None:
+        """If the agent ran `telec code add` first, the file is in the index;
+        commit picks it up via pathspec without re-staging."""
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(
+                DirtyPath("teleclaude/modified.py", DirtyOp.MODIFIED),
+                DirtyPath("teleclaude/added.py", DirtyOp.MODIFIED),
+            ),
+            scoped_dirty_paths=("teleclaude/modified.py", "teleclaude/added.py"),
+            scoped_existing_paths=("teleclaude/modified.py", "teleclaude/added.py"),
+        )
+        staged_files: list[list[str]] = []
+        repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
+
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch(
+                "teleclaude.cli.telec.handlers.code._get_untracked_files",
+                return_value=["teleclaude/added.py"],
+            ),
+            patch(
+                "teleclaude.cli.telec.handlers.code._get_staged_files",
+                return_value=["teleclaude/added.py"],  # agent already ran telec code add
+            ),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged_files.append(files),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="feat: new file declared explicitly",
+                includes=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+
+        # added.py is already staged; no re-stage.
+        assert staged_files == []
+        _assert_pathspec_commit(repo, ["teleclaude/modified.py", "teleclaude/added.py"])
 
     @pytest.mark.unit
     def test_commit_skips_staging_when_all_scope_is_tracked(self, tmp_path: Path) -> None:
@@ -140,6 +224,8 @@ class TestCommitWorkspaceScope:
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -154,7 +240,7 @@ class TestCommitWorkspaceScope:
                 system_role=None,
             )
 
-        assert staged_files == []  # nothing untracked → nothing to stage
+        assert staged_files == []
         _assert_pathspec_commit(repo, ["teleclaude/deleted.py", "teleclaude/touched.py"])
 
     @pytest.mark.unit
@@ -178,6 +264,8 @@ class TestCommitWorkspaceScope:
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=["foreign.py"]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -196,6 +284,47 @@ class TestCommitWorkspaceScope:
         # the index are simply absent from the pathspec → not committed.
         assert staged_files == []
         _assert_pathspec_commit(repo, ["teleclaude/touched.py"])
+
+    @pytest.mark.unit
+    def test_unmerged_file_in_scope_is_staged_for_commit(self, tmp_path: Path) -> None:
+        """Integrator conflict path: an unmerged-index file (post-resolution)
+        gets staged internally so git can complete the commit."""
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(DirtyPath("teleclaude/resolved.py", DirtyOp.MODIFIED),),
+            scoped_dirty_paths=("teleclaude/resolved.py",),
+            scoped_existing_paths=("teleclaude/resolved.py",),
+        )
+        staged_files: list[list[str]] = []
+        repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
+
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._get_unmerged_files",
+                return_value=["teleclaude/resolved.py"],
+            ),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged_files.append(files),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="merge: integrator conflict",
+                includes=[],
+                project_root=tmp_path,
+                system_role="integrator",
+            )
+
+        # Unmerged-in-pathspec was staged so git could commit the resolution.
+        assert staged_files == [["teleclaude/resolved.py"]]
+        _assert_pathspec_commit(repo, ["teleclaude/resolved.py"])
 
 
 class TestIncludeFlag:
@@ -397,6 +526,126 @@ class TestRustCommitContract:
         test_handler.assert_not_called()
         format_handler.assert_not_called()
         _assert_pathspec_commit(repo, ["crates/workflow/src/lib.rs"])
+
+
+class TestHandleCodeAdd:
+    """`telec code add` is the sealed equivalent of `git add` for NEW files.
+
+    Stages untracked or unmerged paths only; refuses clean paths; no-ops
+    with friendly guidance on already-tracked-modified paths (which don't
+    need staging).
+    """
+
+    @pytest.mark.unit
+    def test_no_args_prints_usage(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_add([])
+        assert exc.value.code == 2
+        assert "telec code add <path>" in capsys.readouterr().err
+
+    @pytest.mark.unit
+    def test_unknown_flag_rejected(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_add(["--bogus", "x.py"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_stages_untracked_file(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        new_file = tmp_path / "new.py"
+        new_file.write_text("print('hi')\n")
+        staged: list[list[str]] = []
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=["new.py"]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"new.py"}),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged.append(files),
+            ),
+        ):
+            handle_code_add(["new.py"])
+        assert staged == [["new.py"]]
+        out = capsys.readouterr().out
+        assert "new.py" in out and "Staged 1 new file" in out
+
+    @pytest.mark.unit
+    def test_stages_unmerged_file(self, tmp_path: Path) -> None:
+        """Conflict-resolved files (unmerged-index state) are stageable via this command."""
+        resolved = tmp_path / "resolved.py"
+        resolved.write_text("merged content\n")
+        staged: list[list[str]] = []
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=["resolved.py"]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"resolved.py"}),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged.append(files),
+            ),
+        ):
+            handle_code_add(["resolved.py"])
+        assert staged == [["resolved.py"]]
+
+    @pytest.mark.unit
+    def test_already_tracked_modified_is_noop_with_note(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A modified-tracked file doesn't need `add`; emit a friendly note,
+        no error, no staging — the pathspec commit will pick it up directly."""
+        f = tmp_path / "tracked.py"
+        f.write_text("changed\n")
+        staged: list[list[str]] = []
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"tracked.py"}),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged.append(files),
+            ),
+        ):
+            handle_code_add(["tracked.py"])
+        assert staged == []
+        err = capsys.readouterr().err
+        assert "already tracked" in err and "tracked.py" in err
+
+    @pytest.mark.unit
+    def test_clean_path_errors(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        f = tmp_path / "clean.py"
+        f.write_text("nothing changed\n")
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            handle_code_add(["clean.py"])
+        assert exc.value.code == 2
+        assert "no changes to stage" in capsys.readouterr().err
+
+    @pytest.mark.unit
+    def test_missing_path_errors(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            handle_code_add(["does-not-exist.py"])
+        assert exc.value.code == 2
+        assert "not found" in capsys.readouterr().err
 
 
 class TestExcludedFiles:

@@ -307,25 +307,25 @@ MSG
     fi
 fi
 
-# Block 'git add' for agents — staging is owned by telec code commit.
+# Block 'git add' for agents — staging is owned by telec.
 if [ "$_subcmd" = "add" ]; then
     cat >&2 <<'MSG'
-ERROR: 'git add' is not used by agents. Staging is owned by 'telec code commit'.
+ERROR: 'git add' is not used by agents. Staging is owned by telec.
 
-Your commit's files come from this session's resolved workspace scope —
-the files this session has touched. To see them:
-  telec code changed
+For NEW files (untracked), stage them explicitly:
+  telec code add <path> [<path> ...]
+  (This is the sealed equivalent of 'git add' for the only case that needs it.)
 
-To commit, start with no flags:
-  telec code commit
+For EXISTING modified files, no staging is needed at all. The commit's
+pathspec takes them straight from the working tree:
+  telec code changed                       # see what's in scope
+  telec code commit                        # surface Path A/B/C, then re-run with --approved
 
-That surfaces the Path A/B/C classification card. Pick a classification,
-get human approval if it requires it, then re-run with --approved and a
-quoted message. If a file outside scope must be in the commit (heuristic
-miss; collaborative edit), add --include <path> [<path> ...] at re-run.
+NEW files in scope are intentionally NOT auto-committed (catches temp/
+scratch artifacts). If you don't `telec code add` them, they stay
+untracked. That's by design.
 
-There is no agent use case for running 'git add' directly. Inspection
-tools (git diff, git status, git log) remain available.
+Inspection tools (git diff, git status, git log) remain available.
 MSG
     exit 1
 fi

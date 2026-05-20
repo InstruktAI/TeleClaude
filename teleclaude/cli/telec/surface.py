@@ -1106,6 +1106,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[_H],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
+            "add": CommandDef(
+                desc="Stage NEW (untracked) files for the next commit",
+                args="<path> [<path> ...]",
+                flags=[_H],
+                notes=[
+                    "Sealed equivalent of 'git add' for the one case git's data model requires "
+                    "staging: NEW files. Modified-tracked files don't need staging — pathspec "
+                    "commits them straight from the working tree.",
+                    "NEW files in scope are NOT auto-committed; this is the explicit declaration "
+                    "step. Without it, untracked files stay untracked (safety net for temp/scratch "
+                    "artifacts the agent may have created incidentally).",
+                    "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
+                ],
+                auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
+            ),
             "commit": CommandDef(
                 desc="Stage workspace-scoped files, lint, format, and commit",
                 args='"<message>" [--approved] [--include <path> ...]',
