@@ -21,6 +21,13 @@ class TodoRoadmap(SQLModel, table=True):
     delivered_at: str | None = None
     delivered_commit: str | None = None
     children: str | None = None
+    # Soft-delete tombstone. Set only while status == 'removed'; cleared on
+    # reactivation. removed_deps is the row-id-keyed JSON snapshot of the
+    # entry's outgoing dependency slugs (same TEXT/JSON convention as children),
+    # captured at soft-remove and replayed on reactivation.
+    removed_at: str | None = None
+    prev_status: str | None = None
+    removed_deps: str | None = None
     created_at: str
     updated_at: str
 

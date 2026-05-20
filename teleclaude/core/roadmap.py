@@ -159,9 +159,16 @@ def assemble_roadmap_from_db(
     conn = db._sync_conn()
     conn_open_dt = time.perf_counter() - conn_open_started_at
     try:
-        # Build roadmap entries. `delivered_since` is a DISPLAY window applied
-        # after holder-status derivation — never in SQL — so a holder whose
-        # children delivered outside the window still derives as delivered.
+        # Build roadmap entries.
+        #
+        # The WHERE clause builds an explicit allow-list of statuses (active,
+        # icebox, delivered) — never a negative predicate. Soft-removed rows
+        # (status = 'removed') are therefore invisible by construction; do not
+        # regress this to ``status != 'delivered'``.
+        #
+        # `delivered_since` is a DISPLAY window applied after holder-status
+        # derivation — never in SQL — so a holder whose children delivered
+        # outside the window still derives as delivered.
         delivered_clause = "status = 'delivered'"
 
         conditions = []

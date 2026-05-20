@@ -335,7 +335,7 @@ def _handle_roadmap_remove(args: list[str]) -> None:
     _validate_slugs(slug)
 
     project_root = _resolve_roadmap_project_root()
-    if _run_db(project_root, slug, "remove_from_roadmap"):
+    if _run_db(project_root, slug, "soft_remove_from_roadmap", cwd=str(project_root)):
         print(f"Removed {slug} from roadmap.")
     else:
         print(f"Slug not found in roadmap: {slug}")

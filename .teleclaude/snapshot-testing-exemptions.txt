@@ -82,7 +82,6 @@ tests/unit/cli/telec/handlers/test_todo.py
 tests/unit/cli/telec/test__run_tui.py
 tests/unit/cli/telec/test__shared.py
 tests/unit/cli/telec/test_help.py
-tests/unit/cli/telec/test_surface_export.py
 tests/unit/cli/telec/test_surface.py
 tests/unit/cli/test_api_client.py
 tests/unit/cli/test_config_cli.py

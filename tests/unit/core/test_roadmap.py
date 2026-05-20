@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from sqlmodel import select
 
 from teleclaude.constants import RoadmapStatus
 from teleclaude.core.roadmap import (
@@ -15,6 +16,7 @@ from teleclaude.core.roadmap import (
     parse_since_to_cutoff,
 )
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._models import TodoRoadmap
 from teleclaude.types.todos import TodoState
 
 _ACTIVE_COLLISION_STATUS = "ready"
@@ -704,3 +706,33 @@ async def test_roadmap_projection_counts_follow_selected_row_id_when_slug_is_reu
     assert active.version_total == 3
     assert delivered.files == [_FIRST_ARTIFACT]
     assert delivered.version_total == 1
+
+
+@pytest.mark.asyncio
+async def test_assemble_roadmap_excludes_removed_entries(tmp_path: Path) -> None:
+    """A soft-removed todo (state retained) must not appear in the roadmap projection."""
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("kept", description="stays")
+        await database.write_state("kept", {"kind": "todo", "lifecycle_phase": "prepared"})
+        await database.add_to_roadmap("gone", description="removed")
+        await database.write_state("gone", {"kind": "todo", "lifecycle_phase": "prepared"})
+        with database._sync_session() as session:
+            entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "gone").limit(1)).one()
+            entry.prev_status = entry.status
+            entry.status = "removed"
+            entry.removed_at = "2026-05-19T00:00:00+00:00"
+            session.add(entry)
+            session.commit()
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_icebox=True, include_delivered=True)
+
+    assert [t.slug for t in todos] == ["kept"]

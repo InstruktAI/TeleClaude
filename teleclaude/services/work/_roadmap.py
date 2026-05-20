@@ -101,7 +101,7 @@ class RoadmapOps:
 
     async def remove(self, slug: str) -> bool:
         db = await self._base._ensure_db()
-        return await db.remove_from_roadmap(slug)
+        return await db.soft_remove_from_roadmap(slug, cwd=self._base.project_root)
 
     async def move(
         self,

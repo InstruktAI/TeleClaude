@@ -11,28 +11,43 @@ from teleclaude.core.next_machine.remove import execute_todo_remove
 pytestmark = pytest.mark.asyncio
 
 
-async def test_execute_todo_remove_notifies_via_on_committed() -> None:
-    """execute_todo_remove uses the public on_committed API after its transaction."""
+async def test_execute_todo_remove_routes_through_soft_primitive() -> None:
+    """The receipt-backed remove path delegates to the shared DB soft-remove
+    primitive, passing cwd. The slug-keyed cascade (state + artifacts + dep
+    scrub + worktree teardown) is now owned by the primitive — execute_todo_remove
+    is a thin engine-contract adapter."""
     mock_db = MagicMock()
-    session_ctx = MagicMock()
-    session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(begin=MagicMock()))
-    session_ctx.__aexit__ = AsyncMock(return_value=None)
-    begin_ctx = MagicMock()
-    begin_ctx.__aenter__ = AsyncMock(return_value=None)
-    begin_ctx.__aexit__ = AsyncMock(return_value=None)
-    session_obj = MagicMock()
-    session_obj.begin = MagicMock(return_value=begin_ctx)
-    session_ctx.__aenter__ = AsyncMock(return_value=session_obj)
-    mock_db._session = MagicMock(return_value=session_ctx)
-    mock_db.read_state = AsyncMock(return_value={"kind": "draft"})
-    mock_db.delete_state = AsyncMock()
-    mock_db.delete_artifacts = AsyncMock()
-    mock_db.remove_from_roadmap = AsyncMock()
-    mock_db.clean_dep_references = AsyncMock()
-    mock_db.on_committed = MagicMock()
+    mock_db.soft_remove_from_roadmap = AsyncMock(return_value=True)
 
     with patch("teleclaude.core.next_machine.remove.get_todos_db", AsyncMock(return_value=mock_db)):
-        result = await execute_todo_remove(MagicMock(), "my-slug", "/repo")
+        await execute_todo_remove(MagicMock(), "my-slug", "/repo")
 
-    assert "removed" in result
-    mock_db.on_committed.assert_called_once_with("todo_removed")
+    mock_db.soft_remove_from_roadmap.assert_awaited_once_with("my-slug", cwd="/repo")
+
+
+async def test_execute_todo_remove_fails_when_no_live_row_removed() -> None:
+    """Unknown or already-removed slugs must fail the receipt-backed operation."""
+    mock_db = MagicMock()
+    mock_db.soft_remove_from_roadmap = AsyncMock(return_value=False)
+
+    with (
+        patch("teleclaude.core.next_machine.remove.get_todos_db", AsyncMock(return_value=mock_db)),
+        pytest.raises(LookupError),
+    ):
+        await execute_todo_remove(MagicMock(), "ghost", "/repo")
+
+    mock_db.soft_remove_from_roadmap.assert_awaited_once_with("ghost", cwd="/repo")
+
+
+async def test_execute_todo_remove_requires_a_slug() -> None:
+    """A missing slug must not reach the database."""
+    mock_db = MagicMock()
+    mock_db.soft_remove_from_roadmap = AsyncMock()
+
+    with (
+        patch("teleclaude.core.next_machine.remove.get_todos_db", AsyncMock(return_value=mock_db)),
+        pytest.raises(ValueError),
+    ):
+        await execute_todo_remove(MagicMock(), None, "/repo")
+
+    mock_db.soft_remove_from_roadmap.assert_not_called()

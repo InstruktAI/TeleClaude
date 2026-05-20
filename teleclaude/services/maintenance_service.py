@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
+from teleclaude.config import config
 from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
@@ -20,6 +23,7 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
 from teleclaude.core.session_utils import resolve_working_dir
+from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
 from teleclaude.events import get_event_db
@@ -33,6 +37,11 @@ logger = get_logger(__name__)
 # Customer sessions trigger memory extraction after this idle threshold (seconds).
 # Unlike admin idle timeout, this does NOT terminate the session.
 COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-lived session
+
+# Soft-delete retention window. The single source for both the closed-session
+# retention sweep and the soft-removed-todo retention sweep so the two windows
+# cannot drift apart. Mirrors the historical 7-day sessions window.
+RETENTION_WINDOW = timedelta(days=7)
 
 
 class MaintenanceService:
@@ -60,6 +69,7 @@ class MaintenanceService:
                 first_run = False
 
                 await self._cleanup_inactive_sessions()
+                await self._cleanup_removed_todos()
                 await session_cleanup.emit_recently_closed_session_events()
                 await session_cleanup.cleanup_orphan_tmux_sessions()
                 await session_cleanup.cleanup_orphan_workspaces()
@@ -144,7 +154,7 @@ class MaintenanceService:
             )
 
     async def _cleanup_inactive_sessions(self) -> None:
-        cutoff_time = datetime.now(UTC) - timedelta(days=7)
+        cutoff_time = datetime.now(UTC) - RETENTION_WINDOW
         sessions = await db.list_sessions(include_closed=True, include_headless=True)
 
         for session in sessions:
@@ -176,6 +186,49 @@ class MaintenanceService:
 
             # Open sessions are never auto-closed. Users and agents close them explicitly.
             # The cleanup routine only purges closed sessions past the retention window.
+
+    async def _cleanup_removed_todos(self) -> None:
+        """Finalize soft-removed todos past the retention window across every project DB.
+
+        Discovers project todo stores via the same trusted-dirs pattern that
+        powers ``list_projects`` (the per-project ``.teleclaude/todos.db``
+        location is the canonical workflow store; the daemon's operational DB
+        knows nothing about per-project todos). For each project, the DB-side
+        ``purge_expired_removed`` self-heals legacy tombstones, then hard-
+        deletes any row whose ``removed_at`` predates the cutoff. The cascade
+        through ``ON DELETE CASCADE`` clears state/artifacts/versions; no
+        slug-keyed work runs here — all of that ran at soft-remove while the
+        slug still unambiguously named the doomed entry.
+        """
+        cutoff_iso = (datetime.now(UTC) - RETENTION_WINDOW).isoformat()
+        for trusted_dir in config.computer.get_all_trusted_dirs():
+            expanded_path = os.path.expanduser(os.path.expandvars(trusted_dir.path))
+            project_root = Path(expanded_path)
+            if not project_root.exists():
+                continue
+            if not (project_root / ".teleclaude" / "todos.db").exists():
+                continue
+            try:
+                todos_db = await get_todos_db(str(project_root))
+                purged = await todos_db.purge_expired_removed(cutoff_iso)
+            except Exception:
+                logger.warning(
+                    "Removed-todo retention sweep failed for project",
+                    project_root=str(project_root),
+                    exc_info=True,
+                )
+                continue
+            for row in purged:
+                removed_at = datetime.fromisoformat(row["removed_at"])
+                removed_age_seconds = max(0.0, (datetime.now(UTC) - removed_at).total_seconds())
+                logger.info(
+                    "Purged removed todo past retention",
+                    project_root=str(project_root),
+                    roadmap_id=row["id"],
+                    slug=row["slug"],
+                    removed_at=row["removed_at"],
+                    removed_age_seconds=removed_age_seconds,
+                )
 
     async def _check_idle_compaction(self) -> None:
         """Detect idle long-lived sessions and mark them for memory extraction.

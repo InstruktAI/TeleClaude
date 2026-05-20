@@ -152,7 +152,8 @@ fn redact_secrets(text: &str) -> String {
     let patterns = PATTERNS.get_or_init(|| {
         vec![
             (
-                Regex::new(r"(api\.telegram\.org/bot)([^/\s]+)").expect("telegram pattern compiles"),
+                Regex::new(r"(api\.telegram\.org/bot)([^/\s]+)")
+                    .expect("telegram pattern compiles"),
                 "${1}<REDACTED>",
             ),
             (
