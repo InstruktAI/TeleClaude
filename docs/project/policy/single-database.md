@@ -4,9 +4,7 @@ id: 'project/policy/single-database'
 scope: 'project'
 type: 'policy'
 visibility: 'public'
-status: 'target'
-delivered_by:
-  - roadmap-soft-delete-retention
+status: 'actual'
 ---
 
 # Database Boundaries — Policy

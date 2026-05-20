@@ -7,7 +7,6 @@ visibility: 'public'
 status: 'mixed'
 delivered_by:
   - 'telec-todo-rename'
-  - 'roadmap-soft-delete-retention'
   - 'roadmap-trash-reveal-ui'
   - 'v2-workflow-cli-refinement-commands'
 ---
@@ -201,12 +200,6 @@ subcommands:
           - slug: 'string'
         flags:
           --include-removed: 'Also resolve the slug against the set of soft-removed rows; surfaces the show payload for a uniquely-matching removed row, or a typed ambiguity/no-match diagnostic — never returns a live row through this flag. (status: target — delivered_by roadmap-trash-reveal-ui.)'
-      doctor:
-        description: 'Operator-facing maintenance scans for misleading or legacy persisted state. Default is read-only — surfaces detected rows in a structured report and exits without mutation. Opt-in flags (e.g. `--migrate`) drive the corresponding standard remediation primitive (soft-remove for skeletons, never a destructive backfill). (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-2b.)'
-        flags:
-          --project-root: 'Project root (default: cwd).'
-          --skeletons: 'Scan for pre-cutover v1 skeleton todos (lifecycle_phase=draft AND no input artifact). Default: read-only report. Combine with --migrate to soft-remove each detected skeleton via the standard remove path (UC-WFL-10; recoverable within the retention window).'
-          --migrate: 'Apply remediation for the selected scan (currently: soft-remove for --skeletons). Without this flag every doctor scan is read-only.'
       artifacts:
         description: 'Manage todo artifacts in todos.db.'
         subcommands:
@@ -481,22 +474,36 @@ subcommands:
       status:
         description: 'Show signal pipeline counts and last ingest time.'
   code:
-    description: 'Code quality and commit tools.'
+    description: 'Code quality and commit tools. The git wrapper blocks raw `git add` and `git commit` for agents inside tmux; this namespace is the sanctioned channel for both.'
     subcommands:
       lint:
         description: 'Run language-aware lint pipeline using project-managed tool entrypoints.'
         flags:
           --step: 'Run a single pipeline step (e.g. guardrails, ruff_check).'
+          --all: 'Run against all configured sources, skip workspace scoping.'
       test:
         description: 'Run language-aware test suite using project-managed tool entrypoints.'
         flags:
           --expensive: 'Include expensive/slow tests.'
+          --all: 'Run all tests, skip workspace scoping.'
+          --update-snapshots: 'Update snapshot files after reading diffs. Use only when test failures show snapshot deltas that match your intended change.'
       format:
         description: 'Run language-aware code formatter.'
-      commit:
-        description: 'Stage workspace-scoped files, lint, format, and commit.'
         flags:
-          -m: 'Commit message. Other args pass through to git commit.'
+          --all: 'Format all configured sources, skip workspace scoping.'
+      changed:
+        description: 'List workspace-scoped changed files — the set telec would consider for the next commit.'
+      add:
+        description: 'Stage NEW (untracked) files for the next commit. Sealed equivalent of `git add` for the one case git''s data model requires staging — NEW files. Modified-tracked files do not need staging; `telec code commit` picks them up via pathspec straight from the working tree. Also handles unmerged-index files (post-conflict) for the integrator path.'
+        args:
+          - paths: 'one or more paths (positional)'
+      commit:
+        description: 'Stage workspace-scoped files and commit with a pathspec-scoped commit. Sealed contract — exactly one quoted message, optionally `--approved` and `--include <path> ...`. Nothing is forwarded to git (no `-m`, `-F`, `--`, bare pathspecs, or git flags). Modified-tracked files in scope are auto-included via pathspec; NEW files in scope are NOT auto-committed and must be declared via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts). On main + non-integrator a bare invocation surfaces the Path A/B/C classification card and exits; `--approved` is the gate to actually commit.'
+        args:
+          - message: 'one quoted commit message (required with --approved)'
+        flags:
+          --approved: 'Human-approved commit gate. Required to actually commit; absence on main prints Path A/B/C and exits.'
+          --include: 'Declare files outside the resolved workspace scope to add to this commit. Space-separated paths; each must contribute a change. Place after the message (or after --approved) so the collector does not swallow the message.'
   operations:
     description: 'Inspect durable long-running operations.'
     subcommands:
