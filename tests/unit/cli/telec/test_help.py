@@ -121,6 +121,13 @@ def test_flag_detach_hidden_attribute_is_true() -> None:
     assert _FLAG_DETACH.hidden is True
 
 
+def test_todo_dump_draft_flag_hidden_attribute_is_true() -> None:
+    dump_command = surface_mod.CLI_SURFACE["todo"].subcommands["dump"]
+    draft_flag = next(flag for flag in dump_command.flags if flag.long == "--draft")
+
+    assert draft_flag.hidden is True
+
+
 def test_usage_main_sessions_overview_renders_without_hidden_flags(
     snapshot: SnapshotAssertion,
 ) -> None:
@@ -132,6 +139,15 @@ def test_usage_main_sessions_overview_renders_without_hidden_flags(
         line for line in overview.splitlines() if "telec sessions start" in line or "telec sessions run" in line
     )
     assert sessions_block == snapshot
+
+
+def test_usage_subcmd_todo_dump_renders_without_hidden_flags(
+    snapshot: SnapshotAssertion,
+) -> None:
+    todo_help = help_mod._usage_subcmd("todo")
+    dump_line = "\n".join(line for line in todo_help.splitlines() if "telec todo dump" in line)
+
+    assert dump_line == snapshot
 
 
 def test_usage_leaf_sessions_run_renders_full_output(snapshot: SnapshotAssertion) -> None:

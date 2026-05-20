@@ -252,7 +252,8 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
     col = 49
     visible_cmd_flags = _visible_flags(cmd.flags)
     if cmd.standalone:
-        args_str = f" {cmd.args}" if cmd.args else ""
+        cleaned_args = strip_hidden_flag_tokens(cmd.args, cmd.flags)
+        args_str = f" {cleaned_args}" if cleaned_args else ""
         flag_hints = _inline_flags(cmd.flags)
         entry = f"telec {cmd_name}{args_str}{flag_hints}"
         lines.append(f"  {entry:<{col}}# {cmd.desc}")
@@ -271,7 +272,8 @@ def _append_grouped_command_usage(lines: list[str], cmd_name: str, cmd: CommandD
 
 
 def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef) -> None:
-    args_str = f" {cmd.args}" if cmd.args else ""
+    cleaned_args = strip_hidden_flag_tokens(cmd.args, cmd.flags)
+    args_str = f" {cleaned_args}" if cleaned_args else ""
     visible = _visible_flags(cmd.flags)
     lines.append(f"  telec {cmd_name}{args_str}")
     _append_flag_section(lines, "Options", visible)
@@ -288,12 +290,14 @@ def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[s
     for sub_name, sub_cmd in cmd.subcommands.items():
         if sub_cmd.subcommands:
             for child_name, child_cmd in sub_cmd.subcommands.items():
-                child_args = f" {child_cmd.args}" if child_cmd.args else ""
+                cleaned_child_args = strip_hidden_flag_tokens(child_cmd.args, child_cmd.flags)
+                child_args = f" {cleaned_child_args}" if cleaned_child_args else ""
                 child_flag_hints = _inline_flags(child_cmd.flags)
                 entry = f"telec {cmd_name} {sub_name} {child_name}{child_args}{child_flag_hints}"
                 entries.append(f"  {entry:<{col}}# {child_cmd.desc}")
             continue
-        args_str = f" {sub_cmd.args}" if sub_cmd.args else ""
+        cleaned_args = strip_hidden_flag_tokens(sub_cmd.args, sub_cmd.flags)
+        args_str = f" {cleaned_args}" if cleaned_args else ""
         flag_hints = _inline_flags(sub_cmd.flags)
         entry = f"telec {cmd_name} {sub_name}{args_str}{flag_hints}"
         entries.append(f"  {entry:<{col}}# {sub_cmd.desc}")

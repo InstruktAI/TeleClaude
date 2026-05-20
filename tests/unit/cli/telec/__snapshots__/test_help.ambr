@@ -33,3 +33,6 @@
     telec sessions run [--command <cmd>] [--project <path>] [--args <val>] [--agent <name>] [--mode <mode>] [--computer <host>] [--subfolder <dir>] [--additional-context <ctx>] [--command --project --args --agent --mode --computer --subfolder --additional-context]# Run a slash command on a new agent session
   '''
 # ---
+# name: test_usage_subcmd_todo_dump_renders_without_hidden_flags
+  '  telec todo dump <slug> <content> [--after <deps>] [--prepped] [--after --prepped]# Fire-and-forget brain dump with notification trigger'
+# ---

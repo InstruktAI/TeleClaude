@@ -520,7 +520,9 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args="<slug> <content> [--after <deps>] [--draft] [--prepped]",
                 flags=[
                     _FLAG_AFTER_DEPS,
-                    Flag("--draft", desc="Create silently — skip domain event so no cartridge picks it up"),
+                    Flag(
+                        "--draft", desc="Create silently — skip domain event so no cartridge picks it up", hidden=True
+                    ),
                     Flag(
                         "--prepped",
                         desc=(
