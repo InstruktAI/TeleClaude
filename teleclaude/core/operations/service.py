@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import importlib
+import inspect
 import json
 import uuid
 from collections.abc import Awaitable, Callable
 from contextvars import Token
 from datetime import UTC, datetime, timedelta
-from typing import TypedDict
+from typing import TypedDict, cast
 
 from fastapi import HTTPException
 from instrukt_ai_logging import get_logger
@@ -53,12 +55,14 @@ OPERATION_KIND_TODO_WORK = "todo_work"
 OPERATION_KIND_TODO_INTEGRATE = "todo_integrate"
 OPERATION_KIND_TODO_CREATE = "todo_create"
 OPERATION_KIND_TODO_PREPARE = "todo_prepare"
+OPERATION_KIND_TODO_RENAME = "todo_rename"
 OPERATION_KIND_TODO_REMOVE = "todo_remove"
 _COMPLETION_EVENTS: dict[str, EventType] = {
     OPERATION_KIND_TODO_WORK: "operation.todo_work.completed",
     OPERATION_KIND_TODO_INTEGRATE: "operation.todo_integrate.completed",
     OPERATION_KIND_TODO_CREATE: "operation.todo_create.completed",
     OPERATION_KIND_TODO_PREPARE: "operation.todo_prepare.completed",
+    OPERATION_KIND_TODO_RENAME: "operation.todo_rename.completed",
     OPERATION_KIND_TODO_REMOVE: "operation.todo_remove.completed",
 }
 TERMINAL_OPERATION_STATES = {"completed", "failed", "stale", "cancelled"}
@@ -461,6 +465,82 @@ class OperationsService:
             await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_REMOVE)
             return self._serialize_operation(created)
 
+    async def submit_todo_rename(
+        self,
+        *,
+        old_slug: str,
+        new_slug: str,
+        cwd: str,
+        caller_session_id: str,
+        client_request_id: str | None,
+    ) -> SerializedOperation:
+        """Create or reattach a receipt-backed todo-rename operation."""
+        lock = await self._get_submit_lock(
+            kind=OPERATION_KIND_TODO_RENAME,
+            caller_session_id=caller_session_id,
+            cwd=cwd,
+            slug=old_slug,
+        )
+        async with lock:
+            if client_request_id:
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_RENAME,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is not None:
+                    self._ensure_rename_target_matches(existing, new_slug)
+                    return self._serialize_operation(existing)
+
+            existing = await self._db.find_matching_nonterminal_operation(
+                kind=OPERATION_KIND_TODO_RENAME,
+                caller_session_id=caller_session_id,
+                cwd=cwd,
+                slug=old_slug,
+            )
+            if existing is not None:
+                self._ensure_rename_target_matches(existing, new_slug)
+                if existing.state == "queued":
+                    await self._ensure_operation_task(existing.operation_id, kind=OPERATION_KIND_TODO_RENAME)
+                return self._serialize_operation(existing)
+
+            payload_json = json.dumps(
+                {
+                    "kind": OPERATION_KIND_TODO_RENAME,
+                    "old_slug": old_slug,
+                    "new_slug": new_slug,
+                    "cwd": cwd,
+                },
+                sort_keys=True,
+            )
+            operation_id = str(uuid.uuid4())
+            try:
+                created = await self._db.create_operation(
+                    operation_id=operation_id,
+                    kind=OPERATION_KIND_TODO_RENAME,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                    cwd=cwd,
+                    slug=old_slug,
+                    payload_json=payload_json,
+                    state="queued",
+                )
+            except IntegrityError:
+                if not client_request_id:
+                    raise
+                existing = await self._db.get_operation_by_request(
+                    kind=OPERATION_KIND_TODO_RENAME,
+                    caller_session_id=caller_session_id,
+                    client_request_id=client_request_id,
+                )
+                if existing is None:
+                    raise
+                self._ensure_rename_target_matches(existing, new_slug)
+                return self._serialize_operation(existing)
+
+            await self._ensure_operation_task(created.operation_id, kind=OPERATION_KIND_TODO_RENAME)
+            return self._serialize_operation(created)
+
     async def get_operation_for_caller(
         self,
         *,
@@ -498,6 +578,7 @@ class OperationsService:
             OPERATION_KIND_TODO_INTEGRATE: lambda op: next_integrate(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_CREATE: lambda op: next_create(self._db, op.slug, op.cwd),
             OPERATION_KIND_TODO_PREPARE: lambda op: next_prepare(self._db, op.slug, op.cwd),
+            OPERATION_KIND_TODO_RENAME: self._run_todo_rename,
             OPERATION_KIND_TODO_REMOVE: lambda op: execute_todo_remove(self._db, op.slug, op.cwd),
         }
         factory = factories.get(kind)
@@ -595,6 +676,44 @@ class OperationsService:
                     pass
             async with self._live_guard:
                 self._live_tasks.pop(operation_id, None)
+
+    async def _run_todo_rename(self, operation: Operation) -> str:
+        payload = self._rename_payload(operation)
+        rename_module = importlib.import_module("teleclaude.core.next_machine.rename")
+        rename_func_obj = getattr(rename_module, "execute_todo_rename", None)
+        if not callable(rename_func_obj):
+            raise RuntimeError("execute_todo_rename is not available")
+
+        rename_func = cast(Callable[..., Awaitable[str]], rename_func_obj)
+        signature = inspect.signature(rename_func)
+        if "current_operation_id" in signature.parameters:
+            return await rename_func(
+                self._db,
+                payload["old_slug"],
+                payload["new_slug"],
+                payload["cwd"],
+                current_operation_id=operation.operation_id,
+            )
+        return await rename_func(self._db, payload["old_slug"], payload["new_slug"], payload["cwd"])
+
+    def _ensure_rename_target_matches(self, operation: Operation, new_slug: str) -> None:
+        payload = self._rename_payload(operation)
+        if payload["new_slug"] != new_slug:
+            raise HTTPException(status_code=409, detail="todo rename operation already targets a different slug")
+
+    def _rename_payload(self, operation: Operation) -> dict[str, str]:
+        try:
+            payload = json.loads(operation.payload_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("todo rename operation payload is invalid JSON") from exc
+        if not isinstance(payload, dict):
+            raise ValueError("todo rename operation payload must be an object")
+        old_slug = payload.get("old_slug")
+        new_slug = payload.get("new_slug")
+        cwd = payload.get("cwd")
+        if not isinstance(old_slug, str) or not isinstance(new_slug, str) or not isinstance(cwd, str):
+            raise ValueError("todo rename operation payload must include old_slug, new_slug, and cwd")
+        return {"old_slug": old_slug, "new_slug": new_slug, "cwd": cwd}
 
     async def _heartbeat_loop(self, operation_id: str, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
+from typing import cast
+
 import pytest
 from sqlmodel import select
 from syrupy.assertion import SnapshotAssertion
@@ -13,6 +16,16 @@ from teleclaude.core.todos_db._models import TodoRoadmap
 pytestmark = pytest.mark.asyncio
 
 _SLUG = "my-slug"
+_OLD_SLUG = "old-slug"
+_NEW_SLUG = "new-slug"
+_DELIVERED_INPUT = "delivered input"
+_ACTIVE_REQUIREMENTS_V1 = "active requirements v1"
+_ACTIVE_REQUIREMENTS_V2 = "active requirements v2"
+_RenameArtifactsSlug = Callable[[str, str], Awaitable[bool]]
+
+
+def _rename_artifacts_slug(todos_db: TodosDb) -> _RenameArtifactsSlug:
+    return cast(_RenameArtifactsSlug, todos_db.rename_artifacts_slug)
 
 
 async def _ensure_roadmap_entry(db: TodosDb, slug: str = _SLUG) -> None:
@@ -248,3 +261,27 @@ async def test_write_artifact_rejects_removed(todos_db: TodosDb) -> None:
         await todos_db.write_artifact(_SLUG, ARTIFACT_REQUIREMENTS, "new body")
     with pytest.raises(ValueError):
         todos_db.write_artifact_sync(_SLUG, ARTIFACT_REQUIREMENTS, "new body")
+
+
+async def test_rename_artifacts_slug_rekeys_current_artifacts_and_version_history(
+    todos_db: TodosDb,
+) -> None:
+    await _ensure_roadmap_entry(todos_db, _OLD_SLUG)
+    await todos_db.write_artifact(_OLD_SLUG, ARTIFACT_INPUT, _DELIVERED_INPUT)
+    await todos_db.deliver(_OLD_SLUG, commit="abc123")
+    await _ensure_roadmap_entry(todos_db, _OLD_SLUG)
+    await todos_db.write_artifact(_OLD_SLUG, ARTIFACT_REQUIREMENTS, _ACTIVE_REQUIREMENTS_V1)
+    await todos_db.write_artifact(_OLD_SLUG, ARTIFACT_REQUIREMENTS, _ACTIVE_REQUIREMENTS_V2)
+
+    renamed = await _rename_artifacts_slug(todos_db)(_OLD_SLUG, _NEW_SLUG)
+    roadmap_renamed = await todos_db.rename_roadmap_slug(_OLD_SLUG, _NEW_SLUG)
+
+    assert renamed is True
+    assert roadmap_renamed is True
+    assert await todos_db.read_artifact(_NEW_SLUG, ARTIFACT_REQUIREMENTS) == _ACTIVE_REQUIREMENTS_V2
+    assert [version["content"] for version in await todos_db.artifact_versions(_NEW_SLUG, ARTIFACT_REQUIREMENTS)] == [
+        _ACTIVE_REQUIREMENTS_V2,
+        _ACTIVE_REQUIREMENTS_V1,
+    ]
+    assert await todos_db.read_artifact(_OLD_SLUG, ARTIFACT_INPUT) == _DELIVERED_INPUT
+    assert await todos_db.list_artifacts(_OLD_SLUG) == [ARTIFACT_INPUT]

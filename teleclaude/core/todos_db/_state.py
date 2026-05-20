@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
@@ -38,10 +38,32 @@ _V2_PREPARE_PHASES = {
 }
 
 
+def _rename_breakdown_todos(
+    state: dict[str, StateValue],
+    old_slug: str,
+    new_slug: str,
+) -> dict[str, StateValue]:
+    """Re-key typed BreakdownState.todos refs without touching prose fields."""
+    breakdown = state.get("breakdown")
+    if not isinstance(breakdown, dict):
+        return state
+
+    todos = breakdown.get("todos")
+    if not isinstance(todos, list):
+        return state
+
+    renamed_todos = [new_slug if todo == old_slug else todo for todo in todos]
+    renamed_breakdown = dict(breakdown)
+    renamed_breakdown["todos"] = renamed_todos
+    renamed_state = dict(state)
+    renamed_state["breakdown"] = renamed_breakdown
+    return renamed_state
+
+
 class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
-    _on_mutation: Callable[[str], None]
+    _on_mutation: Callable[[str, Mapping[str, object] | None], None]
 
     def _project_root(self) -> Path:
         db_path = cast(Path, self._db_path)  # type: ignore[attr-defined]
@@ -104,7 +126,7 @@ class TodosDbStateMixin:
                 state_model.updated_at = datetime.now(UTC).isoformat()
                 session.add(state_model)
                 await session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return payload
 
     async def get_state(self, slug: str) -> dict[str, StateValue] | None:
@@ -152,7 +174,7 @@ class TodosDbStateMixin:
                     kind=str(payload.get("kind", "")),
                     mode="async",
                 )
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
         finally:
             if owns_session:
                 await db_session.close()
@@ -198,7 +220,41 @@ class TodosDbStateMixin:
                 await db_session.delete(state_model)
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
+        finally:
+            if owns_session:
+                await db_session.close()
+
+    async def rename_state_slug(
+        self,
+        old_slug: str,
+        new_slug: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> bool:
+        """Re-key the live state row and typed structured slug refs."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            row_id = await self._resolve_active_row_id(db_session, old_slug)
+            if row_id is None:
+                return False
+
+            state_model = await db_session.get(TodoStateModel, row_id)
+            if state_model is None:
+                return True
+
+            raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+            payload = _rename_breakdown_todos(raw_state, old_slug, new_slug)
+            state_model.slug = new_slug
+            state_model.state = json.dumps(payload, default=str)
+            state_model.updated_at = datetime.now(UTC).isoformat()
+            db_session.add(state_model)
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation("todo_updated", None)
+            return True
         finally:
             if owns_session:
                 await db_session.close()
@@ -257,7 +313,7 @@ class TodosDbStateMixin:
                 state_model.updated_at = datetime.now(UTC).isoformat()
                 session.add(state_model)
                 session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return payload
 
     def write_state_sync(self, slug: str, state: dict[str, StateValue]) -> None:
@@ -297,4 +353,4 @@ class TodosDbStateMixin:
             kind=str(payload.get("kind", "")),
             mode="sync",
         )
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)

@@ -34,6 +34,12 @@ def test_todo_surface_does_not_expose_demo_subcommand() -> None:
     assert "demo" not in surface.CLI_SURFACE["todo"].subcommands
 
 
+def test_todo_surface_exposes_rename_subcommand() -> None:
+    rename = surface.CLI_SURFACE["todo"].subcommands["rename"]
+
+    assert rename.args == "<old-slug> <new-slug>"
+
+
 def test_hidden_commands_are_marked_hidden_in_surface() -> None:
     assert "watch" not in surface.CLI_SURFACE
 

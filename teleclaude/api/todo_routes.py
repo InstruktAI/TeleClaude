@@ -25,6 +25,7 @@ from teleclaude.api.auth import (
     clearance_todos_prepare,
     clearance_todos_reconcile,
     clearance_todos_remove,
+    clearance_todos_rename,
     clearance_todos_set_deps,
     clearance_todos_work,
 )
@@ -214,6 +215,27 @@ async def todo_integrate(  # pyright: ignore
     operations = get_operations_service()
     return await operations.submit_todo_integrate(
         slug=slug,
+        cwd=cwd,
+        caller_session_id=identity.session_id,
+        client_request_id=client_request_id,
+    )
+
+
+@router.post("/rename", status_code=202, response_model=OperationStatusDTO, response_model_exclude_none=True)
+async def todo_rename(  # pyright: ignore
+    old_slug: Annotated[str, Body()],
+    new_slug: Annotated[str, Body()],
+    cwd: Annotated[str | None, Body()] = None,
+    client_request_id: Annotated[str | None, Body()] = None,
+    identity: CallerIdentity = Depends(clearance_todos_rename),
+) -> SerializedOperation:
+    """Rename a todo through a durable operation."""
+    if not cwd:
+        raise HTTPException(status_code=400, detail="cwd required: working directory not provided")
+    operations = get_operations_service()
+    return await operations.submit_todo_rename(
+        old_slug=old_slug,
+        new_slug=new_slug,
         cwd=cwd,
         caller_session_id=identity.session_id,
         client_request_id=client_request_id,

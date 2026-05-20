@@ -460,6 +460,7 @@ class CacheEvent(str, Enum):
     TODOS_UPDATED = "todos_updated"
     TODO_CREATED = "todo_created"
     TODO_UPDATED = "todo_updated"
+    TODO_RENAMED = "todo_renamed"
     TODO_REMOVED = "todo_removed"
 
 

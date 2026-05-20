@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
+from typing import cast
 
 import pytest
 from sqlmodel import select
@@ -11,6 +13,12 @@ from teleclaude.core.todos_db import TodosDb
 from teleclaude.core.todos_db._models import TodoRoadmap
 
 pytestmark = pytest.mark.asyncio
+
+_RenameStateSlug = Callable[[str, str], Awaitable[bool]]
+
+
+def _rename_state_slug(todos_db: TodosDb) -> _RenameStateSlug:
+    return cast(_RenameStateSlug, todos_db.rename_state_slug)
 
 
 def _read_raw_state_json(todos_db: TodosDb, slug: str) -> dict:
@@ -285,3 +293,35 @@ async def test_list_slugs_excludes_removed(todos_db: TodosDb) -> None:
     _mark_removed(todos_db, "gone")
 
     assert await todos_db.list_slugs() == ["kept"]
+
+
+async def test_rename_state_slug_rekeys_live_row_and_typed_breakdown_refs_only(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("old-slug")
+    await todos_db.write_state(
+        "old-slug",
+        {
+            "kind": "feature",
+            "lifecycle_phase": "prepared",
+            "breakdown": {"assessed": True, "todos": ["old-slug", "sibling"]},
+            "events": [
+                {
+                    "at": "2026-05-19T00:00:00+00:00",
+                    "actor": "tester",
+                    "kind": "note",
+                    "details": {"text": "old-slug remains prose"},
+                }
+            ],
+        },
+    )
+
+    renamed = await _rename_state_slug(todos_db)("old-slug", "new-slug")
+    roadmap_renamed = await todos_db.rename_roadmap_slug("old-slug", "new-slug")
+
+    assert renamed is True
+    assert roadmap_renamed is True
+    assert await todos_db.read_state("old-slug") is None
+    state = await todos_db.read_state("new-slug")
+    assert state is not None
+    assert state["breakdown"]["todos"] == ["new-slug", "sibling"]  # type: ignore[index]
+    assert state["events"][0]["details"]["text"] == "old-slug remains prose"  # type: ignore[index]
+    assert await todos_db.list_slugs() == ["new-slug"]

@@ -20,6 +20,7 @@ EventType = Literal[
     "operation.todo_create.completed",
     "operation.todo_integrate.completed",
     "operation.todo_prepare.completed",
+    "operation.todo_rename.completed",
     "operation.todo_remove.completed",
     "operation.todo_work.completed",
     "session_close_requested",

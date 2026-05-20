@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import TypedDict
 
@@ -83,7 +83,7 @@ def _collect_entry_updates(
 class TodosDbRoadmapMixin:
     """Roadmap CRUD, ordering, deps, delivery, icebox (replaces roadmap.yaml)."""
 
-    _on_mutation: Callable[[str], None]
+    _on_mutation: Callable[[str, Mapping[str, object] | None], None]
 
     async def _next_position(self, session: SqlAsyncSession) -> int:
         """Return the next available position value."""
@@ -182,7 +182,7 @@ class TodosDbRoadmapMixin:
                     )
                 if owns_session:
                     await db_session.commit()
-                    self._on_mutation("todo_updated")
+                    self._on_mutation("todo_updated", None)
                 return True
 
             now = datetime.now(UTC).isoformat()
@@ -226,7 +226,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return True
         finally:
             if owns_session:
@@ -293,7 +293,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_removed")
+                self._on_mutation("todo_removed", None)
         finally:
             if owns_session:
                 await db_session.close()
@@ -386,7 +386,7 @@ class TodosDbRoadmapMixin:
             slug = entry.slug
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return slug
         finally:
             if owns_session:
@@ -396,6 +396,22 @@ class TodosDbRoadmapMixin:
         """Check if an active/icebox slug exists in the roadmap."""
         async with self._session() as session:  # type: ignore[attr-defined]
             return await self._active_entry(session, slug) is not None
+
+    async def slug_conflicts_non_removed(self, slug: str, *, session: SqlAsyncSession | None = None) -> bool:
+        """Return whether any non-removed roadmap row already holds a slug."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            result = await db_session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == slug)
+                .where(ROADMAP_TABLE.c.status != "removed")
+                .limit(1)
+            )
+            return result.first() is not None
+        finally:
+            if owns_session:
+                await db_session.close()
 
     async def purge_expired_removed(self, cutoff_iso: str) -> list[dict[str, str]]:
         """Hard-delete every removed roadmap row whose tombstone predates ``cutoff_iso``.
@@ -443,7 +459,7 @@ class TodosDbRoadmapMixin:
 
             await session.commit()
         if purged:
-            self._on_mutation("todo_removed")
+            self._on_mutation("todo_removed", None)
         return purged
 
     async def resolve_id(self, slug: str) -> str | None:
@@ -499,7 +515,7 @@ class TodosDbRoadmapMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return True
         finally:
             if owns_session:
@@ -521,7 +537,7 @@ class TodosDbRoadmapMixin:
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
             await session.commit()
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)
         return True
 
     async def unfreeze(self, slug: str) -> bool:
@@ -540,7 +556,7 @@ class TodosDbRoadmapMixin:
             entry.updated_at = datetime.now(UTC).isoformat()
             session.add(entry)
             await session.commit()
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)
         return True
 
     async def set_deps(
@@ -562,7 +578,7 @@ class TodosDbRoadmapMixin:
                 db_session.add(RoadmapDep(slug=slug, depends_on=dep))
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
         finally:
             if owns_session:
                 await db_session.close()
@@ -619,7 +635,60 @@ class TodosDbRoadmapMixin:
             await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
+        finally:
+            if owns_session:
+                await db_session.close()
+
+    async def rename_roadmap_slug(
+        self,
+        old_slug: str,
+        new_slug: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> bool:
+        """Re-key the live roadmap row and structured roadmap slug references."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            entry = await self._active_entry(db_session, old_slug)
+            if entry is None:
+                return False
+
+            now = datetime.now(UTC).isoformat()
+            entry.slug = new_slug
+            entry.updated_at = now
+            db_session.add(entry)
+
+            await db_session.exec(
+                update(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.group_slug == old_slug)
+                .where(ROADMAP_TABLE.c.status.notin_(("delivered", "removed")))
+                .values(group_slug=new_slug, updated_at=now)
+            )
+
+            child_rows = await db_session.exec(
+                select(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.children.is_not(None))
+                .where(ROADMAP_TABLE.c.status.notin_(("delivered", "removed")))
+            )
+            for row in child_rows.all():
+                children = json.loads(row.children) if row.children else None
+                if not isinstance(children, list) or old_slug not in children:
+                    continue
+                row.children = json.dumps([new_slug if child == old_slug else child for child in children])
+                row.updated_at = now
+                db_session.add(row)
+
+            await db_session.exec(update(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == old_slug).values(slug=new_slug))
+            await db_session.exec(
+                update(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == old_slug).values(depends_on=new_slug)
+            )
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation("todo_updated", None)
+            return True
         finally:
             if owns_session:
                 await db_session.close()
@@ -666,7 +735,7 @@ class TodosDbRoadmapMixin:
             session.add(source)
             await session.commit()
 
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)
         return True
 
     async def move_entry(self, slug: str, *, before: str | None = None, after: str | None = None) -> bool:
@@ -716,5 +785,5 @@ class TodosDbRoadmapMixin:
 
             session.commit()
 
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)
         return True

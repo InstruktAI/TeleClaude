@@ -100,6 +100,44 @@ class DbOperationsMixin:
             result = await db_session.exec(stmt)
             return result.first()
 
+    async def find_nonterminal_operations_bound_to_todo(
+        self,
+        *,
+        old_slug: str,
+        cwd: str,
+        exclude_operation_id: str | None = None,
+    ) -> list[db_models.Operation]:
+        """Return queued/running operations that still bind the source todo."""
+        stmt = (
+            select(db_models.Operation)
+            .where(db_models.Operation.state.in_(["queued", "running"]))
+            .where(
+                or_(
+                    db_models.Operation.slug == old_slug,
+                    and_(db_models.Operation.slug.is_(None), db_models.Operation.cwd == cwd),
+                )
+            )
+            .order_by(db_models.Operation.created_at.desc())
+        )
+        if exclude_operation_id is not None:
+            stmt = stmt.where(db_models.Operation.operation_id != exclude_operation_id)
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            return list(result.all())
+
+    async def rewrite_operation_todo_refs(self, *, old_slug: str, new_slug: str) -> int:
+        """Rewrite retained operation receipts from old slug to new slug."""
+        now_iso = datetime.now(UTC).isoformat()
+        stmt = (
+            update(db_models.Operation)
+            .where(db_models.Operation.slug == old_slug)
+            .values(slug=new_slug, updated_at=now_iso)
+        )
+        async with self._session() as db_session:
+            result = await db_session.exec(stmt)
+            await db_session.commit()
+            return result.rowcount or 0
+
     async def claim_operation(self, operation_id: str, now_iso: str) -> bool:
         """Transition a queued operation to running."""
         stmt = (

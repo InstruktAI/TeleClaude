@@ -9,6 +9,7 @@ import frontmatter
 
 from teleclaude import docs_reconcile
 from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET, RoadmapStatus
+from teleclaude.resource_validation import _models, _snippet
 
 
 def _write_snippet(
@@ -249,3 +250,61 @@ def test_reconcile_is_idempotent_across_runs(tmp_path: Path) -> None:
 
     assert len(first_results) == 1
     assert second_results == []
+
+
+def test_rewrite_delivered_by_slug_updates_only_lifecycle_frontmatter_refs(tmp_path: Path) -> None:
+    snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
+    snippet_path.parent.mkdir(parents=True, exist_ok=True)
+    snippet_path.write_text(
+        (
+            "---\n"
+            "id: project/spec/snippet\n"
+            "type: spec\n"
+            "scope: project\n"
+            "description: old-slug is prose here\n"
+            "status: target\n"
+            "delivered_by: [old-slug, sibling]\n"
+            "---\n"
+            "# Snippet\n"
+            "## What it is\n"
+            "Body keeps old-slug as prose.\n"
+            "## Canonical fields\n"
+            "Fields stay stable.\n"
+        ),
+        encoding="utf-8",
+    )
+    description_before = _frontmatter_line(snippet_path, "description")
+    body_before = snippet_path.read_bytes().split(b"---\n", 2)[2]
+
+    docs_reconcile.rewrite_delivered_by_slug(tmp_path, "old-slug", "new-slug")
+
+    metadata = _metadata(snippet_path)
+    assert metadata["delivered_by"] == ["new-slug", "sibling"]
+    assert _frontmatter_line(snippet_path, "description") == description_before
+    assert snippet_path.read_bytes().split(b"---\n", 2)[2] == body_before
+
+
+def test_rewrite_delivered_by_slug_leaves_snippets_valid_for_new_roadmap_slug(tmp_path: Path) -> None:
+    _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["old-slug"],
+        body=(
+            "# Snippet\n"
+            "## What it is\n"
+            "Rename contract.\n"
+            "## Canonical fields\n"
+            "Delivery slug references are lifecycle metadata.\n"
+        ),
+    )
+
+    docs_reconcile.rewrite_delivered_by_slug(tmp_path, "old-slug", "new-slug")
+    _models.clear_errors()
+
+    _snippet.validate_all_snippets(
+        tmp_path,
+        roadmap_status_map={"new-slug": _snippet.ROADMAP_STATUS_ACTIVE},
+    )
+
+    findings = _models.get_errors()
+    assert _snippet.SNIPPET_DELIVERED_BY_UNKNOWN_SLUG not in {finding["code"] for finding in findings}

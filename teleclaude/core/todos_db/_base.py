@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
@@ -28,6 +28,10 @@ logger = get_logger(__name__)
 def _generate_id() -> str:
     """Generate a UUID for use as a todo identifier."""
     return str(uuid.uuid4())
+
+
+def _default_on_mutation(_event_hint: str, _event_data: Mapping[str, object] | None = None) -> None:
+    """Default no-op mutation callback."""
 
 
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
@@ -296,16 +300,16 @@ class TodosDbBase:
         self._sync_engine: Engine | None = None
         self._sessionmaker: async_sessionmaker[SqlAsyncSession] | None = None
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
-        self._on_mutation: Callable[[str], None] = lambda _event_hint: None
+        self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
 
-    def on_committed(self, event_hint: str = "todo_updated") -> None:
+    def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.
 
         Use this when the caller owns the session (e.g. multi-step transactions
         in route handlers) and needs to notify the mutation boundary after commit,
         without accessing the protected _on_mutation attribute directly.
         """
-        self._on_mutation(event_hint)
+        self._on_mutation(event_hint, event_data)
 
     async def initialize(self) -> None:
         """Bootstrap schema and initialize async + sync runtime access."""

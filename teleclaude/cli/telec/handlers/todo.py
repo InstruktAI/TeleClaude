@@ -45,6 +45,7 @@ __all__ = [
     "_handle_todo_mark_phase",
     "_handle_todo_reconcile",
     "_handle_todo_remove",
+    "_handle_todo_rename",
     "_handle_todo_show",
     "_handle_todo_split",
     "_handle_todo_stamp",
@@ -169,6 +170,8 @@ def _handle_todo(args: list[str]) -> None:
         _handle_todo_design(args[1:])
     elif subcommand == "remove":
         _handle_todo_remove(args[1:])
+    elif subcommand == "rename":
+        _handle_todo_rename(args[1:])
     elif subcommand == "prepare":
         handle_todo_prepare(args[1:])
     elif subcommand == "work":
@@ -451,6 +454,39 @@ def _handle_todo_remove(args: list[str]) -> None:
     status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
     if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
         print(f"Removed todo: {slug}")
+    elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
+        print(f"Error: {status['error']}", file=sys.stderr)
+        raise SystemExit(1)
+    else:
+        print_json(status)
+        raise SystemExit(1)
+
+
+def _handle_todo_rename(args: list[str]) -> None:
+    """Handle telec todo rename <old-slug> <new-slug>."""
+    if len(args) != 2 or any(arg.startswith("-") for arg in args):
+        print(_usage("todo", "rename"))
+        raise SystemExit(1)
+
+    old_slug, new_slug = args
+    body = {
+        "old_slug": old_slug,
+        "new_slug": new_slug,
+        "cwd": str(resolve_invocation_cwd()),
+        "client_request_id": str(uuid.uuid4()),
+    }
+    receipt: object = tool_api_call("POST", "/todos/rename", json_body=body)
+    if not isinstance(receipt, dict):  # pyright: ignore[reportUnnecessaryIsInstance]
+        print_json(receipt)
+        raise SystemExit(1)
+
+    status: object = poll_operation(receipt, estimated_timeout_ms=30_000)
+    if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
+        result = status.get("result")
+        if isinstance(result, str) and result:
+            print(result)
+        else:
+            print_json(status)
     elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
         print(f"Error: {status['error']}", file=sys.stderr)
         raise SystemExit(1)

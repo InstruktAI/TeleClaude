@@ -36,7 +36,9 @@ _PLAN_DRAFTING = "plan_drafting"
 _PREPARED = "prepared"
 _CREATE_OPERATION_ID = "op-1"
 _REMOVE_OPERATION_ID = "op-123"
+_RENAME_OPERATION_ID = "op-rename-123"
 _TODO_REMOVE_KIND = "todo_remove"
+_TODO_RENAME_KIND = "todo_rename"
 _UPDATED_BY_WRITE_ARTIFACT = "api.todo.write_artifact"
 _UPDATED_BY_PREPPED_DUMP = "api.todo.dump.prepped"
 
@@ -213,6 +215,60 @@ class TestTodoRoutes:
             caller_session_id="sess-1",
             client_request_id="req-1",
         )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_rename_returns_202_receipt(self) -> None:
+        """Todo rename submits a durable operation instead of running inline."""
+        receipt = {
+            "operation_id": _RENAME_OPERATION_ID,
+            "kind": _TODO_RENAME_KIND,
+            "state": "queued",
+            "poll_after_ms": 250,
+            "status_path": "/operations/op-rename-123",
+            "recovery_command": "telec operations get op-rename-123",
+        }
+        operations = MagicMock()
+        operations.submit_todo_rename = AsyncMock(return_value=receipt)
+        rename_route = next(
+            route
+            for route in todo_routes.router.routes
+            if isinstance(route, APIRoute) and route.path == "/todos/rename"
+        )
+
+        with patch("teleclaude.api.todo_routes.get_operations_service", return_value=operations):
+            response = await todo_routes.todo_rename(
+                old_slug="old-slug",
+                new_slug="new-slug",
+                cwd="/repo",
+                client_request_id="req-1",
+                identity=_identity(),
+            )
+
+        assert rename_route.status_code == 202
+        assert response == receipt
+        operations.submit_todo_rename.assert_awaited_once_with(
+            old_slug="old-slug",
+            new_slug="new-slug",
+            cwd="/repo",
+            caller_session_id="sess-1",
+            client_request_id="req-1",
+        )
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_rename_requires_cwd(self) -> None:
+        """Todo rename submissions reject requests without a working directory."""
+        with pytest.raises(HTTPException) as exc_info:
+            await todo_routes.todo_rename(
+                old_slug="old-slug",
+                new_slug="new-slug",
+                cwd=None,
+                client_request_id=None,
+                identity=_identity(),
+            )
+
+        assert exc_info.value.status_code == 400
 
     @pytest.mark.unit
     @pytest.mark.asyncio
