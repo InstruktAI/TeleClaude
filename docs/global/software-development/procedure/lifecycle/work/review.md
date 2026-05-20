@@ -328,6 +328,30 @@ When the delivery changes CLI subcommands, config keys, API endpoints, or user-f
 
 Missing documentation updates are **Important** findings. Missing config surface updates are **Critical** (agents depend on accurate config specs).
 
+#### Doc-first paradigm check
+
+Conditional lane. Triggers only when the review surface is an ad-hoc commit series with no upstream prepare-phase artifacts (e.g. the Path C inline `/next-review-commits` flow). For lifecycle work reviews where a PRD, implementation-plan, and feature/domain spec are in context, the prepare phase already enforced the doc-first paradigm — this lane is a no-op there.
+
+Consult `software-development/principle/documentation-first-development` for the authoritative Category A/B/C classification.
+
+Apply the check only when the commit series shows clear Category A indicators:
+
+- A new public agent verb in the `telec` surface.
+- A new behavioral contract that spans multiple files and changes how agents are supposed to act.
+- A new sealed guard / wrapper rule.
+- A new event in the event taxonomy.
+- A new bounded-context surface.
+
+If at least one Category A indicator is present:
+
+1. Inspect whether the series came through prepare (slug in commit subjects, a corresponding row in `todos.db`, upstream prepare artifacts).
+2. If it did NOT come through prepare, raise an **Important** finding: the series introduces what the principle classifies as Category A but bypassed the prepare phase where its feature spec snippet would have been authored.
+3. The finding offers two acceptable resolutions:
+   a. Author a retroactive feature spec under `docs/project/spec/feature/<context>/<concept>.md` and commit it as a Path A follow-up.
+   b. Acknowledge the process gap explicitly in the report and defer retroactive authoring to the next prepare-phase pass that touches the same area.
+
+Do NOT raise this finding for commits with no Category A indicators. Category B and Category C work legitimately produces no feature spec; the principle is the authority on classification — consult it rather than improvising.
+
 #### Simplification review
 
 Run after all other lanes pass. Simplify changed code for clarity, consistency, and maintainability without changing behaviour.

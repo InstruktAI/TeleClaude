@@ -8,7 +8,6 @@ status: mixed
 delivered_by:
 - roadmap-trash-reveal-ui
 - v2-workflow-cli-refinement-commands
-- v1-workflow-creation-hardening
 ---
 
 # CLI Surface — Spec
