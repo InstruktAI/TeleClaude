@@ -115,11 +115,12 @@ def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
     by_slug = {t.slug: t for t in todos}
     visible = set(by_slug)
     after_map = {t.slug: t.after for t in todos}
-    # Holder set is data-driven: a slug is a holder iff some other todo in this
+    # Holder set is data-driven: a slug is a holder iff some OTHER todo in this
     # section group-references it. After-deps never make a node a holder — the
     # visual nesting of after-children under their dep is purely presentational;
-    # status suppression must NOT follow nesting.
-    holder_slugs = {t.group for t in todos if t.group and t.group in visible}
+    # status suppression must NOT follow nesting. Self-references (group == slug)
+    # are not holder relationships either — a todo cannot hold itself.
+    holder_slugs = {t.group for t in todos if t.group and t.group in visible and t.group != t.slug}
 
     parent_map: dict[str, str | None] = {}
     children_map: dict[str, list[str]] = {}

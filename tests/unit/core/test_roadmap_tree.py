@@ -100,6 +100,21 @@ def test_is_holder_set_only_when_other_todos_group_reference_the_node() -> None:
     assert by_slug["after-follower"].is_holder is False
 
 
+def test_self_grouped_todo_is_not_a_holder() -> None:
+    """A degenerate self-reference (group == slug) does not make the todo a holder.
+
+    Holder semantics require another todo to point at the slug. A self-reference
+    is structurally a no-op (parent-resolution already excludes self-cycles) and
+    must not flip the status suppression flag on the todo itself.
+    """
+    todos = [_todo("self-ref", RoadmapStatus.READY, group="self-ref")]
+
+    sections = build_roadmap_sections(todos)
+
+    assert [n.todo.slug for n in sections.active] == ["self-ref"]
+    assert sections.active[0].is_holder is False
+
+
 def test_flatten_yields_depth_and_last_flags() -> None:
     """flatten emits DFS rows with depth and is_last for renderers."""
     todos = [
