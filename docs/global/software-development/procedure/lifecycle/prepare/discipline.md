@@ -28,7 +28,7 @@ that effect.
 Re-entry is the default for prepare dispatches — fresh production is the
 special case (first time only). Dispatches that ask a worker to produce or
 review a downstream artifact (build-specs, prepare-plan, review-architecture,
-review-specs, review-plan, drift review) carry a
+review-plan, drift review) carry a
 `Dispatch reason: <reason>` header so the worker knows which behavior to
 pick. Reasons are: `fresh`, `findings-fix`, `upstream-changed`,
 `provenance-missing`. Each prescribes a different behavior; do not assume

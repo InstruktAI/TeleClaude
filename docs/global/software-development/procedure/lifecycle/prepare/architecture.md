@@ -1,5 +1,5 @@
 ---
-description: 'Architecture derivation phase. Ground the approved PRD in code reality and produce a reviewer-approved architecture artifact for downstream test-specs and plan derivation.'
+description: 'Architecture derivation phase. Ground the approved PRD in code reality, author the design directly into the affected domain-spec / architecture-v2 design-doc snippets, and write a thin reviewer-approved architecture index artifact for downstream plan derivation.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/prepare/architecture'
 scope: 'domain'
@@ -52,8 +52,10 @@ library selection, internal sequencing within a build), keep them ephemeral.
 Add them to the next phase's `implementation-plan` workflow.artifact or to the
 PRD risks section — they're scaffolding, not contract.
 
-There is no `architecture` workflow.artifact. The doc updates ARE the
-architecture record.
+The `architecture` workflow.artifact is a thin index/log of the doc-snippet
+edits: which snippets were touched, why, and the `delivered_by` slug set on
+them. The design content itself lives in the snippets — the snippets are
+authoritative; the artifact is a pure audit/index log, never the design body.
 
 ### Outcome
 
@@ -93,19 +95,22 @@ Read:
 
 ### 2. Reason through the architecture
 
-Produce an architectural reading of the work. Standard sections:
+Produce an architectural reading of the work, then author the durable parts
+DIRECTLY into the affected domain-spec / architecture-v2 design-doc snippets
+(per the routing above). The standard reasoning sections — captured in the
+snippets, not in the artifact:
 
-| Section | What it captures |
-| --- | --- |
-| **Brownfield assessment** | What exists in the codebase that this work touches. Services, modules, events, surfaces. For greenfield, a brief note that this is new ground. |
-| **Affected services / domains** | Which bounded contexts the work changes. For each, the nature of the change (new behavior, modified behavior, new service entirely). |
-| **Event flow changes** | Which events this work produces or consumes. New event types, modified event types (with backward-compat plan), reuse of existing taxonomy. |
-| **Surface changes** | Which user-facing or external-facing surfaces change. API endpoints, CLI commands, frontend pages — each named by which platform scaffold supplies them. |
-| **State ownership** | What new state is introduced or modified. Which service owns it. How other services that need to read it do so (events, documented API). |
+| Section                              | What it captures                                                                                                                                                                                                                                |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Brownfield assessment**            | What exists in the codebase that this work touches. Services, modules, events, surfaces. For greenfield, a brief note that this is new ground.                                                                                                  |
+| **Affected services / domains**      | Which bounded contexts the work changes. For each, the nature of the change (new behavior, modified behavior, new service entirely).                                                                                                            |
+| **Event flow changes**               | Which events this work produces or consumes. New event types, modified event types (with backward-compat plan), reuse of existing taxonomy.                                                                                                     |
+| **Surface changes**                  | Which user-facing or external-facing surfaces change. API endpoints, CLI commands, frontend pages — each named by which platform scaffold supplies them.                                                                                        |
+| **State ownership**                  | What new state is introduced or modified. Which service owns it. How other services that need to read it do so (events, documented API).                                                                                                        |
 | **Platform-quality-flavors applied** | Which existing flavors / scaffolds this work uses. API scaffolding, frontend flavor, CLI command pattern, event-bus service pattern, language tooling, etc. If a needed flavor doesn't exist, that's a blocking finding (don't hack around it). |
-| **Architectural defaults alignment** | A brief section noting where the proposed architecture aligns with the defaults principle, and where (if anywhere) it deliberately diverges — with reason. |
-| **Decomposition** | If the work is non-trivial, a decomposition into architectural units. Each unit is something a plan task can hang off. |
-| **Open architectural questions** | Things that couldn't be resolved from PRD + code + defaults; surface to the human for decision. |
+| **Architectural defaults alignment** | A brief section noting where the proposed architecture aligns with the defaults principle, and where (if anywhere) it deliberately diverges — with reason.                                                                                      |
+| **Decomposition**                    | If the work is non-trivial, a decomposition into architectural units. Each unit is something a plan task can hang off.                                                                                                                          |
+| **Open architectural questions**     | Things that couldn't be resolved from PRD + code + defaults; surface to the human for decision.                                                                                                                                                 |
 
 ### 3. Code-intelligence-driven brownfield analysis
 
@@ -123,15 +128,22 @@ grounding (read the source files referenced in PRD, trace imports / event
 subscribers / event publishers manually). Note which dependencies you're
 confident about and which you're inferring.
 
-### 4. Write the architecture artifact
+### 4. Write the thin architecture index artifact
+
+Author the design content into the affected snippets first (set frontmatter
+`status: target` and add this slug to `delivered_by` on every edited snippet).
+Then write the thin index artifact:
 
 ```
 telec todo artifacts write {slug} architecture <content>
 ```
 
-The artifact follows the structure in step 2. Sections that don't apply (e.g.,
-"Event flow changes" for purely-UI work) are explicitly noted as N/A — never
-silently omitted.
+The artifact is ONLY an index/log: a list of every snippet touched, a
+one-line reason per snippet (which architectural change it carries), and the
+`delivered_by` slug set on them. It does NOT restate the design body — that
+lives in the snippets and is the authoritative record. Snippets whose section
+doesn't apply (e.g., no "Event flow changes" for purely-UI work) simply aren't
+touched; the index records only what changed.
 
 **Architecture is a translation, not an implementation.** Translate product
 intent into technical shape. Do not implement, do not write tests, and do not
@@ -155,8 +167,12 @@ architecture artifact to resolve each finding, then advance again.
 
 ## Outputs
 
-- **`architecture` artifact** — code-grounded technical brief written via
-  `telec todo artifacts write`.
+- **Domain-spec / architecture-v2 design-doc snippet updates** — the
+  code-grounded design, authored directly into the affected snippets with
+  frontmatter `status: target` and this slug added to `delivered_by`.
+- **Thin `architecture` index artifact** — written via
+  `telec todo artifacts write {slug} architecture <content>`; logs which
+  snippets were touched and why, NOT the design body.
 - **`architecture_review` verdict `approve`** is stamped by the reviewer (not
   by this procedure).
 

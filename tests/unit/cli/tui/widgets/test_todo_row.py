@@ -74,22 +74,6 @@ def test_lifecycle_phase_label_draft_maps_to_intake() -> None:
 
 
 @pytest.mark.unit
-def test_lifecycle_phase_label_test_specs_drafting_maps_to_specs_drafting() -> None:
-    result = lifecycle_phase_label(LifecyclePhase.TEST_SPECS_DRAFTING.value)
-    assert result is not None
-    _, value, _ = result
-    assert value == "specs drafting"
-
-
-@pytest.mark.unit
-def test_lifecycle_phase_label_test_specs_review_maps_to_specs_review() -> None:
-    result = lifecycle_phase_label(LifecyclePhase.TEST_SPECS_REVIEW.value)
-    assert result is not None
-    _, value, _ = result
-    assert value == "specs review"
-
-
-@pytest.mark.unit
 def test_lifecycle_phase_label_plan_drafting_maps_to_plan_drafting() -> None:
     result = lifecycle_phase_label(LifecyclePhase.PLAN_DRAFTING.value)
     assert result is not None

@@ -1,5 +1,5 @@
 ---
-description: 'Prepare phase flow for v2. PRD → Architecture → Test specs → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based phase skipping, standin-mode support, and lean drift analysis.'
+description: 'Prepare phase flow for v2. PRD → Architecture → Plan → Prepared, with PRD-only human approval, reviewer-gated derivation artifacts, size-based architecture skipping, standin-mode support, and lean drift analysis.'
 id: 'project/design/architecture/prepare-flow'
 scope: 'project'
 type: 'design'
@@ -12,7 +12,7 @@ visibility: 'public'
 
 Codify the prepare phase as a deterministic chain of artifact-derivation steps where the PRD is the only human approval gate, lean enough that small work skips phases that don't earn their place, and capable of running autonomously in standin mode until real human intent approval is required.
 
-The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, test specs, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture, test specs, and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
+The flow replaces the prior pair-driven prepare model. One session drives the whole lifecycle, loading a phase-scoped procedure for each step (intake, architecture, plan) and doing the phase's work itself. Each derived artifact is verified by a cross-model reviewer running in a separately-dispatched session. The active procedure dispatches the reviewer and tails it. The human approves the PRD because only the human owns intent. Architecture and plan advance on reviewer approval because the reviewer is the independent authority for derived artifacts.
 
 ## Inputs/Outputs
 
@@ -26,13 +26,12 @@ The flow replaces the prior pair-driven prepare model. One session drives the wh
 
 **Outputs (per surviving phase):**
 
-| Phase | Artifact | Authority gate |
-| --- | --- | --- |
-| Intake | `prd` | `prd_approved` |
-| Architecture | `architecture` | `architecture_review` verdict `approve` |
-| Test specs | `test-specs` (or per-spec files) | `test_spec_review` verdict `approve` |
-| Plan | `implementation-plan` | `plan_review` verdict `approve` |
-| Terminal | — | `PREPARED` (derived from all gates + fresh grounding) |
+| Phase        | Artifact                                                  | Authority gate                                        |
+| ------------ | --------------------------------------------------------- | ----------------------------------------------------- |
+| Intake       | `prd` (+ feature spec snippet for Category A)              | `prd_approved`                                        |
+| Architecture | domain-spec / design-doc snippet updates + thin `architecture` index | `architecture_review` verdict `approve`    |
+| Plan         | `implementation-plan`                                     | `plan_review` verdict `approve`                       |
+| Terminal     | —                                                         | `PREPARED` (derived from all gates + fresh grounding) |
 
 The confirmed plan is the handoff input to the work phase.
 
@@ -40,11 +39,11 @@ The confirmed plan is the handoff input to the work phase.
 
 **Deterministic structure:**
 
-- Intake produces `prd`; no downstream phase begins until `prd_approved` is stamped by a real human.
-- Each subsequent phase produces an artifact and advances on reviewer verdict. There is no downstream human approval stamp.
-- Skip stamps (`architecture_skipped`, `test_specs_skipped`) carry a reason and let the chain proceed without that phase's artifact.
+- Intake produces `prd` (and, for Category A work, the feature spec snippet with Gherkin); no downstream phase begins until `prd_approved` is stamped by a real human.
+- Each subsequent phase produces its output and advances on reviewer verdict. There is no downstream human approval stamp.
+- The `architecture_skipped` stamp carries a reason and lets the chain proceed without the architecture phase.
 - Plan phase is non-skippable; PRD is non-skippable.
-- `PREPARED` requires: PRD human-approved, plan reviewer-approved, all non-skipped intermediate phases reviewer-approved, grounding fresh.
+- `PREPARED` requires: PRD human-approved, plan reviewer-approved, architecture reviewer-approved unless skipped, grounding fresh.
 
 **Standin mode:**
 
@@ -55,7 +54,7 @@ The confirmed plan is the handoff input to the work phase.
 **Refinement:**
 
 - Human refinement at any layer invalidates downstream authority: PRD approval for intent changes, reviewer verdicts for derived artifact changes.
-- The agent classifies refinement scope (intent / architecture / specs / plan) and re-enters the appropriate phase.
+- The agent classifies refinement scope (intent / architecture / plan) and re-enters the appropriate phase.
 
 **Drift:**
 
@@ -65,7 +64,7 @@ The confirmed plan is the handoff input to the work phase.
 
 **Cross-model verification:**
 
-- The independent verification of derived artifacts (architecture, test specs, plan) comes from cross-model reviewers dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
+- The independent verification of derived artifacts (architecture, plan) comes from cross-model reviewers dispatched per phase. The active procedure dispatches the reviewer, tails it, and integrates the verdict.
 - The PRD has no automated reviewer — the human is the sole authority on intent, so the human verifies the PRD directly.
 
 ## Primary flows
@@ -91,22 +90,14 @@ flowchart TD
     Idle -.user invokes /next-prepare.-> PRDApprove
 
     AssessArch{Architecture phase needed?<br/>BA assesses size and scope}
-    AssessArch -->|skip — stamp with reason| AssessSpecs
+    AssessArch -->|skip — stamp with reason| PlanPhase
     AssessArch -->|proceed| ArchPhase
 
-    ArchPhase[Architecture phase<br/>code-grounded brief<br/>platform-quality-flavors named<br/>code-intelligence for brownfield<br/>cross-model peer verifies]
+    ArchPhase[Architecture phase<br/>design authored into domain-spec / design-doc snippets<br/>thin architecture index artifact logs the edits<br/>code-intelligence for brownfield<br/>cross-model peer verifies]
     ArchPhase --> ArchReview[Reviewer verdict]
-    ArchReview --> AssessSpecs
+    ArchReview --> PlanPhase
 
-    AssessSpecs{Test specs phase needed?}
-    AssessSpecs -->|skip — stamp with reason| PlanPhase
-    AssessSpecs -->|proceed| SpecsPhase
-
-    SpecsPhase[Test specs phase<br/>Gherkin / xfail behavioral contract<br/>each spec pinned to a PRD success criterion]
-    SpecsPhase --> SpecsReview[Reviewer verdict]
-    SpecsReview --> PlanPhase
-
-    PlanPhase[Plan phase<br/>tasks pinned to specs and code surface]
+    PlanPhase[Plan phase<br/>tasks pinned to PRD / feature-spec Gherkin and code surface]
     PlanPhase --> PlanReview[Reviewer verdict]
     PlanReview --> Grounding{Grounding fresh?}
 
@@ -119,7 +110,6 @@ flowchart TD
     Prepared -.user refinement.-> RefineClassify[Classify refinement scope]
     RefineClassify -->|intent-level| Intake
     RefineClassify -->|architecture-level| ArchPhase
-    RefineClassify -->|specs-level| SpecsPhase
     RefineClassify -->|plan-level| PlanPhase
 ```
 

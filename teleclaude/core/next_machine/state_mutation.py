@@ -25,7 +25,6 @@ from teleclaude.types.todos import (
     DriftReviewedStamp,
     ReviewVerdictState,
     SkipStamp,
-    TestSpecReviewState,
     TodoState,
 )
 
@@ -95,23 +94,17 @@ class StateWriter:
     def review(self, review_type: str) -> ReviewVerdictState:
         """Return a `ReviewVerdictState` sub-state by phase name.
 
-        Raises :class:`StateMutationError` for unknown phases or for
-        verdict-only sub-states like `test_spec_review`.
+        Raises :class:`StateMutationError` for unknown phases.
         """
         review = getattr(self._model, review_type, None)
         if not isinstance(review, ReviewVerdictState):
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 
-    def verdict_target(self, review_type: str) -> ReviewVerdictState | TestSpecReviewState:
-        """Return the verdict-bearing sub-state for stamping verdicts.
-
-        Accepts both `ReviewVerdictState` and `TestSpecReviewState` — both
-        carry the `verdict`/`reviewed_at` fields that `stamp_verdict` mutates,
-        but only `ReviewVerdictState` exposes `findings`.
-        """
+    def verdict_target(self, review_type: str) -> ReviewVerdictState:
+        """Return the verdict-bearing sub-state for stamping verdicts."""
         review = getattr(self._model, review_type, None)
-        if not isinstance(review, ReviewVerdictState | TestSpecReviewState):
+        if not isinstance(review, ReviewVerdictState):
             raise StateMutationError(f"unknown review phase: {review_type!r}")
         return review
 

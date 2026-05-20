@@ -55,22 +55,8 @@ async def test_architecture_review_dispatches_to_reviewer(snapshot: SnapshotAsse
 
 
 @pytest.mark.asyncio
-async def test_test_specs_drafting_loads_specs_procedure(snapshot: SnapshotAssertion) -> None:
-    keep_going, instruction = await _dispatch(PreparePhase.TEST_SPECS_DRAFTING)
-    assert keep_going is False
-    assert instruction == snapshot
-
-
-@pytest.mark.asyncio
 async def test_plan_drafting_loads_plan_procedure(snapshot: SnapshotAssertion) -> None:
     keep_going, instruction = await _dispatch(PreparePhase.PLAN_DRAFTING)
-    assert keep_going is False
-    assert instruction == snapshot
-
-
-@pytest.mark.asyncio
-async def test_test_specs_review_dispatches_to_reviewer(snapshot: SnapshotAssertion) -> None:
-    keep_going, instruction = await _dispatch(PreparePhase.TEST_SPECS_REVIEW)
     assert keep_going is False
     assert instruction == snapshot
 

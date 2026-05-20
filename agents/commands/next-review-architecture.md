@@ -18,15 +18,21 @@ You are now the Architecture Reviewer.
 
 ## Purpose
 
-Validate the `architecture` artifact against the approved PRD, project
-architecture, codebase reality, and platform defaults.
+Validate the architectural design — the doc-snippet diff (the domain spec /
+architecture-v2 design-doc snippets the slug owns) plus the thin
+`architecture` index artifact that logs which snippets were touched and why —
+against the approved PRD, project architecture, codebase reality, and platform
+defaults.
 
 ## Inputs
 
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} prd`
-- `telec todo artifacts read {slug} architecture`
-- Relevant code paths and project architecture docs cited by the artifact
+- `telec todo artifacts read {slug} architecture` — the thin index/log
+- The diff of the domain spec / architecture-v2 design-doc snippets the slug
+  owns (the index artifact names them; this diff is the design content under
+  review)
+- Relevant code paths and project architecture docs cited by the snippets
 
 ## Outputs
 

@@ -1,5 +1,5 @@
 ---
-description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the four-phase derivation chain (PRD → Architecture → Test specs → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
+description: 'Prepare stage overview. Lifecycle scaffolding for the one session that drives the derivation chain (PRD → Architecture → Plan) with PRD-only human approval, reviewer-gated derivation artifacts, and standin mode for autonomous intake.'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/prepare/overview'
 scope: 'domain'
@@ -32,7 +32,6 @@ state machine. The state machine decides what happens next.
 2. **Each phase has its own focus, sharpened by a hat:**
    - **BA hat** for intake — loaded by reading `~/.teleclaude/commands/next-prepare-intake.md`
    - **Architect hat** for architecture — loaded by reading `~/.teleclaude/commands/next-prepare-architecture.md`
-   - **Test Spec Author hat** for test specs — loaded by reading `~/.teleclaude/commands/next-prepare-specs.md`
    - **Planner hat** for plan — loaded by reading `~/.teleclaude/commands/next-prepare-plan.md`
 
    Putting on a hat sharpens focus for the current phase; it does not erase
@@ -47,7 +46,7 @@ state machine. The state machine decides what happens next.
 
 4. **Human approval is on the PRD only.** The human reviews the PRD and
    stamps `prd_approved`. The human is the sole authority on intent.
-   Architecture, test specs, and plan advance on reviewer verdict alone.
+   Architecture and plan advance on reviewer verdict alone.
 
 ## Preconditions
 
@@ -109,12 +108,11 @@ When the state machine routes you to a phase, load the corresponding procedure
 and do its focused work. Each procedure ends by calling `telec todo prepare
 {slug}` to advance — that's how the lifecycle proceeds.
 
-| Phase        |  Procedure                                             | Hat              |
-| ------------ | -------------------------------------- | ---------------- |
-| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`                 | BA               |
-| Architecture | `~/.teleclaude/commands/next-prepare-architecture.md`           | Architect        |
-| Test specs   | `~/.teleclaude/commands/next-prepare-specs.md`                  | Test Spec Author |
-| Plan         | `~/.teleclaude/commands/next-prepare-plan.md`                   | Planner          |
+| Phase        | Procedure                                             | Hat       |
+| ------------ | ----------------------------------------------------- | --------- |
+| Intake       | `~/.teleclaude/commands/next-prepare-intake.md`       | BA        |
+| Architecture | `~/.teleclaude/commands/next-prepare-architecture.md` | Architect |
+| Plan         | `~/.teleclaude/commands/next-prepare-plan.md`         | Planner   |
 
 ### 4. Honor the PRD approval gate
 
@@ -128,14 +126,12 @@ chain pauses at this gate until the real human engages with the slug.
 
 ### 5. Skip phases that don't earn their place
 
-At intake, the BA assesses size and stamps skips with reason when warranted:
+At intake, the BA assesses size and stamps a skip with reason when warranted:
 
 - `architecture_skipped: <reason>` — e.g., "single-file change, no
   cross-service implications."
-- `test_specs_skipped: <reason>` — e.g., "trivial behavior change covered by
-  existing tests."
 
-The state machine respects skips when deriving the current phase.
+The state machine respects the skip when deriving the current phase.
 
 ### 6. Handle drift
 
@@ -160,10 +156,8 @@ classify the refinement scope and re-enter the appropriate phase:
 
 - **Intent-level** (new thinking, scope changes) → re-enter intake with the
   delta. Downstream approvals invalidated.
-- **Architecture-level** (technical brief change) → re-enter architecture
-  phase. Specs and plan approvals invalidated.
-- **Specs-level** (behavior contract change) → re-enter specs phase. Plan
-  approval invalidated.
+- **Architecture-level** (design-snippet change) → re-enter architecture
+  phase. Plan approval invalidated.
 - **Plan-level** (task adjustment) → re-enter plan phase. No further
   downstream to invalidate.
 
@@ -182,8 +176,8 @@ Surface the blocker to the human for direction.
 ## Outputs
 
 - `prd` artifact, human-approved.
-- `architecture` artifact, reviewer-approved (unless skipped).
-- `test-specs` artifact, reviewer-approved (unless skipped).
+- `architecture` — domain-spec / architecture-v2 design-doc snippet updates
+  plus a thin index artifact logging them, reviewer-approved (unless skipped).
 - `implementation-plan` artifact, reviewer-approved.
 - Grounding stamps reflecting fresh codebase reference.
 - The state machine reports `PREPARED` (or `BLOCKED` with reasons).
@@ -193,7 +187,7 @@ Surface the blocker to the human for direction.
 - **Input fails the viability gate in standin mode.** Do not dispatch intake.
   Surface the gap to the user with the input quoted back, and recommend
   either elaboration (re-dump with substance) or removal (`telec todo remove
-  {slug}`). The prepare flow stops until the input is fixed or the todo is
+{slug}`). The prepare flow stops until the input is fixed or the todo is
   removed.
 - **Input fails the viability gate in human-in-loop mode.** Stop before
   dispatch, quote the input, and ask one direct question to surface the
@@ -217,6 +211,5 @@ Surface the blocker to the human for direction.
 
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/intake.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/architecture.md
-- ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/prepare-specs.md
 - ~/.teleclaude/docs/software-development/procedure/lifecycle/prepare/plan-draft.md
 - ~/.teleclaude/docs/software-development/principle/architectural-defaults.md

@@ -80,11 +80,9 @@ def test_stamp_implementation_plan_records_v2_upstream_digests(seeded_db: TodosD
     cwd = str(seeded_db._db_path.parent.parent)
     prd_content = "# PRD\n"
     architecture_content = "# Architecture\n"
-    specs_content = "# Specs\n"
     plan_content = "# Plan\n"
     seeded_db.write_artifact_sync("slug-a", "prd", prd_content)
     seeded_db.write_artifact_sync("slug-a", "architecture", architecture_content)
-    seeded_db.write_artifact_sync("slug-a", "test-specs", specs_content)
     seeded_db.write_artifact_sync("slug-a", "implementation-plan", plan_content)
 
     with (
@@ -93,7 +91,6 @@ def test_stamp_implementation_plan_records_v2_upstream_digests(seeded_db: TodosD
     ):
         stamp_artifact(cwd, "slug-a", "prd")
         stamp_artifact(cwd, "slug-a", "architecture")
-        stamp_artifact(cwd, "slug-a", "test_specs")
         state = stamp_artifact(cwd, "slug-a", "implementation_plan")
 
     artifacts = state.get("artifacts", {})
@@ -105,7 +102,6 @@ def test_stamp_implementation_plan_records_v2_upstream_digests(seeded_db: TodosD
     assert upstream_digests == {
         "prd": _digest(prd_content),
         "architecture": _digest(architecture_content),
-        "test_specs": _digest(specs_content),
     }
 
 

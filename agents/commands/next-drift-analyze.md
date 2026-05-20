@@ -20,7 +20,8 @@ Classify pending codebase drift for prepared artifacts and stamp whether the dri
 ## Inputs
 
 - Slug: "$ARGUMENTS"
-- Prepare recommendation payload with `drift.pending` artifacts
+- Prepare recommendation payload with `drift.pending` artifacts — the pending
+  set is `prd`, `architecture` (the thin index/log), and `implementation-plan`
 - Current artifact content and referenced code paths
 
 ## Outputs

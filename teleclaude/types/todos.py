@@ -15,8 +15,6 @@ LifecyclePhaseValue = Literal[
     "prd_human_approval",
     "architecture_drafting",
     "architecture_review",
-    "test_specs_drafting",
-    "test_specs_review",
     "plan_drafting",
     "plan_review",
     "prepared",
@@ -103,10 +101,8 @@ class ApprovalsState(BaseModel):
 
     prd_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     architecture_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
-    test_specs_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     plan_approved: ApprovalStamp = Field(default_factory=ApprovalStamp)
     architecture_skipped: SkipStamp | None = None
-    test_specs_skipped: SkipStamp | None = None
     drift_reviewed: dict[str, DriftReviewedStamp] = Field(default_factory=dict)
 
 
@@ -117,15 +113,6 @@ class ReviewVerdictState(BaseModel):
     reviewed_at: str = ""
     rounds: int = 0
     baseline_commit: str = ""
-    approved_digest: str = ""
-
-
-class TestSpecReviewState(BaseModel):
-    """Verdict state for test spec review (no baseline_commit)."""
-
-    verdict: str = ""
-    reviewed_at: str = ""
-    rounds: int = 0
     approved_digest: str = ""
 
 
@@ -205,8 +192,6 @@ class AuditState(BaseModel):
     requirements_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     architecture_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     architecture_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
-    test_specs_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
-    test_spec_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
     plan_drafting: AuditTimestamp = Field(default_factory=AuditTimestamp)
     plan_review: AuditReviewEntry = Field(default_factory=AuditReviewEntry)
 
@@ -241,7 +226,6 @@ class TodoState(BaseModel):
     dor: DorState | None = None  # legacy-bridge; populated only by import/upcycle of old state
     requirements_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     architecture_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
-    test_spec_review: TestSpecReviewState = Field(default_factory=TestSpecReviewState)
     plan_review: ReviewVerdictState = Field(default_factory=ReviewVerdictState)
     build_review: BuildReviewState = Field(default_factory=BuildReviewState)
     artifacts: ArtifactsState = Field(default_factory=ArtifactsState)
@@ -264,7 +248,11 @@ class TodoState(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        legacy_keys = {"current"}
+        # ``current`` is pre-canonical display state. ``test_spec_review`` is a
+        # removed top-level verdict field (test-specs phase deleted under the
+        # doc-first model); strip it so ``extra="forbid"`` does not reject rows
+        # persisted before the cutover.
+        legacy_keys = {"current", "test_spec_review"}
         lifecycle_phase = data.get("lifecycle_phase")
         if not legacy_keys.intersection(data) and lifecycle_phase not in LEGACY_LIFECYCLE_PHASE_NORMALIZATION:
             return data

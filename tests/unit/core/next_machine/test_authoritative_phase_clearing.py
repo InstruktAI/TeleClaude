@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, normalize_mark_phase
-from teleclaude.types.todos import ApprovalStamp, SkipStamp, TodoState
+from teleclaude.types.todos import ApprovalStamp, TodoState
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
@@ -15,31 +15,26 @@ def test_normalize_mark_phase_clears_downstream_v2_approvals_but_keeps_artifact_
     state.lifecycle_phase = LifecyclePhase.REVIEW_APPROVED.value
     state.artifacts.prd.digest = "prd-digest"
     state.artifacts.architecture.digest = "arch-digest"
-    state.artifacts.test_specs.digest = "spec-digest"
     state.artifacts.implementation_plan.digest = "plan-digest"
     state.approvals.prd_approved = ApprovalStamp(approved=True, caller_session_id="human-session")
     state.approvals.architecture_approved = ApprovalStamp(approved=True, caller_session_id="human-session")
-    state.approvals.test_specs_approved = ApprovalStamp(approved=True, caller_session_id="human-session")
     state.approvals.plan_approved = ApprovalStamp(approved=True, caller_session_id="human-session")
-    state.approvals.architecture_skipped = SkipStamp(reason="small", skipped_at="now")
-    state.test_spec_review.verdict = "approve"
+    state.architecture_review.verdict = "approve"
     state.plan_review.verdict = "approve"
     state.build_start_base_sha = "abc123"
     state.build_review.verdict = "approve"
     state.finalize.status = "ready"
 
-    normalize_mark_phase(state, LifecyclePhase.TEST_SPECS_DRAFTING)
+    normalize_mark_phase(state, LifecyclePhase.ARCHITECTURE_DRAFTING)
 
-    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.TEST_SPECS_DRAFTING
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.ARCHITECTURE_DRAFTING
     assert state.artifacts.prd.digest == "prd-digest"
     assert state.artifacts.architecture.digest == "arch-digest"
-    assert state.artifacts.test_specs.digest == "spec-digest"
     assert state.artifacts.implementation_plan.digest == "plan-digest"
     assert state.approvals.prd_approved.approved is True
-    assert state.approvals.architecture_approved.approved is True
-    assert state.approvals.test_specs_approved.approved is False
+    assert state.approvals.architecture_approved.approved is False
     assert state.approvals.plan_approved.approved is False
-    assert state.test_spec_review.verdict == ""
+    assert state.architecture_review.verdict == ""
     assert state.plan_review.verdict == ""
     assert state.build_review.verdict == ""
     assert state.finalize.status == "pending"

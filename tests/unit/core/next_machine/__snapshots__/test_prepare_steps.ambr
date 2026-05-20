@@ -1,12 +1,12 @@
 # serializer version: 1
-# name: test_architecture_drafting_loads_architecture_skill
+# name: test_architecture_drafting_loads_architecture_procedure
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
   
   SLUG: my-slug
   
   NEXT ACTION:
-  Put on the Architect hat. Load the /next-prepare-architecture skill in this session:
+  Put on the Architect hat. Read the procedure for this turn:
   
   Read /test-commands/next-prepare-architecture.md and follow it exactly as the active instruction set for this session.
   
@@ -14,14 +14,14 @@
   my-slug
   
   The wider prepare lifecycle is still yours. This is one focused phase. The
-  skill is loaded inline; no new session is dispatched.
+  procedure is loaded inline; no new session is dispatched.
   
-  EXPECTED DELIVERABLE: an `architecture` artifact or an `architecture_skipped` stamp recommendation
+  EXPECTED DELIVERABLE: doc-snippet updates (domain spec / architecture-v2 design docs) plus a thin `architecture` index artifact, or an `architecture_skipped` stamp recommendation
   
   WHEN THE PHASE'S WORK IS COMPLETE:
   Call `telec todo prepare my-slug` to advance the state machine. The state
   machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
+  approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
   '''
 # ---
 # name: test_architecture_review_dispatches_to_reviewer
@@ -111,32 +111,7 @@
   Then call `telec todo prepare my-slug` to re-derive the lifecycle phase.
   '''
 # ---
-# name: test_plan_drafting_loads_plan_procedure
-  '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  SLUG: my-slug
-  
-  NEXT ACTION:
-  Put on the Planner hat. Read the procedure for this turn:
-  
-  Read /test-commands/next-prepare-plan.md and follow it exactly as the active instruction set for this session.
-  
-  Treat the following as provided inputs to that instruction set:
-  my-slug
-  
-  The wider prepare lifecycle is still yours. This is one focused phase. The
-  procedure is loaded inline; no new session is dispatched.
-  
-  EXPECTED DELIVERABLE: an `implementation-plan` artifact or split decision
-  
-  WHEN THE PHASE'S WORK IS COMPLETE:
-  Call `telec todo prepare my-slug` to advance the state machine. The state
-  machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
-  '''
-# ---
-# name: test_test_specs_review_dispatches_to_reviewer
+# name: test_blocked_pending_drift_dispatches_drift_analyzer
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
   
@@ -155,7 +130,6 @@
   - codex:
       "When work decomposes into independent subtasks, immediately spawn bounded explorer/worker sub-agents for them and keep the critical path moving locally. Do not serialize non-blocking discovery, implementation, or verification; wait only when a result blocks integration, then merge/close agents."
   - gemini:
-      "Mandate: Identify independent sub-tasks a  - gemini:
       "Mandate: Identify independent sub-tasks and concurrently delegate them to sub-agents using `invoke_agent` in a single turn. Ensure parallel sub-agents do not mutate the same files; otherwise, execute them simultaneously without setting `wait_for_previous`."
   
   Dispatch metadata: command="/next-drift-analyze" args="my-slug" project="/repo" subfolder=""
@@ -206,14 +180,14 @@
   NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
   '''
 # ---
-# name: test_plan_drafting_loads_plan_skill
+# name: test_plan_drafting_loads_plan_procedure
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
   
   SLUG: my-slug
   
   NEXT ACTION:
-  Put on the Planner hat. Load the /next-prepare-plan skill in this session:
+  Put on the Planner hat. Read the procedure for this turn:
   
   Read /test-commands/next-prepare-plan.md and follow it exactly as the active instruction set for this session.
   
@@ -221,14 +195,14 @@
   my-slug
   
   The wider prepare lifecycle is still yours. This is one focused phase. The
-  skill is loaded inline; no new session is dispatched.
+  procedure is loaded inline; no new session is dispatched.
   
   EXPECTED DELIVERABLE: an `implementation-plan` artifact or split decision
   
   WHEN THE PHASE'S WORK IS COMPLETE:
   Call `telec todo prepare my-slug` to advance the state machine. The state
   machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
+  approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
   '''
 # ---
 # name: test_plan_review_dispatches_to_plan_review
@@ -325,31 +299,6 @@
   approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
   '''
 # ---
-# name: test_prd_drafting_loads_intake_skill
-  '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  SLUG: my-slug
-  
-  NEXT ACTION:
-  Put on the BA hat. Load the /next-prepare-intake skill in this session:
-  
-  Read /test-commands/next-prepare-intake.md and follow it exactly as the active instruction set for this session.
-  
-  Treat the following as provided inputs to that instruction set:
-  my-slug
-  
-  The wider prepare lifecycle is still yours. This is one focused phase. The
-  skill is loaded inline; no new session is dispatched.
-  
-  EXPECTED DELIVERABLE: a `prd` artifact or an explicit blocker
-  
-  WHEN THE PHASE'S WORK IS COMPLETE:
-  Call `telec todo prepare my-slug` to advance the state machine. The state
-  machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
-  '''
-# ---
 # name: test_prd_human_approval_emits_stamp_instruction
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -368,116 +317,5 @@
      telec todo stamp my-slug --prd-approved
   
   4. Call `telec todo prepare my-slug` to advance the lifecycle.
-  '''
-# ---
-# name: test_test_specs_drafting_loads_specs_procedure
-  '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  SLUG: my-slug
-  
-  NEXT ACTION:
-  Put on the Test Spec Author hat. Read the procedure for this turn:
-  
-  Read /test-commands/next-prepare-specs.md and follow it exactly as the active instruction set for this session.
-  
-  Treat the following as provided inputs to that instruction set:
-  my-slug
-  
-  The wider prepare lifecycle is still yours. This is one focused phase. The
-  procedure is loaded inline; no new session is dispatched.
-  
-  EXPECTED DELIVERABLE: a `test-specs` Gherkin artifact or a `test_specs_skipped` stamp recommendation
-  
-  WHEN THE PHASE'S WORK IS COMPLETE:
-  Call `telec todo prepare my-slug` to advance the state machine. The state
-  machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's procedure, or terminate at PREPARED / BLOCKED.
-  '''
-# ---
-# name: test_test_specs_drafting_loads_specs_skill
-  '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  SLUG: my-slug
-  
-  NEXT ACTION:
-  Put on the Test Spec Author hat. Load the /next-prepare-specs skill in this session:
-  
-  Read /test-commands/next-prepare-specs.md and follow it exactly as the active instruction set for this session.
-  
-  Treat the following as provided inputs to that instruction set:
-  my-slug
-  
-  The wider prepare lifecycle is still yours. This is one focused phase. The
-  skill is loaded inline; no new session is dispatched.
-  
-  EXPECTED DELIVERABLE: a `test-specs` Gherkin artifact or a `test_specs_skipped` stamp recommendation
-  
-  WHEN THE PHASE'S WORK IS COMPLETE:
-  Call `telec todo prepare my-slug` to advance the state machine. The state
-  machine will route the next action — dispatch a reviewer, pause for human
-  approval, load the next phase's skill, or terminate at PREPARED / BLOCKED.
-  '''
-# ---
-# name: test_test_specs_review_dispatches_to_reviewer
-  '''
-  IMPORTANT: This output is an execution script. Follow it verbatim.
-  
-  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
-  
-  Execute these steps in order (FOLLOW TO THE LETTER!):
-  
-  STEP 1 - DISPATCH:
-  guidance
-  
-  Based on the above guidance and the work item details, select the best agent and thinking mode.
-  
-  Dispatch metadata: command="/next-review-specs" args="my-slug" project="/repo" subfolder=""
-  
-  telec sessions run --command "/next-review-specs" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
-  Save the returned session_id.
-  
-  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
-  Bash(command="sleep 300", run_in_background=true)
-  Save the returned task_id.
-  Save the current time as <marker_timestamp> for the tailing discipline.
-  The timer runs in the background; notifications and timer completion arrive in your conversation.
-  
-  STEP 3 - WAIT:
-  Tell the user: "Dispatched session <session_id>. Waiting for completion."
-  Act on the next event that fires in your conversation — notification or timer completion.
-  
-  TAILING DISCIPLINE:
-  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
-  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
-  Each telec sessions tail response includes `last_input_at`, `last_activity`,
-  `last_agent_stop_at`, and computed `agent_status`.
-  
-  Status semantics:
-  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
-  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
-  - `unknown`: no `last_activity` has been recorded yet.
-  
-  HEARTBEAT RULE:
-  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
-  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
-  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
-  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
-  - If `agent_status` is `unknown`: wait for the next event.
-  
-  FEEDBACK MESSAGES:
-  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
-  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
-  
-  WHEN WORKER COMPLETES:
-  The worker produces a test-spec review verdict and findings when needed.
-  1. Tail the worker's final output to verify it succeeded.
-  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
-  
-  ORCHESTRATION PRINCIPLE:
-  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
-  
-  NOTE: Required reading for this worker: agents/commands/next-review-specs.md
   '''
 # ---

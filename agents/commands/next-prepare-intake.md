@@ -21,8 +21,11 @@ You are now the Business Analyst for prepare intake.
 
 ## Purpose
 
-Interview the Product Owner role, produce the `prd` artifact, and record any
-phase skip stamps justified by the work's size.
+Interview the Product Owner role, produce the `prd` artifact, author the
+Gherkin acceptance scenarios into the feature spec snippet for Category A
+(user-visible product capability) work or note the domain-spec touchpoints
+for Category B/C work, and record any phase skip stamps justified by the
+work's size.
 
 ## Inputs
 
@@ -37,9 +40,14 @@ phase skip stamps justified by the work's size.
 ## Outputs
 
 - `prd` via `telec todo artifacts write {slug} prd <content>`
-- Optional skip stamps:
+- For Category A work only: feature spec snippet at
+  `docs/project/spec/feature/<context>/<concept-name>.md` containing the
+  business value framing + Gherkin acceptance scenarios (frontmatter
+  `status: target`, `delivered_by` includes this slug)
+- For Category B/C work: domain-spec / CLI-surface / design-doc touchpoints
+  named in the PRD's "Docs to author or update" section — no feature spec
+- Optional skip stamp:
   - `telec todo stamp {slug} --architecture-skipped <reason>`
-  - `telec todo stamp {slug} --test-specs-skipped <reason>`
 - In human-in-loop mode only, `telec todo stamp {slug} --prd-approved` after real human approval
 
 ## Steps

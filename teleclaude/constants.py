@@ -91,6 +91,11 @@ ARTIFACT_INPUT = "input"
 ARTIFACT_PRD = "prd"
 ARTIFACT_REQUIREMENTS = "requirements"
 ARTIFACT_ARCHITECTURE = "architecture"
+# DEPRECATED: the test-specs prepare phase was removed (doc-first model: Gherkin
+# lives in the feature spec authored at intake). No writer exists. Kept only so
+# CLI validation accepts the artifact name on older todos that still carry it,
+# so they can be read and removed during cleanup. Drop this constant and its
+# `ARTIFACT_NAMES` entry once no in-flight todos carry the artifact.
 ARTIFACT_TEST_SPECS = "test-specs"
 ARTIFACT_IMPLEMENTATION_PLAN = "implementation-plan"
 ARTIFACT_BUG = "bug"
@@ -104,6 +109,8 @@ ARTIFACT_DEFERRALS = "deferrals"
 # todos carry the artifact.
 ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS = "requirements-review-findings"
 ARTIFACT_ARCHITECTURE_REVIEW_FINDINGS = "architecture-review-findings"
+# DEPRECATED with the test-specs phase removal; retained for CLI read/remove of
+# older todos only. Drop once no in-flight todos carry it.
 ARTIFACT_SPEC_REVIEW_FINDINGS = "spec-review-findings"
 ARTIFACT_PLAN_REVIEW_FINDINGS = "plan-review-findings"
 ARTIFACT_REVIEW_FINDINGS = "review-findings"
@@ -170,7 +177,6 @@ class SlashCommand(str, Enum):
     NEXT_FINALIZE = "next-finalize"
     NEXT_PREPARE_INTAKE = "next-prepare-intake"
     NEXT_PREPARE_ARCHITECTURE = "next-prepare-architecture"
-    NEXT_PREPARE_SPECS = "next-prepare-specs"
     NEXT_PREPARE_PLAN = "next-prepare-plan"
     NEXT_EMULATE_PO = "next-emulate-po"
     NEXT_DRIFT_ANALYZE = "next-drift-analyze"
@@ -179,7 +185,6 @@ class SlashCommand(str, Enum):
     NEXT_WORK = "next-work"
     NEXT_INTEGRATE = "next-integrate"
     NEXT_BUILD_SPECS = "next-build-specs"
-    NEXT_REVIEW_SPECS = "next-review-specs"
     NEXT_CREATE_ART = "next-create-art"
     NEXT_CREATE_HTML = "next-create-html"
 
@@ -194,7 +199,6 @@ class JobRole(str, Enum):
     INTAKER = "intaker"
     PLANNER = "planner"
     ARCHITECT = "architect"
-    SPEC_AUTHOR = "spec-author"
     ARCHITECTURE_REVIEWER = "architecture-reviewer"
     DRIFT_ANALYZER = "drift-analyzer"
     PO_EMULATOR = "po-emulator"
@@ -202,7 +206,6 @@ class JobRole(str, Enum):
     WORK_ORCHESTRATOR = "work-orchestrator"
     CREATE_ORCHESTRATOR = "create-orchestrator"
     SPEC_BUILDER = "spec-builder"
-    SPEC_REVIEWER = "spec-reviewer"
     ARTIST = "artist"
     FRONTENDER = "frontender"
     INTEGRATOR = "integrator"

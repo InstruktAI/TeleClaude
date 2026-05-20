@@ -46,20 +46,21 @@ This is the same shape as TDD, schema-first API design, and ADRs. The discipline
 Every snippet declares its status. The defaults are conservative:
 
 ```yaml
-status: actual          # default for existing snippets and new code-grounded snippets
+status: actual # default for existing snippets and new code-grounded snippets
 ```
 
 ```yaml
-status: target          # for forward design
-delivered_by: [slug-a, slug-b]   # required when status is target or mixed
+status: target # for forward design
+delivered_by: [slug-a, slug-b] # required when status is target or mixed
 ```
 
 ```yaml
-status: mixed           # body describes some current state and some intended state
+status: mixed # body describes some current state and some intended state
 delivered_by: [slug-a]
 ```
 
 Validation rules:
+
 - `status: target` and `status: mixed` REQUIRE a non-empty `delivered_by` list.
 - `status: actual` FORBIDS `delivered_by` (no orphan delivery references on snippets that already reflect reality).
 - `delivered_by` references must be valid todo slugs (validated by `telec sync`).
@@ -122,11 +123,11 @@ Feature specs exist for **user-visible product capabilities**. They are NOT
 the default output of every prepared todo. Three categories of work flow
 through prepare; only ONE produces a feature spec:
 
-| Category | What it is | Durable doc home | Feature spec? |
-|---|---|---|---|
-| **A. Product capability** | User-visible business behavior. CRM dedup, pipeline stages, image generation, a new search. | `docs/project/spec/feature/<context>/<concept-name>.md` | **YES** |
-| **B. Contract / surface refinement** | Agent-facing or operator-facing surface change. New CLI verbs, new service methods, new events, renamed verbs, refined invariants. | Existing domain spec + CLI-surface spec + architecture docs | **NO** |
-| **C. Implementation-only** | Refactor, migration, tooling, infrastructure with no contract change. | None — workflow.artifacts only | **NO** |
+| Category                             | What it is                                                                                                                         | Durable doc home                                            | Feature spec? |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- |
+| **A. Product capability**            | User-visible business behavior. CRM dedup, pipeline stages, image generation, a new search.                                        | `docs/project/spec/feature/<context>/<concept-name>.md`     | **YES**       |
+| **B. Contract / surface refinement** | Agent-facing or operator-facing surface change. New CLI verbs, new service methods, new events, renamed verbs, refined invariants. | Existing domain spec + CLI-surface spec + architecture docs | **NO**        |
+| **C. Implementation-only**           | Refactor, migration, tooling, infrastructure with no contract change.                                                              | None — workflow.artifacts only                              | **NO**        |
 
 A Category B or C todo that produces a feature spec is a defect. The
 namespace becomes polluted with slug-named non-features, the
@@ -161,17 +162,18 @@ naturally. Default to skip when classification is uncertain.
 
 **`delivered_by` is many-to-many.** A single delivery may shape multiple snippets; a single snippet may be shaped over time by multiple deliveries. The `delivered_by` list accumulates slugs while in flight; each slug clears as it delivers. The snippet flips to `actual` only when the list empties.
 
-**Architecture is NOT a separate workflow.artifact.** Design decisions that survive delivery land in docs across two locations:
+**The architecture design lives in doc snippets; the `architecture` workflow.artifact is only a thin index/log.** Design decisions that survive delivery land in docs across two locations:
+
 - **Per-context architectural changes** (new aggregates, new events, refined invariants, internal model adjustments) → the affected domain spec snippet at `docs/project/spec/domain/<context>.md`
 - **Cross-cutting architectural changes** (new bounded context, communication patterns, transport rules, context-map shifts, deployment shape) → the architecture design docs at `docs/project/design/architecture-v2/*.md`
 
-Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. There is no `architecture` workflow.artifact and no `architecture` snippet kind; the doc updates ARE the architecture record. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces.
+The doc-snippet updates ARE the design record — they are authoritative. The `architecture` workflow.artifact persists, but only as a thin per-todo audit log: which snippets the architecture phase touched, why, and the `delivered_by` slug set on them. It carries no design body and is never the source of truth. There is no `architecture` snippet kind. Decisions that don't survive (implementation tactic choices, library selection, internal sequencing) stay ephemeral in workflow.artifacts. The architecture phase routes per change: internal-to-context → domain spec; cross-cutting → design doc; or both when a change has both faces — and logs the routing in the thin artifact.
 
 **PRDs do not survive as snippets.** The PRD captures work-guidance for one delivery (MoSCoW, Why, risks). It is scaffolding. It stays a workflow.artifact and retires after delivery. Only the behavioral contract (Gherkin in feature spec) and the design (updates in domain specs) become docs.
 
 ### 9. Prepare workers author directly to the docs layer
 
-The intake and architecture phases of the prepare lifecycle write DIRECTLY to docs — feature spec snippets (intake), domain spec snippets and architecture design docs (architecture). No intermediate workflow.artifacts that later "migrate." The doc IS the source.
+The intake and architecture phases of the prepare lifecycle write DIRECTLY to docs — feature spec snippets (intake), domain spec snippets and architecture design docs (architecture). No design-bearing workflow.artifact that later "migrates." The doc IS the source; the architecture phase additionally writes a thin index/log artifact recording which snippets it touched.
 
 **Gherkin lives in the feature spec snippet, authored during intake.** There is no separate `test-specs` phase. The intake worker authors business value + Gherkin acceptance scenarios in the same feature spec snippet, in the same phase. The v1 test-specs phase was artifact-shaped ceremony that the hub-and-spoke model removes.
 
@@ -189,12 +191,12 @@ When a project has a v1 → v2 (or vN → vN+1) migration boundary, snippets car
 
 Combined with `status: actual | target | mixed`, the snippet pair `(applies_to, status)` becomes the migration tracker:
 
-| `applies_to` | `status` | Meaning |
-|---|---|---|
-| `v1` | `actual` | v1 does this; v2 hasn't matched yet |
-| `both` | `actual` | v2 ships parallel-capable; both honor the contract |
-| `v2` | `actual` | Cutover landed; v1 retired this feature |
-| `v2` | `target` | v2 will do this; not yet shipped/cutover |
+| `applies_to` | `status` | Meaning                                            |
+| ------------ | -------- | -------------------------------------------------- |
+| `v1`         | `actual` | v1 does this; v2 hasn't matched yet                |
+| `both`       | `actual` | v2 ships parallel-capable; both honor the contract |
+| `v2`         | `actual` | Cutover landed; v1 retired this feature            |
+| `v2`         | `target` | v2 will do this; not yet shipped/cutover           |
 
 Migration is COMPLETE when zero snippets are `applies_to: v1`. The system becomes measurable, queryable, and never guessing about parity.
 

@@ -16,16 +16,17 @@ You are now the Architect in plan drafting mode.
 
 ## Purpose
 
-Produce `implementation-plan` from the approved PRD, optional approved
-architecture, and optional approved prose test-specs; or split the todo when
-planning proves it is not atomic.
+Produce `implementation-plan` from the approved PRD and the optional approved
+architecture (the thin index/log artifact plus the doc snippets it points
+at); or split the todo when planning proves it is not atomic.
 
 ## Inputs
 
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} prd`
-- `telec todo artifacts read {slug} architecture` when present and not skipped
-- `telec todo artifacts read {slug} test-specs` when present and not skipped
+- `telec todo artifacts read {slug} architecture` when present and not skipped —
+  the thin index/log; read the domain-spec / design-doc snippets it points at
+  for the actual design content
 - `telec todo artifacts read {slug} input` only as a legacy fallback when PRD is absent
 - Existing `plan-review-findings` when present
 

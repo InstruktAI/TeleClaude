@@ -82,40 +82,12 @@ def test_stamp_verdict_approve_records_approved_digest_for_requirements(seeded_d
     assert expected_digest != ""
 
 
-def test_stamp_verdict_approve_records_approved_digest_for_test_specs(seeded_db: TodosDb) -> None:
-    """test_spec_review approve binds approved_digest to current test-specs digest."""
-    db_path = seeded_db._db_path
-    cwd = str(db_path.parent.parent)
-
-    seeded_db.write_artifact_sync("slug-a", "requirements", "# Requirements\n")
-    seeded_db.write_artifact_sync("slug-a", "test-specs", "# Specs v1\n")
-
-    with (
-        patch("teleclaude.core.next_machine.state_io.resolve_state_root", return_value=Path(cwd)),
-        patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
-    ):
-        stamp_artifact(cwd, "slug-a", "requirements")
-        stamp_artifact(cwd, "slug-a", "test_specs")
-        state = stamp_verdict(cwd, "slug-a", "test_spec_review", "approve")
-
-    artifacts = state.get("artifacts", {})
-    assert isinstance(artifacts, dict)
-    test_specs = artifacts.get("test_specs", {})
-    assert isinstance(test_specs, dict)
-    expected_digest = test_specs.get("digest", "")
-
-    spec_review = state.get("test_spec_review")
-    assert isinstance(spec_review, dict)
-    assert spec_review["approved_digest"] == expected_digest
-
-
 def test_stamp_verdict_approve_records_approved_digest_for_plan(seeded_db: TodosDb) -> None:
     """plan_review approve binds approved_digest to current implementation-plan digest."""
     db_path = seeded_db._db_path
     cwd = str(db_path.parent.parent)
 
     seeded_db.write_artifact_sync("slug-a", "requirements", "# Requirements\n")
-    seeded_db.write_artifact_sync("slug-a", "test-specs", "# Specs\n")
     seeded_db.write_artifact_sync("slug-a", "implementation-plan", "# Plan v1\n")
 
     with (
@@ -123,7 +95,6 @@ def test_stamp_verdict_approve_records_approved_digest_for_plan(seeded_db: Todos
         patch("teleclaude.core.next_machine.state_io.get_todos_db_sync", return_value=seeded_db),
     ):
         stamp_artifact(cwd, "slug-a", "requirements")
-        stamp_artifact(cwd, "slug-a", "test_specs")
         stamp_artifact(cwd, "slug-a", "implementation_plan")
         state = stamp_verdict(cwd, "slug-a", "plan_review", "approve")
 

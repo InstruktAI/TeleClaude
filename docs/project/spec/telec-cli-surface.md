@@ -4,6 +4,11 @@ id: 'project/spec/telec-cli-surface'
 scope: 'project'
 type: 'spec'
 visibility: 'public'
+status: 'mixed'
+delivered_by:
+  - 'telec-todo-rename'
+  - 'roadmap-soft-delete-retention'
+  - 'roadmap-trash-reveal-ui'
 ---
 
 # CLI Surface — Spec
@@ -151,10 +156,32 @@ subcommands:
           --into: 'Space-separated child slugs.'
           --project-root: 'Project root (default: cwd).'
       remove:
+        description: 'Soft-remove a todo: its roadmap row is marked `removed` with a `removed_at` tombstone, `prev_status`, and a `removed_deps` snapshot of its outgoing dependency edges; state, artifacts, and full version history are retained and the todo disappears from all default reads. ALL slug-keyed teardown happens now (while the slug unambiguously names this entry): both directions of its roadmap_deps edges are scrubbed and its worktree, local + remote branch, and workspace dir are removed. After a fixed recovery window a routine sweep hard-purges the row by durable row id (FK-cascaded state/artifacts/versions only — zero slug-keyed operations, so a reused-slug live todo is never touched). A fail-closed reactivation primitive (addressed by roadmap row id) restores a not-yet-purged removed todo (prev_status + replayed removed_deps) until then. (status: target — delivered_by roadmap-soft-delete-retention; authoritative contract: project/spec/domain/workflow.)'
         args:
           - slug: 'string'
         flags:
           --project-root: 'Project root (default: cwd).'
+      rename:
+        description: 'Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. All-or-nothing with rollback if any leg fails; refused if the new slug is held by any non-removed entry, or if in-flight work is bound to the old slug. On success prints a summary naming old→new and the surfaces moved. Receipt-backed async (status: target — delivered_by telec-todo-rename).'
+        args:
+          - old_slug: 'string'
+          - new_slug: 'string'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+      reactivate:
+        description: 'Restore a soft-removed todo addressed by slug. Resolves the slug against the set of removed rows for that slug (UC-WFL-14) and dispatches the row-id-addressed reactivation primitive (UC-WFL-12). Fail-closed: refuses with a typed diagnostic and changes nothing when the slug names no removed row, when multiple removed rows share the slug (ambiguous — the diagnostic lists each candidate''s roadmap row id and removed_at so the operator can disambiguate via the reveal surface), or when a live (active/icebox) entry already holds the slug (live_twin_exists — carries the primitive''s structured reason). On success the entry''s footprint is restored (prev_status, replayed removed_deps, retained state/artifacts/versions become addressable again) and the daemon fires `todo_updated` so cached views refresh. (status: target — delivered_by roadmap-trash-reveal-ui; authoritative contract: project/spec/domain/workflow UC-WFL-12, UC-WFL-15.)'
+        args:
+          - slug: 'string'
+        auth:
+          system: '_SYS_ORCH'
+          human: '_HR_MEMBER'
+        auth_rationale: 'Mirrors `telec todo remove` / `telec roadmap remove` (the inverse operation) and `telec roadmap unfreeze` (the icebox restore — same trust shape: an operator/member restoring a recoverable state on a todo they own). `_SYS_ORCH` allows orchestrator agents to invoke during recovery flows; `_HR_MEMBER` keeps direct human invocation to project members.'
+      show:
+        description: 'Display the full state, artifact list, and version-history summary for a todo by slug. Default behavior is unchanged — a soft-removed slug refuses with a not-found diagnostic (default-hide invariant). With `--include-removed`, the resolver also searches removed rows for that slug and surfaces the show payload (state, artifacts, version history) when exactly one removed row matches; ambiguous-slug and no-removed-row diagnostics use the same structured-reason vocabulary as `telec todo reactivate`. (show is `status: actual` for the default behavior; the `--include-removed` opt-in is `status: target — delivered_by roadmap-trash-reveal-ui`.)'
+        args:
+          - slug: 'string'
+        flags:
+          --include-removed: 'Also resolve the slug against the set of soft-removed rows; surfaces the show payload for a uniquely-matching removed row, or a typed ambiguity/no-match diagnostic — never returns a live row through this flag. (status: target — delivered_by roadmap-trash-reveal-ui.)'
       artifacts:
         description: 'Manage todo artifacts in todos.db.'
         subcommands:
@@ -207,6 +234,19 @@ subcommands:
   roadmap:
     description: 'View and manage the work item roadmap.'
     subcommands:
+      list:
+        description: 'List roadmap entries grouped into sections (active, optionally delivered, optionally icebox, optionally removed). Default output shows only active entries; each visibility section opts in via its own flag pair (`--include-*` to interleave, `--*-only` to isolate). Each section''s tree is independent — cross-section edges drop out automatically. Soft-removed entries (status=removed) are hidden by default and only appear under the explicit `--include-removed` / `--removed-only` opt-in (UC-WFL-14); each removed row renders with its durable row id and `removed_at` age so the operator sees how much grace window remains. (status: mixed — the include/only flag family is `actual`; the removed-row visibility opt-in is `target — delivered_by roadmap-trash-reveal-ui`.)'
+        flags:
+          --include-icebox: 'Interleave iceboxed entries alongside active entries.'
+          --icebox-only: 'Show only iceboxed entries.'
+          --include-delivered: 'Interleave the recent delivery history alongside active entries (defaults to a recent window; combine with --since).'
+          --delivered-only: 'Show only delivered entries.'
+          --since: 'Delivered-section window — duration (7d, 72h, 2w) or ISO date. Implies --include-delivered.'
+          --include-removed: 'Interleave soft-removed entries alongside active entries; each removed row renders with `removed_at` age. (status: target — delivered_by roadmap-trash-reveal-ui.)'
+          --removed-only: 'Show only soft-removed entries (no active/icebox/delivered). (status: target — delivered_by roadmap-trash-reveal-ui.)'
+          --json: 'Emit a sectioned JSON object keyed by section name.'
+        notes:
+          - 'The --include-removed / --removed-only reveal is strictly opt-in; the default and every other read surface continue to hide soft-removed entries (workflow domain spec, "Removed entries are invisible to every default read path" invariant).'
       add:
         args:
           - slug: 'string'
@@ -217,6 +257,7 @@ subcommands:
           --description: 'Summary description.'
           --project-root: 'Project root (default: cwd).'
       remove:
+        description: 'Soft-remove the roadmap entry — identical soft-delete + retention + reactivation semantics as `telec todo remove`: marks the row `removed` with `removed_at`/`prev_status`/`removed_deps`, retains state/artifacts/versions, performs all slug-keyed teardown (both-direction roadmap_deps scrub + worktree/branch/workspace) at remove time, hidden from default reads, hard-purged after the retention window by durable row id with FK cascade only (zero slug-keyed operations — a reused-slug live todo is never touched), reactivatable by roadmap row id until then. (status: target — delivered_by roadmap-soft-delete-retention; authoritative contract: project/spec/domain/workflow.)'
         args:
           - slug: 'string'
         flags:

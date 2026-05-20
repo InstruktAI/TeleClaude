@@ -15,13 +15,11 @@ from teleclaude.constants import (
     ARTIFACT_ARCHITECTURE,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
-    ARTIFACT_TEST_SPECS,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_INPUT,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
-    STATE_KEY_TEST_SPECS,
 )
 from teleclaude.core.db import SessionIdentityError, get_session_field_sync, resolve_session_principal
 from teleclaude.core.models import Session
@@ -41,7 +39,7 @@ from teleclaude.types.lifecycle import (
     LifecyclePhase,
     LifecycleStage,
 )
-from teleclaude.types.todos import ApprovalStamp, ReviewVerdictState, TestSpecReviewState, TodoState
+from teleclaude.types.todos import ApprovalStamp, ReviewVerdictState, TodoState
 
 __all__ = [
     "LIFECYCLE_PHASE_ORDER",
@@ -76,7 +74,6 @@ _DRIFT_TRACKED_ARTIFACTS: tuple[tuple[str, str], ...] = (
     (STATE_KEY_PRD, STATE_KEY_PRD),
     (STATE_KEY_REQUIREMENTS, STATE_KEY_REQUIREMENTS),
     (STATE_KEY_ARCHITECTURE, STATE_KEY_ARCHITECTURE),
-    (STATE_KEY_TEST_SPECS, STATE_KEY_TEST_SPECS),
     (STATE_KEY_IMPLEMENTATION_PLAN, STATE_KEY_IMPLEMENTATION_PLAN),
 )
 _BLOCKING_DRIFT_STATUSES: frozenset[ArtifactDriftStatus] = frozenset({DRIFT_PENDING, DRIFT_SUBSTANTIVE})
@@ -259,11 +256,11 @@ def _approval_is_human(stamp: ApprovalStamp) -> bool:
     return _session_principal(stamp.caller_session_id).startswith("human:")
 
 
-def _review_approved(review: ReviewVerdictState | TestSpecReviewState) -> bool:
+def _review_approved(review: ReviewVerdictState) -> bool:
     return review.verdict in ("approve", "skipped")
 
 
-def _clear_prepare_review(review: ReviewVerdictState | TestSpecReviewState) -> None:
+def _clear_prepare_review(review: ReviewVerdictState) -> None:
     review.verdict = ""
     review.reviewed_at = ""
     review.approved_digest = ""
@@ -346,14 +343,6 @@ def _missing_upstream_blockers(model: TodoState) -> list[str]:
     blockers: list[str] = []
     if _artifact_exists(model, STATE_KEY_ARCHITECTURE) and not _intent_artifact_exists(model):
         blockers.append("architecture artifact is present but required upstream prd/requirements intent is missing")
-    if _artifact_exists(model, STATE_KEY_TEST_SPECS) and not _intent_artifact_exists(model):
-        blockers.append("test-specs artifact is present but required upstream prd/requirements intent is missing")
-    if (
-        _artifact_exists(model, STATE_KEY_TEST_SPECS)
-        and model.approvals.architecture_skipped is None
-        and not _artifact_exists(model, STATE_KEY_ARCHITECTURE)
-    ):
-        blockers.append("test-specs artifact is present but required upstream architecture is missing")
     if (
         model.kind in _FEATURE_KINDS
         and _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
@@ -369,7 +358,6 @@ def _review_remediation_blockers(model: TodoState) -> list[str]:
     blockers: list[str] = []
     review_pairs = (
         (STATE_KEY_ARCHITECTURE, model.architecture_review),
-        (STATE_KEY_TEST_SPECS, model.test_spec_review),
         (STATE_KEY_IMPLEMENTATION_PLAN, model.plan_review),
     )
     for artifact_key, review in review_pairs:
@@ -413,7 +401,6 @@ def _feature_phase(
             _artifact_present(model, STATE_KEY_INPUT, artifact_presence=artifact_presence),
             _intent_artifact_present(model, artifact_presence=artifact_presence),
             _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence),
-            _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence),
             _artifact_present(model, STATE_KEY_IMPLEMENTATION_PLAN, artifact_presence=artifact_presence),
         ]
     ):
@@ -429,25 +416,13 @@ def _feature_phase(
         return LifecyclePhase.PRD_HUMAN_APPROVAL
 
     architecture_skipped = model.approvals.architecture_skipped is not None
-    test_specs_skipped = model.approvals.test_specs_skipped is not None
 
-    if architecture_skipped and test_specs_skipped:
-        return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
-    if architecture_skipped:
-        if not _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence):
-            return LifecyclePhase.TEST_SPECS_DRAFTING
-    else:
+    if not architecture_skipped:
         if not _artifact_present(model, STATE_KEY_ARCHITECTURE, artifact_presence=artifact_presence):
             return LifecyclePhase.ARCHITECTURE_DRAFTING
         if not _review_approved(model.architecture_review):
             return LifecyclePhase.ARCHITECTURE_REVIEW
-        if test_specs_skipped:
-            return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
-        if not _artifact_present(model, STATE_KEY_TEST_SPECS, artifact_presence=artifact_presence):
-            return LifecyclePhase.TEST_SPECS_DRAFTING
 
-    if not _review_approved(model.test_spec_review):
-        return LifecyclePhase.TEST_SPECS_REVIEW
     return _plan_only_phase(model, artifact_presence=artifact_presence, repo_root=repo_root)
 
 
@@ -518,14 +493,11 @@ def apply_authoritative_signal(
         "requirements_ready",
         "prd_ready",
         "architecture_ready",
-        "specs_built",
         "plan_ready",
         "prd_approved",
         "architecture_approved",
-        "test_specs_approved",
         "plan_approved",
         "architecture_skipped",
-        "test_specs_skipped",
     }:
         return _move_to(model, adopt_prepare_handoff_phase(model))
 
@@ -585,10 +557,6 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
         return _artifact_exists(model, STATE_KEY_ARCHITECTURE) or model.approvals.architecture_skipped is not None
     if phase == LifecyclePhase.ARCHITECTURE_REVIEW:
         return _review_approved(model.architecture_review)
-    if phase == LifecyclePhase.TEST_SPECS_DRAFTING:
-        return _artifact_exists(model, STATE_KEY_TEST_SPECS) or model.approvals.test_specs_skipped is not None
-    if phase == LifecyclePhase.TEST_SPECS_REVIEW:
-        return _review_approved(model.test_spec_review)
     if phase == LifecyclePhase.PLAN_DRAFTING:
         return _artifact_exists(model, STATE_KEY_IMPLEMENTATION_PLAN)
     if phase == LifecyclePhase.PLAN_REVIEW:
@@ -614,30 +582,18 @@ def invalidate_downstream_on_refine(model: TodoState, refined_artifact: str) -> 
     if refined_artifact == ARTIFACT_PRD:
         approvals.prd_approved = ApprovalStamp()
         approvals.architecture_approved = ApprovalStamp()
-        approvals.test_specs_approved = ApprovalStamp()
         approvals.plan_approved = ApprovalStamp()
         approvals.architecture_skipped = None
-        approvals.test_specs_skipped = None
         _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_PRD, ARTIFACT_ARCHITECTURE, ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
+        for key in (ARTIFACT_PRD, ARTIFACT_ARCHITECTURE, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
     elif refined_artifact == ARTIFACT_ARCHITECTURE:
         approvals.architecture_approved = ApprovalStamp()
-        approvals.test_specs_approved = ApprovalStamp()
         approvals.plan_approved = ApprovalStamp()
         _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_ARCHITECTURE, ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
-            approvals.drift_reviewed.pop(key, None)
-    elif refined_artifact == ARTIFACT_TEST_SPECS:
-        approvals.test_specs_approved = ApprovalStamp()
-        approvals.plan_approved = ApprovalStamp()
-        _clear_prepare_review(model.test_spec_review)
-        _clear_prepare_review(model.plan_review)
-        for key in (ARTIFACT_TEST_SPECS, ARTIFACT_IMPLEMENTATION_PLAN):
+        for key in (ARTIFACT_ARCHITECTURE, ARTIFACT_IMPLEMENTATION_PLAN):
             approvals.drift_reviewed.pop(key, None)
     elif refined_artifact == ARTIFACT_IMPLEMENTATION_PLAN:
         approvals.plan_approved = ApprovalStamp()
@@ -651,14 +607,11 @@ def _clear_prepare_target(model: TodoState, target: LifecyclePhase) -> None:
     if target == LifecyclePhase.DRAFT:
         model.approvals = type(model.approvals)()
         _clear_prepare_review(model.architecture_review)
-        _clear_prepare_review(model.test_spec_review)
         _clear_prepare_review(model.plan_review)
     elif target == LifecyclePhase.PRD_DRAFTING:
         invalidate_downstream_on_refine(model, ARTIFACT_PRD)
     elif target in (LifecyclePhase.ARCHITECTURE_DRAFTING, LifecyclePhase.ARCHITECTURE_REVIEW):
         invalidate_downstream_on_refine(model, ARTIFACT_ARCHITECTURE)
-    elif target in (LifecyclePhase.TEST_SPECS_DRAFTING, LifecyclePhase.TEST_SPECS_REVIEW):
-        invalidate_downstream_on_refine(model, ARTIFACT_TEST_SPECS)
     elif target in (LifecyclePhase.PLAN_DRAFTING, LifecyclePhase.PLAN_REVIEW):
         invalidate_downstream_on_refine(model, ARTIFACT_IMPLEMENTATION_PLAN)
 

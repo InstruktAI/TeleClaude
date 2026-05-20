@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
-description: 'Phase A state machine driving a Todo from draft input through PRD → architecture → test specs → plan to prepared, returning the next orchestrator instruction on each call.'
+description: 'Phase A state machine driving a Todo from draft input through PRD → architecture → plan to prepared, returning the next orchestrator instruction on each call.'
 ---
 
 # Prepare State Machine — Spec
@@ -19,7 +19,7 @@ description: 'Phase A state machine driving a Todo from draft input through PRD 
 
 ## What it is
 
-The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, optionally `test_specs_drafting` / `test_specs_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
+The prepare state machine is the workflow capability that drives a Todo through its preparation Phases — from the initial `draft` Phase, through `prd_drafting`, `prd_human_approval`, optionally `architecture_drafting` / `architecture_review`, then `plan_drafting` / `plan_review`, and finally `prepared`. Each call by the orchestrator advances exactly one logical step: it reads the persisted Todo state, derives the current Phase from artifact presence and review verdicts, and returns a verbatim instruction telling the orchestrator what to do next — load a drafting procedure inline, dispatch a reviewer worker, request a human approval Stamp, or recognize that the Todo is now `prepared`.
 
 Preparation is local-first and runs on the project's `main` branch with no worktree, which is what authorizes it to write artifacts and snippets to the canonical doc layer. The machine itself owns no UI or worker code; it owns the invariants on transitions and the resolution of which next instruction matches the current evidence. When the Todo is a split holder, prepare refuses to operate on the holder directly and routes the operator to the runnable direct children instead. When artifacts have drifted against `main` between their authoring and now, the machine surfaces drift as a blocker and routes to a drift-analyzer worker before the Todo may reach `prepared`. A loop guard bounds in-call internal transitions so a misconfigured state always surfaces an explicit error rather than spinning silently.
 
@@ -44,9 +44,10 @@ And refuses to advance until that approval Stamp is recorded
 ```
 
 ```
-Given a Todo with prd_approved and at lifecycle_phase=architecture_review
+Given a Todo with prd_approved whose architecture_drafting authored design directly into the affected domain-spec / architecture-v2 snippets plus a thin architecture index Artifact
 When the orchestrator calls `telec todo prepare my-feature`
-Then the machine dispatches the next-review-architecture worker via a verbatim tool-call instruction
+Then the machine derives lifecycle_phase=architecture_review
+And dispatches the next-review-architecture worker via a verbatim tool-call instruction
 And the orchestrator is told to call `telec todo prepare my-feature` again when the reviewer idles
 And the architecture-review verdict (approve | needs_work | needs_decision) drives the next derivation
 ```
@@ -55,8 +56,7 @@ And the architecture-review verdict (approve | needs_work | needs_decision) driv
 Given a Todo whose architecture is intentionally not needed for this work
 When the orchestrator stamps `telec todo stamp my-feature --architecture-skipped "<reason>"`
 Then on the next prepare call the machine treats architecture as resolved without an Artifact
-And advances past architecture phases on the next derivation
-And the same shape applies to `--test-specs-skipped` for the test-specs phases
+And advances past the architecture phases straight to plan_drafting on the next derivation
 ```
 
 ```
@@ -69,7 +69,7 @@ And if every direct child is already prepared or delivered, the instruction expl
 
 ```
 Given a Todo at lifecycle_phase=plan_review with an approved plan
-And the architecture or test-specs Artifact's recorded codebase_sha_at_write no longer matches origin/main
+And the prd or architecture Artifact's recorded codebase_sha_at_write no longer matches origin/main
 When the orchestrator calls `telec todo prepare my-feature`
 Then the machine derives a blocking drift status for the affected artifact
 And dispatches the next-drift-analyze worker
@@ -99,7 +99,7 @@ And the instruction tells the operator to inspect via `telec todo show my-featur
 
 ### Cross-context references
 
-- `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, test-specs-review, plan-review) and the drift-analyzer dispatch a worker session via the `agent_runtime.session.spawn` shape.
+- `agent_runtime` — drafting Phases load procedures into the orchestrator session inline; reviewer Phases (architecture-review, plan-review) and the drift-analyzer dispatch a worker session via the `agent_runtime.session.spawn` shape.
 - `integration` — when an Artifact's `codebase_sha_at_write` falls behind `origin/main` after integrations land there, the drift derivation flips its status to pending and the machine refuses to advance to `prepared`.
 - `session_ledger` — the resolved session principal for each Stamp is recorded so the PRD-approval gate can refuse approvals authored by a non-human principal.
 - `identity` — the `--prd-approved` Stamp requires the caller's principal to resolve to a real human; orchestrator-emulated PO sessions cannot satisfy this gate.
@@ -110,7 +110,7 @@ And the instruction tells the operator to inspect via `telec todo show my-featur
 - Prepare runs on `main` with no worktree. The machine itself does not branch; the work-state machine is the first stage that materializes a per-slug worktree.
 - A holder Todo cannot itself enter prepare. The orchestrator is always routed to its direct, runnable children — even when the holder is the explicit slug argument.
 - `prepped` kind Todos skip the prepare lifecycle entirely; they are expected to land in `work` with an `implementation-plan` Artifact already present.
-- The PRD gate is the only mandatory human approval. Architecture, test-specs, and plan advance on the reviewer Worker's verdict; `--architecture-skipped` and `--test-specs-skipped` exist precisely so that not every Todo has to pay those phases.
+- The PRD gate is the only mandatory human approval. Architecture and plan advance on the reviewer Worker's verdict; `--architecture-skipped` exists precisely so that not every Todo has to pay the architecture phase. There is no separate test-specs phase — Gherkin acceptance scenarios are authored into the feature spec snippet during intake.
 - A PRD authored in standin / emulated-PO mode cannot be Stamped `prd_approved`. The gate requires a real-human principal regardless of how plausible the emulated approval looks.
 - The drift check is a real gate, not advisory. An Artifact whose `codebase_sha_at_write` lags `main` by substantive changes blocks `prepared` until every affected Artifact has been Stamped `drift-reviewed` after analysis.
 - The `_PREPARE_LOOP_LIMIT` of 20 internal iterations is a contradiction detector, not a workload knob. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.

@@ -20,8 +20,8 @@ _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
     "triangulation": LifecyclePhase.PRD_DRAFTING.value,
     "requirements_review": LifecyclePhase.PRD_DRAFTING.value,
     "requirements_human_approval": LifecyclePhase.PRD_DRAFTING.value,
-    "test_spec_build": LifecyclePhase.TEST_SPECS_DRAFTING.value,
-    "test_spec_review": LifecyclePhase.TEST_SPECS_DRAFTING.value,
+    "test_spec_build": LifecyclePhase.ARCHITECTURE_REVIEW.value,
+    "test_spec_review": LifecyclePhase.ARCHITECTURE_REVIEW.value,
     "plan_drafting": LifecyclePhase.PLAN_DRAFTING.value,
     "plan_review": LifecyclePhase.PLAN_DRAFTING.value,
     "gate": LifecyclePhase.PREPARED.value,
@@ -45,8 +45,8 @@ _V2_TO_V3_PHASE: dict[str, str] = {
     "triangulation": LifecyclePhase.DRAFT.value,
     "requirements_review": LifecyclePhase.PRD_DRAFTING.value,
     "requirements_human_approval": LifecyclePhase.PRD_DRAFTING.value,
-    "test_spec_build": LifecyclePhase.TEST_SPECS_DRAFTING.value,
-    "test_spec_review": LifecyclePhase.TEST_SPECS_DRAFTING.value,
+    "test_spec_build": LifecyclePhase.ARCHITECTURE_REVIEW.value,
+    "test_spec_review": LifecyclePhase.ARCHITECTURE_REVIEW.value,
     "plan_drafting": LifecyclePhase.PLAN_DRAFTING.value,
     "plan_review": LifecyclePhase.PLAN_DRAFTING.value,
     "gate": LifecyclePhase.PREPARED.value,
@@ -128,12 +128,8 @@ def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
         return "gate"
     if _artifact_produced(raw, "implementation_plan"):
         return LifecyclePhase.PLAN_REVIEW.value
-    if _review_verdict(raw, "test_spec_review") in {"approve", "skipped"}:
-        return LifecyclePhase.PLAN_DRAFTING.value
-    if _artifact_produced(raw, "test_specs"):
-        return "test_spec_review"
     if _review_verdict(raw, "requirements_review") in {"approve", "skipped"}:
-        return "test_spec_build"
+        return LifecyclePhase.PLAN_DRAFTING.value
     if _artifact_produced(raw, "requirements"):
         return "requirements_review"
     if phase == "in_progress":

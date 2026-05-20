@@ -25,7 +25,7 @@ Drive the prepare state machine by calling `telec todo prepare` in a loop, actin
 
 ## Outputs
 
-- Reviewed and approved `prd`, optional `architecture`, optional prose `test-specs`, and `implementation-plan`
+- Human-approved `prd`, optional `architecture` (thin doc-edit log + the snippet updates it indexes), and reviewer-approved `implementation-plan`
 - Approval and skip stamps recorded via `telec todo stamp`
 - State machine-driven session cleanup on the PREPARED terminal
 

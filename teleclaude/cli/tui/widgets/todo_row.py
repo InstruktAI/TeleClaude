@@ -44,8 +44,6 @@ _LIFECYCLE_PHASE_LABELS: dict[LifecyclePhase, str] = {
     LifecyclePhase.PRD_HUMAN_APPROVAL: "prd approval",
     LifecyclePhase.ARCHITECTURE_DRAFTING: "arch drafting",
     LifecyclePhase.ARCHITECTURE_REVIEW: "arch review",
-    LifecyclePhase.TEST_SPECS_DRAFTING: "specs drafting",
-    LifecyclePhase.TEST_SPECS_REVIEW: "specs review",
     LifecyclePhase.PLAN_DRAFTING: "plan drafting",
     LifecyclePhase.PLAN_REVIEW: "plan review",
     LifecyclePhase.PREPARED: "prepared",

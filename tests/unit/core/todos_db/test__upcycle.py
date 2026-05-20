@@ -38,8 +38,8 @@ def test_upcycle_v2_requirements_review_maps_to_prd_drafting() -> None:
     assert _upcycle_v2_phase("requirements_review")["lifecycle_phase"] == "prd_drafting"
 
 
-def test_upcycle_v2_test_spec_review_maps_to_test_specs_drafting() -> None:
-    assert _upcycle_v2_phase("test_spec_review")["lifecycle_phase"] == "test_specs_drafting"
+def test_upcycle_v2_test_spec_review_maps_to_architecture_review() -> None:
+    assert _upcycle_v2_phase("test_spec_review")["lifecycle_phase"] == "architecture_review"
 
 
 def test_upcycle_v2_plan_review_maps_to_plan_drafting() -> None:

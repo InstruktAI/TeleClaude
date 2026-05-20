@@ -23,12 +23,10 @@ from teleclaude.constants import (
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
-    ARTIFACT_TEST_SPECS,
     STATE_KEY_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN,
     STATE_KEY_PRD,
     STATE_KEY_REQUIREMENTS,
-    STATE_KEY_TEST_SPECS,
     WORKTREE_DIR,
 )
 from teleclaude.core.db import get_session_field_sync
@@ -63,7 +61,6 @@ _READINESS_ARTIFACT_KEY: dict[str, str] = {
     ARTIFACT_ARCHITECTURE: STATE_KEY_ARCHITECTURE,
     ARTIFACT_REQUIREMENTS: STATE_KEY_REQUIREMENTS,
     ARTIFACT_IMPLEMENTATION_PLAN: STATE_KEY_IMPLEMENTATION_PLAN,
-    ARTIFACT_TEST_SPECS: STATE_KEY_TEST_SPECS,
 }
 
 _CREATIVE_GATE_STAMPS: dict[str, tuple[str, str]] = {
@@ -110,14 +107,10 @@ async def apply_todo_stamp(
         await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_REQUIREMENTS, "requirements_ready")
     elif stamp_type == "plan_ready":
         await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_IMPLEMENTATION_PLAN, "plan_ready")
-    elif stamp_type == "specs_built":
-        await _apply_readiness_stamp(todos_db, writer, slug, ARTIFACT_TEST_SPECS, "specs_built")
     elif stamp_type == "prd_approved":
         await _apply_approval_stamp(todos_db, writer, slug, ARTIFACT_PRD, "prd_approved", caller_session_id)
     elif stamp_type == "architecture_skipped":
         ApprovalsManager(writer).skip("architecture_skipped", reason=value, caller_session_id=caller_session_id or "")
-    elif stamp_type == "test_specs_skipped":
-        ApprovalsManager(writer).skip("test_specs_skipped", reason=value, caller_session_id=caller_session_id or "")
     elif stamp_type == "drift_reviewed":
         _apply_drift_reviewed_stamp(writer, value, caller_session_id=caller_session_id or "")
     elif stamp_type == "build_complete":

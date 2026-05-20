@@ -41,8 +41,8 @@ below) for the hard gate that decides.
   `docs/project/spec/feature/<context>/<concept-name>.md`. Concept-named,
   NEVER slug-named. Contains the business value summary and the Gherkin
   acceptance scenarios. Frontmatter `status: target`,
-  `delivered_by` accumulates this slug. The Gherkin lives here from intake
-  onward; the test-specs phase later VERIFIES it rather than re-authoring.
+  `delivered_by` accumulates this slug. The Gherkin is authored here during
+  intake — there is no separate test-specs phase.
   **Produced ONLY when the work is a user-visible product capability** (see
   classification step). Skipped for contract/CLI-surface refinements,
   implementation-only work, and infrastructure work.
@@ -58,6 +58,7 @@ durable behavioral contract that survives delivery.
 
 Take a human's intent (in-session conversation, an existing dumped input, or
 anything in between) and produce:
+
 1. A **PRD (Product Requirements Document)** workflow.artifact — structured
    work guidance, ready for human approval. Always produced.
 2. **If and only if classification identifies a user-visible product
@@ -133,7 +134,7 @@ Two cases determine who plays the PO role:
   to write the PRD directly without elicitation — if the intent, scope, and
   success criteria are already clear, skip to step 5. If the input is sparse or
   ambiguous, dispatch the PO emulator via `telec sessions run --command
-  /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+/next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
   preferred). The brief must end with the exact instruction:
   `telec sessions send <this_session_id> "<your response>" --direct`.
   The orchestrator substitutes its own session id. Conduct elicitation with the
@@ -152,11 +153,11 @@ categories below. The classification decides where the durable docs land. Get
 this wrong and you pollute the feature-spec namespace with slug-named
 non-features — the exact failure this gate exists to prevent.
 
-| Category | What it looks like | Durable doc home | Feature spec? |
-|---|---|---|---|
-| **A. User-visible product capability** | A business-domain capability the human (end user, operator, customer) experiences directly. CRM contact dedup. Pipeline stages. Email templates. Image generation. A new dashboard. A new kind of search. Anything you would put on a product roadmap and demo to a customer. | `docs/project/spec/feature/<context>/<concept-name>.md` (concept-named) | **YES** — author/enrich. |
-| **B. Domain model / service contract / CLI surface refinement** | An agent-facing or operator-facing surface change. New CLI verbs. New service methods. New events. Renamed verbs. Removed deprecated paths. Refined invariants. Tightened validation. Adjusted defaults. The kind of work whose audience is *agents and operators*, not end users. | Existing `docs/project/spec/domain/<context>.md` (the domain spec) + existing CLI surface spec / `docs/project/design/architecture-v2/*.md` as relevant | **NO**. |
-| **C. Implementation-only / refactor / tooling / infrastructure** | Internal reshape with no contract change. A migration step. A test refactor. A dependency bump. A build-tooling fix. A one-shot data backfill. Work that leaves no durable behavioral contract behind. | None — workflow.artifacts only (PRD, plan, etc.). Existing docs that happen to change get touched in `actual` status as part of the build. | **NO**. |
+| Category                                                         | What it looks like                                                                                                                                                                                                                                                                 | Durable doc home                                                                                                                                        | Feature spec?            |
+| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| **A. User-visible product capability**                           | A business-domain capability the human (end user, operator, customer) experiences directly. CRM contact dedup. Pipeline stages. Email templates. Image generation. A new dashboard. A new kind of search. Anything you would put on a product roadmap and demo to a customer.      | `docs/project/spec/feature/<context>/<concept-name>.md` (concept-named)                                                                                 | **YES** — author/enrich. |
+| **B. Domain model / service contract / CLI surface refinement**  | An agent-facing or operator-facing surface change. New CLI verbs. New service methods. New events. Renamed verbs. Removed deprecated paths. Refined invariants. Tightened validation. Adjusted defaults. The kind of work whose audience is _agents and operators_, not end users. | Existing `docs/project/spec/domain/<context>.md` (the domain spec) + existing CLI surface spec / `docs/project/design/architecture-v2/*.md` as relevant | **NO**.                  |
+| **C. Implementation-only / refactor / tooling / infrastructure** | Internal reshape with no contract change. A migration step. A test refactor. A dependency bump. A build-tooling fix. A one-shot data backfill. Work that leaves no durable behavioral contract behind.                                                                             | None — workflow.artifacts only (PRD, plan, etc.). Existing docs that happen to change get touched in `actual` status as part of the build.              | **NO**.                  |
 
 **Concept-name derivation (Category A only).** The `<concept-name>` in the
 feature-spec path is the durable domain noun for the capability. NOT the todo
@@ -195,17 +196,17 @@ the rule.
 
 The BA fills a structured **PRD template** through elicitation. The template sections are:
 
-| Section | What it captures |
-| --- | --- |
-| **Goal** | What the user wants achieved (JTBD-framed: "the user wants the system to do X for Y under conditions Z"). |
-| **Why** | The underlying need behind the surface ask. Often surfaced by applying 5 Whys when the stated request looks like a proxy. |
-| **Affected actors** | Who is impacted — users, operators, downstream systems, integrating services. |
-| **Scope** | What's in (Must / Should / Could) and what's out (Won't, with brief reasoning). Apply MoSCoW for prioritization. |
-| **Success criteria** | Observable indicators that the work succeeded, written as outcome-shaped prose in the PO's language ("the user can do X within Y", "the system handles N concurrent requests", "operators see Z when W happens"). **Not Gherkin.** Translating these outcomes into `Given / When / Then` behavioral contracts is the test-specs phase's job, not intake's. |
-| **Constraints** | Hard limits — existing patterns, capacity, security boundaries, off-the-shelf preferences, integration points. |
-| **Risks and unknowns** | Failures imagined (light pre-mortem). Things only the user can resolve. |
-| **Brownfield context** | If the work touches existing code, briefly note what's there. Full code-grounded analysis happens in the Architecture phase, not here — the BA only flags brownfield-vs-greenfield and any obvious code intersections the PO knows about. |
-| **Open questions** | Anything the PO couldn't answer that needs further input. |
+| Section                | What it captures                                                                                                                                                                                                                                                                                                                                           |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Goal**               | What the user wants achieved (JTBD-framed: "the user wants the system to do X for Y under conditions Z").                                                                                                                                                                                                                                                  |
+| **Why**                | The underlying need behind the surface ask. Often surfaced by applying 5 Whys when the stated request looks like a proxy.                                                                                                                                                                                                                                  |
+| **Affected actors**    | Who is impacted — users, operators, downstream systems, integrating services.                                                                                                                                                                                                                                                                              |
+| **Scope**              | What's in (Must / Should / Could) and what's out (Won't, with brief reasoning). Apply MoSCoW for prioritization.                                                                                                                                                                                                                                           |
+| **Success criteria**   | Observable indicators that the work succeeded, written as outcome-shaped prose in the PO's language ("the user can do X within Y", "the system handles N concurrent requests", "operators see Z when W happens"). **Not Gherkin.** The PRD carries outcome-prose; the `Given / When / Then` behavioral contract for Category A work is authored separately into the feature spec snippet (see Output targets above), not into the PRD. |
+| **Constraints**        | Hard limits — existing patterns, capacity, security boundaries, off-the-shelf preferences, integration points.                                                                                                                                                                                                                                             |
+| **Risks and unknowns** | Failures imagined (light pre-mortem). Things only the user can resolve.                                                                                                                                                                                                                                                                                    |
+| **Brownfield context** | If the work touches existing code, briefly note what's there. Full code-grounded analysis happens in the Architecture phase, not here — the BA only flags brownfield-vs-greenfield and any obvious code intersections the PO knows about.                                                                                                                  |
+| **Open questions**     | Anything the PO couldn't answer that needs further input.                                                                                                                                                                                                                                                                                                  |
 
 **Elicitation toolkit** (the BA applies what fits each section; see `intake-frameworks` for the full menu):
 
@@ -215,7 +216,7 @@ The BA fills a structured **PRD template** through elicitation. The template sec
 - **Pre-mortem** — light application when filling Risks.
 - **Socratic questioning** — throughout, for clarity probes ("what does X mean to you here?").
 
-Gherkin (`Given / When / Then`) is **not** an intake tool. It belongs to the test-specs phase, which derives behavioral contracts from these outcome-shaped success criteria.
+Gherkin (`Given / When / Then`) does **not** belong in the PRD — the PRD's success criteria stay outcome-shaped prose. For Category A work, intake authors the Gherkin behavioral contract directly into the feature spec snippet (derived from these outcome-shaped success criteria); for Category B/C work there is no Gherkin artifact.
 
 Impact Mapping and Volere shell are available in the toolkit but **not default** — apply them only when the work item's scale justifies them (large/architectural work for Impact Mapping; compliance-heavy work for Volere).
 
@@ -225,7 +226,7 @@ Once the BA recognizes a domain, it proactively surfaces the standard features f
 
 The PO answers per feature. Decisions land in the Scope section under Must / Should / Could / Won't. What the PO didn't think to ask for but should consider gets surfaced — not silently included, not silently dropped, but offered for explicit decision. This is the discipline that prevents "the human asked for a CRM and didn't mention dedup, so we shipped a CRM with no dedup."
 
-**What the PRD does NOT contain.** The PRD is a product contract, not an implementation outline. Surface standard domain features for explicit inclusion or exclusion, keep code-grounded claims light, and leave deep technical grounding to the architecture phase. The architecture, test specs, and implementation plan derive from the approved PRD — they do not need to live inside it.
+**What the PRD does NOT contain.** The PRD is a product contract, not an implementation outline. Surface standard domain features for explicit inclusion or exclusion, keep code-grounded claims light, and leave deep technical grounding to the architecture phase. The architecture and implementation plan derive from the approved PRD — they do not need to live inside it.
 
 ### 3. Steward, don't quiz
 
@@ -241,8 +242,8 @@ Calibration applies: for a novice PO, frame in goals and outcomes; for an expert
 
 As the conversation progresses, the BA senses the size and nature of the work and makes routing decisions:
 
-- **Small work** (single-file change, copy edit, simple modification) → BA may stamp `architecture_skipped` and/or `test_specs_skipped` with reason at the end of intake. Downstream goes from PRD straight to plan (or PRD → specs → plan).
-- **Standard work** (typical feature) → full chain: PRD → Architecture → Test specs → Plan.
+- **Small work** (single-file change, copy edit, simple modification) → BA may stamp `architecture_skipped` with reason at the end of intake. Downstream goes from PRD straight to plan.
+- **Standard work** (typical feature) → full chain: PRD → Architecture → Plan.
 - **Large / epic work** → BA proposes breakdown to the PO in plain register ("this feels like a lot for one work item; let me split it into N parts we can tackle independently"). Uses `telec todo split` to spawn children. Each child gets its own prepare/work track.
 
 Skip stamps carry a `reason` field describing why the phase isn't needed for this work.
@@ -269,7 +270,7 @@ Two paths:
 - **Human reviews now.** Human reads the artifact, confirms or refines inline,
   then stamps `prd_approved`.
 - **Standin reviews.** Dispatch the emulator via `telec sessions run --command
-  /next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
+/next-emulate-po --args {slug} --additional-context "<brief>"` (cross-model
   preferred). The brief asks it to read the PRD and give a PO gut-check: does
   this reflect the input faithfully? aligned with standing wishes? anything
   off-scope? The brief must end with the exact instruction:
@@ -282,7 +283,7 @@ Two paths:
 ### 7. Final step — advance
 
 When `prd_approved` is stamped (by the real human), along with any size-based
-skip stamps (`architecture_skipped`, `test_specs_skipped`), call:
+skip stamp (`architecture_skipped`), call:
 
 ```
 telec todo prepare {slug}
@@ -299,7 +300,7 @@ re-engages and stamps approval.
 - **Domain spec / CLI-surface spec / architecture doc touchpoints noted in PRD** — for Category B work (contract/CLI-surface refinement). The architecture phase authors the actual updates; intake names the affected docs in the PRD's "Docs to author or update" section.
 - **No durable doc** for Category C work (implementation-only / refactor / tooling). PRD only.
 - **`prd_approved` stamp** — recorded when the real human confirms. The PO emulator cannot stamp this; the real human always owns final approval.
-- **Skip stamps** when applicable: `architecture_skipped`, `test_specs_skipped`, each with reason.
+- **Skip stamp** when applicable: `architecture_skipped`, with reason.
 - **`work_split` stamps** when the BA breaks the work down — references to child slugs.
 
 ## Recovery

@@ -652,7 +652,6 @@ def _handle_todo_stamp(args: list[str]) -> None:
       --verdict <approve|changes_requested|needs_work|needs_decision> --phase <phase>
       --prd-approved
       --architecture-skipped <reason>
-      --test-specs-skipped <reason>
       --drift-reviewed <artifact> <verdict> <reason>
       --deferrals-processed
       --design-spec-confirmed
@@ -674,7 +673,7 @@ def _handle_todo_stamp(args: list[str]) -> None:
     if not stamp_type:
         print(
             "Missing stamp flag (--verdict, --prd-approved, --architecture-skipped, "
-            "--test-specs-skipped, --drift-reviewed, --build-complete, "
+            "--drift-reviewed, --build-complete, "
             "--finalize-ready, --deferrals-processed, --design-spec-confirmed, "
             "--art-approved, --visuals-approved)"
         )
@@ -715,7 +714,6 @@ _STAMP_BOOLEAN_FLAGS = {
     "--prd-approved": "prd_approved",
     "--requirements-ready": "requirements_ready",
     "--plan-ready": "plan_ready",
-    "--specs-built": "specs_built",
     "--deferrals-processed": "deferrals_processed",
     "--design-spec-confirmed": "creative_design_spec_confirmed",
     "--art-approved": "creative_art_approved",
@@ -725,7 +723,6 @@ _STAMP_BOOLEAN_FLAGS = {
 
 _STAMP_REASON_FLAGS = {
     "--architecture-skipped": "architecture_skipped",
-    "--test-specs-skipped": "test_specs_skipped",
 }
 
 

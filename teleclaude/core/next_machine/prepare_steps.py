@@ -175,7 +175,11 @@ async def _prepare_dispatch(
             slug=slug,
             command=SlashCommand.NEXT_PREPARE_ARCHITECTURE,
             hat="Architect",
-            expected="an `architecture` artifact or an `architecture_skipped` stamp recommendation",
+            expected=(
+                "doc-snippet updates (domain spec / architecture-v2 design docs) "
+                "plus a thin `architecture` index artifact, or an "
+                "`architecture_skipped` stamp recommendation"
+            ),
         )
     if phase == PreparePhase.ARCHITECTURE_REVIEW:
         return await _dispatch_worker(
@@ -187,24 +191,6 @@ async def _prepare_dispatch(
             command=SlashCommand.NEXT_REVIEW_ARCHITECTURE,
             loader_name="next-review-architecture",
             expected="an architecture review verdict and findings when needed",
-        )
-    if phase == PreparePhase.TEST_SPECS_DRAFTING:
-        return _load_procedure(
-            slug=slug,
-            command=SlashCommand.NEXT_PREPARE_SPECS,
-            hat="Test Spec Author",
-            expected="a `test-specs` Gherkin artifact or a `test_specs_skipped` stamp recommendation",
-        )
-    if phase == PreparePhase.TEST_SPECS_REVIEW:
-        return await _dispatch_worker(
-            db=db,
-            slug=slug,
-            cwd=cwd,
-            phase=phase,
-            state=state,
-            command=SlashCommand.NEXT_REVIEW_SPECS,
-            loader_name="next-review-specs",
-            expected="a test-spec review verdict and findings when needed",
         )
     if phase == PreparePhase.PLAN_DRAFTING:
         return _load_procedure(

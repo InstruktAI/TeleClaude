@@ -16,8 +16,14 @@ from enum import Enum
 
 LEGACY_LIFECYCLE_PHASE_NORMALIZATION: dict[str, str] = {
     "architecture_human_approval": "architecture_review",
-    "test_specs_human_approval": "test_specs_review",
     "plan_human_approval": "plan_review",
+    # The test-specs phase was removed (doc-first model: Gherkin lives in the
+    # feature spec authored at intake). Rows persisted on a test-specs phase or
+    # its old human-approval alias re-adopt from the architecture gate, from
+    # which prepare re-derives the real phase via reviewer verdicts/skips.
+    "test_specs_drafting": "architecture_review",
+    "test_specs_review": "architecture_review",
+    "test_specs_human_approval": "architecture_review",
 }
 
 
@@ -29,8 +35,6 @@ class LifecyclePhase(str, Enum):
     PRD_HUMAN_APPROVAL = "prd_human_approval"
     ARCHITECTURE_DRAFTING = "architecture_drafting"
     ARCHITECTURE_REVIEW = "architecture_review"
-    TEST_SPECS_DRAFTING = "test_specs_drafting"
-    TEST_SPECS_REVIEW = "test_specs_review"
     PLAN_DRAFTING = "plan_drafting"
     PLAN_REVIEW = "plan_review"
     PREPARED = "prepared"
@@ -59,8 +63,6 @@ PREPARE_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.PRD_HUMAN_APPROVAL,
         LifecyclePhase.ARCHITECTURE_DRAFTING,
         LifecyclePhase.ARCHITECTURE_REVIEW,
-        LifecyclePhase.TEST_SPECS_DRAFTING,
-        LifecyclePhase.TEST_SPECS_REVIEW,
         LifecyclePhase.PLAN_DRAFTING,
         LifecyclePhase.PLAN_REVIEW,
         LifecyclePhase.PREPARED,

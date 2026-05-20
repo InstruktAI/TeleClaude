@@ -126,7 +126,6 @@ def sync_artifact_digest(cwd: str, slug: str, artifact_name: str) -> None:
 _PREPARE_VERDICT_PHASES = (
     "requirements_review",
     "architecture_review",
-    "test_spec_review",
     "plan_review",
 )
 _PREPARE_VERDICT_VALUES = ("approve", "needs_work", "needs_decision")
@@ -150,7 +149,6 @@ _RECONCILE_ARTIFACT_NAMES: dict[str, str] = {
 _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
     "requirements_review": STATE_KEY_REQUIREMENTS,
     "architecture_review": STATE_KEY_ARCHITECTURE,
-    "test_spec_review": STATE_KEY_TEST_SPECS,
     "plan_review": STATE_KEY_IMPLEMENTATION_PLAN,
 }
 
@@ -160,8 +158,7 @@ _REVIEW_TO_ARTIFACT_KEY: dict[str, str] = {
 _ARTIFACT_UPSTREAMS: dict[str, tuple[str, ...]] = {
     STATE_KEY_PRD: (STATE_KEY_INPUT,),
     STATE_KEY_ARCHITECTURE: (STATE_KEY_PRD,),
-    STATE_KEY_TEST_SPECS: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
-    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE, STATE_KEY_TEST_SPECS),
+    STATE_KEY_IMPLEMENTATION_PLAN: (STATE_KEY_PRD, STATE_KEY_ARCHITECTURE),
 }
 
 
@@ -357,7 +354,7 @@ def reconcile_phase_state(cwd: str, slug: str, stage: str | None = None) -> dict
 def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, StateValue]:
     """Stamp a review phase verdict via the typed state boundary.
 
-    Handles both prepare sub-phases (requirements_review, test_spec_review,
+    Handles both prepare sub-phases (requirements_review, architecture_review,
     plan_review) via :class:`ReviewManager`, and the work build_review phase
     via direct mutation on :class:`BuildReviewState` (which is not a
     ``ReviewVerdictState`` and has no audit entry).
@@ -372,7 +369,7 @@ def stamp_verdict(cwd: str, slug: str, phase: str, verdict: str) -> dict[str, St
     Args:
         cwd: Project root directory (not worktree)
         slug: Work item slug
-        phase: Review phase key (requirements_review, test_spec_review,
+        phase: Review phase key (requirements_review, architecture_review,
             plan_review, or build_review)
         verdict: Verdict value — prepare phases accept approve/needs_work/
             needs_decision; build_review accepts approve/changes_requested
@@ -620,10 +617,6 @@ def apply_prepared_state(cwd: str, slug: str) -> dict[str, StateValue]:
     else:
         review_mgr.stamp_verdict("requirements_review", "approve")
 
-    if kind in ("bug", "prepped"):
-        # Bugs and prepped todos bypass test specs entirely
-        review_mgr.stamp_verdict("test_spec_review", "skipped")
-        writer.state.artifacts.test_specs.produced_at = now_iso
     if kind == "bug":
         review_mgr.stamp_verdict("plan_review", "skipped")
     else:
@@ -781,53 +774,28 @@ _PREPARE_ARTIFACT_NAMES = {
     STATE_KEY_ARCHITECTURE: ARTIFACT_ARCHITECTURE,
     STATE_KEY_IMPLEMENTATION_PLAN: ARTIFACT_IMPLEMENTATION_PLAN,
 }
-_PREPARE_ARTIFACT_PHASES = (*_PREPARE_ARTIFACT_NAMES.keys(), STATE_KEY_TEST_SPECS)
 
 
 def stamp_artifact(cwd: str, slug: str, artifact_key: str) -> dict[str, StateValue]:
-    """Stamp an artifact as produced via the typed artifacts state.
+    """Stamp a file-backed prepare artifact as produced via the typed state.
 
-    File-backed artifacts record both digest and produced_at. Directory-backed
-    artifacts (currently test_specs) record produced_at only.
+    Records both digest and produced_at and binds upstream digests so the
+    satisfaction walk can detect upstream changes.
 
     Args:
         cwd: Project root directory (not worktree)
         slug: Work item slug
-        artifact_key: Artifact state key (e.g. test_specs)
+        artifact_key: Artifact state key (e.g. architecture)
 
     Returns:
         Updated state dict
     """
-    if artifact_key not in _PREPARE_ARTIFACT_PHASES:
-        raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_PHASES)}")
-
-    artifact_name = _PREPARE_ARTIFACT_NAMES.get(artifact_key)
-    if artifact_name is not None:
-        _sync_artifact_state(cwd, slug, artifact_name, produced=True)
-        _capture_upstream_digests(cwd, slug, artifact_key)
-        return read_phase_state(cwd, slug)
-
-    db = get_todos_db_sync(cwd)
-    state = read_phase_state(cwd, slug)
-    writer = StateWriter(state)
-    entry = getattr(writer.state.artifacts, artifact_key, None)
-    if not isinstance(entry, ArtifactEntry):
-        raise ValueError(f"unknown artifact phase '{artifact_key}'")
-    entry.produced_at = datetime.now(UTC).isoformat()
-    if artifact_key == STATE_KEY_TEST_SPECS:
-        # Sync digest from the test-specs DB artifact when one exists. Workers may
-        # write a manifest of spec files to the test-specs artifact; the digest
-        # then gates test_spec_review approval. When no manifest is written, the
-        # digest stays empty and review approval binds to no specific content.
-        specs_digest = _artifact_digest(cwd, slug, ARTIFACT_TEST_SPECS)
-        if specs_digest:
-            entry.digest = specs_digest
-    upstream_keys = _ARTIFACT_UPSTREAMS.get(artifact_key, ())
-    if upstream_keys:
-        entry.upstream_digests = {
-            upstream_key: getattr(writer.state.artifacts, upstream_key).digest for upstream_key in upstream_keys
-        }
-    return writer.commit_sync(db, slug)
+    if artifact_key not in _PREPARE_ARTIFACT_NAMES:
+        raise ValueError(f"invalid artifact key '{artifact_key}': must be one of {', '.join(_PREPARE_ARTIFACT_NAMES)}")
+    artifact_name = _PREPARE_ARTIFACT_NAMES[artifact_key]
+    _sync_artifact_state(cwd, slug, artifact_name, produced=True)
+    _capture_upstream_digests(cwd, slug, artifact_key)
+    return read_phase_state(cwd, slug)
 
 
 def _capture_upstream_digests(cwd: str, slug: str, artifact_key: str) -> None:

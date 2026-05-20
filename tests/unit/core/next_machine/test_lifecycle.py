@@ -70,24 +70,11 @@ def test_prd_human_approval_advances_to_architecture(monkeypatch: pytest.MonkeyP
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.ARCHITECTURE_DRAFTING
 
 
-def test_architecture_skip_routes_to_test_specs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_architecture_skip_routes_to_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.approvals.prd_approved = _approved()
     state.approvals.architecture_skipped = SkipStamp(reason="small", skipped_at="now")
-    monkeypatch.setattr(
-        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
-    )
-
-    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.TEST_SPECS_DRAFTING
-
-
-def test_both_optional_layers_skipped_routes_to_plan(monkeypatch: pytest.MonkeyPatch) -> None:
-    state = _base_feature()
-    state.artifacts.prd.digest = "prd"
-    state.approvals.prd_approved = _approved()
-    state.approvals.architecture_skipped = SkipStamp(reason="small", skipped_at="now")
-    state.approvals.test_specs_skipped = SkipStamp(reason="covered", skipped_at="now")
     monkeypatch.setattr(
         "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
     )
@@ -100,7 +87,6 @@ def test_legacy_requirements_fallback_can_reconcile_to_prepared() -> None:
     state.artifacts.requirements.digest = "requirements"
     state.requirements_review.verdict = "approve"
     state.approvals.architecture_skipped = SkipStamp(reason="legacy", skipped_at="now")
-    state.approvals.test_specs_skipped = SkipStamp(reason="legacy", skipped_at="now")
     state.artifacts.implementation_plan.digest = "plan"
     state.plan_review.verdict = "approve"
 
@@ -108,7 +94,7 @@ def test_legacy_requirements_fallback_can_reconcile_to_prepared() -> None:
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PREPARED
 
 
-def test_architecture_review_approval_advances_to_test_specs(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_architecture_review_approval_advances_to_plan(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.artifacts.architecture.digest = "architecture"
@@ -120,30 +106,13 @@ def test_architecture_review_approval_advances_to_test_specs(monkeypatch: pytest
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.ARCHITECTURE_REVIEW
 
     state.architecture_review.verdict = "approve"
-    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.TEST_SPECS_DRAFTING
-
-
-def test_architecture_review_approval_advances_to_plan_when_test_specs_skipped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    state = _base_feature()
-    state.artifacts.prd.digest = "prd"
-    state.artifacts.architecture.digest = "architecture"
-    state.approvals.prd_approved = _approved()
-    state.approvals.test_specs_skipped = SkipStamp(reason="covered", skipped_at="now")
-    state.architecture_review.verdict = "approve"
-    monkeypatch.setattr(
-        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
-    )
-
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_DRAFTING
 
 
-def test_test_specs_review_approval_advances_to_existing_plan_review(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_architecture_approved_with_plan_advances_to_plan_review(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.artifacts.architecture.digest = "architecture"
-    state.artifacts.test_specs.digest = "specs"
     state.artifacts.implementation_plan.digest = "plan"
     state.approvals.prd_approved = _approved()
     state.architecture_review.verdict = "approve"
@@ -151,36 +120,16 @@ def test_test_specs_review_approval_advances_to_existing_plan_review(monkeypatch
         "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
     )
 
-    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.TEST_SPECS_REVIEW
-
-    state.test_spec_review.verdict = "approve"
     assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_REVIEW
-
-
-def test_test_specs_review_approval_advances_to_plan_drafting(monkeypatch: pytest.MonkeyPatch) -> None:
-    state = _base_feature()
-    state.artifacts.prd.digest = "prd"
-    state.artifacts.architecture.digest = "architecture"
-    state.artifacts.test_specs.digest = "specs"
-    state.approvals.prd_approved = _approved()
-    state.architecture_review.verdict = "approve"
-    state.test_spec_review.verdict = "approve"
-    monkeypatch.setattr(
-        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
-    )
-
-    assert adopt_prepare_handoff_phase(state) is LifecyclePhase.PLAN_DRAFTING
 
 
 def test_plan_review_approval_advances_to_prepared(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _base_feature()
     state.artifacts.prd.digest = "prd"
     state.artifacts.architecture.digest = "architecture"
-    state.artifacts.test_specs.digest = "specs"
     state.artifacts.implementation_plan.digest = "plan"
     state.approvals.prd_approved = _approved()
     state.architecture_review.verdict = "approve"
-    state.test_spec_review.verdict = "approve"
     monkeypatch.setattr(
         "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
     )
@@ -194,7 +143,6 @@ def test_substantive_drift_blocks_after_plan_review_approval(monkeypatch: pytest
     state.artifacts.prd.digest = "prd"
     state.approvals.prd_approved = _approved()
     state.approvals.architecture_skipped = SkipStamp(reason="small", skipped_at="now")
-    state.approvals.test_specs_skipped = SkipStamp(reason="covered", skipped_at="now")
     state.artifacts.implementation_plan.digest = "plan"
     state.plan_review.verdict = "approve"
     state.approvals.drift_reviewed["prd"] = DriftReviewedStamp(
@@ -216,7 +164,6 @@ def test_pending_git_drift_blocks_after_plan_review_approval(monkeypatch: pytest
     state.artifacts.prd.referenced_paths = ["src/feature.py"]
     state.approvals.prd_approved = _approved()
     state.approvals.architecture_skipped = SkipStamp(reason="small", skipped_at="now")
-    state.approvals.test_specs_skipped = SkipStamp(reason="covered", skipped_at="now")
     state.artifacts.implementation_plan.digest = "plan"
     state.artifacts.implementation_plan.codebase_sha_at_write = "head"
     state.plan_review.verdict = "approve"
@@ -313,11 +260,12 @@ def test_legacy_raw_phases_normalize_for_reconciliation(monkeypatch: pytest.Monk
 
     assert coerce_lifecycle_phase("architecture_human_approval") is LifecyclePhase.ARCHITECTURE_REVIEW
     assert state.lifecycle_phase == LifecyclePhase.ARCHITECTURE_REVIEW.value
-    assert reconcile_lifecycle_phase(state, LifecycleStage.PREPARE) is LifecyclePhase.TEST_SPECS_DRAFTING
+    assert reconcile_lifecycle_phase(state, LifecycleStage.PREPARE) is LifecyclePhase.PLAN_DRAFTING
 
 
 def test_legacy_test_specs_and_plan_raw_phases_normalize() -> None:
-    assert coerce_lifecycle_phase("test_specs_human_approval") is LifecyclePhase.TEST_SPECS_REVIEW
+    assert coerce_lifecycle_phase("test_specs_review") is LifecyclePhase.ARCHITECTURE_REVIEW
+    assert coerce_lifecycle_phase("test_specs_human_approval") is LifecyclePhase.ARCHITECTURE_REVIEW
     assert coerce_lifecycle_phase("plan_human_approval") is LifecyclePhase.PLAN_REVIEW
 
 

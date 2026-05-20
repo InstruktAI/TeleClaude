@@ -1,5 +1,5 @@
 ---
-description: 'Plan drafting phase for next-prepare. Produces implementation plans from human-approved PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs artifacts.'
+description: 'Plan drafting phase for next-prepare. Produces implementation plans from human-approved PRD and the optional reviewer-approved architecture (thin index artifact plus the doc snippets it points at).'
 domain: 'software-development'
 id: 'software-development/procedure/lifecycle/prepare/plan-draft'
 scope: 'domain'
@@ -19,17 +19,18 @@ visibility: 'public'
 ## Goal
 
 Your focus this turn is the plan phase: produce an `implementation-plan`
-artifact from the human-approved PRD, the reviewer-approved architecture
-(when present), and the reviewer-approved test-specs (when present); or split
-the todo into dependent child work items when planning shows the work is not
-atomic. The wider prepare lifecycle is still yours; this phase is one focused
-part of it.
+artifact from the human-approved PRD and the reviewer-approved architecture
+when present (the thin index artifact plus the doc snippets it points at); or
+split the todo into dependent child work items when planning shows the work is
+not atomic. The wider prepare lifecycle is still yours; this phase is one
+focused part of it.
 
 ### Outcome
 
-Produce `implementation-plan` from the human-approved `prd`, optional reviewer-approved `architecture`,
-and optional reviewer-approved prose `test-specs`; or split the todo into dependent child work
-items when planning shows the work is not atomic.
+Produce `implementation-plan` from the human-approved `prd` and the optional
+reviewer-approved `architecture` (the thin index artifact plus the
+domain-spec / design-doc snippets it points at); or split the todo into
+dependent child work items when planning shows the work is not atomic.
 
 The plan must be detailed enough for a builder to execute without guessing, and
 review-aware enough that the reviewer finds no surprises. If that bar cannot be met
@@ -39,9 +40,8 @@ for one builder session, this phase owns the split.
 
 1. `telec todo artifacts read {slug} prd` exists and is human-approved.
 2. `architecture` is either reviewer-approved or explicitly skipped.
-3. `test-specs` is either reviewer-approved or explicitly skipped.
-4. `todos.db` roadmap is readable.
-5. Slug is active (not icebox, not delivered).
+3. `todos.db` roadmap is readable.
+4. Slug is active (not icebox, not delivered).
 
 ## Steps
 
@@ -50,15 +50,16 @@ for one builder session, this phase owns the split.
 Read the full context before writing anything:
 
 - `telec todo artifacts read {slug} prd` — the human-approved product intent and success criteria.
-- `telec todo artifacts read {slug} architecture` — when present; otherwise read the skip reason.
-- `telec todo artifacts read {slug} test-specs` — when present; otherwise read the skip reason.
+- `telec todo artifacts read {slug} architecture` — when present, the thin
+  index/log; otherwise read the skip reason. Read the domain-spec / design-doc
+  snippets it points at for the actual design content.
 - `telec todo artifacts read {slug} input` — the original human thinking (for intent).
 - The codebase: files that will be affected, adjacent patterns, existing implementations
   of similar functionality. Use `telec docs index` for relevant policies and specs.
 - Definition of Done — every plan task must produce output that satisfies DoD gates.
 
 Apply the domain-context loading rule from the preparation artifact quality
-policy: identify which specs the PRD, architecture, and test-specs touch and load them before
+policy: identify which specs the PRD and the architecture snippets touch and load them before
 drafting begins. Domain specs are the ground truth — grounding and
 review-awareness cannot be evaluated without them.
 
@@ -69,22 +70,22 @@ case (first time only). Every dispatch carries a `Dispatch reason: <reason>`
 header. Pick your behavior from the reason:
 
 - **`fresh`** — no prior implementation plan exists. Produce one from human-approved
-  PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs. This is the only path that uses the full atomicity
+  PRD and the optional reviewer-approved architecture. This is the only path that uses the full atomicity
   decision (step 2) and full draft (step 3).
 - **`findings-fix`** — a `needs_work` verdict was issued. Read
   `telec todo artifacts read {slug} plan-review-findings` alongside the existing
   plan. Apply targeted fixes to address each finding. Preserve every task not
   flagged by the findings. Skip the atomicity decision (step 2) and proceed
   directly to step 5.
-- **`upstream-changed`** — the plan's recorded `upstream_digests` (`prd`,
-  `architecture`, and/or `test-specs`) drifted from current. Run the `Changes since` diff commands
+- **`upstream-changed`** — the plan's recorded `upstream_digests` (`prd`
+  and/or `architecture`) drifted from current. Run the `Changes since` diff commands
   listed in the dispatch. Identify the plan tasks whose grounding referenced the
   changed upstream content. Update only those tasks; preserve every task whose
   grounding is unchanged. Skip the atomicity decision and proceed to step 5.
 - **`provenance-missing`** — the plan exists but its upstream provenance is
   empty (legacy state). Read the existing plan via
   `telec todo artifacts read {slug} implementation-plan`. Verify each task's
-  grounding against current `prd`, `architecture`, and `test-specs`. Update only
+  grounding against current `prd` and `architecture`. Update only
   tasks whose grounding has actually drifted; preserve tasks that still pin
   the upstream artifact correctly. Skip the atomicity decision and proceed to step 5.
 
@@ -106,7 +107,7 @@ Evaluate:
 work that will fail gate validation. Split first:
 
 - create focused child todos
-- seed them from the human-approved parent PRD and any reviewer-approved architecture/spec slices
+- seed them from the human-approved parent PRD and any reviewer-approved architecture-snippet slices
 - add dependency ordering in `todos.db` roadmap
 - call `telec todo split <slug> --into <child1> --into <child2> ...`
 - stop treating the parent as directly prepare/work-ready
@@ -123,9 +124,10 @@ policy. Structure the plan as an ordered task list. Each task must include:
   If the plan says "use adapter pattern" but doesn't say why, the builder may inline the
   logic instead. The "why" is the guard against drift.
 - **Verification**: how the builder confirms the task is done (test to write, behavior to
-  observe, lint to pass). Each task references the PRD success criteria and any
-  test-spec cases it satisfies. When the test-specs phase was skipped, the task
-  states the existing test or direct verification that covers the behavior.
+  observe, lint to pass). Each task references the PRD success criteria and, for
+  Category A work, the Gherkin acceptance scenarios in the feature spec snippet
+  it satisfies. Otherwise the task states the existing test or direct
+  verification that covers the behavior.
 - **Referenced files**: exact file paths that will be created or modified. These are
   used by the state machine for grounding and staleness detection.
 
@@ -167,10 +169,10 @@ more to fix than they cost to prevent.
 
 ### 5. Write artifacts
 
-If the todo stays atomic, write (using human-approved PRD, optional reviewer-approved architecture, and optional reviewer-approved test-specs as inputs):
+If the todo stays atomic, write (using human-approved PRD and the optional reviewer-approved architecture — the thin index plus the snippets it points at — as inputs):
 
 - `telec todo artifacts write {slug} implementation-plan <content>` — the full plan with tasks, rationale, and verification.
-  Each task must reference which PRD criteria and test-spec cases it satisfies.
+  Each task must reference which PRD criteria and, for Category A work, which feature-spec Gherkin scenarios it satisfies.
 
 Do not write grounding fields directly. The state machine owns grounding
 metadata and current worktree state.
@@ -179,12 +181,12 @@ If the todo is split instead:
 
 - Call `telec todo split <slug> --into <child1> --into <child2> ...`
 - Preserve the parent artifacts as source material while child scope is being plucked and transferred.
-- Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture/spec context.
+- Seed each child's `input` with the relevant subset of parent PRD and reviewer-approved architecture-snippet context.
 - Treat only the children as prepare/work targets. The parent is a holder and must not be prepared or worked as an implementation item.
 
 ### 6. Enforce boundaries
 
-- Do not invent behavior not grounded in PRD, architecture, test-specs, or codebase patterns.
+- Do not invent behavior not grounded in PRD, architecture snippets, or codebase patterns.
 - Do not rewrite approved or reviewer-approved upstream artifacts unless the plan is blocked by a genuine
   contradiction in those artifacts.
 - Do not change roadmap status beyond the child dependency links needed for a split.

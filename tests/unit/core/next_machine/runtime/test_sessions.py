@@ -75,7 +75,7 @@ async def test_find_live_session_with_status_matches_none_subdir_for_empty_overr
     db.list_sessions.return_value = [
         _session(
             "rev-specs",
-            "/next-review-specs slug-a",
+            "/next-review-architecture slug-a",
             None,
             last_activity=stopped_at,
             last_message_sent_at=stopped_at,
@@ -84,7 +84,7 @@ async def test_find_live_session_with_status_matches_none_subdir_for_empty_overr
     ]
 
     session_id, status = await find_live_session_with_status_for_slug(
-        db, "slug-a", "/next-review-specs", subdir_override=""
+        db, "slug-a", "/next-review-architecture", subdir_override=""
     )
 
     assert session_id == "rev-specs"
