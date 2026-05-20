@@ -60,15 +60,26 @@ def handle_code(args: list[str]) -> None:
 
 
 def handle_code_add(args: list[str]) -> None:
-    """Stage NEW (untracked or unmerged) files for the next commit.
+    """Stage files for the next commit.
 
-    The sealed equivalent of ``git add`` for the one case that requires it:
-    NEW files (git doesn't know about them yet) and conflict-resolved files
-    (git's index is in unmerged state). Modified-tracked files don't need
-    staging — the pathspec commit picks them up from the working tree.
+    Sealed equivalent of ``git add`` for the three cases git's data model
+    genuinely requires staging:
 
-    Rejects clean paths and modified-tracked paths with friendly guidance so
-    the agent learns the distinction without surprise.
+    1. **Untracked (NEW) files** — git refuses ``git commit -- <newfile>``
+       until the path enters the index.
+    2. **Unmerged-index files** (post-conflict, pre-resolution-stage) —
+       git refuses a commit while the index has unmerged entries; the
+       file must be marked resolved via ``git add``.
+    3. **Partial-staged tracked files** (staged hunks + later working-tree
+       delta) — the partial-staging guard in ``telec code commit`` blocks
+       these because ``git commit -- <path>`` would otherwise sweep
+       unstaged hunks. This command is that guard's prescribed recovery:
+       running ``git add`` fully restages the file so the staged version
+       matches the working tree, removing the ambiguity.
+
+    Modified-tracked files that are NOT partial-staged are no-ops here
+    (the pathspec commit picks them up directly from the working tree).
+    Clean paths and missing paths error with the path named.
     """
     positionals: list[str] = []
     for token in args:

@@ -497,7 +497,7 @@ subcommands:
       changed:
         description: 'List workspace-scoped changed files — the set telec would consider for the next commit.'
       add:
-        description: 'Stage NEW (untracked) files for the next commit. Sealed equivalent of `git add` for the one case git''s data model requires staging — NEW files. Modified-tracked files do not need staging; `telec code commit` picks them up via pathspec straight from the working tree. Also handles unmerged-index files (post-conflict) for the integrator path.'
+        description: 'Stage files for the next commit. Sealed equivalent of `git add` for the three cases git''s data model genuinely requires staging: (1) NEW untracked files (must enter the index before commit pathspec can match), (2) unmerged-index files post-conflict (must be marked resolved), (3) partial-staged tracked files — staged hunks plus later working-tree delta — which must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks; this is the recovery path the partial-staging guard in `telec code commit` directs agents to. Modified-tracked files that are NOT partial-staged do not need staging; `telec code commit` picks them up via pathspec straight from the working tree.'
         args:
           - paths: 'one or more paths (positional)'
       commit:

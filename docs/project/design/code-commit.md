@@ -17,9 +17,16 @@ with an explicit pathspec.
 
 The staging model is asymmetric and follows git's data model:
 
-- **Modified-tracked files in scope** ride the pathspec straight from the
-  working tree — `git commit -- <path>` records the working-tree version, no
-  staging needed.
+- **Modified-tracked files in scope** that are NOT partial-staged ride the
+  pathspec straight from the working tree — `git commit -- <path>` records
+  the working-tree version, no staging needed.
+- **Partial-staged tracked files** in the commit pathspec (staged hunks +
+  later working-tree delta) are BLOCKED by the partial-staging guard —
+  `git commit -- <path>` would otherwise sweep unstaged hunks the agent
+  did not declare into the commit. The blocking diagnostic points the
+  agent at the recovery: `telec code add <path>` fully restages the file
+  so the staged version matches the working tree, eliminating the
+  ambiguity, after which `telec code commit` proceeds cleanly.
 - **NEW (untracked) files in scope** are NOT auto-committed. The agent must
   declare them via `telec code add <path>` (sealed equivalent of `git add`)
   or `--include <path>` at commit time. This is the safety net against

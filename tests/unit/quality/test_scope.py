@@ -164,12 +164,20 @@ class TestResolveWorkspaceScopeResolution:
         )
         assert resolution.scoped_existing_paths == ("teleclaude/new.py", "teleclaude/touched.py")
 
-    def test_shared_branch_includes_pending_deletions_outside_session_touched_set(
+    def test_shared_branch_excludes_pending_deletions_outside_session_touched_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Bash-based `rm` produces a dirty deletion that the transcript extractor
-        (Write/Edit only) cannot see. Without this inclusion the deletion would
-        silently fall outside scope and never get staged for commit.
+        """A deleted file the session did NOT touch must NOT enter scope.
+
+        The previous implementation unioned ALL dirty-deleted paths into
+        scope (justified by "Bash-rm fell out of transcript-touched signal"),
+        but the side-effect was a cross-session leak: agent A deletes foo.py,
+        agent B's scope picks up that deletion, and B's commit silently
+        records A's work. New invariant: scope is strictly
+        (this session's touched paths) ∩ (currently dirty paths). A
+        Bash-`rm` deletion that the transcript extractor missed must be
+        declared explicitly by the agent with
+        `telec code commit --approved '<msg>' --include <deleted-path>`.
         """
         (tmp_path / "teleclaude").mkdir()
         (tmp_path / "teleclaude" / "kept.py").write_text("print('kept')\n", encoding="utf-8")
@@ -192,11 +200,13 @@ class TestResolveWorkspaceScopeResolution:
         resolution = resolve_workspace_scope_resolution(tmp_path)
 
         assert resolution.kind is WorkspaceScopeKind.SHARED_BRANCH
-        assert resolution.scoped_dirty_paths == (
-            "teleclaude/kept.py",
-            "teleclaude/removed_via_bash.py",
-        )
+        # Scope excludes the untouched deletion.
+        assert resolution.scoped_dirty_paths == ("teleclaude/kept.py",)
         assert resolution.scoped_existing_paths == ("teleclaude/kept.py",)
+        # Raw dirty paths still report both — the working-tree state is
+        # unchanged; only the SCOPED subset is filtered.
+        dirty = {d.path for d in resolution.dirty_paths}
+        assert dirty == {"teleclaude/kept.py", "teleclaude/removed_via_bash.py"}
 
     def test_shared_branch_without_session_keeps_dirty_metadata_but_returns_empty_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

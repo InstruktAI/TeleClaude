@@ -152,13 +152,17 @@ def resolve_workspace_scope_resolution(project_root: Path) -> WorkspaceScopeReso
 
     touched = _resolve_session_touched_paths(project_root)
     dirty_path_set = {dirty.path for dirty in dirty_paths}
-    deleted_paths = {dirty.path for dirty in dirty_paths if dirty.op is DirtyOp.DELETED}
     dirty_existing = set(_existing_dirty_paths(project_root, dirty_paths))
-    # Include touched paths AND any currently-pending deletions. The transcript
-    # extractor only counts Write/Edit tool calls; Bash-based `rm` would
-    # otherwise fall out of scope and silently not get staged — producing
-    # commits whose message claims deletions that never landed.
-    scoped_dirty = tuple(sorted((set(touched) & dirty_path_set) | deleted_paths))
+    # Scope is strictly (this session's touched paths) ∩ (currently dirty paths).
+    # We do NOT union in ALL deleted-in-working-tree paths: doing so leaks
+    # foreign deletions into this session's scope (agent A deletes foo.py;
+    # agent B's scope picks up the deletion and B's commit silently records
+    # A's work). If a Bash-based `rm` falls out of the transcript-touched
+    # extractor, the agent must declare the deletion explicitly with
+    # `telec code commit --approved '<msg>' --include <deleted-path>`; the
+    # include path is the sanctioned channel for "I deleted this; my
+    # transcript didn't capture it."
+    scoped_dirty = tuple(sorted(set(touched) & dirty_path_set))
     scoped = tuple(sorted(path for path in touched if path in dirty_existing))
     return WorkspaceScopeResolution(
         kind=WorkspaceScopeKind.SHARED_BRANCH,
