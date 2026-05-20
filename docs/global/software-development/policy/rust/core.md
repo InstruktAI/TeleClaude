@@ -166,7 +166,7 @@ visibility: 'public'
     macros for logging. `dbg!()` is allowed in development; pre-commit
     hook rejects it from committed code.
 44. **No `TODO`/`FIXME` comments without an issue link.** If something
-    must be deferred, write a real todo (`telec todo dump`) and reference
+    must be deferred, write a real todo (`telec todo create`) and reference
     the slug. Drive-by `// TODO: fix this later` comments accrete.
 
 ### Anti-patterns to refuse

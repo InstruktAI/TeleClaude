@@ -318,10 +318,11 @@ class TodoDumpRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     slug: str = Field(..., min_length=1)
-    content: str
+    content: str = Field(..., min_length=1)
     after: list[str] | None = None
     kind: Literal["bug", "draft", "prepped"] | None = None
     cwd: str | None = None
+    silent: bool = False
 
 
 # WebSocket Event DTOs

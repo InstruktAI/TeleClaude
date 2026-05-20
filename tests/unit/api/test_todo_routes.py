@@ -17,6 +17,7 @@ from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
 from teleclaude.api.auth import CallerIdentity, clearance_todos_reconcile
+from teleclaude.api.kind_mapper import KIND_BUG, KIND_FEATURE
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.constants import (
     ARTIFACT_INPUT,
@@ -41,6 +42,9 @@ _TODO_REMOVE_KIND = "todo_remove"
 _TODO_RENAME_KIND = "todo_rename"
 _UPDATED_BY_WRITE_ARTIFACT = "api.todo.write_artifact"
 _UPDATED_BY_PREPPED_DUMP = "api.todo.dump.prepped"
+_WORKFLOW_TODO_CREATED = "workflow.todo.created"
+_CREATION_MODE_PICKUP = "pickup"
+_CREATION_MODE_SILENT = "silent"
 
 
 class _ArtifactSnapshot(TypedDict, total=False):
@@ -606,6 +610,7 @@ class TestTodoRoutes:
                     "teleclaude.api.todo_routes.apply_prepared_state",
                     return_value={"lifecycle_phase": _PREPARED},
                 ),
+                patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock),
             ):
                 response = await todo_routes.todo_dump(request)
 
@@ -675,6 +680,20 @@ class TestTodoRoutes:
         finally:
             await database.close()
 
+    def _make_dump_mock_db(self) -> MagicMock:
+        """Minimal mock TodosDb for todo_dump route tests."""
+        mock_db = MagicMock()
+        session_ctx = MagicMock()
+        session_ctx.__aenter__ = AsyncMock(return_value=MagicMock(begin=MagicMock(return_value=_async_ctx(None))))
+        session_ctx.__aexit__ = AsyncMock(return_value=None)
+        mock_db._session = MagicMock(return_value=session_ctx)
+        mock_db.read_state = AsyncMock(return_value=None)
+        mock_db.add_to_roadmap = AsyncMock()
+        mock_db.write_state = AsyncMock()
+        mock_db.write_artifact = AsyncMock()
+        mock_db.on_committed = MagicMock()
+        return mock_db
+
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_todo_dump_notifies_via_on_committed_after_transaction(self) -> None:
@@ -724,3 +743,107 @@ class TestTodoRoutes:
             await todo_routes.todo_split(slug="parent", children=["child-1"], cwd="/repo")
 
         mock_db.on_committed.assert_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_with_empty_content_returns_400_and_writes_nothing(self) -> None:
+        """Whitespace-only content is rejected with 400 before any DB write."""
+        mock_db = MagicMock()
+        mock_db.read_state = AsyncMock(return_value=None)
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="   ", cwd=_REPO_CWD))
+        assert exc_info.value.status_code == 400
+        mock_db.add_to_roadmap.assert_not_called()
+        mock_db.write_state.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_with_whitespace_only_content_returns_400_and_writes_nothing(self) -> None:
+        """Newlines-and-tabs content is rejected with 400 before any DB write."""
+        mock_db = MagicMock()
+        mock_db.read_state = AsyncMock(return_value=None)
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            pytest.raises(HTTPException) as exc_info,
+        ):
+            await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="\n\n\t", cwd=_REPO_CWD))
+        assert exc_info.value.status_code == 400
+        mock_db.add_to_roadmap.assert_not_called()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_emits_workflow_todo_created_once_with_partial_shape_payload(self) -> None:
+        """Route emits exactly one workflow.todo.created event with the transitional partial-shape."""
+        mock_db = self._make_dump_mock_db()
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes._sync_artifact_digest_state", new_callable=AsyncMock),
+            patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
+        ):
+            await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="some content", cwd=_REPO_CWD))
+
+        mock_emit.assert_called_once()
+        payload = mock_emit.call_args.kwargs["payload"]
+        assert mock_emit.call_args.kwargs["event"] == _WORKFLOW_TODO_CREATED
+        assert payload["slug"] == _MY_SLUG
+        assert payload["kind"] == KIND_FEATURE
+        assert payload["creation_mode"] == _CREATION_MODE_PICKUP
+        assert payload["pickup_requested"] is True
+        _ = payload["lifecycle_phase"]
+        _ = payload["created_at"]
+        _ = payload["project_path"]
+        assert "todo_id" not in payload
+        assert "project_id" not in payload
+        assert "created_by_principal" not in payload
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_silent_emits_creation_mode_silent_pickup_requested_false(self) -> None:
+        """silent=True sets creation_mode=silent and pickup_requested=False in the event."""
+        mock_db = self._make_dump_mock_db()
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes._sync_artifact_digest_state", new_callable=AsyncMock),
+            patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
+        ):
+            await todo_routes.todo_dump(
+                TodoDumpRequest(slug=_MY_SLUG, content="some content", cwd=_REPO_CWD, silent=True)
+            )
+
+        payload = mock_emit.call_args.kwargs["payload"]
+        assert payload["creation_mode"] == _CREATION_MODE_SILENT
+        assert payload["pickup_requested"] is False
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_bug_kind_emits_canonical_kind_bug(self) -> None:
+        """bug kind maps to canonical kind=bug in the emitted event."""
+        mock_db = self._make_dump_mock_db()
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.apply_prepared_state", return_value={"lifecycle_phase": _PREPARED}),
+            patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
+        ):
+            await todo_routes.todo_dump(
+                TodoDumpRequest(slug=_MY_SLUG, content="bug content", kind="bug", cwd=_REPO_CWD)
+            )
+
+        payload = mock_emit.call_args.kwargs["payload"]
+        assert payload["kind"] == KIND_BUG
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_todo_dump_with_empty_content_does_not_emit_any_event(self) -> None:
+        """Rejected whitespace-only content emits no event."""
+        mock_db = MagicMock()
+        mock_db.read_state = AsyncMock(return_value=None)
+        with (
+            patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db),
+            patch("teleclaude.api.todo_routes.emit_event", new_callable=AsyncMock) as mock_emit,
+            pytest.raises(HTTPException),
+        ):
+            await todo_routes.todo_dump(TodoDumpRequest(slug=_MY_SLUG, content="   ", cwd=_REPO_CWD))
+        mock_emit.assert_not_called()

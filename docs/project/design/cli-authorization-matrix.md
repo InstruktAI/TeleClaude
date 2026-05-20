@@ -98,7 +98,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 | Command                       | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                            |
 | ----------------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | -------------------------------------------------------------------------------------------------------------------- |
-| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating an empty draft skeleton is still work planning. Contributors can scaffold work items without input.         |
+| `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating a todo with substantive content is work planning. Contributors can scaffold work items.                     |
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                  |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
 | `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). Status: target — delivered_by roadmap-trash-reveal-ui. |
@@ -108,7 +108,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo stamp`            | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Stamping verdicts and finalize-ready is state machine management.                                                    |
 | `telec todo set-deps`         | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Setting dependencies is work planning. Same as prepare/work.                                                         |
 | `telec todo verify-artifacts` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ❌       | Mechanical verification is a read/check operation. Workers can verify their own artifacts.                           |
-| `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Brain dump is fire-and-forget input. Workers can dump observations. Contributors can dump ideas.                     |
+| `telec todo dump`             | W    | ✅     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | **Deprecated** — compatibility alias for `telec todo create`. Retained for transition; prefer `telec todo create`.  |
 
 ### Roadmap Management
 
@@ -207,7 +207,7 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec todo remove`           | Contributors, newcomers, customers          |
 | `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
-| `telec todo dump`             | Newcomers, customers                        |
+| `telec todo dump`             | Newcomers, customers (**deprecated** alias)  |
 | `telec roadmap list`          | Customers                                   |
 | `telec roadmap add`           | Contributors, newcomers, customers          |
 | `telec roadmap remove`        | Contributors, newcomers, customers          |

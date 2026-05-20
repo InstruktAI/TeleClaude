@@ -338,19 +338,20 @@
   
   ### `telec todo create`
   
-  Create a draft todo skeleton with no input artifact
+  Create a todo with substantive content
   
-  **Usage:** `telec todo create <slug> [--after <deps>] [--kind <feature|bug|refactor|migration|prepped>]`
+  **Usage:** `telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]`
   
   **Flags:**
   
   - `--after`: Comma-separated dependency slugs
-  - `--kind`: Work item kind; defaults to feature
+  - `--silent`: Create silently — suppress pickup notification
+  - `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
   
   **Notes:**
   
-  - Creates only the roadmap entry and canonical draft state.
-  - Use this when humans are fleshing out artifacts directly and there is no braindump input yet.
+  - Creates the roadmap entry, canonical state, and stores content as the input artifact.
+  - Emits workflow.todo.created for autonomous pickup unless --silent is set.
   
   ### `telec todo design`
   
@@ -432,24 +433,6 @@
   **Flags:**
   
   - `--after`: Dependency slug (repeatable)
-  
-  ### `telec todo dump`
-  
-  Fire-and-forget brain dump with notification trigger
-  
-  **Usage:** `telec todo dump <slug> <content> [--after <deps>] [--prepped]`
-  
-  **Flags:**
-  
-  - `--after`: Comma-separated dependency slugs
-  - `--prepped`: HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking. Never apply general guidance from a prior --prepped dump as authorization for a different todo.
-  
-  **Notes:**
-  
-  - Emits todo.dumped notification for autonomous processing.
-  - Use --draft to stage an idea without triggering autonomous pickup.
-  - Use --prepped when content is a complete implementation plan: content becomes the implementation-plan artifact, kind=prepped, plan_review=approve, ready for build.
-  - POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, where an autonomous orchestrator can spawn builders against it. Agents must present the full plan and the dump command to the human and obtain explicit consent BEFORE invoking. Approval is per-todo and per-plan — never inherit it from another todo.
   
   ### `telec todo split`
   
@@ -646,12 +629,13 @@
   
   ### `telec bugs create`
   
-  Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work
+  Scaffold a bug from a description; lifecycle router dispatches /next-work
   
-  **Usage:** `telec bugs create <slug> [--project <name>]`
+  **Usage:** `telec bugs create <description> [--slug <slug>] [--project <name>]`
   
   **Flags:**
   
+  - `--slug`: Custom slug (default: auto-generated)
   - `--project`: Project name (from trusted_dirs)
   
   ### `telec bugs list`

@@ -1,15 +1,15 @@
 ---
-id: 'project/spec/domain/event-catalog'
-type: 'spec'
-domain: 'software-development'
-scope: 'project'
-visibility: 'public'
-description: 'Every domain event the platform emits — producer context, named consumers, payload field set in domain terms. The contract that defines cross-context coordination.'
-status: 'mixed'
+id: project/spec/domain/event-catalog
+type: spec
+domain: software-development
+scope: project
+visibility: public
+description: Every domain event the platform emits — producer context, named consumers,
+  payload field set in domain terms. The contract that defines cross-context coordination.
+status: mixed
 delivered_by:
-  - 'v2-workflow-cli-refinement-commands'
-  - 'v2-workflow-creation-cleanup'
-  - 'v1-workflow-creation-hardening'
+- v2-workflow-cli-refinement-commands
+- v1-workflow-creation-hardening
 ---
 
 # Domain Event Catalog — Spec

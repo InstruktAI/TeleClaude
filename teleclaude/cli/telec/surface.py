@@ -432,16 +432,24 @@ CLI_SURFACE: dict[str, CommandDef] = {
         desc="Manage work items",
         subcommands={
             "create": CommandDef(
-                desc="Create a draft todo skeleton with no input artifact",
-                args="<slug> [--after <deps>] [--kind <feature|bug|refactor|migration|prepped>]",
+                desc="Create a todo with substantive content",
+                args="<slug> <content> [--after <deps>] [--silent] [--prepped]",
                 flags=[
                     _H,
                     _FLAG_AFTER_DEPS,
-                    Flag("--kind", desc="Work item kind; defaults to feature"),
+                    Flag("--silent", desc="Create silently — suppress pickup notification"),
+                    Flag(
+                        "--prepped",
+                        desc=(
+                            "HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped "
+                            "and ready for build. Agents must obtain explicit human approval of the "
+                            "exact plan content before invoking."
+                        ),
+                    ),
                 ],
                 notes=[
-                    "Creates only the roadmap entry and canonical draft state.",
-                    "Use this when humans are fleshing out artifacts directly and there is no braindump input yet.",
+                    "Creates the roadmap entry, canonical state, and stores content as the input artifact.",
+                    "Emits workflow.todo.created for autonomous pickup unless --silent is set.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
@@ -529,36 +537,25 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
             "dump": CommandDef(
-                desc="Fire-and-forget brain dump with notification trigger",
+                desc="DEPRECATED — alias for `telec todo create`",
                 args="<slug> <content> [--after <deps>] [--draft] [--prepped]",
                 flags=[
                     _FLAG_AFTER_DEPS,
                     Flag(
-                        "--draft", desc="Create silently — skip domain event so no cartridge picks it up", hidden=True
+                        "--draft",
+                        desc="Forwarded as --silent to telec todo create",
+                        hidden=True,
                     ),
                     Flag(
                         "--prepped",
-                        desc=(
-                            "HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped "
-                            "and ready for build. Agents must obtain explicit human approval of the "
-                            "exact plan content before invoking. Never apply general guidance from a "
-                            "prior --prepped dump as authorization for a different todo."
-                        ),
+                        desc="Forwarded to telec todo create --prepped",
                     ),
                 ],
                 notes=[
-                    "Emits todo.dumped notification for autonomous processing.",
-                    "Use --draft to stage an idea without triggering autonomous pickup.",
-                    "Use --prepped when content is a complete implementation plan: content becomes "
-                    "the implementation-plan artifact, kind=prepped, plan_review=approve, "
-                    "ready for build.",
-                    "POLICY — --prepped requires explicit human-in-the-loop approval of the exact plan content. "
-                    "Bypassing prepare via --prepped lands a build-ready todo into the work pickup chain, "
-                    "where an autonomous orchestrator can spawn builders against it. Agents must present "
-                    "the full plan and the dump command to the human and obtain explicit consent BEFORE "
-                    "invoking. Approval is per-todo and per-plan — never inherit it from another todo.",
+                    "This command is deprecated. Use `telec todo create` instead.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
+                hidden=True,
             ),
             "split": CommandDef(
                 desc="Split a todo into child items (container transition)",
@@ -782,9 +779,10 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB_NEWCOMER),
             ),
             "create": CommandDef(
-                desc="Scaffold a bug from an explicit slug; lifecycle router dispatches /next-work",
-                args="<slug> [--project <name>]",
+                desc="Scaffold a bug from a description; lifecycle router dispatches /next-work",
+                args="<description> [--slug <slug>] [--project <name>]",
                 flags=[
+                    Flag("--slug", desc="Custom slug (default: auto-generated)"),
                     _FLAG_PROJECT_TRUSTED,
                 ],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER_CONTRIB),

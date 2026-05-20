@@ -1,15 +1,14 @@
-"""Test spec (xfail) for work-cartridge-lifecycle-routing CLI entry paths.
+"""Test spec for work-cartridge-lifecycle-routing CLI entry paths.
 
 These specs pin the dump-entry side of the lifecycle router:
 
-- each supported CLI entry path emits ``todo_dumped`` with the correct ``kind``;
-- ``--draft`` suppresses emission;
+- ``--draft`` / ``--silent`` suppresses emission;
 - ``bugs report`` no longer launches work sessions directly from the CLI; and
 - the bug-lane chain routes through the lifecycle router to ``/next-work`` when
   the captured dump body is fed back into the router.
 
-The module-level ``pytestmark`` xfail stays until the implementation satisfies
-every spec.
+Event emission moved server-side: the API route emits ``workflow.todo.created``
+after a successful dump; the CLI no longer calls ``/events/emit``.
 """
 
 from __future__ import annotations
@@ -18,7 +17,6 @@ import asyncio
 import importlib
 from collections.abc import Callable
 from importlib import import_module
-from pathlib import Path
 from types import SimpleNamespace
 from typing import Protocol, TypedDict, cast
 from unittest.mock import MagicMock, patch
@@ -26,7 +24,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude.cli.telec.handlers.todo import _handle_todo_dump
-from teleclaude.events.envelope import EventEnvelope
+from teleclaude.events.envelope import EventEnvelope, EventLevel, EventVisibility
 
 pytestmark = [
     pytest.mark.unit,
@@ -68,13 +66,7 @@ def _json_body(mock_call: MagicMock) -> _ToolRequestBody:
 
 
 def _fake_api_client() -> tuple[SimpleNamespace, object]:
-    """Fake TelecAPIClient factory that captures ``run_session`` kwargs.
-
-    This mirrors the real async contract (connect/run_session/close) so that
-    callers using ``asyncio.run(...)`` execute cleanly — we do not patch
-    ``asyncio.run`` itself, which would leave unawaited coroutines and raise
-    ``RuntimeWarning``.
-    """
+    """Fake TelecAPIClient factory that captures ``run_session`` kwargs."""
     captured = SimpleNamespace(connected=False, closed=False, kwargs=None)
 
     async def _connect() -> None:
@@ -111,12 +103,21 @@ def _route_bug_event_from_tool_request(
     router_factory: object,
     **kwargs: object,
 ) -> tuple[dict[str, str], EventEnvelope | None]:
+    """Intercept /todos/dump, synthesize workflow.todo.created, route through lifecycle router."""
     if method == "POST" and path == "/todos/dump":
-        return {"status": "ok"}, None
-    if method == "POST" and path == "/events/emit":
         body = kwargs.get("json_body")
         assert isinstance(body, dict)
-        event = EventEnvelope.model_validate(body)
+        slug = str(body.get("slug", ""))
+        kind = str(body.get("kind", "feature"))
+        # Simulate server-side workflow.todo.created emission from the API route
+        event = EventEnvelope(
+            event="workflow.todo.created",
+            source="api",
+            level=EventLevel.WORKFLOW,
+            domain="software-development",
+            visibility=EventVisibility.LOCAL,
+            payload={"slug": slug, "kind": kind, "pickup_requested": True},
+        )
         router = _router_type()()
         with (
             patch("teleclaude.events.cartridges.lifecycle_router.TelecAPIClient", router_factory),
@@ -146,44 +147,16 @@ def _assert_bug_chain_routes(
 
     emitted = captured_event
     assert emitted is not None
-    assert emitted.event == "domain.software-development.planning.todo_dumped"
+    assert emitted.event == "workflow.todo.created"
     assert emitted.payload["slug"] == expected_slug
     assert emitted.payload["kind"] == "bug"
-    assert emitted.payload["project_root"] == str(Path.cwd())
     assert router_launch.kwargs is not None
     assert router_launch.kwargs["command"] == "/next-work"
     assert router_launch.kwargs["args"] == expected_slug
 
 
-def test_todo_dump_emits_default_lane_todo_dumped_event() -> None:
-    with patch(f"{_TODO_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
-        _handle_todo_dump(["my-slug", "my content"])
-
-    assert mock_api.call_count == 2
-    emit_body = _json_body(mock_api.call_args_list[1])
-    payload = emit_body["payload"]
-    assert isinstance(payload, dict)
-    assert emit_body["event"] == "domain.software-development.planning.todo_dumped"
-    assert payload["slug"] == "my-slug"
-    assert payload["kind"] == "todo"
-    assert payload["project_root"] == str(Path.cwd())
-
-
-def test_todo_dump_prepped_emits_prepped_lane_todo_dumped_event() -> None:
-    with patch(f"{_TODO_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
-        _handle_todo_dump(["--prepped", "my-slug", "my content"])
-
-    assert mock_api.call_count == 2
-    emit_body = _json_body(mock_api.call_args_list[1])
-    payload = emit_body["payload"]
-    assert isinstance(payload, dict)
-    assert emit_body["event"] == "domain.software-development.planning.todo_dumped"
-    assert payload["slug"] == "my-slug"
-    assert payload["kind"] == "prepped"
-    assert payload["project_root"] == str(Path.cwd())
-
-
-def test_todo_dump_draft_suppresses_todo_dumped_event_emission() -> None:
+def test_todo_dump_silent_suppresses_pickup() -> None:
+    """--draft (→ --silent) causes a single /todos/dump call with no pickup event."""
     with patch(f"{_TODO_MODULE}.tool_api_request", return_value={"status": "ok"}) as mock_api:
         _handle_todo_dump(["my-slug", "my content", "--draft"])
 
@@ -192,20 +165,14 @@ def test_todo_dump_draft_suppresses_todo_dumped_event_emission() -> None:
 
 
 def test_bugs_create_chain_routes_through_lifecycle_router_to_next_work() -> None:
-    """Full-chain spec: ``bugs create`` → ``todo_dumped(kind=bug)`` → router → ``/next-work``.
+    """Full-chain spec: ``bugs create`` → API emits workflow.todo.created → router → ``/next-work``.
 
-    Pins the bug-lane chain at the emission boundary. ``bugs create`` must
-    emit ``todo_dumped`` with ``kind=bug``, the slug, and the project context,
-    and that emitted envelope is what the lifecycle router handles. A fake
-    API client captures the router's launch so the test can assert that the
-    router — not the CLI — launches ``/next-work`` with the bug slug.
+    Pins the bug-lane chain at the dispatch boundary. The API route (not the CLI)
+    emits ``workflow.todo.created`` with ``kind=bug``; the lifecycle router then
+    dispatches ``/next-work`` with the bug slug.
 
-    A broken implementation that only writes ``/todos/dump`` with
-    ``kind=bug`` but never emits ``/events/emit``, emits the event without
-    ``kind`` or ``project_root``, or fails to route bug events into
-    ``/next-work`` cannot satisfy this spec. The structural assertion that
-    ``bugs`` does not import ``TelecAPIClient`` proves the CLI has no direct
-    dispatch boundary at all — not just that no call happened this run.
+    A broken implementation that emits the wrong event kind, skips pickup, or
+    routes to the wrong lane cannot satisfy this spec.
     """
     assert not hasattr(bugs, "TelecAPIClient"), (
         "bugs CLI must not import TelecAPIClient — the lifecycle router owns dispatch"
@@ -213,7 +180,7 @@ def test_bugs_create_chain_routes_through_lifecycle_router_to_next_work() -> Non
 
     _assert_bug_chain_routes(
         handler=lambda: bugs._handle_bugs_create(["sample-bug"]),
-        expected_slug="sample-bug",
+        expected_slug="fix-sample-bug",
     )
 
 
@@ -221,9 +188,6 @@ def test_bugs_report_does_not_launch_work_session_directly_from_cli() -> None:
     """The CLI must not dispatch a work session itself — the router owns that.
 
     Structural guard: ``bugs`` must not import ``TelecAPIClient`` at all.
-    If the import is present, a future regression could silently re-add
-    direct dispatch without any test catching it. Assert the absence of the
-    boundary, not just the absence of a call.
     """
     assert not hasattr(bugs, "TelecAPIClient"), (
         "bugs CLI must not import TelecAPIClient — the lifecycle router owns dispatch"
@@ -241,19 +205,11 @@ def test_bugs_report_does_not_launch_work_session_directly_from_cli() -> None:
 
 
 def test_bugs_report_chain_routes_through_lifecycle_router_to_next_work() -> None:
-    """Full-chain spec: ``bugs report`` → ``todo_dumped(kind=bug)`` → router → ``/next-work``.
+    """Full-chain spec: ``bugs report`` → API emits workflow.todo.created → router → ``/next-work``.
 
-    Pins the bug-lane chain at the session-launch boundary. The CLI must not
-    launch work directly. Instead it must emit ``todo_dumped(kind=bug)``, and
-    that emitted envelope is what the lifecycle router handles. A fake API
-    client captures the router's launch so the test can assert that the
-    router — not the CLI — launches ``/next-work`` with the bug slug.
-
-    A broken implementation that tags the dump request as ``bug`` but never
-    emits ``todo_dumped``, emits it without ``kind``, or fails to route bug
-    events into ``/next-work`` cannot satisfy this spec. The structural
-    assertion that ``bugs`` does not import ``TelecAPIClient`` proves the
-    CLI has no direct dispatch boundary at all.
+    Pins the bug-lane chain at the dispatch boundary. The CLI calls ``/todos/dump``
+    with ``kind=bug``; the API route emits ``workflow.todo.created``; the lifecycle
+    router dispatches ``/next-work`` with the bug slug.
     """
     assert not hasattr(bugs, "TelecAPIClient"), (
         "bugs CLI must not import TelecAPIClient — the lifecycle router owns dispatch"

@@ -34,7 +34,7 @@ def test_handle_bugs_create_calls_dump_api(
         lambda method, path, **kw: api_calls.append((method, path)) or {"status": "ok", "slug": "sample-bug"},
     )
 
-    bugs._handle_bugs_create(["sample-bug"])
+    bugs._handle_bugs_create(["Login issue on login page", "--slug", "sample-bug"])
 
     assert api_calls[0] == ("POST", "/todos/dump")
 
@@ -117,7 +117,7 @@ def test_handle_bugs_create_with_project_flag(
 
     cfg = _mock_config_with_dirs([_make_trusted_dir("target", str(project_path))])
     with patch.object(bugs, "config", cfg):
-        bugs._handle_bugs_create(["my-bug", "--project", "target"])
+        bugs._handle_bugs_create(["Some description", "--slug", "my-bug", "--project", "target"])
 
     assert "Created bug: my-bug" in capsys.readouterr().out
 
@@ -167,3 +167,74 @@ def test_handle_bugs_list_queries_db_for_bug_kind_todos(
     output = capsys.readouterr().out
     assert "fix-crash" in output
     assert "fixing" in output
+
+
+def test_bugs_create_without_description_fails_clearly_and_writes_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    api_calls: list[tuple[str, str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(bugs, "tool_api_request", lambda *a, **kw: api_calls.append(("POST", "/todos/dump")))
+
+    with pytest.raises(SystemExit):
+        bugs._handle_bugs_create([])
+
+    assert not api_calls
+
+
+def test_bugs_create_with_description_posts_substantive_content(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: list[dict] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        bugs,
+        "tool_api_request",
+        lambda method, path, **kw: captured.append(kw.get("json_body", {})) or {"status": "ok"},
+    )
+
+    bugs._handle_bugs_create(["Login fails on mobile"])
+
+    assert captured
+    body = captured[0]
+    assert body.get("content")  # non-empty content was sent
+    assert body.get("kind") == "bug"
+
+
+def test_bugs_create_does_not_emit_planning_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    api_calls: list[tuple[str, str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        bugs,
+        "tool_api_request",
+        lambda method, path, **kw: api_calls.append((method, path)) or {"status": "ok"},
+    )
+
+    bugs._handle_bugs_create(["Login fails on mobile"])
+
+    paths = [p for _, p in api_calls]
+    assert "/events/emit" not in paths
+
+
+def test_bugs_report_does_not_emit_planning_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    api_calls: list[tuple[str, str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(bugs, "normalize_slug", lambda _: "example-bug")
+    monkeypatch.setattr(
+        bugs,
+        "tool_api_request",
+        lambda method, path, **kw: api_calls.append((method, path)) or {"status": "ok"},
+    )
+
+    bugs._handle_bugs_report(["Example bug"])
+
+    paths = [p for _, p in api_calls]
+    assert "/events/emit" not in paths

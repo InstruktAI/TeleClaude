@@ -1,0 +1,35 @@
+# serializer version: 1
+# name: test_todo_create_help_output
+  '''
+  Usage:
+    telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]
+  
+    Create a todo with substantive content
+  
+  Options:
+    --after                Comma-separated dependency slugs
+    --silent               Create silently — suppress pickup notification
+    --prepped              HUMAN-IN-THE-LOOP REQUIRED. Content is a complete plan; mark todo prepped and ready for build. Agents must obtain explicit human approval of the exact plan content before invoking.
+  
+  Notes:
+    Creates the roadmap entry, canonical state, and stores content as the input artifact.
+    Emits workflow.todo.created for autonomous pickup unless --silent is set.
+  
+  '''
+# ---
+# name: test_todo_dump_help_output
+  '''
+  Usage:
+    telec todo dump <slug> <content> [--after <deps>] [--prepped]
+  
+    DEPRECATED — alias for `telec todo create`
+  
+  Options:
+    --after                Comma-separated dependency slugs
+    --prepped              Forwarded to telec todo create --prepped
+  
+  Notes:
+    This command is deprecated. Use `telec todo create` instead.
+  
+  '''
+# ---

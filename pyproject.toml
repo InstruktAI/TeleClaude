@@ -365,6 +365,7 @@ orphan-exclude = [
     "tests/unit/tools/test_update_third_party_frontmatter.py",  # Mapper-gap: tools/update_third_party_frontmatter.py is outside current teleclaude/** mapper roots.
     "tests/unit/transport/redis_transport/test_redis_wire_format_typed_fields.py",  # Cross-module: Redis wire format spans metadata models, snapshots, and transport.
     "tests/unit/transport/redis_transport/test_target_computer_named_field.py",  # Cross-module: target-computer wire field spans command mapper, metadata models, and transport.
+    "tests/unit/cli/telec/test_todo_help.py",  # Cross-module: help snapshot tests cover help.py _usage_leaf for todo subcommands; no dedicated todo_help.py source.
 ]
 
 [tool.coverage.run]

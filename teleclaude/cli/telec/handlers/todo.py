@@ -8,8 +8,6 @@ import sys
 import uuid
 from typing import Literal
 
-from instrukt_ai_logging import get_logger
-
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import print_json, tool_api_call, tool_api_request
@@ -29,12 +27,10 @@ from teleclaude.core.next_machine.stamps import apply_todo_stamp
 from teleclaude.core.next_machine.state_io import mark_phase_state, reconcile_phase_state
 from teleclaude.core.next_machine.state_mutation import StateMutationError
 from teleclaude.core.todos_db import close_todos_db_instances
-from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.events.producer import ensure_event_producer
 from teleclaude.git import GitCommandError
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.session_identity import get_session_id
-from teleclaude.todo_scaffold import create_draft_skeleton
 
 __all__ = [
     "_handle_todo",
@@ -201,70 +197,11 @@ def _handle_todo(args: list[str]) -> None:
 
 
 def _handle_todo_create(args: list[str]) -> None:
-    """Handle telec todo create <slug> [--after <deps>] [--kind <kind>]."""
-    slug: str | None = None
-    after: list[str] | None = None
-    kind = "feature"
-
-    i = 0
-    while i < len(args):
-        arg = args[i]
-        if arg == "--after" and i + 1 < len(args):
-            after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
-            i += 2
-        elif arg == "--kind" and i + 1 < len(args):
-            kind = args[i + 1]
-            i += 2
-        elif arg.startswith("-"):
-            print(f"Unknown option: {arg}")
-            print(_usage("todo", "create"))
-            raise SystemExit(1)
-        else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print(_usage("todo", "create"))
-                raise SystemExit(1)
-            slug = arg
-            i += 1
-
-    if not slug:
-        print(_usage("todo", "create"))
-        raise SystemExit(1)
-
-    try:
-        output = create_draft_skeleton(str(resolve_invocation_cwd()), slug, after=after, kind=kind)
-    except ValueError as exc:
-        print(str(exc), file=sys.stderr)
-        raise SystemExit(1) from exc
-    print(output)
-
-
-def _handle_todo_design(args: list[str]) -> None:
-    """Handle telec todo design [<slug>]."""
-    handle_todo_design(args)
-
-
-def _handle_todo_dump(args: list[str]) -> None:
-    """Handle telec todo dump <slug> <content> [--after <deps>] [--draft] [--prepped].
-
-    Creates a todo in todos.db: state, artifact row, and roadmap entry. Everything
-    lives in the database — no filesystem writes, no git commits.
-
-    Modes:
-      - Default: writes content as the "input" artifact; enters the normal prepare
-        lifecycle.
-      - --draft: same as default but suppresses the todo_dumped notification.
-      - --prepped: writes content as the "implementation-plan" artifact and marks the
-        todo as kind=prepped, immediately ready for build. Skips the prepare phase.
-    """
-    if len(args) < 2:
-        print(_usage("todo", "dump"))
-        raise SystemExit(1)
-
+    """Handle telec todo create <slug> <content> [--after <deps>] [--silent] [--prepped]."""
     slug: str | None = None
     content: str | None = None
     after: list[str] | None = None
-    draft = False
+    silent = False
     prepped = False
 
     i = 0
@@ -273,15 +210,15 @@ def _handle_todo_dump(args: list[str]) -> None:
         if arg == "--after" and i + 1 < len(args):
             after = [part.strip() for part in args[i + 1].split(",") if part.strip()]
             i += 2
-        elif arg == "--draft":
-            draft = True
+        elif arg == "--silent":
+            silent = True
             i += 1
         elif arg == "--prepped":
             prepped = True
             i += 1
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print(_usage("todo", "dump"))
+            print(_usage("todo", "create"))
             raise SystemExit(1)
         else:
             if slug is None:
@@ -290,29 +227,20 @@ def _handle_todo_dump(args: list[str]) -> None:
                 content = arg
             else:
                 print("Too many positional arguments.")
-                print(_usage("todo", "dump"))
+                print(_usage("todo", "create"))
                 raise SystemExit(1)
             i += 1
 
-    if not slug or not content:
-        print(_usage("todo", "dump"))
+    if not slug:
+        print(_usage("todo", "create"))
         raise SystemExit(1)
 
-    # Resolve the lifecycle-router lane for this dump. The CLI stamps this as
-    # the first-class ``kind`` on the todo_dumped event so the lifecycle
-    # router can dispatch from payload alone, without re-reading todo state.
-    event_kind = "prepped" if prepped else "todo"
+    if not content or not content.strip():
+        print("Error: <content> is required and must not be empty")
+        print(_usage("todo", "create"))
+        raise SystemExit(1)
 
-    # Create via daemon API — writes state + artifact + roadmap entry to todos.db.
-    # When --prepped, kind="prepped" routes the server-side dump to write the content
-    # as the implementation-plan artifact and stamp the todo as ready for build.
-    # Determine the kind for the API request: draft and prepped are explicit
-    # lanes; default (None) enters the normal prepare lifecycle.
-    dump_kind: Literal["bug", "draft", "prepped"] | None = None
-    if draft:
-        dump_kind = "draft"
-    elif prepped:
-        dump_kind = "prepped"
+    dump_kind: Literal["bug", "draft", "prepped"] | None = "prepped" if prepped else None
 
     request = TodoDumpRequest(
         slug=slug,
@@ -320,6 +248,7 @@ def _handle_todo_dump(args: list[str]) -> None:
         after=after,
         kind=dump_kind,
         cwd=str(resolve_invocation_cwd()),
+        silent=silent,
     )
     result = tool_api_request(
         "POST",
@@ -329,28 +258,22 @@ def _handle_todo_dump(args: list[str]) -> None:
     )
 
     if isinstance(result, dict) and result.get("status") == "ok":
-        print(f"Dumped todo: {slug}" + (" (prepped, ready for build)" if prepped else ""))
+        print(f"Created todo: {slug}" + (" (prepped, ready for build)" if prepped else ""))
     else:
         print(f"Error: unexpected response: {result}")
         raise SystemExit(1)
 
-    if draft:
-        return
 
-    # Emit planning.todo_dumped notification
-    _log = get_logger(__name__)
-    try:
-        envelope = EventEnvelope(
-            event="domain.software-development.planning.todo_dumped",
-            source="telec-cli",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            description=f"Todo dumped: {slug}",
-            payload={"slug": slug, "kind": event_kind, "project_root": str(resolve_invocation_cwd())},
-        )
-        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
-    except Exception:
-        _log.warning("Todo dumped but notification emission failed: %s", slug)
+def _handle_todo_design(args: list[str]) -> None:
+    """Handle telec todo design [<slug>]."""
+    handle_todo_design(args)
+
+
+def _handle_todo_dump(args: list[str]) -> None:
+    """DEPRECATED — alias for telec todo create. Use telec todo create instead."""
+    print("Warning: 'telec todo dump' is deprecated. Use 'telec todo create' instead.", file=sys.stderr)
+    translated = ["--silent" if arg == "--draft" else arg for arg in args]
+    _handle_todo_create(translated)
 
 
 def _handle_todo_split(args: list[str]) -> None:

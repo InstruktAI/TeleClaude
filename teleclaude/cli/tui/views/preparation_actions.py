@@ -15,7 +15,13 @@ from teleclaude.cli.tui.views._footer_actions import refresh_footer_bindings, sy
 from teleclaude.cli.tui.views._project_actions import save_new_project
 from teleclaude.cli.tui.widgets.computer_header import ComputerHeader
 from teleclaude.cli.tui.widgets.group_separator import GroupSeparator
-from teleclaude.cli.tui.widgets.modals import ConfirmModal, CreateSlugModal, NewProjectModal, NewProjectResult
+from teleclaude.cli.tui.widgets.modals import (
+    ConfirmModal,
+    ContentInputModal,
+    CreateSlugModal,
+    NewProjectModal,
+    NewProjectResult,
+)
 from teleclaude.cli.tui.widgets.project_header import ProjectHeader
 from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
@@ -339,28 +345,39 @@ class PreparationViewActionsMixin:
         return os.getcwd()
 
     def _create_item(self, slug: str, *, kind: str) -> None:
-        """Create a todo or bug via the daemon API."""
+        """Create a todo or bug via the daemon API after content modal confirmation."""
         project_root = self._current_project_path()
 
-        request = TodoDumpRequest(
-            slug=slug,
-            content="",
-            kind="bug" if kind == "bug" else None,
-            cwd=project_root,
+        def _on_content(content: str | None) -> None:
+            if not content or not content.strip():
+                return
+
+            request = TodoDumpRequest(
+                slug=slug,
+                content=content.strip(),
+                kind="bug" if kind == "bug" else None,
+                cwd=project_root,
+            )
+
+            try:
+                result = tool_api_request(
+                    "POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0
+                )
+            except Exception as exc:
+                self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
+                return
+
+            if isinstance(result, dict) and result.get("status") == "ok":
+                self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
+            elif isinstance(result, dict) and result.get("detail"):
+                self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            else:
+                self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
+
+        self.app.push_screen(  # type: ignore[attr-defined]
+            ContentInputModal(title=f"New {'Bug' if kind == 'bug' else 'Todo'}"),
+            callback=_on_content,
         )
-
-        try:
-            result = tool_api_request("POST", "/todos/dump", json_body=request.model_dump(mode="json"), timeout=10.0)
-        except Exception as exc:
-            self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
-            return
-
-        if isinstance(result, dict) and result.get("status") == "ok":
-            self.app.notify(f"Created {slug}")  # type: ignore[attr-defined]
-        elif isinstance(result, dict) and result.get("detail"):
-            self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
-        else:
-            self.app.notify(f"Unexpected response: {result}", severity="error")  # type: ignore[attr-defined]
 
     def action_new_project(self) -> None:
         """n on computer header: open New Project modal."""

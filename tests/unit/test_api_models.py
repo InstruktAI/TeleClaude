@@ -51,6 +51,7 @@ from teleclaude.api_models import (
     SettingsDTO,
     SettingsPatchDTO,
     TodoDTO,
+    TodoDumpRequest,
     ToolUseActivityEventDTO,
     TTSSettingsDTO,
     TTSSettingsPatchDTO,
@@ -1319,3 +1320,15 @@ class TestOperationStatusPayload:
         }
         assert payload["slug"] == "my-slug"
         assert payload["result"] == "done"
+
+
+class TestTodoDumpRequest:
+    @pytest.mark.unit
+    def test_todo_dump_request_empty_content_raises_validation_error(self) -> None:
+        with pytest.raises(ValidationError):
+            TodoDumpRequest(slug="my-slug", content="")
+
+    @pytest.mark.unit
+    def test_todo_dump_request_default_silent_is_false(self) -> None:
+        req = TodoDumpRequest(slug="my-slug", content="some content")
+        assert req.silent is False

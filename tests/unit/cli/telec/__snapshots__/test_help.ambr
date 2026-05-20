@@ -34,5 +34,5 @@
   '''
 # ---
 # name: test_usage_subcmd_todo_dump_renders_without_hidden_flags
-  '  telec todo dump <slug> <content> [--after <deps>] [--prepped] [--after --prepped]# Fire-and-forget brain dump with notification trigger'
+  '  telec todo dump <slug> <content> [--after <deps>] [--prepped] [--after --prepped]# DEPRECATED — alias for `telec todo create`'
 # ---

@@ -6,12 +6,11 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-  - v2-workflow-cutover
-  - removal-snippet-frontmatter-sync
-  - roadmap-trash-reveal-ui
-  - v2-workflow-cli-refinement-commands
-  - v2-workflow-creation-cleanup
-  - v1-workflow-creation-hardening
+- v2-workflow-cutover
+- removal-snippet-frontmatter-sync
+- roadmap-trash-reveal-ui
+- v2-workflow-cli-refinement-commands
+- v1-workflow-creation-hardening
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -193,6 +192,33 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   serve only the dispatch class. Encoding pickup intent in the payload
   preserves the state-change contract and lets autonomous dispatch consumers
   gate themselves explicitly.
+
+##### v1 partial-shape (transitional)
+
+The v1 `/todos/dump` route (`teleclaude/api/todo_routes.py`) emits seven
+fields: `slug`, `kind` (canonical-mapped via `map_v1_kind_to_canonical`),
+`creation_mode`, `pickup_requested`, `lifecycle_phase`, `created_at`, and
+`project_path`.
+
+Six of those seven are canonical fields. `project_path` is not part of the
+canonical nine-field contract above — v1 carries it as a bridge-forward
+extra because the v1 runtime has no `project_id`; the canonical producer
+schema uses `project_id` from which bridge consumers derive `project_path`
+via the existing `project_id → project_path` map.
+
+The three canonical fields absent on v1-emitted events are `todo_id`,
+`project_id`, and `created_by_principal`.
+
+Consumers MUST treat those three fields as optional and apply safe defaults
+when ingesting events that may originate from a v1 emitter. The Rust v2
+`WorkflowService` handles this via serde defaults on the `TodoCreated` struct
+so v2 code can consume v1 events without panicking on missing fields.
+
+This partial shape is a transitional constraint, not the target contract. The
+`v2-workflow-cutover` delivery retires it: the v2 route emits the full
+canonical payload above, and v1-compatibility handling (serde defaults on
+optional fields, downstream `.unwrap_or_default()` reads) is removed at
+cutover.
 
 #### `workflow.todo.updated`
 

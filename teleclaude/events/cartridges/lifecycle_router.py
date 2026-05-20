@@ -13,6 +13,7 @@ from teleclaude.events.pipeline import PipelineContext
 logger = get_logger(__name__)
 
 _PLANNING_PREFIX = "domain.software-development.planning."
+_WORKFLOW_PREFIX = "workflow."
 
 _TRIGGER_EVENTS = {
     "domain.software-development.planning.artifact_changed",
@@ -20,6 +21,7 @@ _TRIGGER_EVENTS = {
     "domain.software-development.planning.todo_dumped",
     "domain.software-development.planning.todo_activated",
     "domain.software-development.planning.dependency_resolved",
+    "workflow.todo.created",
 }
 
 
@@ -34,7 +36,7 @@ class LifecycleRouterCartridge:
 
     async def process(self, event: EventEnvelope, context: PipelineContext) -> EventEnvelope | None:
         """Dispatch todo dump events and pass through other planning events."""
-        if not event.event.startswith(_PLANNING_PREFIX):
+        if not (event.event.startswith(_PLANNING_PREFIX) or event.event.startswith(_WORKFLOW_PREFIX)):
             return event
         if event.event not in _TRIGGER_EVENTS:
             return event
@@ -47,6 +49,16 @@ class LifecycleRouterCartridge:
 
         # todo_dumped → route by payload.kind (no todo-state reads)
         if event.event == f"{_PLANNING_PREFIX}todo_dumped":
+            kind_raw = event.payload.get("kind")
+            kind = kind_raw if isinstance(kind_raw, str) else None
+            await self._dispatch_router_lane(slug, kind)
+            return event
+
+        if event.event == "workflow.todo.created":
+            pickup_requested = event.payload.get("pickup_requested", True)
+            if not pickup_requested:
+                logger.info("workflow.todo.created skipped: pickup_requested=False", slug=slug)
+                return event
             kind_raw = event.payload.get("kind")
             kind = kind_raw if isinstance(kind_raw, str) else None
             await self._dispatch_router_lane(slug, kind)
@@ -92,7 +104,7 @@ class LifecycleRouterCartridge:
                 "thinking_mode": "slow",
                 "detach": True,
             }
-        elif kind == "todo":
+        elif kind in ("todo", "feature", "refactor", "migration"):
             resolved_kind = "todo"
             dispatch_args = {
                 "command": "/next-prepare",

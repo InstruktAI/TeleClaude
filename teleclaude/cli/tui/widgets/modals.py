@@ -738,3 +738,56 @@ class CreateSlugModal(ModalScreen[str | None]):
             return
 
         self.dismiss(slug)
+
+
+class ContentInputModal(ModalScreen[str | None]):
+    """Content input modal — prompts for a plain-text description."""
+
+    BINDINGS = [
+        ("escape", "dismiss_modal", "Cancel"),
+    ]
+
+    def __init__(
+        self,
+        title: str = "Content",
+        placeholder: str = "Enter description...",
+        **kwargs: object,
+    ) -> None:
+        super().__init__(**kwargs)  # type: ignore[arg-type]
+        self._title = title
+        self._placeholder = placeholder
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="modal-box") as box:
+            box.border_title = self._title
+            yield Label("Enter a description:", id="content-label")
+            yield Input(placeholder=self._placeholder, id="content-input")
+            yield Label("", id="content-error")
+            with Horizontal(id="modal-actions"):
+                yield Button("[Enter] Create", variant="primary", id="create-btn")
+                yield Button("[Esc] Cancel", id="cancel-btn")
+
+    def on_mount(self) -> None:
+        self.query_one("#content-input", Input).focus()
+
+    def action_dismiss_modal(self) -> None:
+        self.dismiss(None)
+
+    def on_input_submitted(self, _event: Input.Submitted) -> None:
+        self._do_create()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel-btn":
+            self.dismiss(None)
+            return
+        if event.button.id == "create-btn":
+            self._do_create()
+
+    def _do_create(self) -> None:
+        content_input = self.query_one("#content-input", Input)
+        error_label = self.query_one("#content-error", Label)
+        content = content_input.value.strip()
+        if not content:
+            error_label.update("Content is required")
+            return
+        self.dismiss(content)

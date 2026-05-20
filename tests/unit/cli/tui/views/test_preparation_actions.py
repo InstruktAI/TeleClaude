@@ -11,6 +11,7 @@ from syrupy.assertion import SnapshotAssertion
 from teleclaude.cli.tui.todos import TodoItem
 from teleclaude.cli.tui.types import TodoStatus
 from teleclaude.cli.tui.views.preparation_actions import PreparationViewActionsMixin
+from teleclaude.cli.tui.widgets.modals import ContentInputModal
 
 _ARTIFACTS = ["architecture", "implementation-plan"]
 _HTTP_POST = "POST"
@@ -19,6 +20,10 @@ _REMOVE_ENDPOINT = "/todos/remove"
 _REMOVE_OPERATION_ID = "op-remove-123"
 _REPO_PATH = "/repo"
 _VERSION_TOTAL = 12
+_SLUG = "my-todo"
+_KIND_TODO = "todo"
+_SUBSTANTIVE_CONTENT = "This is a description"
+_DUMP_ENDPOINT = "/todos/dump"
 
 # --- PreparationViewActionsMixin._next_command (static method) ---
 
@@ -299,3 +304,40 @@ def test_action_remove_artifact_todo_row_confirm_posts_daemon_remove_and_notifie
     ]
     view.app.notify.assert_called_once_with(f"Removing {_REMOVE_SLUG}...")
     view.app._refresh_data.assert_not_called()
+
+
+@pytest.mark.unit
+def test_create_item_opens_content_modal_before_post() -> None:
+    view = _DummyPreparationView(("local", "/repo", _SLUG))
+    with patch.object(view, "tool_api_request", create=True):
+        view._create_item(_SLUG, kind=_KIND_TODO)
+    assert isinstance(view.pushed_screen, ContentInputModal)
+
+
+@pytest.mark.unit
+def test_create_item_cancelled_modal_does_not_post(monkeypatch: pytest.MonkeyPatch) -> None:
+    api_calls: list = []
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+        lambda *a, **_kw: api_calls.append(a),
+    )
+    view = _DummyPreparationView(("local", "/repo", _SLUG))
+    view._create_item(_SLUG, kind=_KIND_TODO)
+    if view.pushed_callback:
+        view.pushed_callback(None)  # type: ignore[operator]
+    assert not api_calls
+
+
+@pytest.mark.unit
+def test_create_item_substantive_content_posts(monkeypatch: pytest.MonkeyPatch) -> None:
+    api_calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+        lambda method, path, **_kw: api_calls.append((method, path)) or {"status": "ok"},
+    )
+    view = _DummyPreparationView(("local", "/repo", _SLUG))
+    view._create_item(_SLUG, kind=_KIND_TODO)
+    if view.pushed_callback:
+        view.pushed_callback(_SUBSTANTIVE_CONTENT)  # type: ignore[operator]
+    assert api_calls
+    assert api_calls[0][1] == _DUMP_ENDPOINT

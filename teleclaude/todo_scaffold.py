@@ -73,10 +73,13 @@ def create_draft_skeleton(
     project_root: str,
     slug: str,
     *,
+    content: str | None = None,
     after: list[str] | None = None,
     kind: str = "feature",
 ) -> str:
     """Create a draft todo skeleton with no input artifact."""
+    if not content or not content.strip():
+        raise ValueError("content must not be empty")
     validate_slug(slug)
     slug = slug.strip()
     if kind not in {"feature", "bug", "refactor", "migration", "prepped"}:

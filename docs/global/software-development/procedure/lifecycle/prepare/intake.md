@@ -128,7 +128,7 @@ feedback on the written PRD but cannot stamp approval.
 
 ## Preconditions
 
-- Session has been invoked through `/next-prepare` (with or without slug) OR auto-spawned by the daemon after a non-`--draft` `telec todo dump`.
+- Session has been invoked through `/next-prepare` (with or without slug) OR auto-spawned by the daemon after a non-`--silent` `telec todo create`.
 - The session's `additional_context` indicates `human_in_loop: true | false`. Default is `true`.
 - User proficiency known from PersonDTO injection, or asked once at the top of the session if absent.
 

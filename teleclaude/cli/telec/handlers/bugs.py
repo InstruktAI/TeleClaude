@@ -5,18 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from instrukt_ai_logging import get_logger
-
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.cli.telec.help import _usage
 from teleclaude.cli.tool_client import tool_api_request
 from teleclaude.config import config
 from teleclaude.core.todos_db import get_todos_db_sync
-from teleclaude.events.envelope import EventEnvelope, EventLevel
 from teleclaude.project_root import resolve_invocation_cwd
 from teleclaude.slug import normalize_slug
-
-_log = get_logger(__name__)
 
 __all__ = [
     "_handle_bugs",
@@ -25,26 +20,6 @@ __all__ = [
     "_handle_bugs_report",
     "_resolve_project_by_name",
 ]
-
-
-def _emit_bug_dumped_event(slug: str, project_root: Path) -> None:
-    """Emit ``todo_dumped`` with ``kind=bug`` so the lifecycle router dispatches.
-
-    The lifecycle router owns ``/next-work`` dispatch for bug lanes; the CLI
-    only publishes the intent via the event and lets the router decide.
-    """
-    try:
-        envelope = EventEnvelope(
-            event="domain.software-development.planning.todo_dumped",
-            source="telec-cli",
-            level=EventLevel.WORKFLOW,
-            domain="software-development",
-            description=f"Bug dumped: {slug}",
-            payload={"slug": slug, "kind": "bug", "project_root": str(project_root)},
-        )
-        tool_api_request("POST", "/events/emit", json_body=envelope.model_dump(mode="json"), timeout=5.0)
-    except Exception:
-        _log.warning("Bug dumped but notification emission failed: %s", slug)
 
 
 def _resolve_project_by_name(name: str) -> Path:
@@ -81,11 +56,12 @@ def _handle_bugs(args: list[str]) -> None:
 
 
 def _handle_bugs_create(args: list[str]) -> None:
-    """Handle telec bugs create <slug>."""
+    """Handle telec bugs create <description> [--slug <slug>] [--project <name>]."""
     if not args:
-        print("Usage: telec bugs create <slug>")
+        print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
         raise SystemExit(1)
 
+    description: str | None = None
     slug: str | None = None
     project_name: str | None = None
     project_root = resolve_invocation_cwd()
@@ -96,27 +72,40 @@ def _handle_bugs_create(args: list[str]) -> None:
         if arg == "--project" and i + 1 < len(args):
             project_name = args[i + 1]
             i += 2
+        elif arg == "--slug" and i + 1 < len(args):
+            slug = args[i + 1]
+            i += 2
+        elif arg == "--description" and i + 1 < len(args):
+            description = args[i + 1]
+            i += 2
         elif arg.startswith("-"):
             print(f"Unknown option: {arg}")
-            print("Usage: telec bugs create <slug>")
+            print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
             raise SystemExit(1)
         else:
-            if slug is not None:
-                print("Only one slug is allowed.")
-                print("Usage: telec bugs create <slug>")
+            if description is not None:
+                print("Only one description is allowed.")
                 raise SystemExit(1)
-            slug = arg
+            description = arg
             i += 1
+
+    if not description:
+        print("Error: description is required")
+        print("Usage: telec bugs create <description> [--slug <slug>] [--project <name>]")
+        raise SystemExit(1)
 
     if project_name:
         project_root = _resolve_project_by_name(project_name)
 
-    if slug is None:
-        print("Error: slug is required")
-        print("Usage: telec bugs create <slug>")
-        raise SystemExit(1)
+    if not slug:
+        slug_base = normalize_slug(description)
+        if len(slug_base) > 40:
+            slug_base = slug_base[:40].rstrip("-")
+        slug = f"fix-{slug_base}"
 
-    request = TodoDumpRequest(slug=slug, content="", kind="bug", cwd=str(project_root))
+    bug_content = f"# {slug}\n\n**Symptom:** {description}\n"
+
+    request = TodoDumpRequest(slug=slug, content=bug_content, kind="bug", cwd=str(project_root))
     result = tool_api_request(
         "POST",
         "/todos/dump",
@@ -124,7 +113,6 @@ def _handle_bugs_create(args: list[str]) -> None:
         timeout=10.0,
     )
     if isinstance(result, dict) and result.get("status") == "ok":
-        _emit_bug_dumped_event(slug, project_root)
         print(f"Created bug: {slug}")
     elif isinstance(result, dict) and result.get("detail"):
         print(f"Error: {result['detail']}")
@@ -202,7 +190,6 @@ def _handle_bugs_report(args: list[str]) -> None:
         print(f"Error: {detail}")
         raise SystemExit(1)
 
-    _emit_bug_dumped_event(slug, project_root)
     print(f"Created bug: {slug}")
 
 

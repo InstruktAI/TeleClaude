@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Body, Depends, HTTPException
@@ -29,6 +30,7 @@ from teleclaude.api.auth import (
     clearance_todos_set_deps,
     clearance_todos_work,
 )
+from teleclaude.api.kind_mapper import map_v1_kind_to_canonical
 from teleclaude.api_models import OperationStatusDTO, TodoDumpRequest
 from teleclaude.config import config
 from teleclaude.constants import (
@@ -52,6 +54,8 @@ from teleclaude.core.operations import get_operations_service
 from teleclaude.core.operations.service import SerializedOperation
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.todos_db._show import assemble_show_payload
+from teleclaude.events.envelope import EventLevel
+from teleclaude.events.producer import emit_event
 from teleclaude.project_root import resolve_state_root
 from teleclaude.types.todos import BreakdownState
 
@@ -547,6 +551,9 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         if existing is not None:
             raise HTTPException(status_code=409, detail=f"Todo '{slug}' already exists")
 
+        if not request.content.strip():
+            raise HTTPException(status_code=400, detail="content must not be empty or whitespace-only")
+
         state = default_state()
         if request.kind in ("bug", "draft", "prepped"):
             state["kind"] = request.kind
@@ -595,8 +602,26 @@ async def todo_dump(request: TodoDumpRequest) -> _SlugStatusResponse:
         if request.kind in ("prepped", "bug"):
             # Stamp DOR, grounding baseline, and review approvals so the
             # canonical lifecycle is immediately `prepared`.
-            apply_prepared_state(effective_cwd, slug)
+            final_state = apply_prepared_state(effective_cwd, slug)
+            state["lifecycle_phase"] = str(final_state.get("lifecycle_phase", state.get("lifecycle_phase", "draft")))
             todos_db.on_committed("todo_updated")
+
+        if request.kind != "draft":
+            await emit_event(
+                event="workflow.todo.created",
+                source="api.todo.dump",
+                level=EventLevel.WORKFLOW,
+                domain="software-development",
+                payload={
+                    "slug": slug,
+                    "kind": map_v1_kind_to_canonical(request.kind),
+                    "creation_mode": "silent" if request.silent else "pickup",
+                    "pickup_requested": not request.silent,
+                    "lifecycle_phase": str(state.get("lifecycle_phase", "draft")),
+                    "created_at": datetime.now(UTC).isoformat(),
+                    "project_path": effective_cwd,
+                },
+            )
 
         logger.info(
             "todo dump completed",

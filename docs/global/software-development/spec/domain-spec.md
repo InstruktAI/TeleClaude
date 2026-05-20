@@ -80,7 +80,7 @@ Example:
   - An artifact's version history is append-only.
   - A todo cannot move to `delivered` stage without a non-empty `delivery_commit`.
 - **Identifier:** slug (kebab-case, unique per project)
-- **Lifecycle:** Created via `telec todo create` or `telec todo dump`. Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create` (content required). `telec todo dump` is a deprecated compatibility alias. Reaches terminal `delivered` after integration. Frozen aggregates move to icebox.
 ```
 
 #### Domain events emitted

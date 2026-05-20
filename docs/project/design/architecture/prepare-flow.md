@@ -125,7 +125,7 @@ Flow: agent talks with human; fills PRD template; writes PRD; presents for appro
 
 **Use case 2 — dumped work, auto-spawned, no human present.**
 
-Trigger: `telec todo dump <description>` without `--draft`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
+Trigger: `telec todo create <slug> <description>` without `--silent`. Daemon writes input artifact and auto-spawns an orchestrator with `additional_context: human_in_loop: false`.
 
 Mode: standin.
 
