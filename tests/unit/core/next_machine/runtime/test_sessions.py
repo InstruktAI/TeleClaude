@@ -10,6 +10,7 @@ import pytest
 
 from teleclaude.core.next_machine.runtime.sessions import (
     find_all_live_sessions_for_slug,
+    find_live_prepare_worker_for_slug,
     find_live_session_for_slug,
     find_live_session_with_status_for_slug,
 )
@@ -103,3 +104,68 @@ async def test_find_all_live_sessions_for_slug_filters_by_subdir_only() -> None:
     session_ids = await find_all_live_sessions_for_slug(db, "slug-a")
 
     assert session_ids == ["sess-1", "sess-2"]
+
+
+@pytest.mark.asyncio
+async def test_find_live_prepare_worker_for_slug_exact_title_match() -> None:
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("rev", "/next-review-architecture slug-a", subdir=None),
+    ]
+
+    session_id = await find_live_prepare_worker_for_slug(db, "slug-a", "next-review-architecture")
+
+    assert session_id == "rev"
+
+
+@pytest.mark.asyncio
+async def test_find_live_prepare_worker_for_slug_rejects_prefix_collider() -> None:
+    """A longer slug that starts with the target as a prefix must not match."""
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("collider", "/next-review-architecture slug-a-extra", subdir=None),
+        _session("exact", "/next-review-architecture slug-a", subdir=None),
+    ]
+
+    session_id = await find_live_prepare_worker_for_slug(db, "slug-a", "next-review-architecture")
+
+    assert session_id == "exact"
+
+
+@pytest.mark.asyncio
+async def test_find_live_prepare_worker_for_slug_matches_with_trailing_context() -> None:
+    """A title with whitespace boundary after the slug still matches."""
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("rev", "/next-review-architecture slug-a  ADDITIONAL CONTEXT: x", subdir=None),
+    ]
+
+    session_id = await find_live_prepare_worker_for_slug(db, "slug-a", "next-review-architecture")
+
+    assert session_id == "rev"
+
+
+@pytest.mark.asyncio
+async def test_find_live_prepare_worker_for_slug_skips_non_root_subdir() -> None:
+    """Sessions running inside a worktree (subdir set) are not prepare workers."""
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("worktree", "/next-review-architecture slug-a", subdir="trees/slug-a"),
+    ]
+
+    session_id = await find_live_prepare_worker_for_slug(db, "slug-a", "next-review-architecture")
+
+    assert session_id is None
+
+
+@pytest.mark.asyncio
+async def test_find_live_prepare_worker_for_slug_rejects_other_command() -> None:
+    """Same slug+subdir but a different command family does not match."""
+    db = AsyncMock()
+    db.list_sessions.return_value = [
+        _session("plan", "/next-review-plan slug-a", subdir=None),
+    ]
+
+    session_id = await find_live_prepare_worker_for_slug(db, "slug-a", "next-review-architecture")
+
+    assert session_id is None

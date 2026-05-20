@@ -86,3 +86,31 @@ async def find_all_live_sessions_for_slug(
     expected_subdir = _expected_subdir(slug, subdir_override)
     sessions = await db.list_sessions(include_closed=False)
     return [session.session_id for session in sessions if session.subdir == expected_subdir]
+
+
+_TITLE_SLUG_BOUNDARIES = (" ", "\t", "\n")
+
+
+async def find_live_prepare_worker_for_slug(db: Db, slug: str, command_value: str) -> str | None:
+    """Return the newest live prepare worker id for an exact slug+command match.
+
+    Prepare workers run on repo root (subdir=None). A bare ``startswith`` match
+    is unsafe here because a colliding slug (``my-slug-extra``) would match a
+    lookup for ``my-slug``. This helper requires the session title to equal
+    ``/cmd slug`` or to be followed by whitespace, so longer slugs that begin
+    with the target slug as a prefix cannot match.
+    """
+    expected_title = f"/{command_value} {slug}"
+    sessions = await db.list_sessions(include_closed=False)
+    for session in sessions:
+        if session.subdir is not None:
+            continue
+        title = (session.title or "").lstrip()
+        if title == expected_title:
+            return session.session_id
+        if (
+            title.startswith(expected_title)
+            and title[len(expected_title) : len(expected_title) + 1] in _TITLE_SLUG_BOUNDARIES
+        ):
+            return session.session_id
+    return None

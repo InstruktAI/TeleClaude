@@ -6,6 +6,7 @@ the wording at the boundary and rely on the snapshot diff to catch regressions.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -24,7 +25,7 @@ async def _dispatch(phase: PreparePhase, *, live_worker_id: str | None = None) -
     todos_db = AsyncMock()
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=live_worker_id)),
+        patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value=live_worker_id)),
     ):
         return await _prepare_dispatch(
             db=db,
@@ -111,7 +112,7 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
     }
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
+        patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value=None)),
         patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
         patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
     ):
@@ -145,7 +146,7 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
     }
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
-        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="analyzer-1")),
+        patch(f"{_STEPS}.find_live_prepare_worker_for_slug", new=AsyncMock(return_value="analyzer-1")),
         patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
         patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
     ):
@@ -192,3 +193,95 @@ async def test_prepared_delegates_to_terminal_formatter() -> None:
         keep_going, instruction = await _dispatch(PreparePhase.PREPARED)
     assert keep_going is False
     assert instruction == "PREPARED: my-slug"
+
+
+@pytest.mark.asyncio
+async def test_reuse_does_not_collide_with_prefix_sharing_slug() -> None:
+    """End-to-end: a longer slug that starts with our slug as a prefix must NOT be reused.
+
+    Exercises the real find_live_prepare_worker_for_slug lookup (no helper mock)
+    so the slug-boundary guard is verified, not just the rendered output.
+    """
+    # Two live prepare reviewers on repo root (subdir=None), same command prefix,
+    # different slugs. The collider's slug starts with our target slug.
+    fake_sessions = [
+        SimpleNamespace(
+            session_id="reviewer-collider",
+            subdir=None,
+            title="/next-review-architecture my-slug-extra",
+        ),
+        SimpleNamespace(
+            session_id="reviewer-exact",
+            subdir=None,
+            title="/next-review-architecture my-slug",
+        ),
+    ]
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=fake_sessions)
+    todos_db = AsyncMock()
+    with patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.ARCHITECTURE_REVIEW,
+            state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
+        )
+    assert keep_going is False
+    assert "telec sessions send reviewer-exact" in instruction
+    assert "reviewer-collider" not in instruction
+
+
+@pytest.mark.asyncio
+async def test_reuse_matches_title_with_trailing_context() -> None:
+    """A reviewer title with trailing whitespace+context after the slug still matches."""
+    fake_sessions = [
+        SimpleNamespace(
+            session_id="reviewer-with-context",
+            subdir=None,
+            title="/next-review-architecture my-slug  ADDITIONAL CONTEXT: foo",
+        ),
+    ]
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=fake_sessions)
+    todos_db = AsyncMock()
+    with patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.ARCHITECTURE_REVIEW,
+            state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
+        )
+    assert keep_going is False
+    assert "telec sessions send reviewer-with-context" in instruction
+
+
+@pytest.mark.asyncio
+async def test_reuse_skips_session_with_non_root_subdir() -> None:
+    """A worktree-scoped session must NOT be reused for prepare (which runs on repo root)."""
+    fake_sessions = [
+        SimpleNamespace(
+            session_id="worktree-session",
+            subdir="trees/my-slug",
+            title="/next-review-architecture my-slug",
+        ),
+    ]
+    db = AsyncMock()
+    db.list_sessions = AsyncMock(return_value=fake_sessions)
+    todos_db = AsyncMock()
+    with patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.ARCHITECTURE_REVIEW,
+            state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
+        )
+    assert keep_going is False
+    # No reuse — spawn-path runs
+    assert "worktree-session" not in instruction
+    assert "telec sessions run" in instruction

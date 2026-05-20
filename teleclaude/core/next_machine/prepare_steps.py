@@ -21,7 +21,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_procedure_load,
     format_tool_call,
 )
-from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
+from teleclaude.core.next_machine.runtime.sessions import find_live_prepare_worker_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 
 if TYPE_CHECKING:
@@ -72,16 +72,16 @@ async def _dispatch_worker(
     blockers: list[str] | None = None,
 ) -> tuple[bool, str]:
     _ = state, blockers  # not surfaced in verbatim dispatch script
-    # Reuse-or-spawn: prefer an existing live worker session for this
+    # Reuse-or-spawn: prefer an existing live prepare worker for this
     # slug+command and emit `telec sessions send` instead of spawning a
     # fresh one. Prepare workers persist with subdir=None (no worktree on
-    # repo root); subdir_override="" normalizes to None inside
-    # _expected_subdir to match. The title prefix carries the slug so a
-    # same-command session for a different slug cannot match. The re-run
-    # prompt is plain text — no backticks — because the orchestrator
-    # executes the emitted `telec sessions send ...` line in a shell and
-    # backticks inside double quotes trigger command substitution.
-    worker_id = await find_live_session_for_slug(db, slug, f"/{command.value} {slug}", subdir_override="")
+    # repo root); the matcher requires the title to equal "/cmd slug" or
+    # be followed by a word boundary so a longer slug that starts with
+    # this slug as a prefix cannot match. The re-run prompt is plain text
+    # — no backticks — because the orchestrator executes the emitted
+    # `telec sessions send ...` line in a shell and backticks inside
+    # double quotes trigger command substitution.
+    worker_id = await find_live_prepare_worker_for_slug(db, slug, command.value)
     if worker_id is not None:
         message = (
             f"Re-run your task for {slug}. The relevant artifact(s) have been "
