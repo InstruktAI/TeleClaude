@@ -95,8 +95,10 @@ def _make_session(
 @pytest.fixture(autouse=True)
 def _reset_codex_sets() -> Generator[None, None, None]:
     pc._codex_transcript_bind_attempted.clear()
+    getattr(pc, "_session_projection_locks", {}).clear()
     yield
     pc._codex_transcript_bind_attempted.clear()
+    getattr(pc, "_session_projection_locks", {}).clear()
 
 
 class TestTryBindCodexTranscript:
@@ -670,6 +672,63 @@ class TestProjectSessionFromTranscript:
         adapter_client.broadcast_user_input.assert_awaited_once()
 
     @pytest.mark.unit
+    async def test_concurrent_projection_calls_share_session_gate_and_refresh_watermark(self) -> None:
+        """Concurrent projection passes for one session must not reflect the same user entry twice."""
+        session = Session(
+            session_id="sess-projection-race",
+            computer_name="local",
+            tmux_session_name="tmux-projection-race",
+            title="Untitled",
+            active_agent="claude",
+            native_log_file="/tmp/transcript.jsonl",
+            last_input_origin=TERMINAL_ORIGIN,
+        )
+        stale_second = Session.from_dict(session.to_dict())
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        adapter_client = AsyncMock()
+        first_broadcast_started = asyncio.Event()
+        release_first_broadcast = asyncio.Event()
+        current_session = session
+
+        async def broadcast_user_input(*_args: object) -> None:
+            first_broadcast_started.set()
+            await release_first_broadcast.wait()
+
+        async def update_session(_session_id: str, **fields: object) -> None:
+            nonlocal current_session
+            data = current_session.to_dict()
+            for key, value in fields.items():
+                data[key] = value.isoformat() if isinstance(value, datetime) else value
+            current_session = Session.from_dict(data)
+
+        adapter_client.broadcast_user_input = AsyncMock(side_effect=broadcast_user_input)
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=(TMUX_DIRECT_INPUT, transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.get_session = AsyncMock(side_effect=lambda _session_id: current_session)
+            mock_db.update_session = AsyncMock(side_effect=update_session)
+
+            first = asyncio.create_task(project_session_from_transcript(session, adapter_client))
+            await first_broadcast_started.wait()
+            second = asyncio.create_task(project_session_from_transcript(stale_second, adapter_client))
+            await asyncio.sleep(0)
+            release_first_broadcast.set()
+            first_result, second_result = await asyncio.gather(first, second)
+
+        adapter_client.broadcast_user_input.assert_awaited_once()
+        assert mock_db.update_session.await_count == 1
+        assert first_result.last_projected_at == transcript_ts
+        assert second_result.last_projected_at == transcript_ts
+
+    @pytest.mark.unit
     async def test_projects_transcript_output(self):
         session = Session(
             session_id="sess-title-1",
@@ -741,7 +800,7 @@ class TestProjectSessionFromTranscript:
             patch("teleclaude.core.polling_coordinator.db") as mock_db,
         ):
             mock_db.update_session = AsyncMock()
-            mock_db.get_session = AsyncMock(return_value=refreshed)
+            mock_db.get_session = AsyncMock(side_effect=[session, refreshed, refreshed])
             first = await project_session_from_transcript(session, adapter_client, started_at=1.0, last_changed_at=2.0)
             await project_session_from_transcript(first, adapter_client, started_at=1.0, last_changed_at=2.0)
 
@@ -966,9 +1025,11 @@ class TestScheduleHeadlessProjection:
     def _reset_projection_state(self) -> Generator[None]:
         pc._active_headless_projections.clear()
         pc._pending_headless_projections.clear()
+        getattr(pc, "_session_projection_locks", {}).clear()
         yield
         pc._active_headless_projections.clear()
         pc._pending_headless_projections.clear()
+        getattr(pc, "_session_projection_locks", {}).clear()
 
     @pytest.mark.unit
     async def test_signal_during_projection_triggers_one_rerun(self) -> None:
@@ -1041,3 +1102,60 @@ class TestScheduleHeadlessProjection:
                 await asyncio.sleep(0.01)
 
         assert project.await_count == 1
+
+    @pytest.mark.unit
+    async def test_scheduled_projection_and_direct_projection_share_session_gate(self) -> None:
+        session = _make_session(session_id="sess-headless-direct-gate")
+        session.lifecycle_status = "headless"
+        session.last_input_origin = TERMINAL_ORIGIN
+        session.native_log_file = NATIVE_LOG_FILE
+        stale_direct = Session.from_dict(session.to_dict())
+        transcript_ts = datetime(2026, 4, 7, 12, 0, 5, tzinfo=UTC)
+        adapter_client = AsyncMock()
+        first_broadcast_started = asyncio.Event()
+        release_first_broadcast = asyncio.Event()
+        current_session = session
+
+        async def broadcast_user_input(*_args: object) -> None:
+            first_broadcast_started.set()
+            await release_first_broadcast.wait()
+
+        async def update_session(_session_id: str, **fields: object) -> None:
+            nonlocal current_session
+            data = current_session.to_dict()
+            for key, value in fields.items():
+                data[key] = value.isoformat() if isinstance(value, datetime) else value
+            current_session = Session.from_dict(data)
+            current_session.lifecycle_status = "headless"
+
+        adapter_client.broadcast_user_input = AsyncMock(side_effect=broadcast_user_input)
+        with (
+            patch(
+                "teleclaude.core.polling_coordinator.extract_last_user_message_with_timestamp",
+                return_value=(TMUX_DIRECT_INPUT, transcript_ts),
+            ),
+            patch(
+                "teleclaude.core.polling_coordinator._build_transcript_output_update",
+                return_value=None,
+            ),
+            patch("teleclaude.core.polling_coordinator.db") as mock_db,
+        ):
+            mock_db.get_session = AsyncMock(side_effect=lambda _session_id: current_session)
+            mock_db.update_session = AsyncMock(side_effect=update_session)
+
+            assert await pc.schedule_headless_projection(session.session_id, adapter_client) is True
+            await first_broadcast_started.wait()
+            direct = asyncio.create_task(project_session_from_transcript(stale_direct, adapter_client))
+            await asyncio.sleep(0)
+            release_first_broadcast.set()
+            await direct
+
+            for _ in range(50):
+                if session.session_id not in pc._active_headless_projections:
+                    break
+                await asyncio.sleep(0.01)
+
+        adapter_client.broadcast_user_input.assert_awaited_once()
+        assert mock_db.update_session.await_count == 1
+        assert session.session_id not in pc._active_headless_projections
+        assert session.session_id not in pc._pending_headless_projections

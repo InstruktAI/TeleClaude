@@ -194,6 +194,10 @@ class ProcessMessageCommand(InternalCommand):
             payload["actor_name"] = self.actor_name
         if self.actor_avatar_url is not None:
             payload["actor_avatar_url"] = self.actor_avatar_url
+        if self.source_message_id is not None:
+            payload["source_message_id"] = self.source_message_id
+        if self.source_channel_id is not None:
+            payload["source_channel_id"] = self.source_channel_id
         if self.origin_metadata is not None:
             payload["origin_metadata"] = dict(self.origin_metadata)
         return payload

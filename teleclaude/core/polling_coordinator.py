@@ -205,6 +205,8 @@ _poller_lock = asyncio.Lock()
 _active_headless_projections: set[str] = set()
 _pending_headless_projections: set[str] = set()
 _headless_projection_lock = asyncio.Lock()
+_session_projection_locks: dict[str, asyncio.Lock] = {}
+_session_projection_locks_lock = asyncio.Lock()
 
 
 def _as_utc(value: datetime | None) -> datetime | None:
@@ -316,6 +318,16 @@ async def _release_headless_projection(session_id: str) -> None:
         _active_headless_projections.discard(session_id)
 
 
+async def _get_session_projection_lock(session_id: str) -> asyncio.Lock:
+    """Return the per-session projection lock shared by scheduled and poller paths."""
+    async with _session_projection_locks_lock:
+        lock = _session_projection_locks.get(session_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            _session_projection_locks[session_id] = lock
+        return lock
+
+
 async def _project_user_reflection(
     session: "Session",
     adapter_client: "AdapterClient",
@@ -379,7 +391,7 @@ async def _project_user_reflection(
     return refreshed or session, True
 
 
-async def project_session_from_transcript(
+async def _project_session_from_transcript_locked(
     session: "Session",
     adapter_client: "AdapterClient",
     *,
@@ -417,6 +429,27 @@ async def project_session_from_transcript(
             session = refreshed
         _record_output_tick(session.session_id, len(message))
     return session
+
+
+async def project_session_from_transcript(
+    session: "Session",
+    adapter_client: "AdapterClient",
+    *,
+    started_at: float = 0.0,
+    last_changed_at: float | None = None,
+) -> "Session":
+    """Project transcript truth through a per-session gate shared by all callers."""
+    lock = await _get_session_projection_lock(session.session_id)
+    async with lock:
+        refreshed = await db.get_session(session.session_id)
+        if refreshed is None:
+            return session
+        return await _project_session_from_transcript_locked(
+            refreshed,
+            adapter_client,
+            started_at=started_at,
+            last_changed_at=last_changed_at,
+        )
 
 
 async def schedule_session_projection(

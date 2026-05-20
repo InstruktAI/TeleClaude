@@ -156,6 +156,7 @@ class TestHandleWhatsappEvent:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         session = SimpleNamespace(session_id="session-1")
+        message_id = "wamid-1"
         dispatch = AsyncMock()
         monkeypatch.setattr(whatsapp_handler, "_resolve_or_create_session", AsyncMock(return_value=session))
         monkeypatch.setattr(whatsapp_handler, "_update_whatsapp_session_metadata", AsyncMock())
@@ -165,14 +166,14 @@ class TestHandleWhatsappEvent:
             _make_event(
                 "message.text",
                 phone_number="+1 (555) 123-4567",
-                message_id="wamid-1",
+                message_id=message_id,
                 text="hello",
             )
         )
 
         kwargs = dispatch.await_args.kwargs
         assert kwargs["session"] is session
-        assert kwargs["message_id"] == "wamid-1"
+        assert kwargs["message_id"] == message_id
         assert kwargs["command_name"] == "process_message"
         assert kwargs["payload"] == {
             "session_id": "session-1",
@@ -180,6 +181,7 @@ class TestHandleWhatsappEvent:
             "origin": "whatsapp",
             "actor_id": "whatsapp:15551234567",
             "actor_name": "15551234567",
+            "source_message_id": message_id,
         }
 
     @pytest.mark.unit

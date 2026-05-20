@@ -334,6 +334,8 @@ class GatewayHandlersMixin:
         # Process message
         actor_name = (identity.person_name or "").strip() or self._discord_actor_name(author, user_id)
         actor_avatar_url = self._discord_actor_avatar_url(author)
+        message_id = str(getattr(message, "id", "")).strip()
+        channel_id = str(getattr(getattr(message, "channel", None), "id", "")).strip()
         cmd = ProcessMessageCommand(
             session_id=session.session_id,
             text=text,
@@ -341,6 +343,8 @@ class GatewayHandlersMixin:
             actor_id=f"discord:{user_id}",
             actor_name=actor_name,
             actor_avatar_url=actor_avatar_url,
+            source_message_id=message_id or None,
+            source_channel_id=channel_id or None,
         )
         await get_command_service().process_message(cmd)
 

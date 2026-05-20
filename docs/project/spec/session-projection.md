@@ -2,9 +2,9 @@
 description: 'Canonical projection contract for reflecting session source truth into UI adapters.'
 id: 'project/spec/session-projection'
 scope: 'project'
+status: 'actual'
 type: 'spec'
 visibility: 'public'
-status: 'actual'
 ---
 
 # Session Projection — Spec
@@ -47,6 +47,12 @@ truth itself.
 - Projection may rebuild an adapter view from source truth plus that adapter's cursor. It must not
   require a remembered "current turn" inside the adapter to decide ordering.
 - If a projection pass sees no eligible source entry after the cursor, it does nothing.
+
+### Projection serialization
+
+Projection is serialized per session across all entrypoints. Scheduled projection and poller-driven projection share the same per-session gate, and the gated section refreshes session state from the database before reading `last_projected_at` or `last_projected_output_digest`.
+
+Scheduled projection still coalesces repeated wakeups: a signal that arrives while a scheduled pass is in flight marks one pending follow-up pass. The shared per-session gate prevents a scheduled pass and a direct poller pass from both reflecting the same user source entry before the projector-owned watermark advances.
 
 ### Cursor model
 
@@ -106,9 +112,10 @@ Signals wake projection. They do not decide projection content.
 - `daemon_startup_reconcile`: restart recovery should replay from cursors.
 
 Only `terminal_origin_recorded` is an origin write that also acts as a projection signal. Non-terminal
-origin writes are not standalone projection signals. The successful acceptance path may emit
-`inbound_accepted` only after accepted-input metadata is durable and fresh; later activity signals
-may also wake projection.
+origin writes are not standalone projection signals: `inbound_accepted` is emitted or scheduled only
+after accepted-input metadata is durable and fresh; later activity signals may also wake projection.
+Origin writes do not decide content; the projection gate still reads transcript/source truth and
+defers when the matching origin is not fresh.
 
 ### Adapter delivery mechanics
 

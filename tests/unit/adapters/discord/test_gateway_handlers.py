@@ -3,9 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import cast
+from unittest.mock import AsyncMock
 
 import pytest
 
+from teleclaude.adapters.discord import gateway_handlers
 from teleclaude.adapters.discord.gateway_handlers import GatewayHandlersMixin
 from teleclaude.core.models import MessageMetadata, Session
 
@@ -98,10 +100,12 @@ class DispatchingGatewayHandlers(GatewayHandlersMixin):
     def _is_managed_message(self, _message: object) -> bool:
         return True
 
-    def _extract_audio_attachment(self, _message: object) -> None:
+    @staticmethod
+    def _extract_audio_attachment(_message: object) -> object | None:
         return None
 
-    def _extract_file_attachments(self, _message: object) -> list[object]:
+    @staticmethod
+    def _extract_file_attachments(_message: object) -> list[object]:
         return []
 
     async def _resolve_or_create_session(
@@ -163,27 +167,29 @@ class DispatchingGatewayHandlers(GatewayHandlersMixin):
 async def test_handle_on_message_dispatches_typed_actor_metadata() -> None:
     """Discord managed messages must populate typed actor metadata before dispatch."""
     adapter = DispatchingGatewayHandlers()
+    message_id = "msg-discord-001"
+    channel_id = "chan-7"
     message = SimpleNamespace(
-        id="msg-discord-001",
+        id=message_id,
         content="hello from discord",
         author=SimpleNamespace(id="444555666"),
         guild=SimpleNamespace(id="777"),
-        channel=SimpleNamespace(id="chan-7", parent_id="200", parent=SimpleNamespace(id="200")),
+        channel=SimpleNamespace(id=channel_id, parent_id="200", parent=SimpleNamespace(id="200")),
         attachments=[],
     )
 
     await adapter._handle_on_message(message)
 
     assert len(adapter.dispatched_commands) == 1
-    session_arg, message_id, metadata, event, payload = adapter.dispatched_commands[0]
+    session_arg, dispatched_message_id, metadata, event, payload = adapter.dispatched_commands[0]
     assert isinstance(metadata, MessageMetadata)
     assert session_arg.session_id == "sess-456"
-    assert message_id == "msg-discord-001"
+    assert dispatched_message_id == message_id
     assert event == "process_message"
     assert metadata.actor_id == "discord:444555666"
     assert metadata.actor_name == "DiscordUser#1234"
     assert metadata.actor_avatar_url == "https://cdn.discordapp.com/avatars/444555666/abc.png"
-    assert metadata.platform_message_id == "msg-discord-001"
+    assert metadata.platform_message_id == message_id
     assert payload == {
         "session_id": "sess-456",
         "text": "hello from discord",
@@ -191,4 +197,41 @@ async def test_handle_on_message_dispatches_typed_actor_metadata() -> None:
         "actor_id": "discord:444555666",
         "actor_name": "DiscordUser#1234",
         "actor_avatar_url": "https://cdn.discordapp.com/avatars/444555666/abc.png",
+        "source_message_id": message_id,
+        "source_channel_id": channel_id,
     }
+
+
+async def test_handle_discord_dm_dispatches_source_message_identity(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Discord DM messages must carry stable source identifiers into core."""
+    adapter = DispatchingGatewayHandlers()
+    user_id = "444555666"
+    message_id = "dm-message-001"
+    channel_id = "dm-channel-001"
+    session = SimpleNamespace(
+        session_id="sess-dm",
+        get_origin_section=lambda _origin: {"user_id": user_id},
+    )
+    process_message = AsyncMock()
+    command_service = SimpleNamespace(process_message=process_message)
+    resolver = SimpleNamespace(resolve=lambda _provider, _claims: SimpleNamespace(person_name="Maurice"))
+    db = SimpleNamespace(list_sessions=AsyncMock(return_value=[session]))
+
+    monkeypatch.setattr(gateway_handlers, "get_identity_resolver", lambda: resolver)
+    monkeypatch.setattr(gateway_handlers, "get_command_service", lambda: command_service)
+    monkeypatch.setattr(gateway_handlers, "db", db)
+
+    message = SimpleNamespace(
+        id=message_id,
+        content="hello from dm",
+        author=SimpleNamespace(id=user_id),
+        channel=SimpleNamespace(id=channel_id),
+    )
+
+    await GatewayHandlersMixin._handle_discord_dm(adapter, message)
+
+    process_message.assert_awaited_once()
+    cmd = process_message.await_args.args[0]
+    assert cmd.session_id == session.session_id
+    assert cmd.source_message_id == message_id
+    assert cmd.source_channel_id == channel_id

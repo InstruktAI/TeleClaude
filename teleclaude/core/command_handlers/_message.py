@@ -56,6 +56,69 @@ def _decode_inbound_origin_metadata(row: InboundQueueRow) -> Mapping[str, object
     return origin_metadata
 
 
+async def _record_accepted_input_metadata(
+    *,
+    session_id: str,
+    origin: str,
+    message_text: str,
+    origin_metadata: Mapping[str, object] | None,
+) -> None:
+    """Persist the accepted-input fields owned by the core acceptance boundary."""
+    await db.update_session(
+        session_id,
+        last_message_sent=message_text[:200],
+        last_message_sent_at=datetime.now(UTC).isoformat(),
+        last_input_origin=origin,
+    )
+    if origin_metadata:
+        await db.update_origin_metadata(session_id, origin, dict(origin_metadata))
+
+
+def _accepted_input_fields_match(session: Session, *, origin: str, message_text: str) -> bool:
+    """Return whether session state already represents this accepted input."""
+    return (
+        session.last_message_sent == message_text[:200]
+        and session.last_message_sent_at is not None
+        and session.last_input_origin == origin
+    )
+
+
+def _origin_metadata_contains(
+    session: Session,
+    *,
+    origin: str,
+    origin_metadata: Mapping[str, object] | None,
+) -> bool:
+    """Return whether the session origin section already contains the queued metadata."""
+    if not origin_metadata:
+        return True
+    section = session.get_origin_section(origin)
+    return all(section.get(key) == value for key, value in origin_metadata.items())
+
+
+async def _ensure_inbound_acceptance_metadata(
+    session: Session,
+    row: InboundQueueRow,
+    origin_metadata: Mapping[str, object] | None,
+) -> None:
+    """Backfill accepted metadata for rows queued before enqueue-time writes existed."""
+    session_id = row["session_id"]
+    origin = row["origin"]
+    message_text = row["content"]
+
+    if not _accepted_input_fields_match(session, origin=origin, message_text=message_text):
+        await _record_accepted_input_metadata(
+            session_id=session_id,
+            origin=origin,
+            message_text=message_text,
+            origin_metadata=origin_metadata,
+        )
+        return
+
+    if not _origin_metadata_contains(session, origin=origin, origin_metadata=origin_metadata):
+        await db.update_origin_metadata(session_id, origin, dict(origin_metadata or {}))
+
+
 async def _session_message_delivery_available(session: Session) -> bool:
     """Return True when a session can accept normal message delivery.
 
@@ -263,16 +326,7 @@ async def deliver_inbound(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
-    # DB update must precede broadcast so echo guard reads the persisted state.
-    accepted_at = datetime.now(UTC).isoformat()
-    await db.update_session(
-        session_id,
-        last_message_sent=message_text[:200],
-        last_message_sent_at=accepted_at,
-        last_input_origin=row["origin"],
-    )
-    if origin_metadata:
-        await db.update_origin_metadata(session_id, row["origin"], dict(origin_metadata))
+    await _ensure_inbound_acceptance_metadata(session, row, origin_metadata)
 
     active_agent = session.active_agent
 
@@ -323,9 +377,19 @@ async def process_message(
     if not await _session_message_delivery_available(session):
         raise SessionMessageRejectedError(session_id=session_id, reason="unavailable")
 
+    origin = cmd.origin or ""
+
+    async def _record_after_insert(_row_id: int) -> None:
+        await _record_accepted_input_metadata(
+            session_id=session_id,
+            origin=origin,
+            message_text=cmd.text,
+            origin_metadata=cmd.origin_metadata,
+        )
+
     await get_inbound_queue_manager().enqueue(
         session_id=session_id,
-        origin=cmd.origin or "",
+        origin=origin,
         content=cmd.text,
         payload_json=_encode_inbound_payload(cmd.origin_metadata),
         actor_id=cmd.actor_id,
@@ -333,4 +397,5 @@ async def process_message(
         actor_avatar_url=cmd.actor_avatar_url,
         source_message_id=cmd.source_message_id,
         source_channel_id=cmd.source_channel_id,
+        post_insert_callback=_record_after_insert,
     )

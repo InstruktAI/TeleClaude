@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -13,6 +13,7 @@ from teleclaude.core.command_handlers import _message
 from teleclaude.core.conversation_messages import format_peer_message
 from teleclaude.core.db import InboundQueueRow
 from teleclaude.core.inbound_errors import SessionMessageRejectedError
+from teleclaude.core.inbound_queue import InboundQueueManager
 from teleclaude.core.models import CleanupTrigger, MessageMetadata, Session
 from teleclaude.types.commands import HandleFileCommand, HandleVoiceCommand, ProcessMessageCommand
 
@@ -260,9 +261,7 @@ class TestDeliverInbound:
         self,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """Inbound delivery records the message preview, accepted timestamp, and
-        origin on the session — same fields for every message regardless of
-        whether it's a peer bridge or human input."""
+        """Legacy inbound rows fill accepted metadata during delivery."""
         session = make_session(active_agent="claude")
         row = make_row(session_id=session.session_id, content="Please explain the latest failure.")
         db = SimpleNamespace(
@@ -286,6 +285,36 @@ class TestDeliverInbound:
         assert update_kwargs["last_message_sent"] == "Please explain the latest failure."
         assert update_kwargs["last_input_origin"] == row["origin"]
         assert "last_message_sent_at" in update_kwargs
+
+    @pytest.mark.unit
+    async def test_inbound_delivery_skips_metadata_write_when_acceptance_is_current(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        message_text = "Please explain the latest failure."
+        session = make_session(active_agent="claude")
+        session.last_message_sent = message_text
+        session.last_message_sent_at = datetime.now(UTC)
+        session.last_input_origin = "ui"
+        row = make_row(session_id=session.session_id, content=message_text)
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_last_activity=AsyncMock(),
+        )
+        client = SimpleNamespace(break_threaded_turn=AsyncMock())
+        tmux_io = SimpleNamespace(
+            process_text=AsyncMock(return_value=True),
+        )
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "tmux_io", tmux_io)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "resolve_working_dir", MagicMock(return_value="/tmp/project"))
+
+        await _message.deliver_inbound(row, client, AsyncMock())
+
+        db.update_session.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_codex_message_starts_polling_without_synthetic_seed(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -370,7 +399,84 @@ class TestProcessMessage:
             actor_avatar_url=None,
             source_message_id="msg-1",
             source_channel_id="chan-1",
+            post_insert_callback=ANY,
         )
+
+    @pytest.mark.unit
+    async def test_successful_enqueue_records_acceptance_before_queue_side_effects(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session()
+        events: list[str] = []
+
+        async def typing_callback(_session_id: str, _origin: str) -> None:
+            events.append("typing")
+
+        def ensure_worker(_session_id: str) -> None:
+            events.append("worker")
+
+        async def update_session(_session_id: str, **_fields: object) -> None:
+            events.append("accepted")
+
+        inbound_db = SimpleNamespace(enqueue_inbound=AsyncMock(return_value=12))
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(side_effect=update_session),
+        )
+        manager = InboundQueueManager(deliver_fn=AsyncMock(), typing_callback=typing_callback)
+        manager._ensure_worker = ensure_worker
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
+        monkeypatch.setattr("teleclaude.core.inbound_queue.db", inbound_db)
+
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text="ship it",
+            origin="web",
+        )
+
+        await _message.process_message(cmd, SimpleNamespace(), AsyncMock())
+
+        assert events == ["accepted", "typing", "worker"]
+        db.update_session.assert_awaited_once()
+        update_kwargs = db.update_session.await_args.kwargs
+        assert update_kwargs["last_message_sent"] == cmd.text
+        assert update_kwargs["last_input_origin"] == cmd.origin
+        assert "last_message_sent_at" in update_kwargs
+
+    @pytest.mark.unit
+    async def test_dedup_enqueue_skip_does_not_record_acceptance_metadata(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = make_session()
+        inbound_db = SimpleNamespace(enqueue_inbound=AsyncMock(return_value=None))
+        db = SimpleNamespace(
+            get_session=AsyncMock(return_value=session),
+            update_session=AsyncMock(),
+            update_origin_metadata=AsyncMock(),
+        )
+        manager = InboundQueueManager(deliver_fn=AsyncMock())
+
+        monkeypatch.setattr(_message, "db", db)
+        monkeypatch.setattr(_message, "_session_message_delivery_available", AsyncMock(return_value=True))
+        monkeypatch.setattr(_message, "get_inbound_queue_manager", lambda: manager)
+        monkeypatch.setattr("teleclaude.core.inbound_queue.db", inbound_db)
+
+        cmd = ProcessMessageCommand(
+            session_id=session.session_id,
+            text="ship it",
+            origin="web",
+            source_message_id="source-message",
+        )
+
+        await _message.process_message(cmd, SimpleNamespace(), AsyncMock())
+
+        db.update_session.assert_not_awaited()
+        db.update_origin_metadata.assert_not_awaited()
 
     @pytest.mark.unit
     async def test_linked_short_reply_is_enqueued(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -406,6 +512,7 @@ class TestProcessMessage:
             actor_avatar_url=None,
             source_message_id=None,
             source_channel_id="link-001",
+            post_insert_callback=ANY,
         )
 
     @pytest.mark.unit
@@ -437,6 +544,7 @@ class TestProcessMessage:
             actor_avatar_url=None,
             source_message_id=None,
             source_channel_id=None,
+            post_insert_callback=ANY,
         )
 
 
