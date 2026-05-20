@@ -187,12 +187,20 @@ async def test_blocked_no_drift_emits_blocker_resolution(snapshot: SnapshotAsser
     assert instruction == snapshot
 
 
+# Named-constant identity comparison for the prepared-terminal delegate test
+# (string-assertion paradigm: identity vs named constant, not literal).
+_PREPARED_TERMINAL_INSTRUCTION = "PREPARED: my-slug"
+
+
 @pytest.mark.asyncio
 async def test_prepared_delegates_to_terminal_formatter() -> None:
-    with patch(f"{_STEPS}._prepare_step_prepared", new=AsyncMock(return_value=(False, "PREPARED: my-slug"))):
+    with patch(
+        f"{_STEPS}._prepare_step_prepared",
+        new=AsyncMock(return_value=(False, _PREPARED_TERMINAL_INSTRUCTION)),
+    ):
         keep_going, instruction = await _dispatch(PreparePhase.PREPARED)
     assert keep_going is False
-    assert instruction == "PREPARED: my-slug"
+    assert instruction == _PREPARED_TERMINAL_INSTRUCTION
 
 
 @pytest.mark.asyncio

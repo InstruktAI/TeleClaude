@@ -35,17 +35,40 @@ def _session(
     )
 
 
+# Named-constant identity comparisons replace literal string asserts for
+# this file's lookup tests, per software-development/policy/testing
+# "String Assertions — One Paradigm".
+_REVIEW_FAMILY_PREFIX = "/next-review-"
+_REVIEW_ARCH_PREFIX = "/next-review-architecture"
+_REVIEW_BUILD_PREFIX = "/next-review-build"
+_REVIEW_PLAN_PREFIX = "/next-review-plan"
+_BUILD_PREFIX = "/next-build"
+_SLUG_A = "slug-a"
+_SLUG_OTHER = "other"
+_WORKTREE_A = "trees/slug-a"
+_WORKTREE_OTHER = "trees/other"
+_AGENT_STATUS_IDLE = "idle"
+_REVIEW_PLAN_SESSION_ID = "rev-plan"
+_REVIEW_BUILD_SESSION_ID = "rev-build"
+_REVIEW_SPECS_SESSION_ID = "rev-specs"
+_OTHER_COMMAND_SESSION_ID = "other"
+_SLUG_A_SESSION_1 = "sess-1"
+_SLUG_A_SESSION_2 = "sess-2"
+_SLUG_OTHER_SESSION = "sess-3"
+_SLUG_A_LIVE_SESSIONS = [_SLUG_A_SESSION_1, _SLUG_A_SESSION_2]
+
+
 @pytest.mark.asyncio
 async def test_find_live_session_for_slug_matches_review_family_prefix() -> None:
     db = AsyncMock()
     db.list_sessions.return_value = [
-        _session("rev-plan", "/next-review-plan slug-a", "trees/slug-a"),
-        _session("other", "/next-build slug-a", "trees/slug-a"),
+        _session(_REVIEW_PLAN_SESSION_ID, f"{_REVIEW_PLAN_PREFIX} {_SLUG_A}", _WORKTREE_A),
+        _session(_OTHER_COMMAND_SESSION_ID, f"{_BUILD_PREFIX} {_SLUG_A}", _WORKTREE_A),
     ]
 
-    session_id = await find_live_session_for_slug(db, "slug-a", "/next-review-")
+    session_id = await find_live_session_for_slug(db, _SLUG_A, _REVIEW_FAMILY_PREFIX)
 
-    assert session_id == "rev-plan"
+    assert session_id == _REVIEW_PLAN_SESSION_ID
 
 
 @pytest.mark.asyncio
@@ -54,19 +77,19 @@ async def test_find_live_session_with_status_for_slug_returns_idle_status() -> N
     db = AsyncMock()
     db.list_sessions.return_value = [
         _session(
-            "rev-build",
-            "/next-review-build slug-a",
-            "trees/slug-a",
+            _REVIEW_BUILD_SESSION_ID,
+            f"{_REVIEW_BUILD_PREFIX} {_SLUG_A}",
+            _WORKTREE_A,
             last_activity=stopped_at,
             last_message_sent_at=stopped_at,
             last_agent_stop_at=stopped_at,
         )
     ]
 
-    session_id, status = await find_live_session_with_status_for_slug(db, "slug-a", "/next-review-")
+    session_id, status = await find_live_session_with_status_for_slug(db, _SLUG_A, _REVIEW_FAMILY_PREFIX)
 
-    assert session_id == "rev-build"
-    assert status == "idle"
+    assert session_id == _REVIEW_BUILD_SESSION_ID
+    assert status == _AGENT_STATUS_IDLE
 
 
 @pytest.mark.asyncio
@@ -75,8 +98,8 @@ async def test_find_live_session_with_status_matches_none_subdir_for_empty_overr
     db = AsyncMock()
     db.list_sessions.return_value = [
         _session(
-            "rev-specs",
-            "/next-review-architecture slug-a",
+            _REVIEW_SPECS_SESSION_ID,
+            f"{_REVIEW_ARCH_PREFIX} {_SLUG_A}",
             None,
             last_activity=stopped_at,
             last_message_sent_at=stopped_at,
@@ -85,25 +108,25 @@ async def test_find_live_session_with_status_matches_none_subdir_for_empty_overr
     ]
 
     session_id, status = await find_live_session_with_status_for_slug(
-        db, "slug-a", "/next-review-architecture", subdir_override=""
+        db, _SLUG_A, _REVIEW_ARCH_PREFIX, subdir_override=""
     )
 
-    assert session_id == "rev-specs"
-    assert status == "idle"
+    assert session_id == _REVIEW_SPECS_SESSION_ID
+    assert status == _AGENT_STATUS_IDLE
 
 
 @pytest.mark.asyncio
 async def test_find_all_live_sessions_for_slug_filters_by_subdir_only() -> None:
     db = AsyncMock()
     db.list_sessions.return_value = [
-        _session("sess-1", "/next-review-build slug-a", "trees/slug-a"),
-        _session("sess-2", "/next-build slug-a", "trees/slug-a"),
-        _session("sess-3", "/next-build other", "trees/other"),
+        _session(_SLUG_A_SESSION_1, f"{_REVIEW_BUILD_PREFIX} {_SLUG_A}", _WORKTREE_A),
+        _session(_SLUG_A_SESSION_2, f"{_BUILD_PREFIX} {_SLUG_A}", _WORKTREE_A),
+        _session(_SLUG_OTHER_SESSION, f"{_BUILD_PREFIX} {_SLUG_OTHER}", _WORKTREE_OTHER),
     ]
 
-    session_ids = await find_all_live_sessions_for_slug(db, "slug-a")
+    session_ids = await find_all_live_sessions_for_slug(db, _SLUG_A)
 
-    assert session_ids == ["sess-1", "sess-2"]
+    assert session_ids == _SLUG_A_LIVE_SESSIONS
 
 
 # Named-constant identity comparisons for prepare-worker lookup tests.

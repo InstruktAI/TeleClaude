@@ -197,14 +197,12 @@ tests/unit/core/models/test__context.py
 tests/unit/core/models/test__session.py
 tests/unit/core/models/test__snapshot.py
 tests/unit/core/next_machine/runtime/test_scripts.py
-tests/unit/core/next_machine/runtime/test_sessions.py
 tests/unit/core/next_machine/test_authoritative_phase_clearing.py
 tests/unit/core/next_machine/test_authoritative_phase_fields_specs.py
 tests/unit/core/next_machine/test_dep_graph.py
 tests/unit/core/next_machine/test_git_ops.py
 tests/unit/core/next_machine/test_lifecycle.py
 tests/unit/core/next_machine/test_prepare_lifecycle_pair_model_specs.py
-tests/unit/core/next_machine/test_prepare_steps.py
 tests/unit/core/next_machine/test_prepare.py
 tests/unit/core/next_machine/test_remove.py
 tests/unit/core/next_machine/test_stamp_verdict.py
