@@ -83,9 +83,9 @@ viability check:
     for standin mode; needs human elaboration or removal." Stop the prepare
     flow.
   - `human_in_loop: true` → **soft-stop and elicit from the user before
-    dispatch.** Quote the input back, name the gap, ask one direct question
-    to surface the goal/actor/outcome. Update the input artifact with the
-    elaborated text, then proceed.
+    dispatch.** Point the user at `@input` (do not paste it back), name the
+    gap, ask one direct question to surface the goal/actor/outcome. Update
+    the input artifact with the elaborated text, then proceed.
 
 Substantive inputs (clear intent, concrete outcome, identifiable actor — even
 if short) pass the gate and proceed to Step 2.
@@ -185,14 +185,14 @@ Surface the blocker to the human for direction.
 ## Recovery
 
 - **Input fails the viability gate in standin mode.** Do not dispatch intake.
-  Surface the gap to the user with the input quoted back, and recommend
-  either elaboration (re-dump with substance) or removal (`telec todo remove
-{slug}`). The prepare flow stops until the input is fixed or the todo is
-  removed.
+  Surface the gap to the user by referencing `@input` (do not paste its
+  text), and recommend either elaboration (re-dump with substance) or
+  removal (`telec todo remove {slug}`). The prepare flow stops until the
+  input is fixed or the todo is removed.
 - **Input fails the viability gate in human-in-loop mode.** Stop before
-  dispatch, quote the input, and ask one direct question to surface the
-  missing goal/actor/outcome. Update the input artifact with the human's
-  elaboration, then proceed from Step 2.
+  dispatch, reference `@input` (do not paste it), and ask one direct
+  question to surface the missing goal/actor/outcome. Update the input
+  artifact with the human's elaboration, then proceed from Step 2.
 - **State machine returns an unfamiliar recommendation.** Surface this to the
   user; do not improvise.
 - **Procedure loading fails.** Report the failure; do not proceed without the

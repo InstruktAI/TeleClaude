@@ -10,17 +10,30 @@ visibility: 'public'
 
 ## Rules
 
-### Quoting upstream intent
+### Referencing upstream intent
 
-Every downstream artifact must carry upstream intent verbatim. Architecture,
-test specs, and plans quote the PRD section(s) they derive from. Plans also
-quote architecture constraints and test-spec cases they deliver.
-Reviews quote the criteria under analysis before analyzing them.
+Downstream artifacts reference upstream intent — they do not copy it.
+Architecture, test specs, plans, and reviews point at the upstream source by
+artifact path and markdown section header. The reference IS the contract; the
+upstream artifact is the single source of truth for its own text.
 
-An artifact that paraphrases or summarizes upstream intent without preserving
-the verbatim source is defective: the source text is the contract, paraphrase
-is a derivative that drifts. When the full upstream text sits adjacent to the
-downstream artifact, mismatches are visible without judgment calls.
+- Reference form: `@{artifact-name}#{section-header}` (e.g.
+  `@prd#success-criteria`, `@architecture#state-ownership`,
+  `@test-specs#case-3-rename-with-dependents`). When pointing at a whole
+  artifact rather than a section, drop the `#`-suffix.
+- Markdown headers in upstream artifacts are the anchor surface. Authors of
+  upstream artifacts (PRD, architecture, test-specs) MUST give each
+  addressable unit — every success criterion, every architectural decision,
+  every test case — its own stable header so downstream artifacts can point
+  at it.
+- Verbatim copy-paste, block-quoting, embedding, or paraphrasing of upstream
+  text into the downstream artifact is defective. The source text lives in
+  one place; duplicating it creates drift and turns mismatches into a
+  judgment call.
+
+When the reviewer or builder needs the upstream text, they read the cited
+artifact at the cited header. Tooling (e.g. `telec todo artifacts read`)
+makes the dereference cheap.
 
 ### Domain-context loading
 
@@ -129,7 +142,8 @@ does not contain.
 
 Quality rules:
 
-- Quotes the PRD sections it derives from.
+- References the PRD sections it derives from by `prd#section-header`. No
+  verbatim copy.
 - Names affected services, modules, events, surfaces, and state ownership when
   they apply; marks non-applicable sections as N/A rather than omitting them.
 - Grounds claims in existing codebase patterns and loaded domain specs.
@@ -187,13 +201,15 @@ Quality rules:
 
 Plans must provide enough detail for a builder to execute without guessing:
 
-- **Every task begins with a verbatim quote of the PRD criteria it delivers**,
-  including the full success-criteria bullet list. When present, the task also
-  quotes the architecture constraints and test-spec cases it delivers. The task
-  body then describes the work and must reference each quoted criterion in its
-  delivery description — showing which change satisfies which criterion. A task
-  that quotes criteria it does not deliver, or delivers work not traceable to any
-  quoted upstream artifact, is defective.
+- **Every task begins with references to the upstream items it delivers** —
+  by artifact path and section header, e.g.
+  `Delivers: prd#criterion-a, prd#criterion-b, architecture#event-naming,
+  test-specs#case-rename-conflict`. The task body then describes the work
+  and must name each referenced item in its delivery description — showing
+  which change satisfies which reference. A task that references items it
+  does not deliver, or delivers work not traceable to any referenced upstream
+  item, is defective. Copy-pasting the upstream text into the task is
+  defective; the reference is the contract.
 - Every task has a rationale explaining _why_ this approach, not just _what_.
 - Every task has a verification step that references specific test-spec cases,
   existing tests, or direct checks: a test to satisfy, behavior to observe, or check to run.

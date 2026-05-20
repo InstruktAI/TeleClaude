@@ -53,21 +53,29 @@ entry per requirement success criterion.
 
 For each success criterion in `prd`:
 
-1. Quote the criterion verbatim.
-2. Quote the task body text (or multiple tasks' bodies) that delivers it.
-3. State, in one sentence, how the quoted task text delivers the quoted
-   criterion — naming the specific file edits, config changes, test additions,
-   or other concrete deliverables the task prescribes.
+1. Reference the criterion by `@prd#section-header` — do not copy its text.
+2. Reference the task body (or multiple tasks' bodies) that delivers it by
+   `@implementation-plan#task-header` — do not copy task text.
+3. State, in one sentence, how the referenced task delivers the referenced
+   criterion — naming the specific file edits, config changes, test
+   additions, or other concrete deliverables the task prescribes.
+
+If any upstream criterion or task lacks a stable markdown header to point at,
+that is itself a finding: the upstream author must add a header so the
+reference contract works. Do not work around it by quoting prose.
 
 Findings:
 
-- Criterion not addressed by any task body -> **Requirement-Violation** (the
+- Criterion not addressed by any task -> **Requirement-Violation** (the
   highest severity; see `work/review` for the severity schema). A task bearing
   the requirement's name whose body narrows the criterion is a
   Requirement-Violation regardless of whether the task exists.
-- Task body quotes criteria it does not deliver -> Critical.
+- Task references criteria it does not deliver -> Critical.
 - Orphan task (no PRD criterion, architecture constraint, or test-spec case) -> Important (gold-plating risk).
 - Task contradicts PRD, architecture, or test-specs -> Critical.
+- Task copy-pastes upstream text instead of referencing it by
+  `@artifact#section-header` -> Important (per
+  `policy/preparation-artifact-quality` §Referencing upstream intent).
 
 The reviewer cannot approve the plan while any criterion lacks a Delivery
 analysis entry that names concrete deliverables.
