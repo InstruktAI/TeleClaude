@@ -5,9 +5,7 @@ id: 'project/design/architecture/work-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-status: target
-delivered_by:
-  - finalize-ready-integration-anchor
+status: actual
 ---
 
 # Work State Machine — Design
