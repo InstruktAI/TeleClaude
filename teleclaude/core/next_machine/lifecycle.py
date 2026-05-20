@@ -165,7 +165,6 @@ def derive_build_status(
         LifecyclePhase.REVIEW_CHANGES_REQUESTED,
         LifecyclePhase.REVIEW_APPROVED,
         LifecyclePhase.FINALIZE_READY,
-        LifecyclePhase.HANDED_OFF,
     ):
         return "complete"
     return None
@@ -190,7 +189,6 @@ def derive_review_status(
     if phase in (
         LifecyclePhase.REVIEW_APPROVED,
         LifecyclePhase.FINALIZE_READY,
-        LifecyclePhase.HANDED_OFF,
     ):
         return "approved"
     return None
@@ -275,7 +273,6 @@ def _clear_build_review(model: TodoState) -> None:
 def _reset_finalize(model: TodoState) -> None:
     model.finalize.status = "pending"
     model.finalize.ready_at = ""
-    model.finalize.handed_off_at = ""
 
 
 def _reset_dor(model: TodoState) -> None:
@@ -456,8 +453,6 @@ def reconcile_lifecycle_phase(
     if stage == LifecycleStage.PREPARE:
         return adopt_prepare_handoff_phase(model, artifact_presence=artifact_presence, repo_root=worktree_cwd)
 
-    if model.finalize.status == "handed_off":
-        return LifecyclePhase.HANDED_OFF
     if model.finalize.status == "ready":
         return LifecyclePhase.FINALIZE_READY
     if model.build_review.verdict == "approve":
@@ -532,13 +527,6 @@ def apply_authoritative_signal(
     if signal == "finalize_ready" and current == LifecyclePhase.REVIEW_APPROVED and model.finalize.status == "ready":
         return _move_to(model, LifecyclePhase.FINALIZE_READY)
 
-    if signal == "finalize_handed_off" and current == LifecyclePhase.FINALIZE_READY:
-        if model.finalize.status == "ready":
-            model.finalize.status = "handed_off"
-            model.finalize.handed_off_at = now
-        if model.finalize.status == "handed_off":
-            return _move_to(model, LifecyclePhase.HANDED_OFF)
-
     return current
 
 
@@ -568,10 +556,8 @@ def phase_is_complete(model: TodoState, phase: LifecyclePhase, *, worktree_cwd: 
     if phase == LifecyclePhase.REVIEW_CHANGES_REQUESTED:
         return False
     if phase == LifecyclePhase.REVIEW_APPROVED:
-        return model.finalize.status in ("ready", "handed_off")
+        return model.finalize.status == "ready"
     if phase == LifecyclePhase.FINALIZE_READY:
-        return model.finalize.status == "handed_off"
-    if phase == LifecyclePhase.HANDED_OFF:
         return False
     return False
 

@@ -1,4 +1,4 @@
-"""Pydantic models for Todo state management (schema v3)."""
+"""Pydantic models for Todo state management (schema v4)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,6 @@ LifecyclePhaseValue = Literal[
     "review_changes_requested",
     "review_approved",
     "finalize_ready",
-    "handed_off",
 ]
 
 
@@ -67,7 +66,6 @@ class FinalizeModel(BaseModel):
     branch: str = ""
     sha: str = ""
     ready_at: str = ""
-    handed_off_at: str = ""
     worker_session_id: str = ""
 
 
@@ -197,7 +195,7 @@ class AuditState(BaseModel):
 
 
 class TodoState(BaseModel):
-    """Canonical state for a TeleClaude work item (schema v3).
+    """Canonical state for a TeleClaude work item (schema v4).
 
     ``lifecycle_phase`` is the only authoritative software-development phase
     pointer. ``phase`` remains the coarse pending/in_progress/done item status
@@ -210,7 +208,7 @@ class TodoState(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[3] = 3
+    schema_version: Literal[4] = 4
     phase: str = "pending"
     lifecycle_phase: LifecyclePhaseValue = "draft"
     prepare_phase: str = Field(default="", exclude=True)

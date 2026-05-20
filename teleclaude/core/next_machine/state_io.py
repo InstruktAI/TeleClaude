@@ -463,7 +463,6 @@ def stamp_finalize_ready(cwd: str, slug: str, caller_session_id: str = "") -> di
         branch=slug,
         sha=head_sha,
         ready_at=now,
-        handed_off_at="",
         worker_session_id=caller_session_id,
     )
     return writer.commit_sync(db, slug)

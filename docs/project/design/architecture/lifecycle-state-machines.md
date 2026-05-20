@@ -119,12 +119,12 @@ sequenceDiagram
     end
     Prepare-->>Orchestrator: PREPARED
 
-    loop Until lifecycle_phase=handed_off
+    loop Until lifecycle_phase=finalize_ready
         Orchestrator->>Work: telec todo work [slug]
         Work-->>Orchestrator: instruction (dispatch worker)
         Note over Orchestrator: Dispatches builder, reviewer,<br/>fixer, or finalizer workers
     end
-    Work-->>Orchestrator: HANDOFF (integration events emitted)
+    Work-->>Orchestrator: FINALIZE_READY (TodosDb chokepoint emits integration event)
 
     loop Until queue drained
         Orchestrator->>Integrate: telec todo integrate

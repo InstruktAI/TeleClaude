@@ -230,7 +230,7 @@ async def test_execute_todo_rename_preserves_delivered_history_rows(
     _write_target_snippet(project_root)
     todos_db = await _todos_db(project_root)
     await todos_db.add_to_roadmap(_OLD_SLUG)
-    await todos_db.write_state(_OLD_SLUG, {"lifecycle_phase": "handed_off"})
+    await todos_db.write_state(_OLD_SLUG, {"lifecycle_phase": "finalize_ready"})
     await todos_db.write_artifact(_OLD_SLUG, ARTIFACT_INPUT, _DELIVERED_INPUT)
     await todos_db.deliver(_OLD_SLUG, commit="abc123", children=[_OLD_SLUG])
     await _seed_active_todo(todos_db)

@@ -27,7 +27,6 @@ _PHASE_PREFIX_INTEGRATION = "I"
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
 _INTEGRATION_LABEL_READY = "ready"
-_INTEGRATION_LABEL_QUEUED = "queued"
 
 _TODO_STATUS_DRAFT = "draft"
 _TODO_STATUS_READY = "ready"
@@ -60,14 +59,12 @@ _PHASE_TO_BUILD_STATUS: dict[LifecyclePhase, str] = {
     LifecyclePhase.REVIEW_CHANGES_REQUESTED: "complete",
     LifecyclePhase.REVIEW_APPROVED: "complete",
     LifecyclePhase.FINALIZE_READY: "complete",
-    LifecyclePhase.HANDED_OFF: "complete",
 }
 _PHASE_TO_REVIEW_STATUS: dict[LifecyclePhase, str] = {
     LifecyclePhase.BUILD_COMPLETE: "pending",
     LifecyclePhase.REVIEW_CHANGES_REQUESTED: "changes_requested",
     LifecyclePhase.REVIEW_APPROVED: "approved",
     LifecyclePhase.FINALIZE_READY: "approved",
-    LifecyclePhase.HANDED_OFF: "approved",
 }
 
 
@@ -88,7 +85,6 @@ def _phase_review_status(lifecycle_phase: str | None) -> str | None:
 
 
 _FINALIZE_LABEL_READY = "ready"
-_FINALIZE_LABEL_QUEUED = "handed_off"
 
 
 def lifecycle_phase_label(phase: str | None) -> tuple[str, str, str] | None:
@@ -116,7 +112,6 @@ def integration_phase_label(phase: str | None, finalize_status: str | None) -> t
         return _PHASE_PREFIX_INTEGRATION, _INTEGRATION_LABEL_DELIVERED, _muted_color()
     if not phase:
         finalize_to_label = {
-            _FINALIZE_LABEL_QUEUED: _INTEGRATION_LABEL_QUEUED,
             _FINALIZE_LABEL_READY: _INTEGRATION_LABEL_READY,
         }
         label = finalize_to_label.get(finalize_status or "")

@@ -42,6 +42,19 @@ def register_software_development(catalog: EventCatalog) -> None:
     )
     catalog.register(
         EventSchema(
+            event_type="domain.software-development.planning.todo_finalize_ready",
+            description="Finalize-ready worker claim is ready for integration handoff",
+            default_level=EventLevel.WORKFLOW,
+            domain="software-development",
+            lifecycle=NotificationLifecycle(
+                creates=True,
+                group_key="slug",
+                meaningful_fields=["slug", "branch", "sha", "worker_session_id", "ready_at"],
+            ),
+        )
+    )
+    catalog.register(
+        EventSchema(
             event_type="domain.software-development.planning.artifact_changed",
             description="A planning artifact was modified",
             default_level=EventLevel.OPERATIONAL,

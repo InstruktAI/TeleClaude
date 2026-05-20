@@ -134,15 +134,6 @@ def test_integration_phase_label_ready_when_finalize_ready() -> None:
 
 
 @pytest.mark.unit
-def test_integration_phase_label_queued_when_finalize_handed_off() -> None:
-    result = integration_phase_label(None, "handed_off")
-    assert result is not None
-    prefix, value, color = result
-    assert prefix == "I"
-    assert value == "queued"
-    assert color == _ok_color()
-
-
 # --- TodoRow.compute_col_widths ---
 
 

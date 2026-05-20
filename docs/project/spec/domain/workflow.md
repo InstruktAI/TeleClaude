@@ -6,11 +6,12 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-- v2-workflow-cutover
-- removal-snippet-frontmatter-sync
-- roadmap-trash-reveal-ui
-- v2-workflow-cli-refinement-commands
-- v1-workflow-creation-hardening
+  - v2-workflow-cutover
+  - removal-snippet-frontmatter-sync
+  - roadmap-trash-reveal-ui
+  - v2-workflow-cli-refinement-commands
+  - v1-workflow-creation-hardening
+  - finalize-ready-integration-anchor
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -298,15 +299,15 @@ cutover.
     roadmap.
   - **`integration`** — slug-keyed subscription bookkeeping. Receives the
     pair from the bus subscriber the same way the daemon does.
-  A rename changes the aggregate's active alias; consumers that cache by
-  slug cannot learn the re-key from a generic `workflow.todo.updated`
-  (which carries only the post-rename slug), so a dedicated event carrying
-  the `(old_slug, new_slug)` pair is required rather than reusing
-  `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
-  fallback when a payload-aware dispatcher has not yet been wired) is an
-  implementation-plan concern; the durable contract is the `(old_slug,
-  new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
-  WebSocket / integration subscriber.
+    A rename changes the aggregate's active alias; consumers that cache by
+    slug cannot learn the re-key from a generic `workflow.todo.updated`
+    (which carries only the post-rename slug), so a dedicated event carrying
+    the `(old_slug, new_slug)` pair is required rather than reusing
+    `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
+    fallback when a payload-aware dispatcher has not yet been wired) is an
+    implementation-plan concern; the durable contract is the `(old_slug,
+new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
+    WebSocket / integration subscriber.
 - **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
 - **Posture:** `commit-then-emit`.
 
@@ -741,7 +742,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`state-stamping`](../feature/workflow/state-stamping.md) — `telec todo stamp` and the validated state-write boundary (`StateWriter`, `ApprovalsManager`, `ReviewManager`) that owns approvals, verdicts, skip stamps, drift acknowledgments, and finalize handoff.
 - [`artifact-versioning`](../feature/workflow/artifact-versioning.md) — Multi-version workflow artifact storage with SHA256 digest, diff between digests, and cascade delete. Provenance (codebase_sha, referenced_paths) lives on the Todo state, not the artifact row.
 - [`prepare-state-machine`](../feature/workflow/prepare-state-machine.md) — Phase A dispatcher: draft → PRD → architecture (optional) → plan → prepared, with PRD as the sole human approval gate and reviewer verdicts gating derived artifacts.
-- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → finalize → handed-off, with per-(repo, slug) single-flight lock and machine-owned `prepared → build_started` handoff.
+- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → terminal `finalize_ready`, with per-(repo, slug) single-flight lock, machine-owned `prepared → build_started` handoff, and `TodosDb` phase-transition chokepoint emission for integration.
 - [`integration-state-machine`](../feature/workflow/integration-state-machine.md) — Phase C: lease-serialized 12-state machine that squash-merges from `trees/_integration/` and pushes `origin/main`; durable checkpoint enables crash recovery.
 - [`worktree-prep-lifecycle`](../feature/workflow/worktree-prep-lifecycle.md) — Per-slug git worktree at `trees/<slug>/` with a digest-tracked prep marker; archives binary artifacts on delivery cleanup.
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.

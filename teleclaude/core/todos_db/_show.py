@@ -28,7 +28,6 @@ _PHASE_LABEL: dict[str, str] = {
     WorkPhase.REVIEW_CHANGES_REQUESTED.value: "review",
     WorkPhase.REVIEW_APPROVED.value: "review",
     WorkPhase.FINALIZE_READY.value: "finalize",
-    WorkPhase.HANDED_OFF.value: "finalize",
 }
 
 # Ordered list of derived phase values for previous/next navigation.
@@ -46,7 +45,6 @@ _LIFECYCLE_ORDER: list[str] = [
     WorkPhase.REVIEW_CHANGES_REQUESTED.value,
     WorkPhase.REVIEW_APPROVED.value,
     WorkPhase.FINALIZE_READY.value,
-    WorkPhase.HANDED_OFF.value,
 ]
 
 # Derived values where the show payload reports state="done" (phase complete).
@@ -55,7 +53,7 @@ _DONE_PHASE_VALUES: frozenset[str] = frozenset(
         PreparePhase.PREPARED.value,
         WorkPhase.BUILD_COMPLETE.value,
         WorkPhase.REVIEW_APPROVED.value,
-        WorkPhase.HANDED_OFF.value,
+        WorkPhase.FINALIZE_READY.value,
     }
 )
 

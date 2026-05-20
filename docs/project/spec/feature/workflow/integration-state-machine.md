@@ -27,7 +27,7 @@ The integration state machine is Phase C of the todo lifecycle — the only auth
 
 ```
 Given the integrator is idle with no active candidate
-And one or more worktrees report finalize.status of "ready" or "handed_off"
+And one or more worktrees report finalize.status of "ready"
 When `telec todo integrate` is invoked
 Then the integrator sweeps already-delivered worktrees, acquires the singleton lease,
 And dequeues the FIFO-earliest candidate by (ready_at, slug)
@@ -107,6 +107,7 @@ And no candidate is dequeued for this call
 - `teleclaude/core/integration/lease.py:68-192` — `IntegrationLeaseStore` with file lock, 120s default TTL, atomic acquire/renew/release
 - `teleclaude/core/integration/step_functions.py:41-43` — lease key `integration/main`, TTL 120s
 - `teleclaude/core/integration/step_functions.py:141-177` — `_ensure_integration_worktree` (creates `trees/_integration/` detached at origin/main, preserves in-progress merge/squash state)
+- `teleclaude/core/integration/step_functions.py:246-344` — `_scan_finalize_ready_candidates` / `_verify_slug_ready` accept `finalize.status == "ready"` after read-time upcycle normalization
 - `teleclaude/core/integration/step_functions.py:413-474` — `_step_idle` (sweep delivered, scan or verify slug, acquire lease, dequeue, emit `integration.started`)
 - `teleclaude/core/integration/step_functions.py:477-570` — `_do_merge` with two already-merged guards (ancestor merge-base and empty-cached-diff for squash)
 - `teleclaude/core/integration/step_functions.py:636-726` — `_step_delivery_bookkeeping` (`deliver_sync`, dependency reference cleanup, cleanup commit, `push origin HEAD:main` under `main_branch_lock`)
@@ -127,7 +128,9 @@ And no candidate is dequeued for this call
 - Two already-merged guards exist because `git merge --squash` does **not** create ancestry edges between the source branch and the merge commit. The ancestry check (`merge-base --is-ancestor`) catches non-squash re-queues; the empty-staged-diff check catches squash re-queues. Both are required.
 - Delivery bookkeeping commits (roadmap delivery, dependency-reference cleanup, cleanup commit) are created inside `trees/_integration/`, not on repo root. Only the bookkeeping changes plus the squash are pushed; `git add -A` is never used.
 - After a successful push, the integrator best-effort `git pull --ff-only` on repo root and pushes any repo-root bookkeeping that is ahead. Pull failure is non-fatal — cleanup proceeds regardless, and a warning surfaces in the COMPLETED summary.
-- When `_step_idle` is called with an explicit slug, only that slug is verified against `state.yaml.finalize.status` (`"ready"` or `"handed_off"`); the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
+- When `_step_idle` is called with an explicit slug, only that slug is verified against `state.finalize.status == "ready"`; the FIFO scan is bypassed but ancestry and remote-branch existence checks still apply.
+- The normal enqueue path is event-triggered: `domain.software-development.planning.todo_finalize_ready` wakes the integration trigger cartridge, which spawns the singleton integrator. The scanner remains the recovery path for missed events.
+- Legacy rows are normalized before scanner pickup, so older persisted `finalize.status="handed_off"` rows read back as `finalize.status="ready"` and are picked up by the same rule.
 - The 50-iteration `_LOOP_LIMIT` exists so multi-phase advances (e.g., COMMITTED → DELIVERY_BOOKKEEPING → PUSH_SUCCEEDED → CLEANUP → CANDIDATE_DELIVERED → IDLE → next candidate) can complete in one call without forcing the agent back through `telec todo integrate` repeatedly.
 - The phase enum's `AWAITING_COMMIT` value is reachable but typically not written; `MERGE_CLEAN` and `MERGE_CONFLICTED` are written directly and re-entry handling treats all three equivalently via `_step_awaiting_commit`.
 - Lifecycle event emission is fire-and-forget via `asyncio.run_coroutine_threadsafe`; event delivery failure never blocks integration progress and is only logged at debug level.

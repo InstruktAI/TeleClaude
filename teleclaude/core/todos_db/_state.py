@@ -64,6 +64,19 @@ class TodosDbStateMixin:
     """Read/write todo lifecycle state (replaces state_io.py)."""
 
     _on_mutation: Callable[[str, Mapping[str, object] | None], None]
+    _on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None]
+
+    def _stored_lifecycle_phase(self, state_model: TodoStateModel | None) -> str:
+        if state_model is None:
+            return ""
+        raw_state = cast(dict[str, StateValue], json.loads(state_model.state))
+        payload = upcycle_state_dict(raw_state)
+        phase = payload.get("lifecycle_phase")
+        return phase if isinstance(phase, str) else ""
+
+    def _payload_lifecycle_phase(self, payload: Mapping[str, StateValue]) -> str:
+        phase = payload.get("lifecycle_phase")
+        return phase if isinstance(phase, str) else ""
 
     def _project_root(self) -> Path:
         db_path = cast(Path, self._db_path)  # type: ignore[attr-defined]
@@ -152,6 +165,7 @@ class TodosDbStateMixin:
 
             now = datetime.now(UTC).isoformat()
             state_model = await db_session.get(TodoStateModel, row_id)
+            prior_phase = self._stored_lifecycle_phase(state_model)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=row_id,
@@ -165,16 +179,21 @@ class TodosDbStateMixin:
                 state_model.state = json.dumps(payload, default=str)
                 state_model.updated_at = now
             db_session.add(state_model)
-            if owns_session:
-                await db_session.commit()
-                logger.info(
-                    "todo state written",
-                    slug=slug,
-                    lifecycle_phase=str(payload.get("lifecycle_phase", "")),
-                    kind=str(payload.get("kind", "")),
-                    mode="async",
-                )
-                self._on_mutation("todo_updated", None)
+            if not owns_session:
+                # Caller-owned sessions commit outside this boundary, so the post-commit hook cannot fire here.
+                return
+            await db_session.commit()
+            logger.info(
+                "todo state written",
+                slug=slug,
+                lifecycle_phase=str(payload.get("lifecycle_phase", "")),
+                kind=str(payload.get("kind", "")),
+                mode="async",
+            )
+            self._on_mutation("todo_updated", None)
+            new_phase = self._payload_lifecycle_phase(payload)
+            if prior_phase != new_phase:
+                self._on_phase_transition(slug, prior_phase, new_phase, payload)
         finally:
             if owns_session:
                 await db_session.close()
@@ -332,6 +351,7 @@ class TodosDbStateMixin:
 
             now = datetime.now(UTC).isoformat()
             state_model = session.get(TodoStateModel, str(row_id))
+            prior_phase = self._stored_lifecycle_phase(state_model)
             if state_model is None:
                 state_model = TodoStateModel(
                     id=str(row_id),
@@ -354,3 +374,6 @@ class TodosDbStateMixin:
             mode="sync",
         )
         self._on_mutation("todo_updated", None)
+        new_phase = self._payload_lifecycle_phase(payload)
+        if prior_phase != new_phase:
+            self._on_phase_transition(slug, prior_phase, new_phase, payload)

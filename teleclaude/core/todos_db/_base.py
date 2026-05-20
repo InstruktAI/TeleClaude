@@ -34,6 +34,15 @@ def _default_on_mutation(_event_hint: str, _event_data: Mapping[str, object] | N
     """Default no-op mutation callback."""
 
 
+def _default_on_phase_transition(
+    _slug: str,
+    _prior_lifecycle_phase: str,
+    _new_lifecycle_phase: str,
+    _state_payload: Mapping[str, object],
+) -> None:
+    """Default no-op phase transition callback."""
+
+
 def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     """Return whether a table exists."""
     row = conn.execute(
@@ -301,6 +310,7 @@ class TodosDbBase:
         self._sessionmaker: async_sessionmaker[SqlAsyncSession] | None = None
         self._sync_sessionmaker: sessionmaker[SqlSession] | None = None
         self._on_mutation: Callable[[str, Mapping[str, object] | None], None] = _default_on_mutation
+        self._on_phase_transition: Callable[[str, str, str, Mapping[str, object]], None] = _default_on_phase_transition
 
     def on_committed(self, event_hint: str = "todo_updated", event_data: Mapping[str, object] | None = None) -> None:
         """Signal that a caller-managed transaction has committed.
@@ -310,6 +320,16 @@ class TodosDbBase:
         without accessing the protected _on_mutation attribute directly.
         """
         self._on_mutation(event_hint, event_data)
+
+    def notify_phase_transition(
+        self,
+        slug: str,
+        prior_lifecycle_phase: str,
+        new_lifecycle_phase: str,
+        state_payload: Mapping[str, object],
+    ) -> None:
+        """Signal that a committed state write changed lifecycle phase."""
+        self._on_phase_transition(slug, prior_lifecycle_phase, new_lifecycle_phase, state_payload)
 
     async def initialize(self) -> None:
         """Bootstrap schema and initialize async + sync runtime access."""

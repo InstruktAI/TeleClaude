@@ -14,7 +14,6 @@ No imports from core.py (circular-import guard).
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -48,8 +47,6 @@ from teleclaude.core.next_machine.prepare_steps import _commit_writer, _derive_p
 from teleclaude.core.next_machine.runtime.scripts import format_reviewer_direct_fix_message
 from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
-from teleclaude.events.envelope import EventLevel, EventVisibility
-from teleclaude.events.producer import emit_event
 from teleclaude.session_identity import get_session_id
 
 if TYPE_CHECKING:
@@ -496,9 +493,9 @@ async def _handle_finalize_ready_claim(
     to its normal dispatch logic. Returns ``(keep_going, instruction)`` when
     the claim was consumed:
 
-    - On valid triple-ref: fires ``finalize_ready`` signal, emits the
-      ``todo_finalize_ready`` lifecycle event for the integration trigger
-      cartridge, returns ``keep_going=True``.
+    - On valid triple-ref: fires ``finalize_ready`` signal and commits the
+      lifecycle change through the state writer, returns ``keep_going=True``.
+      The TodosDb phase-transition chokepoint owns integration event emission.
     - On invalid: returns a fix-relay script instructing the orchestrator to
       surface the mismatch (e.g., remote ref drift) and re-stamp.
     """
@@ -550,30 +547,6 @@ async def _handle_finalize_ready_claim(
             ),
             next_call=f"telec todo work {slug}",
         )
-
-    # Emit before commit so an emission failure leaves the lifecycle on
-    # REVIEW_APPROVED and the next dispatch retries cleanly. Committing first
-    # then logging-and-continuing on emit failure would silently strand the
-    # work item with no integration trigger.
-    sha = claimed_sha
-    worker_session_id = writer.state.finalize.worker_session_id
-    ready_at = writer.state.finalize.ready_at
-    await emit_event(
-        event="domain.software-development.planning.todo_finalize_ready",
-        source=f"work-machine/{slug}",
-        level=EventLevel.WORKFLOW,
-        domain="software-development",
-        visibility=EventVisibility.LOCAL,
-        entity=slug,
-        description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
-        payload={
-            "slug": slug,
-            "branch": slug,
-            "sha": sha,
-            "worker_session_id": worker_session_id,
-            "ready_at": ready_at,
-        },
-    )
 
     apply_authoritative_signal(writer.state, "finalize_ready")
     await _commit_writer(writer, todos_db, slug, state)
@@ -668,27 +641,7 @@ async def _work_step_finalize_ready(
     worktree_cwd: str,
     state: dict[str, StateValue],
 ) -> tuple[bool, str]:
-    """FINALIZE_READY: record the actual handoff under machine control."""
-    _ = db, cwd, worktree_cwd
-    writer = StateWriter(state)
-    finalize = writer.state.finalize
-    finalize.status = "handed_off"
-    finalize.handed_off_at = datetime.now(UTC).isoformat()
-    apply_authoritative_signal(writer.state, "finalize_handed_off")
-    await _commit_writer(writer, todos_db, slug, state)
-    return True, ""
-
-
-async def _work_step_handed_off(
-    *,
-    db: Db,
-    todos_db: TodosDb,
-    slug: str,
-    cwd: str,
-    worktree_cwd: str,
-    state: dict[str, StateValue],
-) -> tuple[bool, str]:
-    """HANDED_OFF: terminal cleanup. End worker child sessions and self-end."""
+    """FINALIZE_READY: terminal cleanup. End worker child sessions and continue."""
     _ = todos_db, cwd, worktree_cwd, state
     session_id = get_session_id() or ""
     child_session_ids = await _list_child_session_ids(db, session_id)
@@ -735,7 +688,6 @@ async def _work_dispatch(
         WorkPhase.REVIEW_CHANGES_REQUESTED: _work_step_review_changes_requested,
         WorkPhase.REVIEW_APPROVED: _work_step_review_approved,
         WorkPhase.FINALIZE_READY: _work_step_finalize_ready,
-        WorkPhase.HANDED_OFF: _work_step_handed_off,
     }
     handler = handlers.get(phase)
     if handler is None:

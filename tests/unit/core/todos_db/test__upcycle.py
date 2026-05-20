@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from teleclaude.core.todos_db._upcycle import upcycle_state_dict
+from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION, upcycle_state_dict
+from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
@@ -22,7 +23,7 @@ def _upcycle_v2_phase(old_phase: str) -> dict[str, StateValue]:
         }
     )
 
-    assert result["schema_version"] == 3
+    assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
     assert result["kind"] == "feature"
     assert "prepare_pair" not in result
     assert "grounding" not in result
@@ -54,7 +55,11 @@ def test_upcycle_v2_work_phase_is_preserved() -> None:
     assert _upcycle_v2_phase("build_started")["lifecycle_phase"] == "build_started"
 
 
-def test_upcycle_v1_pending_todo_without_lifecycle_phase_maps_to_v3_draft() -> None:
+def test_upcycle_v2_legacy_handed_off_maps_to_finalize_ready() -> None:
+    assert _upcycle_v2_phase("handed_off")["lifecycle_phase"] == LifecyclePhase.FINALIZE_READY.value
+
+
+def test_upcycle_v1_pending_todo_without_lifecycle_phase_maps_to_latest_draft() -> None:
     result = upcycle_state_dict(
         {
             "schema_version": 1,
@@ -63,20 +68,50 @@ def test_upcycle_v1_pending_todo_without_lifecycle_phase_maps_to_v3_draft() -> N
         }
     )
 
-    assert result["schema_version"] == 3
+    assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
     assert result["lifecycle_phase"] == "draft"
 
 
-def test_upcycle_v1_delivered_row_without_lifecycle_phase_maps_to_handed_off() -> None:
+def test_upcycle_v1_delivered_row_without_lifecycle_phase_maps_to_finalize_ready() -> None:
     result = upcycle_state_dict(
         {
             "schema_version": 1,
             "phase": "delivered",
             "kind": "todo",
-            "finalize": {"status": "handed_off"},
+            "finalize": {"status": "handed_off", "handed_off_at": "2026-03-01T00:00:00+00:00"},
             "build_review": {"verdict": "approve"},
         }
     )
 
-    assert result["schema_version"] == 3
-    assert result["lifecycle_phase"] == "handed_off"
+    assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
+    assert result["lifecycle_phase"] == LifecyclePhase.FINALIZE_READY.value
+    finalize = result["finalize"]
+    assert isinstance(finalize, dict)
+    assert finalize["status"] == "ready"
+    assert "handed_off_at" not in finalize
+
+
+def test_upcycle_v3_legacy_handed_off_contract_maps_to_finalize_ready() -> None:
+    result = upcycle_state_dict(
+        {
+            "schema_version": 3,
+            "phase": "pending",
+            "kind": "feature",
+            "lifecycle_phase": "handed_off",
+            "finalize": {
+                "status": "handed_off",
+                "branch": "ready-branch",
+                "sha": "abc123",
+                "ready_at": "2026-03-01T00:00:00+00:00",
+                "handed_off_at": "2026-03-01T00:05:00+00:00",
+            },
+        }
+    )
+
+    assert result["schema_version"] == LATEST_TODO_STATE_SCHEMA_VERSION
+    assert result["lifecycle_phase"] == LifecyclePhase.FINALIZE_READY.value
+    finalize = result["finalize"]
+    assert isinstance(finalize, dict)
+    assert finalize["status"] == "ready"
+    assert finalize["branch"] == "ready-branch"
+    assert "handed_off_at" not in finalize

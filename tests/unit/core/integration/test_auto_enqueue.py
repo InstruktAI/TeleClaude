@@ -7,6 +7,7 @@ step_functions module local) to inject a test-scoped TodosDb instance.
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from unittest.mock import patch
@@ -29,23 +30,45 @@ def todos_db(tmp_path: Path) -> TodosDb:
     return db
 
 
-def _ensure_roadmap(todos_db: TodosDb, slug: str) -> None:
+def _ensure_roadmap(todos_db: TodosDb, slug: str) -> str:
     """Insert a roadmap entry via raw SQL (write_state requires it)."""
+    row_id = str(uuid.uuid4())
     conn = todos_db._sync_conn()
     try:
         conn.execute(
             "INSERT OR IGNORE INTO roadmap (id, slug, position, status, created_at, updated_at) "  # guard: raw-sql
             "VALUES (?, ?, 0, 'active', '', '')",
-            (str(uuid.uuid4()), slug),
+            (row_id, slug),
         )
+        row = conn.execute(
+            "SELECT id FROM roadmap WHERE slug = ?",  # guard: raw-sql
+            (slug,),
+        ).fetchone()
         conn.commit()
     finally:
         conn.close()
+    if row is None:
+        raise AssertionError("roadmap seed failed")
+    return str(row[0])
 
 
 def _seed(todos_db: TodosDb, slug: str, finalize: dict[str, StateValue]) -> None:
     _ensure_roadmap(todos_db, slug)
     todos_db.write_state_sync(slug, {"finalize": finalize})
+
+
+def _seed_raw(todos_db: TodosDb, slug: str, state: dict[str, StateValue]) -> None:
+    row_id = _ensure_roadmap(todos_db, slug)
+    conn = todos_db._sync_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO todo_state (id, slug, state, created_at, updated_at) "  # guard: raw-sql
+            "VALUES (?, ?, ?, '', '')",
+            (row_id, slug, json.dumps(state)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _mock_git_pass(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
@@ -94,16 +117,29 @@ def test_scan_skips_pending(_mock: object, tmp_path: Path, todos_db: TodosDb) ->
 
 
 @patch(f"{_STEP}._run_git", side_effect=_mock_git_pass)
-def test_scan_accepts_handed_off(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
+def test_scan_finds_legacy_handed_off_after_upcycle(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "handed").mkdir(parents=True)
-    _seed(
+    _seed_raw(
         todos_db,
         "handed",
-        {"status": "handed_off", "branch": "handed", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
+        {
+            "schema_version": 3,
+            "phase": "pending",
+            "kind": "feature",
+            "lifecycle_phase": "handed_off",
+            "finalize": {
+                "status": "handed_off",
+                "branch": "handed",
+                "sha": _SHA,
+                "ready_at": "2026-03-01T00:00:00+00:00",
+                "handed_off_at": "2026-03-01T00:05:00+00:00",
+            },
+        },
     )
     with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _scan_finalize_ready_candidates(str(tmp_path))
     assert len(result) == 1
+    assert result[0].key.slug == "handed"
 
 
 @patch(f"{_STEP}._run_git", side_effect=_mock_git_already_ancestor)
@@ -179,12 +215,23 @@ def test_verify_ready(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
 
 
 @patch(f"{_STEP}._run_git", side_effect=_mock_git_pass)
-def test_verify_handed_off(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
+def test_verify_legacy_handed_off_after_upcycle(_mock: object, tmp_path: Path, todos_db: TodosDb) -> None:
     (tmp_path / "trees" / "h-slug").mkdir(parents=True)
-    _seed(
+    _seed_raw(
         todos_db,
         "h-slug",
-        {"status": "handed_off", "branch": "h-slug", "sha": _SHA, "ready_at": "2026-03-01T00:00:00+00:00"},
+        {
+            "schema_version": 3,
+            "phase": "pending",
+            "kind": "feature",
+            "lifecycle_phase": "handed_off",
+            "finalize": {
+                "status": "handed_off",
+                "branch": "h-slug",
+                "sha": _SHA,
+                "ready_at": "2026-03-01T00:00:00+00:00",
+            },
+        },
     )
     with patch(f"{_STEP}.get_todos_db_sync", return_value=todos_db):
         result = _verify_slug_ready(str(tmp_path), "h-slug")

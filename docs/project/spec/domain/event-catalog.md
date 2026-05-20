@@ -8,8 +8,9 @@ description: Every domain event the platform emits — producer context, named c
   payload field set in domain terms. The contract that defines cross-context coordination.
 status: mixed
 delivered_by:
-- v2-workflow-cli-refinement-commands
-- v1-workflow-creation-hardening
+  - v2-workflow-cli-refinement-commands
+  - v1-workflow-creation-hardening
+  - finalize-ready-integration-anchor
 ---
 
 # Domain Event Catalog — Spec
@@ -169,20 +170,20 @@ The scheduler bridge is one OS cron entry that fires `telec cron tick` every min
 
 Inverse view: for each event, which consumers act on it. Populated as per-context specs land.
 
-| Event                               | Consumers                                                                                                                        |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                           |
-| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                        |
-| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                 |
-| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
-| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                   |
-| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                 |
-| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                              |
-| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                              |
+| Event                               | Consumers                                                                                                                                                              |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `integration.inbox.received`        | `agent_runtime` (routes inbound EXTERNAL messages to sessions; e.g., Telegram inbound)                                                                                 |
+| `agent_runtime.session.started`     | `frontend` (live UI), audit log consumers                                                                                                                              |
+| `agent_runtime.session.updated`     | `frontend` (live UI, iterates batched payload), `telec-tui` (cache invalidation)                                                                                       |
+| `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal)                                       |
+| `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                                                         |
+| `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                                                       |
+| `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                                                                    |
+| `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                                                                    |
 | `workflow.todo.renamed`             | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
-| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                |
-| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                  |
-| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                        |
+| `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                                                      |
+| `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                                                        |
+| `config.effective.updated`          | every service that caches config (re-read on next access)                                                                                                              |
 
 ### v1 → v2 event-name mapping
 
@@ -239,6 +240,23 @@ Discord, WhatsApp, GitHub webhooks). The events above belong to the workflow
 integrate-phase, NOT to the v2 `integration` pillar. The v1 naming overlap
 is incidental.
 
+### v1 event contracts that are catalog-tracked
+
+#### `domain.software-development.planning.todo_finalize_ready`
+
+- **Producer:** v1 Python workflow `TodosDb` phase-transition chokepoint.
+- **Emitted when:** an owned-session state write commits a transition from any prior `lifecycle_phase` to `finalize_ready`. Same-phase rewrites are suppressed by the chokepoint. Caller-owned transactions do not emit from inside `write_state`; the periodic scanner remains the safety net.
+- **Payload:** `slug`, `branch`, `sha`, `worker_session_id`, `ready_at`.
+- **Known consumer:** `IntegrationTriggerCartridge`.
+- **Visibility:** `LOCAL`.
+- **Idempotency key:** `(slug, sha, worker_session_id)` at the cartridge boundary. Concurrent first-transition writes may produce duplicate bus emissions; duplicate same-key events collapse before integrator spawn, and distinct-key races are serialized by the integration singleton lease.
+- **Posture:** `commit-then-emit`.
+- **v2 mapping:** `workflow.todo.phase_advanced` with `phase=finalize_ready`.
+
+This v1 event is an explicit exception to the general caveat that v1 names
+are not catalog entries: it is the current v1 integration trigger contract,
+and the chokepoint is the durable emission boundary until v2 cutover.
+
 ## Allowed values
 
 - `visibility`: `LOCAL` (single-host Redis scope — events confined to this computer), `CLUSTER` (single-owner mesh Redis scope — cross-host within one user's fleet), `PUBLIC` (federation hub Redis scope — cross-mesh). Three real Redis client instances in v2; routing is explicit per envelope. See `project/design/architecture-v2/event-bus-transports` for the bus semantics. Single-computer installs run Local-only; emits to Cluster/Public silently drop when those scopes aren't configured.
@@ -249,7 +267,7 @@ is incidental.
 - This catalog is `actual` upon commit and evolves with every per-context spec edit.
 - The producer context's per-context spec is the authoritative source for event payload field names; this catalog summarizes for cross-context discoverability. If they disagree, the per-context spec wins and this catalog gets corrected in the same PR.
 - Events not in this catalog don't exist. An emitter trying to publish an event not in the catalog is a defect — register it here first, in the same PR.
-- v1 events that don't fit the v2 naming convention will be carried through the v1→v2 ACL with translation. The ACL maps v1 event names to v2 catalog entries. v1 names are NOT included in this catalog.
+- v1 events that don't fit the v2 naming convention will be carried through the v1→v2 ACL with translation. The ACL maps v1 event names to v2 catalog entries. v1 names are NOT included in this catalog except explicit contract entries such as `domain.software-development.planning.todo_finalize_ready`.
 - Event payload schemas live in the producing context's spec, not here. This catalog gives the name + the field set in domain terms; the per-context spec gives the wire schema.
 - Consumer lists in the subscription map are aspirational pending per-context spec authoring. They're listed here so cross-context coordination is visible from one place.
 - The v1 → v2 mapping subsection in "Canonical fields" is the authoritative reference for the v1→v2 snippet port (rule 4 of `v1-to-v2-snippet-port`). When a v2 name is marked TBD, the porting agent describes the event semantically in the v2 spec body and flags it for catalog completion later.

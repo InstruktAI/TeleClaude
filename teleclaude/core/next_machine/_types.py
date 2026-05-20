@@ -31,7 +31,6 @@ class FinalizeState(TypedDict, total=False):
     branch: str
     sha: str
     ready_at: str
-    handed_off_at: str
 
 
 class PhaseName(str, Enum):
@@ -81,7 +80,6 @@ class WorkPhase(str, Enum):
     REVIEW_CHANGES_REQUESTED = "review_changes_requested"
     REVIEW_APPROVED = "review_approved"
     FINALIZE_READY = "finalize_ready"
-    HANDED_OFF = "handed_off"
 
 
 WORK_PHASE_ORDER: list[str] = [phase.value for phase in WorkPhase]

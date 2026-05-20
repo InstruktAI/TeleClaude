@@ -8,10 +8,12 @@ from teleclaude.types.lifecycle import LifecyclePhase
 from teleclaude.types.state_value import StateValue
 from teleclaude.types.todos import TodoState
 
-LATEST_TODO_STATE_SCHEMA_VERSION = 3
+LATEST_TODO_STATE_SCHEMA_VERSION = 4
 _V0_SCHEMA_VERSION = 0
 _V1_SCHEMA_VERSION = 1
 _V2_SCHEMA_VERSION = 2
+_V3_SCHEMA_VERSION = 3
+_LEGACY_HANDED_OFF_PHASE = "handed_off"
 
 _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
     "draft": LifecyclePhase.DRAFT.value,
@@ -34,9 +36,9 @@ _LEGACY_CURRENT_TO_LIFECYCLE: dict[str, str] = {
     "review_changes_requested": LifecyclePhase.REVIEW_CHANGES_REQUESTED.value,
     "review_approved": LifecyclePhase.REVIEW_APPROVED.value,
     "finalize_ready": LifecyclePhase.FINALIZE_READY.value,
-    "finalize_handed_off": LifecyclePhase.HANDED_OFF.value,
-    "handed_off": LifecyclePhase.HANDED_OFF.value,
-    "delivered": LifecyclePhase.HANDED_OFF.value,
+    "finalize_handed_off": LifecyclePhase.FINALIZE_READY.value,
+    _LEGACY_HANDED_OFF_PHASE: LifecyclePhase.FINALIZE_READY.value,
+    "delivered": LifecyclePhase.FINALIZE_READY.value,
 }
 
 _V2_TO_V3_PHASE: dict[str, str] = {
@@ -58,7 +60,7 @@ _V2_TO_V3_PHASE: dict[str, str] = {
     "review_changes_requested": LifecyclePhase.REVIEW_CHANGES_REQUESTED.value,
     "review_approved": LifecyclePhase.REVIEW_APPROVED.value,
     "finalize_ready": LifecyclePhase.FINALIZE_READY.value,
-    "handed_off": LifecyclePhase.HANDED_OFF.value,
+    _LEGACY_HANDED_OFF_PHASE: LifecyclePhase.FINALIZE_READY.value,
 }
 
 
@@ -108,8 +110,8 @@ def _infer_v1_lifecycle_phase(raw: dict[str, StateValue]) -> str:
     grounding_valid = grounding.get("valid") is True
     build_completed_at = _text(raw, "build_completed_at")
 
-    if finalize_status == "handed_off" or phase in {"delivered", "done"}:
-        return LifecyclePhase.HANDED_OFF.value
+    if finalize_status == _LEGACY_HANDED_OFF_PHASE or phase in {"delivered", "done"}:
+        return LifecyclePhase.FINALIZE_READY.value
     if finalize_status == "ready":
         return LifecyclePhase.FINALIZE_READY.value
     if build_review_verdict == "approve":
@@ -143,14 +145,32 @@ def _normalize_finalize(raw: object) -> dict[str, StateValue]:
         return finalize
 
     status = raw.get("status")
-    if isinstance(status, str) and status in {"pending", "ready", "handed_off"}:
+    if status == _LEGACY_HANDED_OFF_PHASE:
+        finalize["status"] = "ready"
+    elif isinstance(status, str) and status in {"pending", "ready"}:
         finalize["status"] = status
 
-    for key in ("branch", "sha", "ready_at", "handed_off_at"):
+    for key in ("branch", "sha", "ready_at", "worker_session_id"):
         value = raw.get(key)
-        if isinstance(value, str) and value.strip():
+        if isinstance(value, str):
             finalize[key] = value.strip()
     return finalize
+
+
+def _normalize_finalize_ready_contract(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    migrated = dict(raw)
+    old_phase = _text(migrated, "lifecycle_phase")
+    finalize_raw = migrated.get("finalize")
+    legacy_finalize_handed_off = (
+        isinstance(finalize_raw, dict) and finalize_raw.get("status") == _LEGACY_HANDED_OFF_PHASE
+    )
+
+    finalize = _normalize_finalize(finalize_raw)
+    if old_phase == _LEGACY_HANDED_OFF_PHASE or legacy_finalize_handed_off:
+        migrated["lifecycle_phase"] = LifecyclePhase.FINALIZE_READY.value
+        finalize["status"] = "ready"
+    migrated["finalize"] = finalize
+    return migrated
 
 
 def _detect_schema_version(raw: dict[str, StateValue]) -> int:
@@ -199,6 +219,12 @@ def _upcycle_v2_to_v3(raw: dict[str, StateValue]) -> dict[str, StateValue]:
     migrated.setdefault("approvals", {})
     if migrated.get("kind") == "todo":
         migrated["kind"] = "feature"
+    migrated["schema_version"] = _V3_SCHEMA_VERSION
+    return migrated
+
+
+def _upcycle_v3_to_v4(raw: dict[str, StateValue]) -> dict[str, StateValue]:
+    migrated = _normalize_finalize_ready_contract(raw)
     migrated["schema_version"] = LATEST_TODO_STATE_SCHEMA_VERSION
     return migrated
 
@@ -218,13 +244,15 @@ def _upcycle_to_latest(raw: dict[str, StateValue]) -> dict[str, StateValue]:
             migrated = _upcycle_v1_to_v2(migrated)
         elif version == _V2_SCHEMA_VERSION:
             migrated = _upcycle_v2_to_v3(migrated)
+        elif version == _V3_SCHEMA_VERSION:
+            migrated = _upcycle_v3_to_v4(migrated)
         else:
             msg = f"no upcycler registered for todo state schema_version {version}"
             raise ValueError(msg)
         version = _detect_schema_version(migrated)
 
     if "lifecycle_phase" not in migrated:
-        msg = "todo state schema v3 is missing required lifecycle_phase"
+        msg = f"todo state schema v{LATEST_TODO_STATE_SCHEMA_VERSION} is missing required lifecycle_phase"
         raise ValueError(msg)
     return migrated
 

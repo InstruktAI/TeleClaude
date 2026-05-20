@@ -157,9 +157,9 @@ async def _deliver_bundle(
 ) -> tuple[bool, datetime | None]:
     """Deliver all segments since the cursor as ONE bundled bridge message.
 
-    Returns ``(handed_off, latest_segment_timestamp)``. Latest timestamp is
+    Returns ``(delivered, latest_segment_timestamp)``. Latest timestamp is
     the cursor advancement target on success — the caller writes it to
-    ``conversation_delivery_state`` only when handed_off is True. Empty
+    ``conversation_delivery_state`` only when delivered is True. Empty
     segments yields ``(False, None)``; callers must skip cursor advancement.
     """
     if not segments:
@@ -282,7 +282,7 @@ async def _replay_pending_bundle(
         )
         return False
     try:
-        handed_off, _ = await _deliver_bundle(
+        bundle_delivered, _ = await _deliver_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
@@ -302,7 +302,7 @@ async def _replay_pending_bundle(
             exc,
         )
         return False
-    return handed_off
+    return bundle_delivered
 
 
 async def _deliver_for_peer(
@@ -415,7 +415,7 @@ async def _deliver_for_peer(
             pending_through_ts=latest_ts_all.isoformat(),
         )
     try:
-        handed_off, _ = await _deliver_bundle(
+        bundle_delivered, _ = await _deliver_bundle(
             source_session=source_session,
             link_id=link_id,
             target_session_id=target_session_id,
@@ -435,7 +435,7 @@ async def _deliver_for_peer(
             exc,
         )
         return delivered
-    if not handed_off or latest_ts_all is None:
+    if not bundle_delivered or latest_ts_all is None:
         return delivered
     # Advance cursor past all fresh segments so the next iteration doesn't re-process them.
     await db.upsert_conversation_delivery_state(

@@ -228,7 +228,7 @@ async def test_roadmap_normalizes_legacy_active_integration_phase_to_started(tmp
             {
                 "schema_version": 2,
                 "phase": "in_progress",
-                "lifecycle_phase": "handed_off",
+                "lifecycle_phase": "finalize_ready",
                 "integration_phase": "delivery_bookkeeping",
             },
         )
@@ -259,7 +259,7 @@ async def test_roadmap_normalizes_delivered_stale_integration_phase_to_delivered
             {
                 "schema_version": 2,
                 "phase": "in_progress",
-                "lifecycle_phase": "handed_off",
+                "lifecycle_phase": "finalize_ready",
                 "integration_phase": "delivery_bookkeeping",
             },
         )
@@ -451,7 +451,7 @@ async def test_delivered_draft_kind_todo_projects_delivered_not_pending(tmp_path
                 "schema_version": 2,
                 "kind": "draft",
                 "phase": "delivered",
-                "lifecycle_phase": "handed_off",
+                "lifecycle_phase": "finalize_ready",
                 "integration_phase": "delivered",
             },
         )
@@ -532,7 +532,7 @@ async def test_holder_and_children_survive_delivered_window_together(tmp_path: P
         for child in ("old-child-a", "old-child-b"):
             await database.add_to_roadmap(child, description=child, group_slug="old-holder")
             await database.write_state(
-                child, {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "handed_off"}
+                child, {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "finalize_ready"}
             )
             await database.deliver(child, commit=f"{child}-sha", delivered_at=old_at)
     finally:
@@ -603,7 +603,7 @@ async def test_holder_status_is_derived_from_leaf_children(tmp_path: Path) -> No
             await database.add_to_roadmap(child, description=child, group_slug="holder")
             await database.write_state(
                 child,
-                {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "handed_off"},
+                {"schema_version": 2, "phase": "delivered", "lifecycle_phase": "finalize_ready"},
             )
             await database.deliver(child, commit=f"{child}-sha")
     finally:
@@ -676,7 +676,7 @@ async def test_roadmap_projection_counts_follow_selected_row_id_when_slug_is_reu
                 "schema_version": 2,
                 "kind": "todo",
                 "phase": "in_progress",
-                "lifecycle_phase": "handed_off",
+                "lifecycle_phase": "finalize_ready",
             },
         )
         await database.write_artifact(_TEST_SLUG, _FIRST_ARTIFACT, "delivered artifact")

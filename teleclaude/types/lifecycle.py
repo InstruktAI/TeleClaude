@@ -44,7 +44,6 @@ class LifecyclePhase(str, Enum):
     REVIEW_CHANGES_REQUESTED = "review_changes_requested"
     REVIEW_APPROVED = "review_approved"
     FINALIZE_READY = "finalize_ready"
-    HANDED_OFF = "handed_off"
 
 
 class LifecycleStage(str, Enum):
@@ -77,7 +76,6 @@ WORK_LIFECYCLE_PHASES: frozenset[LifecyclePhase] = frozenset(
         LifecyclePhase.REVIEW_CHANGES_REQUESTED,
         LifecyclePhase.REVIEW_APPROVED,
         LifecyclePhase.FINALIZE_READY,
-        LifecyclePhase.HANDED_OFF,
     }
 )
 

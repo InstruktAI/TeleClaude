@@ -14,6 +14,7 @@ from teleclaude.core.next_machine.prepare import (
 )
 from teleclaude.core.next_machine.slug_resolution import HolderChildResolution, HolderResolutionReason
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
 
 _PREPARE = "teleclaude.core.next_machine.prepare"
 
@@ -26,7 +27,11 @@ def _mock_todos_db(**overrides: object) -> AsyncMock:
     db = AsyncMock()
     db.slug_in_roadmap = AsyncMock(return_value=overrides.get("in_roadmap", True))
     db.add_to_roadmap = AsyncMock(return_value=True)
-    db.read_state = AsyncMock(return_value=overrides.get("state", {"schema_version": 3, "lifecycle_phase": "draft"}))
+    db.read_state = AsyncMock(
+        return_value=overrides.get(
+            "state", {"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "draft"}
+        )
+    )
     db.write_state = AsyncMock()
     db.artifact_exists = AsyncMock(return_value=False)
     db.artifact_digest = AsyncMock(return_value="")
@@ -106,7 +111,9 @@ def test_format_holder_prepare_instruction_covers_non_runnable_reasons(snapshot:
 @pytest.mark.asyncio
 async def test_next_prepare_reads_stored_phase_and_returns_dispatch_instruction() -> None:
     db = AsyncMock()
-    todos_db = _mock_todos_db(state={"schema_version": 3, "lifecycle_phase": "prd_drafting"})
+    todos_db = _mock_todos_db(
+        state={"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "prd_drafting"}
+    )
 
     with (
         patch(f"{_PREPARE}.resolve_state_root", return_value="/repo"),
@@ -138,7 +145,10 @@ async def test_next_prepare_raises_on_missing_state() -> None:
 async def test_next_prepare_adopts_draft_with_input_to_prd_drafting(todos_db: TodosDb) -> None:
     db = AsyncMock()
     await todos_db.add_to_roadmap("draft-item")
-    await todos_db.write_state("draft-item", {"kind": "feature", "schema_version": 3, "lifecycle_phase": "draft"})
+    await todos_db.write_state(
+        "draft-item",
+        {"kind": "feature", "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "draft"},
+    )
     await todos_db.write_artifact("draft-item", "input", "build a thing")
     captured_phase = None
 
@@ -165,9 +175,13 @@ async def test_next_prepare_adopts_draft_with_input_to_prd_drafting(todos_db: To
 @pytest.mark.asyncio
 async def test_find_next_prepare_slug_db_returns_first_prepare_lane_slug(todos_db: TodosDb) -> None:
     await todos_db.add_to_roadmap("ready")
-    await todos_db.write_state("ready", {"schema_version": 3, "lifecycle_phase": "prepared"})
+    await todos_db.write_state(
+        "ready", {"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "prepared"}
+    )
     await todos_db.add_to_roadmap("draft-item")
-    await todos_db.write_state("draft-item", {"schema_version": 3, "lifecycle_phase": "draft"})
+    await todos_db.write_state(
+        "draft-item", {"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "draft"}
+    )
 
     result = await _find_next_prepare_slug_db(todos_db)
 

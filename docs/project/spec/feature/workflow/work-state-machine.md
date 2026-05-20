@@ -6,7 +6,7 @@ scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
 status: 'actual'
-description: 'Phase B state machine driving a prepared Todo through build → review → fix → finalize → handed-off inside a per-slug worktree, with a single-flight lock per (project_root, slug) and caller-session ownership for finalize.'
+description: 'Phase B state machine driving a prepared Todo through build → review → fix → terminal finalize_ready inside a per-slug worktree, with a single-flight lock per (project_root, slug) and caller-session ownership for finalize.'
 ---
 
 # Work State Machine — Spec
@@ -19,7 +19,7 @@ description: 'Phase B state machine driving a prepared Todo through build → re
 
 ## What it is
 
-The work state machine is the workflow capability that drives a prepared Todo through Phase B — `prepared` → `build_started` → `build_complete` → `review_changes_requested` (zero-or-more loops) → `review_approved` → `finalize_ready` → `handed_off`. Each call by the orchestrator reads the authoritative `lifecycle_phase`, dispatches the matching Phase handler, and returns a verbatim instruction telling the orchestrator what to do next — dispatch a builder, dispatch a reviewer, relay findings to an already-live builder, dispatch a finalizer, or emit the integration handoff event. Review verdicts (`approve` | `needs_work` | `needs_decision`) drive transitions between build, fix, and finalize.
+The work state machine is the workflow capability that drives a prepared Todo through Phase B — `prepared` → `build_started` → `build_complete` → `review_changes_requested` (zero-or-more loops) → `review_approved` → terminal `finalize_ready`. Each call by the orchestrator reads the authoritative `lifecycle_phase`, dispatches the matching Phase handler, and returns a verbatim instruction telling the orchestrator what to do next — dispatch a builder, dispatch a reviewer, relay findings to an already-live builder, dispatch a finalizer, or perform terminal worker-session cleanup. Integration emission is owned by the `TodosDb` phase-transition chokepoint when an owned-session write lands `lifecycle_phase=finalize_ready`. Review verdicts (`approve` | `needs_work` | `needs_decision`) drive transitions between build, fix, and finalize.
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight asyncio lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session ID is preserved across the async boundary so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly `NEXT_WORK_PHASE` log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
 
@@ -67,8 +67,24 @@ Given a Todo at lifecycle_phase=review_approved with no pending deferrals
 When the orchestrator calls `telec todo work my-feature`
 Then the machine dispatches the next-finalize worker
 And when the finalizer Stamps finalize_ready with a sha matching worktree HEAD, branch ref, and remote ref
-Then the machine emits the todo_finalize_ready integration event and advances to finalize_ready
+Then the machine advances to lifecycle_phase=finalize_ready through the TodosDb write boundary
+And the phase-transition chokepoint emits the todo_finalize_ready integration event
+And worker-session cleanup happens inside the finalize_ready step
 And on any triple-ref mismatch (uncommitted, branch≠HEAD, remote≠local, stamped sha≠HEAD) refuses to advance and instructs the operator to re-stamp
+```
+
+```
+Given an operator uses reconcile or mark-phase to land lifecycle_phase=finalize_ready through an owned TodosDb write
+When the state write commits
+Then the same TodosDb phase-transition chokepoint emits todo_finalize_ready
+And the IntegrationTriggerCartridge treats it the same as the normal work-machine path
+```
+
+```
+Given a Todo is already at lifecycle_phase=finalize_ready
+When the same phase value is written again
+Then the TodosDb phase-transition chokepoint suppresses emission
+And no duplicate integrator spawn is requested for that rewrite
 ```
 
 ```
@@ -99,8 +115,11 @@ And the lifecycle still requires an explicit `telec todo stamp my-bug --build-co
 - `teleclaude/core/next_machine/work_steps.py:702` — `_work_dispatch()` table dispatching to per-Phase handlers.
 - `teleclaude/core/next_machine/work_steps.py:194` — `_work_step_build_started` builder dispatch + build-gate-claim consumption.
 - `teleclaude/core/next_machine/work_steps.py:260` — `_work_step_build_complete` reviewer dispatch, re-review baseline scoping, round limit.
-- `teleclaude/core/next_machine/work_steps.py:484` — `_handle_finalize_ready_claim()` triple-ref consistency check that gates the integration event.
-- `teleclaude/core/next_machine/_types.py:78` — `WorkPhase` enum, the canonical phase set.
+- `teleclaude/core/next_machine/work_steps.py:484` — `_handle_finalize_ready_claim()` triple-ref consistency check; manual event emission is not performed here.
+- `teleclaude/core/todos_db/_base.py:323` — `notify_phase_transition()` callback surface for committed lifecycle phase writes.
+- `teleclaude/core/todos_db/_state.py:150` — `write_state()` / `write_state_sync()` post-commit phase-transition chokepoint.
+- `teleclaude/daemon.py:499` — daemon translator from `* → finalize_ready` phase transition to `domain.software-development.planning.todo_finalize_ready`.
+- `teleclaude/core/next_machine/_types.py:78` — `WorkPhase` enum, the canonical phase set; `HANDED_OFF` is not a member.
 - `teleclaude/core/next_machine/_types.py:114` — `_WORK_LOOP_LIMIT = 10` in-call iteration bound.
 - `teleclaude/core/next_machine/worktrees.py:111` — `_create_or_attach_worktree()` branches from `origin/main` as the single source of truth.
 - `teleclaude/api/todo_routes.py:162` — `POST /todos/work` HTTP entrypoint preserving caller `session_id` for finalize ownership.
@@ -108,7 +127,7 @@ And the lifecycle still requires an explicit `telec todo stamp my-bug --build-co
 ### Cross-context references
 
 - `agent_runtime` — every dispatch instruction is a verbatim `telec sessions run` script that spawns a builder, bugs-fixer, reviewer, deferrals worker, or finalizer session.
-- `integration` — on a valid finalize claim, the machine emits `domain.software-development.planning.todo_finalize_ready` (event in the workflow domain) which integration consumes to enqueue the slug as an integration candidate.
+- `integration` — on any owned write that lands `lifecycle_phase=finalize_ready`, the TodosDb chokepoint emits `domain.software-development.planning.todo_finalize_ready` (event in the workflow domain). `IntegrationTriggerCartridge` dedups by `(slug, sha, worker_session_id)` before spawning the singleton integrator; the periodic scanner remains the safety net for daemon-down or caller-owned transaction paths.
 - `session_ledger` — the caller's `session_id` is propagated through the HTTP entry into `next_work`, recorded on the finalize state, and used by the peer-conversation contract that lets the reviewer relay findings directly to the live builder/fixer.
 
 ## Known caveats
@@ -120,5 +139,6 @@ And the lifecycle still requires an explicit `telec todo stamp my-bug --build-co
 - Review round limit is not an escape hatch. Hitting it surfaces an error pointing at `review-findings`; the orchestrator must address Requirement-Violation / Critical / Important findings rather than raising the limit.
 - The `_WORK_LOOP_LIMIT` of 10 internal iterations bounds in-call transitions. Hitting it means the derived Phase keeps changing without converging — fix the underlying state, do not raise the limit.
 - `finalize_ready` is gated by a triple-ref check (`worktree HEAD == branch ref == remote ref`) AND the Stamped SHA must equal worktree HEAD; any mismatch refuses the transition and requires a re-stamp.
+- Chokepoint emission is at-least-once at the bus layer under concurrent first-transition writers. Integrator spawning remains at-most-once for duplicate same-key events through cartridge dedup, and distinct-key races are serialized by the integration singleton lease.
 - Stash debt in the project root blocks work entirely; the machine refuses to dispatch until the stash is drained, because stash state can silently reintroduce unrelated changes into the worktree branch.
 - Worktree prep failures bubble up as `reason=unexpected_<ExceptionType>` in the `NEXT_WORK_PHASE` log line so the orchestrator can diagnose without round-tripping through daemon logs.

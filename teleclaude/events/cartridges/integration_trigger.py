@@ -27,7 +27,7 @@ IntegratorSpawnCallback = Callable[[str, str, str, str], Coroutine[Any, Any, Any
 class IntegrationTriggerCartridge:
     """Spawn the integrator when ``todo_finalize_ready`` fires.
 
-    The integrator state machine scans worktree state for handed-off
+    The integrator state machine scans worktree state for finalize-ready
     candidates. This cartridge only needs to ensure the session exists.
     """
 

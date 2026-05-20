@@ -244,15 +244,11 @@ class ScannedCandidate:
 
 
 def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None) -> list[ScannedCandidate]:
-    """Scan worktree state.yaml files for finalize-ready candidates.
+    """Scan worktree todo states for finalize-ready candidates.
 
     Iterates ``trees/`` subdirectories (skipping ``_integration``), reads each
-    worktree's ``state.yaml`` via ``read_phase_state``, and returns candidates
-    whose ``finalize.status`` is ``"ready"`` or ``"handed_off"``.
-
-    ``handed_off`` candidates are accepted unconditionally — the lease prevents
-    concurrent processing, so the old TTL guard was redundant and caused every
-    fresh candidate to be invisible to the integrator.
+    worktree's state from todos.db and returns candidates whose
+    ``finalize.status`` is ``"ready"``.
 
     Each candidate is validated: branch must exist on origin and SHA must not
     already be an ancestor of main.
@@ -287,7 +283,7 @@ def _scan_finalize_ready_candidates(cwd: str, *, exclude_slug: str | None = None
 
         status = finalize.get("status")
 
-        if status not in ("ready", "handed_off"):
+        if status != "ready":
             continue
 
         branch_raw = finalize.get("branch", slug)
@@ -343,7 +339,7 @@ def _verify_slug_ready(cwd: str, slug: str) -> ScannedCandidate | None:
 
     status = finalize.get("status")
 
-    if status not in ("ready", "handed_off"):
+    if status != "ready":
         return None
 
     branch_raw = finalize.get("branch", slug)

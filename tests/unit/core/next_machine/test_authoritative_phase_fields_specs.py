@@ -19,7 +19,7 @@ def test_todo_state_has_canonical_lifecycle_phase_default() -> None:
     state = TodoState.defaults()
 
     assert state.lifecycle_phase == PreparePhase.DRAFT.value
-    assert state.schema_version == 3
+    assert state.schema_version == 4
 
 
 def test_item_phase_remains_independent_of_lifecycle_phase() -> None:

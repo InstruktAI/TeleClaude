@@ -30,6 +30,7 @@ _FINALIZE_READY_PAYLOAD = {
     "branch": "my-slug",
     "sha": "deadbeef1234",
     "worker_session_id": "w-001",
+    "ready_at": "2026-05-20T12:34:56+00:00",
 }
 
 
@@ -75,6 +76,19 @@ async def test_no_spawn_callback_passes_through():
     result = await cartridge.process(event, ctx)
 
     assert result is event
+
+
+@pytest.mark.asyncio
+async def test_duplicate_finalize_ready_events_with_same_logical_key_spawn_once() -> None:
+    """Distinct finalize-ready envelopes with the same logical key spawn once."""
+    spawn = AsyncMock()
+    cartridge = IntegrationTriggerCartridge(spawn_callback=spawn)
+    ctx = MagicMock()
+
+    await cartridge.process(_make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD), ctx)
+    await cartridge.process(_make_event(_SPAWN_EVENT, _FINALIZE_READY_PAYLOAD), ctx)
+
+    spawn.assert_called_once_with("my-slug", "my-slug", "deadbeef1234", "w-001")
 
 
 # ---------------------------------------------------------------------------

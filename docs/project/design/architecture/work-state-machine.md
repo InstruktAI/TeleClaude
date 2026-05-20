@@ -5,6 +5,9 @@ id: 'project/design/architecture/work-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+status: target
+delivered_by:
+  - finalize-ready-integration-anchor
 ---
 
 # Work State Machine â€” Design
@@ -15,7 +18,7 @@ The Work state machine routes implementation through four sub-phases: **Build â†
 
 **Entry point:** `telec todo work [slug]`
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
-**Terminal outputs:** `COMPLETE`, `NO_READY_ITEMS`, `HANDOFF` (to integration)
+**Terminal outputs:** `COMPLETE`, `NO_READY_ITEMS`, `FINALIZE_READY` (with integration triggered by the `TodosDb` phase-transition chokepoint)
 
 ### Referenced files
 
@@ -58,7 +61,7 @@ The Work state machine routes implementation through four sub-phases: **Build â†
 - Code changes, tests, and commits (build)
 - `telec todo artifacts read {slug} review-findings` â€” structured findings with severity and verdict (review)
 - `telec todo artifacts read {slug} deferrals` â€” out-of-scope work identified during build (optional)
-- Integration handoff events (`branch.pushed`, `deployment.started`)
+- Integration trigger event `domain.software-development.planning.todo_finalize_ready`, emitted by the `TodosDb` phase-transition chokepoint after the `finalize_ready` state write commits
 - Updated `todo state (todos.db)` with phase progression
 
 ### State YAML structure
@@ -70,11 +73,10 @@ build_start_base_sha: abc123...
 deferrals_processed: false
 
 finalize:
-  status: pending # pending | ready | handed_off
+  status: pending # pending | ready
   branch: my-feature
   sha: abc123...
   ready_at: 2026-03-09T10:00:00+00:00
-  handed_off_at: null
 
 build_review:
   verdict: ''
@@ -94,7 +96,8 @@ build_review:
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
-- **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready`; the Work machine performs the actual `finalize_ready -> handed_off` transition.
+- **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready`; the Work machine performs the triple-ref validation, advances to terminal `lifecycle_phase=finalize_ready`, and ends worker sessions in the same step.
+- **Integration emission is state-bound**: `TodosDb.write_state` / `write_state_sync` emit `domain.software-development.planning.todo_finalize_ready` after an owned-session commit that changes `lifecycle_phase` to `finalize_ready`. Same-phase rewrites emit nothing; concurrent duplicate emissions are deduped by `IntegrationTriggerCartridge` before integrator spawn.
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
 
 ## Primary flows
@@ -126,10 +129,10 @@ stateDiagram-v2
         [*] --> CheckDeferrals
         CheckDeferrals --> FinalizeWorker: deferrals processed
         FinalizeWorker --> MarkReady: FINALIZE_READY
-        MarkReady --> Handoff: emit integration events
+        MarkReady --> Terminal: validate refs, write lifecycle_phase=finalize_ready
     }
 
-    Finalize --> [*]: HANDOFF to Phase C
+    Finalize --> [*]: FINALIZE_READY triggers Phase C via TodosDb chokepoint
 ```
 
 ### Routing logic
@@ -147,7 +150,7 @@ flowchart TD
     DispatchFix["Dispatch /next-fix-review"]
     DispatchDefer["Dispatch /next-defer"]
     DispatchFinalize["Dispatch /next-finalize"]
-    Handoff["Emit integration events<br/>Mark finalize=handed_off"]
+    Terminal["Terminal finalize_ready<br/>TodosDb chokepoint emits integration event"]
 
     Start --> ReadState
     ReadState --> PhaseCheck
@@ -156,8 +159,7 @@ flowchart TD
     PhaseCheck -->|"build_complete"| DispatchReview
     PhaseCheck -->|"review_changes_requested"| DispatchFix
     PhaseCheck -->|"review_approved"| DispatchFinalize
-    PhaseCheck -->|"finalize_ready"| Handoff
-    PhaseCheck -->|"handed_off"| Handoff
+    PhaseCheck -->|"finalize_ready"| Terminal
 ```
 
 ### Precondition checks
@@ -220,12 +222,12 @@ sequenceDiagram
     F->>F: git fetch origin main, git merge origin/main
     F->>F: git push origin HEAD:slug
     F-->>O: FINALIZE_READY: slug
-    O->>O: telec todo mark-finalize-ready slug
+    O->>O: telec todo stamp slug --finalize-ready
     O->>O: telec sessions end finalizer-session
 
     O->>SM: telec todo work slug
-    SM-->>O: HANDOFF - emit integration events
-    SM->>I: Enqueue (slug, branch, sha)
+    SM->>SM: triple-ref validate, write lifecycle_phase=finalize_ready
+    SM->>I: TodosDb chokepoint emits (slug, branch, sha)
     Note over I: Phase C begins
 ```
 

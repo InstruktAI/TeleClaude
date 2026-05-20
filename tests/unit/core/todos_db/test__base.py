@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
 
 from teleclaude.core.todos_db import TodosDb
+
+_SLUG = "phase-hook-slug"
+_PRIOR_PHASE = "review_approved"
+_NEW_PHASE = "finalize_ready"
 
 
 def _old_artifact_versions_schema_ddl() -> str:
@@ -70,6 +75,24 @@ async def test_close_sets_conn_to_none(tmp_path: Path) -> None:
     await db.initialize()
     await db.close()
     assert db.conn is None
+
+
+def test_notify_phase_transition_default_is_noop(tmp_path: Path) -> None:
+    db = TodosDb(str(tmp_path / "todos.db"))
+
+    db.notify_phase_transition(_SLUG, _PRIOR_PHASE, _NEW_PHASE, {})
+
+
+def test_notify_phase_transition_invokes_installed_callback(tmp_path: Path) -> None:
+    db = TodosDb(str(tmp_path / "todos.db"))
+    state = {"lifecycle_phase": _NEW_PHASE}
+    calls: list[tuple[str, str, str, Mapping[str, object]]] = []
+
+    db._on_phase_transition = lambda slug, prior, new, payload: calls.append((slug, prior, new, payload))
+
+    db.notify_phase_transition(_SLUG, _PRIOR_PHASE, _NEW_PHASE, state)
+
+    assert calls == [(_SLUG, _PRIOR_PHASE, _NEW_PHASE, state)]
 
 
 def test_initialize_sync_fixes_artifact_versions_when_uuid_migration_ran_but_left_integer_id(

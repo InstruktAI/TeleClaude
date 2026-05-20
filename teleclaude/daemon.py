@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -145,6 +146,8 @@ _record_import_timing("teleclaude.daemon_session", _t)
 
 _t = time.perf_counter()
 from teleclaude.events import EventDB
+from teleclaude.events.envelope import EventLevel, EventVisibility
+from teleclaude.events.producer import emit_event
 
 _record_import_timing("teleclaude.events", _t)
 
@@ -496,6 +499,28 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         computer = config.computer.name
 
         def _hook(instance: TodosDb, project_root: str) -> None:
+            async def _emit_finalize_ready(slug: str, state: Mapping[str, object]) -> None:
+                finalize = state.get("finalize")
+                finalize_state = finalize if isinstance(finalize, dict) else {}
+                sha = str(finalize_state.get("sha", ""))
+                branch = str(finalize_state.get("branch", slug))
+                await emit_event(
+                    event="domain.software-development.planning.todo_finalize_ready",
+                    source="workflow",
+                    level=EventLevel.WORKFLOW,
+                    domain="software-development",
+                    visibility=EventVisibility.LOCAL,
+                    entity=slug,
+                    description=f"Finalize ready for {slug} (sha {sha[:8] if sha else 'unknown'})",
+                    payload={
+                        "slug": slug,
+                        "branch": branch,
+                        "sha": sha,
+                        "worker_session_id": str(finalize_state.get("worker_session_id", "")),
+                        "ready_at": str(finalize_state.get("ready_at", "")),
+                    },
+                )
+
             def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
                 if loop is not None and loop.is_running():
                     hint = event_hint  # capture for lambda closure
@@ -504,7 +529,20 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
                         lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, hint, data))
                     )
 
+            def _on_phase_transition(
+                slug: str,
+                _prior_lifecycle_phase: str,
+                new_lifecycle_phase: str,
+                state_payload: Mapping[str, object],
+            ) -> None:
+                if new_lifecycle_phase != "finalize_ready":
+                    return
+                if loop is not None and loop.is_running():
+                    payload = dict(state_payload)
+                    loop.call_soon_threadsafe(lambda: asyncio.ensure_future(_emit_finalize_ready(slug, payload)))
+
             instance._on_mutation = _on_mutation
+            instance._on_phase_transition = _on_phase_transition
 
         set_todos_mutation_hook(_hook)
         logger.info("Todos mutation hook registered (computer=%s)", computer)

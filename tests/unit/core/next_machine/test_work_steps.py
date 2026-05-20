@@ -9,6 +9,7 @@ from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.constants import SlashCommand
 from teleclaude.core.next_machine._types import PhaseStatus
+from teleclaude.core.next_machine.lifecycle import LifecyclePhase
 from teleclaude.core.next_machine.output_formatting import ToolCallRequest
 from teleclaude.core.next_machine.review_runtime import ReviewResolution
 from teleclaude.core.next_machine.work_steps import (
@@ -16,6 +17,7 @@ from teleclaude.core.next_machine.work_steps import (
     _handle_finalize_ready_claim,
     _work_step_build_complete,
     _work_step_build_started,
+    _work_step_finalize_ready,
     _work_step_review_changes_requested,
 )
 
@@ -612,10 +614,8 @@ async def test_finalize_ready_claim_stale_sha_blocks(snapshot: SnapshotAssertion
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_emits_event_with_full_payload_contract(snapshot: SnapshotAssertion) -> None:
-    """Valid claim emits the lifecycle event with the full payload contract
-    required by the Integration Orchestrator Spec: slug, branch, sha,
-    worker_session_id, ready_at."""
+async def test_finalize_ready_claim_commits_valid_triple_ref_without_manual_event_emit() -> None:
+    """Valid claims keep the triple-ref gate and leave event emission to TodosDb."""
     state = {
         "finalize": {
             "status": "ready",
@@ -626,15 +626,14 @@ async def test_finalize_ready_claim_emits_event_with_full_payload_contract(snaps
         },
         "lifecycle_phase": "review_approved",
     }
-    emit = AsyncMock()
+    commit = AsyncMock()
 
     with (
         patch(f"{_WORK_STEPS}.has_uncommitted_changes", return_value=False),
         patch(f"{_WORK_STEPS}.get_head_commit", return_value="cafebabe"),
         patch(f"{_WORK_STEPS}.get_ref_commit", return_value="cafebabe"),
         patch(f"{_WORK_STEPS}.get_remote_branch_head", return_value="cafebabe"),
-        patch(f"{_WORK_STEPS}.emit_event", new=emit),
-        patch(f"{_WORK_STEPS}._commit_writer", new=AsyncMock()),
+        patch(f"{_WORK_STEPS}._commit_writer", new=commit),
     ):
         result = await _handle_finalize_ready_claim(
             slug="test-slug",
@@ -645,36 +644,31 @@ async def test_finalize_ready_claim_emits_event_with_full_payload_contract(snaps
         )
 
     assert result == (True, "")
-    assert emit.await_count == 1
-    payload = emit.await_args.kwargs["payload"]
-    assert payload == snapshot
+    commit.assert_awaited_once()
+    committed_writer = commit.await_args.args[0]
+    assert committed_writer.state.lifecycle_phase == LifecyclePhase.FINALIZE_READY.value
 
 
 @pytest.mark.asyncio
-async def test_finalize_ready_claim_emit_failure_propagates_before_commit() -> None:
-    """If event emission fails, the lifecycle is not committed — retry safely
-    on the next dispatch instead of silently stranding the work item."""
+async def test_finalize_ready_step_returns_worker_cleanup_script(snapshot: SnapshotAssertion) -> None:
+    """FINALIZE_READY owns the terminal worker-session cleanup directly."""
     state = {
         "finalize": {"status": "ready", "sha": "cafebabe", "worker_session_id": "w-1"},
-        "lifecycle_phase": "review_approved",
+        "lifecycle_phase": LifecyclePhase.FINALIZE_READY.value,
     }
-    commit = AsyncMock()
 
     with (
-        patch(f"{_WORK_STEPS}.has_uncommitted_changes", return_value=False),
-        patch(f"{_WORK_STEPS}.get_head_commit", return_value="cafebabe"),
-        patch(f"{_WORK_STEPS}.get_ref_commit", return_value="cafebabe"),
-        patch(f"{_WORK_STEPS}.get_remote_branch_head", return_value="cafebabe"),
-        patch(f"{_WORK_STEPS}.emit_event", new=AsyncMock(side_effect=RuntimeError("redis down"))),
-        patch(f"{_WORK_STEPS}._commit_writer", new=commit),
+        patch(f"{_WORK_STEPS}.get_session_id", return_value="orchestrator-1"),
+        patch(f"{_WORK_STEPS}._list_child_session_ids", new=AsyncMock(return_value=["child-1", "child-2"])),
     ):
-        with pytest.raises(RuntimeError):
-            await _handle_finalize_ready_claim(
-                slug="test-slug",
-                cwd="/project",
-                worktree_cwd="/project/trees/test-slug",
-                todos_db=_mock_todos_db(),
-                state=state,
-            )
+        keep_going, instruction = await _work_step_finalize_ready(
+            db=_mock_db(),
+            todos_db=_mock_todos_db(),
+            slug="test-slug",
+            cwd="/project",
+            worktree_cwd="/project/trees/test-slug",
+            state=state,
+        )
 
-    assert commit.await_count == 0
+    assert keep_going is False
+    assert instruction == snapshot

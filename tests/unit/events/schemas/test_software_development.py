@@ -6,11 +6,15 @@ from teleclaude.events.catalog import EventCatalog
 from teleclaude.events.envelope import EventLevel
 from teleclaude.events.schemas.software_development import register_software_development
 
+_TODO_FINALIZE_READY_EVENT = "domain.software-development.planning.todo_finalize_ready"
+_TODO_FINALIZE_READY_FIELDS = ["slug", "branch", "sha", "worker_session_id", "ready_at"]
+
 _EXPECTED_TYPES = {
     # Planning
     "domain.software-development.planning.todo_created",
     "domain.software-development.planning.todo_dumped",
     "domain.software-development.planning.todo_activated",
+    _TODO_FINALIZE_READY_EVENT,
     "domain.software-development.planning.artifact_changed",
     "domain.software-development.planning.dependency_resolved",
     "domain.software-development.planning.dor_assessed",
@@ -135,3 +139,13 @@ def test_deployment_failed_is_actionable() -> None:
     schema = _catalog().get("domain.software-development.deployment.failed")
     assert schema is not None
     assert schema.actionable is True
+
+
+def test_todo_finalize_ready_registers_required_payload_contract() -> None:
+    schema = _catalog().get(_TODO_FINALIZE_READY_EVENT)
+    assert schema is not None
+    assert schema.default_level == EventLevel.WORKFLOW
+    assert schema.lifecycle is not None
+    assert schema.lifecycle.creates is True
+    assert schema.lifecycle.group_key == "slug"
+    assert schema.lifecycle.meaningful_fields == _TODO_FINALIZE_READY_FIELDS

@@ -19,7 +19,7 @@ description: 'Canonical lifecycle_phase pointer naming where a Todo stands in it
 
 ## What it is
 
-`lifecycle_phase` is the canonical pointer a Todo carries to name exactly where it stands in its journey from draft to delivered. It is one validated enum value per Todo, persisted in `todos.db`, and read by every state machine, every CLI render, and every routing decision the workflow makes. Two operator surfaces mutate it directly: `telec todo mark-phase` records an authoritative override, and `telec todo reconcile` re-derives the pointer from the Todo's current evidence (artifacts, review verdicts, approval stamps, skip stamps, drift-review stamps) — bounded to one Stage so it cannot quietly jump lanes. Legacy v0/v1/v2 phase strings persisted on older Todos auto-upcycle to v3 on read; the canonical pointer is the single source of truth for "where is this Todo, right now."
+`lifecycle_phase` is the canonical pointer a Todo carries to name exactly where it stands in its journey from draft to delivered. It is one validated enum value per Todo, persisted in `todos.db`, and read by every state machine, every CLI render, and every routing decision the workflow makes. Two operator surfaces mutate it directly: `telec todo mark-phase` records an authoritative override, and `telec todo reconcile` re-derives the pointer from the Todo's current evidence (artifacts, review verdicts, approval stamps, skip stamps, drift-review stamps) — bounded to one Stage so it cannot quietly jump lanes. Legacy v0/v1/v2/v3 phase strings persisted on older Todos auto-upcycle to v4 on read; the canonical pointer is the single source of truth for "where is this Todo, right now."
 
 ## Canonical fields
 
@@ -59,7 +59,7 @@ And refuses to advance past evidence (cannot promote into work-lane phases from 
 Given a persisted Todo carries a legacy v2 lifecycle_phase like "input_assessment"
 When upcycle_state_dict runs at read time
 Then _upcycle_v2_to_v3 maps the legacy value through _V2_TO_V3_PHASE
-And the read returns a valid v3 LifecyclePhase value
+And the read returns a valid v4 LifecyclePhase value
 And the on-disk row stays unchanged until the next persisted write canonicalizes it
 ```
 
@@ -85,8 +85,8 @@ And the calling state machine treats the Todo as invalid rather than guessing a 
 - `teleclaude/core/next_machine/state_io.py:285-308` — `mark_phase_state` runs precondition validation, syncs reconcile artifacts, and persists through `StateWriter`
 - `teleclaude/core/next_machine/state_io.py:311-349` — `reconcile_phase_state` derives the highest supported phase within one `LifecycleStage` and refuses to cross lanes
 - `teleclaude/core/todos_db/_upcycle.py:87-141` — `_infer_v1_lifecycle_phase` builds the v1 phase from grounding, review verdicts, finalize status, and artifact presence
-- `teleclaude/core/todos_db/_upcycle.py:169-207` — `_upcycle_v0_to_v1`, `_upcycle_v1_to_v2`, `_upcycle_v2_to_v3` migrate persisted phase strings to the latest enum
-- `teleclaude/core/todos_db/_upcycle.py:210-233` — `_upcycle_to_latest` is the read-time gateway that guarantees every state load carries a valid v3 `lifecycle_phase`
+- `teleclaude/core/todos_db/_upcycle.py:169-233` — `_upcycle_v0_to_v1`, `_upcycle_v1_to_v2`, `_upcycle_v2_to_v3`, and `_upcycle_v3_to_v4` migrate persisted phase strings to the latest enum
+- `teleclaude/core/todos_db/_upcycle.py:236-252` — `_upcycle_to_latest` is the read-time gateway that guarantees every state load carries a valid v4 `lifecycle_phase`
 
 ### Cross-context references
 
@@ -97,6 +97,7 @@ And the calling state machine treats the Todo as invalid rather than guessing a 
 - `telec todo mark-phase` is an escape hatch. It bypasses the evidence requirements that the state machine normally enforces and writes the authoritative `lifecycle_phase` field directly — use it to unstick a Todo, not as a routine advance mechanism.
 - `telec todo reconcile` never advances past the evidence on disk. If artifacts, stamps, and verdicts only support `prd_drafting`, reconcile will not promote the Todo to `prd_review` no matter how often it is run.
 - Reconcile is **stage-bounded**. Passing `--stage prepare` will not promote a Todo into a work-lane phase even if the work-lane evidence is present; the operator must explicitly pass `--stage work` (or run `telec todo work`) to cross the lane boundary.
-- The canonical lifecycle is **strictly forward**: draft → prepare-lane phases → prepared → work-lane phases → finalize_ready → handed_off → delivered. Neither mark-phase nor reconcile is permitted to rewind a Todo to an earlier stage; rewinding requires a deliberate refinement flow that invalidates downstream approvals via `apply_authoritative_signal` / `invalidate_downstream_on_refine`.
+- The canonical lifecycle is **strictly forward**: draft → prepare-lane phases → prepared → work-lane phases → finalize_ready → delivered. Neither mark-phase nor reconcile is permitted to rewind a Todo to an earlier stage; rewinding requires a deliberate refinement flow that invalidates downstream approvals via `apply_authoritative_signal` / `invalidate_downstream_on_refine`.
+- Legacy persisted rows with `lifecycle_phase="handed_off"` or `finalize.status="handed_off"` normalize on read to `lifecycle_phase="finalize_ready"` and `finalize.status="ready"`; no operator action is required.
 - Legacy phase strings (`work_phase`, `prepare_phase`, `phase`, `grounding`, etc.) from v0/v1/v2 Todos are still tolerated on read: `_infer_v1_lifecycle_phase` reconstructs the canonical pointer from whatever evidence the older row carried. The mapping table in `_V2_TO_V3_PHASE` is intentionally preserved so historical rows continue to load.
 - An invalid persisted `lifecycle_phase` is treated as a hard error, not a default. `require_lifecycle_phase` raises immediately — the platform refuses to guess a phase for a Todo whose pointer is missing or unrecognized.

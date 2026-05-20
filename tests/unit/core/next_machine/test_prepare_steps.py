@@ -14,6 +14,7 @@ from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.core.next_machine._types import PreparePhase
 from teleclaude.core.next_machine.prepare_steps import _prepare_dispatch
+from teleclaude.core.todos_db._upcycle import LATEST_TODO_STATE_SCHEMA_VERSION
 
 pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 
@@ -33,7 +34,7 @@ async def _dispatch(phase: PreparePhase, *, live_worker_id: str | None = None) -
             slug="my-slug",
             cwd="/repo",
             phase=phase,
-            state={"lifecycle_phase": phase.value},
+            state={"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": phase.value},
         )
 
 
@@ -100,7 +101,7 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
     db = AsyncMock()
     todos_db = AsyncMock()
     state = {
-        "schema_version": 3,
+        "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION,
         "lifecycle_phase": "blocked",
         "artifacts": {
             "prd": {
@@ -134,7 +135,7 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
     db = AsyncMock()
     todos_db = AsyncMock()
     state = {
-        "schema_version": 3,
+        "schema_version": LATEST_TODO_STATE_SCHEMA_VERSION,
         "lifecycle_phase": "blocked",
         "artifacts": {
             "prd": {
@@ -166,7 +167,7 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
 async def test_blocked_no_drift_emits_blocker_resolution(snapshot: SnapshotAssertion) -> None:
     db = AsyncMock()
     todos_db = AsyncMock()
-    state = {"schema_version": 3, "lifecycle_phase": "blocked", "artifacts": {}}
+    state = {"schema_version": LATEST_TODO_STATE_SCHEMA_VERSION, "lifecycle_phase": "blocked", "artifacts": {}}
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
         patch(f"{_STEPS}.derive_prepare_drift", return_value={}),

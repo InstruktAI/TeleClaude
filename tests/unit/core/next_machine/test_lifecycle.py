@@ -289,17 +289,18 @@ def test_work_reconcile_does_not_infer_build_complete_from_commits() -> None:
     assert next_phase == LifecyclePhase.BUILD_STARTED
 
 
-def test_finalize_handed_off_advances_finalize_ready_to_handed_off() -> None:
+def test_finalize_ready_is_terminal_work_phase() -> None:
     state = TodoState.defaults()
-    state.lifecycle_phase = LifecyclePhase.FINALIZE_READY.value
+    state.lifecycle_phase = LifecyclePhase.REVIEW_APPROVED.value
     state.finalize.status = "ready"
 
-    next_phase = apply_authoritative_signal(state, "finalize_handed_off")
+    assert phase_is_complete(state, LifecyclePhase.REVIEW_APPROVED)
 
-    assert next_phase == LifecyclePhase.HANDED_OFF
-    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.HANDED_OFF
-    assert state.finalize.status == "handed_off"
-    assert state.finalize.handed_off_at
+    next_phase = apply_authoritative_signal(state, "finalize_ready")
+
+    assert next_phase is LifecyclePhase.FINALIZE_READY
+    assert LifecyclePhase(state.lifecycle_phase) is LifecyclePhase.FINALIZE_READY
+    assert not phase_is_complete(state, LifecyclePhase.FINALIZE_READY)
 
 
 def test_phase_completion_uses_v2_gates(monkeypatch: pytest.MonkeyPatch) -> None:

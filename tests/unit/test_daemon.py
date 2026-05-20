@@ -11,6 +11,24 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 import teleclaude.daemon as daemon
+from teleclaude.core.todos_db import TodosDb, _instances, get_todos_db, set_todos_mutation_hook
+
+_EVENT_NAME = "domain.software-development.planning.todo_finalize_ready"
+_SLUG = "phase-hook-slug"
+_PRIOR_PHASE = "review_approved"
+_FINALIZE_READY = "finalize_ready"
+_BUILD_PHASE = "build"
+_SHA = "abc123"
+_WORKER_SESSION_ID = "sess-123"
+_READY_AT = "2026-05-20T00:00:00+00:00"
+
+
+async def _get_hooked_todos_db(tmp_path: Path) -> TodosDb:
+    daemon_instance = daemon.TeleClaudeDaemon.__new__(daemon.TeleClaudeDaemon)
+    daemon_instance._loop = asyncio.get_running_loop()
+    daemon_instance.cache = SimpleNamespace(refresh_local_todos=AsyncMock())
+    daemon_instance._register_todos_mutation_hook()
+    return await get_todos_db(tmp_path)
 
 
 class NetworkError(Exception):
@@ -117,3 +135,76 @@ async def test_stop_awaits_webhook_delivery_task_gracefully() -> None:
         timeout=5.0,
     )
     daemon_instance._signal_ai_client.close.assert_awaited_once_with()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_todos_phase_transition_hook_emits_finalize_ready_event(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = str(tmp_path / ".teleclaude" / "todos.db")
+    _instances.pop(db_path, None)
+    emit_event = AsyncMock()
+    monkeypatch.setattr(daemon, "emit_event", emit_event, raising=False)
+
+    todos_db = None
+    try:
+        todos_db = await _get_hooked_todos_db(tmp_path)
+        todos_db.notify_phase_transition(
+            _SLUG,
+            _PRIOR_PHASE,
+            _FINALIZE_READY,
+            {
+                "finalize": {
+                    "branch": _SLUG,
+                    "sha": _SHA,
+                    "worker_session_id": _WORKER_SESSION_ID,
+                    "ready_at": _READY_AT,
+                },
+            },
+        )
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        emit_event.assert_awaited_once()
+        kwargs = emit_event.await_args.kwargs
+        assert kwargs["event"] == _EVENT_NAME
+        assert kwargs["entity"] == _SLUG
+        assert kwargs["payload"] == {
+            "slug": _SLUG,
+            "branch": _SLUG,
+            "sha": _SHA,
+            "worker_session_id": _WORKER_SESSION_ID,
+            "ready_at": _READY_AT,
+        }
+    finally:
+        set_todos_mutation_hook(None)
+        _instances.pop(db_path, None)
+        if todos_db is not None:
+            await todos_db.close()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_todos_phase_transition_hook_ignores_non_finalize_ready_phase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    db_path = str(tmp_path / ".teleclaude" / "todos.db")
+    _instances.pop(db_path, None)
+    emit_event = AsyncMock()
+    monkeypatch.setattr(daemon, "emit_event", emit_event, raising=False)
+
+    todos_db = None
+    try:
+        todos_db = await _get_hooked_todos_db(tmp_path)
+        todos_db.notify_phase_transition(_SLUG, _PRIOR_PHASE, _BUILD_PHASE, {})
+        await asyncio.sleep(0)
+
+        emit_event.assert_not_awaited()
+    finally:
+        set_todos_mutation_hook(None)
+        _instances.pop(db_path, None)
+        if todos_db is not None:
+            await todos_db.close()
