@@ -699,6 +699,15 @@ def _build_phase1_output(
         for entry in sorted(third_party_entries, key=lambda s: (_scope_rank(s.scope), s.snippet_id)):
             parts.append(f"{entry.snippet_id}: {entry.description or ''}".strip())
     parts.extend(["", "# ⚠️  IMPORTANT: Call `telec docs get` again with the snippet IDs of interest!"])
+    parts.extend(
+        [
+            "",
+            "# NOTE (migration-window, deprecated and will be removed post-v2-cutover):",
+            "# Specs may have a sibling `<stem>-v2-diff.md` of `type: spec-diff` capturing v2 divergence",
+            "# from the parent. Read parent + companion together to understand v2 behavior.",
+            "# See `software-development/principle/documentation-first-development` section 10.",
+        ]
+    )
     return "\n".join(parts)
 
 
