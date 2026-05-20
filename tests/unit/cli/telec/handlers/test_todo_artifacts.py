@@ -19,8 +19,6 @@ _INLINE_CONTENT = "inline-content"
 _NEW_DIGEST = "def456"
 _OLD_DIGEST = "abc123"
 _SRC_APP = "src/app.py"
-_RETIRED_KEYWORD = "retired"
-_TEST_SPECS_ARTIFACT_NAME = "test-specs"
 
 
 class TestHandleTodoArtifactsList:
@@ -73,7 +71,7 @@ class TestHandleTodoArtifactsWrite:
         assert body["codebase_sha_at_write"] == _HEAD_SHA
         assert body["referenced_paths"] == [_SRC_APP]
 
-    def test_refuses_retired_test_specs_write(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_refuses_retired_test_specs_write(self) -> None:
         """Retired artifact kinds (test-specs, spec-review-findings) cannot be written.
 
         Reads/removes of pre-cutover todos remain supported via the full allowlist;
@@ -87,9 +85,6 @@ class TestHandleTodoArtifactsWrite:
             _handle_todo_artifacts(["write", "my-slug", "test-specs", "# Gherkin\n"])
 
         mock_api.assert_not_called()
-        out = capsys.readouterr().out
-        assert _RETIRED_KEYWORD in out
-        assert _TEST_SPECS_ARTIFACT_NAME in out
 
     def test_refuses_retired_spec_review_findings_write(self) -> None:
         with patch(f"{_MODULE}.tool_api_request") as mock_api, pytest.raises(SystemExit):

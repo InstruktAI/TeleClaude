@@ -583,8 +583,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                     ),
                     "write": CommandDef(
                         desc="Write a todo artifact",
-                        args="<slug> <name: input|prd|requirements|architecture|test-specs|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|spec-review-findings|plan-review-findings|review-findings> <content>",
+                        args="<slug> <name: input|prd|requirements|architecture|implementation-plan|bug|quality-checklist|design-spec|deferrals|requirements-review-findings|architecture-review-findings|plan-review-findings|review-findings> <content>",
                         flags=[_H],
+                        notes=[
+                            "Writable names exclude retired kinds (test-specs, spec-review-findings); "
+                            "those remain readable/removable for pre-cutover todos only.",
+                        ],
                         examples=['telec todo artifacts write my-slug requirements "# Requirements content"'],
                         auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
                     ),

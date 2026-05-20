@@ -147,11 +147,13 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
 # Retired artifact kinds — accepted only for READ/REMOVE of pre-cutover todos.
 # Writes are refused at the API and CLI write boundaries (see
 # ``ARTIFACT_NAMES_WRITABLE``). Drop entries once no in-flight todos carry them.
+# Note: ``requirements-review-findings`` is NOT retired here; the workflow
+# domain spec and CLI surface still declare it canonical/writable. Its in-file
+# DEPRECATED comment above is advisory pending a separate retirement change.
 ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
     {
         ARTIFACT_TEST_SPECS,
         ARTIFACT_SPEC_REVIEW_FINDINGS,
-        ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
     }
 )
 

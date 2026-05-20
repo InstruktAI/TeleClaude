@@ -26,7 +26,7 @@ Verify the implementation against the PRD, prepared artifacts, and standards, an
 - `telec todo artifacts read {slug} prd` exists (or `bug` for bug fixes). Legacy
   todos may carry `requirements`; use it only when `prd` is absent.
 - `telec todo artifacts read {slug} implementation-plan` exists (unless bug fix).
-- `architecture` and `test-specs` are readable when present and not skipped.
+- `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes Build/Review sections (unless bug fix).
 - Build phase completed for the slug.
 
