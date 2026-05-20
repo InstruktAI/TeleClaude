@@ -72,16 +72,25 @@ class _DummyPreparationView(PreparationViewActionsMixin):
 
 
 @pytest.mark.unit
-def test_action_reconcile_calls_reconcile_and_refreshes() -> None:
+def test_action_reconcile_routes_through_daemon_and_refreshes() -> None:
+    """Reconcile must POST through the daemon so the mutation hook fires —
+    direct in-process calls bypass the cache invalidation and leave the TUI
+    rendering the pre-reconcile row.
+    """
     view = _DummyPreparationView(("local", "/repo", "my-slug"))
 
     with patch(
-        "teleclaude.cli.tui.views.preparation_actions.reconcile_phase_state",
-        return_value={"lifecycle_phase": "plan_review"},
-    ) as mock_reconcile:
+        "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+        return_value={"slug": "my-slug", "lifecycle_phase": "plan_review"},
+    ) as mock_request:
         view.action_reconcile()
 
-    mock_reconcile.assert_called_once_with("/repo", "my-slug")
+    mock_request.assert_called_once_with(
+        "POST",
+        "/todos/reconcile/my-slug",
+        json_body={"cwd": "/repo"},
+        timeout=10.0,
+    )
     view.app.notify.assert_called_once_with("Reconciled my-slug lifecycle_phase=plan_review")
     view.app._refresh_data.assert_called_once_with()
 
@@ -91,8 +100,8 @@ def test_action_reconcile_surfaces_errors() -> None:
     view = _DummyPreparationView(("local", "/repo", "my-slug"))
 
     with patch(
-        "teleclaude.cli.tui.views.preparation_actions.reconcile_phase_state",
-        side_effect=ValueError("No valid prepare phase matches the current todo state"),
+        "teleclaude.cli.tui.views.preparation_actions.tool_api_request",
+        return_value={"detail": "No valid prepare phase matches the current todo state"},
     ):
         view.action_reconcile()
 

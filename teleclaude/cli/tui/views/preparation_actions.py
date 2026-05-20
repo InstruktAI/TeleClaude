@@ -21,7 +21,6 @@ from teleclaude.cli.tui.widgets.todo_file_row import TodoFileRow
 from teleclaude.cli.tui.widgets.todo_row import TodoRow
 from teleclaude.constants import ARTIFACT_INPUT, SlashCommand
 from teleclaude.core.next_machine.lifecycle import is_ready_for_work
-from teleclaude.core.next_machine.state_io import reconcile_phase_state
 
 if TYPE_CHECKING:
     from teleclaude.api_models import ProjectWithTodosDTO
@@ -536,7 +535,12 @@ class PreparationViewActionsMixin:
         )
 
     def action_reconcile(self) -> None:
-        """r: reconcile the selected todo's lifecycle phase from current state."""
+        """r: reconcile the selected todo's lifecycle phase from current state.
+
+        Routes through the daemon API so the mutation hook fires and the
+        projection cache is invalidated. A direct in-process call would write
+        to SQLite but leave the daemon serving the pre-reconcile cached row.
+        """
         context = self._resolve_cursor_context()  # type: ignore[attr-defined]
         if not context:
             return
@@ -545,14 +549,22 @@ class PreparationViewActionsMixin:
             return
 
         try:
-            payload = reconcile_phase_state(project_path, slug)
+            result = tool_api_request(
+                "POST",
+                f"/todos/reconcile/{slug}",
+                json_body={"cwd": project_path},
+                timeout=10.0,
+            )
         except Exception as exc:
             self.app.notify(str(exc), severity="error")  # type: ignore[attr-defined]
             return
 
-        self.app.notify(  # type: ignore[attr-defined]
-            f"Reconciled {slug} lifecycle_phase={payload['lifecycle_phase']}"
-        )
+        if isinstance(result, dict) and result.get("detail"):
+            self.app.notify(str(result["detail"]), severity="error")  # type: ignore[attr-defined]
+            return
+
+        lifecycle_phase = (result or {}).get("lifecycle_phase", "") if isinstance(result, dict) else ""
+        self.app.notify(f"Reconciled {slug} lifecycle_phase={lifecycle_phase}")  # type: ignore[attr-defined]
         self.app._refresh_data()  # type: ignore[attr-defined]
 
     def action_freeze(self) -> None:
