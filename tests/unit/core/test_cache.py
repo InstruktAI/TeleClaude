@@ -158,3 +158,22 @@ class TestDaemonCache:
         assert cache.apply_todos_snapshot("local", {"/p": [after]}) is True
         cached = cache.get_todos("local", "/p")
         assert cached[0].lifecycle_phase == "prd_drafting"
+
+    @pytest.mark.unit
+    def test_apply_todos_snapshot_propagates_artifact_version_total_changes(self):
+        """Version-only artifact edits must invalidate snapshots even when artifact names stay fixed."""
+        cache = DaemonCache()
+        before = TodoDTO(
+            slug="t1",
+            status="pending",
+            has_requirements=True,
+            has_impl_plan=False,
+            files=["requirements"],
+            version_total=1,
+        )
+        after = before.model_copy(update={"version_total": 2})
+
+        assert cache.apply_todos_snapshot("local", {"/p": [before]}) is True
+        assert cache.apply_todos_snapshot("local", {"/p": [after]}) is True
+        cached = cache.get_todos("local", "/p")
+        assert cached[0].version_total == 2

@@ -238,7 +238,12 @@ def assemble_roadmap_from_db(
                 "SELECT name FROM todo_artifacts WHERE id = ? ORDER BY name",  # guard: raw-sql
                 (row_id,),
             ).fetchall()
+            version_total_row = conn.execute(
+                "SELECT COUNT(*) FROM todo_artifact_versions WHERE id = ?",  # guard: raw-sql
+                (row_id,),
+            ).fetchone()
             artifact_query_total_dt += time.perf_counter() - artifact_query_started_at
+            version_total = int(version_total_row[0]) if version_total_row is not None else 0
 
             # --- Derive display values from canonical lifecycle state ---
 
@@ -305,6 +310,7 @@ def assemble_roadmap_from_db(
                     integration_phase=integration_phase,
                     finalize_status=finalize_status,
                     files=[ar[0] for ar in artifact_rows],
+                    version_total=version_total,
                 )
             )
             todo_build_total_dt += time.perf_counter() - todo_build_started_at

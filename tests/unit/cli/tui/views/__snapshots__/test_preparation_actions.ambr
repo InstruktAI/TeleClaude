@@ -1,0 +1,8 @@
+# serializer version: 1
+# name: test_action_remove_artifact_todo_row_confirmation_includes_artifact_and_version_counts
+  '''
+  Remove todo 'my-slug' and its 2 artifacts (12 versions)?
+  
+  This action cannot be undone.
+  '''
+# ---

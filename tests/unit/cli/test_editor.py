@@ -7,12 +7,14 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 from textual.widgets import Markdown, TextArea
 
 from teleclaude.cli import editor
 from teleclaude.cli.editor import EditorApp, MaterializedArtifact, persist_if_changed
+from teleclaude.cli.tool_client import ToolAPIError
 from teleclaude.core.todos_db import TodosDb
 
 
@@ -55,6 +57,34 @@ def test_materialized_artifact_from_db_preserves_logical_artifact_name(tmp_path:
         assert materialized.display_name == "requirements"
         assert materialized.file_path.name == "requirements"
         assert materialized.file_path.read_text(encoding="utf-8") == "# Hello\n"
+    finally:
+        materialized.cleanup()
+
+
+def test_materialized_artifact_persist_raises_when_daemon_unreachable_without_db_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    project_root, db = _seed_artifact_project(tmp_path, content="before\n")
+    materialized = MaterializedArtifact.from_db(
+        project_root=project_root,
+        slug="todo-1",
+        artifact_name="requirements",
+    )
+    materialized.file_path.write_text("after\n", encoding="utf-8")
+
+    def _raise_daemon_unreachable(*_args: object, **_kwargs: object) -> object:
+        raise ToolAPIError("daemon unavailable")
+
+    monkeypatch.setattr(editor, "tool_api_request", _raise_daemon_unreachable, raising=False)
+
+    try:
+        with pytest.raises(ToolAPIError):
+            materialized.persist("after\n")
+
+        assert materialized.file_path.exists()
+        assert materialized.file_path.read_text(encoding="utf-8") == "after\n"
+        assert db.read_artifact_sync("todo-1", "requirements") == "before\n"
     finally:
         materialized.cleanup()
 
@@ -177,11 +207,23 @@ def test_main_view_mode_launches_themed_markdown_preview(
     assert save_callback is None
 
 
-def test_main_edit_mode_persists_artifact_back_to_db(
+def test_main_edit_mode_posts_artifact_save_to_daemon(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    project_root, db = _seed_artifact_project(tmp_path, artifact_name="requirements", content="before\n")
+    slug = "todo one"
+    artifact_name = "requirements draft"
+    project_root, _db = _seed_artifact_project(
+        tmp_path,
+        slug=slug,
+        artifact_name=artifact_name,
+        content="before\n",
+    )
+    calls: list[tuple[str, str, object]] = []
+
+    def _fake_tool_api_request(method: str, path: str, json_body: object = None, **_kwargs: object) -> object:
+        calls.append((method, path, json_body))
+        return {"status": "ok", "slug": slug, "name": artifact_name}
 
     def _fake_inline_editor(
         file_path: Path,
@@ -191,7 +233,7 @@ def test_main_edit_mode_persists_artifact_back_to_db(
         theme_name: str = "teleclaude-dark",
         save_callback: Callable[[str], None] | None = None,
     ) -> int:
-        assert display_name == "requirements"
+        assert display_name == artifact_name
         assert view_mode is False
         assert theme_name == "teleclaude-dark"
         file_path.write_text("after\n", encoding="utf-8")
@@ -199,6 +241,7 @@ def test_main_edit_mode_persists_artifact_back_to_db(
         save_callback("after\n")
         return 0
 
+    monkeypatch.setattr(editor, "tool_api_request", _fake_tool_api_request, raising=False)
     monkeypatch.setattr(editor, "_run_inline_editor", _fake_inline_editor)
     monkeypatch.setattr(
         sys,
@@ -208,9 +251,9 @@ def test_main_edit_mode_persists_artifact_back_to_db(
             "--project-root",
             str(project_root),
             "--artifact-slug",
-            "todo-1",
+            slug,
             "--artifact-name",
-            "requirements",
+            artifact_name,
         ],
     )
 
@@ -218,4 +261,10 @@ def test_main_edit_mode_persists_artifact_back_to_db(
         editor.main()
 
     assert exc_info.value.code == 0
-    assert db.read_artifact_sync("todo-1", "requirements") == "after\n"
+    assert calls == [
+        (
+            "POST",
+            f"/todos/artifacts/{quote(slug, safe='')}/{quote(artifact_name, safe='')}",
+            {"content": "after\n", "cwd": str(project_root), "updated_by": "teleclaude.cli.editor"},
+        )
+    ]

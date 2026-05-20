@@ -20,6 +20,7 @@ class TodoItem:
     review_status: str | None = None
     deferrals_status: str | None = None
     files: list[str] = field(default_factory=list)
+    version_total: int = 0
     after: list[str] = field(default_factory=list)
     group: str | None = None
     lifecycle_phase: str | None = None

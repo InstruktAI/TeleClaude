@@ -1,0 +1,7 @@
+# serializer version: 1
+# name: test_collapsed_row_exposes_artifact_count_signal
+  dict({
+    'empty': '  ├─□ empty-row·············',
+    'with_artifacts': '  ├─□ with-artifacts··A:2···',
+  })
+# ---

@@ -23,6 +23,7 @@ _DIM = Style(dim=True)
 
 _PHASE_PREFIX_LIFECYCLE = "P"
 _PHASE_PREFIX_INTEGRATION = "I"
+_ARTIFACT_PREFIX = "A"
 
 _INTEGRATION_LABEL_STARTED = "started"
 _INTEGRATION_LABEL_DELIVERED = "delivered"
@@ -243,10 +244,12 @@ class TodoRow(TelecMixin, Widget):
     def compute_col_widths(todos: list[TodoItem]) -> dict[str, int]:
         """Compute column widths from actual data: max rendered length + gap.
 
-        Column order: P | I | B | R | F | D
+        Column order: P | I | B | R | D | A
         """
-        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "D": 0}
+        maxes: dict[str, int] = {"P": 0, "I": 0, "B": 0, "R": 0, "D": 0, "A": 0}
         for t in todos:
+            if t.files:
+                maxes["A"] = max(maxes["A"], len(f"{_ARTIFACT_PREFIX}:{len(t.files)}"))
             if t.status == TodoStatus.ICEBOX:
                 maxes["P"] = max(maxes["P"], len(f"{_PHASE_PREFIX_LIFECYCLE}:icebox"))
                 continue
@@ -268,9 +271,10 @@ class TodoRow(TelecMixin, Widget):
                 maxes["D"] = max(maxes["D"], len(f"D:{t.deferrals_status}"))
         sized = {k: (v + _COL_GAP if v > 0 else 0) for k, v in maxes.items()}
         # Compute max rendered width across the mutually exclusive column paths
-        path_prepare = sized["P"]
-        path_integration = sized["P"]  # I renders in P slot
-        path_work = sized["B"] + sized["R"] + sized["D"]
+        artifact_width = sized["A"]
+        path_prepare = sized["P"] + artifact_width
+        path_integration = sized["P"] + artifact_width  # I renders in P slot
+        path_work = sized["B"] + sized["R"] + sized["D"] + artifact_width
         sized["_max"] = max(path_prepare, path_integration, path_work) + 1  # +1 trailing dot
         return sized
 
@@ -303,13 +307,24 @@ class TodoRow(TelecMixin, Widget):
         """Max rendered column width across all paths — the target for uniform padding."""
         return self._col_widths.get("_max", 0)
 
+    def _build_artifact_col(self) -> Text:
+        """Render the artifact-count signal from the row's existing TodoItem data."""
+        count = len(self.todo.files)
+        value = str(count) if count else ""
+        return self._build_col(
+            _ARTIFACT_PREFIX, value, self._col_widths.get("A", 0), Style(color=_ok_color(), bold=True)
+        )
+
     def _build_columns(self) -> Text:
         """Build aligned property columns. Prepare rows use P, work rows use B/R/F/D."""
         target = self._total_col_width()
 
-        # Holders show no phase columns — status is the projection's leaf aggregate
+        # Holders show no phase columns. Detection uses the projection-driven
+        # ``is_holder`` flag (the aggregation moved out of the renderer); the
+        # artifact-count signal still renders so holders surface their rolled-up
+        # artifact total.
         if self.todo.is_holder:
-            return _pad(Text(), target)
+            return _pad(self._build_artifact_col(), target)
 
         # Icebox items show P:icebox only — no work-phase columns
         if self.todo.status == TodoStatus.ICEBOX:
@@ -322,6 +337,7 @@ class TodoRow(TelecMixin, Widget):
                     Style(color=_icebox_color(), bold=True),
                 )
             )
+            result.append_text(self._build_artifact_col())
             return _pad(result, target)
 
         result = Text()
@@ -339,6 +355,7 @@ class TodoRow(TelecMixin, Widget):
         if p_result is not None:
             p_label, p_value, p_color = p_result
             result.append_text(self._build_col(p_label, p_value, w.get("P", 0), Style(color=p_color, bold=True)))
+            result.append_text(self._build_artifact_col())
             return _pad(result, target)
 
         # 2. Active or queued integration phase — render in the P column slot for alignment
@@ -346,6 +363,7 @@ class TodoRow(TelecMixin, Widget):
         if i_result is not None:
             i_label, i_value, i_color = i_result
             result.append_text(self._build_col(i_label, i_value, w.get("P", 0), Style(color=i_color, bold=True)))
+            result.append_text(self._build_artifact_col())
             return _pad(result, target)
 
         # 3. Work phase (build != pending) — existing B/R/D path
@@ -366,10 +384,12 @@ class TodoRow(TelecMixin, Widget):
 
             ds = self.todo.deferrals_status
             result.append_text(self._build_col("D", ds or "", w.get("D", 0), _DIM))
+            result.append_text(self._build_artifact_col())
 
             return _pad(result, target)
 
         # 4. Ready/pending state — no phase/work columns
+        result.append_text(self._build_artifact_col())
         return _pad(result, target)
 
     def render(self) -> Text:

@@ -106,6 +106,9 @@ _OPTIONAL_FIELD_OVERRIDES: frozenset[tuple[str, str]] = frozenset(
         # surface has always declared it optional to avoid forcing consumers to
         # pass an empty array when assembling a TodoInfo in tests.
         ("TodoDTO", "after"),
+        # TodoDTO.version_total defaults to zero; older daemon/cache payloads and
+        # frontend fixtures may omit it while callers normalize absence to zero.
+        ("TodoDTO", "version_total"),
     }
 )
 # Required overrides force a nullable-but-always-present shape even though the

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import shlex
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
 import teleclaude.cli.tui.app as app_module
+from teleclaude.api import todo_routes
 from teleclaude.api_models import (
     AgentAvailabilityDTO,
     ChiptunesStatusDTO,
@@ -22,11 +25,20 @@ from teleclaude.api_models import (
     TuiBootstrapDTO,
     TuiBootstrapPillar,
 )
+from teleclaude.cli import editor as editor_module
+from teleclaude.cli.editor import MaterializedArtifact
 from teleclaude.cli.tui.app import TelecApp
 from teleclaude.cli.tui.pane_bridge import PaneManagerBridge
 from teleclaude.cli.tui.views.preparation import PreparationView
+from teleclaude.constants import ARTIFACT_REQUIREMENTS, LOCAL_COMPUTER
+from teleclaude.core.cache import DaemonCache
+from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db, set_todos_mutation_hook
 
 pytestmark = [pytest.mark.functional, pytest.mark.asyncio, pytest.mark.timeout(45)]
+
+_CACHE_REFLECTION_CONTENT = "requirements from editor\n"
+_CACHE_REFLECTION_SHA = "cache-reflection-sha"
+_CACHE_REFLECTION_SLUG = "editor-cache-reflection"
 
 
 class _StubAPI:
@@ -107,6 +119,113 @@ async def _wait_for_preparation_rows(pilot: object, prep: PreparationView) -> No
         if prep._nav_items:
             return
     raise AssertionError("Preparation data did not load")
+
+
+async def _drain_refresh_tasks(refresh_tasks: list[asyncio.Task[None]]) -> None:
+    """Wait for cache refresh work scheduled by the daemon-style mutation hook."""
+    pending = list(refresh_tasks)
+    refresh_tasks.clear()
+    if pending:
+        await asyncio.gather(*pending)
+
+
+def _read_required_body_field(body: object, field_name: str) -> str:
+    """Return a required string field from the editor's daemon-request body."""
+    if not isinstance(body, dict):
+        raise AssertionError("artifact write body must be a JSON object")
+    value = body[field_name]
+    if not isinstance(value, str):
+        raise AssertionError("artifact write body field must be a string")
+    return value
+
+
+@pytest.mark.functional
+async def test_editor_artifact_persist_refreshes_cached_todo_without_stale_ttl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Persisting through the editor path refreshes cached todo artifact data immediately."""
+    project_root = tmp_path / "project"
+    state_root = project_root / ".teleclaude"
+    state_root.mkdir(parents=True)
+    cache = DaemonCache()
+    loop = asyncio.get_running_loop()
+    refresh_tasks: list[asyncio.Task[None]] = []
+
+    def _register_refresh_hook(instance: object, hook_project_root: str) -> None:
+        def _on_mutation(event_hint: str = "todo_updated") -> None:
+            refresh_tasks.append(
+                loop.create_task(cache.refresh_local_todos(LOCAL_COMPUTER, hook_project_root, event_hint))
+            )
+
+        instance._on_mutation = _on_mutation  # type: ignore[attr-defined] # mirrors daemon hook wiring
+
+    def _extract_referenced_paths(_content: str, _cwd: str) -> list[str]:
+        return []
+
+    set_todos_mutation_hook(_register_refresh_hook)
+    monkeypatch.setattr(todo_routes, "get_head_commit", lambda _cwd: _CACHE_REFLECTION_SHA)
+    monkeypatch.setattr(todo_routes, "extract_referenced_paths", _extract_referenced_paths)
+
+    database = await get_todos_db(project_root)
+    materialized: MaterializedArtifact | None = None
+    try:
+        await database.add_to_roadmap(_CACHE_REFLECTION_SLUG, description="cache reflection")
+        await _drain_refresh_tasks(refresh_tasks)
+        cache.set_todos(
+            LOCAL_COMPUTER,
+            str(project_root),
+            [
+                TodoDTO(
+                    slug=_CACHE_REFLECTION_SLUG,
+                    status="pending",
+                    has_requirements=False,
+                    has_impl_plan=False,
+                    files=[],
+                    version_total=0,
+                )
+            ],
+        )
+
+        async def _write_via_daemon_route(body: object) -> object:
+            response = await todo_routes.write_artifact(
+                slug=_CACHE_REFLECTION_SLUG,
+                name=ARTIFACT_REQUIREMENTS,
+                content=_read_required_body_field(body, "content"),
+                cwd=_read_required_body_field(body, "cwd"),
+                updated_by=_read_required_body_field(body, "updated_by"),
+            )
+            await _drain_refresh_tasks(refresh_tasks)
+            return response.model_dump()
+
+        def _fake_tool_api_request(
+            _method: str,
+            _path: str,
+            *,
+            json_body: object = None,
+            **_kwargs: object,
+        ) -> object:
+            future = asyncio.run_coroutine_threadsafe(_write_via_daemon_route(json_body), loop)
+            return future.result(timeout=5)
+
+        monkeypatch.setattr(editor_module, "tool_api_request", _fake_tool_api_request)
+        materialized = MaterializedArtifact.from_db(
+            project_root=project_root,
+            slug=_CACHE_REFLECTION_SLUG,
+            artifact_name=ARTIFACT_REQUIREMENTS,
+        )
+
+        await asyncio.to_thread(materialized.persist, _CACHE_REFLECTION_CONTENT)
+
+        refreshed = cache.get_todos(LOCAL_COMPUTER, str(project_root))
+        assert len(refreshed) == 1
+        assert refreshed[0].files == [ARTIFACT_REQUIREMENTS]
+        assert refreshed[0].version_total == 1
+    finally:
+        if materialized is not None:
+            materialized.cleanup()
+        set_todos_mutation_hook(None)
+        await close_todos_db_instances()
 
 
 @pytest.mark.functional

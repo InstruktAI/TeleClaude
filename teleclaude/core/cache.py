@@ -536,6 +536,7 @@ class DaemonCache:
                             todo.review_status or "",
                             todo.deferrals_status or "",
                             ",".join(todo.files),
+                            str(todo.version_total),
                             todo.lifecycle_phase or "",
                             todo.integration_phase or "",
                             todo.finalize_status or "",
