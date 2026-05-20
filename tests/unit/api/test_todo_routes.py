@@ -16,7 +16,7 @@ from fastapi.routing import APIRoute
 from typing_extensions import TypedDict
 
 from teleclaude.api import todo_routes
-from teleclaude.api.auth import CallerIdentity
+from teleclaude.api.auth import CallerIdentity, clearance_todos_reconcile
 from teleclaude.api_models import TodoDumpRequest
 from teleclaude.constants import (
     ARTIFACT_INPUT,
@@ -108,6 +108,20 @@ class TestTodoRoutes:
         paths = {route.path for route in todo_routes.router.routes if isinstance(route, APIRoute)}
         assert "/todos/stamp/{slug}" not in paths
         assert "/todos/mark-phase/{slug}" not in paths
+
+    @pytest.mark.unit
+    def test_reconcile_route_is_bound_to_clearance_dependency(self) -> None:
+        """Reconcile is a mutating lifecycle endpoint — the route MUST carry
+        Depends(clearance_todos_reconcile). The dual-factor / RBAC boundary
+        documented at the top of todo_routes.py is delegated to FastAPI's
+        Depends graph; removing the binding silently de-authorizes the
+        endpoint. This test fails if the binding is ever dropped.
+        """
+        route = next(
+            r for r in todo_routes.router.routes if isinstance(r, APIRoute) and r.path == "/todos/reconcile/{slug}"
+        )
+        bound = {dep.call for dep in route.dependant.dependencies}
+        assert clearance_todos_reconcile in bound
 
     @pytest.mark.unit
     @pytest.mark.asyncio
