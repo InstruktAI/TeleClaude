@@ -4,6 +4,9 @@ id: 'project/spec/inbound-queue'
 scope: 'project'
 type: 'spec'
 visibility: 'public'
+status: 'target'
+delivered_by:
+  - 'session-projection-input-acceptance-races'
 ---
 
 # Inbound Queue — Spec
@@ -11,6 +14,8 @@ visibility: 'public'
 ## What it is
 
 The inbound queue provides guaranteed delivery of user messages to their agent sessions. Adapters enqueue messages and return immediately. A per-session worker drains the queue, delivering messages to the tmux session with FIFO ordering and exponential backoff retry.
+
+For non-terminal input, the successful enqueue boundary is also the accepted-input boundary. After a queue insert succeeds, core records the accepted session metadata before any typing callback, worker start, or projection-visible wakeup can observe the session. Terminal input bypasses the inbound queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `project/spec/session-projection`.
 
 ## Canonical fields
 
@@ -87,20 +92,32 @@ Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles w
 1. Fetch session from DB — raises if not found
 2. Startup gate: wait up to 15s for session to exit `initializing` — raises on timeout
 3. Headless adoption: if `lifecycle_status == 'headless'`, adopt a tmux session
-4. Record accepted input metadata before any projection-visible wakeup: `last_message_sent`, `last_message_sent_at`, `last_input_origin`
+4. For legacy rows accepted before enqueue-time metadata existed, idempotently fill missing accepted input metadata before any projection-visible wakeup: `last_message_sent`, `last_message_sent_at`, `last_input_origin`
 5. Drop pending adapter QoS output if needed; this is delivery cleanup only, not projection truth
-6. Broadcast/project user input according to the routing and projection contracts
-7. Wrap text with bracketed paste, send via `tmux_io.process_text`
-8. On `process_text` returning False: raise `RuntimeError` (triggers retry)
-9. On success: update `last_activity`, start polling
+6. Wrap text with bracketed paste, send via `tmux_io.process_text`
+7. On `process_text` returning False: raise `RuntimeError` (triggers retry)
+8. On success: update `last_activity`, start polling
 
-The metadata write in step 4 is the UI-origin acceptance boundary. It makes the origin fresh before the agent can produce source activity that wakes projection. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `project/spec/session-projection`.
+Delivery is not the primary UI-origin acceptance boundary. Delivery may preserve compatibility for old queued rows, but it must not be the first writer for newly accepted UI input and must never advance `last_projected_at`.
+
+### Acceptance Metadata
+
+`process_message` owns the non-terminal accepted-input metadata write. The write happens only after durable queue insert succeeds and before the queue manager invokes adapter typing callbacks or starts a drain worker.
+
+The accepted metadata consists of:
+
+- `last_message_sent` — operational preview of the accepted text
+- `last_message_sent_at` — acceptance timestamp used by v1 origin freshness checks
+- `last_input_origin` — canonical input origin (`telegram`, `discord`, `whatsapp`, `web`)
+- origin metadata — typed adapter metadata persisted for the origin when provided
+
+Acceptance code must not write `last_projected_at`. That field is projector-owned, as defined in `project/spec/session-projection`.
 
 ### Deduplication
 
-The unique index on `(origin, source_message_id)` (where `source_message_id IS NOT NULL`) prevents duplicate enqueues. `enqueue_inbound` returns `None` on dedup skip.
+The unique index on `(origin, source_message_id)` (where `source_message_id IS NOT NULL`) prevents duplicate enqueues. `enqueue_inbound` returns `None` on dedup skip. Dedup skips do not refresh accepted metadata; the already accepted queue row remains the source for that adapter message.
 
-Adapters that provide stable message IDs (Discord, Telegram) must pass `source_message_id`. Terminal input can omit it.
+Adapters that provide stable message IDs (Discord, Telegram, WhatsApp) must pass `source_message_id`. Web/API input omits it unless the caller supplies a stable client message id. Terminal input can omit it.
 
 ### Session Lifecycle Integration
 
@@ -114,7 +131,7 @@ Adapters that provide stable message IDs (Discord, Telegram) must pass `source_m
 
 ### Adapter Contract
 
-Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and the core delivery path records accepted state.
+Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and the core acceptance path records accepted state before adapter-visible side effects.
 
 ## See Also
 

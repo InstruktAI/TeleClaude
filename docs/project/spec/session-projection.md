@@ -4,6 +4,9 @@ id: 'project/spec/session-projection'
 scope: 'project'
 type: 'spec'
 visibility: 'public'
+status: 'target'
+delivered_by:
+  - 'session-projection-input-acceptance-races'
 ---
 
 # Session Projection — Spec
@@ -57,6 +60,10 @@ truth itself.
   messages remain one logical projected span for cursor advancement.
 - Re-rendering an already delivered source span is a repair/retry concern and must be idempotent by
   source span, not by current adapter message placement.
+- Projection execution is serialized per session. If a scheduled projection pass and a poller-driven
+  projection pass wake at the same time, only one pass may inspect and update the user-entry
+  watermark at a time. Additional wakeups coalesce into a follow-up pass, and each pass refreshes
+  session state before checking `last_projected_at` or the output projection digest.
 
 ### Origin gate
 
@@ -64,7 +71,9 @@ Projection must not pass a new user source entry until that entry's origin has b
 
 - `last_input_origin` is set at the acceptance boundary where normalized user input becomes accepted
   core state.
-- UI-origin input records the adapter-provided origin before injection into the agent.
+- UI-origin input records the adapter-provided origin at the successful accepted-input boundary,
+  before typing callbacks, queue workers, or projection-visible wakeups can observe stale origin
+  metadata.
 - Terminal-origin input records `terminal` from the `user_prompt_submit` boundary, because terminal
   input bypasses the inbound adapter queue.
 - A stale origin from a previous turn cannot satisfy the gate for a later user source entry.
@@ -99,8 +108,9 @@ Signals wake projection. They do not decide projection content.
 - `daemon_startup_reconcile`: restart recovery should replay from cursors.
 
 Only `terminal_origin_recorded` is an origin write that also acts as a projection signal. Non-terminal
-origin writes are not standalone projection signals; their acceptance path and later activity signals
-already wake projection.
+origin writes are not standalone projection signals. The successful acceptance path may emit
+`inbound_accepted` only after accepted-input metadata is durable and fresh; later activity signals
+may also wake projection.
 
 ### Adapter delivery mechanics
 
