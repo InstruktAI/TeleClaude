@@ -9,7 +9,6 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
-  "showThinkingSummaries": true,
   "statusLine": {
     "type": "command",
     "command": "bunx -y ccstatusline@latest",
