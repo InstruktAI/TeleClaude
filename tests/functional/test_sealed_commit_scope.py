@@ -89,11 +89,6 @@ def _committed_paths(repo: Path, ref: str = "HEAD") -> set[str]:
     return {line.strip() for line in out.splitlines() if line.strip()}
 
 
-def _head_subject(repo: Path) -> str:
-    """Return the subject line of HEAD."""
-    return _run(repo, "log", "-1", "--format=%s").strip()
-
-
 def _staged_paths(repo: Path) -> set[str]:
     """Return paths currently in the index (ACMRD)."""
     out = _run(repo, "diff", "--cached", "--name-only", "--diff-filter=ACMRD")
@@ -106,20 +101,15 @@ def _unstaged_paths(repo: Path) -> set[str]:
     return {line.strip() for line in out.splitlines() if line.strip()}
 
 
-def _porcelain_status(repo: Path) -> dict[str, str]:
-    """Return a {path: XY-code} map from `git status --porcelain -uall`.
+def _untracked_paths(repo: Path) -> set[str]:
+    """Return paths git does not yet know about (untracked working-tree files)."""
+    out = _run(repo, "ls-files", "--others", "--exclude-standard")
+    return {line.strip() for line in out.splitlines() if line.strip()}
 
-    Each entry's value is the two-letter porcelain status code (e.g.
-    `" D"` for unstaged deletion, `"??"` for untracked, `"A "` for
-    added/staged). Parsing into a dict lets tests assert set membership
-    on paths AND structured equality on the code, never substring.
-    """
-    out = _run(repo, "status", "--porcelain", "-uall")
-    result: dict[str, str] = {}
-    for line in out.splitlines():
-        if len(line) >= 4:
-            result[line[3:].strip()] = line[:2]
-    return result
+
+def _head_oid(repo: Path) -> str:
+    """Return the current HEAD object id for before/after identity comparisons."""
+    return _run(repo, "rev-parse", "HEAD").strip()
 
 
 def _patch_worktree_check(is_worktree: bool):
@@ -262,9 +252,8 @@ class TestCommitUnderLockEndToEnd:
 
         # HEAD touched only mine.py; foreign deletion stayed uncommitted.
         assert _committed_paths(repo) == {P_MINE}
-        # Working tree still has the deletion as " D foreign.py".
-        UNSTAGED_DELETE = " D"
-        assert _porcelain_status(repo).get(P_FOREIGN) == UNSTAGED_DELETE
+        # foreign.py's deletion is structurally an unstaged-tracked change.
+        assert P_FOREIGN in _unstaged_paths(repo)
 
     def test_untracked_new_file_in_scope_is_dropped(self, repo: Path) -> None:
         (repo / P_MINE).write_text("v1\n")
@@ -282,9 +271,8 @@ class TestCommitUnderLockEndToEnd:
             )
 
         assert _committed_paths(repo) == {P_MINE}
-        # New file remains untracked: porcelain code "??" for untracked.
-        UNTRACKED = "??"
-        assert _porcelain_status(repo).get(P_NEW) == UNTRACKED
+        # The new file is structurally an untracked working-tree file.
+        assert P_NEW in _untracked_paths(repo)
 
     def test_untracked_new_file_with_include_is_committed(self, repo: Path) -> None:
         (repo / P_MINE).write_text("v1\n")
@@ -311,6 +299,10 @@ class TestCommitUnderLockEndToEnd:
         _run(repo, "add", P_MINE)
         (repo / P_MINE).write_text("v3 unstaged\n")
 
+        # Capture HEAD before the blocked commit so we can prove it did
+        # not advance via object-id identity (no string-content compare).
+        head_before = _head_oid(repo)
+
         with (
             _patch_worktree_check(False),
             _patch_session(True),
@@ -324,9 +316,8 @@ class TestCommitUnderLockEndToEnd:
                 system_role=None,
             )
         assert exc.value.code == 1
-        # HEAD did NOT advance — last commit subject is still the prior one.
-        ADD_MINE_SUBJECT = "add mine"
-        assert _head_subject(repo) == ADD_MINE_SUBJECT
+        # HEAD object id is identical → no new commit landed.
+        assert _head_oid(repo) == head_before
 
     def test_foreign_staged_file_not_swept_by_pathspec(self, repo: Path) -> None:
         (repo / P_MINE).write_text("v1\n")
