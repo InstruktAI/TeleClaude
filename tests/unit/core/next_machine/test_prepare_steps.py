@@ -196,11 +196,12 @@ async def test_prepared_delegates_to_terminal_formatter() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reuse_does_not_collide_with_prefix_sharing_slug() -> None:
+async def test_reuse_does_not_collide_with_prefix_sharing_slug(snapshot: SnapshotAssertion) -> None:
     """End-to-end: a longer slug that starts with our slug as a prefix must NOT be reused.
 
     Exercises the real find_live_prepare_worker_for_slug lookup (no helper mock)
-    so the slug-boundary guard is verified, not just the rendered output.
+    so the slug-boundary guard is verified through the rendered dispatch script
+    snapshot (which embeds the selected session_id verbatim).
     """
     # Two live prepare reviewers on repo root (subdir=None), same command prefix,
     # different slugs. The collider's slug starts with our target slug.
@@ -229,12 +230,11 @@ async def test_reuse_does_not_collide_with_prefix_sharing_slug() -> None:
             state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
         )
     assert keep_going is False
-    assert "telec sessions send reviewer-exact" in instruction
-    assert "reviewer-collider" not in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_reuse_matches_title_with_trailing_context() -> None:
+async def test_reuse_matches_title_with_trailing_context(snapshot: SnapshotAssertion) -> None:
     """A reviewer title with trailing whitespace+context after the slug still matches."""
     fake_sessions = [
         SimpleNamespace(
@@ -256,12 +256,16 @@ async def test_reuse_matches_title_with_trailing_context() -> None:
             state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
         )
     assert keep_going is False
-    assert "telec sessions send reviewer-with-context" in instruction
+    assert instruction == snapshot
 
 
 @pytest.mark.asyncio
-async def test_reuse_skips_session_with_non_root_subdir() -> None:
-    """A worktree-scoped session must NOT be reused for prepare (which runs on repo root)."""
+async def test_reuse_skips_session_with_non_root_subdir(snapshot: SnapshotAssertion) -> None:
+    """A worktree-scoped session must NOT be reused for prepare (which runs on repo root).
+
+    The snapshot captures the spawn-path dispatch script — its presence proves
+    the worktree-scoped session was correctly skipped and fresh spawn ran.
+    """
     fake_sessions = [
         SimpleNamespace(
             session_id="worktree-session",
@@ -282,6 +286,4 @@ async def test_reuse_skips_session_with_non_root_subdir() -> None:
             state={"lifecycle_phase": PreparePhase.ARCHITECTURE_REVIEW.value},
         )
     assert keep_going is False
-    # No reuse — spawn-path runs
-    assert "worktree-session" not in instruction
-    assert "telec sessions run" in instruction
+    assert instruction == snapshot

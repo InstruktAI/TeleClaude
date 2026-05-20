@@ -358,3 +358,98 @@
   4. Call `telec todo prepare my-slug` to advance the lifecycle.
   '''
 # ---
+# name: test_reuse_does_not_collide_with_prefix_sharing_slug
+  '''
+  WORKER RE-DISPATCH (reuse): my-slug
+  
+  Execute in order:
+  
+  telec sessions send reviewer-exact "Re-run your task for my-slug. The relevant artifact(s) have been updated since your prior pass. If a review-findings artifact exists, read it first: telec todo artifacts read my-slug review-findings. Then re-execute your loaded procedure on the new content. Reviewers: re-stamp via telec todo stamp my-slug --verdict approve|needs_work --phase architecture_review. Drift analyzers: stamp drift_reviewed for each re-assessed artifact."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the worker reports idle, call telec todo prepare my-slug.
+  '''
+# ---
+# name: test_reuse_matches_title_with_trailing_context
+  '''
+  WORKER RE-DISPATCH (reuse): my-slug
+  
+  Execute in order:
+  
+  telec sessions send reviewer-with-context "Re-run your task for my-slug. The relevant artifact(s) have been updated since your prior pass. If a review-findings artifact exists, read it first: telec todo artifacts read my-slug review-findings. Then re-execute your loaded procedure on the new content. Reviewers: re-stamp via telec todo stamp my-slug --verdict approve|needs_work --phase architecture_review. Drift analyzers: stamp drift_reviewed for each re-assessed artifact."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the worker reports idle, call telec todo prepare my-slug.
+  '''
+# ---
+# name: test_reuse_skips_session_with_non_root_subdir
+  '''
+  IMPORTANT: This output is an execution script. Follow it verbatim.
+  
+  INVARIANT: Never invoke the next state-machine call (telec todo prepare/work/integrate) while a worker referenced in this script is still active. Always wait for the named worker(s) to emit agent_stop first.
+  
+  Execute these steps in order (FOLLOW TO THE LETTER!):
+  
+  STEP 1 - DISPATCH:
+  guidance
+  
+  Based on the above guidance and the work item details, select the best agent and thinking mode.
+  
+  PARALLELIZATION (pick the one matching your agent choice; append to --additional-context):
+  - claude:
+      "Independent sub-tasks MUST be parallelized via TeamCreate — one team, multiple workers in a single call. Sequential dispatch of independent work is a failure mode; default to TeamCreate whenever two or more sub-tasks have no data dependency."
+  - codex:
+      "When work decomposes into independent subtasks, immediately spawn bounded explorer/worker sub-agents for them and keep the critical path moving locally. Do not serialize non-blocking discovery, implementation, or verification; wait only when a result blocks integration, then merge/close agents."
+  - gemini:
+      "Mandate: Identify independent sub-tasks and concurrently delegate them to sub-agents using `invoke_agent` in a single turn. Ensure parallel sub-agents do not mutate the same files; otherwise, execute them simultaneously without setting `wait_for_previous`."
+  
+  Dispatch metadata: command="/next-review-architecture" args="my-slug" project="/repo" subfolder=""
+  
+  telec sessions run --command "/next-review-architecture" --args "my-slug" --project "/repo"   --agent "<your selection>" --mode "<your selection>" --subfolder ""
+  Save the returned session_id.
+  
+  STEP 2 - START NON-BLOCKING HEARTBEAT TIMER AND INITIALIZE MARKER:
+  Bash(command="sleep 300", run_in_background=true)
+  Save the returned task_id.
+  Save the current time as <marker_timestamp> for the tailing discipline.
+  The timer runs in the background; notifications and timer completion arrive in your conversation.
+  
+  STEP 3 - WAIT:
+  Tell the user: "Dispatched session <session_id>. Waiting for completion."
+  Act on the next event that fires in your conversation — notification or timer completion.
+  
+  TAILING DISCIPLINE:
+  - First tail: full window (no --since). Save the latest message timestamp as <marker_timestamp>.
+  - All subsequent tails: use --since <marker_timestamp>. Update marker after each tail.
+  Each telec sessions tail response includes `last_input_at`, `last_activity`,
+  `last_agent_stop_at`, and computed `agent_status`.
+  
+  Status semantics:
+  - `active`: `last_activity` exists and the latest observed activity is not the agent stop event.
+  - `idle`: `last_activity` exists and `last_agent_stop_at == last_activity`.
+  - `unknown`: no `last_activity` has been recorded yet.
+  
+  HEARTBEAT RULE:
+  - On notification arrival or timer completion: tail the session (first time: full window; subsequent: --since <marker_timestamp>).
+  - Update <marker_timestamp> to the latest message timestamp when new messages appear.
+  - If `agent_status` is `active`: reset the non-blocking heartbeat timer and wait for the next event.
+  - If `agent_status` is `idle`: proceed to the WHEN WORKER COMPLETES section below.
+  - If `agent_status` is `unknown`: wait for the next event.
+  
+  FEEDBACK MESSAGES:
+  - When sending a message to the worker because it needs feedback: cancel the old timer via KillShell(shell_id=<task_id>), start a new heartbeat timer via Bash(command="sleep 300", run_in_background=true), and save the new task_id.
+  - Only send telec sessions send when there is actionable content: concrete gate failure details, a direct answer to a worker question, or a user-directed plan change.
+  
+  WHEN WORKER COMPLETES:
+  The worker produces an architecture review verdict and findings when needed.
+  1. Tail the worker's final output to verify it succeeded.
+  2. Call `telec todo prepare my-slug` to advance the lifecycle to the next phase.
+  
+  ORCHESTRATION PRINCIPLE:
+  You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
+  
+  NOTE: Required reading for this worker: agents/commands/next-review-architecture.md
+  '''
+# ---
