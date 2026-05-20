@@ -260,14 +260,22 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
         conn.close()
 
     status_map: dict[str, str] = {}
-    for slug, status in rows:
-        if not isinstance(slug, str) or not isinstance(status, str):
+    for slug, raw_status in rows:
+        if not isinstance(slug, str) or not isinstance(raw_status, str):
+            continue
+        try:
+            status = RoadmapStatus(raw_status)
+        except ValueError:
             continue
         if status not in _ROADMAP_STATUS_VALUES:
             continue
-        current = status_map.get(slug)
-        if current is None or _ROADMAP_STATUS_PRIORITY[status] > _ROADMAP_STATUS_PRIORITY[current]:
-            status_map[slug] = status
+        current_raw = status_map.get(slug)
+        if current_raw is None:
+            status_map[slug] = status.value
+            continue
+        current = RoadmapStatus(current_raw)
+        if _ROADMAP_STATUS_PRIORITY[status] > _ROADMAP_STATUS_PRIORITY[current]:
+            status_map[slug] = status.value
     return status_map
 
 

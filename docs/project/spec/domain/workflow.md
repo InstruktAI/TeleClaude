@@ -7,7 +7,6 @@ visibility: public
 status: target
 delivered_by:
   - v2-workflow-cutover
-  - roadmap-soft-delete-retention
   - telec-todo-rename
   - removal-snippet-frontmatter-sync
   - roadmap-trash-reveal-ui

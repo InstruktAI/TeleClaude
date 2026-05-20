@@ -7,7 +7,6 @@ visibility: 'public'
 status: 'mixed'
 delivered_by:
   - 'telec-todo-rename'
-  - 'roadmap-soft-delete-retention'
   - 'roadmap-trash-reveal-ui'
   - 'v2-workflow-cli-refinement-commands'
 ---

@@ -39,7 +39,10 @@ impl WatchedFileWriter {
         match std::fs::metadata(&self.path) {
             Ok(meta) if meta.ino() == self.inode => Ok(()),
             _ => {
-                let file = OpenOptions::new().create(true).append(true).open(&self.path)?;
+                let file = OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.path)?;
                 self.inode = file.metadata()?.ino();
                 self.file = file;
                 Ok(())

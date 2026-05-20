@@ -5,8 +5,7 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
-status: 'target'
-delivered_by: ['roadmap-soft-delete-retention']
+status: 'actual'
 description: 'Soft-remove a Todo from default workflow views while retaining its roadmap row, lifecycle state, artifacts, and artifact version history for a grace window; release working resources immediately, allow row-id reactivation before purge, and hard-purge expired tombstones via routine maintenance.'
 ---
 
