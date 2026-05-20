@@ -159,7 +159,9 @@ def handle_code_add(args: list[str]) -> None:
 
     if stageable:
         _stage_files(stageable, project_root)
-        print(f"Staged {len(stageable)} new file(s):")
+        # "Staged" without "new" — this command also handles unmerged and
+        # partial-staged tracked recoveries, so the diagnostic stays neutral.
+        print(f"Staged {len(stageable)} file(s):")
         for path in stageable:
             print(f"  {path}")
 
