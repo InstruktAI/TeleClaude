@@ -11,6 +11,8 @@ delivered_by:
   - removal-snippet-frontmatter-sync
   - roadmap-trash-reveal-ui
   - v2-workflow-cli-refinement-commands
+  - v2-workflow-creation-cleanup
+  - v1-workflow-creation-hardening
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---

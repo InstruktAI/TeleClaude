@@ -9,6 +9,8 @@ delivered_by:
   - 'telec-todo-rename'
   - 'roadmap-trash-reveal-ui'
   - 'v2-workflow-cli-refinement-commands'
+  - 'v2-workflow-creation-cleanup'
+  - 'v1-workflow-creation-hardening'
 ---
 
 # CLI Surface — Spec
@@ -266,9 +268,12 @@ subcommands:
               --kind: 'Todo kind.'
               --group: 'Optional grouping label.'
               --description: 'Optional roadmap-entry description.'
-              --prepped: 'Write content as `implementation-plan`; HITL guard enforced.'
               --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
               --input-file: 'Read content from path instead of positional argument.'
+              # --prepped is intentionally NOT on the v2 workflow todo create surface in
+              # the v2-workflow-creation-cleanup delivery. v1 `telec todo create --prepped`
+              # continues to ship via the existing v1 /todos/dump kind=prepped path
+              # (v1-workflow-creation-hardening); a future delivery brings --prepped to v2.
           update:
             description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); `--prepped` writes content as `implementation-plan` and enforces the prepped HITL guard. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
             args:
