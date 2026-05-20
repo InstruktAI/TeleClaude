@@ -5,8 +5,11 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-identity-cutover, inventory-v1-identity]
-description: Identity bounded context — principals (people, machines, sessions), tokens, and the resolution of any caller into an authenticated Principal. Foundation for every authorization decision.
+delivered_by:
+  - v2-identity-cutover
+description: Identity bounded context — principals (people, machines, sessions), tokens,
+  and the resolution of any caller into an authenticated Principal. Foundation for
+  every authorization decision.
 ---
 
 # Identity Domain Spec — Spec
@@ -30,31 +33,31 @@ This context does NOT own: session lifecycle (`agent_runtime`), workflow state (
 ### Ubiquitous language
 
 **Principal**
-:  The authenticated caller of an operation. Three subtypes: `HumanPrincipal`, `MachinePrincipal`, `SessionPrincipal`. Every authorized operation begins with a `Principal` resolved from the transport.
+: The authenticated caller of an operation. Three subtypes: `HumanPrincipal`, `MachinePrincipal`, `SessionPrincipal`. Every authorized operation begins with a `Principal` resolved from the transport.
 
 **Human principal**
-:  A person, identified by email + role. Email is the durable identifier. Role determines what they're allowed to do.
+: A person, identified by email + role. Email is the durable identifier. Role determines what they're allowed to do.
 
 **Machine principal**
-:  A daemon, worker, or other long-running process, identified by an API token issued at install time.
+: A daemon, worker, or other long-running process, identified by an API token issued at install time.
 
 **Session principal**
-:  An agent session, identified by its session_id (from `agent_runtime`) and credentialed by a session token. Lives only for the duration of a session.
+: An agent session, identified by its session_id (from `agent_runtime`) and credentialed by a session token. Lives only for the duration of a session.
 
 **API token** (per glossary)
-:  Long-lived credential for a machine principal. Carried in `Authorization` header or env var. Issued once at install / wizard time; revocable.
+: Long-lived credential for a machine principal. Carried in `Authorization` header or env var. Issued once at install / wizard time; revocable.
 
 **Session token** (per glossary)
-:  Credential bound to a specific `session_id`. Carried in `x-session-token` header. Issued when a session starts; expires when the session ends.
+: Credential bound to a specific `session_id`. Carried in `x-session-token` header. Issued when a session starts; expires when the session ends.
 
 **Role**
-:  Categorical authorization band. The canonical roles are `admin`, `subscriber`, `anonymous`. Roles are enums in the Rust model; new roles require a schema migration.
+: Categorical authorization band. The canonical roles are `admin`, `subscriber`, `anonymous`. Roles are enums in the Rust model; new roles require a schema migration.
 
 **Resolution**
-:  The act of turning a raw caller into a `Principal`. Input: any combination of `x-session-token`, `x-caller-session-id`, `x-tmux-session`, `x-telec-email` headers (HTTP), `TELECLAUDE_*` env vars (subprocess), or local config (CLI). Output: exactly one `Principal` (or `Anonymous`).
+: The act of turning a raw caller into a `Principal`. Input: any combination of `x-session-token`, `x-caller-session-id`, `x-tmux-session`, `x-telec-email` headers (HTTP), `TELECLAUDE_*` env vars (subprocess), or local config (CLI). Output: exactly one `Principal` (or `Anonymous`).
 
 **Anonymous**
-:  The principal returned when no credentials resolve. Has the `anonymous` role; authorized only for public surfaces.
+: The principal returned when no credentials resolve. Has the `anonymous` role; authorized only for public surfaces.
 
 ### Aggregates
 

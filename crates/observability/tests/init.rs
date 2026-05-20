@@ -1,12 +1,15 @@
 //! Integration tests for `observability::init`.
 //!
-//! Each test calls `init` in a fresh subprocess (via `std::process::Command`
-//! invoking a small helper binary)? No — `init` installs a global subscriber,
-//! and `cargo test` runs all tests in one process. We test by interleaving:
-//! one test exercises a successful initialization end-to-end (asserting the
-//! log file), the next observes the documented `AlreadyInitialized` behavior
-//! on the second call. Subsequent tests assert path-only behavior that
-//! doesn't depend on installing a subscriber.
+//! `init` installs a global subscriber and returns a `WorkerGuard`. Because
+//! the subscriber install is once-per-process and the tests share a process,
+//! one test exercises the successful end-to-end path (asserts the on-disk
+//! line shape) and the next test, ordered by name to follow it, observes
+//! the documented `AlreadyInitialized` behavior on the second call.
+//!
+//! The non-blocking writer batches lines on a background thread. To force a
+//! flush before reading the file, **drop the `WorkerGuard`** — that signals
+//! the background thread to drain its channel and join. Tests rely on this
+//! explicitly via `drop(guard)` before opening the log file.
 //!
 //! Tests share a process-wide `Mutex` because they mutate environment
 //! variables and call the once-per-process `init`.
@@ -31,7 +34,7 @@ fn read_log(path: &PathBuf) -> String {
 
 /// End-to-end: `init` creates the directory, opens the file, installs a
 /// subscriber, and subsequent `tracing` events render in logfmt with the
-/// expected structural shape.
+/// expected structural shape on disk.
 ///
 /// Doubles as the idempotency test — a second `init` call must return
 /// `AlreadyInitialized` rather than panic.
@@ -52,18 +55,17 @@ fn init_creates_directory_writes_logfmt_and_is_idempotent() {
     std::env::remove_var("RUST_LOG");
     std::env::set_var("INSTRUKT_AI_LOG_DIR", &log_dir);
 
-    observability::init("test-source").expect("first init succeeds");
+    let worker_guard = observability::init("test-source").expect("first init succeeds");
 
     // mkdir -p worked.
     assert!(log_dir.is_dir(), "init must create parent directories");
 
     tracing::info!(slug = "my-todo", count = 7i64, "todo created");
 
-    // Flush by dropping the subscriber? We can't drop the global subscriber.
-    // The writer is unbuffered (no BufWriter wrap), and `info!` triggers
-    // an immediate `write` on the underlying file handle, so the line is on
-    // disk by the time `info!` returns. If the platform ever needs a fsync,
-    // wrap a `BufWriter` and flush explicitly here.
+    // Flush by dropping the worker guard. The non-blocking writer batches on
+    // a background thread; the guard's drop drains the channel and joins.
+    // After this point the line is on disk.
+    drop(worker_guard);
 
     let contents = read_log(&log_path);
     let line = contents
@@ -74,11 +76,13 @@ fn init_creates_directory_writes_logfmt_and_is_idempotent() {
     assert_structural_shape(line);
 
     // Idempotency: second init must not panic; it returns the documented error.
-    let err = observability::init("test-source").expect_err("second init returns error");
-    assert!(
-        matches!(err, observability::InitError::AlreadyInitialized),
-        "second init should yield AlreadyInitialized, got {err:?}",
-    );
+    // (The subscriber installed by the first call remains active; the second
+    // call's guard would be discarded anyway, so we ignore the Ok arm too.)
+    match observability::init("test-source") {
+        Ok(_g) => panic!("second init should yield AlreadyInitialized, got Ok"),
+        Err(observability::InitError::AlreadyInitialized) => {}
+        Err(other) => panic!("second init should yield AlreadyInitialized, got {other:?}"),
+    }
 
     std::env::remove_var("INSTRUKT_AI_LOG_DIR");
 }

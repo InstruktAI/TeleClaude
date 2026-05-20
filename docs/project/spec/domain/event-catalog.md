@@ -5,6 +5,9 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 description: 'Every domain event the platform emits — producer context, named consumers, payload field set in domain terms. The contract that defines cross-context coordination.'
+status: 'mixed'
+delivered_by:
+  - 'telec-todo-rename'
 ---
 
 # Domain Event Catalog — Spec
@@ -80,8 +83,14 @@ Each event below carries:
 | `workflow.todo.phase_advanced` | workflow | CLUSTER    | commit-then-emit |
 | `workflow.todo.delivered`      | workflow | CLUSTER    | commit-then-emit |
 | `workflow.roadmap.entry_moved` | workflow | CLUSTER    | commit-then-emit |
+| `workflow.todo.renamed`        | workflow | CLUSTER    | commit-then-emit |
 
 **Detailed entries:** to be expanded by `project/spec/domain/workflow` authoring.
+
+`workflow.todo.renamed` carries `old_slug` + `new_slug` so slug-keyed
+consumers (`frontend`, `telec-tui`, `integration`) can re-key rather than
+orphan cache entries — see `project/spec/domain/workflow` for the full entry.
+`status: mixed` / `delivered_by: telec-todo-rename` until that delivery lands.
 
 #### context
 
@@ -158,6 +167,7 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                 |
 | `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                              |
 | `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                              |
+| `workflow.todo.renamed`             | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
 | `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                |
 | `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                  |
 | `config.effective.updated`          | every service that caches config (re-read on next access)                                                                        |

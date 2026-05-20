@@ -73,16 +73,16 @@ is fully retired.
 
 ### Target stack
 
-| Concern | Choice |
-|---|---|
-| Backend language | Rust |
-| Frontend | TypeScript / Next.js (already in `frontend/`) |
-| Persistent state | Postgres (single local instance, schema per service) |
-| Events / queues / leases / cache | Redis |
-| Browser real-time | WebSocket (frontend custom server bridges to Redis) |
-| Logging | `tracing` → `instrukt_ai_logging` format files |
-| Migrations | `sqlx::migrate!()` per service |
-| Async runtime | Tokio |
+| Concern                          | Choice                                               |
+| -------------------------------- | ---------------------------------------------------- |
+| Backend language                 | Rust                                                 |
+| Frontend                         | TypeScript / Next.js (already in `frontend/`)        |
+| Persistent state                 | Postgres (single local instance, schema per service) |
+| Events / queues / leases / cache | Redis                                                |
+| Browser real-time                | WebSocket (frontend custom server bridges to Redis)  |
+| Logging                          | `tracing` → `instrukt_ai_logging` format files       |
+| Migrations                       | `sqlx::migrate!()` per service                       |
+| Async runtime                    | Tokio                                                |
 
 ### The eight services
 

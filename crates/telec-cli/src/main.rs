@@ -91,12 +91,17 @@ async fn run() -> Result<i32> {
 
     // Observability initialization is best-effort: a previously-installed
     // subscriber returns AlreadyInitialized which we treat as success.
-    if let Err(err) = observability::init(LOG_SOURCE) {
-        match err {
-            observability::InitError::AlreadyInitialized => {}
-            other => return Err(other).context("initialize tracing subscriber"),
-        }
-    }
+    //
+    // The returned `WorkerGuard` must be held for the process's lifetime —
+    // dropping it drains the non-blocking writer's queue and joins the
+    // background I/O thread. Binding it here keeps it alive until `run`
+    // returns; the `_guard` prefix marks it as intentionally unused while
+    // still binding.
+    let _log_guard = match observability::init(LOG_SOURCE) {
+        Ok(guard) => Some(guard),
+        Err(observability::InitError::AlreadyInitialized) => None,
+        Err(other) => return Err(other).context("initialize tracing subscriber"),
+    };
 
     let cfg = config::CliConfig::from_env().context("read CLI configuration from environment")?;
 

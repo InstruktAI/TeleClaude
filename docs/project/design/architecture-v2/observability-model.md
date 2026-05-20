@@ -63,7 +63,7 @@ every binary). It exposes:
 
 - `init(source: &str)` — binary `main` calls this first. Configures
   `tracing-subscriber` to write `logfmt` lines (`ts=… level=… logger=…
-  msg=… <structured fields>`) matching the `instrukt_ai_logging` Python
+msg=… <structured fields>`) matching the `instrukt_ai_logging` Python
   schema to `/var/log/instrukt-ai/teleclaude/<source>.log`. Honors
   `TELECLAUDE_LOG_LEVEL` env var.
 - Optional: re-export `tracing` macros for convenience, or have callers
@@ -86,12 +86,12 @@ fn main() {
 
 The source name selects the log file. Conventionally one per binary:
 
-| Binary | Source name | Log file |
-|---|---|---|
-| `telec` | `telec` | `/var/log/instrukt-ai/teleclaude/telec.log` |
-| `telec-tui` | `telec-tui` | `/var/log/instrukt-ai/teleclaude/telec-tui.log` |
-| `telec-daemon` | `telec-daemon` | `/var/log/instrukt-ai/teleclaude/telec-daemon.log` |
-| `telec-api` | `telec-api` | `/var/log/instrukt-ai/teleclaude/telec-api.log` |
+| Binary          | Source name     | Log file                                            |
+| --------------- | --------------- | --------------------------------------------------- |
+| `telec`         | `telec`         | `/var/log/instrukt-ai/teleclaude/telec.log`         |
+| `telec-tui`     | `telec-tui`     | `/var/log/instrukt-ai/teleclaude/telec-tui.log`     |
+| `telec-daemon`  | `telec-daemon`  | `/var/log/instrukt-ai/teleclaude/telec-daemon.log`  |
+| `telec-api`     | `telec-api`     | `/var/log/instrukt-ai/teleclaude/telec-api.log`     |
 | worker binaries | `worker-<name>` | `/var/log/instrukt-ai/teleclaude/worker-<name>.log` |
 
 v1 Python daemon's source is `teleclaude` (its log file is
@@ -169,7 +169,7 @@ second Rust project at InstruktAI wants the same standard.
   duplication or fights between subscribers. Initialization happens once
   per binary, in `main`, before any service code runs.
 - **Concatenated messages instead of structured fields.** `error!(format!(
-  "failed for slug {}", slug))` instead of `error!(slug = %slug, "failed")`.
+"failed for slug {}", slug))` instead of `error!(slug = %slug, "failed")`.
   Defeats structured log queries.
 - **Writing to a shared file across binaries.** Append-mode concurrent
   writes to one file work for small messages but introduce race risk.

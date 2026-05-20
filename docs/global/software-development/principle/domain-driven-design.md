@@ -24,10 +24,10 @@ Domain-Driven Design names the discipline that makes this alignment explicit and
 
 These elements answer different questions:
 
-- *What is this part of the system about?* → bounded context, ubiquitous language
-- *What state can change atomically here?* → aggregate, invariants
-- *What did the domain do?* → domain events
-- *How do the parts relate?* → context map, anti-corruption layers
+- _What is this part of the system about?_ → bounded context, ubiquitous language
+- _What state can change atomically here?_ → aggregate, invariants
+- _What did the domain do?_ → domain events
+- _How do the parts relate?_ → context map, anti-corruption layers
 
 ## Rationale
 

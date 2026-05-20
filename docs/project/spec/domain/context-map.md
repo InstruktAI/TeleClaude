@@ -82,6 +82,7 @@ graph TD
 ```
 
 **Legend:**
+
 - Dashed arrows (`-.->`): synchronous in-process function call (the upstream service is depended on as a crate)
 - Solid arrows (`==>`): asynchronous event flow via Redis (the downstream context subscribes to the upstream's events)
 
@@ -91,55 +92,55 @@ Each row names one directed relationship: upstream → downstream. Relationship 
 
 #### Spine relationships (every domain context depends on these)
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
-| `identity` | `workflow` | Customer-Supplier | Workflow asks identity to resolve the calling principal for authorization on todo operations. Identity owns the contract; workflow conforms. |
-| `identity` | `context` | Customer-Supplier | Knowledge uses principal role + visibility policy to filter snippets at read time. |
-| `identity` | `agent_runtime` | Customer-Supplier | Agent runtime binds principals to sessions (the principal authoring a session, the session token credentialing live UI access). |
-| `identity` | `integration` | Customer-Supplier | Integration resolves caller principal on inbound, attaches principal context to dispatched events. |
-| `config` | (all six domain contexts) | Open Host Service | Config publishes effective-configuration values; every context reads what it needs at startup or on demand. Config doesn't know its consumers; consumers know what config keys they need. |
+| Upstream   | Downstream                | Relationship      | Purpose                                                                                                                                                                                   |
+| ---------- | ------------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `identity` | `workflow`                | Customer-Supplier | Workflow asks identity to resolve the calling principal for authorization on todo operations. Identity owns the contract; workflow conforms.                                              |
+| `identity` | `context`                 | Customer-Supplier | Knowledge uses principal role + visibility policy to filter snippets at read time.                                                                                                        |
+| `identity` | `agent_runtime`           | Customer-Supplier | Agent runtime binds principals to sessions (the principal authoring a session, the session token credentialing live UI access).                                                           |
+| `identity` | `integration`             | Customer-Supplier | Integration resolves caller principal on inbound, attaches principal context to dispatched events.                                                                                        |
+| `config`   | (all six domain contexts) | Open Host Service | Config publishes effective-configuration values; every context reads what it needs at startup or on demand. Config doesn't know its consumers; consumers know what config keys they need. |
 
 The spine has NO upstream — `identity` and `config` are the platform's foundation. They emit events (auth-related, config-changed) but they don't react to other contexts.
 
 #### Inbound flow (external → domain)
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
+| Upstream      | Downstream      | Relationship       | Purpose                                                                                                                                                                                                                                                                                                                                                  |
+| ------------- | --------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `integration` | `agent_runtime` | Published Language | Integration normalizes EXTERNAL inputs (HTTP webhooks from third-party providers) into typed events. Agent_runtime subscribes to `integration.inbox.received` for inbound messages (Telegram, Discord, WhatsApp) targeted at sessions. Agent CLI hooks are NOT in this relationship — they reach agent_runtime directly via `telec-hook` IPC (internal). |
 
 The v2 correction (refined): in v1, agent CLI hooks went into `hooks/` which entangled with domain logic. The first v2 framing put ALL inbound in integration; that was too broad. The corrected v2 framing places agent CLI hooks in `agent_runtime` (we control agent CLIs) and keeps `integration` for true external providers (we don't control them). See `transport-rules.md` for the change-axis rationale.
 
 #### Session lifecycle flow
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
-| `agent_runtime` | `session_mirrors` | Customer-Supplier (via extract-window CLI) | session_mirrors hosts a `session_history` consumer that registers against `agent_runtime.extract-window`, builds mirrors incrementally from rich windows (filtering to user_text + assistant_text). NOT subscribed to `session.ended` for mirror creation — mirror builds up over the session's life. |
-| `agent_runtime` | `context` (skill-miner) | Customer-Supplier (via extract-window CLI) | A future intelligence-driven skill miner consumes extract-window, detects patterns, writes via `telec context skills create`. No event subscription; CLI-only. |
-| `agent_runtime` | `memory` (memory-miner) | Customer-Supplier (via extract-window CLI) | Same pattern — intelligence-driven miner consumes extract-window, writes via `telec memory save`. CLI-only. |
-| `agent_runtime` | `workflow` | Customer-Supplier | Long-running operations on sessions (file syncs, builds) emit `operation.completed` events; workflow consumes when an operation completes a todo lifecycle step. |
+| Upstream        | Downstream              | Relationship                               | Purpose                                                                                                                                                                                                                                                                                               |
+| --------------- | ----------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `agent_runtime` | `session_mirrors`       | Customer-Supplier (via extract-window CLI) | session_mirrors hosts a `session_history` consumer that registers against `agent_runtime.extract-window`, builds mirrors incrementally from rich windows (filtering to user_text + assistant_text). NOT subscribed to `session.ended` for mirror creation — mirror builds up over the session's life. |
+| `agent_runtime` | `context` (skill-miner) | Customer-Supplier (via extract-window CLI) | A future intelligence-driven skill miner consumes extract-window, detects patterns, writes via `telec context skills create`. No event subscription; CLI-only.                                                                                                                                        |
+| `agent_runtime` | `memory` (memory-miner) | Customer-Supplier (via extract-window CLI) | Same pattern — intelligence-driven miner consumes extract-window, writes via `telec memory save`. CLI-only.                                                                                                                                                                                           |
+| `agent_runtime` | `workflow`              | Customer-Supplier                          | Long-running operations on sessions (file syncs, builds) emit `operation.completed` events; workflow consumes when an operation completes a todo lifecycle step.                                                                                                                                      |
 
 #### Workflow → outbound notifications
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
+| Upstream   | Downstream    | Relationship      | Purpose                                                                                                                                                                                          |
+| ---------- | ------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `workflow` | `integration` | Customer-Supplier | When a todo advances phase or delivers, workflow emits a domain event. Integration's outbox-dispatch subscribes and routes notifications to configured recipients per their channel preferences. |
 
 #### Context → workflow (context engineering)
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
+| Upstream  | Downstream | Relationship      | Purpose                                                                                                                                                                                |
+| --------- | ---------- | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context` | `workflow` | Customer-Supplier | Context resolves selections (which snippets to load given a todo's slug, agent, role). Workflow's prepare-orchestrator + build workers consume these selections at session-start time. |
 
 #### Cross-filesystem coordination
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
+| Upstream  | Downstream      | Relationship                | Purpose                                                                                                                                                                                                                                                        |
+| --------- | --------------- | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `context` | `agent_runtime` | Conformist (via filesystem) | `context` deploys hook configs (e.g., `~/.claude/settings.json:hooks` pointing at `telec-hook`). `agent_runtime` owns `telec-hook` and reads those configs only insofar as the agent CLI invokes the binary. The handshake is filesystem-mediated, not direct. |
 
 #### Memory standalone
 
-| Upstream | Downstream | Relationship | Purpose |
-|---|---|---|---|
+| Upstream | Downstream    | Relationship      | Purpose                                                                                                                                                                                             |
+| -------- | ------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `memory` | (all callers) | Open Host Service | Memory is queried/written by agents and humans throughout the system. No strong upstream relationship beyond the spine; no strong downstream relationship beyond callers consuming what they query. |
 
 ### Anti-corruption layers (v1 → v2 migration)

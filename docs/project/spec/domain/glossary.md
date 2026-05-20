@@ -124,6 +124,7 @@ Appears in: `workflow`. Internal-only, but easy to conflate.
 #### Principal
 
 Owned by `identity`. The authenticated actor making a request. Three subtypes:
+
 - **Human principal** — a person identified by email + role
 - **Machine principal** — a daemon / binary process identified by an API token
 - **Session principal** — an agent session identified by a session token
@@ -150,12 +151,14 @@ Owned conceptually by every service that emits one. Carried by the `event_bus` i
 ## Allowed values
 
 For the `kind` field of agent artifacts (cross-referenced from `agent_artifacts` domain spec):
+
 - `command` — slash command
 - `skill` — invocable skill
 - `addendum` — per-agent behavioral shim
 - `manifest` — `AGENTS.master.md` for inflation
 
 For the `category` of integration events:
+
 - `inbound` — received from external system (webhook or subprocess hook)
 - `outbound` — emitted toward external system (outbox delivery)
 - `dlq` — dead-lettered (failed delivery moved to dead-letter)

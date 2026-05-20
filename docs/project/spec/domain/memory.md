@@ -23,6 +23,7 @@ description: Memory bounded context — durable observations agents store and qu
 The `memory` bounded context owns durable observations the platform accumulates — facts, gotchas, decisions, patterns worth remembering across sessions and projects. Each observation is authored by an agent (or human via CLI) at runtime, persists in Postgres, and is queryable by full-text search + filters.
 
 Memory is distinct from:
+
 - **Context** (docs/skills/agents) — authored, schema-validated, deployed reference content. Static.
 - **Session_mirrors** — eternal session transcripts. Per-session, full text.
 - **Memory** — curated observations. Per-fact, agent-authored, dynamic.
@@ -36,31 +37,31 @@ This context does NOT own: docs/skills/agents (`context`), session transcripts (
 ### Ubiquitous language
 
 **Observation**
-:  The atomic unit of memory. A discrete fact, gotcha, decision, or pattern worth remembering. Identified by its own UUID. Persisted in Postgres.
+: The atomic unit of memory. A discrete fact, gotcha, decision, or pattern worth remembering. Identified by its own UUID. Persisted in Postgres.
 
 **Observation type**
-:  Categorical tag for the observation: `gotcha`, `decision`, `pattern`, `preference`, `relationship`, `fact`. Free-form extensible per project conventions.
+: Categorical tag for the observation: `gotcha`, `decision`, `pattern`, `preference`, `relationship`, `fact`. Free-form extensible per project conventions.
 
 **Title**
-:  Short human-readable label (typical: under 80 chars). Used in list/search rendering.
+: Short human-readable label (typical: under 80 chars). Used in list/search rendering.
 
 **Body**
-:  The observation content. Free-form text. Search-indexed.
+: The observation content. Free-form text. Search-indexed.
 
 **Author principal**
-:  The principal that authored the observation. Resolved by `identity`. Used for filtering ("show me observations I made") and audit.
+: The principal that authored the observation. Resolved by `identity`. Used for filtering ("show me observations I made") and audit.
 
 **Project scope**
-:  Optional project the observation pertains to. Per `project_slug`. Cross-project observations leave this null.
+: Optional project the observation pertains to. Per `project_slug`. Cross-project observations leave this null.
 
 **Anchor**
-:  Optional reference to another observation that this observation relates to. Enables timeline queries ("show observations around anchor X").
+: Optional reference to another observation that this observation relates to. Enables timeline queries ("show observations around anchor X").
 
 **Saved_at, updated_at**
-:  Timestamps. Saved_at is immutable; updated_at advances on edits.
+: Timestamps. Saved_at is immutable; updated_at advances on edits.
 
 **Timeline**
-:  Query returning observations chronologically before/after an anchor observation. Used for "what was happening around this decision."
+: Query returning observations chronologically before/after an anchor observation. Used for "what was happening around this decision."
 
 ### Aggregates
 

@@ -34,28 +34,28 @@ This context does NOT own: live session state (`agent_runtime` owns that), the p
 ### Ubiquitous language
 
 **Mirror**
-:  An eternal text-only extract of one agent session. Self-contained record with its own identifier. The unit of historical search.
+: An eternal text-only extract of one agent session. Self-contained record with its own identifier. The unit of historical search.
 
 **Mirror identifier (mirror_id)**
-:  UUID generated when the mirror is created. NOT the session_id from agent_runtime. The mirror's identity is independent — it doesn't FK to anything because upstream records get pruned.
+: UUID generated when the mirror is created. NOT the session_id from agent_runtime. The mirror's identity is independent — it doesn't FK to anything because upstream records get pruned.
 
 **Text content**
-:  Pure conversation text — user input + assistant output only. Tool use, tool results, and thinking blocks are EXCLUDED. Search operates on this field.
+: Pure conversation text — user input + assistant output only. Tool use, tool results, and thinking blocks are EXCLUDED. Search operates on this field.
 
 **Summary**
-:  First-class human-readable description of the session. Stored on the mirror row. Computed at extraction time.
+: First-class human-readable description of the session. Stored on the mirror row. Computed at extraction time.
 
 **Identity fields (inherited at extraction)**
-:  `agent` (claude/codex/gemini), `project_slug` (project the session ran in), `human_email` (the human who started the session), `started_at`. Inherited from the source session at extraction time. Used for search filtering.
+: `agent` (claude/codex/gemini), `project_slug` (project the session ran in), `human_email` (the human who started the session), `started_at`. Inherited from the source session at extraction time. Used for search filtering.
 
 **Native file path**
-:  The transcript file path at extraction time. Recorded for traceability. May no longer exist on disk (agent CLI may have pruned it; that's the whole reason the mirror exists).
+: The transcript file path at extraction time. Recorded for traceability. May no longer exist on disk (agent CLI may have pruned it; that's the whole reason the mirror exists).
 
 **Extraction**
-:  The act of reading a native session transcript file and producing a mirror row. Happens at session-end (typically). The mirror is independent of the source after extraction.
+: The act of reading a native session transcript file and producing a mirror row. Happens at session-end (typically). The mirror is independent of the source after extraction.
 
 **History search**
-:  The query interface over mirrors. Returns per-session blocks with summary + multiple query-centered text snippets. Read-only; never mutates mirrors.
+: The query interface over mirrors. Returns per-session blocks with summary + multiple query-centered text snippets. Read-only; never mutates mirrors.
 
 ### Aggregates
 

@@ -83,7 +83,7 @@ What inputs SHOULD contain instead of doc paths:
 
 - **Intent in user/operator language** — "agents should be able to rename a
   todo without losing dependency edges," not "add `telec workflow todo
-  rename` in `crates/telec-cli/src/todo.rs`".
+rename` in `crates/telec-cli/src/todo.rs`".
 - **Affected actors and surfaces** at the level of "which audience" — "this
   is for agents preparing todos," "this is for end users in the dashboard,"
   "this is internal cleanup with no user-facing surface."

@@ -1,9 +1,29 @@
 //! observability — `tracing` wrapper emitting `instrukt_ai_logging` logfmt lines.
 //!
-//! Each binary calls [`init`] at startup with its source name. Output goes to
+//! Each binary calls [`init`] at startup with its source name and **holds the
+//! returned [`WorkerGuard`]** for process lifetime. Output goes to
 //! `/var/log/instrukt-ai/teleclaude/<source>.log` in the same logfmt schema
 //! the v1 Python `instrukt_ai_logging` library produces, so the existing
 //! `instrukt-ai-logs` query tool reads v1 and v2 lines indistinguishably.
+//!
+//! # Concurrency model
+//!
+//! Writes are non-blocking on the calling thread. Internally, the subscriber
+//! sends each formatted line over an in-memory channel to a dedicated
+//! background thread that performs the actual file I/O via
+//! [`WatchedFileWriter`]. The returned [`WorkerGuard`] keeps that background
+//! thread alive — dropping it (or letting `main` return without binding it)
+//! drains pending writes and joins the thread. **Do not let the guard go out
+//! of scope before the process is ready to exit** or buffered events will be
+//! lost.
+//!
+//! # External log rotation
+//!
+//! The file writer cooperates with external rotation tools (logrotate,
+//! newsyslog) by stat'ing the configured path before each write and reopening
+//! it if the inode changed. This matches the Python `WatchedFileHandler`
+//! pattern and keeps log rotation an ops concern, not an application concern.
+//! No application-side rotation, no SIGHUP handlers required.
 //!
 //! # Environment variables
 //!
@@ -25,23 +45,24 @@
 //! 2026-05-16T12:34:56.789Z level=INFO logger=my_crate::module msg="hello" key=value
 //! ```
 //!
-//! Field names, ordering, quoting rules, and the millisecond-precision UTC
-//! timestamp match the Python `LogfmtFormatter` byte-for-byte so the
-//! `instrukt-ai-logs` merge tool's timestamp parser (which splits on the
-//! first space) reads both streams.
+//! Field names, ordering, quoting rules, the millisecond-precision UTC
+//! timestamp, secret redaction (Telegram bot tokens, `Bearer` tokens,
+//! OpenAI-style `sk-` keys), and message truncation at 4000 characters all
+//! match the Python `LogfmtFormatter` byte-for-byte so the `instrukt-ai-logs`
+//! merge tool reads both streams indistinguishably.
 
 mod config;
+mod file_writer;
 mod format;
 
-use std::fs::OpenOptions;
 use std::io;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
+use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::filter::EnvFilter;
-use tracing_subscriber::fmt::writer::MakeWriter;
 use tracing_subscriber::util::SubscriberInitExt;
 
+use crate::file_writer::WatchedFileWriter;
 use crate::format::LogfmtFormatter;
 
 /// Errors returned by [`init`].
@@ -73,9 +94,17 @@ pub enum InitError {
 /// `"telec-daemon"`). It selects the log file name within the
 /// `instrukt-ai/teleclaude/` log directory.
 ///
+/// Returns a [`WorkerGuard`] that **must be held** by the caller for the
+/// process's lifetime. Dropping the guard drains the non-blocking writer's
+/// buffer and joins the background I/O thread. Letting it fall out of scope
+/// before the process is ready to exit will silently lose buffered log lines.
+///
 /// Calling this function a second time within the same process returns
 /// [`InitError::AlreadyInitialized`] without modifying the active subscriber.
-pub fn init(source: &str) -> Result<(), InitError> {
+/// Callers in that path should treat the result as a no-op and discard the
+/// error (no guard is returned, but the original install's guard is still
+/// active elsewhere).
+pub fn init(source: &str) -> Result<WorkerGuard, InitError> {
     let log_path = config::resolve_log_path(source);
 
     if let Some(parent) = log_path.parent() {
@@ -85,25 +114,38 @@ pub fn init(source: &str) -> Result<(), InitError> {
         })?;
     }
 
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .map_err(|source| InitError::Io {
-            path: log_path.clone(),
-            source,
-        })?;
+    let watched = WatchedFileWriter::open(log_path.clone()).map_err(|source| InitError::Io {
+        path: log_path.clone(),
+        source,
+    })?;
 
-    let writer = FileMakeWriter::new(file);
+    let (non_blocking, guard) = tracing_appender::non_blocking(watched);
+
     let filter = build_env_filter()?;
 
+    // Install the subscriber FIRST. Order matters: `LogTracer::init` causes
+    // the global tracing dispatcher to be read on each forwarded log call,
+    // and `dispatcher::get_default` will lazily install a no-op default if
+    // no subscriber is present yet. If we installed the bridge before our
+    // subscriber, a single transient `log!` (e.g. from `tracing_appender`'s
+    // worker thread starting up) would lock in the no-op default and our
+    // own `try_init` below would then fail with `AlreadyInitialized`.
     tracing_subscriber::fmt()
-        .with_writer(writer)
+        .with_writer(non_blocking)
         .with_env_filter(filter)
         .event_format(LogfmtFormatter)
         .finish()
         .try_init()
-        .map_err(|_| InitError::AlreadyInitialized)
+        .map_err(|_| InitError::AlreadyInitialized)?;
+
+    // Now bridge the older `log` crate into `tracing` so dependents using
+    // `log` (e.g. transitive deps like `hyper`, `reqwest`) flow through the
+    // subscriber we just installed. `log::set_logger` returns an error if
+    // already set, which we tolerate so multiple `init` calls in test suites
+    // don't fail on the bridge install.
+    let _ = tracing_log::LogTracer::init();
+
+    Ok(guard)
 }
 
 fn build_env_filter() -> Result<EnvFilter, InitError> {
@@ -119,53 +161,4 @@ fn build_env_filter() -> Result<EnvFilter, InitError> {
         directive: format!("{var_name}={directive}"),
         message: e.to_string(),
     })
-}
-
-/// `MakeWriter` impl over a shared file handle.
-///
-/// `tracing-subscriber` calls `make_writer` per event; we hand back a guard
-/// that locks the shared `Mutex<File>` so multiple events serialize cleanly
-/// even if the runtime spawns concurrent writers.
-struct FileMakeWriter {
-    file: Arc<Mutex<std::fs::File>>,
-}
-
-impl FileMakeWriter {
-    fn new(file: std::fs::File) -> Self {
-        Self {
-            file: Arc::new(Mutex::new(file)),
-        }
-    }
-}
-
-impl<'a> MakeWriter<'a> for FileMakeWriter {
-    type Writer = FileGuardWriter;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        FileGuardWriter {
-            file: Arc::clone(&self.file),
-        }
-    }
-}
-
-struct FileGuardWriter {
-    file: Arc<Mutex<std::fs::File>>,
-}
-
-impl io::Write for FileGuardWriter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let mut guard = self
-            .file
-            .lock()
-            .map_err(|_| io::Error::other("log file mutex poisoned"))?;
-        guard.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        let mut guard = self
-            .file
-            .lock()
-            .map_err(|_| io::Error::other("log file mutex poisoned"))?;
-        guard.flush()
-    }
 }

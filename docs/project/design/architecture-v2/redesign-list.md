@@ -50,137 +50,149 @@ reintroduces any of these patterns is rejected.
 ### Event/messaging anti-patterns
 
 **1. Dual-transport event bus (LOCAL + CLUSTER).**
-- *v1*: `EventBus.emit()` dispatches in-process for `EventVisibility.LOCAL`
+
+- _v1_: `EventBus.emit()` dispatches in-process for `EventVisibility.LOCAL`
   and via Redis Streams XADD for `EventVisibility.CLUSTER`. Same `emit()`
   signature, different delivery guarantees.
-- *Failure*: Two paths with different durability, replay, and cross-process
+- _Failure_: Two paths with different durability, replay, and cross-process
   visibility properties under one API. Misclassifying an event as LOCAL
   silently drops cross-context delivery. Pool exhaustion is the symptom that
   forced the split; the split is the disease.
-- *v2*: Single Redis transport for all events. `LocalSignal` exists as a
+- _v2_: Single Redis transport for all events. `LocalSignal` exists as a
   separate Tokio `oneshot`/`broadcast` primitive for in-coroutine sync — it
   is not an event and may not be called one. Redis pool sizing handled by
   Tokio runtime efficiency, not by avoiding Redis.
 
 **2. Cache fingerprint as change-detection.**
-- *v1*: `DaemonCache._todos_fingerprint()` hashes selected DTO fields to
+
+- _v1_: `DaemonCache._todos_fingerprint()` hashes selected DTO fields to
   decide whether to push a new snapshot. Fields not in the fingerprint
   silently fail to propagate.
-- *Failure*: The reconcile-cache bug fixed in commit `bbf6e6342` — phase
+- _Failure_: The reconcile-cache bug fixed in commit `bbf6e6342` — phase
   changes did not propagate because `lifecycle_phase` was missing from the
   fingerprint. Fundamentally fragile because fingerprint must be
   hand-maintained against the DTO shape.
-- *v2*: No fingerprint-based change detection. Services emit events on
+- _v2_: No fingerprint-based change detection. Services emit events on
   every state change; subscribers (cache, TUI, browser bridge) react to
   events. Change detection is the event itself.
 
 **3. Process-local mutation hooks.**
-- *v1*: `TodosDb._on_mutation` callback fires only inside the process that
+
+- _v1_: `TodosDb._on_mutation` callback fires only inside the process that
   did the write. Useless for cross-process notification.
-- *Failure*: CLI/TUI writes don't notify the daemon. The architectural
+- _Failure_: CLI/TUI writes don't notify the daemon. The architectural
   trigger for the v1 cache propagation bug.
-- *v2*: No process-local hooks. Every mutation emits a Redis event. Any
+- _v2_: No process-local hooks. Every mutation emits a Redis event. Any
   process that cares subscribes. Cross-process notification by construction.
 
 ### State machine anti-patterns
 
 **4. Lifecycle phase computed only on reconcile.**
-- *v1*: New todos are scaffolded with `lifecycle_phase = "draft"`. The
+
+- _v1_: New todos are scaffolded with `lifecycle_phase = "draft"`. The
   state machine recomputes phase only when `telec todo reconcile` runs. In
   between, the persisted phase is stale.
-- *Failure*: The DRAFT phase persists even after artifacts are present,
+- _Failure_: The DRAFT phase persists even after artifacts are present,
   because the state machine doesn't run on artifact-write. The user sees
   "draft" indefinitely.
-- *v2*: State machine evaluates on every state-changing operation. There is
+- _v2_: State machine evaluates on every state-changing operation. There is
   no separate "reconcile" path — reconcile only exists as a debugging tool,
   not as part of normal flow. The persisted phase always matches what the
   machine would compute.
 
 **5. Persisted state that the machine cannot reproduce.**
-- *v1*: `DRAFT` phase exists in the enum and is persisted at scaffold time,
+
+- _v1_: `DRAFT` phase exists in the enum and is persisted at scaffold time,
   but `_feature_phase` cannot return DRAFT for any todo with artifacts.
   Structurally unreachable yet stored.
-- *Failure*: State that the machine can't justify is bookkeeping
+- _Failure_: State that the machine can't justify is bookkeeping
   fiction. It exists only because of bootstrap order, not because of any
   real condition.
-- *v2*: Initial state is the first phase the artifacts justify. No phase
+- _v2_: Initial state is the first phase the artifacts justify. No phase
   exists in storage that the state machine cannot derive. Constructors
   enforce this.
 
 **6. Bureaucratic empty rows.**
-- *v1*: `telec todo create <slug>` mints a row with no input artifact —
+
+- _v1_: `telec todo create <slug>` mints a row with no input artifact —
   "a draft todo skeleton with no input artifact." A todo without input has
   no purpose.
-- *Failure*: Storage holds entities whose existence isn't justified by
+- _Failure_: Storage holds entities whose existence isn't justified by
   content. Operationally: the DRAFT phase only exists because such rows
   exist.
-- *v2*: Constructors enforce that a `Todo` cannot be constructed without
+- _v2_: Constructors enforce that a `Todo` cannot be constructed without
   input. The act of capturing input is what creates the todo. No empty
   rows are possible.
 
 ### Service boundary anti-patterns
 
 **7. Callers mutating service-owned storage directly.**
-- *v1*: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
+
+- _v1_: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
   writing `todos.db` directly. CLI handlers reach into `TodosDb` directly.
-- *Failure*: Multiple call paths to mutation logic. No single point of
+- _Failure_: Multiple call paths to mutation logic. No single point of
   enforcement. Bypasses any hooks or validation a service might do.
-- *v2*: Services own their Postgres schemas. Other crates call the service's
+- _v2_: Services own their Postgres schemas. Other crates call the service's
   public function. Direct Postgres queries against another service's schema
   are forbidden (and effectively impossible because each crate's storage
   module is `pub(crate)`).
 
 **8. HTTP between local Rust processes.**
-- *Proposal smell*: "v1 daemon calls v2 workflow service via HTTP," "auth
+
+- _Proposal smell_: "v1 daemon calls v2 workflow service via HTTP," "auth
   service exposes endpoints on a port," "TUI POSTs to the daemon to
   reconcile."
-- *Failure*: Network/serialization overhead for what should be function
+- _Failure_: Network/serialization overhead for what should be function
   calls. New failure modes (socket unreachable, port conflict). Reintroduces
   the daemon-as-gravity-well coupling.
-- *v2*: HTTP exists only for the browser ↔ frontend ↔ daemon path
+- _v2_: HTTP exists only for the browser ↔ frontend ↔ daemon path
   (cross-language). All same-language local calls use crate dependencies
   (SDK). See transport-rules.
 
 **9. Centralized DTO module mixing domain and transport.**
-- *v1*: `teleclaude/api_models.py` holds DTOs used by both the API layer
+
+- _v1_: `teleclaude/api_models.py` holds DTOs used by both the API layer
   and domain code, conflating "what JSON looks like" with "what the entity
   is."
-- *Failure*: Domain types get shaped by API/JSON concerns. Changing the
+- _Failure_: Domain types get shaped by API/JSON concerns. Changing the
   API surface forces domain changes.
-- *v2*: Domain models live in their service crate's `models.rs`. API DTOs
+- _v2_: Domain models live in their service crate's `models.rs`. API DTOs
   live in `crates/telec-api/src/dtos/`. The HTTP layer translates domain
   models to DTOs at the boundary. Domain never knows it's being serialized.
 
 ### Storage anti-patterns
 
 **10. Multiple SQLite databases scattered.**
-- *v1*: `~/.teleclaude/teleclaude.db` (mixed concerns: sessions, ops,
+
+- _v1_: `~/.teleclaude/teleclaude.db` (mixed concerns: sessions, ops,
   tokens, availability), `~/.teleclaude/mirrors.db` (transcripts),
   `{project}/.teleclaude/todos.db` (per project). Storage truth fragmented
   across files and concerns.
-- *Failure*: No transactional coherence across files. Cross-cutting
+- _Failure_: No transactional coherence across files. Cross-cutting
   queries impossible. Backup story per-file. Per-file single-writer
   serialization bottleneck under multi-writer load.
-- *v2*: Single local Postgres instance. Schema per service. MVCC handles
+- _v2_: Single local Postgres instance. Schema per service. MVCC handles
   the multi-writer reality. Per-project isolation via per-project schemas
   or `project_id` column within the service's schema.
 
 **11. In-place schema upcycle ("upcycle on read").**
-- *v1*: `_upcycle_blockers` rejects todos with `schema_version < 3`. The
+
+- _v1_: `_upcycle_blockers` rejects todos with `schema_version < 3`. The
   upgrade logic is in-place: read row, detect old schema, transform in
   memory. Fragile and easy to get wrong.
-- *Failure*: A todo whose schema can't be upcycled is permanently blocked.
+- _Failure_: A todo whose schema can't be upcycled is permanently blocked.
   Schema evolution is brittle.
-- *v2*: Migrations via `sqlx::migrate!()` run once at service startup. If
+- _v2_: Migrations via `sqlx::migrate!()` run once at service startup. If
   the database is behind, migration runs. If ahead, hard fail. No
   on-read transformation.
 
 **12. Multi-step mutations split across writes.**
-- *v1*: Logical operations stitched from multiple `INSERT`/`UPDATE`s
+
+- _v1_: Logical operations stitched from multiple `INSERT`/`UPDATE`s
   without transactional boundaries.
-- *Failure*: Partial states observable. Lock contention. Correctness
+- _Failure_: Partial states observable. Lock contention. Correctness
   risk.
-- *v2*: Every logical mutation is one Postgres transaction. ACID by
+- _v2_: Every logical mutation is one Postgres transaction. ACID by
   construction. If a mutation can't be expressed as one transaction, it's
   decomposed into independent steps with explicit event-driven coordination,
   not stitched.
@@ -188,21 +200,23 @@ reintroduces any of these patterns is rejected.
 ### Storage tier anti-patterns
 
 **13. Hook outbox DB.**
-- *v1*: Hook receiver writes hook events to a SQLite outbox table for
+
+- _v1_: Hook receiver writes hook events to a SQLite outbox table for
   durability, then a worker drains to Redis.
-- *Failure*: The outbox pattern is only justified when a DB write must be
+- _Failure_: The outbox pattern is only justified when a DB write must be
   atomic with an external publish. Hooks have no DB write to bundle —
   they're just events. The outbox is a slower Redis queue with a foot-gun.
-- *v2*: Hook receiver writes directly to Redis Streams via XADD. If Redis
+- _v2_: Hook receiver writes directly to Redis Streams via XADD. If Redis
   is down, the hook fails loudly — that's an operational signal, not a
   thing to paper over. No fallback storage.
 
 **14. Defensive fallbacks for infrastructure being down.**
-- *v1 pattern*: "Write to local file if Redis is unreachable," "cache locally
+
+- _v1 pattern_: "Write to local file if Redis is unreachable," "cache locally
   if Postgres is down," "use in-memory queue if broker fails."
-- *Failure*: Silent degradation. Hides outages that need fixing. Splits
+- _Failure_: Silent degradation. Hides outages that need fixing. Splits
   source of truth.
-- *v2*: When Postgres is down, writes fail. When Redis is down, publishes
+- _v2_: When Postgres is down, writes fail. When Redis is down, publishes
   fail. The failure is the signal. Infrastructure is part of the platform;
   its availability is an operational invariant, not something the
   application defends against.
@@ -210,66 +224,72 @@ reintroduces any of these patterns is rejected.
 ### Daemon/runtime anti-patterns
 
 **15. Daemon as gravity well.**
-- *v1*: Daemon grew to own local bookkeeping, transport-driven business
+
+- _v1_: Daemon grew to own local bookkeeping, transport-driven business
   logic, cache invalidation, startup-critical side work, and authentication
   pressure that belongs at boundaries.
-- *Failure*: Heavy daemon, slow restart, hard to reason about. Naming this
+- _Failure_: Heavy daemon, slow restart, hard to reason about. Naming this
   in the v2 journey doc.
-- *v2*: Daemon is narrow. It hosts the `agent_runtime` service in long-
+- _v2_: Daemon is narrow. It hosts the `agent_runtime` service in long-
   running form, the WebSocket bridge for browser delivery, and supervises
   worker subprocesses. Everything else lives in its own binary or its own
   service crate embedded by the binary that needs it.
 
 **16. CLI commands routed through daemon API.**
-- *v1*: Local CLI commands hit daemon-backed HTTP API paths in places where
+
+- _v1_: Local CLI commands hit daemon-backed HTTP API paths in places where
   they should use local services directly. Violates local-first.
-- *Failure*: CLI fails when daemon is down for local operations that should
+- _Failure_: CLI fails when daemon is down for local operations that should
   not depend on it. Reintroduces daemon as gravity well.
-- *v2*: CLI binary embeds service crates directly. `telec todo list` calls
+- _v2_: CLI binary embeds service crates directly. `telec todo list` calls
   `workflow::list_todos(...)` in-process, no daemon dependency, no HTTP.
 
 **17. Daemon-as-WebSocket-relay for same-process subscribers.**
-- *v1*: TUI connects to daemon's WebSocket. Daemon pushes cache notifications
+
+- _v1_: TUI connects to daemon's WebSocket. Daemon pushes cache notifications
   via WebSocket. The TUI could subscribe to the same source directly.
-- *Failure*: Extra hop, extra protocol layer, daemon must stay up for TUI
+- _Failure_: Extra hop, extra protocol layer, daemon must stay up for TUI
   to get updates.
-- *v2*: TUI subscribes to Redis directly. WebSocket exists only for browsers
+- _v2_: TUI subscribes to Redis directly. WebSocket exists only for browsers
   (which cannot subscribe to Redis themselves). The frontend custom server
   bridges browser-WebSocket to Redis-subscriber.
 
 ### Transcript/history anti-patterns
 
 **18. Transcripts as a read model for multiple consumers.**
-- *v1*: Mirrors and other consumers parse raw transcript JSON. Compensating
+
+- _v1_: Mirrors and other consumers parse raw transcript JSON. Compensating
   mechanisms instead of clean architecture (named in journey doc).
-- *Failure*: Brittle consumers tied to transcript format. Multiple
+- _Failure_: Brittle consumers tied to transcript format. Multiple
   parsers, multiple drift surfaces.
-- *v2*: `session_mirrors` service owns transcript ingestion and exposes
+- _v2_: `session_mirrors` service owns transcript ingestion and exposes
   typed queries. No other code parses transcript files. Mirrors as a
   compensating mechanism don't exist.
 
 **19. Adapter-owned projection and turn state.**
-- *v1*: UI adapters and adapter metadata participate in turn decisions through
+
+- _v1_: UI adapters and adapter metadata participate in turn decisions through
   message ids, char offsets, delivery timestamps, turn anchors, and
   `break_threaded_turn` cleanup. Session fields such as `last_input_origin`
   and `last_projected_at` partially compensate for missing source-owned
   cursors.
-- *Failure*: Rendering mechanics become mistaken for source truth. Races between
+- _Failure_: Rendering mechanics become mistaken for source truth. Races between
   input-origin recording, hook signals, transcript availability, and adapter
   delivery state can duplicate user input or replay stale assistant output under
   the wrong turn.
-- *v2*: `session_mirrors` owns ordered blocks, per-consumer cursors, projection
+- _v2_: `session_mirrors` owns ordered blocks, per-consumer cursors, projection
   state, and origin metadata. Adapters own only delivery receipts and platform
   mechanics. Signals wake projection; they never define content.
 
 ### Identity/auth anti-patterns
 
 **20. Multiple accreted auth paths.**
-- *v1*: `x-session-token`, `x-caller-session-id` + `x-tmux-session`
+
+- _v1_: `x-session-token`, `x-caller-session-id` + `x-tmux-session`
   cross-check, `x-telec-email`. Three paths, each pragmatic in isolation.
-- *Failure*: Resolution logic spread across middleware layers. Hard to
+- _Failure_: Resolution logic spread across middleware layers. Hard to
   reason about "who is this caller."
-- *v2*: `identity` crate is the single resolution authority. Every
+- _v2_: `identity` crate is the single resolution authority. Every
   transport adapter (CLI, HTTP, hook receiver) converts its evidence into a
   `Principal` via the crate. Resolution logic is centralized; transports
   adapt their inputs to a uniform interface.
@@ -277,75 +297,82 @@ reintroduces any of these patterns is rejected.
 ### Hooks/integration anti-patterns
 
 **21. Hooks doing identity resolution and event emission inline.**
-- *v1*: Hook receiver subprocess does a lot — resolves identity, validates
+
+- _v1_: Hook receiver subprocess does a lot — resolves identity, validates
   context, emits events, sometimes does business logic.
-- *Failure*: Hook receivers become large and bug-prone. Business logic in a
+- _Failure_: Hook receivers become large and bug-prone. Business logic in a
   short-lived subprocess invocation.
-- *v2*: Hook receivers are tiny: parse the typed payload, emit a Redis
+- _v2_: Hook receivers are tiny: parse the typed payload, emit a Redis
   event with the relevant fields, exit. All downstream work happens in
   long-running services that subscribe.
 
 **22. Per-project host-level watchers.**
-- *v1*: Per-project watcher services accumulated as host-level operational
+
+- _v1_: Per-project watcher services accumulated as host-level operational
   debt (named in journey doc).
-- *Failure*: Many services to manage, install, debug. Machine-level
+- _Failure_: Many services to manage, install, debug. Machine-level
   instability.
-- *v2*: One watcher per host at most, or none if events suffice. Watchers
+- _v2_: One watcher per host at most, or none if events suffice. Watchers
   publish to Redis, services subscribe.
 
 ### CLI/TUI anti-patterns
 
 **23. 50+ flat top-level CLI subcommands.**
-- *v1*: `telec ...` has dozens of subcommands at the top level, with
+
+- _v1_: `telec ...` has dozens of subcommands at the top level, with
   inconsistent verb-noun shape.
-- *Failure*: Hard to discover. Hard to remember. New commands accrete
+- _Failure_: Hard to discover. Hard to remember. New commands accrete
   without organization.
-- *v2*: Hierarchical command structure with consistent verb-noun shape.
+- _v2_: Hierarchical command structure with consistent verb-noun shape.
   `telec todo list`, `telec todo create`, `telec sessions list`. Commands
   group under nouns.
 
 **24. TUI re-implements business logic.**
-- *v1*: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
+
+- _v1_: TUI's `action_reconcile` calls `reconcile_phase_state` in-process,
   mutating storage directly.
-- *Failure*: TUI contains logic that should live in services. Multiple
+- _Failure_: TUI contains logic that should live in services. Multiple
   call paths to the same operation. Reasoning about correctness requires
   reading the TUI code.
-- *v2*: TUI is pure view + dispatch. TUI calls service crate functions the
+- _v2_: TUI is pure view + dispatch. TUI calls service crate functions the
   same way the CLI does. Zero business logic in TUI code.
 
 ### Tooling/git anti-patterns
 
 **25. Git wrapper at `~/.teleclaude/bin/git` blocking destructive ops.**
-- *v1*: Wrapper script enforces "no `git stash`, no `git reset --hard`" by
+
+- _v1_: Wrapper script enforces "no `git stash`, no `git reset --hard`" by
   shadowing `git` on PATH. Requires PATH manipulation in every shell.
-- *Failure*: Clever but brittle. PATH ordering bugs. Doesn't enforce when
+- _Failure_: Clever but brittle. PATH ordering bugs. Doesn't enforce when
   invoked from automation that bypasses the shell.
-- *v2*: Don't wrap git. Encode the same rules in a pre-commit hook
+- _v2_: Don't wrap git. Encode the same rules in a pre-commit hook
   installed once. CI enforces the same rules. Discipline lives where it can
   actually be enforced, not in a shell wrapper.
 
 ### Process/operations anti-patterns
 
 **26. Mixed startup/shutdown boundaries.**
-- *v1*: Many subsystems start, stop, and fail together. Daemon, API,
+
+- _v1_: Many subsystems start, stop, and fail together. Daemon, API,
   watchers, projection work, optional subsystems all coupled.
-- *Failure*: Restart pain. One failure cascades.
-- *v2*: Each service is independently restartable. Binaries have explicit
+- _Failure_: Restart pain. One failure cascades.
+- _v2_: Each service is independently restartable. Binaries have explicit
   lifecycles. Daemon hosts what genuinely needs supervision; other
   binaries run when called.
 
 ### Path/install anti-patterns
 
 **27. Operational state stored as files.**
-- *v1*: SQLite databases (`teleclaude.db`, `mirrors.db`, `events.db`)
+
+- _v1_: SQLite databases (`teleclaude.db`, `mirrors.db`, `events.db`)
   plus JSON state files (`state/session_map.json`, `state/runtime-settings.json`,
   `state/cron_state.json`, etc.) all under `~/.teleclaude/`. State and
   config conflated in the same tree.
-- *Failure*: Concurrent-writer contention on SQLite. No transactional
+- _Failure_: Concurrent-writer contention on SQLite. No transactional
   coherence across files. Fragmented storage. Manual coordination via
   lock files (`git-main.lock`). Backup conflates ephemeral state with
   durable config.
-- *v2*: State lives in Postgres (per-service schemas). Coordination via
+- _v2_: State lives in Postgres (per-service schemas). Coordination via
   Postgres advisory locks or Redis SET NX. Lock files and PID files
   retire. The `~/.teleclaude/` home dir stays — but only for
   authored/installed content (config, secrets, deployed commands, shell
@@ -355,13 +382,14 @@ reintroduces any of these patterns is rejected.
 
 **28. Python tooling workarounds (uv cwd mangling, venv re-exec) baked
 into path resolution.**
-- *v1*: `TELEC_INVOCATION_CWD` env var exists to recover actual cwd
+
+- _v1_: `TELEC_INVOCATION_CWD` env var exists to recover actual cwd
   after `uv run --directory` changes process cwd. Hook receiver does a
   `.venv` resolution dance and re-execs under the project's Python venv.
   ~half of v1's path-resolution code is Python tooling workarounds.
-- *Failure*: Code paid as architectural tax for the host runtime's
+- _Failure_: Code paid as architectural tax for the host runtime's
   problems, not for real domain requirements.
-- *v2*: Single-binary Rust executables have no venv and no uv. The
+- _v2_: Single-binary Rust executables have no venv and no uv. The
   workaround code simply doesn't exist. `std::env::current_dir()` is
   authoritative; binaries are self-contained.
 

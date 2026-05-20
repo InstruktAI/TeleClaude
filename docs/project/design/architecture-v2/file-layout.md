@@ -198,20 +198,21 @@ declares as `pub mod`.
 Crate names reflect role (uniform `telec-<role>`). What users type can be
 shorter via symlinks installed at `make install` time.
 
-| Crate / Binary | Install target | What users type |
-|---|---|---|
-| `telec-cli` | `~/.local/bin/telec` → `telec-cli` | `telec` |
-| `telec-cli` | `~/.local/bin/telec-cli` → `telec-cli` | `telec-cli` (optional, explicit) |
-| `telec-tui` | `~/.local/bin/telec-tui` → `telec-tui` | `telec-tui` |
-| `telec-daemon` | `~/.local/bin/telec-daemon` → `telec-daemon` | (machine-invoked) |
-| `telec-api` | `~/.local/bin/telec-api` → `telec-api` | (machine-invoked) |
-| `telec-hook` | `~/.local/bin/telec-hook` → `telec-hook` | (machine-invoked by Claude Code config) |
+| Crate / Binary | Install target                               | What users type                         |
+| -------------- | -------------------------------------------- | --------------------------------------- |
+| `telec-cli`    | `~/.local/bin/telec` → `telec-cli`           | `telec`                                 |
+| `telec-cli`    | `~/.local/bin/telec-cli` → `telec-cli`       | `telec-cli` (optional, explicit)        |
+| `telec-tui`    | `~/.local/bin/telec-tui` → `telec-tui`       | `telec-tui`                             |
+| `telec-daemon` | `~/.local/bin/telec-daemon` → `telec-daemon` | (machine-invoked)                       |
+| `telec-api`    | `~/.local/bin/telec-api` → `telec-api`       | (machine-invoked)                       |
+| `telec-hook`   | `~/.local/bin/telec-hook` → `telec-hook`     | (machine-invoked by Claude Code config) |
 
 The only special case is `~/.local/bin/telec` — a Unix-conventional short
 name for the primary user-typed command, symlinked to the actual binary
 `telec-cli`. Every other binary keeps its descriptive name on PATH.
 
 `make install` is responsible for:
+
 1. Building the workspace (`cargo build --release`).
 2. Copying or symlinking each binary into `~/.local/bin/<name>`.
 3. Creating the `telec` → `telec-cli` shortcut.
@@ -235,6 +236,7 @@ is for configs, deployed artifacts, and per-machine preferences only.
 ```
 
 **Dropped from v1:**
+
 - `sandbox-cartridges/` was defined in v1's `paths.py` but never
   referenced anywhere. Dead. Not in v2.
 - `storage/` (delivery binary archive) moves out of `~/.teleclaude/`.
@@ -264,6 +266,7 @@ change-axis → same location. Per-project means trivial "delete this
 project, delete its delivery archive" semantics.
 
 **What's in Postgres vs files for deliveries:**
+
 - Metadata (slug, delivered_at, commit SHA, content listing) → Postgres
   `workflow` schema.
 - Binary artifact content → files at the path above. Postgres holds a
@@ -275,18 +278,18 @@ small per-machine preferences (tui_state).
 
 **What does NOT live here in v2** (moved out from v1):
 
-| v1 location | v2 destination |
-|---|---|
-| `teleclaude.db`, `mirrors.db`, `events.db` | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`) |
-| `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services |
-| `logs/` | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard) |
-| `tmp/sessions/<id>/` | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned) |
-| `session-auth/` | `identity.session_tokens` (Postgres) |
-| `integration/` | `integration` Postgres schema |
-| `bin/` (wrappers) | Single Rust binaries at `~/.local/bin/`; git wrapper retired (pre-commit hook enforces same rules) |
-| `docs/` (global snippets mirror) | Gone — `context` service indexes directly from repo `docs/` source |
-| Lock files (`git-main.lock`) | Postgres advisory locks or Redis SET NX |
-| PID files (`cron_runner.pid`) | systemd / launchd manages PIDs |
+| v1 location                                                                 | v2 destination                                                                                     |
+| --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `teleclaude.db`, `mirrors.db`, `events.db`                                  | Postgres schemas (`identity`, `agent_runtime`, `session_mirrors`, `integration`)                   |
+| `state/*.json` (session_map, runtime-settings, cron_state, migration_state) | Postgres schemas of the owning services                                                            |
+| `logs/`                                                                     | `/var/log/instrukt-ai/teleclaude/` (system location, per `instrukt_ai_logging` standard)           |
+| `tmp/sessions/<id>/`                                                        | `$TMPDIR/teleclaude-<session>/` (system tmpdir, OS-cleaned)                                        |
+| `session-auth/`                                                             | `identity.session_tokens` (Postgres)                                                               |
+| `integration/`                                                              | `integration` Postgres schema                                                                      |
+| `bin/` (wrappers)                                                           | Single Rust binaries at `~/.local/bin/`; git wrapper retired (pre-commit hook enforces same rules) |
+| `docs/` (global snippets mirror)                                            | Gone — `context` service indexes directly from repo `docs/` source                                 |
+| Lock files (`git-main.lock`)                                                | Postgres advisory locks or Redis SET NX                                                            |
+| PID files (`cron_runner.pid`)                                               | systemd / launchd manages PIDs                                                                     |
 
 **Why a single tree and not XDG split:** v2's home dir contains multiple
 categories (config, secrets, installed commands, shell scripts, sandbox

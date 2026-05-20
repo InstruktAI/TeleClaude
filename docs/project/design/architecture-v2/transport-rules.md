@@ -224,13 +224,13 @@ the boundary.
 
 ### The four legitimate transports
 
-| Transport | Purpose | Crossed by |
-|---|---|---|
-| **Crate dependency (SDK)** | Local service-to-service in-process calls | Default for everything local |
-| **Redis** | Events, pub/sub, queues, leases, ephemeral cache | Any code that needs to react to state changes |
-| **Postgres** | Service-owned persistent state | Each service via its own crate; never queried by other services |
-| **HTTP API** | External cross-process callers in different languages or on different machines | Browser, remote machines, third-party integrations |
-| **WebSocket** | Browser real-time push | Browser only; bridges to Redis at the server side |
+| Transport                  | Purpose                                                                        | Crossed by                                                      |
+| -------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| **Crate dependency (SDK)** | Local service-to-service in-process calls                                      | Default for everything local                                    |
+| **Redis**                  | Events, pub/sub, queues, leases, ephemeral cache                               | Any code that needs to react to state changes                   |
+| **Postgres**               | Service-owned persistent state                                                 | Each service via its own crate; never queried by other services |
+| **HTTP API**               | External cross-process callers in different languages or on different machines | Browser, remote machines, third-party integrations              |
+| **WebSocket**              | Browser real-time push                                                         | Browser only; bridges to Redis at the server side               |
 
 The first row is the default. The others exist only at the boundaries they
 exist for.
@@ -417,11 +417,11 @@ NOT a legitimate use of this pattern).
 
 ### Summary of emit-posture decisions
 
-| Boundary | Pattern | Service |
-|---|---|---|
-| Internal service → internal subscriber | Commit-then-emit, loud-fail | Every service except integration |
-| External system → us (inbound) | Inbox + dispatcher retry | integration |
-| Us → external system (outbound) | Outbox + dispatcher delivery | integration |
+| Boundary                               | Pattern                      | Service                          |
+| -------------------------------------- | ---------------------------- | -------------------------------- |
+| Internal service → internal subscriber | Commit-then-emit, loud-fail  | Every service except integration |
+| External system → us (inbound)         | Inbox + dispatcher retry     | integration                      |
+| Us → external system (outbound)        | Outbox + dispatcher delivery | integration                      |
 
 ## Failure modes
 
@@ -476,6 +476,7 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 **Scheduler bridge.** One OS cron entry fires `telec cron tick` every minute. The `scheduler` infrastructure crate emits `scheduler.tick.minute` Redis events (and derived `scheduler.tick.hour`/`scheduler.tick.day` on wall-clock boundaries). NOT a service; one-line infrastructure that bridges OS cron into in-platform events. Per-platform install adds one OS cron entry; uninstall removes it.
 
 **Per-pillar listeners** subscribe to ticks. Each listener:
+
 1. Receives `scheduler.tick.minute`
 2. Consults its own state (cadence policy: "I run every 15 minutes; last ran at T")
 3. If due → runs its work (invoke CLI, spawn sub-workers, etc.)
@@ -484,6 +485,7 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 **Per-session turn-trigger** complements the tick: a long-running consumer can also be woken when a tracked session crosses N new turns since its last cursor. This is more responsive than tick-only; the tick is a backstop for low-activity periods. Default optimal window per Hermes evidence: ~10 turns.
 
 **Source-owned cursors.** Cursors live with the source being scanned, not with the consumer doing the scanning. The pillar producing the stream owns:
+
 - A `<pillar>.extractor_cursors` table (per consumer, per stream subject — e.g., per session)
 - A registration / list-since-cursor / explicit-ack CLI:
   ```
@@ -498,10 +500,10 @@ Recurring work (mining, sweeps, periodic notifications) uses a uniform pattern.
 
 **Where cursors live applied to v2:**
 
-| Source | Cursor table | Consumers |
-|---|---|---|
-| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors` | `session-history` (writes mirrors), `skill-miner` (writes skills via context), `memory-miner` (writes observations via memory) |
-| Other pillars | Add only when a real consumer materializes |
+| Source                            | Cursor table                               | Consumers                                                                                                                      |
+| --------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `agent_runtime` (sessions stream) | `agent_runtime.extractor_cursors`          | `session-history` (writes mirrors), `skill-miner` (writes skills via context), `memory-miner` (writes observations via memory) |
+| Other pillars                     | Add only when a real consumer materializes |
 
 **Where job state (other than cursor) lives:**
 

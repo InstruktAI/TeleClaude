@@ -190,7 +190,7 @@ workflow cutover todo's scope.
   The remaining v1 consumer continues to write SQLite, recreating the
   dual-truth problem in a smaller form.
 - **Skipping pre-cutover verification.** Not running `telec
-  migrate-workflow-v1` against a copy of real v1 data before the
+migrate-workflow-v1` against a copy of real v1 data before the
   cutover PR. The migration tool was unit-tested but the cutover PR
   itself is the first time it runs against production-shape data; the
   PR's verification step must include a dry run.

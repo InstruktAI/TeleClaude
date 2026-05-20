@@ -76,6 +76,7 @@ implement.
 - adapters
 
 **Postgres schema:** `identity`
+
 - `principals`
 - `session_tokens`
 - `roles` (or hardcoded in the Rust enum if flexibility isn't needed)
@@ -114,6 +115,7 @@ See `auth-model.md` for the resolution and authorization flow.
 - UI/business logic
 
 **Postgres schema:** `agent_runtime`
+
 - `sessions` (full entity)
 - `operations` (durable receipts for long-running operations)
 - `availability` (per-agent availability state)
@@ -153,6 +155,7 @@ and TUI also embed it for read queries.
 
 **Postgres schema:** `workflow` (or per-project schema `<project>_workflow`
 for isolation — see file-layout)
+
 - `todos`
 - `roadmap`
 - `artifacts`
@@ -185,6 +188,7 @@ The CLI embeds workflow directly.
 - documentation curation
 
 **Postgres schema:** `session_mirrors`
+
 - `blocks` (canonical event/message blocks)
 - `cursors` (consumer state)
 - `projections` (read models)
@@ -211,7 +215,7 @@ mirrors as a compensating mechanism.
 - `telec context sync` operation (replaces v1 `telec sync` docs portion)
 - Selection policy as a pure function
 - CRUD CLI per kind: `telec context docs|skills|commands|agents
-  list/get/create/update/delete`
+list/get/create/update/delete`
 
 **Does not own:**
 
@@ -275,6 +279,7 @@ subprocess vs HTTP" transport question, decides ownership.
 - long-lived session orchestration (agent_runtime owns sessions)
 
 **Postgres schema:** `integration`
+
 - `outbox` (outbound external deliveries)
 - `inbox` (inbound events from EXTERNAL HTTP webhooks; agent CLI hooks
   bypass this — they go direct to agent_runtime)
@@ -286,6 +291,7 @@ subprocess vs HTTP" transport question, decides ownership.
 `integration.inbox.received` (external webhook arrivals).
 
 **Binary entry points:**
+
 - `telec-api` (or `telec-daemon`) — HTTP server that hosts webhook routes
   dispatching to `integration` crate functions.
 - Per-provider outbox dispatcher workers (spawned by the daemon).
@@ -315,6 +321,7 @@ external webhooks here (we don't control them).
 - knowledge content itself
 
 **Postgres schema:** `config` (optional; see note below)
+
 - `effective_config_snapshots` (only if history is needed)
 
 **Note on storage:** Configs are authored content (`teleclaude.yml`,
@@ -350,6 +357,7 @@ validation.
 - adapter lifecycle
 
 **Postgres schema:** `memory`
+
 - `observations` — own UUID, type, title, body, author principal,
   project_slug (nullable), anchor_id (nullable), timestamps
 - Full-text index on (title || body) for search
@@ -388,12 +396,12 @@ not bounded domains. Services and binaries depend on them.
 
 The fixed set of v2 binaries:
 
-| Binary | Embeds (typical) | Purpose |
-|---|---|---|
-| `telec` | workflow, identity, config, knowledge, observability | CLI |
-| `telec-tui` | workflow, agent_runtime, identity, observability, event_bus (subscriber) | TUI |
-| `telec-daemon` | agent_runtime, identity, integration, event_bus, observability | Long-running supervisor |
-| `telec-api` | all services (read-mostly), identity, observability | HTTP API for browser |
+| Binary          | Embeds (typical)                                                         | Purpose                                |
+| --------------- | ------------------------------------------------------------------------ | -------------------------------------- |
+| `telec`         | workflow, identity, config, knowledge, observability                     | CLI                                    |
+| `telec-tui`     | workflow, agent_runtime, identity, observability, event_bus (subscriber) | TUI                                    |
+| `telec-daemon`  | agent_runtime, identity, integration, event_bus, observability           | Long-running supervisor                |
+| `telec-api`     | all services (read-mostly), identity, observability                      | HTTP API for browser                   |
 | `worker-<name>` | the service crate it serves (e.g. integration), event_bus, observability | Per integration's outbox/inbox workers |
 
 Each binary embeds exactly what it needs. No more, no less. Multiple
@@ -404,16 +412,16 @@ in-memory state because state lives in Postgres.
 
 One local Postgres instance. Schema per service:
 
-| Service | Schema | Notes |
-|---|---|---|
-| `identity` | `identity` | |
-| `agent_runtime` | `agent_runtime` | Includes `sessions`, `operations`, `availability`, `extractor_cursors` (source-side cursor table for consumers) |
-| `workflow` | `workflow` (or `<project>_workflow`) | Per-project isolation: see file-layout |
-| `session_mirrors` | `session_mirrors` | Flat text per session; TOAST handles large content; built incrementally by session_history consumer |
-| `context` | **none** | Filesystem-driven (docs + skills + commands + agents); index file at `~/.teleclaude/docs/index.yaml` |
-| `integration` | `integration` | Outbox/inbox/dlq — for true external webhooks only |
-| `config` | `config` (optional, for history only) | Otherwise stateless |
-| `memory` | `memory` | Observations with full-text index on title || body |
+| Service           | Schema                                | Notes                                                                                                           |
+| ----------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --- | ---- |
+| `identity`        | `identity`                            |                                                                                                                 |
+| `agent_runtime`   | `agent_runtime`                       | Includes `sessions`, `operations`, `availability`, `extractor_cursors` (source-side cursor table for consumers) |
+| `workflow`        | `workflow` (or `<project>_workflow`)  | Per-project isolation: see file-layout                                                                          |
+| `session_mirrors` | `session_mirrors`                     | Flat text per session; TOAST handles large content; built incrementally by session_history consumer             |
+| `context`         | **none**                              | Filesystem-driven (docs + skills + commands + agents); index file at `~/.teleclaude/docs/index.yaml`            |
+| `integration`     | `integration`                         | Outbox/inbox/dlq — for true external webhooks only                                                              |
+| `config`          | `config` (optional, for history only) | Otherwise stateless                                                                                             |
+| `memory`          | `memory`                              | Observations with full-text index on title                                                                      |     | body |
 
 Single Postgres, clean ownership, no fragmentation.
 

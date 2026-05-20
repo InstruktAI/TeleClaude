@@ -5,8 +5,13 @@ domain: software-development
 scope: project
 visibility: public
 status: target
-delivered_by: [v2-integration, v2-integration-cutover, inventory-v1-integration]
-description: Integration bounded context — true external boundaries. Inbound HTTP webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound delivery to those same providers. Agent CLI hook reception lives in agent_runtime, not here.
+delivered_by:
+  - v2-integration
+  - v2-integration-cutover
+description: Integration bounded context — true external boundaries. Inbound HTTP
+  webhooks from third-party providers (Telegram, Discord, WhatsApp, GitHub) and outbound
+  delivery to those same providers. Agent CLI hook reception lives in agent_runtime,
+  not here.
 ---
 
 # Integration Domain Spec — Spec
@@ -34,52 +39,52 @@ This context does NOT own: domain business rules (each domain service owns its r
 ### Ubiquitous language
 
 **Inbound**
-:  External (third-party, non-control) system reaching INTO the platform via HTTP webhook (provider POSTs to our endpoint). Agent CLI hooks are NOT integration's concern — those are in agent_runtime.
+: External (third-party, non-control) system reaching INTO the platform via HTTP webhook (provider POSTs to our endpoint). Agent CLI hooks are NOT integration's concern — those are in agent_runtime.
 
 **Outbound**
-:  Anything going OUT to an external system. Currently messaging providers (Telegram, Discord, WhatsApp, email).
+: Anything going OUT to an external system. Currently messaging providers (Telegram, Discord, WhatsApp, email).
 
 **Webhook**
-:  An HTTP POST from an external provider hitting one of our endpoints. Carries provider-specific payload + signature for verification.
+: An HTTP POST from an external provider hitting one of our endpoints. Carries provider-specific payload + signature for verification.
 
 **Provider**
-:  A third-party external system the platform integrates with: Telegram, Discord, WhatsApp, email, GitHub. Each provider has a boundary module that knows its protocol. Agent CLIs are NOT providers — they're internal systems supervised by agent_runtime.
+: A third-party external system the platform integrates with: Telegram, Discord, WhatsApp, email, GitHub. Each provider has a boundary module that knows its protocol. Agent CLIs are NOT providers — they're internal systems supervised by agent_runtime.
 
 **Provider boundary module**
-:  The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment or customer-relations modules.
+: The integration code that owns one provider's protocol details: verification, challenge handling, replay/idempotency extraction, payload parsing. Lives at `crates/integration/src/providers/<name>.rs`. MUST NOT import deployment or customer-relations modules.
 
 **Inbox**
-:  The durable capture of inbound events. Stored in Postgres (`integration.inbox`). Every inbound event lands here first; publication happens after durable capture. Ensures no loss across restarts.
+: The durable capture of inbound events. Stored in Postgres (`integration.inbox`). Every inbound event lands here first; publication happens after durable capture. Ensures no loss across restarts.
 
 **Outbox**
-:  The durable queue of outbound deliveries. Stored in Postgres (`integration.outbox`). Producers write to the outbox atomically with their state change; a dispatcher worker delivers asynchronously with at-least-once semantics.
+: The durable queue of outbound deliveries. Stored in Postgres (`integration.outbox`). Producers write to the outbox atomically with their state change; a dispatcher worker delivers asynchronously with at-least-once semantics.
 
 **Dispatcher**
-:  A worker process draining the outbox. Reads pending entries, attempts delivery via the appropriate channel adapter, marks success or retries. Lives in a `worker-integration` binary the daemon spawns.
+: A worker process draining the outbox. Reads pending entries, attempts delivery via the appropriate channel adapter, marks success or retries. Lives in a `worker-integration` binary the daemon spawns.
 
 **Dead-letter queue (DLQ)**
-:  Entries that exhausted their retry budget without success. Stored separately (`integration.dlq`). Operators inspect and act manually.
+: Entries that exhausted their retry budget without success. Stored separately (`integration.dlq`). Operators inspect and act manually.
 
 **Channel cascade**
-:  Per-recipient ordered list of messaging channels to attempt for outbound delivery. Tried in order; advance on failure; email is always the final fallback.
+: Per-recipient ordered list of messaging channels to attempt for outbound delivery. Tried in order; advance on failure; email is always the final fallback.
 
 **Recipient**
-:  A person (or principal) receiving outbound delivery. Identified by their email; the cascade is derived from the person's configured preferences in identity.
+: A person (or principal) receiving outbound delivery. Identified by their email; the cascade is derived from the person's configured preferences in identity.
 
 **Notification subscription** (per glossary)
-:  Per-recipient declared interest in receiving certain event categories. Admins are subscribed by default to above-threshold events; non-admins require explicit subscription entries.
+: Per-recipient declared interest in receiving certain event categories. Admins are subscribed by default to above-threshold events; non-admins require explicit subscription entries.
 
 **Unreachable record**
-:  An outbox entry whose entire channel cascade exhausted without success. Recorded with per-channel failure context for operator triage.
+: An outbox entry whose entire channel cascade exhausted without success. Recorded with per-channel failure context for operator triage.
 
 **Allowlist**
-:  The set of event names declared by a provider AND accepted by at least one consumer. Inbound publication is fail-closed: events not on the allowlist are rejected at the boundary with no payload emission.
+: The set of event names declared by a provider AND accepted by at least one consumer. Inbound publication is fail-closed: events not on the allowlist are rejected at the boundary with no payload emission.
 
 **Cluster visibility** (per event-bus-transports)
-:  Integration emits inbound events at `visibility=CLUSTER` because they cross bounded-context boundaries. The unified event bus's CLUSTER publication path is mandatory for inbox.
+: Integration emits inbound events at `visibility=CLUSTER` because they cross bounded-context boundaries. The unified event bus's CLUSTER publication path is mandatory for inbox.
 
 **Verification challenge**
-:  A handshake mechanism some providers (WhatsApp/Meta) use to validate the webhook endpoint at registration time. Integration handles the challenge transparently without publishing any domain event.
+: A handshake mechanism some providers (WhatsApp/Meta) use to validate the webhook endpoint at registration time. Integration handles the challenge transparently without publishing any domain event.
 
 ### Aggregates
 
@@ -372,6 +377,7 @@ Format: concept — path — one-line summary.
   **The URL path is the schema.** When a webhook arrives at `/hooks/<provider>`, the path determines normalizer + verification (what arrives looks like) AND transitively, via the resulting HookEvent's source/type/properties, what consumers (Contracts) match. Adding a new external system = one normalizer + one inbound registration. Adding a new consumer = one contract POST. No core code changes for either.
 
   The v2-integration prepare worker MUST preserve BOTH layers (not just the Contract side). Reading order: `inbound.py` first (the plug-in inbound architecture), then `webhook_models.py` + `registry.py` + `matcher.py` + `api_routes.py` (the contract-side subscription). The two layers compose into a fully data-driven webhook routing surface.
+
 - **NO cartridge pattern.** v1's domain cartridges are sunset for new work. Consumers subscribe via `event_bus.subscribe(...)` at daemon startup. Provider boundary modules MUST NOT import deployment or customer-relations modules.
 - **Provider URL stability matters.** Webhook URLs registered with external providers (Telegram, GitHub) MUST remain stable across cutover — OR external system updates need to be coordinated (rare and expensive).
 - **Worker binaries are stateless.** All state lives in Postgres (inbox, outbox, DLQ, worker_state) + Redis (leases). Worker crashes and restarts are safe.

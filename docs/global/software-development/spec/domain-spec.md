@@ -27,7 +27,7 @@ type: spec
 domain: <domain>
 scope: project | global
 status: actual | target | mixed
-delivered_by: [<slug>, ...]   # required when status is target or mixed
+delivered_by: [<slug>, ...] # required when status is target or mixed
 visibility: public
 description: <one-line summary of the bounded context>
 ```
