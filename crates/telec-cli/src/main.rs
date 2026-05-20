@@ -1,7 +1,7 @@
-//! telec-cli — v2 replacement for `telec todo` and `telec roadmap`.
+//! telec-cli — v2 replacement for selected workflow surfaces.
 //!
 //! Composes the primitive crates (observability, storage, event-bus,
-//! identity, workflow) and dispatches todo/roadmap subcommands. Other
+//! identity, workflow) and dispatches todo/roadmap/workflow subcommands. Other
 //! v1 top-level commands stay in Python during the transition; the F1 CLI
 //! intentionally focuses on CRUD-level operations against
 //! [`workflow::WorkflowService`].
@@ -31,6 +31,7 @@ mod output;
 mod project;
 mod roadmap;
 mod todo;
+mod workflow_cli;
 
 /// Logical source name passed to [`observability::init`]. Matches the v1
 /// logger's `source` field (`telec`) so the merged
@@ -43,7 +44,7 @@ const LOG_SOURCE: &str = "telec";
     name = "telec-cli",
     version,
     about = "v2 TeleClaude workflow CLI",
-    long_about = "Rust replacement for `telec todo` and `telec roadmap`. \
+    long_about = "Rust replacement for selected workflow surfaces. \
                   Routes CRUD operations through workflow::WorkflowService; \
                   orchestrator-level subcommands defer to the v1 Python shim."
 )]
@@ -63,6 +64,8 @@ enum Command {
     Todo(todo::TodoArgs),
     /// Manage the roadmap.
     Roadmap(roadmap::RoadmapArgs),
+    /// Manage v2 workflow surfaces.
+    Workflow(workflow_cli::WorkflowArgs),
     /// One-shot data migration from v1 SQLite to v2 Postgres (stub; G1).
     MigrateWorkflowV1(migrate::MigrateArgs),
     /// One-shot import of the v1 people roster and v1 session tokens
@@ -143,6 +146,9 @@ async fn run() -> Result<i32> {
     match cli.command {
         Command::Todo(args) => todo::dispatch(args, &service, project, &principal).await,
         Command::Roadmap(args) => roadmap::dispatch(args, &service, project, &principal).await,
+        Command::Workflow(args) => {
+            workflow_cli::dispatch(args, &service, project, &principal).await
+        }
         Command::MigrateWorkflowV1(args) => migrate::run(args, &service).await,
         Command::MigrateIdentityV1(args) => {
             let summary = migrate_identity::migrate_identity_v1(&identity_service, &args)

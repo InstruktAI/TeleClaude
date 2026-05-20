@@ -61,7 +61,7 @@ pub mod roadmap;
 pub mod todos;
 pub mod transitions;
 
-pub use todos::TodoPatch;
+pub use todos::{CreateTodoArgs, TodoPatch};
 
 /// Pluggable sink for [`EventEnvelope`] emission.
 ///

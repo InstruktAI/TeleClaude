@@ -60,6 +60,26 @@ pub enum TodoKind {
     Prepped,
 }
 
+impl Default for TodoKind {
+    fn default() -> Self {
+        Self::Feature
+    }
+}
+
+/// Dispatch hint for todo creation events.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CreationMode {
+    #[default]
+    Pickup,
+    Silent,
+}
+
+#[inline]
+pub fn default_pickup_requested() -> bool {
+    true
+}
+
 /// Canonical artifact name. Serde and sqlx both emit kebab-case literals
 /// so the wire/db values match the CLI's `<name>` argument (e.g.
 /// `test-specs`, `requirements-review-findings`).
@@ -205,6 +225,39 @@ mod tests {
     fn todo_kind_serde_round_trip_feature() {
         let encoded = serde_json::to_string(&TodoKind::Feature).expect("serialize");
         assert_eq!(encoded, "\"feature\"");
+    }
+
+    #[test]
+    fn todo_kind_default_is_feature() {
+        assert_eq!(TodoKind::default(), TodoKind::Feature);
+    }
+
+    #[test]
+    fn creation_mode_default_is_pickup() {
+        assert_eq!(CreationMode::default(), CreationMode::Pickup);
+    }
+
+    #[test]
+    fn creation_mode_serializes_as_lowercase_pickup_and_silent() {
+        let pickup = serde_json::to_string(&CreationMode::Pickup).expect("serialize pickup");
+        let silent = serde_json::to_string(&CreationMode::Silent).expect("serialize silent");
+
+        assert_eq!(pickup, "\"pickup\"");
+        assert_eq!(silent, "\"silent\"");
+    }
+
+    #[test]
+    fn creation_mode_round_trip_pickup_and_silent() {
+        let pickup: CreationMode = serde_json::from_str("\"pickup\"").expect("pickup decodes");
+        let silent: CreationMode = serde_json::from_str("\"silent\"").expect("silent decodes");
+
+        assert_eq!(pickup, CreationMode::Pickup);
+        assert_eq!(silent, CreationMode::Silent);
+    }
+
+    #[test]
+    fn default_pickup_requested_returns_true() {
+        assert!(default_pickup_requested());
     }
 
     #[test]

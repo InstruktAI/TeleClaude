@@ -11,12 +11,19 @@ use shared::Slug;
 use sqlx::PgPool;
 use workflow::{
     errors::WorkflowError,
-    events::{CHANNEL_ARTIFACT_WRITTEN, CHANNEL_TODO_CREATED},
-    models::TodoKind,
-    service::TodoPatch,
+    events::{TodoCreated, CHANNEL_ARTIFACT_WRITTEN, CHANNEL_TODO_CREATED},
+    models::{CreationMode, TodoKind},
+    service::{CreateTodoArgs, TodoPatch},
 };
 
 const MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
+fn decode_created_payload(sink: &common::VecSink) -> TodoCreated {
+    let envelopes = sink.snapshot();
+    assert_eq!(envelopes.len(), 2);
+    assert_eq!(envelopes[0].channel, CHANNEL_TODO_CREATED);
+    serde_json::from_value(envelopes[0].payload.clone()).expect("TodoCreated payload decodes")
+}
 
 #[sqlx::test(migrator = "MIGRATOR")]
 async fn create_todo_inserts_row_and_emits_event(pool: PgPool) {
@@ -26,13 +33,16 @@ async fn create_todo_inserts_row_and_emits_event(pool: PgPool) {
 
     let todo = svc
         .create_todo(
-            project,
-            slug.clone(),
-            TodoKind::Feature,
-            Some("first todo".to_owned()),
-            vec![],
-            None,
-            common::test_input(),
+            CreateTodoArgs {
+                project,
+                slug: slug.clone(),
+                kind: TodoKind::Feature,
+                description: Some("first todo".to_owned()),
+                after: vec![],
+                group: None,
+                input_content: common::test_input(),
+                creation_mode: CreationMode::Pickup,
+            },
             &human_principal(),
         )
         .await
@@ -59,13 +69,16 @@ async fn create_todo_rejects_duplicate_slug_in_same_project(pool: PgPool) {
     let principal = human_principal();
 
     svc.create_todo(
-        project,
-        slug.clone(),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project,
+            slug: slug.clone(),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await
@@ -73,19 +86,155 @@ async fn create_todo_rejects_duplicate_slug_in_same_project(pool: PgPool) {
 
     let err = svc
         .create_todo(
-            project,
-            slug.clone(),
-            TodoKind::Bug,
-            None,
-            vec![],
-            None,
-            common::test_input(),
+            CreateTodoArgs {
+                project,
+                slug: slug.clone(),
+                kind: TodoKind::Bug,
+                description: None,
+                after: vec![],
+                group: None,
+                input_content: common::test_input(),
+                creation_mode: CreationMode::Pickup,
+            },
             &principal,
         )
         .await
         .expect_err("second create rejected");
 
     assert!(matches!(err, WorkflowError::DuplicateSlug(s) if s == slug));
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_pickup_emits_created_payload_with_pickup_requested(pool: PgPool) {
+    let (svc, sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("pickup-mode").expect("slug");
+
+    svc.create_todo(
+        CreateTodoArgs {
+            project,
+            slug,
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
+        &human_principal(),
+    )
+    .await
+    .expect("create_todo succeeds");
+
+    let payload = decode_created_payload(&sink);
+    assert_eq!(payload.creation_mode, CreationMode::Pickup);
+    assert!(payload.pickup_requested);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_silent_emits_created_payload_without_pickup_requested(pool: PgPool) {
+    let (svc, sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("silent-mode").expect("slug");
+
+    svc.create_todo(
+        CreateTodoArgs {
+            project,
+            slug,
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Silent,
+        },
+        &human_principal(),
+    )
+    .await
+    .expect("create_todo succeeds");
+
+    let payload = decode_created_payload(&sink);
+    assert_eq!(payload.creation_mode, CreationMode::Silent);
+    assert!(!payload.pickup_requested);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_created_payload_carries_project_root_path(pool: PgPool) {
+    let (svc, sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("project-path").expect("slug");
+
+    svc.create_todo(
+        CreateTodoArgs {
+            project,
+            slug,
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
+        &human_principal(),
+    )
+    .await
+    .expect("create_todo succeeds");
+
+    let payload = decode_created_payload(&sink);
+    assert_eq!(payload.project_path, common::TEST_PROJECT_ROOT);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_created_payload_carries_kind_and_principal(pool: PgPool) {
+    let (svc, sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("kind-principal").expect("slug");
+
+    svc.create_todo(
+        CreateTodoArgs {
+            project,
+            slug,
+            kind: TodoKind::Bug,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
+        &human_principal(),
+    )
+    .await
+    .expect("create_todo succeeds");
+
+    let payload = decode_created_payload(&sink);
+    assert_eq!(payload.kind, TodoKind::Bug);
+    assert_eq!(payload.created_by_principal, common::HUMAN_PRINCIPAL_EMAIL);
+}
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn create_todo_empty_input_returns_empty_input_artifact(pool: PgPool) {
+    let (svc, _sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("empty-input").expect("slug");
+
+    let err = svc
+        .create_todo(
+            CreateTodoArgs {
+                project,
+                slug,
+                kind: TodoKind::Feature,
+                description: None,
+                after: vec![],
+                group: None,
+                input_content: String::new(),
+                creation_mode: CreationMode::Pickup,
+            },
+            &human_principal(),
+        )
+        .await
+        .expect_err("empty input is rejected");
+
+    assert!(matches!(err, WorkflowError::EmptyInputArtifact));
 }
 
 #[sqlx::test(migrator = "MIGRATOR")]
@@ -96,26 +245,32 @@ async fn list_todos_returns_only_target_project_rows(pool: PgPool) {
     let principal = human_principal();
 
     svc.create_todo(
-        project_a,
-        Slug::new("a-only").expect("slug"),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project: project_a,
+            slug: Slug::new("a-only").expect("slug"),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await
     .expect("seed project_a");
 
     svc.create_todo(
-        project_b,
-        Slug::new("b-only").expect("slug"),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project: project_b,
+            slug: Slug::new("b-only").expect("slug"),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await
@@ -151,13 +306,16 @@ async fn update_todo_mutates_description_and_emits_event(pool: PgPool) {
     let principal = human_principal();
 
     svc.create_todo(
-        project,
-        slug.clone(),
-        TodoKind::Feature,
-        Some("before".to_owned()),
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project,
+            slug: slug.clone(),
+            kind: TodoKind::Feature,
+            description: Some("before".to_owned()),
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await
@@ -202,13 +360,16 @@ async fn delete_todo_removes_row_and_emits_event(pool: PgPool) {
     let principal = human_principal();
 
     svc.create_todo(
-        project,
-        slug.clone(),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project,
+            slug: slug.clone(),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await

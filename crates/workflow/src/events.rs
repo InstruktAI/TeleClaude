@@ -9,12 +9,14 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use shared::{ProjectId, Slug, TodoId};
 
-use crate::models::{ArtifactName, LifecyclePhase};
+use crate::models::{ArtifactName, CreationMode, LifecyclePhase, TodoKind};
 
 /// Channel for [`TodoCreated`] events.
 pub const CHANNEL_TODO_CREATED: &str = "workflow.todo.created";
 /// Channel for [`TodoUpdated`] events.
 pub const CHANNEL_TODO_UPDATED: &str = "workflow.todo.updated";
+/// Channel for [`TodoRenamed`] events.
+pub const CHANNEL_TODO_RENAMED: &str = "workflow.todo.renamed";
 /// Channel for [`TodoDeleted`] events.
 pub const CHANNEL_TODO_DELETED: &str = "workflow.todo.deleted";
 /// Channel for [`TodoPhaseAdvanced`] events.
@@ -38,6 +40,16 @@ pub struct TodoCreated {
     pub project_id: ProjectId,
     pub lifecycle_phase: LifecyclePhase,
     pub created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub kind: TodoKind,
+    #[serde(default)]
+    pub creation_mode: CreationMode,
+    #[serde(default = "crate::models::default_pickup_requested")]
+    pub pickup_requested: bool,
+    #[serde(default)]
+    pub created_by_principal: String,
+    #[serde(default)]
+    pub project_path: String,
 }
 
 /// Emitted when a todo aggregate's mutable fields change.
@@ -47,6 +59,25 @@ pub struct TodoUpdated {
     pub slug: Slug,
     pub project_id: ProjectId,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub change_summary: String,
+    #[serde(default)]
+    pub updated_by_principal: String,
+    #[serde(default)]
+    pub project_path: String,
+}
+
+/// Emitted when a todo aggregate is renamed.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TodoRenamed {
+    pub todo_id: TodoId,
+    pub old_slug: Slug,
+    pub new_slug: Slug,
+    pub project_id: ProjectId,
+    pub project_path: String,
+    pub renamed_at: DateTime<Utc>,
+    pub renamed_by_principal: String,
+    pub rewritten_reference_count: u64,
 }
 
 /// Emitted when a todo aggregate is removed.
@@ -122,6 +153,9 @@ pub struct ArtifactDeleted {
 mod tests {
     use super::*;
     use chrono::TimeZone;
+    use serde::Serialize;
+
+    use crate::models::{CreationMode, TodoKind};
 
     fn fixed_timestamp() -> DateTime<Utc> {
         Utc.with_ymd_and_hms(2026, 5, 16, 12, 0, 0).unwrap()
@@ -139,6 +173,23 @@ mod tests {
         ProjectId::new()
     }
 
+    #[derive(Serialize)]
+    struct LegacyTodoCreated {
+        todo_id: TodoId,
+        slug: Slug,
+        project_id: ProjectId,
+        lifecycle_phase: LifecyclePhase,
+        created_at: DateTime<Utc>,
+    }
+
+    #[derive(Serialize)]
+    struct LegacyTodoUpdated {
+        todo_id: TodoId,
+        slug: Slug,
+        project_id: ProjectId,
+        updated_at: DateTime<Utc>,
+    }
+
     #[test]
     fn channel_todo_created_matches_literal() {
         assert_eq!(CHANNEL_TODO_CREATED, "workflow.todo.created");
@@ -147,6 +198,11 @@ mod tests {
     #[test]
     fn channel_todo_updated_matches_literal() {
         assert_eq!(CHANNEL_TODO_UPDATED, "workflow.todo.updated");
+    }
+
+    #[test]
+    fn channel_todo_renamed_matches_literal() {
+        assert_eq!(CHANNEL_TODO_RENAMED, "workflow.todo.renamed");
     }
 
     #[test]
@@ -195,10 +251,63 @@ mod tests {
             project_id: sample_project_id(),
             lifecycle_phase: LifecyclePhase::Draft,
             created_at: fixed_timestamp(),
+            kind: TodoKind::Feature,
+            creation_mode: CreationMode::Pickup,
+            pickup_requested: true,
+            created_by_principal: "owner@example.com".to_owned(),
+            project_path: "/tmp/test-project".to_owned(),
         };
         let encoded = serde_json::to_string(&value).expect("serialize TodoCreated");
         let decoded: TodoCreated = serde_json::from_str(&encoded).expect("deserialize TodoCreated");
         assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn old_shape_todo_created_decodes_with_creation_defaults() {
+        let legacy = LegacyTodoCreated {
+            todo_id: sample_todo_id(),
+            slug: sample_slug(),
+            project_id: sample_project_id(),
+            lifecycle_phase: LifecyclePhase::PrdDrafting,
+            created_at: fixed_timestamp(),
+        };
+        let encoded = serde_json::to_string(&legacy).expect("serialize legacy TodoCreated");
+
+        let decoded: TodoCreated = serde_json::from_str(&encoded).expect("deserialize TodoCreated");
+
+        assert_eq!(decoded.todo_id, legacy.todo_id);
+        assert_eq!(decoded.slug, legacy.slug);
+        assert_eq!(decoded.project_id, legacy.project_id);
+        assert_eq!(decoded.lifecycle_phase, legacy.lifecycle_phase);
+        assert_eq!(decoded.created_at, legacy.created_at);
+        assert_eq!(decoded.kind, TodoKind::Feature);
+        assert_eq!(decoded.creation_mode, CreationMode::Pickup);
+        assert!(decoded.pickup_requested);
+        assert!(decoded.created_by_principal.is_empty());
+        assert!(decoded.project_path.is_empty());
+    }
+
+    #[test]
+    fn silent_todo_created_round_trips_through_json() {
+        let value = TodoCreated {
+            todo_id: sample_todo_id(),
+            slug: sample_slug(),
+            project_id: sample_project_id(),
+            lifecycle_phase: LifecyclePhase::PrdDrafting,
+            created_at: fixed_timestamp(),
+            kind: TodoKind::Bug,
+            creation_mode: CreationMode::Silent,
+            pickup_requested: false,
+            created_by_principal: "owner@example.com".to_owned(),
+            project_path: "/tmp/test-project".to_owned(),
+        };
+
+        let encoded = serde_json::to_string(&value).expect("serialize TodoCreated");
+        let decoded: TodoCreated = serde_json::from_str(&encoded).expect("deserialize TodoCreated");
+
+        assert_eq!(decoded, value);
+        assert_eq!(decoded.creation_mode, CreationMode::Silent);
+        assert!(!decoded.pickup_requested);
     }
 
     #[test]
@@ -208,9 +317,52 @@ mod tests {
             slug: sample_slug(),
             project_id: sample_project_id(),
             updated_at: fixed_timestamp(),
+            change_summary: "description changed".to_owned(),
+            updated_by_principal: "owner@example.com".to_owned(),
+            project_path: "/tmp/test-project".to_owned(),
         };
         let encoded = serde_json::to_string(&value).expect("serialize TodoUpdated");
         let decoded: TodoUpdated = serde_json::from_str(&encoded).expect("deserialize TodoUpdated");
+        assert_eq!(decoded, value);
+    }
+
+    #[test]
+    fn old_shape_todo_updated_decodes_with_defaults() {
+        let legacy = LegacyTodoUpdated {
+            todo_id: sample_todo_id(),
+            slug: sample_slug(),
+            project_id: sample_project_id(),
+            updated_at: fixed_timestamp(),
+        };
+        let encoded = serde_json::to_string(&legacy).expect("serialize legacy TodoUpdated");
+
+        let decoded: TodoUpdated = serde_json::from_str(&encoded).expect("deserialize TodoUpdated");
+
+        assert_eq!(decoded.todo_id, legacy.todo_id);
+        assert_eq!(decoded.slug, legacy.slug);
+        assert_eq!(decoded.project_id, legacy.project_id);
+        assert_eq!(decoded.updated_at, legacy.updated_at);
+        assert!(decoded.change_summary.is_empty());
+        assert!(decoded.updated_by_principal.is_empty());
+        assert!(decoded.project_path.is_empty());
+    }
+
+    #[test]
+    fn todo_renamed_round_trips_through_json() {
+        let value = TodoRenamed {
+            todo_id: sample_todo_id(),
+            old_slug: sample_slug(),
+            new_slug: Slug::new("sample-renamed").expect("constant slug parses"),
+            project_id: sample_project_id(),
+            project_path: "/tmp/test-project".to_owned(),
+            renamed_at: fixed_timestamp(),
+            renamed_by_principal: "owner@example.com".to_owned(),
+            rewritten_reference_count: 2,
+        };
+
+        let encoded = serde_json::to_string(&value).expect("serialize TodoRenamed");
+        let decoded: TodoRenamed = serde_json::from_str(&encoded).expect("deserialize TodoRenamed");
+
         assert_eq!(decoded, value);
     }
 

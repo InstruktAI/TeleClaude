@@ -8,20 +8,24 @@ use sqlx::PgPool;
 use workflow::{
     errors::WorkflowError,
     events::{CHANNEL_ARTIFACT_DELETED, CHANNEL_ARTIFACT_WRITTEN},
-    models::{ArtifactName, TodoKind},
+    models::{ArtifactName, CreationMode, TodoKind},
+    service::CreateTodoArgs,
 };
 
 const MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
 
 async fn seed_todo(svc: &workflow::WorkflowService, project: shared::ProjectId, slug: &Slug) {
     svc.create_todo(
-        project,
-        slug.clone(),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project,
+            slug: slug.clone(),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &human_principal(),
     )
     .await
