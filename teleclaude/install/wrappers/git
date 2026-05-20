@@ -316,12 +316,13 @@ Your commit's files come from this session's resolved workspace scope —
 the files this session has touched. To see them:
   telec code changed
 
-To commit them:
-  telec code commit --approved "<message>"
+To commit, start with no flags:
+  telec code commit
 
-If a file you edited isn't in scope (the heuristic missed it; the human
-collaboratively edited it; etc.), declare it explicitly:
-  telec code commit --approved "<message>" --include <path> [<path> ...]
+That surfaces the Path A/B/C classification card. Pick a classification,
+get human approval if it requires it, then re-run with --approved and a
+quoted message. If a file outside scope must be in the commit (heuristic
+miss; collaborative edit), add --include <path> [<path> ...] at re-run.
 
 There is no agent use case for running 'git add' directly. Inspection
 tools (git diff, git status, git log) remain available.
@@ -334,14 +335,15 @@ if [ "$_subcmd" = "commit" ]; then
 ERROR: Use 'telec code commit' instead of 'git commit'. There is no bypass.
 
 telec code commit owns staging, scoping, the pathspec commit, and the
-mandated trailer. It accepts a single quoted message, optional --approved,
-and optional --include <path> ... to declare files outside the resolved
-workspace scope.
+mandated trailer.
 
-Usage:
-  telec code commit                                              # show A/B/C
-  telec code commit --approved "<message>"                       # commit scope
-  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras
+Start with no flags:
+  telec code commit
+
+That surfaces Path A/B/C. Pick a classification, get human approval if it
+requires it, then re-run with --approved and a quoted message. If files
+outside the resolved scope must be in the commit, add --include <path>
+[<path> ...] at re-run time.
 MSG
     exit 1
 fi

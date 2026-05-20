@@ -9,6 +9,12 @@ and emit explicit ``git -C <project_root>`` prefixes.
 
 from __future__ import annotations
 
+# Integrators bypass Path A/B/C (system_role == "integrator" exempts them in
+# the handler), so their commit instruction goes straight to --approved with
+# a quoted message. Single source of truth — referenced by every integration
+# decision template that ends with a commit step.
+_COMMIT_CMD_INSTRUCTION = "telec code commit --approved '<your message>'"
+
 
 def _format_anomalies(warnings: list[str]) -> str:
     """Render accumulated anomalies for agent-facing output. Empty when no warnings."""
@@ -53,7 +59,7 @@ Staged changes are ready for commit.
    - Subject: clear, imperative, scoped (e.g. "feat({slug}): deliver {slug}")
    - Body: summarize what changed, key decisions, scope
    - Footer: TeleClaude Co-Authored-By trailer
-3. Run: telec code commit --approved '<your message>'
+3. Run: {_COMMIT_CMD_INSTRUCTION}
 4. Then call: telec todo integrate
 
 NEXT: Compose and execute telec code commit, then call telec todo integrate""" + _format_anomalies(warnings or [])
@@ -83,7 +89,7 @@ Full procedure: `telec docs get software-development/procedure/lifecycle/integra
 2. Merge both contributions (do not use `--theirs` or `--ours`)
 3. Verify: all API surface and behavior from both sides preserved
 4. Stage resolved files: git add <files>
-5. Run: telec code commit --approved '<your message>'
+5. Run: {_COMMIT_CMD_INSTRUCTION}
 6. Call: telec todo integrate
 
 If unresolvable, call telec todo integrate without committing.
