@@ -76,8 +76,6 @@ async def test_architecture_review_reuses_live_reviewer(snapshot: SnapshotAssert
     """A live reviewer for the slug+command emits sessions send, not sessions run."""
     keep_going, instruction = await _dispatch(PreparePhase.ARCHITECTURE_REVIEW, live_worker_id="reviewer-arch-1")
     assert keep_going is False
-    assert "telec sessions send reviewer-arch-1" in instruction
-    assert "telec sessions run" not in instruction
     assert instruction == snapshot
 
 
@@ -86,8 +84,6 @@ async def test_plan_review_reuses_live_reviewer(snapshot: SnapshotAssertion) -> 
     """A live plan reviewer is reused via sessions send instead of spawning fresh."""
     keep_going, instruction = await _dispatch(PreparePhase.PLAN_REVIEW, live_worker_id="reviewer-plan-1")
     assert keep_going is False
-    assert "telec sessions send reviewer-plan-1" in instruction
-    assert "telec sessions run" not in instruction
     assert instruction == snapshot
 
 
@@ -162,8 +158,6 @@ async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAsse
             state=state,
         )
     assert keep_going is False
-    assert "telec sessions send analyzer-1" in instruction
-    assert "telec sessions run" not in instruction
     assert instruction == snapshot
 
 

@@ -72,25 +72,25 @@ async def _dispatch_worker(
     blockers: list[str] | None = None,
 ) -> tuple[bool, str]:
     _ = state, blockers  # not surfaced in verbatim dispatch script
-    # Reuse-or-spawn: if a live worker session already exists for this
-    # slug+command, send the re-run prompt to it instead of spawning a fresh
-    # one. Prepare runs on repo root (no worktree), so existing sessions
-    # persist with subdir=None; subdir_override="" normalizes to None inside
-    # _expected_subdir so the lookup matches (cf. bf9a7adcf). Mirrors the
-    # work-side reuse pattern at work_steps.py:335-360 and closes the
-    # prepare-phase reviewer-reuse gap that previously spawned a fresh
-    # reviewer on every review round.
-    worker_id = await find_live_session_for_slug(db, slug, f"/{command.value}", subdir_override="")
+    # Reuse-or-spawn: prefer an existing live worker session for this
+    # slug+command and emit `telec sessions send` instead of spawning a
+    # fresh one. Prepare workers persist with subdir=None (no worktree on
+    # repo root); subdir_override="" normalizes to None inside
+    # _expected_subdir to match. The title prefix carries the slug so a
+    # same-command session for a different slug cannot match. The re-run
+    # prompt is plain text — no backticks — because the orchestrator
+    # executes the emitted `telec sessions send ...` line in a shell and
+    # backticks inside double quotes trigger command substitution.
+    worker_id = await find_live_session_for_slug(db, slug, f"/{command.value} {slug}", subdir_override="")
     if worker_id is not None:
         message = (
-            f"Re-run your task for {slug} — the relevant artifact(s) have been "
-            f"updated since your prior pass. Read "
-            f"`telec todo artifacts read {slug} review-findings` first if it exists, "
-            f"then re-execute your loaded procedure on the new content. For "
-            f"reviewers, re-stamp the verdict via "
-            f"`telec todo stamp {slug} --verdict approve|changes_requested "
-            f"--phase {phase.value}`. For drift analyzers, stamp drift_reviewed "
-            f"for each re-assessed artifact."
+            f"Re-run your task for {slug}. The relevant artifact(s) have been "
+            f"updated since your prior pass. If a review-findings artifact "
+            f"exists, read it first: telec todo artifacts read {slug} "
+            f"review-findings. Then re-execute your loaded procedure on the new "
+            f"content. Reviewers: re-stamp via telec todo stamp {slug} --verdict "
+            f"approve|needs_work --phase {phase.value}. Drift analyzers: stamp "
+            f"drift_reviewed for each re-assessed artifact."
         )
         escaped = message.replace('"', '\\"')
         return False, (
