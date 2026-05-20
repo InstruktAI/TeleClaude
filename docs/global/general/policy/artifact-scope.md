@@ -18,6 +18,7 @@ visibility: 'public'
   2. Would this artifact be useful in a different repository with no changes? → Global.
   3. If neither criterion gives a clear answer, ask the requester before proceeding.
 - When redirecting from one authoring procedure to another (e.g., skill gate redirects to doc snippet), the scope question carries over — it must still be answered.
+- `spec-diff` snippets always live as siblings to their parent spec — same scope, same directory. The parent's location determines the diff's location; no independent scope decision is needed.
 
 ## Rationale
 

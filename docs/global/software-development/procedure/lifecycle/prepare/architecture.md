@@ -47,6 +47,17 @@ delivery land in docs across two locations — route per change:
 
 Frontmatter `delivered_by` accumulates this slug on EVERY edited snippet.
 
+**Spec-diff companion (migration-window only).** During the v1 → v2
+migration window, if an edit would diverge v2 behavior from an existing
+`applies_to: both` spec, do NOT fork the parent. Author a sibling
+`<stem>-v2-diff.md` companion of `type: spec-diff` capturing only the
+delta sections (Replaces / Adds / Removes / Why). Frontmatter
+`diff_of: <parent-spec-id>`, `applies_to: v2` (implicit, schema-enforced),
+`delivered_by` includes this slug. The diff is deleted (merged into the
+parent) when the relevant v2 cutover delivers. See
+`software-development/principle/documentation-first-development` section
+10 for the three-state architecture this serves.
+
 For decisions that DON'T survive delivery (implementation-tactic choices,
 library selection, internal sequencing within a build), keep them ephemeral.
 Add them to the next phase's `implementation-plan` workflow.artifact or to the

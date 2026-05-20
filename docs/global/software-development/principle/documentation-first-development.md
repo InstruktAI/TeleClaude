@@ -181,26 +181,94 @@ Ephemeral workflow.artifacts (PRD, implementation plan, review findings, drift a
 
 The prepare state machine still has phases; each phase's OUTPUT target shifts to docs (or stays workflow.artifact for the scaffolding). A phase with nothing to author (e.g., architecture phase on a Gherkin-only feature enrichment) produces no doc change and advances naturally.
 
-### 10. Migration versioning via `applies_to`
+### 10. Migration versioning via `applies_to` + the spec-diff companion
 
-When a project has a v1 → v2 (or vN → vN+1) migration boundary, snippets carry an `applies_to` frontmatter field marking which implementation version they describe:
+When a project has a v1 → v2 (or vN → vN+1) migration boundary, **specs are
+the single authoritative platform contract.** Forking the same spec into a
+v1 copy and a v2 copy creates skew the moment either copy moves. Three
+states cover every real case:
 
-- **`applies_to: v1`** — describes v1 behavior. Authoritative until cutover for that area; historical record after.
-- **`applies_to: v2`** — describes v2 behavior.
-- **`applies_to: both`** — shared contract honored by both implementations (e.g., a transport pattern v1 and v2 both implement).
+#### 10a. Three states
 
-Combined with `status: actual | target | mixed`, the snippet pair `(applies_to, status)` becomes the migration tracker:
+1. **`type: spec`, `applies_to: both`** — the **default for platform specs**.
+   Behavior is invariant across v1 and v2 implementations. Both
+   implementations realize the same words. When v1 changes the spec, v2
+   inherits the change automatically.
 
-| `applies_to` | `status` | Meaning                                            |
-| ------------ | -------- | -------------------------------------------------- |
-| `v1`         | `actual` | v1 does this; v2 hasn't matched yet                |
-| `both`       | `actual` | v2 ships parallel-capable; both honor the contract |
-| `v2`         | `actual` | Cutover landed; v1 retired this feature            |
-| `v2`         | `target` | v2 will do this; not yet shipped/cutover           |
+2. **`type: spec`, `applies_to: v2`** — a capability that has no v1
+   counterpart at all. Fresh standalone spec describing a v2-only
+   capability (e.g., a routing model v1 doesn't have). No companion
+   needed; nothing to diff against.
 
-Migration is COMPLETE when zero snippets are `applies_to: v1`. The system becomes measurable, queryable, and never guessing about parity.
+3. **`type: spec` (parent, `applies_to: both`) + `type: spec-diff`
+   companion** — the concept exists in both versions but v2 changes how
+   it works. The parent stays as the shared platform spec; a
+   sibling `<stem>-v2-diff.md` snippet captures only the delta v2
+   introduces. The diff has implicit `applies_to: v2` and required
+   sections `Replaces` / `Adds` / `Removes` / `Why`. Reader contract:
+   to understand v2 behavior, read parent + diff together.
 
-Required on design docs under `docs/project/design/architecture/` (v1), `architecture-v2/` (v2), and on feature snippets under `docs/project/spec/feature/`. Path-vs-frontmatter mismatch is a lint error.
+`applies_to: v1` is the **exception** — used only for genuine v1 quirks
+destined for deletion at cutover (anti-patterns being killed,
+implementation idioms with no v2 analog). The cleaned platform spec
+collection should contain very few `applies_to: v1` snippets.
+
+#### 10b. The spec-diff companion in detail
+
+Path: lives as a sibling to its parent, suffix `-v2-diff.md`. Example:
+`docs/project/spec/feature/workflow/todo-creation.md` is the parent;
+`todo-creation-v2-diff.md` next to it is the companion.
+
+Frontmatter:
+
+```yaml
+type: spec-diff
+diff_of: project/spec/feature/workflow/todo-creation   # parent id, validated
+applies_to: v2                                          # implicit; schema-enforced
+delivered_by: [v2-workflow-cli-refinement-commands]    # the v2 todo that ships the divergence
+status: target                                          # target until that todo delivers
+```
+
+Required sections:
+
+- **Replaces** — invariants from the parent that v2 overrides. State the
+  parent's invariant verbatim, then state v2's replacement.
+- **Adds** — capabilities v2 introduces beyond the parent spec.
+- **Removes** — parent capabilities v2 drops.
+- **Why** — rationale for the divergence (one paragraph; links to the
+  decision artifact if useful).
+
+Sections may be empty (e.g., a pure-additive diff has empty Replaces and
+Removes); intelligence omits the empty sections rather than leaving
+"none" placeholders.
+
+#### 10c. Lifecycle and sync discipline
+
+- **Authoring time.** When an agent edits a parent spec that has a
+  `-v2-diff.md` companion, the SAME operation updates the companion if
+  the edit affects what the diff describes. Discipline lives in
+  `general/procedure/doc-snippet-authoring`; no automated lint enforces
+  it — intelligence is the sync mechanism, just like with any other
+  cross-snippet coherence.
+
+- **Cutover time.** When the relevant `v2-<pillar>-cutover` todo
+  delivers, an intelligence pass merges every spec-diff targeting that
+  pillar's specs into the parents (apply Replaces, append Adds, delete
+  Removes; carry forward Why content where it adds context to the
+  merged spec). The diff files are then deleted. After cutover the
+  parent specs describe v2 behavior directly; `applies_to: both` remains
+  if v1 still runs anywhere, otherwise the snippet becomes whatever the
+  surviving implementation describes.
+
+- **Migration is COMPLETE** when zero `spec-diff` snippets exist AND
+  zero `applies_to: v1` snippets exist. The doc layer is back to one
+  authoritative spec per concept with no v-prefixed bookkeeping —
+  exactly the steady state we want post-cutover.
+
+Required on design docs under `docs/project/design/architecture/` (v1),
+`architecture-v2/` (v2), and on feature snippets under
+`docs/project/spec/feature/`. Path-vs-frontmatter mismatch is a lint
+error.
 
 ### 11. Multi-pillar features split at intake
 

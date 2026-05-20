@@ -17,6 +17,8 @@ Domain specs are documentation snippets and follow the snippet schema (`general/
 
 Each spec is authored once per bounded context and evolves with the context. New target state is added by updating the spec under `status: target` with the delivering slug in `delivered_by`. Implementation changes that change behavior MUST update the spec.
 
+During a migration window (v1 → v2 or similar), a domain spec describes the platform contract — default `applies_to: both`. If v2 will diverge from v1 for some aspect of the context, do NOT fork the spec; author a sibling `<context>-v2-diff.md` companion of `type: spec-diff` capturing only the delta. See `software-development/principle/documentation-first-development` section 10 for the three-state architecture and the spec-diff sections schema.
+
 ## Canonical fields
 
 ### Frontmatter

@@ -42,6 +42,7 @@ Create a new snippet that conforms to schema and is discoverable by tooling.
 9. After any doc change, run `telec sync` to deploy all artifacts. Commit the regenerated index files as part of the task — they are build outputs of the sync step and reflect the current truth of the docs directory.
 10. Do not edit `docs/index.yaml` directly; `telec sync` regenerates it.
 11. Avoid creating index.md files; only baseline.md manifests are allowed.
+12. **Spec-diff companion sync (migration-window discipline).** If the snippet being edited is `type: spec` AND a sibling `<stem>-v2-diff.md` companion exists (file convention for `type: spec-diff` per `general/spec/snippet-authoring-schema`), the SAME operation also reviews the companion and updates it if your edit affects what the diff describes. The relationship is intelligence-managed — no lint enforces it. The same discipline applies when authoring a new `spec-diff`: read the parent spec first, write only the delta sections (Replaces / Adds / Removes / Why), do not duplicate parent content. See `software-development/principle/documentation-first-development` section 10 for the three-state architecture this rule serves.
 
 ## Outputs
 

@@ -28,7 +28,8 @@ Frontmatter (optional):
 - `activation_trigger` — procedures only. A non-empty string describing when to activate the procedure. Appears in the "Activatable Procedures" section of generated AGENTS.md for progressive disclosure. Validation rejects this field on non-procedure snippet types.
 - `status` — lifecycle state of the snippet relative to the implementation. One of `actual`, `target`, or `mixed`. Defaults to `actual` when omitted. See `software-development/principle/documentation-first-development` for the discipline.
 - `delivered_by` — list of todo slugs that will materialize this snippet's intended state. REQUIRED when `status` is `target` or `mixed`. FORBIDDEN when `status` is `actual`. Each slug must exist in the project roadmap. When all listed slugs reach `delivered`, the snippet is flipped to `status: actual` and `delivered_by` is removed (enforced by `telec sync`; failure to flip is a lint error).
-- `applies_to` — for projects with a v1 → v2 migration boundary (TeleClaude specifically). One of `v1`, `v2`, or `both`. Marks which implementation version the snippet describes. `v1` = describes v1 behavior (authoritative until cutover, then historical). `v2` = describes v2 behavior. `both` = shared contract honored by both implementations. Required on snippets under `docs/project/design/architecture/` (path → `v1`), `docs/project/design/architecture-v2/` (path → `v2`), and on per-feature snippets under `docs/project/spec/feature/`. Optional elsewhere. Path-vs-frontmatter mismatch is a lint error. Queryable via `telec docs index --applies-to <v1|v2|both>`.
+- `applies_to` — for projects with a v1 → v2 migration boundary (TeleClaude specifically). One of `v1`, `v2`, or `both`. Marks which implementation version the snippet describes. `v1` = describes v1 behavior (authoritative until cutover, then historical). `v2` = describes v2 behavior. `both` = shared contract honored by both implementations — the **default for cleaned platform specs**. Required on snippets under `docs/project/design/architecture/` (path → `v1`), `docs/project/design/architecture-v2/` (path → `v2`), and on per-feature snippets under `docs/project/spec/feature/`. Optional elsewhere. Path-vs-frontmatter mismatch is a lint error. Queryable via `telec docs index --applies-to <v1|v2|both>`.
+- `diff_of` — `spec-diff` snippets ONLY (required for that type, forbidden on every other type). Snippet id of the parent spec this diff modifies. Validated to point at an existing snippet of `type: spec`. The diff is read alongside the parent; together they describe v2 behavior for the concept.
 
 Third-party docs under `docs/third-party/` or `~/.teleclaude/docs/third-party/` are indexed separately from taxonomy snippets. They still require `id`, `type`, `scope`, and `description`, but use `type: third-party`, `scope: project` or `scope: global`, and IDs derived from their path below the third-party root.
 
@@ -51,6 +52,7 @@ Document structure:
 | procedure | Goal, Preconditions, Steps, Outputs, Recovery                          |
 | design    | Purpose, Inputs/Outputs, Invariants, Primary flows, Failure modes      |
 | spec      | What it is, Canonical fields (optional: Allowed values, Known caveats) |
+| spec-diff | Replaces, Adds, Removes, Why                                           |
 
 Procedure sections may also include optional: `Pre-completion checklist`, `Report format`, `Required tools`, `Discipline`.
 
@@ -68,17 +70,19 @@ Design snippets should include Mermaid diagrams where visual representation aids
 - `docs/project/{taxonomy}/` — project-scoped documentation.
 - `docs/project/spec/domain/{context}.md` — bounded-context domain spec (one per service).
 - `docs/project/spec/feature/{context}/{concept-name}.md` — feature spec (concept-named, hub in the hub-and-spoke model per `software-development/principle/documentation-first-development`). Contains Gherkin acceptance scenarios + business value. Many-to-many with todos via `delivered_by`.
+- `docs/project/spec/**/{stem}-v2-diff.md` — `type: spec-diff` companion living as a sibling to its parent spec (`{stem}.md`). Captures how v2 diverges from the parent. Implicit `applies_to: v2`. Migration-window-only: deleted (merged into the parent) when the relevant v2 cutover delivers. See `software-development/principle/documentation-first-development` for the three-state architecture.
 - `docs/project/baseline.md` — project baseline manifest (curated required reads).
 
 Global snippets are distributed to `~/.teleclaude/docs/` and available to all projects. Project snippets stay local to their repository.
 
 ## Allowed values
 
-- `type`: principle, concept, policy, procedure, design, spec (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
+- `type`: principle, concept, policy, procedure, design, spec, spec-diff (canonical list in `teleclaude/constants.py:TAXONOMY_TYPES`).
 - Third-party `type`: third-party.
 - `scope`: global, domain, project.
 - Third-party `scope`: global, project.
 - `visibility`: public, internal. Default: `internal`.
+- `applies_to` on `spec-diff` snippets is implicitly `v2` and rejected if set to anything else — the type only exists to capture v2 divergence from a parent spec during the migration window.
 
 ## Known caveats
 

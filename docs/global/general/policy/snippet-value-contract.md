@@ -156,3 +156,5 @@ would violate `software-development/principle/intelligence-boundaries`.
 ## Exceptions
 
 None. If the value test cannot be satisfied, the snippet is not authored.
+
+`spec-diff` snippets satisfy the value test by construction: they capture a known v2 divergence from a parent spec with a clear death date at v2 cutover. Reviewers do not reject a diff as redundant against its parent — the divergence IS the value. See `software-development/principle/documentation-first-development` section 10.
