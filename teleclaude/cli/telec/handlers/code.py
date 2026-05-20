@@ -194,12 +194,32 @@ def handle_code_commit(args: list[str]) -> None:
     includes: list[str] = []
     positionals: list[str] = []
     mode_include = False
+    last_include_group_size = 0  # paths collected since the most recent --include
+    saw_include = False
     for token in args:
         if token == "--approved":
+            # An --approved (or any subsequent flag) closes the current
+            # --include group; if that group was empty, error.
+            if mode_include and last_include_group_size == 0:
+                print(
+                    "ERROR: --include requires at least one <path> operand.\n"
+                    '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
             approved = True
             mode_include = False
         elif token == "--include":
+            if mode_include and last_include_group_size == 0:
+                print(
+                    "ERROR: --include requires at least one <path> operand before the next --include.\n"
+                    '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
             mode_include = True
+            last_include_group_size = 0
+            saw_include = True
         elif token.startswith("-"):
             print(
                 f"ERROR: unknown flag: {token}\n"
@@ -212,8 +232,19 @@ def handle_code_commit(args: list[str]) -> None:
             raise SystemExit(2)
         elif mode_include:
             includes.append(token)
+            last_include_group_size += 1
         else:
             positionals.append(token)
+
+    # End-of-args: if --include was the last token (or only followed by no
+    # paths up to end), error too.
+    if saw_include and mode_include and last_include_group_size == 0:
+        print(
+            "ERROR: --include requires at least one <path> operand.\n"
+            '  telec code commit --approved "<message>" --include <path> [<path> ...]',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     if len(positionals) > 1:
         print(
@@ -305,16 +336,9 @@ def _commit_under_lock(
             seen.add(path)
             pathspec.append(path)
 
-    if not pathspec:
-        print(
-            "Nothing in workspace scope to commit. Run `telec code changed` to "
-            "see what telec would stage. For NEW files, declare them with "
-            "`telec code add <path>` first, or pass `--include <path>` here.",
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
-
-    # Surface the auto-skip so the agent sees the choice instead of wondering.
+    # Surface the auto-skip BEFORE the empty-pathspec exit so an agent whose
+    # only scope is untracked-new sees the actionable reminder, not a
+    # generic "nothing in scope" error.
     if untracked_unstaged_in_scope:
         print(
             f"Note: {len(untracked_unstaged_in_scope)} new file(s) in scope were not included in this commit:",
@@ -329,6 +353,15 @@ def _commit_under_lock(
             "If temp/scratch, leave them — they stay untracked.\n",
             file=sys.stderr,
         )
+
+    if not pathspec:
+        print(
+            "Nothing in workspace scope to commit. Run `telec code changed` to "
+            "see what telec would stage. For NEW files, declare them with "
+            "`telec code add <path>` first, or pass `--include <path>` here.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
 
     # Stage what git's data model genuinely requires before commit:
     #  - untracked files in our pathspec (must enter the index for git to know them)
@@ -352,6 +385,15 @@ def _commit_under_lock(
                 file=sys.stderr,
             )
             raise SystemExit(2)
+
+    # Partial-staging guard inside the pathspec. `git commit -- <path>`
+    # records the working-tree version of <path>, not just the staged hunks.
+    # If a file in our pathspec is partially staged (staged version + later
+    # working-tree delta), the commit silently sweeps in the unstaged delta —
+    # changes the agent never declared. The pre-commit hook's stash/restore
+    # cycle also corrupts these files. Block the commit; the agent must
+    # fully (re)stage the partial-staged file before retrying.
+    _check_partial_staging(project_root, pathspec=pathspec)
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
@@ -518,6 +560,33 @@ def _dirty_paths(project_root: Path) -> set[str]:
     parts.update(_get_untracked_files(project_root))
     parts.update(_get_unmerged_files(project_root))
     return parts
+
+
+def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:
+    """Block commits when a file in our pathspec is partially staged.
+
+    `git commit -- <path>` records the working-tree version of <path>, not
+    just the staged hunks. So if a file is partially staged (staged hunks +
+    later working-tree edit), the commit captures BOTH — silently sweeping
+    in unstaged content the agent never declared. Foreign partial-staging
+    (outside our pathspec) is not our concern.
+    """
+    repo = Repo(str(project_root))
+    staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
+    unstaged = set(repo.git.diff("--name-only").strip().splitlines())
+    overlap = (staged & unstaged) & set(pathspec)
+    if not overlap:
+        return
+    print("ERROR: partially staged files in commit pathspec:", file=sys.stderr)
+    for f in sorted(overlap):
+        print(f"  {f}", file=sys.stderr)
+    print(
+        "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
+        "in unstaged hunks you did not declare. Fully (re)stage each file, then\n"
+        "re-run telec code commit:\n  telec code add " + " ".join(sorted(overlap)),
+        file=sys.stderr,
+    )
+    raise SystemExit(1)
 
 
 def _current_branch(project_root: Path) -> str:

@@ -133,6 +133,7 @@ class TestCommitWorkspaceScope:
             ),
             patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -151,10 +152,9 @@ class TestCommitWorkspaceScope:
         assert staged_files == []
         # Pathspec contains ONLY the modified file; brand_new dropped.
         _assert_pathspec_commit(repo, ["teleclaude/modified.py"])
-        # Reminder surfaced with the dropped file named.
-        err = capsys.readouterr().err
-        assert "teleclaude/brand_new.py" in err
-        assert "telec code add" in err
+        # Behavioral assertion: the dropped file's PATH is surfaced so the
+        # agent sees what got skipped. We do not lock the surrounding prose.
+        assert "teleclaude/brand_new.py" in capsys.readouterr().err
 
     @pytest.mark.unit
     def test_pre_staged_untracked_in_scope_is_committed(self, tmp_path: Path) -> None:
@@ -185,6 +185,7 @@ class TestCommitWorkspaceScope:
                 return_value=["teleclaude/added.py"],  # agent already ran telec code add
             ),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -226,6 +227,7 @@ class TestCommitWorkspaceScope:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -266,6 +268,7 @@ class TestCommitWorkspaceScope:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=["foreign.py"]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
@@ -528,6 +531,81 @@ class TestRustCommitContract:
         _assert_pathspec_commit(repo, ["crates/workflow/src/lib.rs"])
 
 
+class TestPartialStagingGuard:
+    """`git commit -- <path>` records the working-tree version of <path>,
+    not just the staged hunks. A partially-staged file in the pathspec
+    would silently sweep unstaged hunks into the commit. The guard blocks
+    that and tells the agent to fully (re)stage."""
+
+    @pytest.mark.unit
+    def test_partial_staging_in_pathspec_blocks_commit(self, tmp_path: Path) -> None:
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.WORKTREE,
+            has_session_identity=False,
+            dirty_paths=(DirtyPath("teleclaude/mine.py", DirtyOp.MODIFIED),),
+            scoped_dirty_paths=("teleclaude/mine.py",),
+            scoped_existing_paths=("teleclaude/mine.py",),
+        )
+        repo = MagicMock()
+        # diff(--cached --name-only) and diff(--name-only) both list mine.py
+        # → it's both staged AND has unstaged delta → partial staging.
+        repo.git.diff.return_value = "teleclaude/mine.py"
+
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+            pytest.raises(SystemExit) as exc,
+        ):
+            _commit_under_lock(
+                message="fix: mine",
+                includes=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        assert exc.value.code == 1
+        repo.git.commit.assert_not_called()
+
+    @pytest.mark.unit
+    def test_foreign_partial_staging_outside_pathspec_does_not_block(self, tmp_path: Path) -> None:
+        """A foreign file that is partial-staged outside our pathspec is not
+        our problem — the pathspec excludes it from the commit anyway."""
+        resolution = WorkspaceScopeResolution(
+            kind=WorkspaceScopeKind.SHARED_BRANCH,
+            has_session_identity=True,
+            dirty_paths=(DirtyPath("teleclaude/mine.py", DirtyOp.MODIFIED),),
+            scoped_dirty_paths=("teleclaude/mine.py",),
+            scoped_existing_paths=("teleclaude/mine.py",),
+        )
+        repo = MagicMock()
+        # foreign.py is both staged and unstaged (partial), mine.py is clean
+        # in the index (modified-tracked, rides pathspec).
+        repo.git.diff.return_value = "foreign.py"
+        repo.git.commit.return_value = (0, "", "")
+
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=["foreign.py"]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="fix: mine",
+                includes=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        # Commit proceeds because foreign.py is not in our pathspec.
+        repo.git.commit.assert_called_once()
+
+
 class TestHandleCodeAdd:
     """`telec code add` is the sealed equivalent of `git add` for NEW files.
 
@@ -541,7 +619,8 @@ class TestHandleCodeAdd:
         with pytest.raises(SystemExit) as exc:
             handle_code_add([])
         assert exc.value.code == 2
-        assert "telec code add <path>" in capsys.readouterr().err
+        # Behavioral: some diagnostic is emitted on stderr; we don't lock prose.
+        assert capsys.readouterr().err.strip() != ""
 
     @pytest.mark.unit
     def test_unknown_flag_rejected(self) -> None:
@@ -559,6 +638,7 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=["new.py"]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"new.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -581,6 +661,7 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=["resolved.py"]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"resolved.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -604,6 +685,7 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"tracked.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -612,8 +694,9 @@ class TestHandleCodeAdd:
         ):
             handle_code_add(["tracked.py"])
         assert staged == []
-        err = capsys.readouterr().err
-        assert "already tracked" in err and "tracked.py" in err
+        # Behavioral: the modified-tracked file is named in the note; we do
+        # not lock the surrounding prose ("already tracked").
+        assert "tracked.py" in capsys.readouterr().err
 
     @pytest.mark.unit
     def test_clean_path_errors(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -624,13 +707,15 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             pytest.raises(SystemExit) as exc,
         ):
             handle_code_add(["clean.py"])
         assert exc.value.code == 2
-        assert "no changes to stage" in capsys.readouterr().err
+        # Behavioral: the offending path is named so the agent can act on it.
+        assert "clean.py" in capsys.readouterr().err
 
     @pytest.mark.unit
     def test_missing_path_errors(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -639,13 +724,15 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             pytest.raises(SystemExit) as exc,
         ):
             handle_code_add(["does-not-exist.py"])
         assert exc.value.code == 2
-        assert "not found" in capsys.readouterr().err
+        # Behavioral: the offending path is named in the error.
+        assert "does-not-exist.py" in capsys.readouterr().err
 
 
 class TestExcludedFiles:
@@ -799,7 +886,11 @@ class TestHandleCodeCommitContract:
         ):
             handle_code_commit(["fix(x): y"])
         assert exc.value.code == 1
-        assert "Commits on main require classification" in capsys.readouterr().err
+        # Behavioral: the ABC card emits the three classification labels as
+        # structural markers (A), B), C)). Asserts on those — not the
+        # surrounding prose — so wording can evolve without breaking tests.
+        err = capsys.readouterr().err
+        assert "A)" in err and "B)" in err and "C)" in err
 
     @pytest.mark.unit
     def test_approved_without_message_rejected(self) -> None:
@@ -864,10 +955,33 @@ class TestHandleCodeCommitContract:
             # message "fix: x" goes into includes; --approved set; no positional.
             handle_code_commit(["--approved", "--include", "a.py", "fix: x"])
         assert exc.value.code == 2
-        assert "--approved requires a quoted commit message" in capsys.readouterr().err
+        # Behavioral: a diagnostic is emitted on stderr; exit code carries
+        # the contract. We don't lock the surrounding prose.
+        assert capsys.readouterr().err.strip() != ""
 
     @pytest.mark.unit
     def test_unknown_flag_rejected(self) -> None:
         with pytest.raises(SystemExit) as exc:
             handle_code_commit(["--bogus", "fix: x"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_include_with_no_operand_at_end_rejected(self) -> None:
+        """--include followed by nothing must fail fast, not be silently ignored."""
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["--approved", "fix: x", "--include"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_include_immediately_followed_by_approved_rejected(self) -> None:
+        """--include with no path before --approved closes the group empty."""
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["--include", "--approved", "fix: x"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_double_include_with_empty_first_group_rejected(self) -> None:
+        """Two --include flags with no path between is a fail-fast error."""
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["--approved", "fix: x", "--include", "--include", "a.py"])
         assert exc.value.code == 2

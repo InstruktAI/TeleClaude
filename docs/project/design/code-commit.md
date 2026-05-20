@@ -12,14 +12,27 @@ visibility: 'public'
 ## Purpose
 
 `telec code commit` is the canonical commit interface for **autonomous agent
-sessions inside tmux**. It resolves the workspace scope, stages those files,
-and runs `git commit` with an explicit pathspec so the commit contains exactly
-the files telec staged. The pre-commit hook owns formatting and linting inside
-git's own atomicity.
+sessions inside tmux**. It resolves the workspace scope and runs `git commit`
+with an explicit pathspec.
 
-The git wrapper redirects raw `git commit` to this command for tmux callers.
-The pre-commit hook is the single owner of formatter restaging and the retry
-when hooks modify staged files.
+The staging model is asymmetric and follows git's data model:
+
+- **Modified-tracked files in scope** ride the pathspec straight from the
+  working tree — `git commit -- <path>` records the working-tree version, no
+  staging needed.
+- **NEW (untracked) files in scope** are NOT auto-committed. The agent must
+  declare them via `telec code add <path>` (sealed equivalent of `git add`)
+  or `--include <path>` at commit time. This is the safety net against
+  incidental temp/scratch artifacts the agent's tool calls may have created.
+- **Unmerged-index files in pathspec** (post-conflict, pre-resolution-stage)
+  are staged internally via `_stage_files` so the integrator's conflict
+  resolution flow runs through the same sealed path.
+
+The pre-commit hook owns formatting and linting inside git's own atomicity.
+
+The git wrapper redirects raw `git commit` (and `git add`) to this command
+for tmux callers. The pre-commit hook is the single owner of formatter
+restaging and the retry when hooks modify staged files.
 
 **Caller paths:**
 

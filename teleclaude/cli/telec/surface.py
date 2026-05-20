@@ -1136,7 +1136,7 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "commit": CommandDef(
-                desc="Stage workspace-scoped files, lint, format, and commit",
+                desc="Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)",
                 args='"<message>" [--approved] [--include <path> ...]',
                 flags=[
                     _H,
@@ -1149,9 +1149,11 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 ],
                 notes=[
                     "Accepts only: one quoted message, --approved, and --include <path> ... .",
+                    "Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.",
+                    "NEW (untracked) files in scope are NOT auto-committed; declare them via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts).",
+                    "Unmerged-index files in pathspec are staged internally for the integrator conflict path.",
                     "Without --approved on main: prints Path A/B/C classification and exits.",
-                    "Pathspec = workspace scope plus --include paths. Anything else in the index "
-                    "(staged by another session) is left untouched — there is no env-var bypass.",
+                    "Pathspec = workspace scope plus --include paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.",
                     "The 🤖/Co-Authored-By trailer is appended automatically (idempotent).",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
