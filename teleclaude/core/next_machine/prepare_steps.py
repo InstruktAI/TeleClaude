@@ -21,6 +21,7 @@ from teleclaude.core.next_machine.output_formatting import (
     format_procedure_load,
     format_tool_call,
 )
+from teleclaude.core.next_machine.runtime.sessions import find_live_session_for_slug
 from teleclaude.core.next_machine.state_mutation import StateWriter
 
 if TYPE_CHECKING:
@@ -70,7 +71,39 @@ async def _dispatch_worker(
     expected: str,
     blockers: list[str] | None = None,
 ) -> tuple[bool, str]:
-    _ = phase, state, blockers  # not surfaced in verbatim dispatch script
+    _ = state, blockers  # not surfaced in verbatim dispatch script
+    # Reuse-or-spawn: if a live worker session already exists for this
+    # slug+command, send the re-run prompt to it instead of spawning a fresh
+    # one. Prepare runs on repo root (no worktree), so existing sessions
+    # persist with subdir=None; subdir_override="" normalizes to None inside
+    # _expected_subdir so the lookup matches (cf. bf9a7adcf). Mirrors the
+    # work-side reuse pattern at work_steps.py:335-360 and closes the
+    # prepare-phase reviewer-reuse gap that previously spawned a fresh
+    # reviewer on every review round.
+    worker_id = await find_live_session_for_slug(db, slug, f"/{command.value}", subdir_override="")
+    if worker_id is not None:
+        message = (
+            f"Re-run your task for {slug} — the relevant artifact(s) have been "
+            f"updated since your prior pass. Read "
+            f"`telec todo artifacts read {slug} review-findings` first if it exists, "
+            f"then re-execute your loaded procedure on the new content. For "
+            f"reviewers, re-stamp the verdict via "
+            f"`telec todo stamp {slug} --verdict approve|changes_requested "
+            f"--phase {phase.value}`. For drift analyzers, stamp drift_reviewed "
+            f"for each re-assessed artifact."
+        )
+        escaped = message.replace('"', '\\"')
+        return False, (
+            f"WORKER RE-DISPATCH (reuse): {slug}\n\n"
+            f"Execute in order:\n\n"
+            f'telec sessions send {worker_id} "{escaped}"\n\n'
+            f"Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).\n"
+            f"Start a new non-blocking heartbeat timer via "
+            f'Bash(command="sleep 300", run_in_background=true) and save the new task_id.\n'
+            f"When the worker reports idle, call telec todo prepare {slug}."
+        )
+
+    # No live worker — spawn a fresh one.
     guidance = await compose_agent_guidance(db)
     project_root = _derive_project_root(cwd, slug)
     request = ToolCallRequest(

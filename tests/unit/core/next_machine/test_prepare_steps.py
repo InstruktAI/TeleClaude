@@ -19,10 +19,13 @@ pytestmark = [pytest.mark.unit, pytest.mark.timeout(10)]
 _STEPS = "teleclaude.core.next_machine.prepare_steps"
 
 
-async def _dispatch(phase: PreparePhase) -> tuple[bool, str]:
+async def _dispatch(phase: PreparePhase, *, live_worker_id: str | None = None) -> tuple[bool, str]:
     db = AsyncMock()
     todos_db = AsyncMock()
-    with patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")):
+    with (
+        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=live_worker_id)),
+    ):
         return await _prepare_dispatch(
             db=db,
             todos_db=todos_db,
@@ -69,6 +72,26 @@ async def test_plan_review_dispatches_to_plan_review(snapshot: SnapshotAssertion
 
 
 @pytest.mark.asyncio
+async def test_architecture_review_reuses_live_reviewer(snapshot: SnapshotAssertion) -> None:
+    """A live reviewer for the slug+command emits sessions send, not sessions run."""
+    keep_going, instruction = await _dispatch(PreparePhase.ARCHITECTURE_REVIEW, live_worker_id="reviewer-arch-1")
+    assert keep_going is False
+    assert "telec sessions send reviewer-arch-1" in instruction
+    assert "telec sessions run" not in instruction
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_plan_review_reuses_live_reviewer(snapshot: SnapshotAssertion) -> None:
+    """A live plan reviewer is reused via sessions send instead of spawning fresh."""
+    keep_going, instruction = await _dispatch(PreparePhase.PLAN_REVIEW, live_worker_id="reviewer-plan-1")
+    assert keep_going is False
+    assert "telec sessions send reviewer-plan-1" in instruction
+    assert "telec sessions run" not in instruction
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
 async def test_prd_human_approval_emits_stamp_instruction(snapshot: SnapshotAssertion) -> None:
     keep_going, instruction = await _dispatch(PreparePhase.PRD_HUMAN_APPROVAL)
     assert keep_going is False
@@ -92,6 +115,7 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
     }
     with (
         patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value=None)),
         patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
         patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
     ):
@@ -104,6 +128,42 @@ async def test_blocked_pending_drift_dispatches_drift_analyzer(snapshot: Snapsho
             state=state,
         )
     assert keep_going is False
+    assert instruction == snapshot
+
+
+@pytest.mark.asyncio
+async def test_blocked_pending_drift_reuses_live_analyzer(snapshot: SnapshotAssertion) -> None:
+    """A live drift analyzer for the slug is reused instead of spawned fresh."""
+    db = AsyncMock()
+    todos_db = AsyncMock()
+    state = {
+        "schema_version": 3,
+        "lifecycle_phase": "blocked",
+        "artifacts": {
+            "prd": {
+                "digest": "prd",
+                "codebase_sha_at_write": "base",
+                "referenced_paths": ["src/app.py"],
+            }
+        },
+    }
+    with (
+        patch(f"{_STEPS}.compose_agent_guidance", new=AsyncMock(return_value="guidance")),
+        patch(f"{_STEPS}.find_live_session_for_slug", new=AsyncMock(return_value="analyzer-1")),
+        patch(f"{_STEPS}.derive_prepare_drift", return_value={"prd": "pending"}),
+        patch(f"{_STEPS}.prepare_blockers", return_value=["prd drift is pending; run drift analysis before prepared"]),
+    ):
+        keep_going, instruction = await _prepare_dispatch(
+            db=db,
+            todos_db=todos_db,
+            slug="my-slug",
+            cwd="/repo",
+            phase=PreparePhase.BLOCKED,
+            state=state,
+        )
+    assert keep_going is False
+    assert "telec sessions send analyzer-1" in instruction
+    assert "telec sessions run" not in instruction
     assert instruction == snapshot
 
 
