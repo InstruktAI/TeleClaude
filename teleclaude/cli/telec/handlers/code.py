@@ -95,6 +95,13 @@ def handle_code_add(args: list[str]) -> None:
     untracked = set(_get_untracked_files(project_root))
     unmerged = set(_get_unmerged_files(project_root))
     dirty = _dirty_paths(project_root)
+    # Partial-staging: file has BOTH staged changes AND a later working-tree
+    # delta. `telec code add` is the recovery path the partial-staging guard
+    # points at, so it must accept these files and fully (re)stage them.
+    repo = Repo(str(project_root))
+    staged_now = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
+    unstaged_now = set(repo.git.diff("--name-only").strip().splitlines())
+    partial_staged = staged_now & unstaged_now
 
     stageable: list[str] = []
     already_tracked: list[str] = []
@@ -105,7 +112,8 @@ def handle_code_add(args: list[str]) -> None:
         full = project_root / path
         if not full.exists():
             missing.append(path)
-        elif path in untracked or path in unmerged:
+        elif path in untracked or path in unmerged or path in partial_staged:
+            # Untracked, unmerged-conflict, or partial-staged → stage fully.
             stageable.append(path)
         elif path in dirty:
             already_tracked.append(path)
@@ -582,8 +590,10 @@ def _check_partial_staging(project_root: Path, *, pathspec: list[str]) -> None:
         print(f"  {f}", file=sys.stderr)
     print(
         "\n`git commit -- <path>` would commit the working-tree version, sweeping\n"
-        "in unstaged hunks you did not declare. Fully (re)stage each file, then\n"
-        "re-run telec code commit:\n  telec code add " + " ".join(sorted(overlap)),
+        "in unstaged hunks you did not declare. Fully (re)stage each file via the\n"
+        "sealed recovery path (`telec code add` accepts partial-staged tracked\n"
+        "files for exactly this case), then re-run telec code commit:\n"
+        "  telec code add " + " ".join(sorted(overlap)),
         file=sys.stderr,
     )
     raise SystemExit(1)

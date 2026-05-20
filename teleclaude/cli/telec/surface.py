@@ -1146,11 +1146,13 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 args='"<message>" [--approved] [--include <path> ...]',
                 flags=[
                     _H,
-                    Flag("--approved", desc="Human-approved Path B commit", hidden=True),
+                    Flag(
+                        "--approved",
+                        desc="Human-approved commit gate. Required to commit on main; bare invocation prints Path A/B/C and exits.",
+                    ),
                     Flag(
                         "--include",
-                        desc="Declare files outside workspace scope to add to this commit",
-                        hidden=True,
+                        desc="Declare files outside workspace scope to add to this commit (space-separated paths).",
                     ),
                 ],
                 notes=[

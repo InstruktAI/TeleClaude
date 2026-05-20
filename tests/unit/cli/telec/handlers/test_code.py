@@ -639,6 +639,10 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=["new.py"]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"new.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -646,9 +650,43 @@ class TestHandleCodeAdd:
             ),
         ):
             handle_code_add(["new.py"])
+        # Behavioral: the file was passed to _stage_files; the file name
+        # appears in stdout. We do not lock the surrounding prose.
         assert staged == [["new.py"]]
-        out = capsys.readouterr().out
-        assert "new.py" in out and "Staged 1 new file" in out
+        assert "new.py" in capsys.readouterr().out
+
+    @pytest.mark.unit
+    def test_stages_partial_staged_tracked_file(self, tmp_path: Path) -> None:
+        """The partial-staging guard recovery path. A tracked file with both
+        staged hunks and a later unstaged delta is the failure mode the guard
+        catches — `telec code add` is the prescribed recovery, so it must
+        fully (re)stage the file rather than no-op as "already tracked"."""
+        f = tmp_path / "partial.py"
+        f.write_text("changed\n")
+        staged: list[list[str]] = []
+        repo = MagicMock()
+        # The file appears in BOTH the staged list and the unstaged list →
+        # partial staging.
+        repo.git.diff.side_effect = ["partial.py", "partial.py"]
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"partial.py"}),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged.append(files),
+            ),
+        ):
+            handle_code_add(["partial.py"])
+        # Behavioral: the partial-staged file was (re)staged, not no-oped.
+        assert staged == [["partial.py"]]
 
     @pytest.mark.unit
     def test_stages_unmerged_file(self, tmp_path: Path) -> None:
@@ -662,6 +700,10 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=["resolved.py"]),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"resolved.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -686,6 +728,10 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"tracked.py"}),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
@@ -708,6 +754,10 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             pytest.raises(SystemExit) as exc,
@@ -725,6 +775,10 @@ class TestHandleCodeAdd:
             patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch(
+                "teleclaude.cli.telec.handlers.code.Repo",
+                return_value=MagicMock(git=MagicMock(diff=MagicMock(return_value=""))),
+            ),
             patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value=set()),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             pytest.raises(SystemExit) as exc,

@@ -136,7 +136,11 @@ telec code commit --approved "feat(scope): subject"
   → lock acquired
   → workspace scope = WORKTREE → all dirty paths
   → pathspec = scope (no includes)
-  → stage any not-already-staged
+  → drop untracked-new files from pathspec (require explicit declaration)
+  → stage ONLY untracked-or-unmerged files that are in pathspec
+    (modified-tracked files are NOT staged — they ride the pathspec)
+  → partial-staging guard: block if any pathspec file has both staged
+    and unstaged changes
   → real git commit -F <msg> -- <pathspec>
   → pre-commit hook runs format + lint
   → lock released
@@ -149,8 +153,8 @@ telec code commit --approved "chore(docs): update snippets [skip ci]"
   → ABC gate satisfied (--approved + [skip ci])
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
-  → pathspec = scope
-  → stage any not-already-staged
+  → pathspec = scope minus untracked-not-staged
+  → modified-tracked docs ride the pathspec unstaged
   → real git commit -F <msg> -- <pathspec>
   → pre-commit hook runs format + lint
   → lock released
@@ -163,9 +167,10 @@ telec code commit --approved "fix(scope): subject" --include path/to/extra.py
   → ABC gate satisfied
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
-  → pathspec = scope plus {path/to/extra.py}
-  → stage any not-already-staged (extra.py included)
-  → assert extra.py contributed a change (else error)
+  → pathspec = scope ∪ {path/to/extra.py}
+  → stage extra.py only if it's untracked or unmerged
+  → assert extra.py contributes a change (else error)
+  → partial-staging guard runs against the merged pathspec
   → real git commit -F <msg> -- <pathspec>
   → lock released
 ```
