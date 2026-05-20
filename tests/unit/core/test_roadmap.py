@@ -53,6 +53,33 @@ async def test_roadmap_projection_returns_pending_status_for_draft_todos(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_iceboxed_draft_todo_projects_as_icebox_not_pending(tmp_path: Path) -> None:
+    """A frozen draft must keep ``status='icebox'`` — the DRAFT lifecycle pointer
+    (the default for never-prepared todos) must not clobber the authoritative
+    icebox bucket in projection.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    db_dir = project / ".teleclaude"
+    db_dir.mkdir()
+
+    database = TodosDb(str(db_dir / "todos.db"))
+    await database.initialize()
+    try:
+        await database.add_to_roadmap("ice-draft", description="A frozen draft")
+        await database.write_state("ice-draft", {"kind": "draft", "schema_version": 1, "phase": "pending"})
+        assert await database.freeze("ice-draft") is True
+    finally:
+        await database.close()
+
+    todos = assemble_roadmap_from_db(str(project), include_icebox=True)
+
+    assert len(todos) == 1
+    assert todos[0].slug == "ice-draft"
+    assert todos[0].status == "icebox"
+
+
+@pytest.mark.asyncio
 async def test_roadmap_projection_returns_pending_status_for_feature_drafts(tmp_path: Path) -> None:
     """Feature draft todos created without input artifacts must not appear in progress."""
     project = tmp_path / "project"

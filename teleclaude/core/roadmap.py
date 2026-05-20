@@ -276,12 +276,17 @@ def assemble_roadmap_from_db(
             else:
                 integration_phase = raw_integration_phase
 
-            todo_status = row[5]  # active/icebox/delivered
+            todo_status = row[5]  # active/icebox/delivered — authoritative DB state
+            # Re-bucketing below only refines the 'active' bucket into more
+            # granular states (pending/ready/in_progress). Icebox and delivered
+            # are authoritative roadmap statuses — never overwrite them from a
+            # lifecycle pointer (which defaults to DRAFT for never-prepared
+            # entries and would otherwise clobber 'icebox' into 'pending').
             if todo_status == RoadmapStatus.DELIVERED or is_delivered:
                 # Delivered wins over a never-advanced draft lifecycle pointer.
                 todo_status = RoadmapStatus.DELIVERED
                 integration_phase = IntegrationPhase.DELIVERED
-            elif is_draft_lifecycle:
+            elif todo_status == RoadmapStatus.ACTIVE and is_draft_lifecycle:
                 todo_status = RoadmapStatus.PENDING
             ready, _ = is_ready_for_work(
                 kind=kind if isinstance(kind, str) else TODO_KIND_DEFAULT,
