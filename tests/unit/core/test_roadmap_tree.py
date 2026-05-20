@@ -78,6 +78,28 @@ def test_after_dependency_renders_as_visual_cascade() -> None:
     assert [c.todo.slug for c in sections.active[0].children] == ["b"]
 
 
+def test_is_holder_set_only_when_other_todos_group_reference_the_node() -> None:
+    """`is_holder` is data-driven (group_slug refs), NOT a side-effect of having children.
+
+    A group-referenced parent is a holder (renderer suppresses its status).
+    A node nested only via after-deps is NOT a holder — it has its own status.
+    """
+    todos = [
+        _todo("group-parent", RoadmapStatus.IN_PROGRESS),
+        _todo("group-child", RoadmapStatus.IN_PROGRESS, group="group-parent"),
+        _todo("after-keystone", RoadmapStatus.READY),
+        _todo("after-follower", RoadmapStatus.READY, after=["after-keystone"]),
+    ]
+
+    sections = build_roadmap_sections(todos)
+    by_slug = {n.todo.slug: n for n in sections.active} | {c.todo.slug: c for n in sections.active for c in n.children}
+
+    assert by_slug["group-parent"].is_holder is True
+    assert by_slug["group-child"].is_holder is False
+    assert by_slug["after-keystone"].is_holder is False
+    assert by_slug["after-follower"].is_holder is False
+
+
 def test_flatten_yields_depth_and_last_flags() -> None:
     """flatten emits DFS rows with depth and is_last for renderers."""
     todos = [

@@ -26,6 +26,13 @@ class RoadmapNode:
 
     todo: TodoDTO
     children: list[RoadmapNode] = field(default_factory=list)
+    is_holder: bool = False
+    """True only when other todos group-reference this slug (real holder).
+
+    Children attached via ``after``-dependencies do NOT make a node a holder —
+    a dep-parent has its own status and must render it. Only real holders
+    (todos that other todos point at via ``group_slug``) suppress status.
+    """
 
 
 @dataclass
@@ -108,6 +115,11 @@ def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
     by_slug = {t.slug: t for t in todos}
     visible = set(by_slug)
     after_map = {t.slug: t.after for t in todos}
+    # Holder set is data-driven: a slug is a holder iff some other todo in this
+    # section group-references it. After-deps never make a node a holder — the
+    # visual nesting of after-children under their dep is purely presentational;
+    # status suppression must NOT follow nesting.
+    holder_slugs = {t.group for t in todos if t.group and t.group in visible}
 
     parent_map: dict[str, str | None] = {}
     children_map: dict[str, list[str]] = {}
@@ -144,6 +156,7 @@ def _build_tree(todos: list[TodoDTO]) -> list[RoadmapNode]:
         return RoadmapNode(
             todo=by_slug[slug],
             children=[_node(child) for child in children_map.get(slug, [])],
+            is_holder=slug in holder_slugs,
         )
 
     return [_node(root) for root in ordered_roots]
@@ -200,7 +213,7 @@ def flatten(
                 depth=len(tree_lines),
                 is_last=row_is_last,
                 tree_lines=tree_lines,
-                is_holder=bool(node.children),
+                is_holder=node.is_holder,
             )
         )
         if node.children:
