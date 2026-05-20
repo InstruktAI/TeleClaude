@@ -1,10 +1,8 @@
 ---
 description: 'Canonical projection contract for reflecting session source truth into UI adapters.'
-delivered_by:
-- session-projection-input-acceptance-races
 id: 'project/spec/session-projection'
 scope: 'project'
-status: target
+status: actual
 type: 'spec'
 visibility: 'public'
 ---
