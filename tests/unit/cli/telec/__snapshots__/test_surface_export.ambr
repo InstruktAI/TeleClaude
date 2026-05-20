@@ -926,27 +926,39 @@
   
   ### `telec code add`
   
-  Stage NEW (untracked) files for the next commit
+  Stage files for the next commit (NEW, unmerged, or partial-staged tracked)
   
   **Usage:** `telec code add <path> [<path> ...]`
   
   **Notes:**
   
-  - Sealed equivalent of 'git add' for the one case git's data model requires staging: NEW files. Modified-tracked files don't need staging — pathspec commits them straight from the working tree.
+  - Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:
+  -   (1) NEW (untracked) files — must enter the index before commit pathspec can match.
+  -   (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.
+  -   (3) Partial-staged tracked files (staged hunks + later working-tree delta) — must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks. The partial-staging guard in `telec code commit` directs agents here for recovery.
+  - Modified-tracked files that are NOT partial-staged don't need staging — pathspec commits them straight from the working tree.
   - NEW files in scope are NOT auto-committed; this is the explicit declaration step. Without it, untracked files stay untracked (safety net for temp/scratch artifacts the agent may have created incidentally).
   - Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.
   
   ### `telec code commit`
   
-  Stage workspace-scoped files, lint, format, and commit
+  Commit workspace-scoped changes via a pathspec-scoped commit (sealed; no git forwarding)
   
-  **Usage:** `telec code commit "<message>" [--include <path> ...]`
+  **Usage:** `telec code commit "<message>" [--approved] [--include <path> ...]`
+  
+  **Flags:**
+  
+  - `--approved`: Human-approved commit gate. Required to commit on main; bare invocation prints Path A/B/C and exits.
+  - `--include`: Declare files outside workspace scope to add to this commit (space-separated paths).
   
   **Notes:**
   
   - Accepts only: one quoted message, --approved, and --include <path> ... .
+  - Modified-tracked files in scope are auto-committed via pathspec straight from the working tree — no staging needed.
+  - NEW (untracked) files in scope are NOT auto-committed; declare them via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts).
+  - Unmerged-index files in pathspec are staged internally for the integrator conflict path.
   - Without --approved on main: prints Path A/B/C classification and exits.
-  - Pathspec = workspace scope plus --include paths. Anything else in the index (staged by another session) is left untouched — there is no env-var bypass.
+  - Pathspec = workspace scope plus --include paths. Anything else in the index (foreign stage) is left untouched — there is no env-var bypass.
   - The 🤖/Co-Authored-By trailer is appended automatically (idempotent).
   
   '''

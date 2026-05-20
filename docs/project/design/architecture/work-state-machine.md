@@ -1,11 +1,11 @@
 ---
-description: 'Phase B state machine: build, review, fix, and finalize routing for implementation work.'
+description: 'Phase B state machine: build, review, fix, and finalize routing for implementation work. Terminal phase is finalize_ready; the integration event is emitted by the TodosDb write-state chokepoint on any lifecycle-phase write, not from within the work-step.'
 domain: 'software-development'
 id: 'project/design/architecture/work-state-machine'
 scope: 'project'
 type: 'design'
 visibility: 'public'
-status: actual
+status: 'actual'
 ---
 
 # Work State Machine — Design
@@ -16,7 +16,7 @@ The Work state machine routes implementation through four sub-phases: **Build �
 
 **Entry point:** `telec todo work [slug]`
 **Implementation:** [`next_work()`](../../../../teleclaude/core/next_machine/core.py)
-**Terminal outputs:** `COMPLETE`, `NO_READY_ITEMS`, `FINALIZE_READY` (with integration triggered by the `TodosDb` phase-transition chokepoint)
+**Terminal outputs:** `COMPLETE`, `NO_READY_ITEMS`, `FINALIZE_READY` (terminal Phase-B lifecycle phase; integration is triggered by the `TodosDb` write-state chokepoint when the phase is written, not by an in-machine handoff step)
 
 ### Referenced files
 
@@ -59,7 +59,7 @@ The Work state machine routes implementation through four sub-phases: **Build �
 - Code changes, tests, and commits (build)
 - `telec todo artifacts read {slug} review-findings` — structured findings with severity and verdict (review)
 - `telec todo artifacts read {slug} deferrals` — out-of-scope work identified during build (optional)
-- Integration trigger event `domain.software-development.planning.todo_finalize_ready`, emitted by the `TodosDb` phase-transition chokepoint after the `finalize_ready` state write commits
+- Integration handoff events (`branch.pushed`, `deployment.started`)
 - Updated `todo state (todos.db)` with phase progression
 
 ### State YAML structure
@@ -71,7 +71,7 @@ build_start_base_sha: abc123...
 deferrals_processed: false
 
 finalize:
-  status: pending # pending | ready
+  status: pending # pending | ready (terminal)
   branch: my-feature
   sha: abc123...
   ready_at: 2026-03-09T10:00:00+00:00
@@ -94,8 +94,8 @@ build_review:
 - **Ground-shift follow-up**: if `origin/main` is merged while review is in flight and the newly landed files overlap the current review surface, the state machine sends a targeted follow-up to the same reviewer instead of widening scope or spawning a new reviewer.
 - **Explicit build completion**: commits and passing gates are evidence only. Review does not reopen until the builder stamps `build_complete`.
 - **Review round limit**: after `max_review_rounds` (default 3) iterations, the machine returns `REVIEW_ROUND_LIMIT` for orchestrator decision instead of looping.
-- **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready`; the Work machine performs the triple-ref validation, advances to terminal `lifecycle_phase=finalize_ready`, and ends worker sessions in the same step.
-- **Integration emission is state-bound**: `TodosDb.write_state` / `write_state_sync` emit `domain.software-development.planning.todo_finalize_ready` after an owned-session commit that changes `lifecycle_phase` to `finalize_ready`. Same-phase rewrites emit nothing; concurrent duplicate emissions are deduped by `IntegrationTriggerCartridge` before integrator spawn.
+- **Finalize ownership**: `telec todo stamp --finalize-ready` records `finalize.status=ready` on the finalize sub-state; the Work machine performs the triple-ref-gated advance from `review_approved` to terminal `lifecycle_phase=finalize_ready` and ends the worker's child sessions and own session inside the same step. There is no separate `handed_off` follow-up phase.
+- **Integration emission is state-bound, not path-bound**: the `TodosDb.write_state` chokepoint fires a `_on_phase_transition` hook on every owned-commit lifecycle-phase change; the daemon-registered translator emits the `domain.software-development.planning.todo_finalize_ready` event on every `* → finalize_ready` transition the chokepoint observes, regardless of which writer (work-machine claim, reconcile, direct `mark-phase` override) produced it. v1 `TodosDb` does NOT serialize writers per project, so concurrent writers landing the same transition can each fire the hook — the chokepoint provides **at-least-once** emission at the bus layer. The `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup keyed on `(slug, sha, worker_session_id)` collapses duplicates to **exactly one** integrator spawn per logical event, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug. The work-step no longer emits the event directly. The integrator's periodic candidate scanner remains the in-band safety net for cases where the chokepoint emission was not delivered (e.g., daemon down).
 - **Stash prohibition**: git stash is forbidden in all agent workflows. The machine checks for stash debt.
 
 ## Primary flows
@@ -126,11 +126,11 @@ stateDiagram-v2
     state Finalize {
         [*] --> CheckDeferrals
         CheckDeferrals --> FinalizeWorker: deferrals processed
-        FinalizeWorker --> MarkReady: FINALIZE_READY
-        MarkReady --> Terminal: validate refs, write lifecycle_phase=finalize_ready
+        FinalizeWorker --> MarkReady: FINALIZE_READY (triple-ref gated)
+        MarkReady --> EndWorkerSessions: end child + own sessions
     }
 
-    Finalize --> [*]: FINALIZE_READY triggers Phase C via TodosDb chokepoint
+    Finalize --> [*]: lifecycle_phase=finalize_ready written via TodosDb chokepoint; integration emission and Phase C handoff happen outside the work machine
 ```
 
 ### Routing logic
@@ -148,7 +148,7 @@ flowchart TD
     DispatchFix["Dispatch /next-fix-review"]
     DispatchDefer["Dispatch /next-defer"]
     DispatchFinalize["Dispatch /next-finalize"]
-    Terminal["Terminal finalize_ready<br/>TodosDb chokepoint emits integration event"]
+    Terminal["lifecycle_phase=finalize_ready written<br/>TodosDb chokepoint fires _on_phase_transition<br/>daemon translator emits todo_finalize_ready<br/>worker sessions end inside the step"]
 
     Start --> ReadState
     ReadState --> PhaseCheck
@@ -220,12 +220,14 @@ sequenceDiagram
     F->>F: git fetch origin main, git merge origin/main
     F->>F: git push origin HEAD:slug
     F-->>O: FINALIZE_READY: slug
-    O->>O: telec todo stamp slug --finalize-ready
+    O->>O: telec todo mark-finalize-ready slug
     O->>O: telec sessions end finalizer-session
 
     O->>SM: telec todo work slug
-    SM->>SM: triple-ref validate, write lifecycle_phase=finalize_ready
-    SM->>I: TodosDb chokepoint emits (slug, branch, sha)
+    SM->>SM: triple-ref validate; write lifecycle_phase=finalize_ready via TodosDb.write_state
+    SM->>SM: end finalizer's child sessions + own session inside _work_step_finalize_ready
+    Note over SM,I: TodosDb write-state chokepoint fires _on_phase_transition; daemon-registered translator emits domain.software-development.planning.todo_finalize_ready
+    I->>I: IntegrationTriggerCartridge consumes the event and spawns the integrator (Phase C)
     Note over I: Phase C begins
 ```
 

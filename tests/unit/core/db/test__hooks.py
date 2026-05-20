@@ -12,7 +12,10 @@ from teleclaude.core.db._hooks import DbHooksMixin
 pytestmark = pytest.mark.asyncio
 
 
-async def test_get_agent_availability_restores_expired_unavailable_row(db: Db) -> None:
+async def test_get_agent_availability_restores_expired_unavailable_row(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     expired = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
     await db.mark_agent_unavailable("claude", expired, "quota_exhausted")
 
@@ -27,7 +30,10 @@ async def test_get_agent_availability_restores_expired_unavailable_row(db: Db) -
     }
 
 
-async def test_mark_agent_degraded_prefixes_reason_and_mark_agent_available_clears_it(db: Db) -> None:
+async def test_mark_agent_degraded_prefixes_reason_and_mark_agent_available_clears_it(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     future = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     await db.mark_agent_degraded("codex", "rate_limited", degraded_until=future)
 
@@ -51,7 +57,10 @@ async def test_mark_agent_degraded_prefixes_reason_and_mark_agent_available_clea
     }
 
 
-async def test_clear_expired_agent_availability_only_resets_expired_rows(db: Db) -> None:
+async def test_clear_expired_agent_availability_only_resets_expired_rows(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     expired = (datetime.now(UTC) - timedelta(minutes=5)).isoformat()
     future = (datetime.now(UTC) + timedelta(minutes=5)).isoformat()
     await db.mark_agent_unavailable("claude", future, "quota_exhausted")
@@ -188,7 +197,7 @@ async def test_fetch_hook_outbox_batch_none_exclusion_returns_all(db: Db) -> Non
     assert [row["id"] for row in batch] == [id_a, id_b]
 
 
-async def test_cleanup_hook_outbox_deletes_expired_and_orphan_rows(db: Db) -> None:
+async def test_cleanup_hook_outbox_deletes_expired_and_orphan_rows(db: Db, cluster_event_bus: None) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",

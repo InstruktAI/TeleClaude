@@ -159,6 +159,7 @@ class TestApiServerHttpRoutes:
                 "review_status": None,
                 "deferrals_status": None,
                 "files": [],
+                "version_total": 0,
                 "after": [],
                 "group": None,
                 "delivered_at": None,

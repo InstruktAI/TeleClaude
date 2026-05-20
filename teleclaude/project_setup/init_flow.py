@@ -140,7 +140,7 @@ def _detect_and_set_languages(project_root: Path) -> None:
             print(f"Frontend root: {detected_frontend}/")
         if existing_languages:
             print(f"Current config: {', '.join(existing_languages)}")
-        if not _prompt_yes_no("Update language configuration?"):
+        if not _prompt_yes_no("Update language configuration?", default=False):
             return
 
     # Write via ruamel.yaml to preserve comments
@@ -297,10 +297,16 @@ def init_project(project_root: Path) -> None:
     registers the project root, and prompts for release-channel enrollment.
     Idempotent and CI-safe; spawns no agent sessions.
 
+    Mother-aware: when invoked inside the TeleClaude repo itself, site-project
+    bootstrap steps (skeleton deployment, release-channel prompt) are skipped
+    — they only make sense for downstream projects.
+
     AI-driven project analysis and quality-config assessment live in
     ``teleclaude.project_setup.onboard_flow`` and are invoked via the
     ``telec projects {onboard,analyze,assess}`` commands.
     """
+    is_mother = _is_teleclaude_project(project_root)
+
     configure_agent_cli()
     ensure_git_repo(project_root)
     ensure_hooks_path(project_root)
@@ -313,7 +319,8 @@ def init_project(project_root: Path) -> None:
     # present before the project is registered with the catalog.
     sync_project_artifacts(project_root)
     _detect_and_set_languages(project_root)
-    deploy_skeleton(project_root)
+    if not is_mother:
+        deploy_skeleton(project_root)
     _ensure_project_slug(project_root)
     register_root(project_root=project_root)
     seed_event_domains(project_root)
@@ -323,11 +330,11 @@ def init_project(project_root: Path) -> None:
         run_permissions_probe(project_root)
 
     # Bootstrap help desk workspace if running from the TeleClaude project
-    if _is_teleclaude_project(project_root):
+    if is_mother:
         _bootstrap_help_desk(project_root)
-
-    # Release channel enrollment
-    _prompt_release_channel(project_root)
+    else:
+        # Release channel enrollment is a downstream-project concern.
+        _prompt_release_channel(project_root)
 
     print("telec projects init complete.")
 

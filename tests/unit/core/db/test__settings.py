@@ -26,7 +26,7 @@ async def test_assign_voice_and_get_voice_return_latest_assignment(db: Db) -> No
     assert voice == VoiceConfig(service_name="openai", voice="verse")
 
 
-async def test_get_voices_in_use_only_counts_non_closed_sessions(db: Db) -> None:
+async def test_get_voices_in_use_only_counts_non_closed_sessions(db: Db, cluster_event_bus: None) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",
@@ -53,7 +53,10 @@ async def test_get_voices_in_use_only_counts_non_closed_sessions(db: Db) -> None
     assert voices == {("openai", "alloy")}
 
 
-async def test_cleanup_stale_voice_assignments_keeps_open_teleclaude_and_native_session_rows(db: Db) -> None:
+async def test_cleanup_stale_voice_assignments_keeps_open_teleclaude_and_native_session_rows(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",

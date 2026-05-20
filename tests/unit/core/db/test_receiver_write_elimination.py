@@ -127,7 +127,7 @@ class TestNativeMetadataUpdateOutboxEvent:
                 event_types.add(val)
         assert "native_metadata_update" in event_types
 
-    async def test_native_metadata_update_payload_structure(self, db: Any) -> None:
+    async def test_native_metadata_update_payload_structure(self, db: Any, cluster_event_bus: None) -> None:
         """Receiver emits native_metadata_update with the fields required by the daemon handler.
 
         The actual receiver enqueue path must produce a payload that carries
@@ -182,11 +182,7 @@ class TestNativeSessionRefreshOutboxEvent:
 class TestDaemonProcessesNewEventTypes:
     """The daemon's outbox worker has handlers for the three new event types."""
 
-    @pytest.mark.parametrize(
-        "event_type",
-        ["checkpoint_seen", "native_metadata_update", "native_session_refresh"],
-    )
-    def test_daemon_has_handler_for_new_event_type(self, event_type: str) -> None:
+    def test_daemon_has_handlers_for_new_event_types(self) -> None:
         """The daemon outbox worker registers a handler for each new event type.
 
         After processing checkpoint_seen, session.last_checkpoint_at is updated.
@@ -197,13 +193,14 @@ class TestDaemonProcessesNewEventTypes:
         # The daemon hook outbox module should have handler registration
         source_path = Path(daemon_hook_outbox.__file__)
         source = source_path.read_text(encoding="utf-8")
-        assert event_type in source, f"Daemon outbox worker has no handler for '{event_type}'"
+        for event_type in ("checkpoint_seen", "native_metadata_update", "native_session_refresh"):
+            assert event_type in source, f"Daemon outbox worker has no handler for '{event_type}'"
 
 
 class TestCheckpointSeenDaemonHandler:
     """Daemon correctly applies checkpoint_seen events to session state."""
 
-    async def test_checkpoint_seen_updates_last_checkpoint_at(self, db: Any) -> None:
+    async def test_checkpoint_seen_updates_last_checkpoint_at(self, db: Any, cluster_event_bus: None) -> None:
         """After processing a checkpoint_seen event, the session's
         last_checkpoint_at field reflects the timestamp from the event payload.
         """
@@ -237,7 +234,7 @@ class TestCheckpointSeenDaemonHandler:
 class TestNativeMetadataDaemonHandler:
     """Daemon correctly applies native_metadata_update events."""
 
-    async def test_native_metadata_update_persists_fields(self, db: Any) -> None:
+    async def test_native_metadata_update_persists_fields(self, db: Any, cluster_event_bus: None) -> None:
         """After processing native_metadata_update, native_session_id and
         native_log_file are updated on the session row.
         """
@@ -265,7 +262,11 @@ class TestNativeMetadataDaemonHandler:
         assert updated.native_session_id == "native-abc"
         assert updated.native_log_file == "/tmp/transcript.jsonl"
 
-    async def test_native_metadata_update_preserves_transcript_chain(self, db: Any) -> None:
+    async def test_native_metadata_update_preserves_transcript_chain(
+        self,
+        db: Any,
+        cluster_event_bus: None,
+    ) -> None:
         """When native_log_file changes, the previous value is appended to
         transcript_files (chain accumulation is preserved after the conversion).
         """
@@ -310,7 +311,7 @@ class TestNativeMetadataDaemonHandler:
 class TestNativeSessionRefreshDaemonHandler:
     """Daemon correctly applies native_session_refresh events to session state."""
 
-    async def test_native_session_refresh_updates_native_session_id(self, db: Any) -> None:
+    async def test_native_session_refresh_updates_native_session_id(self, db: Any, cluster_event_bus: None) -> None:
         """After processing native_session_refresh, the session row reflects the new
         native_session_id from the event payload.
 
@@ -337,7 +338,11 @@ class TestNativeSessionRefreshDaemonHandler:
             "native_session_refresh handler did not update native_session_id"
         )
 
-    async def test_native_session_refresh_clears_stale_id_when_none(self, db: Any) -> None:
+    async def test_native_session_refresh_clears_stale_id_when_none(
+        self,
+        db: Any,
+        cluster_event_bus: None,
+    ) -> None:
         """native_session_refresh with None clears a previously-set stale native_session_id."""
         await db.create_session(
             computer_name="test-mac",

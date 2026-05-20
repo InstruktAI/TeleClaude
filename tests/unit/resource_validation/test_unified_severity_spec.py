@@ -176,7 +176,7 @@ class TestSyncWarnOnlyLeniencyPreserved:
 
         m.clear_errors()
 
-        def inject_finding(_pr: Path) -> None:
+        def inject_finding(_pr: Path, **_kwargs: object) -> None:
             m._error("test_finding", path="docs/test.md")
 
         monkeypatch.setattr(sync, "validate_all_snippets", inject_finding)
@@ -198,7 +198,7 @@ class TestSyncWarnOnlyLeniencyPreserved:
 
         m.clear_errors()
 
-        def inject_finding(_pr: Path) -> None:
+        def inject_finding(_pr: Path, **_kwargs: object) -> None:
             m._error("test_finding", path="docs/test.md")
 
         monkeypatch.setattr(sync, "validate_all_snippets", inject_finding)

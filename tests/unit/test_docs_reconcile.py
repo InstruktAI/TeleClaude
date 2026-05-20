@@ -303,7 +303,7 @@ def test_rewrite_delivered_by_slug_leaves_snippets_valid_for_new_roadmap_slug(tm
 
     _snippet.validate_all_snippets(
         tmp_path,
-        roadmap_status_map={"new-slug": _snippet.ROADMAP_STATUS_ACTIVE},
+        roadmap_status_map={"new-slug": RoadmapStatus.ACTIVE},
     )
 
     findings = _models.get_errors()

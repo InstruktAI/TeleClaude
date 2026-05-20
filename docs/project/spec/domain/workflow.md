@@ -6,11 +6,10 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-  - v2-workflow-cutover
-  - removal-snippet-frontmatter-sync
-  - roadmap-trash-reveal-ui
-  - v2-workflow-cli-refinement-commands
-  - v1-workflow-creation-hardening
+- v2-workflow-cutover
+- removal-snippet-frontmatter-sync
+- roadmap-trash-reveal-ui
+- v2-workflow-cli-refinement-commands
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -140,7 +139,8 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   - **Removed entries are invisible to every default read path.** Every slug→row resolver, the roadmap-assembly read, cache-backed default reads, AND slug-enumeration paths (notably `list_slugs` over `todo_state` and its service/protocol wrappers) exclude `status=removed` by default — exactly as non-included delivered/icebox entries are excluded. Because soft-remove retains `todo_state` rows, any state-derived enumeration that does not gate through live roadmap status would leak removed todos; the gating contract is therefore exhaustive and includes `list_slugs`. A removed entry does not participate in the active dependency graph. **Two sanctioned reveal paths exist alongside the default-hide invariant**, both strictly opt-in: the durable row-id-addressed reactivation query (used by the recovery primitive — UC-WFL-12), and the operator-facing recovery surface (UC-WFL-14 / UC-WFL-15) — `telec roadmap list --include-removed` / `--removed-only`, `telec todo show <slug>` with the opt-in reveal flag, and the TUI trash-toggle. **Reveal paths split by surface — CLI reaches the workflow DB via the existing resolvers (locally for `roadmap list`, via the daemon REST API for `todo show`); the daemon cache contract is TUI-only:** the CLI reveal consumers each follow their existing topology. `telec roadmap list --include-removed` / `--removed-only` invokes `assemble_roadmap_from_db` locally with the new `include_removed` / `removed_only` keyword args. `telec todo show --include-removed` continues to call the daemon REST API (`GET /todos/{slug}/show?include_removed=true` via the existing `tool_api_request` client); the new include-removed resolver lives on the API route and assembles the row-id-backed show payload server-side. Neither CLI command consults the daemon roadmap cache snapshot. The daemon roadmap cache is scoped to the high-frequency TUI roadmap pane: it stores one snapshot per project that holds the full persisted roadmap including `removed` rows (preserving the cache-system "Single Snapshot Per Scope" invariant); every default cache accessor applies a filter at read time that excludes `removed`, so the TUI's default sections continue to see exactly what the default resolvers expose; the TUI Trashed section reads the SAME cache snapshot with the filter relaxed via a per-call opt-in flag. The filter — never the snapshot — is what changes between default and reveal paths on the TUI side, and the cache shape itself never widens to a second-snapshot variant. Orchestration slug enumeration, integration finalize, and work dispatch always use the default-filtered path. Snippet validation is the explicit exception named in the adjacent invariant below — it reads the roadmap status map directly (treating `removed` as known-but-not-delivered) rather than through the default-hidden filter, so retained removed slugs don't trigger `snippet_delivered_by_unknown_slug` during the recovery window.
   - **Removed entries do not collide with slug reuse.** The active-slug uniqueness constraint covers only `status IN ('active','icebox')`; `removed` sits outside that predicate, so a freshly created entry may reuse a slug while a removed-and-retained twin still exists. No uniqueness-index change is required. Crucially, a removed entry holds NO live slug-keyed `roadmap_deps` rows (they were scrubbed at soft-remove, outgoing parked in the row-id-keyed `removed_deps` tombstone), so a same-slug recreate starts with a clean dependency set and cannot inherit the removed entry's edges. Reactivation (which restores `removed_deps`) is itself fail-closed against a live same-slug twin, so the two can never both hold live edges for the slug.
   - **Retention finalization is automatic and row-id-only.** Routine maintenance hard-purges entries with `removed_at` older than the fixed retention window (the same window applied to closed sessions) by hard-`DELETE`ing the retained roadmap row **by durable row id**; the `ON DELETE CASCADE` FK removes state/artifacts/versions. The purge performs **zero slug-keyed operations** — no `roadmap_deps` scrub (not even defensively) and no worktree/branch/workspace cleanup — because all slug-keyed teardown ran at soft-remove and a same-slug live todo may exist by purge time; a slug-keyed op here would destroy that live todo's edges or resources. The full removal cascade is preserved, split across the two phases: all slug-keyed teardown at soft-remove, physical row + FK cascade at purge. It does not call the slug-keyed remove helpers. Each sweep self-heals legacy/partial rows. This finalizes an already-explicit operator removal after a recovery grace period; it is not blind pruning of live durable data.
-  - **Retention purge is atomic with documentation reconciliation.** A retained roadmap row may be named as a `delivered_by` slug on `target` / `mixed` doc snippets. The retention sweep couples the per-row hard-`DELETE` with snippet frontmatter reconciliation so that no snippet ever points at a slug whose roadmap row no longer exists. Reconciliation reuses the canonical frontmatter primitives (the same parse/render engine the post-delivery flip uses) and applies a row-keyed rule: (a) **multi-slug** `delivered_by` — the purged slug is dropped from the list; the snippet keeps its `status: target` / `mixed`; the row is then hard-DELETEd in the same sweep; (b) **sole-slug** `delivered_by` (the purged slug is the only entry) — the snippet is NOT auto-mutated and the hard-DELETE for that one row is SKIPPED on this sweep; the sweep emits a structured WARNING naming the snippet path and the orphaning slug, then continues with the remaining expired rows. The sole-slug case is deliberate: silently flipping the snippet to `status: actual` would assert delivery of work that was never delivered, so the sweep stalls the purge for that one row until a human edits the snippet (flip to `actual`, drop `delivered_by`, or update body). The ordering guarantee for the multi-slug case is **snippet write completes before the row hard-DELETE**; the inverse ordering is forbidden because it leaves snippets transiently pointing at a non-existent slug. Concurrent `telec sync` therefore never observes a snippet whose `delivered_by` names a vanished roadmap row.
+  - **Decision-time orphan refusal at soft-remove.** `telec todo remove` / `telec roadmap remove` refuses synchronously, before any DB state changes, if soft-removing the slug would leave any `target` / `mixed` snippet's `delivered_by` with no live deliverer. "Live deliverer" = a slug whose roadmap status is anything other than `removed` (active, icebox, delivered all count as live). The check scans on-disk snippet frontmatter via the canonical `_iter_snippet_files` primitive in `docs_reconcile` — no parallel scanner is introduced. A refused operation returns a structured error naming every blocking snippet, the slug's role in each, and the live-deliverer count; the row's status is unchanged, no snippet files are touched, and no slug-keyed teardown runs. The invoking agent reads the structured error and decides the next action in its own flow (dispatch a doc-update lifecycle op to drop the orphaning reference, then retry; or abandon the remove). This in-flow refusal is what makes the sole-slug-orphan case at purge time unreachable by construction; no `blocked` field, no queued drift task, no auto-flip on someone else's behalf.
+  - **Retention purge is atomic with documentation reconciliation AND a pathspec git commit.** A retained roadmap row may still be named alongside other live deliverers on `target` / `mixed` doc snippets at purge time (the decision-time refusal guarantees at least one other live deliverer exists for every snippet that referenced the slug). The retention sweep couples the per-row hard-`DELETE` with snippet frontmatter reconciliation AND a pathspec-scoped local `git commit` on the project root so that (a) no snippet ever points at a slug whose roadmap row no longer exists, and (b) no snippet write is left uncommitted in the daemon's working tree after a sweep returns. Reconciliation reuses the canonical frontmatter primitives in `docs_reconcile` (the same parse/render engine the post-delivery flip uses); no duplicate parse/render is introduced. The purge handles only the **multi-slug** case — drop the purged slug from `delivered_by`; the snippet keeps its `status: target` / `mixed`; no other frontmatter changes. If the sweep ever observes a snippet whose `delivered_by` would be left with zero live deliverers after this row's purge — i.e. the unreachable sole-slug-orphan case — that is a contract violation in the soft-delete refusal logic upstream and the sweep raises a defensive `RuntimeError` naming the snippet and the roadmap row. It never silently skips, never sets `blocked`, never auto-flips, never queues work. **Per-row ordering is fixed:** (1) write the mutated snippet file; (2) `git add -- <path>` restricted to the exact snippet paths the sweep is mutating in this iteration, never `git add -A` / `git add .`; (3) non-interactive `git commit` against the project root (no `--no-verify` — the project's pre-commit hooks run exactly as they would for any human commit, because a hook rejection is a real signal the sweep must not paper over); (4) hard-`DELETE` the roadmap row. Each step is gated on the previous; the inverse ordering is forbidden because it leaves the docs layer in a state `telec sync` would reject or the working tree dirty. The commit invocation reuses the existing `_run_git_cmd` helper in `teleclaude/core/next_machine/delivery.py` — no parallel git wrapper, no raw `subprocess.run(["git", ...])`. The commit message is stable and structured (e.g. `chore(roadmap): purge <slug>; reconcile delivered_by in <N> snippets`) so the resulting git history is self-explanatory. **Working-tree precondition:** before mutating a snippet file the sweep verifies the file's path is not already modified in the working tree from a non-sweep source. If the path is dirty, the sweep skips that row for this hour, emits a structured INFO log with `path`, `slug`, `roadmap_id`, and the dirty-precondition reason, and continues with the remaining expired rows; the in-progress edit is never overwritten, staged, or committed. The next sweep retries; the situation clears autonomously when the editor finishes. **Commit-failure handling:** if the `git commit` returns non-zero (pre-commit hook reject, write race, etc.), the DB `DELETE` for that row does NOT fire, the snippet file mutation is left on disk in its target state, and the sweep emits a structured INFO log with `path`, `slug`, `roadmap_id`, and the failure reason; the next sweep retries (reconcile is a no-op because the file is already in its target state, only the commit needs to succeed). Persistent commit failure is a real bug (the hook is rejecting something it shouldn't) that surfaces as code investigation, never as drift queued on anyone. The commit is local — pushing to remote is owned by the integration flow, never by the sweep. Concurrent `telec sync` therefore never observes a snippet whose `delivered_by` names a vanished roadmap row, and the daemon's working tree is never left dirty after a sweep returns.
   - **Soft-removed slugs remain known to the doc snippet validator during the trash window.** Snippet validation queries the roadmap status map; an entry whose status is `removed` is treated as a known slug (validation does not raise `snippet_delivered_by_unknown_slug` against it) but is NOT treated as `delivered` for the unflipped-drift check. This keeps `telec sync` operational across soft-remove / reactivate cycles without prematurely retiring snippet targets, while preserving the existing safety on genuinely unknown slugs and on delivered-but-unflipped drift.
   - **Reactivation is fail-closed.** The primitive takes a **durable roadmap row id** (not a slug — repeated remove/recreate can leave multiple `removed` rows per slug). It fully recovers that row's own footprint (roadmap row + state + artifacts + versions) to the persisted `prev_status` (legacy-row fallback `icebox`) and replays `removed_deps` as the entry's outgoing `after` edges — making the entry indistinguishable from never-removed at its own aggregate level. Inbound edges other todos held on the slug are NOT resurrected: they were scrubbed at remove time and are those other todos' state (a dependent re-declares if still needed). It refuses and mutates nothing if a live (`active`/`icebox`) entry exists for that row's slug, or if the id does not name a `removed` row — it never overwrites, merges, or silently resurrects. Targeted/rename restore is out of scope for this context (it belongs to the recovery UI, which supplies the row id).
 - **Identifier:** the per-project roadmap is unique per project; no separate identifier.
@@ -298,15 +298,15 @@ cutover.
     roadmap.
   - **`integration`** — slug-keyed subscription bookkeeping. Receives the
     pair from the bus subscriber the same way the daemon does.
-    A rename changes the aggregate's active alias; consumers that cache by
-    slug cannot learn the re-key from a generic `workflow.todo.updated`
-    (which carries only the post-rename slug), so a dedicated event carrying
-    the `(old_slug, new_slug)` pair is required rather than reusing
-    `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
-    fallback when a payload-aware dispatcher has not yet been wired) is an
-    implementation-plan concern; the durable contract is the `(old_slug,
-new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
-    WebSocket / integration subscriber.
+  A rename changes the aggregate's active alias; consumers that cache by
+  slug cannot learn the re-key from a generic `workflow.todo.updated`
+  (which carries only the post-rename slug), so a dedicated event carrying
+  the `(old_slug, new_slug)` pair is required rather than reusing
+  `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
+  fallback when a payload-aware dispatcher has not yet been wired) is an
+  implementation-plan concern; the durable contract is the `(old_slug,
+  new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
+  WebSocket / integration subscriber.
 - **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
 - **Posture:** `commit-then-emit`.
 
@@ -471,12 +471,24 @@ And the orchestrator is told which dependencies are unmet
 
 ```
 Given an operator or agent runs `telec todo remove <slug>` (or `telec roadmap remove <slug>`)
+And no target/mixed snippet's delivered_by would be left with zero live deliverers if this slug were soft-removed (a live deliverer is any slug whose roadmap status is active, icebox, or delivered — soft-removed slugs do not count)
 Then workflow marks the roadmap entry status=removed and removed_at=now()
 And captures prev_status and snapshots the entry's outgoing after-edges into the removal tombstone (removed_deps)
 And retains the Todo state, all artifacts, and all artifact versions (no cascade delete)
 And performs ALL slug-keyed teardown now, while the slug unambiguously names this entry: deletes from the live roadmap_deps table BOTH the entry's outgoing edges (slug == removed_slug) and inbound edges (depends_on == removed_slug); and removes the slug's git worktree, local + remote branch, and workspace directory
 And the entry disappears from every default CLI/TUI/cache read
 And a new todo may immediately be created reusing the same slug with no inherited dependencies, no worktree/branch clash, and no collision
+```
+
+```
+Given an operator or agent runs `telec todo remove <slug>` (or `telec roadmap remove <slug>`)
+And at least one target/mixed snippet's delivered_by lists this slug AND every other slug in that snippet's delivered_by is itself in status=removed (or this slug is the sole entry)
+When workflow synchronously scans on-disk snippet frontmatter via the canonical _iter_snippet_files primitive before any DB state transition
+Then workflow refuses the remove with a structured error naming every blocking snippet path, the slug's role in each (sole entry vs. last-live-among-removed), and the live-deliverer count
+And no DB state changes — the roadmap row's status is unchanged, no tombstone is written, no removed_deps snapshot is taken
+And no snippet files are mutated
+And no slug-keyed teardown runs — the worktree, branches, and workspace remain intact
+And the invoking agent reads the structured error and resolves the orphan (drops the delivered_by reference via a doc-update lifecycle op, or abandons the remove) before retrying
 ```
 
 #### UC-WFL-11: Retention purge finalizes an expired removal
@@ -492,20 +504,40 @@ And legacy/partial removed rows are self-healed (normalized) on the same sweep
 ```
 
 ```
-Given a roadmap row is expired and a target/mixed snippet's delivered_by lists this slug alongside at least one other slug
-When the retention maintenance sweep runs
-Then workflow rewrites the snippet's frontmatter to drop just this slug from delivered_by, preserving status: target / mixed
-And the snippet write completes on disk before the roadmap row hard-DELETE is issued
-And after the sweep, telec sync validates the snippet cleanly with no snippet_delivered_by_unknown_slug error for this slug
+Given a roadmap row is expired and one or more target/mixed snippets' delivered_by lists this slug alongside at least one other live deliverer (the decision-time orphan refusal at soft-remove guarantees no snippet can be sole-slug-dependent on a removed slug)
+When the retention maintenance sweep runs against the project's working tree
+Then workflow writes each affected snippet's frontmatter to drop just this slug from delivered_by, preserving status: target / mixed; reconciliation reuses the canonical docs_reconcile primitives (no duplicate parse/render)
+And workflow stages the mutated snippet paths via `git add -- <path>` against the project root, restricted to exactly the paths the sweep is mutating in this iteration (never `git add -A` / `git add .`); the existing _run_git_cmd helper in teleclaude/core/next_machine/delivery.py is reused (no parallel git wrapper)
+And workflow runs a non-interactive `git commit` against the project root (no --no-verify; the project's pre-commit hooks run exactly as they would for any human commit) with a stable structured message naming the purged slug and the snippet count
+And only after the commit succeeds does workflow hard-DELETE the roadmap row by durable row id
+And after the sweep returns, `git status` on the project root shows no modified snippet files from this sweep, and `telec sync` validates cleanly with no snippet_delivered_by_unknown_slug error for the purged slug
 ```
 
 ```
-Given a roadmap row is expired and a target/mixed snippet's delivered_by lists this slug as its only entry
-When the retention maintenance sweep runs
-Then workflow does NOT mutate the snippet's frontmatter
-And workflow SKIPS the hard-DELETE for that one roadmap row on this sweep
-And workflow emits a structured WARNING log naming the snippet path and the orphaning slug so the operator can resolve it
-And other expired removed rows on the same sweep that are not blocked by sole-slug snippets are purged normally
+Given a roadmap row is expired and a target/mixed snippet that the sweep would mutate is already modified in the working tree from a non-sweep source (someone is mid-edit, or a previous sweep left a write+failed-commit residue on a different snippet path the same row would touch)
+When the retention maintenance sweep encounters that row
+Then workflow does NOT mutate the snippet file, does NOT call `git add`, does NOT call `git commit`, and does NOT hard-DELETE the roadmap row
+And workflow emits a structured INFO log naming `path`, `slug`, `roadmap_id`, and the dirty-precondition reason
+And workflow continues with the remaining expired rows on this sweep that are not blocked by working-tree preconditions of their own
+And the next maintenance sweep retries this row; the situation resolves itself when the editor finishes their work or backs out their changes — no drift task is queued on anyone
+```
+
+```
+Given a roadmap row is expired and the snippet frontmatter mutation completes on disk, but the subsequent non-interactive `git commit` returns non-zero (pre-commit hook rejection, write race, or other failure)
+When the retention maintenance sweep observes the commit failure
+Then workflow does NOT hard-DELETE the roadmap row
+And workflow leaves the snippet file in its mutated (target-state) form on disk; no rollback of the file write
+And workflow emits a structured INFO log naming `path`, `slug`, `roadmap_id`, and the commit_failure_reason
+And the next maintenance sweep retries: reconciliation is a no-op because the file is already in its target state, and only the `git commit` step needs to succeed for the per-row sequence to complete
+And persistent commit failure surfaces as a real bug (the hook is rejecting something it shouldn't) for a worker to investigate as code; no drift task is queued
+```
+
+```
+Given a roadmap row is expired and a target/mixed snippet's delivered_by would be left with zero live deliverers after this row's purge (an unreachable state under the decision-time orphan refusal at soft-remove)
+When the retention maintenance sweep encounters that snippet during reconciliation
+Then workflow raises a defensive RuntimeError naming the snippet path and the roadmap row id, and does NOT mutate the file, does NOT call `git add` / `git commit`, and does NOT hard-DELETE the row
+And the RuntimeError indicates a contract violation upstream in the soft-delete refusal logic — a code bug, not a runtime data condition; investigation kicks off as a code task, not as drift bookkeeping
+And the sweep does not silently skip, does not set `blocked`, and does not auto-flip the snippet
 ```
 
 #### UC-WFL-12: Reactivate a removed todo
@@ -741,7 +773,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 - [`state-stamping`](../feature/workflow/state-stamping.md) — `telec todo stamp` and the validated state-write boundary (`StateWriter`, `ApprovalsManager`, `ReviewManager`) that owns approvals, verdicts, skip stamps, drift acknowledgments, and finalize handoff.
 - [`artifact-versioning`](../feature/workflow/artifact-versioning.md) — Multi-version workflow artifact storage with SHA256 digest, diff between digests, and cascade delete. Provenance (codebase_sha, referenced_paths) lives on the Todo state, not the artifact row.
 - [`prepare-state-machine`](../feature/workflow/prepare-state-machine.md) — Phase A dispatcher: draft → PRD → architecture (optional) → plan → prepared, with PRD as the sole human approval gate and reviewer verdicts gating derived artifacts.
-- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → terminal `finalize_ready`, with per-(repo, slug) single-flight lock, machine-owned `prepared → build_started` handoff, and `TodosDb` phase-transition chokepoint emission for integration.
+- [`work-state-machine`](../feature/workflow/work-state-machine.md) — Phase B dispatcher: prepared → build → review → fix → finalize_ready (terminal), with per-(repo, slug) single-flight lock and machine-owned `prepared → build_started` handoff. The `todo_finalize_ready` integration event is emitted by the TodosDb write-state chokepoint hook, not from within the work-step, so any writer that lands the terminal phase (work-machine claim, reconcile, direct `mark-phase`) produces the event. v1 TodosDb does not serialize writers per project, so the chokepoint provides at-least-once emission per actual `* → finalize_ready` transition; the `IntegrationTriggerCartridge`'s `_spawned_event_keys` dedup on `(slug, sha, worker_session_id)` collapses duplicates to exactly-one integrator spawn, and the integrator's `integration/main` singleton lease serializes spawns into a single integration run per slug.
 - [`integration-state-machine`](../feature/workflow/integration-state-machine.md) — Phase C: lease-serialized 12-state machine that squash-merges from `trees/_integration/` and pushes `origin/main`; durable checkpoint enables crash recovery.
 - [`worktree-prep-lifecycle`](../feature/workflow/worktree-prep-lifecycle.md) — Per-slug git worktree at `trees/<slug>/` with a digest-tracked prep marker; archives binary artifacts on delivery cleanup.
 - [`dependency-graph`](../feature/workflow/dependency-graph.md) — DAG of `after` edges across roadmap entries with cycle detection at the API boundary; unmet dependencies block prepare/work dispatch.

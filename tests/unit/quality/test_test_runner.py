@@ -402,6 +402,27 @@ class TestPathValidation:
 class TestVitestScoping:
     """vitest only runs when TypeScript files are in scope or running full suite."""
 
+    def test_vitest_uses_frontend_cli_config(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """The repo-wide runner uses the frontend's declared Vitest CLI config."""
+        frontend = tmp_path / "frontend"
+        frontend.mkdir()
+        runner = TestRunner(tmp_path)
+        calls: list[list[str]] = []
+
+        def _run(cmd: list[str], *, cwd: str, check: bool) -> CompletedProcess[str]:
+            calls.append(cmd)
+            return CompletedProcess(cmd, 0)
+
+        monkeypatch.setattr("teleclaude.quality.test_runner.subprocess.run", _run)
+
+        runner._run_vitest()
+
+        assert calls == [["npx", "--yes", "vitest", "run", "--config", "vitest.cli.config.ts"]]
+
     def test_vitest_skipped_for_python_only_session_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -479,7 +500,7 @@ class TestRustTestRunner:
     def test_single_crate_scope_invokes_package_cargo_test(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Single-crate Rust scope runs cargo test -p package."""
+        """Single-crate Rust scope runs package-scoped library tests."""
         _write_rust_workspace(tmp_path)
         cargo_calls: list[tuple[list[str], Path]] = []
         pytest_calls: list[list[str]] = []
@@ -506,12 +527,12 @@ class TestRustTestRunner:
         runner.run(targets=targets)
 
         assert pytest_calls == []
-        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW, "--lib"], tmp_path)]
 
     def test_cross_crate_scope_invokes_workspace_cargo_test(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Cross-crate Rust scope runs cargo test --workspace."""
+        """Cross-crate Rust scope runs workspace library tests."""
         _write_rust_workspace(tmp_path)
         cargo_calls: list[tuple[list[str], Path]] = []
 
@@ -532,10 +553,10 @@ class TestRustTestRunner:
         targets = runner.resolve_targets()
         runner.run(targets=targets)
 
-        assert cargo_calls == [(["cargo", "test", "--workspace"], tmp_path)]
+        assert cargo_calls == [(["cargo", "test", "--workspace", "--lib"], tmp_path)]
 
     def test_run_all_invokes_workspace_cargo_test(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """--all Rust test runs cargo test --workspace."""
+        """--all Rust test runs workspace library tests."""
         _write_rust_workspace(tmp_path)
         cargo_calls: list[tuple[list[str], Path]] = []
         pytest_calls: list[list[str]] = []
@@ -555,7 +576,7 @@ class TestRustTestRunner:
         runner.run(targets=targets)
 
         assert pytest_calls == []
-        assert cargo_calls == [(["cargo", "test", "--workspace"], tmp_path)]
+        assert cargo_calls == [(["cargo", "test", "--workspace", "--lib"], tmp_path)]
 
     def test_mixed_python_and_rust_runs_pytest_and_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Mixed Python+Rust scope runs pytest companions and cargo test."""
@@ -587,7 +608,7 @@ class TestRustTestRunner:
         runner.run(targets=targets)
 
         assert pytest_calls == [[PYTHON_TEST, "-m", "not expensive", "-q"]]
-        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW, "--lib"], tmp_path)]
 
     def test_rust_only_scope_does_not_exit_when_no_python_companions(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -613,7 +634,7 @@ class TestRustTestRunner:
         targets = runner.resolve_targets()
         runner.run(targets=targets)
 
-        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW], tmp_path)]
+        assert cargo_calls == [(["cargo", "test", "-p", PACKAGE_WORKFLOW, "--lib"], tmp_path)]
 
     def test_python_only_project_does_not_invoke_cargo(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """Rust-looking paths do not run cargo when rust is absent."""

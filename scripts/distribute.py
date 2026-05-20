@@ -470,11 +470,23 @@ def _exec_directive_env(project_root: Path) -> dict[str, str]:
     return env
 
 
+# Process-lifetime cache: ``@exec`` commands are pure CLI help-text invocations
+# that re-running within one ``distribute.py`` run cannot change. The same set
+# of directives is expanded once per agent (claude/codex/gemini) and once per
+# phase (global + local), so without caching the same ``telec -h``-style
+# subprocess fires 20-30+ times and dominates wall time.
+_EXEC_DIRECTIVE_CACHE: dict[tuple[str, str], str | None] = {}
+
+
 def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool = False) -> str:
     """Expand ``<!-- @exec: command -->`` directives by running the command and inserting stdout."""
 
     def _run(match: re.Match[str]) -> str:
         cmd = match.group(1)
+        cache_key = (str(project_root), cmd)
+        cached = _EXEC_DIRECTIVE_CACHE.get(cache_key)
+        if cached is not None:
+            return cached
         try:
             result = subprocess.run(
                 cmd,
@@ -491,16 +503,20 @@ def expand_exec_directives(content: str, *, project_root: Path, warn_only: bool 
                 msg = f"@exec failed ({result.returncode}): {cmd}"
                 if warn_only:
                     print(f"WARNING: {msg}")
-                    return match.group(0)
+                    rendered = match.group(0)
+                    _EXEC_DIRECTIVE_CACHE[cache_key] = rendered
+                    return rendered
                 raise RuntimeError(msg)
-            if not output:
-                return ""
-            return f"```\n{output}\n```"
+            rendered = "" if not output else f"```\n{output}\n```"
+            _EXEC_DIRECTIVE_CACHE[cache_key] = rendered
+            return rendered
         except subprocess.TimeoutExpired:
             msg = f"@exec timed out: {cmd}"
             if warn_only:
                 print(f"WARNING: {msg}")
-                return match.group(0)
+                rendered = match.group(0)
+                _EXEC_DIRECTIVE_CACHE[cache_key] = rendered
+                return rendered
             raise RuntimeError(msg) from None
 
     return EXEC_DIRECTIVE_RE.sub(_run, content)

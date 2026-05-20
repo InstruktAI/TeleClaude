@@ -79,7 +79,10 @@ async def test_stale_listener_queries_reset_timestamps_without_removing_rows(db:
     ]
 
 
-async def test_cleanup_orphan_session_listeners_deletes_closed_and_missing_endpoint_rows(db: Db) -> None:
+async def test_cleanup_orphan_session_listeners_deletes_closed_and_missing_endpoint_rows(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-target",

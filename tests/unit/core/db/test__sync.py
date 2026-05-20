@@ -19,7 +19,7 @@ from teleclaude.core.models import Session
 pytestmark = pytest.mark.asyncio
 
 
-async def test_fetch_session_id_sync_returns_latest_open_match(db: Db) -> None:
+async def test_fetch_session_id_sync_returns_latest_open_match(db: Db, cluster_event_bus: None) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-old",

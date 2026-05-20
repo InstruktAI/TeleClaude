@@ -103,7 +103,10 @@ async def test_expire_inbound_for_session_and_cleanup_only_remove_terminal_rows(
     assert deleted == 2
 
 
-async def test_cleanup_orphan_inbound_expires_rows_for_missing_or_closed_sessions(db: Db) -> None:
+async def test_cleanup_orphan_inbound_expires_rows_for_missing_or_closed_sessions(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-active",

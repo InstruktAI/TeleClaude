@@ -174,6 +174,10 @@ class TestCreateAndEnsureSession:
                 new=AsyncMock(return_value=_completed_process(returncode=1)),
             ) as mock_exec,
             patch(
+                "teleclaude.core.tmux_bridge._session.resolve_runtime_environment",
+                return_value={"PATH": "/usr/bin", "SHELL": "/bin/zsh"},
+            ),
+            patch(
                 "teleclaude.core.tmux_bridge._session.communicate_with_timeout",
                 new=AsyncMock(return_value=(b"", b"duplicate session")),
             ),

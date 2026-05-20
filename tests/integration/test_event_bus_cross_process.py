@@ -20,7 +20,7 @@ from typing import Any, TypedDict
 
 import pytest
 
-from teleclaude.core.event_bus import EventBus
+from teleclaude.core.event_bus import INTERNAL_EVENT_STREAM, EventBus
 from teleclaude.core.events import SessionLifecycleContext
 from teleclaude.events.envelope import EventEnvelope
 from teleclaude.transport.redis_client import create_redis_client
@@ -324,11 +324,17 @@ def _subprocess_subscriber(redis_url: str, role: str, output_path: str, ready_ev
             f.write(sid)
 
     bus.subscribe("session_started", handler)
-    # Signal readiness so the parent knows the consumer is registered.
-    with open(ready_event_name, "w", encoding="utf-8") as f:
-        f.write(str(os.getpid()))
 
     async def _run() -> None:
+        try:
+            await redis.xgroup_create(INTERNAL_EVENT_STREAM, f"event-bus:{role}", id="$", mkstream=True)
+        except Exception as exc:
+            if "BUSYGROUP" not in str(exc):
+                raise
+        # Signal readiness so the parent knows the consumer group exists.
+        with open(ready_event_name, "w", encoding="utf-8") as f:
+            f.write(str(os.getpid()))
+
         shutdown = asyncio.Event()
 
         # Run for a bounded amount of time, then exit so the test does not hang.
@@ -341,6 +347,7 @@ def _subprocess_subscriber(redis_url: str, role: str, output_path: str, ready_ev
     asyncio.run(_run())
 
 
+@pytest.mark.expensive
 async def test_subscriber_in_separate_subprocess_receives_event_emitted_from_parent_process(
     tmp_path: Any,
 ) -> None:
@@ -360,11 +367,12 @@ async def test_subscriber_in_separate_subprocess_receives_event_emitted_from_par
     await _require_live_redis(redis_url)
     output_path = str(tmp_path / "subscriber.out")
     ready_path = str(tmp_path / "subscriber.ready")
+    subscriber_role = f"operation-runner-{os.getpid()}-{tmp_path.name}"
 
     ctx = multiprocessing.get_context("spawn")
     proc = ctx.Process(
         target=_subprocess_subscriber,
-        args=(redis_url, "operation-runner", output_path, ready_path),
+        args=(redis_url, subscriber_role, output_path, ready_path),
     )
     proc.start()
     try:

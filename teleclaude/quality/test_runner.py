@@ -283,6 +283,7 @@ class TestRunner:
         logger.info("Running vitest from %s", frontend_root)
         # Justified subprocess: vitest is an external Node.js tool with no Python API
         vitest_args = ["-u", "--run"] if self._update_snapshots else ["run"]
+        vitest_args.extend(["--config", "vitest.cli.config.ts"])
         result = subprocess.run(["npx", "--yes", "vitest", *vitest_args], cwd=str(frontend_root), check=False)
         if result.returncode != 0:
             logger.error("vitest failed (exit %d)", result.returncode)
@@ -347,8 +348,8 @@ class TestRunner:
 
 def _cargo_test_command(scope: RustScope) -> list[str]:
     if scope.kind is RustScopeKind.PACKAGE and scope.package is not None:
-        return ["cargo", "test", "-p", scope.package]
-    return ["cargo", "test", "--workspace"]
+        return ["cargo", "test", "-p", scope.package, "--lib"]
+    return ["cargo", "test", "--workspace", "--lib"]
 
 
 def _rust_cwd(scope: RustScope) -> Path:

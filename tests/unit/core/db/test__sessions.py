@@ -165,6 +165,7 @@ async def test_session_queries_apply_lifecycle_filters_and_counts(
     db: Db,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    cluster_event_bus: None,
 ) -> None:
     active = await db.create_session(
         computer_name="builder-mac",
@@ -278,7 +279,10 @@ async def test_update_session_persists_fields_auto_timestamps_and_emits_updated_
     }
 
 
-async def test_update_session_coerces_last_projected_at_iso_to_datetime(db: Db) -> None:
+async def test_update_session_coerces_last_projected_at_iso_to_datetime(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-002",
@@ -375,7 +379,10 @@ async def test_close_session_is_idempotent_and_delete_session_emits_close_for_ex
     assert [call.args[1].session_id for call in close_events] == ["sess-close", "sess-delete"]
 
 
-async def test_pending_deletions_output_message_and_notification_helpers_round_trip(db: Db) -> None:
+async def test_pending_deletions_output_message_and_notification_helpers_round_trip(
+    db: Db,
+    cluster_event_bus: None,
+) -> None:
     await db.create_session(
         computer_name="builder-mac",
         tmux_session_name="tmux-001",
@@ -519,6 +526,7 @@ async def test_adapter_metadata_and_title_pattern_queries_apply_current_filters(
     db: Db,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    cluster_event_bus: None,
 ) -> None:
     await db.create_session(
         computer_name="builder-mac",

@@ -153,7 +153,8 @@ async def test_editor_artifact_persist_refreshes_cached_todo_without_stale_ttl(
     refresh_tasks: list[asyncio.Task[None]] = []
 
     def _register_refresh_hook(instance: object, hook_project_root: str) -> None:
-        def _on_mutation(event_hint: str = "todo_updated") -> None:
+        def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
+            del event_data
             refresh_tasks.append(
                 loop.create_task(cache.refresh_local_todos(LOCAL_COMPUTER, hook_project_root, event_hint))
             )

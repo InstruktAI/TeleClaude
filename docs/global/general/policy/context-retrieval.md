@@ -10,8 +10,8 @@ description: 'Guidelines for AI agents to retrieve relevant documentation snippe
 
 ## Rules
 
-- Use `telec docs index` as the default entry point for information discovery.
-- Call `telec docs index` before any task where missing context could alter decisions.
+- Use `telec docs index --areas <area> --scope <scope>` as the default entry point for information discovery.
+- Use it before any task where missing context could alter decisions.
 - Use the three‑phase flow: index first, then selected snippet IDs, then fetch any IDs listed in
   the `# Required reads (not loaded)` header of the previous response.
 - Dependencies are NOT auto-expanded inline. The `# Required reads (not loaded)` header lists

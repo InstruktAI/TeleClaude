@@ -40,6 +40,28 @@
   "markdownPathCompletion.include": [
     "**/*"
   ],
+  "files.watcherExclude": {
+    "**/.teleclaude/**": true,
+    "**/.venv/**": true,
+    "**/node_modules/**": true,
+    "**/target/**": true,
+    "**/trees/**": true
+  },
+  "search.exclude": {
+    "**/.teleclaude/**": true,
+    "**/.venv/**": true,
+    "**/assets/**": true,
+    "**/frontend/node_modules/**": true,
+    "**/target/**": true,
+    "**/trees/**": true
+  },
+  "python.analysis.exclude": [
+    "**/__pycache__",
+    "**/.*",
+    "**/node_modules",
+    "**/target/**",
+    "**/trees"
+  ],
   "files.exclude": {
     "**/.history": false
   },

@@ -33,6 +33,12 @@ from teleclaude.core.command_registry import reset_command_service
 from teleclaude.core.event_bus import event_bus
 from teleclaude.runtime import binaries as binaries_mod
 
+
+class _ClusterEmitRedisFake:
+    async def xadd(self, _stream: str, _data: dict[str, str], **_kwargs: object) -> str:
+        return "test-event-1-0"
+
+
 try:
     import instrukt_ai_logging
 
@@ -76,6 +82,13 @@ def _reset_event_bus():
     yield
     event_bus.clear()
     reset_command_service()
+
+
+@pytest.fixture
+def cluster_event_bus(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Configure EventBus Redis only for tests that exercise CLUSTER emit paths."""
+    monkeypatch.setattr(event_bus, "_role", "pytest")
+    monkeypatch.setattr(event_bus, "_redis", _ClusterEmitRedisFake())
 
 
 @pytest.fixture(autouse=True)

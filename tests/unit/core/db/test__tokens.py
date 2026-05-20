@@ -53,6 +53,7 @@ async def test_revoke_session_tokens_invalidates_all_active_tokens_for_a_session
 async def test_cleanup_orphan_session_tokens_deletes_closed_and_missing_session_tokens(
     db: Db,
     session_factory: Callable[..., Awaitable[Session]],
+    cluster_event_bus: None,
 ) -> None:
     await session_factory(session_id="sess-active")
     await session_factory(session_id="sess-closed")

@@ -112,6 +112,7 @@ class TestDaemonHeadlessViaCommandPipeline:
     async def test_ensure_headless_session_defaults_missing_terminal_identity_to_customer(
         self,
         monkeypatch: pytest.MonkeyPatch,
+        cluster_event_bus: None,
     ) -> None:
         daemon = _TestDaemon()
         data = {

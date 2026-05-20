@@ -318,7 +318,7 @@ async def test_submit_todo_integrate_creates_new_operation_with_serialized_paylo
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_run_todo_integrate_operation_uses_stored_caller_session_id() -> None:
+async def test_run_todo_integrate_operation_uses_stored_caller_session_id(cluster_event_bus: None) -> None:
     operation = _operation(
         operation_id="integrate-op",
         kind="todo_integrate",
@@ -358,7 +358,7 @@ async def test_run_todo_integrate_operation_uses_stored_caller_session_id() -> N
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_run_operation_exposes_stored_caller_session_to_session_identity() -> None:
+async def test_run_operation_exposes_stored_caller_session_to_session_identity(cluster_event_bus: None) -> None:
     operation = _operation(
         operation_id="caller-op",
         caller_session_id="caller-123",
@@ -557,25 +557,32 @@ async def test_get_operation_for_caller_allows_admin_to_read_foreign_operation()
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("operation", "caller_session_id"),
-    [
-        (None, "owner-session"),
-        (_operation(caller_session_id="someone-else"), "owner-session"),
-    ],
-)
-async def test_get_operation_for_caller_returns_404_for_missing_or_foreign_operation(
-    operation: Operation | None,
-    caller_session_id: str,
-) -> None:
+async def test_get_operation_for_caller_returns_404_for_missing_operation() -> None:
     db = MagicMock()
-    db.get_operation = AsyncMock(return_value=operation)
+    db.get_operation = AsyncMock(return_value=None)
     service = _service(db=db)
 
     with pytest.raises(HTTPException) as exc_info:
         await service.get_operation_for_caller(
             operation_id="missing-op",
-            caller_session_id=caller_session_id,
+            caller_session_id="owner-session",
+            human_role=None,
+        )
+
+    assert exc_info.value.status_code == 404
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_get_operation_for_caller_returns_404_for_foreign_operation() -> None:
+    db = MagicMock()
+    db.get_operation = AsyncMock(return_value=_operation(caller_session_id="someone-else"))
+    service = _service(db=db)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await service.get_operation_for_caller(
+            operation_id="foreign-op",
+            caller_session_id="owner-session",
             human_role=None,
         )
 

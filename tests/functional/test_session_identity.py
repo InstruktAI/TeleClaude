@@ -176,7 +176,7 @@ async def test_token_auth_allows_session_list(api: AsyncClient) -> None:
 # ---------------------------------------------------------------------------
 
 
-async def test_token_auth_with_null_human_role(api: AsyncClient) -> None:
+async def test_token_auth_with_null_human_role(api: AsyncClient, cluster_event_bus: None) -> None:
     """A system-spawned session may have human_role=None in the DB.
     Token auth should still work — principal_role from the token record
     is used for clearance when human_role is absent.
