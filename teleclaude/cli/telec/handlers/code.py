@@ -27,45 +27,6 @@ _COMMIT_TRAILER = (
 )
 _TRAILER_MARKER = "🤖 Generated with [TeleClaude]"
 
-# Extensions and filenames that indicate functional (runtime-affecting) code.
-# Mirrors the wrapper's classification for consistency.
-_FUNCTIONAL_EXTENSIONS = frozenset(
-    {
-        ".py",
-        ".pyi",
-        ".ts",
-        ".tsx",
-        ".js",
-        ".jsx",
-        ".mjs",
-        ".cjs",
-        ".sh",
-        ".bash",
-        ".zsh",
-        ".fish",
-        ".c",
-        ".cc",
-        ".cpp",
-        ".cxx",
-        ".h",
-        ".hpp",
-        ".hxx",
-        ".rs",
-        ".go",
-        ".rb",
-        ".java",
-        ".kt",
-        ".swift",
-        ".m",
-        ".mm",
-        ".sql",
-        ".toml",
-        ".lock",
-        ".mk",
-    }
-)
-_FUNCTIONAL_NAMES = frozenset({"Makefile", "Dockerfile"})
-
 
 def _with_trailer(message: str) -> str:
     """Return the message with the mandated trailer appended (idempotent)."""
@@ -141,28 +102,63 @@ def handle_code_commit(args: list[str]) -> None:
     """
     approved = "--approved" in args
     positionals = [a for a in args if a != "--approved"]
-    if len(positionals) != 1 or positionals[0].startswith("-"):
+
+    # Reject any other flag/arg — nothing forwarded to git.
+    if any(a.startswith("-") for a in positionals) or len(positionals) > 1:
         print(
-            "ERROR: telec code commit takes exactly one quoted commit message and "
+            "ERROR: telec code commit accepts only a single quoted message and "
             "optionally --approved. No other arguments are accepted (no -m, -F, --, "
             "pathspecs, or git flags — nothing is forwarded to git; staging is "
             "automatic and scoped).\n"
-            '  telec code commit "type(scope): subject"\n'
+            "  telec code commit                                    # surface Path A/B/C\n"
+            '  telec code commit --approved "type(scope): subject"  # commit',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    message = positionals[0] if positionals else None
+    system_role = get_system_role()
+    project_root = resolve_workspace_root(resolve_invocation_cwd())
+
+    # Without --approved, surface guidance — never commit. On main + non-integrator
+    # that means the Path A/B/C classification (the canonical "what should I do"
+    # entry point). Off main / integrator: short help.
+    if not approved:
+        if message is not None:
+            print(
+                "ERROR: the bare call surfaces Path A/B/C — do not pass a commit "
+                "message until you have human approval.\n"
+                "  telec code commit                                    # show A/B/C\n"
+                '  telec code commit --approved "type(scope): subject"  # commit',
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        current_branch = _current_branch(project_root)
+        if current_branch == "main" and system_role != "integrator":
+            _print_abc_classification()
+            raise SystemExit(1)
+        print(
+            "telec code commit is the sealed canonical commit interface.\n"
+            "Get human approval, then commit with:\n"
             '  telec code commit --approved "type(scope): subject"',
             file=sys.stderr,
         )
         raise SystemExit(2)
-    message = positionals[0]
 
-    system_role = get_system_role()
-    project_root = resolve_workspace_root(resolve_invocation_cwd())
+    # --approved → commit. Message required.
+    if message is None:
+        print(
+            "ERROR: --approved requires a quoted commit message.\n"
+            '  telec code commit --approved "type(scope): subject"',
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     with main_branch_lock():
         _commit_under_lock(
             message=message,
             project_root=project_root,
             system_role=system_role,
-            approved=approved,
         )
 
 
@@ -171,7 +167,6 @@ def _commit_under_lock(
     message: str,
     project_root: Path,
     system_role: str | None,
-    approved: bool = False,
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
@@ -209,10 +204,11 @@ def _commit_under_lock(
     # commit contaminated with another session's staged work" and is
     # answered only by the explicit TELECLAUDE_COMMIT_APPROVED override.
     # --approved never buys past stage 2; the integrator is exempt from both.
+    # Path A/B/C is the bare-call gate (handled in handle_code_commit, before
+    # the lock). Here, --approved is required to reach this point, so we only
+    # need stage 2 — the session-scope assertion. The integrator is exempt.
     current_branch = _current_branch(project_root)
     if current_branch == "main" and system_role != "integrator":
-        if not approved:
-            _classify_main_commit(message, staged_for_commit)
         _enforce_session_scope(staged_for_commit, scope_resolution)
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
@@ -243,29 +239,22 @@ def _commit_under_lock(
         print(stderr, file=sys.stderr)
 
 
-def _classify_main_commit(message: str, staged: list[str]) -> None:
-    """Apply Path A/B/C classification for commits on main.
+def _print_abc_classification() -> None:
+    """Print the Path A/B/C classification guidance for a shared-main commit.
 
-    Path A: all staged files non-functional + commit message contains [skip ci] → proceed.
-    Path B: small functional change, human-approved → commit directly.
-    Path C: functional change that warrants review → commit, then dispatch reviewer.
+    The sealed contract makes ``--approved`` the single gate for any commit on
+    main; the bare ``telec code commit`` invocation surfaces this guidance and
+    exits — the agent picks A, B, or C and re-runs with ``--approved`` and a
+    message.
     """
-    has_functional = any(_is_functional(f) for f in staged)
-
-    cli_has_skip_ci = "[skip ci]" in message
-
-    if not has_functional and cli_has_skip_ci:
-        return  # Path A: autonomous non-functional commit
-
-    # Path B/C: human gate
     print(
-        "ERROR: Commits on main require classification.\n"
+        "Commits on main require classification.\n"
         "\n"
         "Inspect staged files:  git diff --staged --name-only\n"
         "\n"
         "  A) NON-FUNCTIONAL FILES ONLY (Markdown, YAML, doc snippets, state):\n"
         "     Include [skip ci] in the subject:\n"
-        "       telec code commit 'chore(scope): <subject> [skip ci]'\n"
+        "       telec code commit --approved 'chore(scope): <subject> [skip ci]'\n"
         "\n"
         "  B) SMALL, SELF-EVIDENT FUNCTIONAL CHANGE (human is present):\n"
         "     State recommendation to the human, wait for approval, then:\n"
@@ -342,15 +331,6 @@ def _enforce_session_scope(
         file=sys.stderr,
     )
     raise SystemExit(2)
-
-
-def _is_functional(filepath: str) -> bool:
-    """Check if a file is functional (affects runtime behavior when deployed)."""
-    name = os.path.basename(filepath)
-    if name in _FUNCTIONAL_NAMES:
-        return True
-    _, ext = os.path.splitext(name)
-    return ext in _FUNCTIONAL_EXTENSIONS
 
 
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:

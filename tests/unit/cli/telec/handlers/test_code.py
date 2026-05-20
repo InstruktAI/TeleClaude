@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from teleclaude.cli.telec.handlers.code import (
-    _classify_main_commit,
     _commit_under_lock,
     _current_branch,
     _get_staged_files,
@@ -23,60 +22,6 @@ from teleclaude.git import GitCommandError
 from teleclaude.quality.scope import DirtyOp, DirtyPath, WorkspaceScopeKind, WorkspaceScopeResolution
 
 REPO_ROOT = Path(__file__).resolve().parents[5]
-
-
-class TestClassifyMainCommit:
-    """Path A/B/C classification for commits on main."""
-
-    @pytest.mark.unit
-    def test_path_a_passes_for_non_functional_with_skip_ci(self) -> None:
-        """Non-functional files with [skip ci] in message proceed silently."""
-        _classify_main_commit("chore: update docs [skip ci]", ["README.md", "docs/guide.yaml"])
-
-    @pytest.mark.unit
-    def test_path_a_blocks_non_functional_without_skip_ci(self) -> None:
-        """Non-functional files without [skip ci] still require classification."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("chore: update docs", ["README.md"])
-
-    @pytest.mark.unit
-    def test_functional_files_require_classification(self) -> None:
-        """Functional files trigger the classification gate."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("fix: something", ["teleclaude/foo.py"])
-
-    @pytest.mark.unit
-    def test_functional_classification_guidance_reuses_commit_reviewer(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Path C guidance must send follow-up commits to the same reviewer."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("fix: something", ["teleclaude/foo.py"])
-
-        err = capsys.readouterr().err
-        assert "If this patch series has no /next-review-commits reviewer yet, dispatch one" in err
-        assert "For every follow-up on the same patch series, send the new commit(s) to that reviewer" in err
-        assert "telec sessions list" in err
-        assert "fix and send the new commit(s) to the same reviewer" in err
-        assert "Otherwise dispatch a fresh one" not in err
-
-    @pytest.mark.unit
-    def test_functional_with_skip_ci_still_requires_classification(self) -> None:
-        """Functional files are not bypassed by [skip ci]."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("fix: something [skip ci]", ["teleclaude/foo.py"])
-
-    @pytest.mark.unit
-    def test_makefile_is_functional(self) -> None:
-        """Makefile is classified as functional."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("chore: update [skip ci]", ["Makefile"])
-
-    @pytest.mark.unit
-    def test_dockerfile_is_functional(self) -> None:
-        """Dockerfile is classified as functional."""
-        with pytest.raises(SystemExit, match="1"):
-            _classify_main_commit("chore: update [skip ci]", ["Dockerfile"])
 
 
 class TestGitHelpers:
@@ -295,10 +240,8 @@ class TestSessionScopeGate:
         *,
         scoped: tuple[str, ...],
         staged: list[str],
-        approved: bool,
         system_role: str | None,
         message: str,
-        classify_real: bool = False,
     ) -> MagicMock:
         resolution = self._resolution(scoped)
         # _get_staged_files: pre_staged lookup (only if stage_paths non-empty), then staged_for_commit.
@@ -313,8 +256,6 @@ class TestSessionScopeGate:
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ]
-        if not classify_real:
-            ctx.append(patch("teleclaude.cli.telec.handlers.code._classify_main_commit"))
         with ExitStack() as stack:
             for cm in ctx:
                 stack.enter_context(cm)
@@ -322,7 +263,6 @@ class TestSessionScopeGate:
                 message=message,
                 project_root=tmp_path,
                 system_role=system_role,
-                approved=approved,
             )
         return repo
 
@@ -337,7 +277,6 @@ class TestSessionScopeGate:
                 tmp_path,
                 scoped=("teleclaude/mine.py",),
                 staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-                approved=True,
                 system_role=None,
                 message="fix: mine",
             )
@@ -351,7 +290,6 @@ class TestSessionScopeGate:
             tmp_path,
             scoped=("teleclaude/mine.py",),
             staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-            approved=True,
             system_role=None,
             message="chore: deliberate sweep",
         )
@@ -365,7 +303,6 @@ class TestSessionScopeGate:
             tmp_path,
             scoped=("teleclaude/mine.py",),
             staged=["teleclaude/mine.py"],
-            approved=True,
             system_role=None,
             message="fix: only mine",
         )
@@ -379,7 +316,6 @@ class TestSessionScopeGate:
             tmp_path,
             scoped=(),
             staged=["teleclaude/anything.py"],
-            approved=True,
             system_role=None,
             message="fix: pre-staged fallback",
         )
@@ -393,49 +329,10 @@ class TestSessionScopeGate:
             tmp_path,
             scoped=("teleclaude/mine.py",),
             staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-            approved=False,
             system_role="integrator",
             message="merge: integrate",
         )
         repo.git.commit.assert_called_once()
-
-    @pytest.mark.unit
-    def test_path_a_skip_ci_still_enforces_scope(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The [skip ci] doc-commit hole is closed: Path A still hits stage 2."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        with pytest.raises(SystemExit) as exc:
-            self._run(
-                tmp_path,
-                scoped=("docs/mine.md",),
-                staged=["docs/foreign.md", "docs/mine.md"],
-                approved=False,
-                system_role=None,
-                message="chore: docs [skip ci]",
-                classify_real=True,
-            )
-        assert exc.value.code == 2
-
-    @pytest.mark.unit
-    def test_classification_gate_fires_first_and_alone_on_first_invocation(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """First invocation: only the ABC gate fires (exit 1), not a double block."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        with pytest.raises(SystemExit) as exc:
-            self._run(
-                tmp_path,
-                scoped=("teleclaude/mine.py",),
-                staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-                approved=False,
-                system_role=None,
-                message="fix: functional change",
-                classify_real=True,
-            )
-        assert exc.value.code == 1
-
-
-class TestRustCommitBoundary:
-    """Rust commit gates stay owned by git pre-commit, not telec quality dispatch."""
 
     @pytest.mark.unit
     def test_rust_commit_path_does_not_call_quality_handlers_directly(self, tmp_path: Path) -> None:
@@ -591,10 +488,19 @@ class TestWithTrailer:
 
 class TestHandleCodeCommitContract:
     @pytest.mark.unit
-    def test_rejects_no_message(self) -> None:
-        with pytest.raises(SystemExit) as exc:
+    def test_bare_call_on_main_prints_abc_classification(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Bare `telec code commit` on main surfaces Path A/B/C (exit 1)."""
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            pytest.raises(SystemExit) as exc,
+        ):
             handle_code_commit([])
-        assert exc.value.code == 2
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "Commits on main require classification" in err
 
     @pytest.mark.unit
     def test_rejects_dash_m_flag(self) -> None:
@@ -609,7 +515,20 @@ class TestHandleCodeCommitContract:
         assert exc.value.code == 2
 
     @pytest.mark.unit
-    def test_accepts_message_and_forwards_to_commit(self) -> None:
+    def test_message_without_approved_rejected(self) -> None:
+        """Message without --approved is redundant — ABC trigger is bare."""
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["fix(x): y"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_approved_without_message_rejected(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["--approved"])
+        assert exc.value.code == 2
+
+    @pytest.mark.unit
+    def test_approved_with_message_forwards_to_commit(self) -> None:
         with (
             patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
             patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
@@ -619,6 +538,4 @@ class TestHandleCodeCommitContract:
         ):
             handle_code_commit(["fix(x): y", "--approved"])
         assert under_lock.call_count == 1
-        kw = under_lock.call_args.kwargs
-        assert kw["message"] == "fix(x): y"
-        assert kw["approved"] is True
+        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
