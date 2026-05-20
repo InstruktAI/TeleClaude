@@ -42,10 +42,12 @@ Read **in full, not only the diff**:
   intent, success criteria, and scope the delivery must satisfy. If `prd` is
   absent but legacy `requirements` exists, read `requirements` as the legacy
   intent contract.
-- `telec todo artifacts read {slug} architecture` when present — technical context and constraints.
-- `telec todo artifacts read {slug} test-specs` when present — verification contract derived from the PRD and architecture.
+- `telec todo artifacts read {slug} architecture` when present — thin
+  doc-edit index; consult the domain/design snippets it points to for
+  technical context and constraints. The PRD's success criteria are the
+  verification contract.
 - `telec todo artifacts read {slug} implementation-plan` — how the builder intended to satisfy the contract.
-- `telec todo artifacts read {slug} plan-review-findings` and `spec-review-findings` — the per-criterion delivery analyses and spec-to-criterion mappings produced upstream. Use these as the ground truth for what the reviewer must verify against the code.
+- `telec todo artifacts read {slug} plan-review-findings` — the per-criterion delivery analyses produced upstream. Use as the ground truth for what the reviewer must verify against the code.
 - `README.md`, `AGENTS.md`, and `docs/*` for project patterns.
 
 The reviewer must be able to state, from the PRD success criteria, what every
@@ -71,21 +73,21 @@ Orchestrator-managed files (`todos.db` roadmap, `todos.db` state) are part of th
 
 Run lanes in parallel where possible. Each lane produces findings with severity levels.
 
-| Lane                    | Reference                                                                   | Task                                                                                  |
-| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                         |
-| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                      |
-| paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency                                 |
-| principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                   |
-| intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics  |
-| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                 |
-| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                      |
-| errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                    |
-| types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                              |
-| comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                         |
-| logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                    |
-| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README reflect changes                              |
-| simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                     |
+| Lane                    | Reference                                                                   | Task                                                                                 |
+| ----------------------- | --------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| scope                   | § Scope verification                                                        | Verify delivery matches PRD intent — no gold-plating, no gaps                        |
+| code                    | § Code quality review; `code-quality-practices`, `design-fundamentals`      | Find bugs and pattern violations                                                     |
+| paradigm                | § Paradigm-fit assessment                                                   | Check data flow, component reuse, pattern consistency                                |
+| principles              | § Principle violation hunt; `principle-violation-hunt`                      | Structural violation hunt against design principles                                  |
+| intelligence-boundaries | `principle/intelligence-boundaries`                                         | Find code that classifies, scores, judges, or auto-edits free-text content semantics |
+| security                | § Security review                                                           | Check for secrets, injection, auth gaps, info leakage                                |
+| tests                   | § Test coverage check                                                       | Evaluate behavioral value, weak-test anti-patterns, and coverage                     |
+| errors                  | § Error handling review; `silent-failure-audit`                             | Find silent failures and inadequate error handling                                   |
+| types                   | § Type design review (when types added/modified)                            | Validate type invariants, encapsulation, and enforcement                             |
+| comments                | § Comment accuracy review                                                   | Verify comments are accurate, non-stale, and earn their place                        |
+| logging                 | § Logging review                                                            | Enforce logging policy; reject ad-hoc debug probes                                   |
+| docs                    | § Documentation and config surface check (when CLI, config, or API changed) | Verify help text, config surface, README reflect changes                             |
+| simplify                | § Simplification review (after other lanes pass)                            | Simplify without behavior changes                                                    |
 
 ### Lane execution gate
 

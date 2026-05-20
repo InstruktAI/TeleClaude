@@ -39,6 +39,8 @@ _REMOVE_OPERATION_ID = "op-123"
 _TODO_REMOVE_KIND = "todo_remove"
 _UPDATED_BY_WRITE_ARTIFACT = "api.todo.write_artifact"
 _UPDATED_BY_PREPPED_DUMP = "api.todo.dump.prepped"
+_RETIRED_KEYWORD = "retired"
+_UNKNOWN_KEYWORD = "unknown"
 
 
 class _ArtifactSnapshot(TypedDict, total=False):
@@ -239,6 +241,60 @@ class TestTodoRoutes:
                 )
 
         assert exc_info.value.status_code == 404
+        mock_db.write_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_artifact_refuses_retired_test_specs(self) -> None:
+        """Retired artifact kinds are rejected at the write boundary before any DB work."""
+        mock_db = AsyncMock()
+
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.write_artifact(
+                    slug=_MY_SLUG,
+                    name="test-specs",
+                    content="# Gherkin\n",
+                    cwd=_REPO_CWD,
+                    updated_by="tester",
+                )
+
+        assert exc_info.value.status_code == 422
+        assert _RETIRED_KEYWORD in str(exc_info.value.detail)
+        mock_db.write_artifact.assert_not_awaited()
+        mock_db.slug_in_roadmap.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_artifact_refuses_retired_spec_review_findings(self) -> None:
+        mock_db = AsyncMock()
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.write_artifact(
+                    slug=_MY_SLUG,
+                    name="spec-review-findings",
+                    content="findings",
+                    cwd=_REPO_CWD,
+                    updated_by="tester",
+                )
+        assert exc_info.value.status_code == 422
+        mock_db.write_artifact.assert_not_awaited()
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
+    async def test_write_artifact_refuses_unknown_name(self) -> None:
+        mock_db = AsyncMock()
+        with patch("teleclaude.api.todo_routes._get_todos_db_from_cwd", return_value=mock_db):
+            with pytest.raises(HTTPException) as exc_info:
+                await todo_routes.write_artifact(
+                    slug=_MY_SLUG,
+                    name="not-a-real-kind",
+                    content="x",
+                    cwd=_REPO_CWD,
+                    updated_by="tester",
+                )
+        assert exc_info.value.status_code == 422
+        assert _UNKNOWN_KEYWORD in str(exc_info.value.detail)
         mock_db.write_artifact.assert_not_awaited()
 
     @pytest.mark.unit

@@ -24,7 +24,8 @@ Execute the build phase for the slug and verify completion.
 
 - Slug: "$ARGUMENTS"
 - `prd` as the product intent and requirements contract
-- Optional `architecture` and `test-specs` artifacts when present
+- Optional thin `architecture` index artifact plus the domain/design doc
+  snippets it points to, when present
 - `implementation-plan` as the execution spine
 
 ## Outputs

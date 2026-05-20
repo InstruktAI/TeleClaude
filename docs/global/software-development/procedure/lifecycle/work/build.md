@@ -25,7 +25,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
   the todo is prepped (`state.kind == "prepped"`), in which case there is no
   PRD artifact and the implementation-plan is the sole spec. Legacy todos may
   carry `requirements`; use it only when `prd` is absent.
-- `architecture` and `test-specs` are readable when present and not skipped.
+- `architecture` (thin doc-edit log) is readable when present and not skipped; consult the domain/design snippets it points to for technical context.
 - `telec todo artifacts read {slug} quality-checklist` exists and includes `## Build Gates (Builder)`.
 - The todo scope is implementable in one build phase.
 
@@ -36,8 +36,10 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    `requirements` exists, read `requirements` as the legacy intent contract. If the
    todo is prepped (no PRD or legacy requirements artifact exists), skip this step —
    the implementation-plan artifact is the combined spec-and-plan.
-2. Read `architecture` and `test-specs` when present and not skipped. Treat
-   architecture as technical context and test-specs as the verification contract.
+2. Read `architecture` when present and not skipped — it is the thin
+   doc-edit log; consult the domain/design snippets it points to for
+   technical context and intended invariants. The PRD's success criteria are
+   the verification contract.
 3. Read the implementation-plan artifact via
    `telec todo artifacts read {slug} implementation-plan` and identify unchecked tasks.
 4. Determine the build mode from the nature of the work:
@@ -59,6 +61,7 @@ Execute the implementation plan for a todo and produce verified, review-ready ch
    with the task. If the diff does not match intent, the code change is wrong:
    fix the code and do not update the snapshot. Concrete idioms and migration
    patterns live in `software-development/procedure/snapshot-testing`.
+
 6. If a task is truly out of scope, create `deferrals.md` with the required template and continue with remaining tasks.
 7. **Plan tasks that violate intelligence-boundaries.** If a plan task asks
    you to build a classifier, scorer, judge, evaluator, or auto-fixer on

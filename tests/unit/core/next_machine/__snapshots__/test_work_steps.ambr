@@ -28,7 +28,7 @@
   'Bug artifact contract for bug-slug: bug is the mandate for this fix. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
 # ---
 # name: test_build_complete_review_dispatch_note_matches_standard_prepared_todo
-  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
+  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture (thin doc-edit log + the domain/design snippets it points to) is optional context when present. Legacy requirements is only a fallback when PRD is absent. Review guard: if `git log --oneline HEAD..main` shows commits, diff must use merge-base: `git diff $(git merge-base HEAD main)..HEAD`.'
 # ---
 # name: test_build_complete_round_limit_message_has_no_suggestion_floor
   '''
@@ -48,7 +48,7 @@
   'Prepped artifact contract for prepped-slug: implementation-plan is the sole spec because prepare was intentionally skipped. Start implementation now. When the build is committed and ready for review, run `telec todo stamp prepped-slug --build-complete`.'
 # ---
 # name: test_build_started_dispatch_note_matches_standard_prepared_todo
-  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp todo-slug --build-complete`.'
+  'Prepared artifact contract for todo-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture (thin doc-edit log + the domain/design snippets it points to) is optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp todo-slug --build-complete`.'
 # ---
 # name: test_build_started_dispatches_when_no_builder_exists
   '''
@@ -114,7 +114,7 @@
   ORCHESTRATION PRINCIPLE:
   You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
   
-  NOTE: Prepared artifact contract for test-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture and test-specs are optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp test-slug --build-complete`.
+  NOTE: Prepared artifact contract for test-slug: PRD is the canonical intent and requirements source; implementation-plan is the execution spine; architecture (thin doc-edit log + the domain/design snippets it points to) is optional context when present. Legacy requirements is only a fallback when PRD is absent. Start implementation now. When the build is committed and ready for review, run `telec todo stamp test-slug --build-complete`.
   '''
 # ---
 # name: test_build_started_rejects_pre_prepared_lifecycle_phase

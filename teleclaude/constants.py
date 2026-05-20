@@ -144,6 +144,23 @@ ARTIFACT_NAMES: frozenset[str] = frozenset(
     }
 )
 
+# Retired artifact kinds — accepted only for READ/REMOVE of pre-cutover todos.
+# Writes are refused at the API and CLI write boundaries (see
+# ``ARTIFACT_NAMES_WRITABLE``). Drop entries once no in-flight todos carry them.
+ARTIFACT_NAMES_RETIRED: frozenset[str] = frozenset(
+    {
+        ARTIFACT_TEST_SPECS,
+        ARTIFACT_SPEC_REVIEW_FINDINGS,
+        ARTIFACT_REQUIREMENTS_REVIEW_FINDINGS,
+    }
+)
+
+# Writable allowlist: the canonical set minus retired kinds. The API write route
+# and ``telec todo artifacts write`` validate against this stricter set so writes
+# to retired artifacts are refused while reads/removes of pre-cutover todos still
+# work via ``ARTIFACT_NAMES``.
+ARTIFACT_NAMES_WRITABLE: frozenset[str] = ARTIFACT_NAMES - ARTIFACT_NAMES_RETIRED
+
 
 class ResultStatus(str, Enum):
     SUCCESS = "success"

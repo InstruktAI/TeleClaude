@@ -23,8 +23,8 @@ Validate `implementation-plan.md` against policies, Definition of Done gates, an
 - Slug: "$ARGUMENTS"
 - `telec todo artifacts read {slug} implementation-plan` (the artifact under review)
 - `telec todo artifacts read {slug} prd` (the product contract it must satisfy)
-- `telec todo artifacts read {slug} architecture` when present
-- `telec todo artifacts read {slug} test-specs` when present
+- `telec todo artifacts read {slug} architecture` when present (thin
+  doc-edit index; consult the domain/design snippets it points to)
 
 ## Outputs
 

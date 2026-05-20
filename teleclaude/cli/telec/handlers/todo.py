@@ -21,7 +21,7 @@ from teleclaude.cli.tool_commands import (
     handle_todo_work,
 )
 from teleclaude.cli.tool_commands._receipt import poll_operation
-from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES
+from teleclaude.constants import ARTIFACT_INPUT, ARTIFACT_NAMES, ARTIFACT_NAMES_RETIRED, ARTIFACT_NAMES_WRITABLE
 from teleclaude.core.next_machine._types import PreparePhase, WorkPhase
 from teleclaude.core.next_machine.git_ops import extract_referenced_paths, get_head_commit
 from teleclaude.core.next_machine.lifecycle import LifecyclePhase, LifecycleStage
@@ -472,6 +472,25 @@ def _validate_artifact_name(name: str) -> None:
         raise SystemExit(1)
 
 
+def _validate_artifact_name_write(name: str) -> None:
+    """Reject unknown or retired artifact names on the write path.
+
+    Retired names (e.g. ``test-specs``, ``spec-review-findings``) are accepted
+    by ``_validate_artifact_name`` for read/remove of pre-cutover todos but must
+    not be writeable.
+    """
+    if name not in ARTIFACT_NAMES_WRITABLE:
+        if name in ARTIFACT_NAMES_RETIRED:
+            print(
+                f"Refusing to write retired artifact {name!r}: this artifact kind is no "
+                f"longer produced. Reads and removes of pre-cutover todos remain supported."
+            )
+        else:
+            print(f"Unknown artifact name: {name!r}")
+            print(f"Writable names: {', '.join(sorted(ARTIFACT_NAMES_WRITABLE))}")
+        raise SystemExit(1)
+
+
 def _handle_todo_artifacts(args: list[str]) -> None:
     """Handle telec todo artifacts {list|read|write|diff|remove}."""
     if not args:
@@ -627,7 +646,7 @@ def _handle_artifacts_write(args: list[str]) -> None:
         print("Usage: telec todo artifacts write <slug> <name> <content>")
         raise SystemExit(1)
 
-    _validate_artifact_name(name)
+    _validate_artifact_name_write(name)
     cwd = str(resolve_invocation_cwd())
     result = tool_api_request(
         "POST",

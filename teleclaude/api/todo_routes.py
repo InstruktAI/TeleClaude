@@ -33,6 +33,8 @@ from teleclaude.constants import (
     ARTIFACT_BUG,
     ARTIFACT_IMPLEMENTATION_PLAN,
     ARTIFACT_INPUT,
+    ARTIFACT_NAMES_RETIRED,
+    ARTIFACT_NAMES_WRITABLE,
     ARTIFACT_PRD,
     ARTIFACT_REQUIREMENTS,
     ARTIFACT_TEST_SPECS,
@@ -350,6 +352,20 @@ async def write_artifact(
     referenced_paths: Annotated[list[str] | None, Body()] = None,
 ) -> _ArtifactWriteResponse:
     """Write (create or update) a todo artifact."""
+    if name not in ARTIFACT_NAMES_WRITABLE:
+        if name in ARTIFACT_NAMES_RETIRED:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"artifact kind '{name}' is retired: no longer produced. "
+                    "Reads and removes of pre-cutover todos remain supported; "
+                    "writes are refused."
+                ),
+            )
+        raise HTTPException(
+            status_code=422,
+            detail=f"unknown artifact kind '{name}'",
+        )
     effective_cwd = cwd or _default_cwd()
     todos_db = await _get_todos_db_from_cwd(effective_cwd)
     effective_updated_by = updated_by or "api.todo.write_artifact"

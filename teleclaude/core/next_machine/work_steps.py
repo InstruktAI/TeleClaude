@@ -61,7 +61,8 @@ logger = get_logger(__name__)
 PREPARED_ARTIFACT_CONTRACT = (
     "Prepared artifact contract for {slug}: PRD is the canonical intent and "
     "requirements source; implementation-plan is the execution spine; "
-    "architecture and test-specs are optional context when present. "
+    "architecture (thin doc-edit log + the domain/design snippets it points "
+    "to) is optional context when present. "
     "Legacy requirements is only a fallback when PRD is absent."
 )
 BUG_ARTIFACT_CONTRACT = "Bug artifact contract for {slug}: bug is the mandate for this fix."
