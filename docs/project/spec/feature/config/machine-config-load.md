@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/machine-config-load
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: v1 daemon machine config load — reads config.yml (with env-var expansion and optional experiments.yml side-file), deep-merges over DEFAULT_CONFIG, and builds the typed Config dataclass tree at module import time.
+id: 'project/spec/feature/config/machine-config-load'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'v1 daemon machine config load — reads config.yml (with env-var expansion and optional experiments.yml side-file), deep-merges over DEFAULT_CONFIG, and builds the typed Config dataclass tree at module import time.'
 ---
 
 # Machine Config Load — Spec

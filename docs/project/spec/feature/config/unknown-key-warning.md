@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/unknown-key-warning
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Unknown keys in user-facing teleclaude.yml overlays are accepted (extra="allow") and surfaced as logger.warning entries via a recursive _warn_unknown_keys walk; the legacy machine config.yml applies hard rejection only to the agents block.
+id: 'project/spec/feature/config/unknown-key-warning'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Unknown keys in user-facing teleclaude.yml overlays are accepted (extra="allow") and surfaced as logger.warning entries via a recursive _warn_unknown_keys walk; the legacy machine config.yml applies hard rejection only to the agents block.'
 ---
 
 # Unknown Key Warning — Spec

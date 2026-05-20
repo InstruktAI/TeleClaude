@@ -8,6 +8,7 @@ description: 'Every domain event the platform emits — producer context, named 
 status: 'mixed'
 delivered_by:
   - 'telec-todo-rename'
+  - 'v2-workflow-cli-refinement-commands'
 ---
 
 # Domain Event Catalog — Spec
@@ -91,6 +92,16 @@ Each event below carries:
 consumers (`frontend`, `telec-tui`, `integration`) can re-key rather than
 orphan cache entries — see `project/spec/domain/workflow` for the full entry.
 `status: mixed` / `delivered_by: telec-todo-rename` until that delivery lands.
+
+`workflow.todo.created` carries an extended payload — `creation_mode`
+(`pickup` | `silent`) and `pickup_requested` (boolean) — added by
+`v2-workflow-cli-refinement-commands`. The event is always emitted on
+successful creation; pickup suppression for bulk-queueing flows is encoded in
+the payload, not by hiding the state-change event. Autonomous pickup
+consumers (prepare / work dispatch routers) dispatch only when
+`pickup_requested = true`; cache, bridge-refresh, and audit consumers
+process every creation event regardless of mode. See
+`project/spec/domain/workflow` for the full entry.
 
 #### context
 

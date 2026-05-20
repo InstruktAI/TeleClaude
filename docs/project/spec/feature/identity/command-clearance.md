@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/command-clearance
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Gate every protected daemon route on the CLI verb's role allowlist via the `require_clearance(tool_name)` dependency.
+id: 'project/spec/feature/identity/command-clearance'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Gate every protected daemon route on the CLI verb''s role allowlist via the `require_clearance(tool_name)` dependency.'
 ---
 
 # Command Clearance — Spec

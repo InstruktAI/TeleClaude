@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/agent-cli-hook-reception
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for daemon processing.
+id: 'project/spec/feature/integration/agent-cli-hook-reception'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Subprocess receiver invoked by agent CLIs (Claude, Codex, Gemini) that parses a hook payload, resolves a TeleClaude session, and enqueues the event for daemon processing.'
 ---
 
 # Agent CLI Hook Reception — Spec
@@ -214,9 +214,9 @@ And all project dependencies are importable
     `{"decision": "block", "reason": <reason>}`
   - `GeminiAdapter.format_checkpoint_response` →
     `{"decision": "deny", "reason": <reason>}`
-  When the adapter returns `None` from `format_checkpoint_response`, the
-  receiver lets the stop event continue to outbox enqueue, but in v1 none
-  of the three adapters return `None`.
+    When the adapter returns `None` from `format_checkpoint_response`, the
+    receiver lets the stop event continue to outbox enqueue, but in v1 none
+    of the three adapters return `None`.
 - Native metadata persistence (`_persist_native_metadata`) always runs when
   `raw_native_session_id` or `raw_native_log_file` is present. If the new
   native_session_id differs from the row's stored value, a

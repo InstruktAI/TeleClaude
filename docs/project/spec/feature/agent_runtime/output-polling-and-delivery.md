@@ -23,7 +23,7 @@ The v1 output-polling-and-delivery substrate is a daemon-internal, per-session b
 2. **Transcript-driven projection** (`project_session_from_transcript` + `_build_transcript_output_update` + `_project_user_reflection`) — when the underlying `OutputPoller` signals `OutputChanged`, the coordinator reads the agent's native transcript, derives the current-turn render, and dedups against `last_projected_output_digest` before handing off to the adapter.
 3. **Headless projection** (`schedule_headless_projection` → `schedule_session_projection(..., headless_only=True)`) — a second projection pathway for sessions in the `headless` lifecycle state (no live subscribers attached). Pending-signal coalescing under `_headless_projection_lock` guarantees overlapping triggers fold into a single re-run.
 
-Distinct from this lane: the on-demand transcript retrieval surface (`GET /sessions/{id}/messages`, which projects on request from the same transcript) and the v2 hook + render lanes (planned). v1 polling is liveness-driven push, not request-driven pull, and tmux is treated strictly as a *signal* — content always comes from the transcript file.
+Distinct from this lane: the on-demand transcript retrieval surface (`GET /sessions/{id}/messages`, which projects on request from the same transcript) and the v2 hook + render lanes (planned). v1 polling is liveness-driven push, not request-driven pull, and tmux is treated strictly as a _signal_ — content always comes from the transcript file.
 
 ## Canonical fields
 
@@ -238,7 +238,7 @@ And the finally block still tears down state cleanly
 ## Known caveats
 
 - **Tmux is liveness, transcript is truth.** `OutputChanged.output` from the tmux poller is intentionally discarded — never used as content. All delivered content comes from re-reading the agent's native transcript via the start-of-turn anchor. Don't add code that forwards `OutputChanged.output` to the adapter.
-- **Cumulative-turn projection, not incremental.** Each tick renders the *entire* current turn from the start-of-turn anchor forward. Adapters use the digest to decide whether to edit, and integration handles append-vs-edit semantics. The coordinator does not produce diffs.
+- **Cumulative-turn projection, not incremental.** Each tick renders the _entire_ current turn from the start-of-turn anchor forward. Adapters use the digest to decide whether to edit, and integration handles append-vs-edit semantics. The coordinator does not produce diffs.
 - **`last_message_sent_at` is mixed-purpose.** The projection watermark deliberately uses `last_projected_at` instead, because `last_message_sent_at` is touched by multiple writers and would cause projection skips or re-broadcasts. Don't conflate them.
 - **Codex transcript binding is one-shot per session.** If the discovery scan misses (e.g. because Codex hasn't created the file yet), the session_id is recorded in `_codex_transcript_bind_attempted` and not retried for the lifetime of the polling task. A session restart resets the attempt.
 - **Headless coalescing folds N signals into ≤1 re-run.** If 10 events arrive while a projection is running, exactly one extra pass executes when it finishes — not 10. Callers that need every signal observed individually must not use the headless lane.

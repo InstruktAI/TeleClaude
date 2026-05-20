@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/agents-inventory-requirement
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: config.yml:agents must declare a default agent that is known and enabled; agent keys must be in the known set; at least one agent must be enabled; runtime-only fields are rejected.
+id: 'project/spec/feature/config/agents-inventory-requirement'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'config.yml:agents must declare a default agent that is known and enabled; agent keys must be in the known set; at least one agent must be enabled; runtime-only fields are rejected.'
 ---
 
 # Agents Inventory Requirement — Spec

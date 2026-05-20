@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/orphan-session-token-cleanup
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Periodic maintenance sweep that deletes session_tokens rows whose owning session is closed or no longer present.
+id: 'project/spec/feature/identity/orphan-session-token-cleanup'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Periodic maintenance sweep that deletes session_tokens rows whose owning session is closed or no longer present.'
 ---
 
 # Orphan Session Token Cleanup — Spec

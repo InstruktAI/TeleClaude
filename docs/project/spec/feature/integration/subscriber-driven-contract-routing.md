@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/subscriber-driven-contract-routing
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Subscriber-published Contract model — declarative source/type/property criteria attached to a handler or external URL — routed by a property-matching engine, managed via HTTP API or YAML, with TTL and sweep. Named-exception authored for v2 inheritance; v1 production exercises only the programmatic built-in subset.
+id: 'project/spec/feature/integration/subscriber-driven-contract-routing'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Subscriber-published Contract model — declarative source/type/property criteria attached to a handler or external URL — routed by a property-matching engine, managed via HTTP API or YAML, with TTL and sweep. Named-exception authored for v2 inheritance; v1 production exercises only the programmatic built-in subset.'
 ---
 
 # Subscriber-Driven Contract Routing — Spec

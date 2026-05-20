@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/principal-resolution
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Derive the canonical `(principal, role)` pair for a v1 session from its inherited principal, human email, or system role.
+id: 'project/spec/feature/identity/principal-resolution'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Derive the canonical `(principal, role)` pair for a v1 session from its inherited principal, human email, or system role.'
 ---
 
 # Principal Resolution — Spec

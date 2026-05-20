@@ -52,14 +52,14 @@ version if hooks are not firing.
 
 `matcher` is a regex string applied to a specific field per event.
 
-| Event              | Matcher applies to | Example                 |
-| ------------------ | ------------------ | ----------------------- |
-| `SessionStart`     | `source`           | `"startup\|resume"`     |
-| `PreToolUse`       | `tool_name`        | `"Bash"`, `"^apply_patch$"` |
-| `PostToolUse`      | `tool_name`        | `"Edit\|Write"`         |
-| `PermissionRequest`| `tool_name`        | `"mcp__filesystem__.*"` |
-| `UserPromptSubmit` | not used           | (ignored if present)    |
-| `Stop`             | not used           | (ignored if present)    |
+| Event               | Matcher applies to | Example                     |
+| ------------------- | ------------------ | --------------------------- |
+| `SessionStart`      | `source`           | `"startup\|resume"`         |
+| `PreToolUse`        | `tool_name`        | `"Bash"`, `"^apply_patch$"` |
+| `PostToolUse`       | `tool_name`        | `"Edit\|Write"`             |
+| `PermissionRequest` | `tool_name`        | `"mcp__filesystem__.*"`     |
+| `UserPromptSubmit`  | not used           | (ignored if present)        |
+| `Stop`              | not used           | (ignored if present)        |
 
 ## Hook payload contract
 
@@ -176,7 +176,7 @@ Turn-scoped hooks (`PreToolUse`, `PermissionRequest`, `PostToolUse`,
 **The native hook payload does not expose any subagent linkage.** There is no
 `parent_session_id`, `parent_thread_id`, or `subagent_id` field, and there are
 no dedicated subagent hook events. When Codex spawns a thread subagent the
-spawned thread emits the *same* hook events (`SessionStart`, `UserPromptSubmit`,
+spawned thread emits the _same_ hook events (`SessionStart`, `UserPromptSubmit`,
 `Stop`, …) under its own `session_id`.
 
 To distinguish subagent events from root-session events, the transcript file
@@ -191,11 +191,11 @@ record whose payload carries the parent linkage when present:
     "source": {
       "subagent": {
         "thread_spawn": {
-          "parent_thread_id": "<parent_thread_id>"
-        }
-      }
-    }
-  }
+          "parent_thread_id": "<parent_thread_id>",
+        },
+      },
+    },
+  },
 }
 ```
 
@@ -204,11 +204,11 @@ subagent signal. Absence means root session.
 
 ## Stdout / exit code semantics
 
-| Exit code | Stdout                | Effect                                                    |
-| --------- | --------------------- | --------------------------------------------------------- |
-| `0`       | valid JSON            | Codex parses and applies the response                     |
-| `0`       | empty                 | success, execution continues                              |
-| `2`       | stderr text           | block/denial with the stderr as reason                    |
+| Exit code | Stdout      | Effect                                 |
+| --------- | ----------- | -------------------------------------- |
+| `0`       | valid JSON  | Codex parses and applies the response  |
+| `0`       | empty       | success, execution continues           |
+| `2`       | stderr text | block/denial with the stderr as reason |
 
 ### Block / decision shapes
 
@@ -257,7 +257,7 @@ subagent signal. Absence means root session.
 }
 ```
 
-`Stop` continuation — `decision: "block"` does *not* reject the turn; it tells
+`Stop` continuation — `decision: "block"` does _not_ reject the turn; it tells
 Codex to continue, using `reason` as the continuation prompt:
 
 ```json

@@ -29,7 +29,7 @@ retrieval flow:
    header listing dependency IDs the body referenced.
 3. **Phase 3 — follow up explicitly.** Required reads are NEVER
    auto-loaded. To pull a dependency, the caller re-runs `telec docs
-   get` against the listed dependency IDs. The explicit follow-up keeps
+get` against the listed dependency IDs. The explicit follow-up keeps
    the caller in deliberate control of its context budget.
 
 Role gating runs at phases 1 and 2 against the terminal session's
@@ -114,4 +114,4 @@ And Required reads resolution is NOT applied to that ID
 - Phase 1 third-party output ignores `--baseline-only` and `--target` filters
   entirely; third-party listings render on a separate track.
 - The v1 CLI namespace is `telec docs *`. The v2 target is `telec context
-  docs *`. The verb rename is a known migration cleanup.
+docs *`. The verb rename is a known migration cleanup.

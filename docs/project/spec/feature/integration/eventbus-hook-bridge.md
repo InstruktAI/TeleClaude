@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/eventbus-hook-bridge
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Subscribes to the daemon's internal EventBus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook outbox URLs.
+id: 'project/spec/feature/integration/eventbus-hook-bridge'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Subscribes to the daemon''s internal EventBus, normalizes each event into a HookEvent, runs it through the Contract matcher, and dispatches to internal handlers or webhook outbox URLs.'
 ---
 
 # EventBus Hook Bridge — Spec
@@ -38,7 +38,7 @@ HTTPS webhook deliveries.
 
 ### Use cases
 
-#### UC-EB1: Session lifecycle event becomes a session.* HookEvent
+#### UC-EB1: Session lifecycle event becomes a session.\* HookEvent
 
 ```gherkin
 Given the EventBus emits TeleClaudeEvents.SESSION_STARTED with SessionLifecycleContext(session_id="sess-1")
@@ -137,7 +137,7 @@ And no delivery action is taken
 
 - `teleclaude/hooks/bridge.py` — `EventBusBridge` (L40):
   `register`, `attach` (compatibility alias), `_handle`, `_SOURCE_MAP`
-  (L28, the agent_event → "agent" / session_* → "system" mapping).
+  (L28, the agent*event → "agent" / session*\* → "system" mapping).
 - `teleclaude/hooks/dispatcher.py` — `HookDispatcher` (L22): `dispatch`,
   `deliver` (compatibility alias). `dispatch` catches per-Contract
   handler exceptions and webhook-enqueue exceptions internally.
@@ -174,9 +174,9 @@ And no delivery action is taken
     `github-webhook-normalization` via the inbound framework)
   - `deployment-fanout` matches `source="deployment"` (driven by
     `deployment-version-fanout` via the Redis stream consumer)
-  These built-ins are wired to dispatcher entry points other than this
-  bridge. The bridge's potential consumers are user-published Contracts
-  declaring `source` ∈ `{"system", "agent"}` — and v1 production has none.
+    These built-ins are wired to dispatcher entry points other than this
+    bridge. The bridge's potential consumers are user-published Contracts
+    declaring `source` ∈ `{"system", "agent"}` — and v1 production has none.
 - The webhook enqueue side feeds `outbound-webhook-delivery` whenever a
   matched Contract has a URL target. In v1 production this path is
   inactive because no Contract matches bridge events.

@@ -34,46 +34,46 @@ SubscriptionState = {
 
 ### `ListenerRecord`
 
-| field | type | meaning |
-|---|---|---|
-| `target_session_id` | str | session whose turn events trigger notifications |
-| `caller_session_id` | str | session that receives notifications |
-| `caller_tmux_session` | str | tmux destination for notification injection |
-| `registered_at` | iso8601 | wall time of registration |
-| `one_shot` | bool | if true, removed automatically after first notify; if false, persists until explicit unsubscribe or caller cleanup |
+| field                 | type    | meaning                                                                                                            |
+| --------------------- | ------- | ------------------------------------------------------------------------------------------------------------------ |
+| `target_session_id`   | str     | session whose turn events trigger notifications                                                                    |
+| `caller_session_id`   | str     | session that receives notifications                                                                                |
+| `caller_tmux_session` | str     | tmux destination for notification injection                                                                        |
+| `registered_at`       | iso8601 | wall time of registration                                                                                          |
+| `one_shot`            | bool    | if true, removed automatically after first notify; if false, persists until explicit unsubscribe or caller cleanup |
 
 ### `LinkRecord`
 
-| field | type | meaning |
-|---|---|---|
-| `link_id` | uuid | identity of the conversation link |
-| `mode` | enum | `direct_link` (two-member peer) or `gathering_link` (multi-member; out of scope here) |
-| `members` | list[session_id] | caller and target are both members for a direct link |
-| `severed_at` | iso8601 \| null | when the link was closed; absent for active links |
+| field        | type             | meaning                                                                               |
+| ------------ | ---------------- | ------------------------------------------------------------------------------------- |
+| `link_id`    | uuid             | identity of the conversation link                                                     |
+| `mode`       | enum             | `direct_link` (two-member peer) or `gathering_link` (multi-member; out of scope here) |
+| `members`    | list[session_id] | caller and target are both members for a direct link                                  |
+| `severed_at` | iso8601 \| null  | when the link was closed; absent for active links                                     |
 
 ### Verbs
 
-| verb | effect on `listener` | effect on `link` | idempotent |
-|---|---|---|---|
-| `dispatch_child` (orchestrator spawns a child) | inserts persistent listener (`one_shot=false`) | — | yes |
-| `sessions send` (non-direct) | inserts one-shot listener (`one_shot=true`) if none present | — | yes |
-| `sessions send --direct` | — | creates or reuses active direct link | yes |
-| `sessions start --direct` | — | creates direct link after session creation | yes |
-| `notify_stop` / `notify_input_request` fires | removes one-shot listeners after delivery; persistent listeners remain | — | n/a |
-| `--close-link` | — | severs the active direct link for the (caller, target) pair | yes |
-| `sessions unsubscribe` | removes the listener if present | severs the active direct link if present | yes |
-| caller session ends | removes all listeners registered by caller | severs all links the caller participates in | n/a |
+| verb                                           | effect on `listener`                                                   | effect on `link`                                            | idempotent |
+| ---------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------- | ---------- |
+| `dispatch_child` (orchestrator spawns a child) | inserts persistent listener (`one_shot=false`)                         | —                                                           | yes        |
+| `sessions send` (non-direct)                   | inserts one-shot listener (`one_shot=true`) if none present            | —                                                           | yes        |
+| `sessions send --direct`                       | —                                                                      | creates or reuses active direct link                        | yes        |
+| `sessions start --direct`                      | —                                                                      | creates direct link after session creation                  | yes        |
+| `notify_stop` / `notify_input_request` fires   | removes one-shot listeners after delivery; persistent listeners remain | —                                                           | n/a        |
+| `--close-link`                                 | —                                                                      | severs the active direct link for the (caller, target) pair | yes        |
+| `sessions unsubscribe`                         | removes the listener if present                                        | severs the active direct link if present                    | yes        |
+| caller session ends                            | removes all listeners registered by caller                             | severs all links the caller participates in                 | n/a        |
 
 ## Allowed values
 
 ### State matrix
 
-| listener | link | meaning | notification delivery |
-|---|---|---|---|
-| none | none | caller has no subscription to target | none |
-| present | none | caller passively watches target | active — `notify_stop` / `notify_input_request` deliver to caller's tmux |
-| none | active | caller is in 2-way conversation with target | none (suppressed by absence of listener) |
-| present | active | caller dispatched the target AND opened a conversation with it | **suppressed** — listener row remains, but notifications skip this caller until the link closes |
+| listener | link   | meaning                                                        | notification delivery                                                                           |
+| -------- | ------ | -------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| none     | none   | caller has no subscription to target                           | none                                                                                            |
+| present  | none   | caller passively watches target                                | active — `notify_stop` / `notify_input_request` deliver to caller's tmux                        |
+| none     | active | caller is in 2-way conversation with target                    | none (suppressed by absence of listener)                                                        |
+| present  | active | caller dispatched the target AND opened a conversation with it | **suppressed** — listener row remains, but notifications skip this caller until the link closes |
 
 ### Suppression rule (canonical)
 

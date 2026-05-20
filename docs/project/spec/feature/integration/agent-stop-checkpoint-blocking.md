@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/agent-stop-checkpoint-blocking
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Heuristic checkpoint engine that may block an agent_stop hook with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, or address uncommitted work.
+id: 'project/spec/feature/integration/agent-stop-checkpoint-blocking'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Heuristic checkpoint engine that may block an agent_stop hook with an adapter-formatted instruction nudging the agent to commit, run tests, fix lint, or address uncommitted work.'
 ---
 
 # Agent Stop Checkpoint Blocking — Spec

@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/caller-verification
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Resolve every authenticated HTTP request into a `CallerIdentity` via the daemon's single `verify_caller` dependency.
+id: 'project/spec/feature/identity/caller-verification'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Resolve every authenticated HTTP request into a `CallerIdentity` via the daemon''s single `verify_caller` dependency.'
 ---
 
 # Caller Verification — Spec

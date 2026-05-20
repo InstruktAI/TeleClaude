@@ -4,6 +4,10 @@ id: 'project/design/cli-authorization-matrix'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+applies_to: 'v1'
+status: 'mixed'
+delivered_by:
+  - 'roadmap-trash-reveal-ui'
 ---
 
 # CLI Authorization Matrix — Design
@@ -77,11 +81,11 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 
 ### System
 
-| Command         | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                    |
-| --------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `telec projects init`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
-| `telec version` | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                              |
-| `telec sync`    | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync.                                  |
+| Command               | Type | Worker | Orch | Admin | Member | Contributor | Newcomer | Customer | Reasoning                                                                                                                    |
+| --------------------- | ---- | ------ | ---- | ----- | ------ | ----------- | -------- | -------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `telec projects init` | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Project initialization modifies the workspace. Workers don't initialize. Only admins and members should initialize projects. |
+| `telec version`       | R    | ✅     | ✅   | ✅    | ✅     | ✅          | ✅       | ✅       | Version is a health check. Everyone can see it.                                                                              |
+| `telec sync`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Sync builds and deploys artifacts. Workers don't sync. Only admins and members should sync.                                  |
 
 ### Documentation
 
@@ -97,6 +101,7 @@ Legend: R = read, W = write. Worker and Orchestrator columns show system-role ga
 | `telec todo create`           | W    | ❌     | ✅   | ✅    | ✅     | ✅          | ❌       | ❌       | Creating an empty draft skeleton is still work planning. Contributors can scaffold work items without input.         |
 | `telec todo design`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the creative state machine is orchestration. Same boundary as prepare/work.                                  |
 | `telec todo remove`           | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Removing a todo is destructive planning. Only admins and members.                                                    |
+| `telec todo reactivate`       | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Restoring a soft-removed todo is the inverse of `telec todo remove`; same audience and trust shape (operator/member restoring a recoverable state on a todo they own). Status: target — delivered_by roadmap-trash-reveal-ui. |
 | `telec todo prepare`          | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the prepare state machine is orchestration. Workers cannot drive the state machine. Only admins and members. |
 | `telec todo work`             | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Driving the work state machine is orchestration. Same as prepare.                                                    |
 | `telec todo reconcile`        | W    | ❌     | ✅   | ✅    | ✅     | ❌          | ❌       | ❌       | Re-aligning the lifecycle pointer from current evidence is orchestration. Same boundary as prepare/work.             |
@@ -195,11 +200,12 @@ Many commands have no clearance gate (no `CLEARANCE_*` dependency on their API e
 | `telec sessions revive`       | Contributors, newcomers, customers          |
 | `telec sessions result`       | Newcomers, customers                        |
 | `telec sessions widget`       | Newcomers, customers                        |
-| `telec projects init`                  | Contributors, newcomers, customers          |
+| `telec projects init`         | Contributors, newcomers, customers          |
 | `telec sync`                  | Contributors, newcomers, customers          |
 | `telec todo create`           | Newcomers, customers                        |
 | `telec todo design`           | Contributors, newcomers, customers          |
 | `telec todo remove`           | Contributors, newcomers, customers          |
+| `telec todo reactivate`       | Contributors, newcomers, customers          |
 | `telec todo verify-artifacts` | Customers                                   |
 | `telec todo dump`             | Newcomers, customers                        |
 | `telec roadmap list`          | Customers                                   |

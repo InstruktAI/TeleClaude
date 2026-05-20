@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/session-token-revocation
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Delete a session's tokens from the ledger and invalidate auth caches early in the termination path so in-flight calls are rejected immediately.
+id: 'project/spec/feature/identity/session-token-revocation'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Delete a session''s tokens from the ledger and invalidate auth caches early in the termination path so in-flight calls are rejected immediately.'
 ---
 
 # Session Token Revocation — Spec

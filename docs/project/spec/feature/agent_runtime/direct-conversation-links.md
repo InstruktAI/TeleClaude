@@ -19,7 +19,7 @@ description: 'Bidirectional message routing between two (or more) agent sessions
 
 A **conversation link** is the agent_runtime aggregate that turns two (or more) sessions into peers whose subsequent turn-complete outputs are delivered to one another automatically, without re-issuing `telec sessions send` per turn.
 
-The link is established by a single act of *ignition*: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. Either party may sever the link with `--close-link`, which closes it for all members at once.
+The link is established by a single act of _ignition_: any party — typically the caller of `telec sessions send <peer> "<msg>" --direct` — creates the link, the receiving session is added as the second member, and from that moment forward the active-conversation channel supersedes passive listener notifications between the pair. Either party may sever the link with `--close-link`, which closes it for all members at once.
 
 The link is an associative aggregate (`ConversationLink` + `ConversationLinkMember`) backed by SQLite; it survives daemon restarts and is the canonical record of "these sessions are currently talking to each other."
 

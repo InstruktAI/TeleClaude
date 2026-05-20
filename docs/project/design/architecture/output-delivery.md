@@ -106,4 +106,4 @@ sequenceDiagram
 | Telegram topic_id missing                             | `send_message` returns `""`                          | Footer skipped, no message_id stored |
 | Legacy session data with `threaded_footer_message_id` | `from_json` maps to `footer_message_id`              | Transparent backward compat          |
 | Output message exceeds byte budget                    | Handled by output sizing pipeline (separate concern) | See output-sizing design doc         |
-| Delivery state treated as projection truth            | Invalid; can duplicate or reorder source content      | Rebuild from source cursor           |
+| Delivery state treated as projection truth            | Invalid; can duplicate or reorder source content     | Rebuild from source cursor           |

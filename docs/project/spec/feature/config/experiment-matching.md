@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/experiment-matching
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Config.is_experiment_enabled matches a named experiment with strict agent constraints, optimistic adapter constraints, and OR semantics across duplicate-named entries.
+id: 'project/spec/feature/config/experiment-matching'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Config.is_experiment_enabled matches a named experiment with strict agent constraints, optimistic adapter constraints, and OR semantics across duplicate-named entries.'
 ---
 
 # Experiment Matching — Spec

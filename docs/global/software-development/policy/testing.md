@@ -134,8 +134,8 @@ Tests have **three permitted moves** on strings:
 
 1. **Snapshot** — for any string the system emits. The snapshot is the contract.
 2. **Non-empty guard** (`assert s` / `expect(s).toBeTruthy()`) — narrowly scoped to
-   boundaries where accidental erasure is the failure mode. Asserts that *something*
-   was produced, never *what*.
+   boundaries where accidental erasure is the failure mode. Asserts that _something_
+   was produced, never _what_.
 3. **Named-constant identity comparison** — when behavior depends on identity
    (e.g. `assert header == Headers.SESSION_ID`). Production and tests both import
    the constant; the constant's value is governed by a schema-level snapshot.
@@ -145,7 +145,7 @@ markers, schema keys, command tokens), and artifact/documentation strings. If
 you find yourself writing `assert s == "some-literal"` against a protocol
 identifier, the fix is a named constant — not a carve-out.
 
-**Behavior stays structural.** Snapshots cover *presentation*. Errors are asserted
+**Behavior stays structural.** Snapshots cover _presentation_. Errors are asserted
 by exception type, states by enum/typed fields, diagnostics by their structured
 fields. The rendered prose is snapshot-covered at the renderer's boundary.
 
@@ -237,13 +237,13 @@ Every test must survive one question: **"What real bug in OUR code would this ca
 22. **Passthrough-only tests** — proving data flowed through unchanged when the forwarding itself is not the real behavior or decision under test
 23. **Parametrized / table-driven tests** — multiple input rows stuffed into one test body via `@pytest.mark.parametrize`, fixture `params=`, or any equivalent mechanism. The deeper sin parametrize commits is **redundant coverage masquerading as more tests**: most parametrize tables are N inputs that all flow through the same code-coverage path. The unit of testing is the path, not the input. One representative input pins the path; additional inputs through the same path are waste. When inputs do exercise different paths, give each path its own named test that documents which path it pins. There is no legitimate use of parametrize — by construction it either packages redundant runs (delete the duplicates) or smuggles distinct paths under one body (split into named tests)
 24. **String fragment / substring / pattern assertions** — `assert "x" in s`, `s.startswith(...)`, `s.endswith(...)`, regex matches against string content, partial-string `expect(s).toContain(...)`. Snapshot the full output, or assert on the structured field that drives the relevant fragment. Asserting on a fragment is the same prose-lock as asserting on the whole — it just hides the brittleness behind a smaller surface area
-25. **Error-message text assertions** — asserting on exception `.message`, `.args[0]`, or rendered error prose. Test the exception *type* (`pytest.raises(SessionNotFoundError)`, `expect(...).toThrow(SessionNotFoundError)`) and the structured fields on it. The rendered prose is snapshot-covered separately, at the renderer's boundary
+25. **Error-message text assertions** — asserting on exception `.message`, `.args[0]`, or rendered error prose. Test the exception _type_ (`pytest.raises(SessionNotFoundError)`, `expect(...).toThrow(SessionNotFoundError)`) and the structured fields on it. The rendered prose is snapshot-covered separately, at the renderer's boundary
 
-23. All tests run on every commit
-24. Tests must pass before merging to main branch
-25. Linting, type checking, and unit tests run automatically
-26. No commits with `--no-verify` to bypass hooks unless explicitly approved
-27. Keep test suite fast (< 10s for unit tests)
+26. All tests run on every commit
+27. Tests must pass before merging to main branch
+28. Linting, type checking, and unit tests run automatically
+29. No commits with `--no-verify` to bypass hooks unless explicitly approved
+30. Keep test suite fast (< 10s for unit tests)
 
 ### Test Specification Delivery
 

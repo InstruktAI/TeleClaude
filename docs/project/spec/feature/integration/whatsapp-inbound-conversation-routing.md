@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/whatsapp-inbound-conversation-routing
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: End-to-end inbound WhatsApp pipeline — normalize the Cloud API webhook payload, route via a built-in contract, resolve or create a session per phone number, and dispatch a typed command for text or media.
+id: 'project/spec/feature/integration/whatsapp-inbound-conversation-routing'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'End-to-end inbound WhatsApp pipeline — normalize the Cloud API webhook payload, route via a built-in contract, resolve or create a session per phone number, and dispatch a typed command for text or media.'
 ---
 
 # WhatsApp Inbound Conversation Routing — Spec
@@ -181,10 +181,10 @@ Otherwise: classified as "message.audio"
 - `teleclaude/daemon_event_platform.py` (inside `_init_webhook_service`
   at L464) — programmatic registration of
   `Contract(id="builtin-whatsapp-inbound", target=
-  Target(handler="whatsapp_inbound"), source_criterion=match "whatsapp",
-  type_criterion=pattern "message.*", source="programmatic")` (~L482)
+Target(handler="whatsapp_inbound"), source_criterion=match "whatsapp",
+type_criterion=pattern "message.*", source="programmatic")` (~L482)
   and `handler_registry.register("whatsapp_inbound",
-  handle_whatsapp_event)` (~L481).
+handle_whatsapp_event)` (~L481).
 - `teleclaude/core/origins.py` — `InputOrigin.WHATSAPP`.
 - `teleclaude/types/commands.py` — `ProcessMessageCommand`,
   `HandleVoiceCommand`, `HandleFileCommand`.
@@ -217,8 +217,7 @@ Otherwise: classified as "message.audio"
   the media fetch. Exceptions from `handle_whatsapp_event` are caught
   inside `HookDispatcher.dispatch`'s per-Contract try/except (logged as
   "Internal handler failed") and do NOT escape back to the inbound
-  framework; the HTTP response remains `{"status": "accepted"}` with
-  200. Redelivery does NOT happen automatically — WhatsApp considers
+  framework; the HTTP response remains `{"status": "accepted"}` with 200. Redelivery does NOT happen automatically — WhatsApp considers
   the webhook accepted. Operators must look at daemon error logs to
   observe these failures.
 - Phone numbers are normalized by stripping non-digits before lookup,

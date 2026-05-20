@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/integrator-cutover-gate
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Integrator cutover flag requires explicit parity-evidence acceptance before it can be enabled; rollback is the default safety posture.
+id: 'project/spec/feature/config/integrator-cutover-gate'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Integrator cutover flag requires explicit parity-evidence acceptance before it can be enabled; rollback is the default safety posture.'
 ---
 
 # Integrator Cutover Gate — Spec

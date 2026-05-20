@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/runtime-tts-toggle
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: RuntimeSettings holds the mutable runtime-settings layer (currently only tts.enabled) separate from YAML config; patches mutate in-memory state and the TTS manager synchronously, then flush to a JSON state file on a debounced asyncio task.
+id: 'project/spec/feature/config/runtime-tts-toggle'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'RuntimeSettings holds the mutable runtime-settings layer (currently only tts.enabled) separate from YAML config; patches mutate in-memory state and the TTS manager synchronously, then flush to a JSON state file on a debounced asyncio task.'
 ---
 
 # Runtime TTS Toggle — Spec

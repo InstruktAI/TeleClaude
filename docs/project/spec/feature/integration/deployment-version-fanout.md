@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/deployment-version-fanout
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Cross-host Redis stream consumer that fans out deployment version_available events to every daemon in the cluster, with self-skip on origin to avoid double-execution.
+id: 'project/spec/feature/integration/deployment-version-fanout'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Cross-host Redis stream consumer that fans out deployment version_available events to every daemon in the cluster, with self-skip on origin to avoid double-execution.'
 ---
 
 # Deployment Version Fanout — Spec
@@ -124,13 +124,13 @@ And "Deployment fanout consumer stopped" is logged
   `_deployment_fanout_consumer` (L586, the consumer loop),
   task creation at L515 inside `_init_webhook_service`:
   `self._deployment_fanout_task = asyncio.create_task(
-  self._deployment_fanout_consumer(dispatcher, redis_transport),
-  name="deployment-fanout")`.
+self._deployment_fanout_consumer(dispatcher, redis_transport),
+name="deployment-fanout")`.
 - Built-in contract registration inside `_init_webhook_service`
   (~L500): `Contract(id="deployment-fanout",
-  source_criterion=PropertyCriterion(match="deployment"),
-  type_criterion=PropertyCriterion(match="version_available"),
-  target=Target(handler="deployment_update"), source="programmatic")`.
+source_criterion=PropertyCriterion(match="deployment"),
+type_criterion=PropertyCriterion(match="version_available"),
+target=Target(handler="deployment_update"), source="programmatic")`.
 - `teleclaude/deployment/handler.py` —
   `handle_deployment_event` (L72, runs for both github- and
   deployment-source events),

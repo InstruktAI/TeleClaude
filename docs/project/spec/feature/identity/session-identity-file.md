@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/session-identity-file
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Per-session `teleclaude_identity.json` in the session's TMPDIR carrying session_id, session_token, system_role, and human_role; written atomically by the daemon, read by CLI subprocesses to populate identity headers.
+id: 'project/spec/feature/identity/session-identity-file'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Per-session `teleclaude_identity.json` in the session''s TMPDIR carrying session_id, session_token, system_role, and human_role; written atomically by the daemon, read by CLI subprocesses to populate identity headers.'
 ---
 
 # Session Identity File — Spec

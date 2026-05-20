@@ -30,7 +30,7 @@ The three role bands are:
 - **Admin** (or unresolved role): no role filter is applied. The caller sees
   every mirror on the host.
 - **Member**: filter is `(human_email = :caller_email OR visibility =
-  'shared')`. The caller sees their own mirrors plus those explicitly marked
+'shared')`. The caller sees their own mirrors plus those explicitly marked
   shared on the upstream session.
 - **Anything else** (a known non-admin, non-member role): filter is
   `human_email = :caller_email`. The caller sees only their own mirrors.

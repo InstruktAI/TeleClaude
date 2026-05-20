@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/terminal-email-login
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Bind a human email to the current terminal via `telec auth login`, written to a per-TTY identity file and injected as `x-telec-email` on outbound API calls.
+id: 'project/spec/feature/identity/terminal-email-login'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Bind a human email to the current terminal via `telec auth login`, written to a per-TTY identity file and injected as `x-telec-email` on outbound API calls.'
 ---
 
 # Terminal Email Login — Spec

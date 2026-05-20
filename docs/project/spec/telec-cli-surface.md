@@ -9,6 +9,7 @@ delivered_by:
   - 'telec-todo-rename'
   - 'roadmap-soft-delete-retention'
   - 'roadmap-trash-reveal-ui'
+  - 'v2-workflow-cli-refinement-commands'
 ---
 
 # CLI Surface — Spec
@@ -119,11 +120,29 @@ subcommands:
     description: 'Manage work items.'
     subcommands:
       create:
+        description: 'Create a substantive todo with content. Content is REQUIRED — an empty-content invocation is refused at the workflow service boundary and writes nothing (no roadmap row, no state row, no artifact row, no artifact-version row, no workflow.todo.created event). Replaces the v1 empty-skeleton path that produced misleading (stage=draft, phase=draft, state=in_progress) rows with no input artifact. The substantive-create outcome is identical regardless of which surface (`telec todo create`, the `telec todo dump` deprecation alias, or `telec workflow todo create`) was invoked. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-1, UC-WFL-2.)'
         args:
           - slug: 'string'
+          - content: 'string (REQUIRED)'
         flags:
           --project-root: 'Project root (default: cwd).'
-          --after: 'Comma-separated dependency slugs.'
+          --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
+          --kind: 'Todo kind (feature | bug | refactor | migration | prepped).'
+          --group: 'Optional grouping label for the roadmap entry.'
+          --description: 'Optional roadmap-entry description.'
+          --prepped: 'Write content as `implementation-plan` (skip prepare). HITL guard enforced.'
+          --silent: 'Persist without triggering autonomous pickup dispatch. The workflow.todo.created event is still emitted with creation_mode=silent and pickup_requested=false so cache/audit consumers observe the new aggregate; only the pickup dispatch consumers gate themselves on pickup_requested. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: UC-WFL-19.)'
+      dump:
+        description: 'DEPRECATED — warning compatibility alias for `telec todo create` retained for one transition window. Emits a deprecation diagnostic naming `telec todo create` and forwards to the substantive-create path; persisted state is indistinguishable from `telec todo create <slug> <content>`. Removed after the transition window closes. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-2a.)'
+        args:
+          - slug: 'string'
+          - content: 'string (REQUIRED)'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+          --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
+          --kind: 'Todo kind.'
+          --prepped: 'Forwarded to create.'
+          --silent: 'Forwarded to create.'
       mark-phase:
         description: 'Operator override for the authoritative lifecycle phase field.'
         args:
@@ -182,6 +201,12 @@ subcommands:
           - slug: 'string'
         flags:
           --include-removed: 'Also resolve the slug against the set of soft-removed rows; surfaces the show payload for a uniquely-matching removed row, or a typed ambiguity/no-match diagnostic — never returns a live row through this flag. (status: target — delivered_by roadmap-trash-reveal-ui.)'
+      doctor:
+        description: 'Operator-facing maintenance scans for misleading or legacy persisted state. Default is read-only — surfaces detected rows in a structured report and exits without mutation. Opt-in flags (e.g. `--migrate`) drive the corresponding standard remediation primitive (soft-remove for skeletons, never a destructive backfill). (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-2b.)'
+        flags:
+          --project-root: 'Project root (default: cwd).'
+          --skeletons: 'Scan for pre-cutover v1 skeleton todos (lifecycle_phase=draft AND no input artifact). Default: read-only report. Combine with --migrate to soft-remove each detected skeleton via the standard remove path (UC-WFL-10; recoverable within the retention window).'
+          --migrate: 'Apply remediation for the selected scan (currently: soft-remove for --skeletons). Without this flag every doctor scan is read-only.'
       artifacts:
         description: 'Manage todo artifacts in todos.db.'
         subcommands:
@@ -231,6 +256,64 @@ subcommands:
           --build-started: 'Start work from prepared and move to build_started.'
           --build-complete: 'Complete implementation work and move to build_complete.'
           --finalize-ready: 'Mark the reviewed worktree ready for finalize handoff.'
+  workflow:
+    description: 'Target v2 bounded-context namespace for workflow operations. Mirrors the workflow service contract and is the durable surface that survives the v1→v2 cutover. `telec todo ...` remains as transition compatibility; both spellings route to the same workflow service. (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+    subcommands:
+      todo:
+        description: 'Workflow-namespace todo operations.'
+        subcommands:
+          create:
+            description: 'Create a substantive todo with content via the target v2 namespace. Semantics are identical to `telec todo create` (UC-WFL-1, UC-WFL-19). (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+            args:
+              - slug: 'string'
+              - content: 'string (REQUIRED)'
+            flags:
+              --project-root: 'Project root (default: cwd).'
+              --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
+              --kind: 'Todo kind.'
+              --group: 'Optional grouping label.'
+              --description: 'Optional roadmap-entry description.'
+              --prepped: 'Write content as `implementation-plan`; HITL guard enforced.'
+              --silent: 'Persist with creation_mode=silent and pickup_requested=false (cache/audit consumers still observe the event; pickup dispatch is suppressed).'
+              --input-file: 'Read content from path instead of positional argument.'
+          update:
+            description: 'Atomically update a live todo''s metadata, dependencies, kind, and/or content. All supplied fields apply in a single transaction with rollback on partial failure. Dependency inputs REPLACE the entire `after` set (not patch). Positional content writes a new artifact version (default `input`, or the kind named by `--artifact`); `--prepped` writes content as `implementation-plan` and enforces the prepped HITL guard. Update can NEVER move lifecycle phase — phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs. Refuses YAML/JSON patch blobs; only typed parameter inputs are accepted. Writes through the writable-allowlist gate (retired artifact kinds — test-specs, spec-review-findings — are refused). On success emits workflow.todo.updated with a change_summary listing the mutated fields. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-17.)'
+            args:
+              - slug: 'string'
+              - content: 'string (optional)'
+            flags:
+              --project-root: 'Project root (default: cwd).'
+              --artifact: 'Artifact kind to write the positional content as (default `input`). Must be a writable kind per ARTIFACT_NAMES_WRITABLE.'
+              --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. The supplied set REPLACES the existing dependency set in full (not patched/appended).'
+              --group: 'New grouping label.'
+              --description: 'New roadmap-entry description.'
+              --kind: 'New todo kind (validated against the canonical set).'
+              --prepped: 'Write content as `implementation-plan`; HITL guard enforced.'
+          rename:
+            description: 'Workflow-namespace alias for `telec todo rename`. Atomically rename a live todo''s slug across todos.db, doc-snippet delivered_by frontmatter, and the on-disk worktree/branch/workspace. (status: target — delivered_by telec-todo-rename + v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-13.)'
+            args:
+              - old_slug: 'string'
+              - new_slug: 'string'
+            flags:
+              --project-root: 'Project root (default: cwd).'
+          diff:
+            description: 'Refinement diff for a single todo. Gathers, for the named slug only: each workflow-artifact diff between the artifact''s current version digest and its most recent approved/reviewed baseline digest (notably prd, architecture index, implementation-plan); PLUS each doc snippet whose frontmatter `delivered_by` list includes the slug, diffed against the git SHA that was current when the snippet acquired the slug (or against `main` HEAD for snippets without recorded provenance). Output is anchored by digest (artifacts) and git SHA (snippets) so a reviewer can re-verify deterministically. Reports nothing for slugs that own no artifact deltas and no delivered_by snippet membership. Implemented in terms of the low-level `workflow artifacts diff` primitive; never bypasses the digest-anchored version history. (status: target — delivered_by v2-workflow-cli-refinement-commands; authoritative contract: project/spec/domain/workflow UC-WFL-18.)'
+            args:
+              - slug: 'string'
+            flags:
+              --project-root: 'Project root (default: cwd).'
+      artifacts:
+        description: 'Workflow-namespace artifact operations.'
+        subcommands:
+          diff:
+            description: 'Low-level artifact diff primitive — unified diff between two exact artifact versions resolved by digest in the artifact-version history. The todo-scoped `telec workflow todo diff` (UC-WFL-18) is implemented in terms of this primitive. (status: target — delivered_by v2-workflow-cli-refinement-commands.)'
+            args:
+              - slug: 'string'
+              - name: 'artifact kind'
+              - old_digest: 'string'
+              - new_digest: 'string'
+            flags:
+              --project-root: 'Project root (default: cwd).'
   roadmap:
     description: 'View and manage the work item roadmap.'
     subcommands:
@@ -252,7 +335,7 @@ subcommands:
           - slug: 'string'
         flags:
           --group: 'Slug of holder todo.'
-          --after: 'Comma-separated dependency slugs.'
+          --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
           --before: 'Insert before this slug.'
           --description: 'Summary description.'
           --project-root: 'Project root (default: cwd).'
@@ -273,7 +356,7 @@ subcommands:
         args:
           - slug: 'string'
         flags:
-          --after: 'Comma-separated dependency slugs.'
+          --after: 'Dependency slug (repeatable `--after <slug>` per PRD); comma-separated lists are also accepted as a shorthand. Multiple invocations append.'
           --project-root: 'Project root (default: cwd).'
       freeze:
         args:

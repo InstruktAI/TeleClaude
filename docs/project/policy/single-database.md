@@ -4,6 +4,9 @@ id: 'project/policy/single-database'
 scope: 'project'
 type: 'policy'
 visibility: 'public'
+status: 'target'
+delivered_by:
+  - roadmap-soft-delete-retention
 ---
 
 # Database Boundaries — Policy
@@ -25,6 +28,14 @@ visibility: 'public'
   (`teleclaude.db`, `hook_outbox.db`, `events.db`) according to retention policy,
   but must not prune durable/history domains such as `mirrors.db`, memory data,
   todo databases, or project artifact stores.
+- **Sanctioned exception — retention finalization of explicitly-removed todo
+  rows.** Runtime maintenance MAY hard-purge todo-database rows that an operator
+  or agent has *explicitly removed* (soft-deleted: marked `removed` with a
+  `removed_at` tombstone) once they are older than the fixed recovery-retention
+  window. This is the finalization of an already-explicit removal after a
+  recovery grace period — not blind pruning of live durable work. The
+  prohibition above still holds for all *live* (non-removed) todo data: routine
+  maintenance must never prune a todo that has not been explicitly removed.
 - Git worktrees use isolated database files for test isolation and must not touch
   production state.
 - The daemon must not create ad-hoc database files outside recognized domain boundaries.
@@ -35,6 +46,10 @@ visibility: 'public'
   into one file because "fewer files = simpler" ignores access patterns, lifecycle
   differences, and operational concerns.
 - The event platform naturally separated because it IS a different domain.
+- The retention-finalization carve-out reduces data-loss risk rather than
+  increasing it: it replaces an immediate irreversible destroy with a
+  recoverable grace period followed by automatic cleanup, mirroring the
+  closed-session soft-delete + retention model the platform already runs.
 
 ## Scope
 
@@ -49,4 +64,6 @@ visibility: 'public'
 
 ## Exceptions
 
-- None.
+- Retention finalization of explicitly-removed (soft-deleted) todo rows after
+  the fixed recovery-retention window, as specified in Rules. No other
+  exception.

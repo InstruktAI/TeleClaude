@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/stable-channel-pinning-rule
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Project deployment channel `stable` requires a non-empty `pinned_minor` value; validation rejects empty pins on the stable channel.
+id: 'project/spec/feature/config/stable-channel-pinning-rule'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Project deployment channel `stable` requires a non-empty `pinned_minor` value; validation rejects empty pins on the stable channel.'
 ---
 
 # Stable Channel Pinning Rule — Spec

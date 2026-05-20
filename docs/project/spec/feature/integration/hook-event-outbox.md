@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/hook-event-outbox
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Per-session SQLite outbox between the telec-hook subprocess and the daemon, providing durable, coalesced, retry-safe transport for agent CLI hook events.
+id: 'project/spec/feature/integration/hook-event-outbox'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Per-session SQLite outbox between the telec-hook subprocess and the daemon, providing durable, coalesced, retry-safe transport for agent CLI hook events.'
 ---
 
 # Hook Event Outbox — Spec

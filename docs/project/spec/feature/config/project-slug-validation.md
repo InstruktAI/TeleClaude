@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/project-slug-validation
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: ProjectConfig.project_slug normalizes empty values to None and enforces kebab-case slug format via validate_slug when set.
+id: 'project/spec/feature/config/project-slug-validation'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'ProjectConfig.project_slug normalizes empty values to None and enforces kebab-case slug format via validate_slug when set.'
 ---
 
 # Project Slug Validation — Spec
@@ -34,7 +34,7 @@ leading/trailing hyphens and no consecutive hyphens. The stripped slug is
 returned; anything that fails the pattern raises `ValueError` and Pydantic
 surfaces the failure on the `project_slug` field.
 
-The slug is *populated* — not validated — by `telec projects init`, which is
+The slug is _populated_ — not validated — by `telec projects init`, which is
 the sole writer of `~/.teleclaude/projects.yaml`. Existing project files whose
 `project_slug` is still missing or empty load successfully as `None`; init then
 fills the value during registration.

@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/yaml-env-var-expansion
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Every YAML config payload (layered teleclaude.yml overlays and the legacy machine config.yml) flows through expand_env_vars to substitute `${VAR}` references against os.environ before validation.
+id: 'project/spec/feature/config/yaml-env-var-expansion'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Every YAML config payload (layered teleclaude.yml overlays and the legacy machine config.yml) flows through expand_env_vars to substitute `${VAR}` references against os.environ before validation.'
 ---
 
 # YAML Env Var Expansion — Spec

@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/session-access-visibility
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Authorize web-frontend session-scoped API calls against the session owner, the session's shared/private visibility, and the caller's role.
+id: 'project/spec/feature/identity/session-access-visibility'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Authorize web-frontend session-scoped API calls against the session owner, the session''s shared/private visibility, and the caller''s role.'
 ---
 
 # Session Access & Visibility — Spec

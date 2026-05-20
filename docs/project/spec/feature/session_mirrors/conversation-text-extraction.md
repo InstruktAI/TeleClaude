@@ -27,6 +27,7 @@ remaining sequence as `[<timestamp>] <Role>: <text>` blocks joined by blank
 lines (or `<Role>: <text>` when the message carries no timestamp).
 
 Three derived fields come along with the text body:
+
 - `title` — the first user message's stripped text, truncated to 120 characters with `...` when longer.
 - `timestamp_start` — the first surviving message's timestamp.
 - `timestamp_end` — the last surviving message's timestamp.

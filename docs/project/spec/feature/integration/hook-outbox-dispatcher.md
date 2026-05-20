@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/hook-outbox-dispatcher
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Daemon worker that drains the SQLite hook outbox, classifies events critical vs bursty, enforces per-session backpressure with watermark hysteresis, and dispatches into the in-process EventBus.
+id: 'project/spec/feature/integration/hook-outbox-dispatcher'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Daemon worker that drains the SQLite hook outbox, classifies events critical vs bursty, enforces per-session backpressure with watermark hysteresis, and dispatches into the in-process EventBus.'
 ---
 
 # Hook Outbox Dispatcher — Spec
@@ -155,7 +155,7 @@ And locked_at is cleared so a later poll re-claims the row
 
 #### UC-D8: Missing-session non-start row logs and deletes (no exception)
 
-```gherkin
+````gherkin
 Given a claimed row has event_type != AGENT_SESSION_START
 And db.get_session(session_id) returns None for that session
 When _dispatch_hook_event evaluates the guard
@@ -175,7 +175,7 @@ Then logger.error("Hook outbox event dropped (non-retryable)", row_id, attempt, 
 And delete_hook_outbox_row removes the row without retry
 And _hook_outbox_processed_count is incremented
 This branch covers payload-corruption type errors, not missing-session non-start rows (which are silent).
-```
+````
 
 #### UC-D9: Periodic summary log
 
@@ -216,8 +216,8 @@ And _hook_outbox_last_summary_at is updated
   `HOOK_OUTBOX_STALENESS_TTL_S=300`.
 - Event classes:
   `HOOK_EVENT_CLASS_CRITICAL = {AGENT_SESSION_START, USER_PROMPT_SUBMIT,
-  AGENT_STOP, AGENT_ERROR, CHECKPOINT_SEEN, NATIVE_METADATA_UPDATE,
-  NATIVE_SESSION_REFRESH}`;
+AGENT_STOP, AGENT_ERROR, CHECKPOINT_SEEN, NATIVE_METADATA_UPDATE,
+NATIVE_SESSION_REFRESH}`;
   `HOOK_EVENT_CLASS_BURSTY = {TOOL_USE}`.
 
 ### Cross-context references
@@ -250,7 +250,7 @@ And _hook_outbox_last_summary_at is updated
   dispatch retries; the handler is expected to be idempotent. v1 handlers
   use last-wins semantics on the session row, so retries converge.
 - Lag samples are kept in-memory only (cap `HOOK_OUTBOX_MAX_LAG_SAMPLES =
-  2048`); the daemon does not persist or export them beyond the periodic
+2048`); the daemon does not persist or export them beyond the periodic
   summary log.
 - `_hook_outbox_worker` is one task per daemon; per-session workers are
   spawned on demand and torn down after `HOOK_OUTBOX_SESSION_IDLE_TIMEOUT_S`.

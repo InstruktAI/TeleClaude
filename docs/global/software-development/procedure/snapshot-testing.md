@@ -53,15 +53,16 @@ assertions into those shapes as files are touched.
    - TypeScript uses vitest:
 
      ```ts
-     it("renders the session summary", () => {
-       const rendered = renderSessionSummary(session)
+     it('renders the session summary', () => {
+       const rendered = renderSessionSummary(session);
 
-       expect(rendered).toMatchInlineSnapshot()
-     })
+       expect(rendered).toMatchInlineSnapshot();
+     });
      ```
 
    - Keep snapshots inline by default. Use file snapshots when the captured
      output exceeds roughly 20 lines or would make the test hard to scan.
+
 4. **Redact nondeterministic values before snapshotting.**
    - Python property-path replacement:
 
@@ -92,12 +93,12 @@ assertions into those shapes as files are touched.
    - TypeScript asymmetric matchers:
 
      ```ts
-     it("renders the operation envelope", () => {
+     it('renders the operation envelope', () => {
        expect(renderOperation()).toMatchInlineSnapshot({
          operationId: expect.any(String),
          timestamp: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
-       })
-     })
+       });
+     });
      ```
 
 5. **Use the canonical non-empty guard sparingly.**
@@ -116,12 +117,12 @@ assertions into those shapes as files are touched.
 
      ```ts
      function expectNonEmptyString(value: string): void {
-       expect(value).toBeTruthy()
+       expect(value).toBeTruthy();
      }
 
-     it("keeps the title present", () => {
-       expectNonEmptyString(renderTitle())
-     })
+     it('keeps the title present', () => {
+       expectNonEmptyString(renderTitle());
+     });
      ```
 
 6. **Use named constants for identity.**
@@ -135,7 +136,6 @@ assertions into those shapes as files are touched.
    carve-out for "just one literal" or "it's a test fixture" or "it's inside
    a structured exception." Literals on identifiers under our control belong
    to one constant, one place.
-
    - Headers / protocol markers:
 
      ```python
@@ -154,12 +154,12 @@ assertions into those shapes as files are touched.
      ```ts
      // production
      export const Headers = {
-       sessionId: "x-teleclaude-session-id",
-     } as const
+       sessionId: 'x-teleclaude-session-id',
+     } as const;
 
      // test
-     expect(response.header).toBe(Headers.sessionId)
-     expect(Headers).toMatchInlineSnapshot()
+     expect(response.header).toBe(Headers.sessionId);
+     expect(Headers).toMatchInlineSnapshot();
      ```
 
    - Structured-error fields: same shape applies when an exception carries an
@@ -184,6 +184,7 @@ assertions into those shapes as files are touched.
      and add the schema-level snapshot that governs the constant value. If you
      are reviewing and you spot a remaining literal — flag it. If you are
      building and you find yourself typing one — stop and add the constant.
+
 7. **Migrate forbidden patterns.**
    - Literal equality:
 
@@ -197,10 +198,10 @@ assertions into those shapes as files are touched.
 
      ```ts
      // Before
-     expect(message).toBe("ready")
+     expect(message).toBe('ready');
 
      // After
-     expect(message).toMatchInlineSnapshot()
+     expect(message).toMatchInlineSnapshot();
      ```
 
    - Substring:
@@ -215,10 +216,10 @@ assertions into those shapes as files are touched.
 
      ```ts
      // Before
-     expect(message).toContain("ready")
+     expect(message).toContain('ready');
 
      // After
-     expect(message).toMatchInlineSnapshot()
+     expect(message).toMatchInlineSnapshot();
      ```
 
    - Prefix and suffix:
@@ -234,11 +235,11 @@ assertions into those shapes as files are touched.
 
      ```ts
      // Before
-     expect(message).toStartWith("session:")
-     expect(message).toEndWith("done")
+     expect(message).toStartWith('session:');
+     expect(message).toEndWith('done');
 
      // After
-     expect(message).toMatchInlineSnapshot()
+     expect(message).toMatchInlineSnapshot();
      ```
 
    - Search methods:
@@ -264,10 +265,10 @@ assertions into those shapes as files are touched.
 
      ```ts
      // Before
-     expect(message).toMatch(/session-\d+/)
+     expect(message).toMatch(/session-\d+/);
 
      // After
-     expect(normalizeIds(message)).toMatchInlineSnapshot()
+     expect(normalizeIds(message)).toMatchInlineSnapshot();
      ```
 
    - Exception messages:
@@ -283,10 +284,10 @@ assertions into those shapes as files are touched.
 
      ```ts
      // Before
-     expect(error.message).toBe("missing session")
+     expect(error.message).toBe('missing session');
 
      // After
-     expect(() => loadSession("missing")).toThrow(SessionNotFoundError)
+     expect(() => loadSession('missing')).toThrow(SessionNotFoundError);
      ```
 
    - Substring on an error message that names a schema field: this is a

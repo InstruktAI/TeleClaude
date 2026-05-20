@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/outbound-webhook-delivery
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Background worker that drains the webhook_outbox table and delivers HMAC-signed POST requests to subscriber URLs with exponential backoff, transient/permanent failure classification, and dead-letter at max attempts.
+id: 'project/spec/feature/integration/outbound-webhook-delivery'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Background worker that drains the webhook_outbox table and delivers HMAC-signed POST requests to subscriber URLs with exponential backoff, transient/permanent failure classification, and dead-letter at max attempts.'
 ---
 
 # Outbound Webhook Delivery — Spec
@@ -150,7 +150,7 @@ And the worker sleeps WEBHOOK_POLL_INTERVAL_S before continuing
 - `teleclaude/daemon_event_platform.py` — task spawn inside
   `_init_webhook_service` (~L569):
   `self.webhook_delivery_task = asyncio.create_task(
-  delivery_worker.run(self.shutdown_event), name="webhook-delivery")`.
+delivery_worker.run(self.shutdown_event), name="webhook-delivery")`.
 - Constants (top of `delivery.py`):
   - `WEBHOOK_POLL_INTERVAL_S = 2.0`
   - `WEBHOOK_BATCH_SIZE = 25`

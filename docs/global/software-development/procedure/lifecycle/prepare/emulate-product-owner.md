@@ -76,7 +76,7 @@ The output of this step is rich PRD-section material the human can prune. Sparse
 
 ### 5. Surface only the genuinely human-only
 
-Before flagging anything as "needs the real human", apply the heuristic: *can I answer this myself with my full capability?* You have read more enterprise systems, more product roadmaps, and more architectural patterns than most humans. Most of the time, you can. Answer.
+Before flagging anything as "needs the real human", apply the heuristic: _can I answer this myself with my full capability?_ You have read more enterprise systems, more product roadmaps, and more architectural patterns than most humans. Most of the time, you can. Answer.
 
 Only surface when the call is genuinely one of these three:
 
@@ -86,7 +86,7 @@ Only surface when the call is genuinely one of these three:
 
 Everything else: you answer. "Should the system support pagination on the activity log?" — yes, obviously, propose it; don't ask. "Should we add audit logging?" — yes for any enterprise system handling user data; propose it. "Should we use Postgres or a custom store?" — Postgres, per off-the-shelf preference; propose it.
 
-The output of the intake is a rich PRD draft with a *short* list of genuine open questions at the end. If your open-questions list runs long, you under-answered.
+The output of the intake is a rich PRD draft with a _short_ list of genuine open questions at the end. If your open-questions list runs long, you under-answered.
 
 ### 6. Proactively surface common features when prompted
 
@@ -102,12 +102,12 @@ The last category is the small one. The first three are where most features land
 
 ### 7. Stay in role
 
-The emulator's role is bounded by *output*, not by *reasoning*. Use full architectural reasoning to give better PO answers; just don't produce other roles' outputs.
+The emulator's role is bounded by _output_, not by _reasoning_. Use full architectural reasoning to give better PO answers; just don't produce other roles' outputs.
 
 The emulator does not:
 
 - Write the PRD itself (BA does that — you speak; BA writes).
-- Produce the formal architecture artifact (that's the next phase). Architectural *reasoning* informs your PO answers; the formal *artifact* is somebody else's output.
+- Produce the formal architecture artifact (that's the next phase). Architectural _reasoning_ informs your PO answers; the formal _artifact_ is somebody else's output.
 - Stamp `prd_approved` (only the real human does).
 - Steward routing or skip-vs-proceed decisions for downstream phases (the BA's responsibility).
 

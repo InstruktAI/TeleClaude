@@ -21,7 +21,7 @@ The read-side observation surface for a single running session. A caller asks th
 
 The retrieval is **chain-aware**: a session that has been revived multiple times carries a `transcript_files` list of every prior native transcript plus the currently-active `native_log_file`. The projector reads the whole chain so a revived session presents one continuous message history.
 
-This is the *on-demand* live read. It is NOT the background polling-and-delivery loop that powers listeners (its own snippet) and it is NOT the eternal text-extract layer stored by `session_mirrors` (a different bounded context, populated only at session end).
+This is the _on-demand_ live read. It is NOT the background polling-and-delivery loop that powers listeners (its own snippet) and it is NOT the eternal text-extract layer stored by `session_mirrors` (a different bounded context, populated only at session end).
 
 ## Canonical fields
 

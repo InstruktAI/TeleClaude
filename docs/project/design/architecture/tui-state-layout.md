@@ -4,6 +4,10 @@ id: 'project/design/architecture/tui-state-layout'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+applies_to: 'v1'
+status: 'mixed'
+delivered_by:
+  - 'roadmap-trash-reveal-ui'
 ---
 
 # Tui State Layout — Design
@@ -104,6 +108,8 @@ flowchart TD
 - `FilterTodos(filter_state)` (status, owner, scope, search)
 - `SyncTodos(todos)` (refresh todos list + prune state)
 - `ExpandTodo(todo_id)` / `CollapseTodo(todo_id)`
+- `ToggleProjectDelivered(project_path)` / `ToggleProjectIcebox(project_path)` / `ToggleProjectTrashed(project_path)` — per-project, persisted reveal toggles for the Delivered, Icebox, and Trashed roadmap sections (the Trashed toggle is `target — delivered_by roadmap-trash-reveal-ui`).
+- `UnfreezeTodo(todo_id)` (existing actual) and `ReactivateTodo(todo_id)` (new, target — delivered_by roadmap-trash-reveal-ui) — both intents are dispatched through the same `u` keybinding under the context-sensitive restore mapping defined in the Interaction mapping section. `ReactivateTodo` dispatches the soft-delete reactivation primitive against the selected trashed row; fail-closed diagnostics surface via notifications, never via state mutation.
 - `StartSession(project_path)` (sessions view: new session on project)
 - `ToggleProjectStickySessions(project_path)` (sessions view: open/close previews)
 - `RestartSession(session_id)` / `KillSession(session_id)`
@@ -151,8 +157,31 @@ flowchart TD
 - `v` on file: `ViewFile(file_id)`
 - `e` on file: `EditFile(file_id)`
 - `+`/`-`: `ExpandAll()` / `CollapseAll()`
+- `d` on project: `ToggleProjectDelivered(project_path)` — reveals/hides the project's recent delivery history.
+- `i` on project: `ToggleProjectIcebox(project_path)` — reveals/hides the project's iceboxed entries.
+- `x` on project: `ToggleProjectTrashed(project_path)` — reveals/hides the project's soft-removed entries (Trashed section). Per-project toggle; persisted across TUI sessions. Binding chosen over `t` (the global Cycle-Theme binding at `teleclaude/cli/tui/app.py:233`) and `T` (kept free for future use); `x` matches the "trash" mental model and the input proposal (status: target — delivered_by roadmap-trash-reveal-ui).
+- `u` on selected todo row — **context-sensitive restore**, extending the existing `unfreeze` binding into one mental model: "u = restore from a non-active holding state, dispatched against the selected row's status".
+  - On an iceboxed row (existing actual behavior): `UnfreezeTodo(todo_id)` — calls `telec roadmap unfreeze <slug>`.
+  - On a trashed row (new target behavior — depends on the `TodoDTO`/`TodoItem` row-id extension): `ReactivateTodo(todo_id)` — dispatches the row-id-addressed reactivation primitive (UC-WFL-12) against the selected soft-removed row's **durable `roadmap.id`**. Today's `TodoDTO`/`TodoItem` carry no roadmap row id; this restore path is enabled by the prerequisite DTO extension that populates an optional `roadmap_id` field on every cached row. With that extension landed, the TUI never resolves slug→row-id for the restore path: selection identifies the row unambiguously, so the slug-ambiguity diagnostic that the CLI verb must produce simply cannot arise here. The dispatch boundary defensively checks `roadmap_id is not None` (fail-fast guard against a stale snapshot from a pre-extension daemon), then routes through a dedicated row-id API route (`POST /todos/by-id/{roadmap_id}/reactivate`, paralleling the slug-addressed `POST /todos/{slug}/reactivate` that backs the CLI verb); both routes call the same `reactivate_removed(roadmap_id)` primitive and both enforce the server-side `clearance_todos_reactivate` boundary. The daemon's `todo_updated` mutation hook refreshes the view and the entry reappears in its restored section. Fail-closed diagnostics from the primitive (`live_twin_exists`, `not_removed`, `invalid_removed_deps`) surface through the existing TUI notification surface; no destructive side effects on refusal.
+  - On any other row (active / delivered / pending / ready / in_progress): the binding is a no-op with a one-line notification explaining the action does not apply to that status, so the operator does not get a silent dispatch.
+  - (Trashed-row reactivate path: status: target — delivered_by roadmap-trash-reveal-ui. Iceboxed-row unfreeze path: status: actual.)
 - Expanded todo file list is derived from DB-sourced artifacts for the todo (via `telec todo artifacts list {slug}`), sorted alphabetically.
 - Todo rows render roadmap status plus compact phase tags (`B`, `R`, `DOR`, `DEF`, `F`) from todo metadata.
+
+### Section model — Roadmap (Preparation view)
+
+The roadmap pane assembles entries into per-project sections that mirror the persisted roadmap `status` enum (workflow domain spec, Roadmap entry term). Each non-active section is opt-in via a per-project toggle persisted alongside `expanded_todos`. The four sections, in display order:
+
+- **Active** (always rendered) — `status=active` entries plus their derived display states (`pending`/`ready`/`in_progress`).
+- **Delivered** (toggle `d`) — `status=delivered` entries (recent window); shown under `DeliveredSeparator`.
+- **Icebox** (toggle `i`) — `status=icebox` entries; shown under `IceboxSeparator`.
+- **Trashed** (toggle `x`) — `status=removed` entries within the retention window; shown under `TrashedSeparator`. Renders each row with its `removed_at` age. Visually distinct from delivered/icebox so the operator never confuses recoverable-but-removed with archived (status: target — delivered_by roadmap-trash-reveal-ui).
+
+The persisted toggle-state sets are: `_delivered_projects`, `_icebox_projects`, `_trashed_projects` (one entry per project path; serialized via `get_persisted_state` / `load_persisted_state`). Section rebuilds are gated by the corresponding toggle: if the toggle is off for a project, the section's rows are not flattened into the rendered row list.
+
+The Trashed section depends on the daemon's roadmap cache surfacing `status=removed` rows when the TUI requests them. The daemon cache is scoped to high-frequency TUI roadmap-pane reads (per the cache-system design); the CLI reveal paths bypass it — `telec roadmap list --include-removed` / `--removed-only` invokes the local DB resolver `assemble_roadmap_from_db`, and `telec todo show --include-removed` calls the existing daemon REST API route (`GET /todos/{slug}/show?include_removed=true`) whose handler invokes the include-removed-aware show resolver server-side. Neither command consults this cache snapshot. Per the cache-system "Single Snapshot Per Scope" invariant, the cache holds **one** roadmap snapshot per project that contains the full persisted roadmap (including `removed` rows). Default cache accessors apply a filter at read time that excludes `removed`, so every default TUI consumer behaves exactly as before. The Trashed section is the only cache reveal consumer: it reads the same snapshot with the filter relaxed via a per-call opt-in flag (`include_removed=true`). The filter — never the snapshot — changes between default and reveal paths on the TUI side, and the workflow domain spec's default-hide invariant for every non-Trashed consumer is preserved.
+
+A new `TodoStatus.REMOVED` value extends the TUI status enum, with its own glyph and color in the row renderer's status-to-glyph/colour map. The color is chosen to be distinct from active/delivered/icebox/pending/ready/in_progress; the exact palette entry is the row renderer's choice and is asserted via the existing snapshot tests for `todo_row.py` (status: target — delivered_by roadmap-trash-reveal-ui).
 
 ### Navigation, modals, and edge cases
 

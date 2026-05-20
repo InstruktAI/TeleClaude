@@ -162,7 +162,7 @@ And the conversation link operates orthogonally to stop-listener subscriptions
   - `_extract_initiator_session_id` (line 161) — initiator session resolution
   - `_link_direct_sessions` (line 340) — direct-conversation linkage
 - `teleclaude/core/command_handlers/_session.py`
-  - `create_session` (line 61) — command handler; allocates session_id, composes `tc_<session_id>` tmux name (line 89), inserts the DB row, registers initiator listener
+  - `create_session` (line 61) — command handler; allocates session*id, composes `tc*<session_id>` tmux name (line 89), inserts the DB row, registers initiator listener
   - `list_sessions` (line 268) — DB list + SessionSnapshot mapping
 - `teleclaude/core/tmux_bridge/_session.py`
   - `ensure_tmux_session` (line 276) — single choke point, idempotent (returns True if session already exists)

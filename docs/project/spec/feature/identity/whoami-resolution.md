@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/whoami-resolution
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Report the caller's identity via `telec auth whoami` — agent sessions resolve through the daemon, terminal sessions read the TTY login.
+id: 'project/spec/feature/identity/whoami-resolution'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Report the caller''s identity via `telec auth whoami` — agent sessions resolve through the daemon, terminal sessions read the TTY login.'
 ---
 
 # Whoami Resolution — Spec

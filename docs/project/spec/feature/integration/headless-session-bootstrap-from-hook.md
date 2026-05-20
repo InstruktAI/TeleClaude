@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/headless-session-bootstrap-from-hook
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: When an agent_session_start hook arrives for a session the daemon has never seen, the dispatcher creates a headless session row inline from the hook payload before continuing normal event dispatch.
+id: 'project/spec/feature/integration/headless-session-bootstrap-from-hook'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'When an agent_session_start hook arrives for a session the daemon has never seen, the dispatcher creates a headless session row inline from the hook payload before continuing normal event dispatch.'
 ---
 
 # Headless Session Bootstrap from Hook — Spec

@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/github-webhook-normalization
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: GitHub webhook payload normalizer producing canonical github.<event> HookEvents with repo, sender, action, ref properties, plus ping-handshake metadata.
+id: 'project/spec/feature/integration/github-webhook-normalization'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'GitHub webhook payload normalizer producing canonical github.<event> HookEvents with repo, sender, action, ref properties, plus ping-handshake metadata.'
 ---
 
 # GitHub Webhook Normalization — Spec
@@ -124,11 +124,11 @@ And the deployment update flow runs (see deployment-version-fanout)
 - `teleclaude/daemon_event_platform.py` (inside `_init_webhook_service`
   at L464) — programmatic registration of
   `Contract(id="deployment-github",
-  source_criterion=PropertyCriterion(match="github"),
-  type_criterion=PropertyCriterion(match=["push", "release"]),
-  target=Target(handler="deployment_update"), source="programmatic")`
+source_criterion=PropertyCriterion(match="github"),
+type_criterion=PropertyCriterion(match=["push", "release"]),
+target=Target(handler="deployment_update"), source="programmatic")`
   (~L496) and `handler_registry.register("deployment_update",
-  handle_deployment_event)` (~L495).
+handle_deployment_event)` (~L495).
 - `teleclaude/deployment/handler.py` —
   `configure_deployment_handler` (L34),
   `handle_deployment_event` (L72, the downstream consumer for both

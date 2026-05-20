@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/identity-header-trust-boundary
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Reject web-user identity headers at the daemon's HTTP boundary unless the request originates from a trusted loopback host.
+id: 'project/spec/feature/identity/identity-header-trust-boundary'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Reject web-user identity headers at the daemon''s HTTP boundary unless the request originates from a trusted loopback host.'
 ---
 
 # Identity Header Trust Boundary — Spec

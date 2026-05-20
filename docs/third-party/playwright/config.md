@@ -15,27 +15,27 @@ description: Minimal playwright.config.ts for a Next.js dev server with auto-sta
 
 ```typescript
 // playwright.config.ts
-import { defineConfig, devices } from "@playwright/test";
+import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
-  testDir: "./tests/e2e",
+  testDir: './tests/e2e',
 
   use: {
-    baseURL: "http://localhost:3000",
-    trace: "on-first-retry",
+    baseURL: 'http://localhost:3000',
+    trace: 'on-first-retry',
   },
 
   webServer: {
-    command: "pnpm dev",
-    url: "http://localhost:3000",
+    command: 'pnpm dev',
+    url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
 
   projects: [
     {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
     },
   ],
 });
@@ -69,8 +69,8 @@ You can also pass `port` instead of `url` when the server binds to localhost, bu
 ```typescript
 projects: [
   {
-    name: "chromium",
-    use: { ...devices["Desktop Chrome"] },
+    name: 'chromium',
+    use: { ...devices['Desktop Chrome'] },
   },
 ];
 ```

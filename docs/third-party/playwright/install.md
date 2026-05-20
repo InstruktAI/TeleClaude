@@ -39,8 +39,8 @@ Playwright pins the runner and the browser revisions together — a mismatch bet
 // package.json (excerpt)
 {
   "devDependencies": {
-    "@playwright/test": "1.58.2"
-  }
+    "@playwright/test": "1.58.2",
+  },
 }
 ```
 
@@ -54,8 +54,8 @@ Add a single script entry. The runner reads `playwright.config.ts` from the proj
 // package.json (excerpt)
 {
   "scripts": {
-    "test:e2e": "playwright test"
-  }
+    "test:e2e": "playwright test",
+  },
 }
 ```
 

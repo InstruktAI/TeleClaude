@@ -209,13 +209,13 @@ sequenceDiagram
 
 ## Failure Modes
 
-| Scenario                                   | Behavior                                    | Recovery                                               |
-| ------------------------------------------ | ------------------------------------------- | ------------------------------------------------------ |
-| FTS5 unavailable                           | Search falls back to LIKE queries           | Automatic; slightly slower search                      |
-| Context generation fails                   | Empty string returned; no injection         | Agent starts without memory context; logged as warning |
-| Invalid observation type                   | 422 response with allowed values            | Agent adjusts payload; no data corruption              |
-| Database locked during save                | SQLAlchemy retries via busy_timeout (5s)    | Automatic for short locks; longer locks fail and log   |
-| Hook receiver DB connection fails          | Empty context returned                      | Agent starts without memory; daemon continues normally |
+| Scenario                          | Behavior                                 | Recovery                                               |
+| --------------------------------- | ---------------------------------------- | ------------------------------------------------------ |
+| FTS5 unavailable                  | Search falls back to LIKE queries        | Automatic; slightly slower search                      |
+| Context generation fails          | Empty string returned; no injection      | Agent starts without memory context; logged as warning |
+| Invalid observation type          | 422 response with allowed values         | Agent adjusts payload; no data corruption              |
+| Database locked during save       | SQLAlchemy retries via busy_timeout (5s) | Automatic for short locks; longer locks fail and log   |
+| Hook receiver DB connection fails | Empty context returned                   | Agent starts without memory; daemon continues normally |
 
 ## See Also
 

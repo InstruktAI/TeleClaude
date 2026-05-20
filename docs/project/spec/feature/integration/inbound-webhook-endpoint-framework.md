@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/inbound-webhook-endpoint-framework
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Dynamic FastAPI route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.
+id: 'project/spec/feature/integration/inbound-webhook-endpoint-framework'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Dynamic FastAPI route registration for external inbound webhooks — provider-specific path + verification config + normalizer key, mounted at runtime from teleclaude.yml.'
 ---
 
 # Inbound Webhook Endpoint Framework — Spec

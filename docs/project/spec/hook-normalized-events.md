@@ -37,23 +37,23 @@ This spec must always document:
 
 Current raw-to-normalized lifecycle mapping:
 
-| Agent  | Raw event                                          | Normalized event     | Forwarding |
-| ------ | -------------------------------------------------- | -------------------- | ---------- |
-| Claude | `SessionStart`                                     | `session_start`      | forwarded  |
-| Claude | `UserPromptSubmit`                                 | `user_prompt_submit` | forwarded  |
-| Claude | `PreToolUse`                                       | `tool_use`           | forwarded  |
-| Claude | `Stop`                                             | `agent_stop`         | forwarded  |
-| Claude | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact` | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
-| Gemini | `SessionStart`                                     | `session_start`      | forwarded  |
-| Gemini | `BeforeAgent`                                      | `user_prompt_submit` | forwarded  |
-| Gemini | `BeforeTool`                                       | `tool_use`           | forwarded  |
-| Gemini | `AfterAgent`                                       | `agent_stop`         | forwarded  |
+| Agent  | Raw event                                                                      | Normalized event                    | Forwarding |
+| ------ | ------------------------------------------------------------------------------ | ----------------------------------- | ---------- |
+| Claude | `SessionStart`                                                                 | `session_start`                     | forwarded  |
+| Claude | `UserPromptSubmit`                                                             | `user_prompt_submit`                | forwarded  |
+| Claude | `PreToolUse`                                                                   | `tool_use`                          | forwarded  |
+| Claude | `Stop`                                                                         | `agent_stop`                        | forwarded  |
+| Claude | `PostToolUse`, `PostToolUseFailure`, `Subagent*`, `SessionEnd`, `PreCompact`   | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
+| Gemini | `SessionStart`                                                                 | `session_start`                     | forwarded  |
+| Gemini | `BeforeAgent`                                                                  | `user_prompt_submit`                | forwarded  |
+| Gemini | `BeforeTool`                                                                   | `tool_use`                          | forwarded  |
+| Gemini | `AfterAgent`                                                                   | `agent_stop`                        | forwarded  |
 | Gemini | `AfterTool`, `BeforeModel`, `BeforeToolSelection`, `PreCompress`, `SessionEnd` | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
-| Codex  | `SessionStart`                                     | `session_start`      | forwarded  |
-| Codex  | `UserPromptSubmit`                                 | `user_prompt_submit` | forwarded  |
-| Codex  | `PreToolUse`                                       | `tool_use`           | forwarded  |
-| Codex  | `Stop`                                             | `agent_stop`         | forwarded  |
-| Codex  | `PostToolUse`, `PermissionRequest`                 | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
+| Codex  | `SessionStart`                                                                 | `session_start`                     | forwarded  |
+| Codex  | `UserPromptSubmit`                                                             | `user_prompt_submit`                | forwarded  |
+| Codex  | `PreToolUse`                                                                   | `tool_use`                          | forwarded  |
+| Codex  | `Stop`                                                                         | `agent_stop`                        | forwarded  |
+| Codex  | `PostToolUse`, `PermissionRequest`                                             | (none — `None` in `HOOK_EVENT_MAP`) | dropped    |
 
 External-agent hook signatures we know exist but do not ingest are catalogued in
 `teleclaude/core/events.py:HOOK_EVENT_MAP` with `None` as the mapped internal

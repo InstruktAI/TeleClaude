@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/session-token-validation
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Validate an inbound x-session-token at the daemon's HTTP boundary, returning a CallerIdentity carrying the bound principal and role.
+id: 'project/spec/feature/identity/session-token-validation'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Validate an inbound x-session-token at the daemon''s HTTP boundary, returning a CallerIdentity carrying the bound principal and role.'
 ---
 
 # Session Token Validation — Spec

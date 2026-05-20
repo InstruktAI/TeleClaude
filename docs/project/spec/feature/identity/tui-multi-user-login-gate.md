@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/tui-multi-user-login-gate
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Block TUI startup until `telec auth login` has been run when the global config lists more than one person; single-user configurations bypass the gate.
+id: 'project/spec/feature/identity/tui-multi-user-login-gate'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Block TUI startup until `telec auth login` has been run when the global config lists more than one person; single-user configurations bypass the gate.'
 ---
 
 # TUI Multi-User Login Gate — Spec

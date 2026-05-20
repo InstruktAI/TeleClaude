@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/job-schedule-contract
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules and a legacy fallback `schedule` field still accepted.
+id: 'project/spec/feature/config/job-schedule-contract'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Job scheduling contract requiring exactly one of an interval (`every`) or wall-clock times (`at`), with weekday filtering reserved for `at` schedules and a legacy fallback `schedule` field still accepted.'
 ---
 
 # Job Schedule Contract — Spec

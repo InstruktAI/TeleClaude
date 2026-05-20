@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/integration/outbound-messaging-providers
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Provider-specific send helpers for Telegram, Discord, WhatsApp Cloud API, and email (Brevo SMTP) — used by notification delivery adapters and the invitation flow.
+id: 'project/spec/feature/integration/outbound-messaging-providers'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Provider-specific send helpers for Telegram, Discord, WhatsApp Cloud API, and email (Brevo SMTP) — used by notification delivery adapters and the invitation flow.'
 ---
 
 # Outbound Messaging Providers — Spec

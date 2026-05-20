@@ -26,11 +26,11 @@ Add a `data-testid` to any element the test needs to find:
 Locate it from a test:
 
 ```typescript
-import { test, expect } from "@playwright/test";
+import { test, expect } from '@playwright/test';
 
-test("preparation pane is visible", async ({ page }) => {
-  await page.goto("/");
-  const pane = page.getByTestId("preparation-pane");
+test('preparation pane is visible', async ({ page }) => {
+  await page.goto('/');
+  const pane = page.getByTestId('preparation-pane');
   await expect(pane).toBeVisible();
 });
 ```
@@ -52,7 +52,7 @@ Always `await` `expect(locator).…()` — these are async and auto-retrying. Fo
 Checks that the element is attached to the DOM and rendered (non-zero size, not `display: none`, not `visibility: hidden`).
 
 ```typescript
-await expect(page.getByTestId("preparation-pane")).toBeVisible();
+await expect(page.getByTestId('preparation-pane')).toBeVisible();
 ```
 
 ### `toContainText(value)`
@@ -60,14 +60,10 @@ await expect(page.getByTestId("preparation-pane")).toBeVisible();
 Substring (or regex) match against the element's text content, including descendants.
 
 ```typescript
-await expect(page.getByTestId("preparation-pane-title")).toContainText(
-  "Preparation"
-);
+await expect(page.getByTestId('preparation-pane-title')).toContainText('Preparation');
 
 // Regex form
-await expect(page.getByTestId("preparation-pane-title")).toContainText(
-  /Preparation/i
-);
+await expect(page.getByTestId('preparation-pane-title')).toContainText(/Preparation/i);
 ```
 
 Use `toHaveText(value)` instead when the smoke test wants an exact match (rare for prose, useful for status badges).
@@ -77,15 +73,9 @@ Use `toHaveText(value)` instead when the smoke test wants an exact match (rare f
 Asserts that an attribute is present with the expected value. The value can be a string or a regex.
 
 ```typescript
-await expect(page.getByTestId("preparation-pane-action")).toHaveAttribute(
-  "type",
-  "button"
-);
+await expect(page.getByTestId('preparation-pane-action')).toHaveAttribute('type', 'button');
 
-await expect(page.getByTestId("preparation-pane")).toHaveAttribute(
-  "aria-busy",
-  /^(true|false)$/
-);
+await expect(page.getByTestId('preparation-pane')).toHaveAttribute('aria-busy', /^(true|false)$/);
 ```
 
 ## Layout assertions via `boundingBox()`
@@ -93,11 +83,11 @@ await expect(page.getByTestId("preparation-pane")).toHaveAttribute(
 For "is element B to the right of element A?" or "is the pane wider than 600 px?" checks, read the bounding box. `locator.boundingBox()` returns `Promise<{ x: number; y: number; width: number; height: number } | null>` — `null` means the element is not visible.
 
 ```typescript
-test("action button sits inside the pane", async ({ page }) => {
-  await page.goto("/");
+test('action button sits inside the pane', async ({ page }) => {
+  await page.goto('/');
 
-  const pane = page.getByTestId("preparation-pane");
-  const action = page.getByTestId("preparation-pane-action");
+  const pane = page.getByTestId('preparation-pane');
+  const action = page.getByTestId('preparation-pane-action');
 
   await expect(pane).toBeVisible();
   await expect(action).toBeVisible();
@@ -106,18 +96,14 @@ test("action button sits inside the pane", async ({ page }) => {
   const actionBox = await action.boundingBox();
 
   if (!paneBox || !actionBox) {
-    throw new Error("expected both elements to be visible");
+    throw new Error('expected both elements to be visible');
   }
 
   // Action is fully contained within the pane.
   expect(actionBox.x).toBeGreaterThanOrEqual(paneBox.x);
   expect(actionBox.y).toBeGreaterThanOrEqual(paneBox.y);
-  expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(
-    paneBox.x + paneBox.width
-  );
-  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(
-    paneBox.y + paneBox.height
-  );
+  expect(actionBox.x + actionBox.width).toBeLessThanOrEqual(paneBox.x + paneBox.width);
+  expect(actionBox.y + actionBox.height).toBeLessThanOrEqual(paneBox.y + paneBox.height);
 });
 ```
 

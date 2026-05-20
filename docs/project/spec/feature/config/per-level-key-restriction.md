@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/per-level-key-restriction
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Each user-facing config level rejects keys that belong to another level, preventing silent misplacement across project, global, person, and legacy machine config.
+id: 'project/spec/feature/config/per-level-key-restriction'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Each user-facing config level rejects keys that belong to another level, preventing silent misplacement across project, global, person, and legacy machine config.'
 ---
 
 # Per-Level Key Restriction — Spec
@@ -150,12 +150,12 @@ And subsequent Pydantic parsing produces its own type error against the actual s
 
 Per-layer forbidden sets (any presence triggers rejection):
 
-| Layer / file | Forbidden top-level keys |
-| --- | --- |
-| `ProjectConfig` (`<project>/teleclaude.yml`) | `people`, `ops`, `creds`, `notifications`, `timezone` |
-| `GlobalConfig` (`~/.teleclaude/teleclaude.yml`) | `creds`, `notifications`, `timezone` |
-| `PersonConfig` (`~/.teleclaude/people/<name>/teleclaude.yml`) | `people`, `ops`, `business`, `timezone` |
-| Legacy `config.yml` (runtime) | `computer.tmux_binary` |
+| Layer / file                                                  | Forbidden top-level keys                              |
+| ------------------------------------------------------------- | ----------------------------------------------------- |
+| `ProjectConfig` (`<project>/teleclaude.yml`)                  | `people`, `ops`, `creds`, `notifications`, `timezone` |
+| `GlobalConfig` (`~/.teleclaude/teleclaude.yml`)               | `creds`, `notifications`, `timezone`                  |
+| `PersonConfig` (`~/.teleclaude/people/<name>/teleclaude.yml`) | `people`, `ops`, `business`, `timezone`               |
+| Legacy `config.yml` (runtime)                                 | `computer.tmux_binary`                                |
 
 Error message shapes:
 
@@ -165,7 +165,7 @@ Error message shapes:
 ## Known caveats
 
 - **`model_config = ConfigDict(extra="allow")` is still set on every level.**
-  The per-level validator is the *only* thing standing between a misplaced
+  The per-level validator is the _only_ thing standing between a misplaced
   key and silent acceptance into the model's `__pydantic_extra__`. Removing
   or short-circuiting the validator would re-enable silent misplacement.
 - **Asymmetric forbidden sets are intentional.** `business` is forbidden on
@@ -187,7 +187,7 @@ Error message shapes:
   type error. The per-level rejection is a precondition layered on top of
   Pydantic's normal validation, not a replacement for it.
 - **No drift detection.** If a new layer-owned key (e.g., a new
-  `PersonConfig` field) is added without updating the *other* layers'
+  `PersonConfig` field) is added without updating the _other_ layers'
   `disallowed` sets to include it, the new key is silently accepted on the
   wrong layer. Maintenance discipline is required — the forbidden sets are
   hand-maintained.

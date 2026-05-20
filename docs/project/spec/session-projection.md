@@ -26,15 +26,15 @@ truth itself.
 
 ### Core concepts
 
-| Field | Meaning |
-| --- | --- |
-| `source_entry` | One ordered user, assistant, system, or tool-derived block from the authoritative session source. |
-| `source_order` | The order defined by the source file or ledger sequence. No adapter may reorder entries. |
-| `source_timestamp` | Timestamp attached to a source entry, used only when sequence is not yet available. |
-| `projection_cursor` | Monotonic per-adapter/per-lane cursor over source truth. |
-| `delivery_receipt` | Adapter-local platform state such as message ids, char offsets, edit anchors, and overflow chunk ids. |
-| `activity_signal` | A wakeup that says source state may have changed. It does not define content. |
-| `origin_signal` | The recorded origin for the current user turn. It gates projection across user turns. |
+| Field               | Meaning                                                                                                |
+| ------------------- | ------------------------------------------------------------------------------------------------------ |
+| `source_entry`      | One ordered user, assistant, system, or tool-derived block from the authoritative session source.      |
+| `source_order`      | The order defined by the source file or ledger sequence. No adapter may reorder entries.               |
+| `source_timestamp`  | Timestamp attached to a source entry, used only when sequence is not yet available.                    |
+| `projection_cursor` | Monotonic per-adapter/per-lane cursor over source truth.                                               |
+| `delivery_receipt`  | Adapter-local platform state such as message ids, char offsets, edit anchors, and overflow chunk ids.  |
+| `activity_signal`   | A wakeup that says source state may have changed. It does not define content.                          |
+| `origin_signal`     | The recorded origin for the current user turn. It gates projection across user turns.                  |
 | `last_input_origin` | Live routing/presence signal for the most recently accepted user input. It is not a durable audit log. |
 
 ### Source truth

@@ -55,10 +55,10 @@ The default is **skip unless justified**, not "produce when applicable."
   path if undocumented.
 - **Live tech debt and drift.** State that lives outside any single file —
   known divergences between intent and implementation, deprecation phases.
-- **Reverse pointers.** When this repository *implements* a global policy,
+- **Reverse pointers.** When this repository _implements_ a global policy,
   the project snippet points back to the global ID rather than duplicating
   the contract. This is the highest-value shape for projects that exist
-  *because of* a global standard.
+  _because of_ a global standard.
 
 ### Worked anti-example
 
@@ -116,8 +116,8 @@ Documentation snippets exist to deliver high-signal context selectively to
 agents whose context windows are finite. A snippet that restates source,
 duplicates a global policy, or paraphrases a config file consumes context
 budget without changing behavior. The cost is ambient: every session that
-loads it pays. The proprioception principle — *"if a cue does not change
-behavior in at least some sessions, it does not belong"* — applies as much
+loads it pays. The proprioception principle — _"if a cue does not change
+behavior in at least some sessions, it does not belong"_ — applies as much
 to on-demand snippets as to ambient signals.
 
 The value contract operationalizes intent-first documentation by forcing

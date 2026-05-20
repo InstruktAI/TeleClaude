@@ -11,6 +11,7 @@ delivered_by:
   - telec-todo-rename
   - removal-snippet-frontmatter-sync
   - roadmap-trash-reveal-ui
+  - v2-workflow-cli-refinement-commands
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -122,8 +123,9 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
     soft-`removed` retained slugs are collision-free rename targets,
     consistent with the slug-reuse rule).
   - At most one **live** entry (`active`/`icebox`) exists per slug at any moment; `delivered` and `removed` retained rows for the same slug are permitted as additional historical rows, distinguished by durable row identity.
+  - **Creation requires substantive content.** A creation request that supplies no content is refused at the service boundary — no roadmap row, no `todo_state` row, no `input` artifact row, and no artifact-version row is written, and no `workflow.todo.created` event is emitted. This invariant exists because the previous empty-skeleton path produced `(stage=draft, phase=draft, state=in_progress)` rows in which nothing was actually in progress, with no input to act on; the only way to keep the persisted state truthful is to refuse the operation. Substantive-create vs. silent-create is orthogonal to this requirement: both modes require content; they differ only in pickup-dispatch semantics (see the `workflow.todo.created` payload). **Pre-cutover legacy rows** that already persist the misleading skeleton shape are addressed operationally by UC-WFL-2b (`telec todo doctor --skeletons`), which surfaces them by default (read-only report) and can soft-remove them via opt-in `--migrate` through the standard remove path (recoverable within the retention window). A destructive one-shot SQL backfill is forbidden.
 - **Identifier:** durable row identity. `slug` is the active alias used to resolve the single live entry; it is not globally unique across retained history.
-- **Lifecycle:** Created via `telec todo create` (empty draft skeleton), `telec todo dump` (with input attached), or `telec todo split` (child of a container). Advances through stages via the per-stage state machine. Reaches `delivered` via integration. Frozen aggregates move to icebox.
+- **Lifecycle:** Created via `telec todo create <slug> <content>` (substantive — content required at creation; an empty-content invocation is refused and writes nothing) or `telec todo split` (child of a container). `telec todo dump` survives one transition window as a warning compatibility alias for `telec todo create` and produces the same substantive-create outcome. Advances through stages via the per-stage state machine. Reaches `delivered` via integration. Frozen aggregates move to icebox.
 
 #### Roadmap (aggregate)
 
@@ -162,12 +164,35 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 #### `workflow.todo.created`
 
 - **Producer:** `workflow`
-- **Emitted when:** a new todo is added to the roadmap (via `create`, `dump`, `split`, `bugs report`, `bugs create`).
-- **Payload:** `slug`, `kind`, `stage` (always `draft` initially), `created_at`, `created_by_principal`.
+- **Emitted when:** a new todo is added to the roadmap (via `create`, the
+  `dump` compatibility alias, `split`, `bugs report`, `bugs create`). Always
+  emitted on successful creation regardless of `creation_mode` — silent mode
+  suppresses pickup dispatch, not the state-change event.
+- **Payload:** preserves the existing v2 Rust contract — `todo_id` (durable
+  row identity), `slug`, `project_id`, `lifecycle_phase` (always `draft`
+  initially), `kind`, `created_at`, `created_by_principal` — and adds two
+  new fields owned by this delivery: `creation_mode` (`pickup` | `silent`)
+  and `pickup_requested` (boolean). The v1 daemon bridge derives the
+  consumer-facing `project_path` from `project_id` via its existing
+  `project_id → project_path` map (the bridge is payload-agnostic and reads
+  the whole envelope; see `teleclaude/transport/workflow_bridge.py`).
+  Existing v2 Rust event consumers continue to see every prior field; the
+  contract is strict-additive.
 - **Visibility:** CLUSTER
-- **Known consumers:** `integration` (subscription notifications for "todo created"), audit log consumers.
+- **Known consumers:** `integration` (subscription notifications for
+  "todo created"), audit log consumers, autonomous pickup consumers (the
+  prepare / work dispatch routers — they react ONLY when
+  `pickup_requested = true`; silent-mode events update cache and audit but
+  trigger no dispatch).
 - **Idempotency key:** `slug`.
 - **Posture:** `commit-then-emit`.
+- **Why pickup is a payload field, not a separate event:** silent creation
+  must remain a true state-change event so cache invalidation, bridge
+  refresh, and audit consumers observe the new aggregate; hiding the event
+  to suppress pickup would weaken all three consumer classes equally to
+  serve only the dispatch class. Encoding pickup intent in the payload
+  preserves the state-change contract and lets autonomous dispatch consumers
+  gate themselves explicitly.
 
 #### `workflow.todo.updated`
 
@@ -216,16 +241,36 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
   todos.db transaction commits — the rename's linearization point).
 - **Payload:** `old_slug`, `new_slug`, `renamed_at`, `renamed_by_principal`.
 - **Visibility:** CLUSTER
-- **Known consumers:** `frontend` (re-key the roadmap/todo view from
-  `old_slug` to `new_slug`), `telec-tui` (cache invalidation — drop the
-  `old_slug` entry, refetch `new_slug`), `integration` (slug-keyed
-  subscription bookkeeping). A rename changes the aggregate's active alias;
-  consumers that cache by slug cannot learn the re-key from a generic
-  `workflow.todo.updated` (which carries only the post-rename slug), so a
-  dedicated event carrying the `old_slug → new_slug` pair is required rather
-  than reusing `updated`. Exhaustive consumer-wiring breadth is an
+- **Known consumers** and the route by which each receives the
+  `old_slug → new_slug` pair:
+  - **v1 daemon bridge** (`teleclaude/transport/workflow_bridge.py`) —
+    receives the full payload dict (the bridge is payload-agnostic and
+    forwards the whole envelope to its caller-supplied dispatcher). The
+    rename dispatcher reads `payload['old_slug']` and `payload['new_slug']`
+    and performs a slug-keyed re-key on `DaemonCache`: drop the `old_slug`
+    cache entry, force-refetch `new_slug`. This requires the rename's
+    dispatcher to be payload-aware (a strict extension of today's generic
+    "todos_updated" invalidation — that generic fallback is preserved for
+    every other workflow event).
+  - **`telec-tui`** — reads the daemon roadmap cache snapshot; receives the
+    re-key as the cache-invalidation side effect above. The TUI does not
+    subscribe to the bus directly.
+  - **`frontend`** — receives the rename via the daemon's WebSocket push
+    layer, which already exists for `todos_updated` and is extended here
+    with a typed `todo_renamed` push carrying the `(old_slug, new_slug)`
+    pair so the frontend can re-key in place rather than refetch the entire
+    roadmap.
+  - **`integration`** — slug-keyed subscription bookkeeping. Receives the
+    pair from the bus subscriber the same way the daemon does.
+  A rename changes the aggregate's active alias; consumers that cache by
+  slug cannot learn the re-key from a generic `workflow.todo.updated`
+  (which carries only the post-rename slug), so a dedicated event carrying
+  the `(old_slug, new_slug)` pair is required rather than reusing
+  `updated`. Exhaustive consumer-wiring breadth (including the per-consumer
+  fallback when a payload-aware dispatcher has not yet been wired) is an
   implementation-plan concern; the durable contract is the `(old_slug,
-  new_slug)` pair.
+  new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
+  WebSocket / integration subscriber.
 - **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
 - **Posture:** `commit-then-emit`.
 
@@ -245,28 +290,69 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 
 ### Use cases
 
-#### UC-WFL-1: Create a draft todo skeleton
+#### UC-WFL-1: Create a substantive todo with content
 
 ```
-Given an operator (or agent) wants to scaffold work
-When they run `telec todo create my-feature --kind feature --after upstream-slug`
-Then workflow validates the slug is unique and kebab-case
+Given an operator (or agent) wants to register substantive work
+When they run `telec todo create my-feature "<substantive content>" --kind feature --after upstream-slug`
+Then workflow validates the slug is unique among live entries and kebab-case
+And validates the content is non-empty
 And validates `upstream-slug` exists in the roadmap
-And creates a Todo aggregate at (stage=draft, phase=draft, state=in_progress)
-And adds a RoadmapEntry with after=[upstream-slug], status=pending
-And emits workflow.todo.created
+And creates the Todo aggregate, RoadmapEntry, input Artifact, and initial artifact-version in one transaction
+And emits workflow.todo.created with creation_mode=pickup and pickup_requested=true
+And autonomous pickup consumers dispatch the relevant prepare/work entry
 ```
 
-#### UC-WFL-2: Dump a fully-formed input as a new todo
+#### UC-WFL-2: Empty-content creation is refused
 
 ```
-Given a human or agent has a substantive idea written up
-When they run `telec todo dump my-feature "<content>"`
-Then workflow creates the Todo as above
-And creates the input Artifact with content
-And emits workflow.todo.created
-And (unless --draft) triggers downstream pickup signals
+Given an operator (or agent) runs `telec todo create my-feature` with no content
+When the workflow service receives the request
+Then it rejects with a typed empty-input error
+And writes no roadmap row, no todo_state row, no artifact row, and no artifact-version row
+And emits no workflow.todo.created event
+And no autonomous pickup is triggered
 ```
+
+#### UC-WFL-2a: `telec todo dump` compatibility alias
+
+```
+Given the transition compatibility alias is enabled
+When the operator runs `telec todo dump my-feature "<content>"`
+Then the CLI emits a deprecation warning naming `telec todo create` as the replacement
+And forwards to the substantive-create path with the same arguments
+And the resulting persisted state is indistinguishable from `telec todo create my-feature "<content>"`
+And exactly one workflow.todo.created event is emitted (no double-dispatch)
+```
+
+#### UC-WFL-2b: Surface (and optionally migrate) pre-cutover v1 skeleton rows
+
+```
+Given the operator wants to discover legacy v1 skeleton todos — rows produced by the removed empty-skeleton create path, persisted with lifecycle_phase=draft and `state=in_progress` but no `input` artifact
+When the operator runs `telec todo doctor --skeletons`
+Then workflow scans todo_state rows where lifecycle_phase IS draft AND no `input` artifact exists in todo_artifacts
+And prints a structured operator report listing each detected slug with its kind, created_at, and the absence of input
+And no mutation occurs (default behavior is read-only — surfacing only)
+And exit code 0 when no skeletons are found; non-zero with the report when any are found
+```
+
+```
+Given the operator has reviewed the surfacing report and wants to retire the detected skeletons
+When the operator runs `telec todo doctor --skeletons --migrate`
+Then workflow soft-removes each detected skeleton via the standard remove path (status=removed, removed_at, removal tombstone, slug-keyed teardown — UC-WFL-10), one row at a time
+And each removal emits the same events the remove path normally emits
+And each removed entry remains recoverable via reactivation during the retention window
+And the operator report lists the removed slugs and their durable row ids for audit
+And exit code 0 when all detected skeletons were soft-removed successfully
+```
+
+The migration mechanism deliberately reuses the soft-remove primitive
+(UC-WFL-10) rather than introducing a destructive backfill: legacy
+skeletons are an operator-visible defect, not data the operator chose; soft
+remove preserves the row for the retention window so any genuinely-intended
+skeleton can be reactivated. A separate one-shot SQL migration is rejected
+because it would bypass the slug-keyed teardown invariants and prevent
+reactivation.
 
 #### UC-WFL-3: Advance through the prepare state machine
 
@@ -509,6 +595,106 @@ Given the operator triggers the TUI restore keybinding on a selected trashed row
 And the dependency primitive refuses with live_twin_exists, not_removed, or invalid_removed_deps
 When the dispatch returns
 Then the TUI surfaces the primitive's structured reason via the existing TUI notification surface, changing nothing — no destructive side effects on refusal
+```
+
+#### UC-WFL-17: Atomically update a todo's metadata, dependencies, and content
+
+```
+Given a live todo exists for slug "<slug>"
+When the operator runs `telec workflow todo update <slug> [<content>] [--artifact <name>] [--after <slugs>] [--group <label>] [--description <text>] [--kind <kind>] [--prepped]`
+Then workflow applies all supplied fields in a single transaction
+And dependency inputs REPLACE the entire `after` set (not patch)
+And positional content writes a new artifact version (default kind `input`, or the kind named by `--artifact`)
+And `--prepped` writes content as the `implementation-plan` artifact and enforces the existing prepped HITL guard
+And update can NEVER move lifecycle phase (phase movement remains the prepare/work/integrate/stamp/reconcile state-machine verbs)
+And on success emits workflow.todo.updated with a change_summary listing the mutated fields
+And on any partial-failure rolls back so previous state is fully preserved
+```
+
+```
+Given the operator runs update with mutually ambiguous content/artifact combinations
+(e.g., positional content with `--prepped` AND `--artifact <other>`)
+When the workflow service validates the request
+Then it rejects with a typed ambiguous-update diagnostic and changes nothing
+```
+
+```
+Given an artifact written by update collides with the `_artifact_name_to_state_key` retired set (test-specs, spec-review-findings)
+When the workflow service validates the artifact name on the write path
+Then the request is refused via the writable-allowlist gate (consistent with `telec todo artifacts write`); reads/removes of pre-cutover todos remain available
+```
+
+#### UC-WFL-18: Refinement diff for a todo (artifacts + owned snippets)
+
+```
+Given the operator wants to see refinement deltas accumulated against a slug
+When they run `telec workflow todo diff <slug>`
+Then workflow gathers, for that slug only:
+  - each workflow.artifact's diff between its current version digest and the
+    artifact's review baseline digest (notably `prd`, `architecture` index,
+    `implementation-plan`)
+  - each doc snippet whose frontmatter `delivered_by` list includes the slug,
+    diffed against the snippet's recorded provenance SHA
+And prints the unified output anchored by digest (artifacts) or git SHA (snippets)
+And reports nothing for slugs that own no artifact deltas and no `delivered_by` snippet membership
+```
+
+**Baseline source — artifacts:** the per-review `approved_digest` field on
+the matching `ReviewVerdictState` row (`<review>.approved_digest`) is the
+contract. It is captured at verdict-approve time by
+`stamp_verdict` (`teleclaude/core/next_machine/state_io.py` —
+`review.approved_digest = artifact_entry.digest`) and bound to the artifact
+version that earned the approve verdict. When an artifact has no
+`approved_digest` (the artifact was written but never reviewed-and-approved),
+the diff command emits a per-artifact diagnostic line
+`baseline-absent: <artifact-kind>` and SKIPS that row; this is not an
+error condition — it is the expected state for in-flight prepare phases.
+
+**Baseline source — snippets:** the snippet's recorded provenance SHA is
+captured when this delivery's slug first acquires `delivered_by` on the
+snippet. The provenance is stored as a per-slug entry on the snippet's
+frontmatter delivered_by metadata (provenance recording is itself part of
+this delivery — see UC-WFL-18a below). When a snippet was added to
+`delivered_by` BEFORE provenance recording existed (legacy snippets), the
+diff command falls back to comparing against `main` HEAD and prefixes the
+output with `baseline-fallback: main` so the reader knows the baseline is
+approximate. When a snippet's recorded provenance SHA cannot be resolved
+in the local git history, the diff command emits
+`baseline-absent: <snippet-path>` and SKIPS that snippet.
+
+#### UC-WFL-18a: Snippet-provenance SHA recording on delivered_by acquisition
+
+```
+Given an architecture (or other prepare) phase edits a doc snippet and adds a slug to its frontmatter delivered_by
+When the snippet is committed (the slug first appears on the snippet's delivered_by)
+Then the workflow service captures the snippet path → (slug, head_commit_sha) pair as the snippet's provenance for that slug, persisted in workflow's per-snippet provenance store
+And subsequent edits to the same (snippet, slug) pair do not overwrite the provenance SHA — the baseline stays anchored to the slug's first acquisition
+And UC-WFL-18 reads this provenance to compute the snippet-side diff baseline
+```
+
+Provenance recording happens at the existing snippet-commit boundary — it
+is not a new dispatch. The implementation plan owns the choice of storage
+(workflow_provenance table vs. a per-snippet sidecar). For snippets that
+predate provenance recording, the UC-WFL-18 fallback above keeps the diff
+useful even without a stored SHA.
+
+```
+Given `telec workflow artifacts diff <slug> <name> <old-digest> <new-digest>` is invoked directly
+When the workflow service resolves the digests in the artifact-version history
+Then it returns the digest-anchored unified diff between those two exact versions
+And the todo-scoped diff (UC-WFL-18 above) is implemented in terms of this primitive — it never bypasses the digest-anchored history
+```
+
+#### UC-WFL-19: Silent creation persists state and suppresses pickup dispatch
+
+```
+Given an operator wants to enqueue substantive work without triggering autonomous pickup (e.g., bulk-queueing a backlog)
+When the workflow service creates "<slug>" with substantive content and `creation_mode = silent`
+Then the todo row, roadmap row, input artifact, and artifact-version row are persisted exactly as in UC-WFL-1
+And workflow emits workflow.todo.created with creation_mode=silent and pickup_requested=false
+And autonomous pickup consumers observe the event and explicitly do NOT dispatch
+And cache, bridge-refresh, and audit consumers process the event normally
+And `telec workflow todo create <slug> <content> --silent` is the CLI form that drives silent mode at the boundary
 ```
 
 ### v1 inventory (applies_to: v1)

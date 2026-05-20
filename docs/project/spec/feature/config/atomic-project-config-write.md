@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/config/atomic-project-config-write
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: save_project_config writes the project teleclaude.yml atomically — dump to a .tmp sibling, flush+fsync, os.replace into place, cleanup on failure — using model_dump(mode="json", exclude_defaults=True) for minimal output.
+id: 'project/spec/feature/config/atomic-project-config-write'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'save_project_config writes the project teleclaude.yml atomically — dump to a .tmp sibling, flush+fsync, os.replace into place, cleanup on failure — using model_dump(mode="json", exclude_defaults=True) for minimal output.'
 ---
 
 # Atomic Project Config Write — Spec
@@ -125,7 +125,7 @@ And the responsibility for invariants (e.g., stable-channel pinning) lies with t
 ### Cross-context references
 
 - Operator tooling that mutates project config (the TUI wizard, `telec
-  config patch`, scripted setup) is expected to call `save_project_config`
+config patch`, scripted setup) is expected to call `save_project_config`
   for project-level writes. There is no equivalent atomic helper for
   global or per-person overlays in v1.
 - The atomic-replace contract is one of the inputs into the v2 `config`

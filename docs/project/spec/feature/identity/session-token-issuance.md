@@ -1,12 +1,12 @@
 ---
-id: project/spec/feature/identity/session-token-issuance
-type: spec
-domain: software-development
-scope: project
-visibility: public
-applies_to: v1
-status: actual
-description: Issue a v1 session token at bootstrap for system-principal sessions and write it into the session's TMPDIR identity file.
+id: 'project/spec/feature/identity/session-token-issuance'
+type: 'spec'
+domain: 'software-development'
+scope: 'project'
+visibility: 'public'
+applies_to: 'v1'
+status: 'actual'
+description: 'Issue a v1 session token at bootstrap for system-principal sessions and write it into the session''s TMPDIR identity file.'
 ---
 
 # Session Token Issuance — Spec
