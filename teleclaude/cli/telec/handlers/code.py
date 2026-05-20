@@ -74,44 +74,69 @@ def handle_code_commit(args: list[str]) -> None:
     """Stage workspace-scoped files and commit them with a pathspec-scoped commit.
 
     Sealed contract — exactly one quoted commit message, optionally
-    ``--approved``. No ``-m``, no ``-F``, no ``--``, no pathspecs, no git
-    flags: nothing is forwarded to git. Staging and the pathspec commit are
-    internal implementation details.
+    ``--approved`` and ``--include <path> [<path> ...]``. No ``-m``, no
+    ``-F``, no ``--``, no bare pathspecs, no git flags: nothing is forwarded
+    to git. Staging and the pathspec commit are internal implementation
+    details.
+
+    Scope authority: the final ``git commit`` runs with an explicit pathspec
+    equal to (resolved workspace scope plus declared ``--include`` paths).
+    Anything else in the index — staged by another session, by the human, or
+    crash residue — is invisible to the pathspec and stays in the index for
+    its owner. There is no env-var override; ``--include`` is the only way to
+    extend scope, and the agent must name every path it claims.
 
     Caller paths:
     - Outside tmux: the wrapper passes through to plain git; this command is
       not in the picture.
-    - Inside tmux, autonomous agent: this command. Workspace scope drives
-      staging. The final ``git commit`` runs with an explicit pathspec so
-      anything else in the index (concurrent stage from another session,
-      crash residue) is left untouched.
-    - Inside tmux, supervised one-off:
-      ``TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>`` bypasses the
-      wrapper redirect. This command is not in the picture.
+    - Inside tmux: this command is the only sanctioned commit path.
 
     Safety primitives:
     1. Orchestrator restriction.
     2. main-branch lock serialises all ``_commit_under_lock`` bodies.
     3. Pre-commit hook owns format + lint inside git's own atomicity.
-    4. Shared-main gate, two ordered stages for non-integrator commits:
-       a. Path A/B/C classification — answered by ``--approved`` / ``[skip
-          ci]``; decides whether this is the right commit strategy.
-       b. Session-scope assertion — independent of ``--approved``; hard-fails
-          when the index holds files outside this session's scope, unless the
-          explicit ``TELECLAUDE_COMMIT_APPROVED`` override is set.
-    """
-    approved = "--approved" in args
-    positionals = [a for a in args if a != "--approved"]
+    4. ``--approved`` is the Path A/B/C strategy gate; bare invocation prints
+       the classification card and exits.
+    5. The pathspec itself bounds the commit — no separate scope-enforcement
+       gate is needed.
 
-    # Reject any other flag/arg — nothing forwarded to git.
-    if any(a.startswith("-") for a in positionals) or len(positionals) > 1:
+    Parsing rule: tokens are sorted into buckets left-to-right. ``--approved``
+    is a boolean; ``--include`` switches subsequent non-flag tokens into the
+    include bucket until the next flag; everything else is positional. The
+    message must therefore precede ``--include`` (or be separated from it by
+    ``--approved``).
+    """
+    approved = False
+    includes: list[str] = []
+    positionals: list[str] = []
+    mode_include = False
+    for token in args:
+        if token == "--approved":
+            approved = True
+            mode_include = False
+        elif token == "--include":
+            mode_include = True
+        elif token.startswith("-"):
+            print(
+                f"ERROR: unknown flag: {token}\n"
+                "Accepted flags: --approved, --include <path> [<path> ...].\n"
+                "  telec code commit                                              # show A/B/C\n"
+                '  telec code commit --approved "<message>"                       # commit scope\n'
+                '  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras',
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+        elif mode_include:
+            includes.append(token)
+        else:
+            positionals.append(token)
+
+    if len(positionals) > 1:
         print(
-            "ERROR: telec code commit accepts only a single quoted message and "
-            "optionally --approved. No other arguments are accepted (no -m, -F, --, "
-            "pathspecs, or git flags — nothing is forwarded to git; staging is "
-            "automatic and scoped).\n"
-            "  telec code commit                                    # surface Path A/B/C\n"
-            '  telec code commit --approved "type(scope): subject"  # commit',
+            "ERROR: telec code commit accepts exactly one quoted message.\n"
+            "If a path was consumed as part of the message, place --include after "
+            "the message (or after --approved):\n"
+            '  telec code commit --approved "<message>" --include <path> ...',
             file=sys.stderr,
         )
         raise SystemExit(2)
@@ -149,6 +174,7 @@ def handle_code_commit(args: list[str]) -> None:
     with main_branch_lock():
         _commit_under_lock(
             message=message,
+            includes=includes,
             project_root=project_root,
             system_role=system_role,
         )
@@ -157,69 +183,82 @@ def handle_code_commit(args: list[str]) -> None:
 def _commit_under_lock(
     *,
     message: str,
+    includes: list[str],
     project_root: Path,
     system_role: str | None,
 ) -> None:
     """Execute the commit sequence while holding the main-branch lock.
 
-    Stages the files in the workspace scope and commits with an explicit
-    pathspec. Anything else in the index (concurrent stage from another
-    session, crash residue) is left untouched. The pre-commit hook owns
-    format and lint inside git's own atomicity.
+    Pathspec = resolved workspace scope plus declared ``--include`` paths.
+    Anything else in the index is invisible to the pathspec and stays staged
+    for its owner. The pre-commit hook owns format + lint inside git's own
+    atomicity.
     """
     scope_resolution = resolve_workspace_scope_resolution(project_root)
-    stage_paths = _commit_stage_paths(scope_resolution)
+    scope_paths = _commit_stage_paths(scope_resolution)
 
-    if stage_paths:
-        pre_staged_set = set(_get_staged_files(project_root, include_deletions=True))
-        unstaged_stage_paths = [path for path in stage_paths if path not in pre_staged_set]
-        if unstaged_stage_paths:
-            _stage_files(unstaged_stage_paths, project_root)
+    # Merge scope plus includes, preserving order, deduped. The result is both
+    # the staging target and the commit pathspec.
+    seen: set[str] = set()
+    pathspec: list[str] = []
+    for path in scope_paths:
+        if path not in seen:
+            seen.add(path)
+            pathspec.append(path)
+    for path in includes:
+        if path not in seen:
+            seen.add(path)
+            pathspec.append(path)
 
-    staged_for_commit = _get_staged_files(project_root, include_deletions=True)
-    if not staged_for_commit:
-        print("Nothing staged for commit.", file=sys.stderr)
-        raise SystemExit(1)
-
-    if not scope_resolution.scoped_dirty_paths and staged_for_commit:
+    if not pathspec:
         print(
-            f"telec code commit: session scope unavailable; committing "
-            f"{len(staged_for_commit)} pre-staged file(s): {', '.join(staged_for_commit)}",
+            "Nothing in workspace scope to commit. Run `telec code changed` to "
+            "see what telec would stage, and use `--include <path>` to add files "
+            "outside that list.",
             file=sys.stderr,
         )
+        raise SystemExit(1)
 
-    _check_partial_staging(project_root)
+    # Stage anything in our pathspec that isn't already staged. `git add` is
+    # a no-op for clean files, so declared includes that have no change won't
+    # show up in the index — we catch that case below.
+    pre_staged_set = set(_get_staged_files(project_root, include_deletions=True))
+    to_stage = [path for path in pathspec if path not in pre_staged_set]
+    if to_stage:
+        _stage_files(to_stage, project_root)
 
-    # Two independent gates on shared main, ordered. Stage 1 (Path A/B/C)
-    # decides "is this the right commit strategy" and is answered by
-    # --approved or [skip ci]. Stage 2 (session scope) decides "is this
-    # commit contaminated with another session's staged work" and is
-    # answered only by the explicit TELECLAUDE_COMMIT_APPROVED override.
-    # --approved never buys past stage 2; the integrator is exempt from both.
-    # Path A/B/C is the bare-call gate (handled in handle_code_commit, before
-    # the lock). Here, --approved is required to reach this point, so we only
-    # need stage 2 — the session-scope assertion. The integrator is exempt.
-    current_branch = _current_branch(project_root)
-    if current_branch == "main" and system_role != "integrator":
-        _enforce_session_scope(staged_for_commit, scope_resolution)
+    # Every --include path must contribute a change. If a declared include is
+    # still not in the staged set after `git add`, the agent named a path with
+    # no change — fail early with a precise error rather than committing scope
+    # silently.
+    if includes:
+        staged_after = set(_get_staged_files(project_root, include_deletions=True))
+        missing = [path for path in includes if path not in staged_after]
+        if missing:
+            print(
+                "ERROR: --include path(s) have no changes to commit:\n  " + "\n  ".join(missing),
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
+
+    # Partial staging within our pathspec corrupts pre-commit's stash/restore
+    # cycle. Foreign partial-staging is not our concern — it's outside the
+    # pathspec and outside the hook's working set.
+    _check_partial_staging(project_root, pathspec=pathspec)
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
     final_message = _with_trailer(message)
 
-    # Pathspec scopes the commit to exactly what telec staged for this scope;
-    # anything else in the index is left alone for its owner to commit or for
-    # a human to clean up. Deletions must be included so they make it in.
     with tempfile.NamedTemporaryFile("w", suffix=".txt", encoding="utf-8", delete=False) as msg_file:
         msg_file.write(final_message)
         msg_path = msg_file.name
 
-    # Commit via gitpython (uses real binary, bypasses wrapper). The pre-commit
-    # hook runs format and lint inside git's own atomicity. Surface git's own
-    # output so callers see the commit summary and any hook output.
+    # Commit via gitpython (uses real binary, bypasses wrapper). Surface git's
+    # own output so callers see the commit summary and any hook output.
     repo = Repo(str(project_root))
     try:
-        _, stdout, stderr = repo.git.commit("-F", msg_path, "--", *staged_for_commit, with_extended_output=True)
+        _, stdout, stderr = repo.git.commit("-F", msg_path, "--", *pathspec, with_extended_output=True)
     except GitCommandError as exc:
         print(str(exc), file=sys.stderr)
         raise SystemExit(1) from exc
@@ -229,6 +268,9 @@ def _commit_under_lock(
         print(stdout)
     if stderr:
         print(stderr, file=sys.stderr)
+    # system_role is retained on the signature for symmetry with prior gates;
+    # the pathspec boundary makes a separate scope-enforcement step redundant.
+    del system_role
 
 
 def _print_abc_classification() -> None:
@@ -242,7 +284,16 @@ def _print_abc_classification() -> None:
     print(
         "Commits on main require classification.\n"
         "\n"
-        "Inspect staged files:  git diff --staged --name-only\n"
+        "First, see what telec will stage and commit:\n"
+        "  telec code changed\n"
+        "\n"
+        "If files outside that list also need to be in this commit (e.g., a file\n"
+        "the human collaboratively edited that the scope heuristic missed),\n"
+        "declare them explicitly with --include:\n"
+        "  telec code commit --approved '<message>' --include <path> [<path> ...]\n"
+        "\n"
+        "Foreign files left in the index (staged by another session) are NOT\n"
+        "committed by telec — the pathspec excludes them. Do not unstage them.\n"
         "\n"
         "  A) NON-FUNCTIONAL FILES ONLY (Markdown, YAML, doc snippets, state):\n"
         "     Include [skip ci] in the subject:\n"
@@ -278,53 +329,6 @@ def _print_abc_classification() -> None:
     raise SystemExit(1)
 
 
-def _enforce_session_scope(
-    staged_for_commit: list[str],
-    scope_resolution: WorkspaceScopeResolution,
-) -> None:
-    """Block commits whose index includes files outside this session's scope.
-
-    Stage 2 of the shared-main gate. Runs after Path A/B/C classification is
-    satisfied and is independent of ``--approved``. The session scope is the
-    set of files this agent's transcript touched plus any pending deletions.
-    Any staged file outside that set was staged by another session (or is
-    crash residue); committing it here would sweep another agent's work into
-    this commit.
-
-    No-ops when the session scope is unavailable (no transcript signal:
-    integrator, fresh shell, or human manual staging) — that path is owned by
-    the tolerant pre-staged fallback. ``TELECLAUDE_COMMIT_APPROVED=1`` is the
-    explicit, deliberate override to commit the out-of-scope files anyway; it
-    is a separate authorization from the ``--approved`` strategy flag.
-    """
-    scoped = set(scope_resolution.scoped_dirty_paths)
-    if not scoped:
-        return
-    foreign = sorted(set(staged_for_commit) - scoped)
-    if not foreign:
-        return
-    if os.environ.get("TELECLAUDE_COMMIT_APPROVED") == "1":
-        return
-    print("ERROR: staged files outside this session's scope:\n", file=sys.stderr)
-    for path in foreign:
-        print(f"  {path}", file=sys.stderr)
-    own = sorted(scoped & set(staged_for_commit)) or ["<your file1>", "<your file2>"]
-    print(
-        "\nThese files were staged by another session. Committing them here "
-        "would sweep another agent's work into this commit.\n"
-        "\nIf those files are NOT yours: leave them, get human approval, then "
-        "commit only your scope surgically (space-separated paths, '--' required; "
-        "this commits exactly those and leaves every other staged file untouched):\n"
-        "  git add -- " + " ".join(own) + "\n"
-        "  TELECLAUDE_COMMIT_APPROVED=1 git commit -F <msgfile> -- " + " ".join(own) + "\n"
-        "\nOr, if you deliberately intend to commit them too, re-run with the "
-        "explicit scope override:\n"
-        "  TELECLAUDE_COMMIT_APPROVED=1 telec code commit --approved '<message>'",
-        file=sys.stderr,
-    )
-    raise SystemExit(2)
-
-
 def _commit_stage_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
     if scope_resolution.kind is WorkspaceScopeKind.WORKTREE:
         return [dirty.path for dirty in scope_resolution.dirty_paths]
@@ -351,12 +355,20 @@ def _get_staged_files(project_root: Path, *, include_deletions: bool = False) ->
     return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 
-def _check_partial_staging(project_root: Path) -> None:
-    """Block commits with partially staged files."""
+def _check_partial_staging(project_root: Path, *, pathspec: list[str] | None = None) -> None:
+    """Block commits with partially staged files inside our pathspec.
+
+    Partial staging within the commit's pathspec corrupts the pre-commit
+    stash/restore cycle. Foreign partial-staging (outside our pathspec) is
+    not our concern — the commit doesn't touch it and the hook's working set
+    doesn't include it.
+    """
     repo = Repo(str(project_root))
     staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
     unstaged = set(repo.git.diff("--name-only").strip().splitlines())
     overlap = staged & unstaged
+    if pathspec is not None:
+        overlap = overlap & set(pathspec)
     if overlap:
         print("ERROR: partially staged files detected.", file=sys.stderr)
         print("Pre-commit stash/restore would corrupt these files.\n", file=sys.stderr)

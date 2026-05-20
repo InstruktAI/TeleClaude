@@ -1108,15 +1108,21 @@ CLI_SURFACE: dict[str, CommandDef] = {
             ),
             "commit": CommandDef(
                 desc="Stage workspace-scoped files, lint, format, and commit",
-                args='"<message>" [--approved]',
+                args='"<message>" [--approved] [--include <path> ...]',
                 flags=[
                     _H,
                     Flag("--approved", desc="Human-approved Path B commit", hidden=True),
+                    Flag(
+                        "--include",
+                        desc="Declare files outside workspace scope to add to this commit",
+                        hidden=True,
+                    ),
                 ],
                 notes=[
-                    "Takes exactly one quoted commit message; nothing is forwarded to git "
-                    "(no -m/-F/--/pathspecs/flags). Staging is automatic and pathspec-scoped.",
+                    "Accepts only: one quoted message, --approved, and --include <path> ... .",
                     "Without --approved on main: prints Path A/B/C classification and exits.",
+                    "Pathspec = workspace scope plus --include paths. Anything else in the index "
+                    "(staged by another session) is left untouched — there is no env-var bypass.",
                     "The 🤖/Co-Authored-By trailer is appended automatically (idempotent).",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),

@@ -329,20 +329,20 @@ MSG
 fi
 
 if [ "$_subcmd" = "commit" ]; then
-    if [ "${TELECLAUDE_COMMIT_APPROVED:-}" = "1" ]; then
-        :  # explicit human approval — pass through
-    else
-        cat >&2 <<'MSG'
-ERROR: Use 'telec code commit "<message>"' instead of 'git commit'.
+    cat >&2 <<'MSG'
+ERROR: Use 'telec code commit' instead of 'git commit'. There is no bypass.
 
-telec code commit handles session scoping, staging, formatting, and linting.
-It takes one quoted message (and optionally --approved); nothing else.
+telec code commit owns staging, scoping, the pathspec commit, and the
+mandated trailer. It accepts a single quoted message, optional --approved,
+and optional --include <path> ... to declare files outside the resolved
+workspace scope.
 
-To bypass (human-approved, one-shot, surgical pathspec):
-  TELECLAUDE_COMMIT_APPROVED=1 git commit -F <msgfile> -- <file1> <file2>
+Usage:
+  telec code commit                                              # show A/B/C
+  telec code commit --approved "<message>"                       # commit scope
+  telec code commit --approved "<message>" --include <path> ...  # commit scope + extras
 MSG
-        exit 1
-    fi
+    exit 1
 fi
 
 # Block commit-producing replays on main without explicit approval.

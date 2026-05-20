@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import subprocess
-from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -115,6 +114,7 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="feat(scope): centralize scope",
+                includes=[],
                 project_root=tmp_path,
                 system_role=None,
             )
@@ -155,6 +155,7 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="fix(scope): handle shared deletion",
+                includes=[],
                 project_root=tmp_path,
                 system_role=None,
             )
@@ -165,12 +166,13 @@ class TestCommitWorkspaceScope:
         _assert_pathspec_commit(repo, ["teleclaude/deleted.py", "teleclaude/touched.py"])
 
     @pytest.mark.unit
-    def test_non_main_branch_trusts_index_with_foreign_pre_staged_file(self, tmp_path: Path) -> None:
-        """Non-main branches are user-owned: the scope gate does not apply.
+    def test_foreign_pre_staged_file_left_in_index(self, tmp_path: Path) -> None:
+        """Pathspec is the boundary: foreign staged files stay in the index.
 
-        A feature branch in the project root is single-owner; whatever is in
-        the index is trusted and committed, even pre-staged files outside the
-        session scope. The scope gate is a shared-main concern only.
+        On any shared-branch invocation, the pathspec equals (workspace scope
+        plus includes). A pre-staged file outside that set is not in the commit
+        and stays staged for its owner — no special-case "trust the index"
+        behavior, no foreign-files diagnostic.
         """
         resolution = WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.SHARED_BRANCH,
@@ -182,12 +184,10 @@ class TestCommitWorkspaceScope:
             scoped_dirty_paths=("teleclaude/touched.py",),
             scoped_existing_paths=("teleclaude/touched.py",),
         )
+        # pre_staged: foreign is already staged; staged_after: foreign + ours.
         staged_snapshots = [
-            ["teleclaude/foreign_deleted.py"],  # pre_staged: foreign file already staged by someone else
-            [
-                "teleclaude/foreign_deleted.py",
-                "teleclaude/touched.py",
-            ],  # staged_for_commit: foreign + ours
+            ["teleclaude/foreign_deleted.py"],
+            ["teleclaude/foreign_deleted.py", "teleclaude/touched.py"],
         ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
@@ -206,22 +206,23 @@ class TestCommitWorkspaceScope:
         ):
             _commit_under_lock(
                 message="fix: own change",
+                includes=[],
                 project_root=tmp_path,
                 system_role=None,
             )
 
         assert staged_files == [["teleclaude/touched.py"]]
-        _assert_pathspec_commit(repo, ["teleclaude/foreign_deleted.py", "teleclaude/touched.py"])
+        # Pathspec contains ONLY our scope; foreign_deleted.py is left in the
+        # index for its owner to commit or unstage.
+        _assert_pathspec_commit(repo, ["teleclaude/touched.py"])
 
 
-class TestSessionScopeGate:
-    """Stage-2 session-scope assertion on shared main.
+class TestIncludeFlag:
+    """``--include`` declares files outside the resolved workspace scope.
 
-    Independent of the Path A/B/C strategy gate. It runs after classification
-    is satisfied and hard-fails when the index contains staged files outside
-    this session's scope, unless the explicit ``TELECLAUDE_COMMIT_APPROVED``
-    override is set. ``--approved`` answers "right strategy"; it never grants
-    a license to commit another agent's staged files.
+    The pathspec is the boundary: scope plus includes are committed; everything
+    else in the index stays put. No env-var override exists — ``--include``
+    is the only way to extend scope, and the agent must name every path.
     """
 
     @staticmethod
@@ -234,105 +235,119 @@ class TestSessionScopeGate:
             scoped_existing_paths=scoped,
         )
 
-    def _run(
-        self,
-        tmp_path: Path,
-        *,
-        scoped: tuple[str, ...],
-        staged: list[str],
-        system_role: str | None,
-        message: str,
-    ) -> MagicMock:
-        resolution = self._resolution(scoped)
-        # _get_staged_files: pre_staged lookup (only if stage_paths non-empty), then staged_for_commit.
-        snapshots = [staged, staged] if scoped else [staged]
+    @pytest.mark.unit
+    def test_include_adds_path_to_pathspec(self, tmp_path: Path) -> None:
+        """--include foo.py stages foo.py and adds it to the commit pathspec."""
+        resolution = self._resolution(("teleclaude/mine.py",))
+        # pre_staged: only mine (we'll stage it); staged_after: mine + extra.
+        staged_snapshots = [
+            ["teleclaude/mine.py"],
+            ["teleclaude/extra.py", "teleclaude/mine.py"],
+        ]
+        staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
-        ctx = [
+        with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged_files.append(files),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="fix: mine plus extra",
+                includes=["teleclaude/extra.py"],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        # extra.py wasn't pre-staged → got staged. Pathspec is scope plus includes.
+        assert staged_files == [["teleclaude/extra.py"]]
+        _assert_pathspec_commit(repo, ["teleclaude/mine.py", "teleclaude/extra.py"])
+
+    @pytest.mark.unit
+    def test_include_of_clean_path_errors(self, tmp_path: Path) -> None:
+        """A declared --include path with no changes is a hard error."""
+        resolution = self._resolution(("teleclaude/mine.py",))
+        # pre_staged then staged_after both lack clean.py (git add is no-op).
+        staged_snapshots = [
+            ["teleclaude/mine.py"],
+            ["teleclaude/mine.py"],
+        ]
+        repo = MagicMock()
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
             patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
-        ]
-        with ExitStack() as stack:
-            for cm in ctx:
-                stack.enter_context(cm)
+            pytest.raises(SystemExit) as exc,
+        ):
             _commit_under_lock(
-                message=message,
-                project_root=tmp_path,
-                system_role=system_role,
-            )
-        return repo
-
-    @pytest.mark.unit
-    def test_foreign_staged_file_blocks_even_when_approved(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """--approved satisfies the ABC gate but never the scope gate."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        with pytest.raises(SystemExit) as exc:
-            self._run(
-                tmp_path,
-                scoped=("teleclaude/mine.py",),
-                staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-                system_role=None,
                 message="fix: mine",
+                includes=["teleclaude/clean.py"],
+                project_root=tmp_path,
+                system_role=None,
             )
         assert exc.value.code == 2
+        repo.git.commit.assert_not_called()
 
     @pytest.mark.unit
-    def test_env_override_allows_foreign_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """TELECLAUDE_COMMIT_APPROVED=1 is the deliberate alien-files escape."""
-        monkeypatch.setenv("TELECLAUDE_COMMIT_APPROVED", "1")
-        repo = self._run(
-            tmp_path,
-            scoped=("teleclaude/mine.py",),
-            staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-            system_role=None,
-            message="chore: deliberate sweep",
-        )
-        _assert_pathspec_commit(repo, ["teleclaude/foreign.py", "teleclaude/mine.py"])
+    def test_include_dedupes_against_scope(self, tmp_path: Path) -> None:
+        """An --include path that already appears in scope is not duplicated."""
+        resolution = self._resolution(("teleclaude/mine.py",))
+        staged_snapshots = [
+            ["teleclaude/mine.py"],
+            ["teleclaude/mine.py"],
+        ]
+        repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="fix: mine",
+                includes=["teleclaude/mine.py"],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        _assert_pathspec_commit(repo, ["teleclaude/mine.py"])
 
     @pytest.mark.unit
-    def test_scoped_only_commit_passes(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Index ⊆ session scope: the gate is a no-op."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        repo = self._run(
-            tmp_path,
-            scoped=("teleclaude/mine.py",),
-            staged=["teleclaude/mine.py"],
-            system_role=None,
-            message="fix: only mine",
-        )
-        repo.git.commit.assert_called_once()
+    def test_no_scope_no_includes_errors(self, tmp_path: Path) -> None:
+        """Empty scope plus empty includes → nothing to commit, hard error."""
+        resolution = self._resolution(())
+        repo = MagicMock()
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._stage_files"),
+            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+            pytest.raises(SystemExit) as exc,
+        ):
+            _commit_under_lock(
+                message="fix: nothing",
+                includes=[],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        assert exc.value.code == 1
+        repo.git.commit.assert_not_called()
 
-    @pytest.mark.unit
-    def test_scope_unavailable_does_not_block(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """No transcript signal → tolerant pre-staged fallback, no hard fail."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        repo = self._run(
-            tmp_path,
-            scoped=(),
-            staged=["teleclaude/anything.py"],
-            system_role=None,
-            message="fix: pre-staged fallback",
-        )
-        repo.git.commit.assert_called_once()
 
-    @pytest.mark.unit
-    def test_integrator_bypasses_scope_gate(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The integrator legitimately commits aggregated work."""
-        monkeypatch.delenv("TELECLAUDE_COMMIT_APPROVED", raising=False)
-        repo = self._run(
-            tmp_path,
-            scoped=("teleclaude/mine.py",),
-            staged=["teleclaude/foreign.py", "teleclaude/mine.py"],
-            system_role="integrator",
-            message="merge: integrate",
-        )
-        repo.git.commit.assert_called_once()
+class TestRustCommitContract:
+    """Rust commits go through pre-commit hooks like every other language."""
 
     @pytest.mark.unit
     def test_rust_commit_path_does_not_call_quality_handlers_directly(self, tmp_path: Path) -> None:
@@ -368,6 +383,7 @@ class TestSessionScopeGate:
         ):
             _commit_under_lock(
                 message="chore(rust): smoke test",
+                includes=[],
                 project_root=tmp_path,
                 system_role=None,
             )
@@ -377,6 +393,10 @@ class TestSessionScopeGate:
         test_handler.assert_not_called()
         format_handler.assert_not_called()
         _assert_pathspec_commit(repo, ["crates/workflow/src/lib.rs"])
+
+
+class TestExcludedFiles:
+    """Structural guards: certain files must not be modified by the current todo."""
 
     @pytest.mark.unit
     def test_excluded_pre_commit_config_has_no_branch_diff(self) -> None:
@@ -546,3 +566,55 @@ class TestHandleCodeCommitContract:
             handle_code_commit(["fix(x): y", "--approved"])
         assert under_lock.call_count == 1
         assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["includes"] == []
+
+    @pytest.mark.unit
+    def test_approved_with_include_forwards_paths(self) -> None:
+        """--include collects subsequent non-flag tokens into the includes bucket."""
+        with (
+            patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
+            patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+        ):
+            handle_code_commit(["--approved", "fix(x): y", "--include", "a.py", "b.py"])
+        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["includes"] == ["a.py", "b.py"]
+
+    @pytest.mark.unit
+    def test_approved_resets_include_mode(self) -> None:
+        """--approved after --include resets parsing back to positional mode."""
+        with (
+            patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
+            patch("teleclaude.cli.telec.handlers.code._commit_under_lock") as under_lock,
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+        ):
+            handle_code_commit(["--include", "a.py", "b.py", "--approved", "fix(x): y"])
+        assert under_lock.call_args.kwargs["message"] == "fix(x): y"
+        assert under_lock.call_args.kwargs["includes"] == ["a.py", "b.py"]
+
+    @pytest.mark.unit
+    def test_include_consumes_message_when_misplaced(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """If the message comes after --include, it gets swallowed into includes
+        and we error because no message remains."""
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+            patch("teleclaude.cli.telec.handlers.code.main_branch_lock"),
+            patch("teleclaude.cli.telec.handlers.code._commit_under_lock"),
+            pytest.raises(SystemExit) as exc,
+        ):
+            # message "fix: x" goes into includes; --approved set; no positional.
+            handle_code_commit(["--approved", "--include", "a.py", "fix: x"])
+        assert exc.value.code == 2
+        assert "--approved requires a quoted commit message" in capsys.readouterr().err
+
+    @pytest.mark.unit
+    def test_unknown_flag_rejected(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            handle_code_commit(["--bogus", "fix: x"])
+        assert exc.value.code == 2

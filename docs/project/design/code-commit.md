@@ -23,14 +23,18 @@ when hooks modify staged files.
 
 **Caller paths:**
 
-There are three legitimate ways a commit happens in this repository.
-`telec code commit` is one of them; the other two bypass it on purpose.
+There are two legitimate ways a commit happens in this repository.
+`telec code commit` is one of them; the other is the human shell outside tmux.
 
-| Caller context | Command | Why telec is or isn't involved |
-|---|---|---|
-| Outside tmux (human shell) | `git commit ...` | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec. |
-| Inside tmux, autonomous agent | `telec code commit -m "..."` | Lock + workspace scope + pathspec commit. The body of this design. |
-| Inside tmux, supervised one-off | `TELECLAUDE_COMMIT_APPROVED=1 git commit -- <paths>` | The wrapper's documented bypass. The human is supervising; the commit is their responsibility. Telec is not involved. |
+| Caller context                | Command                            | Why telec is or isn't involved                                                                                  |
+| ----------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Outside tmux (human shell)    | `git commit ...`                   | The wrapper passes through to real git directly when `$TMUX` is unset. No identity check, no env var, no telec. |
+| Inside tmux, autonomous agent | `telec code commit --approved ...` | Lock + workspace scope + pathspec commit. The body of this design.                                              |
+
+Inside tmux there is **no env-var bypass on `git commit`**. The wrapper
+redirects every `git commit` invocation to `telec code commit` with no
+override. `--include` is the only way to extend the commit pathspec beyond
+the resolved workspace scope, and the agent must name every path it claims.
 
 **Wrapper-enforced intent layer:**
 
@@ -43,18 +47,25 @@ tmux session. `telec code commit` runs on top of these guarantees:
   non-integrators. Staging on main requires explicit file paths.
 - `git restore`, `git clean`, `git switch`, `git reset --hard|--merge|--keep`,
   and branch-switching `git checkout` are blocked.
+- `git commit` is redirected to `telec code commit` with no bypass.
 - `git push` from main is integrator-only; `git merge`/`rebase`/`cherry-pick`
-  on main require integrator role or `TELECLAUDE_COMMIT_APPROVED=1`.
+  on main require integrator role or `TELECLAUDE_COMMIT_APPROVED=1` (a
+  replay-only escape; it does not affect plain `git commit`).
 
 ## Inputs / Outputs
 
-**Flag:** `-m <message>` — commit message (first-class, no `--` separator needed).
-**Flag:** `--approved` — human-approved Path B commit on main; bypasses Path A/B/C
-classification only.
+Sealed contract — exactly:
 
-All other arguments pass through to `git commit`. The literal `--` separator
-is consumed by this command — telec appends its own pathspec separator before
-the staged files.
+- `"<message>"` — one quoted commit message (required when `--approved`).
+- `--approved` — human-approved gate; absence triggers Path A/B/C guidance.
+- `--include <path> [<path> ...]` — declare files outside the resolved
+  workspace scope that must be in this commit (e.g., a file the human
+  collaboratively edited that the scope heuristic missed). Each declared
+  path must contribute a change; clean paths are rejected.
+
+Nothing is forwarded to git: no `-m`, no `-F`, no `--`, no bare pathspecs.
+The pathspec commit is built internally from `workspace scope plus
+--include paths`.
 
 **Outputs:** committed changeset, or failure with actionable diagnostics.
 
@@ -67,14 +78,16 @@ the staged files.
 
 2. **Workspace scope is authoritative.** `resolve_workspace_scope_resolution()`
    is the single owner of worktree-vs-shared-branch scope. Telec stages the
-   files it returns and commits them.
+   files it returns. `--include` extends the set with explicit, agent-declared
+   paths; no other mechanism widens scope.
 
-3. **Pathspec on commit.** The final `git commit` runs with an explicit
-   pathspec listing every staged file. Anything else in the index — concurrent
-   stage from another session, crash residue from a prior failed commit — is
-   **not** included in this commit. It stays staged for its owner to commit
-   or for a human to clean up. Pathspec on commit is the safety primitive;
-   there is no separate "foreign-staged" check.
+3. **Pathspec on commit IS the boundary.** The final `git commit` runs with an
+   explicit pathspec equal to `workspace scope plus --include paths`. Anything
+   else in the index — concurrent stage from another session, crash residue
+   from a prior failed commit, human-staged files outside the agent's scope —
+   is **invisible to the pathspec** and stays staged for its owner. There is
+   no separate "foreign-staged" check; the pathspec alone enforces the
+   boundary. Agents must not unstage foreign files they see in the index.
 
 4. **Pre-commit hook owns format + lint.** Formatting and linting run inside
    the hook, which executes inside git's own `index.lock`. Telec does not run
@@ -105,12 +118,13 @@ the staged files.
 ### Agent commit (worktree)
 
 ```
-telec code commit -m "feat(scope): subject"
+telec code commit --approved "feat(scope): subject"
+  → ABC gate satisfied (--approved present)
   → lock acquired
   → workspace scope = WORKTREE → all dirty paths
+  → pathspec = scope (no includes)
   → stage any not-already-staged
-  → snapshot the staged set
-  → real git commit -m "feat(scope): subject" -- <staged files>
+  → real git commit -F <msg> -- <pathspec>
   → pre-commit hook runs format + lint
   → lock released
 ```
@@ -118,13 +132,28 @@ telec code commit -m "feat(scope): subject"
 ### Agent commit on main (Path A — non-functional)
 
 ```
-telec code commit -m "chore(docs): update snippets [skip ci]"
+telec code commit --approved "chore(docs): update snippets [skip ci]"
+  → ABC gate satisfied (--approved + [skip ci])
   → lock acquired
   → workspace scope = SHARED_BRANCH → scoped dirty paths
+  → pathspec = scope
   → stage any not-already-staged
-  → Path A: no functional files + [skip ci] → proceed
-  → real git commit -- <staged files>
+  → real git commit -F <msg> -- <pathspec>
   → pre-commit hook runs format + lint
+  → lock released
+```
+
+### Agent commit with declared extras (scope heuristic missed a file)
+
+```
+telec code commit --approved "fix(scope): subject" --include path/to/extra.py
+  → ABC gate satisfied
+  → lock acquired
+  → workspace scope = SHARED_BRANCH → scoped dirty paths
+  → pathspec = scope plus {path/to/extra.py}
+  → stage any not-already-staged (extra.py included)
+  → assert extra.py contributed a change (else error)
+  → real git commit -F <msg> -- <pathspec>
   → lock released
 ```
 
@@ -147,17 +176,15 @@ their own session.
 **Lock contention.** Another agent holds the lock. `flock(LOCK_EX)` blocks
 until released. No timeout — the agent waits, no exit code.
 
-**Empty workspace scope.** Two distinct sub-cases:
+**Empty pathspec.** `workspace scope plus --include = ∅`. The agent has
+edited nothing in scope and declared no includes. Exit code 1 with guidance
+pointing at `telec code changed` and the `--include <path>` recipe. There is
+no silent fallback that commits the pre-staged index — committing what the
+agent did not declare is precisely what the pathspec boundary prevents.
 
-- *Scope empty + nothing pre-staged.* The agent has not edited any tracked
-  files yet and the index is empty. Exit code 1 — there is nothing to commit.
-- *Scope empty + files pre-staged.* The transcript yielded no signal
-  (integrator session, fresh shell, or a human staged files manually) but
-  the index is non-empty. Telec falls back to committing exactly what is
-  staged and emits a one-line stderr diagnostic
-  (`telec code commit: session scope unavailable; committing N pre-staged
-  file(s): ...`) so the fallback is observable rather than silent. The
-  pathspec invariant still holds: only the pre-staged files are committed.
+**Declared `--include` path is clean.** The agent named a file with no
+changes. Exit code 2 — the agent's declaration must match reality; we don't
+quietly drop unreachable claims.
 
 **Pre-commit hook failure.** The hook runs format and lint. If lint fails,
 git aborts the commit and surfaces the hook output. Files remain staged for
