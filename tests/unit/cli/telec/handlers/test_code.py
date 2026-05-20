@@ -515,11 +515,18 @@ class TestHandleCodeCommitContract:
         assert exc.value.code == 2
 
     @pytest.mark.unit
-    def test_message_without_approved_rejected(self) -> None:
-        """Message without --approved is redundant — ABC trigger is bare."""
-        with pytest.raises(SystemExit) as exc:
+    def test_message_without_approved_also_surfaces_abc(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Missing --approved is the ABC trigger — message presence is irrelevant."""
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=Path("/r")),
+            patch("teleclaude.cli.telec.handlers.code.get_system_role", return_value=None),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            pytest.raises(SystemExit) as exc,
+        ):
             handle_code_commit(["fix(x): y"])
-        assert exc.value.code == 2
+        assert exc.value.code == 1
+        assert "Commits on main require classification" in capsys.readouterr().err
 
     @pytest.mark.unit
     def test_approved_without_message_rejected(self) -> None:

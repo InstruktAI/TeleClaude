@@ -120,19 +120,11 @@ def handle_code_commit(args: list[str]) -> None:
     system_role = get_system_role()
     project_root = resolve_workspace_root(resolve_invocation_cwd())
 
-    # Without --approved, surface guidance — never commit. On main + non-integrator
-    # that means the Path A/B/C classification (the canonical "what should I do"
-    # entry point). Off main / integrator: short help.
+    # The absence of --approved is the trigger: surface guidance, never commit.
+    # On main + non-integrator → Path A/B/C. Off main / integrator → short help.
+    # An already-drafted message is fine to pass; it's just ignored until the
+    # --approved re-run.
     if not approved:
-        if message is not None:
-            print(
-                "ERROR: the bare call surfaces Path A/B/C — do not pass a commit "
-                "message until you have human approval.\n"
-                "  telec code commit                                    # show A/B/C\n"
-                '  telec code commit --approved "type(scope): subject"  # commit',
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
         current_branch = _current_branch(project_root)
         if current_branch == "main" and system_role != "integrator":
             _print_abc_classification()
