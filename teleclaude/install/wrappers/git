@@ -307,25 +307,26 @@ MSG
     fi
 fi
 
-# Block sweep-add on main — force explicit file staging.
+# Block 'git add' for agents — staging is owned by telec code commit.
 if [ "$_subcmd" = "add" ]; then
-    _current_branch="$(_real_git ${_dir_args[@]+"${_dir_args[@]}"} rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    if [ "$_current_branch" = "main" ] && [ "$_role" != "integrator" ]; then
-        for _aarg in "$@"; do
-            case "$_aarg" in
-                -A|--all|.)
-                    cat >&2 <<'MSG'
-ERROR: 'git add -A', 'git add --all', and 'git add .' are prohibited on main.
+    cat >&2 <<'MSG'
+ERROR: 'git add' is not used by agents. Staging is owned by 'telec code commit'.
 
-Repo root main may contain in-progress work from other agents. Sweep-add
-includes everything — use explicit file paths instead:
-  git add <file1> <file2> ...
+Your commit's files come from this session's resolved workspace scope —
+the files this session has touched. To see them:
+  telec code changed
+
+To commit them:
+  telec code commit --approved "<message>"
+
+If a file you edited isn't in scope (the heuristic missed it; the human
+collaboratively edited it; etc.), declare it explicitly:
+  telec code commit --approved "<message>" --include <path> [<path> ...]
+
+There is no agent use case for running 'git add' directly. Inspection
+tools (git diff, git status, git log) remain available.
 MSG
-                    exit 1
-                    ;;
-            esac
-        done
-    fi
+    exit 1
 fi
 
 if [ "$_subcmd" = "commit" ]; then

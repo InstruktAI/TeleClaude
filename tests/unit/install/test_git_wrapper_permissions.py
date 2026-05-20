@@ -203,6 +203,47 @@ class TestCheckoutPermissions:
         assert "protected" not in stderr.lower()
 
 
+# ── GIT ADD: blocked for all agent roles ──────────────────────────────────────
+
+
+class TestGitAddBlocked:
+    """`git add` is owned by `telec code commit`. Agents have no use case for
+    invoking it directly; the wrapper blocks every form and teaches the
+    sealed alternative."""
+
+    def test_blocked_specific_path(self) -> None:
+        code, stderr = _run(["add", "file.txt"], role="worker", branch="feature")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+    def test_blocked_with_separator_pathspec(self) -> None:
+        code, stderr = _run(["add", "--", "file.txt"], role="worker", branch="feature")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+    def test_blocked_dash_all(self) -> None:
+        code, stderr = _run(["add", "-A"], role="worker", branch="feature")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+    def test_blocked_on_main(self) -> None:
+        code, stderr = _run(["add", "file.txt"], role="worker", branch="main")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+    def test_blocked_for_integrator(self) -> None:
+        """Integrator no longer needs `git add` — `--include` covers
+        conflict resolution. Block applies to every agent role."""
+        code, stderr = _run(["add", "resolved.txt"], role="integrator", branch="main")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+    def test_blocked_for_human_session(self) -> None:
+        code, stderr = _run(["add", "file.txt"], human_role="admin", branch="feature")
+        assert code != 0
+        assert "telec code commit" in stderr
+
+
 # ── COMMIT REDIRECT ───────────────────────────────────────────────────────────
 
 

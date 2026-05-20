@@ -11,7 +11,8 @@ import pytest
 from teleclaude.cli.telec.handlers.code import (
     _commit_under_lock,
     _current_branch,
-    _get_staged_files,
+    _dirty_paths,
+    _get_untracked_files,
     _stage_files,
     _with_trailer,
     handle_code_changed,
@@ -34,30 +35,24 @@ class TestGitHelpers:
         mock_repo.git.add.assert_called_once_with("--", "a.py", "b.py")
 
     @pytest.mark.unit
-    def test_get_staged_files_parses_diff_output(self, tmp_path: Path) -> None:
+    def test_get_untracked_files_parses_ls_files_output(self, tmp_path: Path) -> None:
         mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = "a.py\nb.py\n"
+        mock_repo.git.ls_files.return_value = "new1.py\nnew2.py\n"
         with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
-            result = _get_staged_files(tmp_path)
-        assert result == ["a.py", "b.py"]
-        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACMR")
+            result = _get_untracked_files(tmp_path)
+        assert result == ["new1.py", "new2.py"]
+        mock_repo.git.ls_files.assert_called_once_with("--others", "--exclude-standard")
 
     @pytest.mark.unit
-    def test_get_staged_files_includes_deletions_when_requested(self, tmp_path: Path) -> None:
+    def test_dirty_paths_unions_staged_unstaged_and_untracked(self, tmp_path: Path) -> None:
+        """_dirty_paths returns the union of every pending-change source."""
         mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = "gone.md\n"
+        # repo.git.diff is invoked twice (cached + uncached) and ls_files once.
+        mock_repo.git.diff.side_effect = ["staged.py\n", "modified.py\n"]
+        mock_repo.git.ls_files.return_value = "new.py\n"
         with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
-            result = _get_staged_files(tmp_path, include_deletions=True)
-        assert result == ["gone.md"]
-        mock_repo.git.diff.assert_called_once_with("--cached", "--name-only", "--diff-filter=ACMRD")
-
-    @pytest.mark.unit
-    def test_get_staged_files_returns_empty_for_no_output(self, tmp_path: Path) -> None:
-        mock_repo = MagicMock()
-        mock_repo.git.diff.return_value = ""
-        with patch("teleclaude.cli.telec.handlers.code.Repo", return_value=mock_repo):
-            result = _get_staged_files(tmp_path)
-        assert result == []
+            result = _dirty_paths(tmp_path)
+        assert result == {"staged.py", "modified.py", "new.py"}
 
     @pytest.mark.unit
     def test_current_branch_returns_branch_name(self, tmp_path: Path) -> None:
@@ -82,33 +77,34 @@ class TestCommitWorkspaceScope:
     """Commit staging consumes the centralized workspace scope and uses pathspec on commit."""
 
     @pytest.mark.unit
-    def test_commit_stages_scoped_paths_and_runs_pathspec_commit(self, tmp_path: Path) -> None:
+    def test_commit_stages_only_untracked_files_in_pathspec(self, tmp_path: Path) -> None:
+        """Modified-tracked files are committed straight from the working tree
+        via pathspec; only truly untracked files need `git add` so git knows
+        about them."""
         resolution = WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.WORKTREE,
             has_session_identity=False,
             dirty_paths=(
-                DirtyPath("teleclaude/changed.py", DirtyOp.MODIFIED),
-                DirtyPath("teleclaude/deleted.py", DirtyOp.DELETED),
+                DirtyPath("teleclaude/modified.py", DirtyOp.MODIFIED),
+                DirtyPath("teleclaude/brand_new.py", DirtyOp.MODIFIED),
             ),
-            scoped_dirty_paths=("teleclaude/changed.py", "teleclaude/deleted.py"),
-            scoped_existing_paths=("teleclaude/changed.py",),
+            scoped_dirty_paths=("teleclaude/modified.py", "teleclaude/brand_new.py"),
+            scoped_existing_paths=("teleclaude/modified.py", "teleclaude/brand_new.py"),
         )
-        staged_snapshots = [
-            [],  # pre_staged_set lookup before staging
-            ["teleclaude/changed.py", "teleclaude/deleted.py"],  # staged_for_commit after staging
-        ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch(
+                "teleclaude.cli.telec.handlers.code._get_untracked_files",
+                return_value=["teleclaude/brand_new.py"],
+            ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
             ),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ):
@@ -119,11 +115,14 @@ class TestCommitWorkspaceScope:
                 system_role=None,
             )
 
-        assert staged_files == [["teleclaude/changed.py", "teleclaude/deleted.py"]]
-        _assert_pathspec_commit(repo, ["teleclaude/changed.py", "teleclaude/deleted.py"])
+        # Only the untracked file gets staged; the modified one rides the pathspec.
+        assert staged_files == [["teleclaude/brand_new.py"]]
+        _assert_pathspec_commit(repo, ["teleclaude/modified.py", "teleclaude/brand_new.py"])
 
     @pytest.mark.unit
-    def test_commit_skips_already_staged_paths_and_includes_them_in_pathspec(self, tmp_path: Path) -> None:
+    def test_commit_skips_staging_when_all_scope_is_tracked(self, tmp_path: Path) -> None:
+        """When every scope file is already tracked (modified/deleted), `_stage_files`
+        is never called — the pathspec commit picks them up from the working tree."""
         resolution = WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.SHARED_BRANCH,
             has_session_identity=True,
@@ -134,22 +133,17 @@ class TestCommitWorkspaceScope:
             scoped_dirty_paths=("teleclaude/deleted.py", "teleclaude/touched.py"),
             scoped_existing_paths=("teleclaude/touched.py",),
         )
-        staged_snapshots = [
-            ["teleclaude/deleted.py"],
-            ["teleclaude/deleted.py", "teleclaude/touched.py"],
-        ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
             ),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ):
@@ -160,47 +154,34 @@ class TestCommitWorkspaceScope:
                 system_role=None,
             )
 
-        # deleted.py was already staged (pre_staged) → not re-staged; touched.py was not → staged.
-        assert staged_files == [["teleclaude/touched.py"]]
-        # Pathspec includes both — the index has both, and both are in scope.
+        assert staged_files == []  # nothing untracked → nothing to stage
         _assert_pathspec_commit(repo, ["teleclaude/deleted.py", "teleclaude/touched.py"])
 
     @pytest.mark.unit
     def test_foreign_pre_staged_file_left_in_index(self, tmp_path: Path) -> None:
         """Pathspec is the boundary: foreign staged files stay in the index.
 
-        On any shared-branch invocation, the pathspec equals (workspace scope
-        plus includes). A pre-staged file outside that set is not in the commit
-        and stays staged for its owner — no special-case "trust the index"
-        behavior, no foreign-files diagnostic.
+        A pre-staged file outside scope is not in the commit pathspec and
+        therefore not committed — it stays for its owner.
         """
         resolution = WorkspaceScopeResolution(
             kind=WorkspaceScopeKind.SHARED_BRANCH,
             has_session_identity=True,
-            dirty_paths=(
-                DirtyPath("teleclaude/touched.py", DirtyOp.MODIFIED),
-                DirtyPath("teleclaude/foreign_deleted.py", DirtyOp.DELETED),
-            ),
+            dirty_paths=(DirtyPath("teleclaude/touched.py", DirtyOp.MODIFIED),),
             scoped_dirty_paths=("teleclaude/touched.py",),
             scoped_existing_paths=("teleclaude/touched.py",),
         )
-        # pre_staged: foreign is already staged; staged_after: foreign + ours.
-        staged_snapshots = [
-            ["teleclaude/foreign_deleted.py"],
-            ["teleclaude/foreign_deleted.py", "teleclaude/touched.py"],
-        ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
             ),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ):
@@ -211,9 +192,9 @@ class TestCommitWorkspaceScope:
                 system_role=None,
             )
 
-        assert staged_files == [["teleclaude/touched.py"]]
-        # Pathspec contains ONLY our scope; foreign_deleted.py is left in the
-        # index for its owner to commit or unstage.
+        # touched.py is modified-tracked → not staged by us. Foreign files in
+        # the index are simply absent from the pathspec → not committed.
+        assert staged_files == []
         _assert_pathspec_commit(repo, ["teleclaude/touched.py"])
 
 
@@ -237,24 +218,26 @@ class TestIncludeFlag:
 
     @pytest.mark.unit
     def test_include_adds_path_to_pathspec(self, tmp_path: Path) -> None:
-        """--include foo.py stages foo.py and adds it to the commit pathspec."""
+        """--include of a brand-new (untracked) file gets it staged AND included
+        in the pathspec; the resolved scope file rides the pathspec untouched."""
         resolution = self._resolution(("teleclaude/mine.py",))
-        # pre_staged: only mine (we'll stage it); staged_after: mine + extra.
-        staged_snapshots = [
-            ["teleclaude/mine.py"],
-            ["teleclaude/extra.py", "teleclaude/mine.py"],
-        ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch(
+                "teleclaude.cli.telec.handlers.code._get_untracked_files",
+                return_value=["teleclaude/extra.py"],
+            ),
+            patch(
+                "teleclaude.cli.telec.handlers.code._dirty_paths",
+                return_value={"teleclaude/mine.py", "teleclaude/extra.py"},
+            ),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
             ),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ):
@@ -264,25 +247,53 @@ class TestIncludeFlag:
                 project_root=tmp_path,
                 system_role=None,
             )
-        # extra.py wasn't pre-staged → got staged. Pathspec is scope plus includes.
         assert staged_files == [["teleclaude/extra.py"]]
+        _assert_pathspec_commit(repo, ["teleclaude/mine.py", "teleclaude/extra.py"])
+
+    @pytest.mark.unit
+    def test_include_of_modified_tracked_path_does_not_stage(self, tmp_path: Path) -> None:
+        """--include of a modified-tracked file extends the pathspec but does
+        not invoke _stage_files — pathspec alone commits modified-tracked content."""
+        resolution = self._resolution(("teleclaude/mine.py",))
+        staged_files: list[list[str]] = []
+        repo = MagicMock()
+        repo.git.commit.return_value = (0, "", "")
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._dirty_paths",
+                return_value={"teleclaude/mine.py", "teleclaude/extra.py"},
+            ),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged_files.append(files),
+            ),
+            patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+        ):
+            _commit_under_lock(
+                message="fix: mine plus modified extra",
+                includes=["teleclaude/extra.py"],
+                project_root=tmp_path,
+                system_role=None,
+            )
+        assert staged_files == []  # nothing untracked → no staging
         _assert_pathspec_commit(repo, ["teleclaude/mine.py", "teleclaude/extra.py"])
 
     @pytest.mark.unit
     def test_include_of_clean_path_errors(self, tmp_path: Path) -> None:
         """A declared --include path with no changes is a hard error."""
         resolution = self._resolution(("teleclaude/mine.py",))
-        # pre_staged then staged_after both lack clean.py (git add is no-op).
-        staged_snapshots = [
-            ["teleclaude/mine.py"],
-            ["teleclaude/mine.py"],
-        ]
         repo = MagicMock()
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._dirty_paths",
+                return_value={"teleclaude/mine.py"},  # clean.py is NOT dirty
+            ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
             pytest.raises(SystemExit) as exc,
@@ -300,17 +311,16 @@ class TestIncludeFlag:
     def test_include_dedupes_against_scope(self, tmp_path: Path) -> None:
         """An --include path that already appears in scope is not duplicated."""
         resolution = self._resolution(("teleclaude/mine.py",))
-        staged_snapshots = [
-            ["teleclaude/mine.py"],
-            ["teleclaude/mine.py"],
-        ]
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch(
+                "teleclaude.cli.telec.handlers.code._dirty_paths",
+                return_value={"teleclaude/mine.py"},
+            ),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
         ):
@@ -329,9 +339,7 @@ class TestIncludeFlag:
         repo = MagicMock()
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", return_value=[]),
             patch("teleclaude.cli.telec.handlers.code._stage_files"),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="main"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
             pytest.raises(SystemExit) as exc,
@@ -359,22 +367,17 @@ class TestRustCommitContract:
             scoped_dirty_paths=("crates/workflow/src/lib.rs",),
             scoped_existing_paths=("crates/workflow/src/lib.rs",),
         )
-        staged_snapshots = [
-            [],
-            ["crates/workflow/src/lib.rs"],
-        ]
         staged_files: list[list[str]] = []
         repo = MagicMock()
         repo.git.commit.return_value = (0, "", "")
 
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_scope_resolution", return_value=resolution),
-            patch("teleclaude.cli.telec.handlers.code._get_staged_files", side_effect=staged_snapshots),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
             patch(
                 "teleclaude.cli.telec.handlers.code._stage_files",
                 side_effect=lambda files, _root: staged_files.append(files),
             ),
-            patch("teleclaude.cli.telec.handlers.code._check_partial_staging"),
             patch("teleclaude.cli.telec.handlers.code._current_branch", return_value="feature"),
             patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
             patch("teleclaude.cli.telec.handlers.code.handle_lint") as lint_handler,
@@ -388,7 +391,8 @@ class TestRustCommitContract:
                 system_role=None,
             )
 
-        assert staged_files == [["crates/workflow/src/lib.rs"]]
+        # Modified-tracked .rs file: no staging, pathspec commits it directly.
+        assert staged_files == []
         lint_handler.assert_not_called()
         test_handler.assert_not_called()
         format_handler.assert_not_called()

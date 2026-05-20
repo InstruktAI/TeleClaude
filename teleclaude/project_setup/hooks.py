@@ -74,8 +74,11 @@ if [ -n "$_pre_staged" ]; then
 fi
 
 # Restage formatter edits, then retry pre-commit once if it had failed because of them.
+# The agent-facing wrapper blocks `git add`; this is git's own internal stash-restore
+# step (not an agent action), so bypass via env -u TMUX (the wrapper's pass-through
+# condition for non-tmux callers).
 if [ -n "$_modified" ]; then
-    if ! git add -- $_modified; then
+    if ! env -u TMUX git add -- $_modified; then
         echo "ERROR: failed to restage formatted files — aborting commit." >&2
         exit 1
     fi

@@ -219,32 +219,31 @@ def _commit_under_lock(
         )
         raise SystemExit(1)
 
-    # Stage anything in our pathspec that isn't already staged. `git add` is
-    # a no-op for clean files, so declared includes that have no change won't
-    # show up in the index — we catch that case below.
-    pre_staged_set = set(_get_staged_files(project_root, include_deletions=True))
-    to_stage = [path for path in pathspec if path not in pre_staged_set]
+    # `git commit -- <pathspec>` commits the working-tree state of paths in
+    # the pathspec; it does NOT require modified-tracked files to be staged.
+    # The one case where git refuses without prior staging is brand-new
+    # untracked files: `git commit -- newfile` errors with "pathspec did not
+    # match any file(s) known to git" because git's index is what knows
+    # about a path. So we stage exactly that subset — untracked-in-pathspec
+    # — and leave modified-tracked files alone. This eliminates partial-
+    # staging cycles entirely (we never re-stage a file already touched).
+    untracked = set(_get_untracked_files(project_root))
+    to_stage = [path for path in pathspec if path in untracked]
     if to_stage:
         _stage_files(to_stage, project_root)
 
-    # Every --include path must contribute a change. If a declared include is
-    # still not in the staged set after `git add`, the agent named a path with
-    # no change — fail early with a precise error rather than committing scope
-    # silently.
+    # Every --include path must contribute a change. Verify each declared
+    # include is either currently dirty (modified-tracked) or now staged
+    # (was-untracked, just added). A clean path is an agent error.
     if includes:
-        staged_after = set(_get_staged_files(project_root, include_deletions=True))
-        missing = [path for path in includes if path not in staged_after]
+        dirty_set = _dirty_paths(project_root)
+        missing = [path for path in includes if path not in dirty_set]
         if missing:
             print(
                 "ERROR: --include path(s) have no changes to commit:\n  " + "\n  ".join(missing),
                 file=sys.stderr,
             )
             raise SystemExit(2)
-
-    # Partial staging within our pathspec corrupts pre-commit's stash/restore
-    # cycle. Foreign partial-staging is not our concern — it's outside the
-    # pathspec and outside the hook's working set.
-    _check_partial_staging(project_root, pathspec=pathspec)
 
     # Auto-append the mandated trailer (idempotent) and commit via a message
     # file — robust against multi-line content, no shell arg-splitting.
@@ -342,43 +341,42 @@ def _changed_paths(scope_resolution: WorkspaceScopeResolution) -> list[str]:
 
 
 def _stage_files(files: list[str], project_root: Path) -> None:
-    """Stage files via git add."""
+    """Stage files via git add. Internal use only; agents are blocked at the
+    wrapper from running ``git add`` directly. This call goes through
+    gitpython → real git binary, bypassing the wrapper."""
     repo = Repo(str(project_root))
     repo.git.add("--", *files)
 
 
-def _get_staged_files(project_root: Path, *, include_deletions: bool = False) -> list[str]:
-    """Return list of staged file paths."""
+def _get_untracked_files(project_root: Path) -> list[str]:
+    """Return list of files git doesn't know about yet (modulo .gitignore).
+
+    These are the only paths in a pathspec that genuinely require staging
+    before commit — git refuses ``git commit -- newfile`` otherwise. Modified
+    tracked files are committed straight from the working tree by pathspec
+    and need no staging at all.
+    """
     repo = Repo(str(project_root))
-    diff_filter = "ACMRD" if include_deletions else "ACMR"
-    output: str = repo.git.diff("--cached", "--name-only", f"--diff-filter={diff_filter}")
+    output: str = repo.git.ls_files("--others", "--exclude-standard")
     return [f.strip() for f in output.strip().splitlines() if f.strip()]
 
 
-def _check_partial_staging(project_root: Path, *, pathspec: list[str] | None = None) -> None:
-    """Block commits with partially staged files inside our pathspec.
+def _dirty_paths(project_root: Path) -> set[str]:
+    """Return paths with any pending change — staged, unstaged, or untracked.
 
-    Partial staging within the commit's pathspec corrupts the pre-commit
-    stash/restore cycle. Foreign partial-staging (outside our pathspec) is
-    not our concern — the commit doesn't touch it and the hook's working set
-    doesn't include it.
+    Used to validate ``--include`` declarations: a declared path must
+    contribute *some* change to the commit.
     """
     repo = Repo(str(project_root))
-    staged = set(repo.git.diff("--cached", "--name-only").strip().splitlines())
-    unstaged = set(repo.git.diff("--name-only").strip().splitlines())
-    overlap = staged & unstaged
-    if pathspec is not None:
-        overlap = overlap & set(pathspec)
-    if overlap:
-        print("ERROR: partially staged files detected.", file=sys.stderr)
-        print("Pre-commit stash/restore would corrupt these files.\n", file=sys.stderr)
-        for f in sorted(overlap):
-            print(f"  {f}", file=sys.stderr)
-        print(
-            "\nFully stage each file, then re-run telec code commit:\n  git add -- " + " ".join(sorted(overlap)),
-            file=sys.stderr,
-        )
-        raise SystemExit(1)
+    parts: set[str] = set()
+    # Staged (incl. deletions) and unstaged tracked changes.
+    parts.update(
+        f.strip() for f in repo.git.diff("--cached", "--name-only", "--diff-filter=ACMRD").splitlines() if f.strip()
+    )
+    parts.update(f.strip() for f in repo.git.diff("--name-only", "--diff-filter=ACMRD").splitlines() if f.strip())
+    # Untracked files.
+    parts.update(_get_untracked_files(project_root))
+    return parts
 
 
 def _current_branch(project_root: Path) -> str:
