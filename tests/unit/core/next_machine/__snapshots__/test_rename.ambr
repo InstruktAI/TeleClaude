@@ -1,0 +1,22 @@
+# serializer version: 1
+# name: test_execute_todo_rename_refuses_existing_non_removed_target_without_mutating
+  "error: new slug 'new-slug' is already held by a non-removed todo"
+# ---
+# name: test_execute_todo_rename_refuses_operation_bound_old_slug_without_mutating
+  'error: cannot rename old-slug: non-terminal operation is bound to it (op-bound)'
+# ---
+# name: test_execute_todo_rename_refuses_same_cwd_nullable_slug_operation_without_mutating
+  'error: cannot rename old-slug: non-terminal operation is bound to it (op-same-cwd)'
+# ---
+# name: test_execute_todo_rename_refuses_session_working_slug_without_mutating
+  'error: cannot rename old-slug: open session is bound to it (teleclaude-bound)'
+# ---
+# name: test_execute_todo_rename_refuses_session_worktree_subdir_without_mutating
+  'error: cannot rename old-slug: open session is bound to it (teleclaude-bound-subdir)'
+# ---
+# name: test_execute_todo_rename_refuses_target_held_by_delivered_history_without_mutating
+  "error: new slug 'new-slug' is already held by a non-removed todo"
+# ---
+# name: test_execute_todo_rename_success_summary_names_moved_surfaces
+  'renamed old-slug->new-slug (todos.db, delivered_by:1)'
+# ---

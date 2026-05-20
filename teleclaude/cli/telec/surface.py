@@ -471,6 +471,12 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 flags=[],
                 auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
             ),
+            "rename": CommandDef(
+                desc="Rename a todo slug",
+                args="<old-slug> <new-slug>",
+                flags=[_H],
+                auth=CommandAuth(system=_SYS_ORCH, human=_HR_MEMBER),
+            ),
             "prepare": CommandDef(
                 desc="Run the Phase A (prepare) state machine",
                 args="[<slug>] [--invalidate-check] [--changed-paths <paths>]",

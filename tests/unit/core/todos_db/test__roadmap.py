@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -19,6 +21,24 @@ from teleclaude.core.todos_db._models import (
 from teleclaude.core.todos_db._roadmap import ReactivateRefused
 
 pytestmark = pytest.mark.asyncio
+
+_RenameRoadmapSlug = Callable[[str, str], Awaitable[bool]]
+
+
+def _rename_roadmap_slug(todos_db: TodosDb) -> _RenameRoadmapSlug:
+    return cast(_RenameRoadmapSlug, todos_db.rename_roadmap_slug)
+
+
+def _set_roadmap_children(todos_db: TodosDb, slug: str, children: list[str]) -> None:
+    conn = todos_db._sync_conn()  # pylint: disable=protected-access
+    try:
+        conn.execute(
+            "UPDATE roadmap SET children = ? WHERE slug = ? AND status != ?",  # guard: raw-sql
+            (json.dumps(children), slug, "delivered"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 async def test_list_roadmap_empty_by_default(todos_db: TodosDb) -> None:
@@ -454,3 +474,28 @@ async def test_reactivate_refuses_when_id_is_not_a_removed_row(todos_db: TodosDb
     with pytest.raises(ReactivateRefused) as exc_info:
         await todos_db.reactivate_removed("does-not-exist")
     assert exc_info.value.reason == "not_removed"
+
+
+async def test_rename_roadmap_slug_rekeys_active_entry_groups_children_and_deps(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("old-slug")
+    await todos_db.deliver("old-slug", commit="abc123", children=["old-slug"])
+    await todos_db.add_to_roadmap("holder")
+    await todos_db.add_to_roadmap("container")
+    await todos_db.add_to_roadmap("upstream")
+    await todos_db.add_to_roadmap("old-slug", group_slug="holder", after=["upstream"])
+    await todos_db.add_to_roadmap("downstream", after=["old-slug"])
+    _set_roadmap_children(todos_db, "container", ["old-slug", "sibling"])
+
+    renamed = await _rename_roadmap_slug(todos_db)("old-slug", "new-slug")
+
+    assert renamed is True
+    active = await todos_db.list_roadmap()
+    active_by_slug = {row["slug"]: row for row in active}
+    assert "old-slug" not in active_by_slug
+    assert active_by_slug["new-slug"]["group_slug"] == "holder"
+    assert active_by_slug["container"]["children"] == ["new-slug", "sibling"]
+    assert await todos_db.load_deps() == {"downstream": ["new-slug"], "new-slug": ["upstream"]}
+    delivered = [row for row in await todos_db.list_roadmap(include_delivered=True) if row["status"] == "delivered"]
+    assert len(delivered) == 1
+    assert delivered[0]["slug"] == "old-slug"
+    assert delivered[0]["children"] == ["old-slug"]

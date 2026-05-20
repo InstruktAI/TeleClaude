@@ -7,7 +7,6 @@ visibility: public
 status: target
 delivered_by:
   - v2-workflow-cutover
-  - telec-todo-rename
   - removal-snippet-frontmatter-sync
   - roadmap-trash-reveal-ui
   - v2-workflow-cli-refinement-commands
@@ -253,6 +252,16 @@ This context does NOT own: the live agent sessions doing the work (`agent_runtim
 - **Known consumers:** `integration` (delivery announcement), `agent_artifacts` (potentially: re-sync if delivery touched artifact sources), `frontend` (status update).
 - **Idempotency key:** `(slug, delivery_commit)`.
 - **Posture:** `commit-then-emit`.
+
+#### `workflow.todo.renamed`
+
+- **Producer:** `workflow`
+- **Emitted when:** the atomic rename operation commits the todo slug change from `old_slug` to `new_slug`.
+- **Payload:** `old_slug`, `new_slug`, `renamed_at`, `renamed_by_principal`, `surfaces_moved`.
+- **Visibility:** CLUSTER
+- **Known consumers:** `frontend` and `telec-tui` slug-keyed caches, `integration` notification dispatch, audit consumers.
+- **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
+- **Posture:** `commit-then-emit`; terminal/audit daemon reference reconciliation is post-commit best-effort, not an atomic rollback leg.
 
 #### `workflow.roadmap.entry_moved`
 
@@ -747,6 +756,7 @@ The following feature spec snippets inventory the v1 workflow capabilities that 
 ## Known caveats
 
 - Workflow is **local-first**: every operation works against the per-project Postgres schema (or SQLite in v1) without daemon dependency. The `telec` binary embeds workflow directly. The daemon is a CONSUMER of workflow events (for orchestration), not a host.
+- Todo rename is target behavior delivered by `telec-todo-rename`. Its rollback-tested atomic unit excludes terminal/audit and closed-but-revivable daemon reference reconciliation for `operations.slug`, `sessions.working_slug`, and `sessions.subdir`; those rows are repaired after commit on a best-effort, idempotent basis.
 - The state machine is a Rust crate (`crates/state_machine`) embedded by workflow. State machine state lives in `workflow.state_transitions`; transitions are persisted as the source of truth for phase advances.
 - Per-project isolation: each project has its own `.teleclaude/todos.db` (v1 SQLite) or its own Postgres schema (v2, possibly `<project>_workflow`). No cross-project queries.
 - `prepped` kind todos skip the prepare lifecycle entirely. Used when a human or agent has authored a complete implementation plan and wants to jump to build. Per the `--prepped` flag's policy: HUMAN-IN-THE-LOOP REQUIRED.

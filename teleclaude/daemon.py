@@ -496,11 +496,12 @@ class TeleClaudeDaemon(_DaemonHookOutboxMixin, _DaemonEventPlatformMixin, _Daemo
         computer = config.computer.name
 
         def _hook(instance: TodosDb, project_root: str) -> None:
-            def _on_mutation(event_hint: str = "todo_updated") -> None:
+            def _on_mutation(event_hint: str = "todo_updated", event_data: object | None = None) -> None:
                 if loop is not None and loop.is_running():
                     hint = event_hint  # capture for lambda closure
+                    data = event_data if isinstance(event_data, dict) else None
                     loop.call_soon_threadsafe(
-                        lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, hint))
+                        lambda: asyncio.ensure_future(cache.refresh_local_todos(computer, project_root, hint, data))
                     )
 
             instance._on_mutation = _on_mutation

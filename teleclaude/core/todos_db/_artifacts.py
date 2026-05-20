@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import difflib
 import hashlib
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 
 from instrukt_ai_logging import get_logger
+from sqlalchemy import update
 from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
@@ -32,7 +33,7 @@ def _sha256(content: str) -> str:
 class TodosDbArtifactsMixin:
     """Read, write, and version todo artifacts."""
 
-    _on_mutation: Callable[[str], None]
+    _on_mutation: Callable[[str, Mapping[str, object] | None], None]
 
     async def _resolve_artifact_id(self, slug: str, session: SqlAsyncSession) -> str | None:
         """Resolve slug to roadmap id for artifact reads. Returns None for unknown slugs.
@@ -175,7 +176,7 @@ class TodosDbArtifactsMixin:
                     digest=digest,
                     mode="async",
                 )
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
         finally:
             if owns_session:
                 await db_session.close()
@@ -249,7 +250,7 @@ class TodosDbArtifactsMixin:
             digest=digest,
             mode="sync",
         )
-        self._on_mutation("todo_updated")
+        self._on_mutation("todo_updated", None)
 
     async def artifact_digest(self, slug: str, name: str) -> str:
         """Return SHA-256 digest of current artifact content. Empty string for unknown slug or name."""
@@ -307,6 +308,49 @@ class TodosDbArtifactsMixin:
         """Compatibility wrapper used by the SQLAlchemy migration spec."""
         return await self.artifact_versions(slug, name, limit=limit)
 
+    async def rename_artifacts_slug(
+        self,
+        old_slug: str,
+        new_slug: str,
+        *,
+        session: SqlAsyncSession | None = None,
+    ) -> bool:
+        """Re-key current artifact rows and version history for the live todo row."""
+        owns_session = session is None
+        db_session = session or self._session()  # type: ignore[attr-defined]
+        try:
+            result = await db_session.exec(
+                select(TodoRoadmap.id)
+                .where(ROADMAP_TABLE.c.slug == old_slug)
+                .where(ROADMAP_TABLE.c.status.notin_(("delivered", "removed")))
+                .limit(1)
+            )
+            row_id = result.one_or_none()
+            if row_id is None:
+                return False
+
+            now = datetime.now(UTC).isoformat()
+            await db_session.exec(
+                update(TodoArtifact)
+                .where(TODO_ARTIFACT_TABLE.c.id == str(row_id))
+                .where(TODO_ARTIFACT_TABLE.c.slug == old_slug)
+                .values(slug=new_slug, updated_at=now)
+            )
+            await db_session.exec(
+                update(TodoArtifactVersion)
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.id == str(row_id))
+                .where(TODO_ARTIFACT_VERSION_TABLE.c.slug == old_slug)
+                .values(slug=new_slug)
+            )
+
+            if owns_session:
+                await db_session.commit()
+                self._on_mutation("todo_updated", None)
+            return True
+        finally:
+            if owns_session:
+                await db_session.close()
+
     async def delete_artifact(
         self,
         slug: str,
@@ -346,7 +390,7 @@ class TodosDbArtifactsMixin:
                     versions_deleted=len(version_rows),
                     mode="async",
                 )
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
             return ArtifactRemovalResult(removed=removed, versions_deleted=len(version_rows))
         finally:
             if owns_session:
@@ -416,7 +460,7 @@ class TodosDbArtifactsMixin:
 
             if owns_session:
                 await db_session.commit()
-                self._on_mutation("todo_updated")
+                self._on_mutation("todo_updated", None)
         finally:
             if owns_session:
                 await db_session.close()

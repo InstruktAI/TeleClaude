@@ -7,7 +7,6 @@ visibility: 'public'
 description: 'Every domain event the platform emits — producer context, named consumers, payload field set in domain terms. The contract that defines cross-context coordination.'
 status: 'mixed'
 delivered_by:
-  - 'telec-todo-rename'
   - 'v2-workflow-cli-refinement-commands'
   - 'v2-workflow-creation-cleanup'
   - 'v1-workflow-creation-hardening'

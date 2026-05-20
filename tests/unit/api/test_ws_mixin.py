@@ -10,6 +10,7 @@ import pytest
 from fastapi import WebSocket
 
 from teleclaude.api.ws_mixin import _WebSocketMixin, _WsClientState
+from teleclaude.constants import CacheEvent
 from teleclaude.core.models import JsonDict
 
 if TYPE_CHECKING:
@@ -144,3 +145,35 @@ class TestWsMixin:
 
         assert delivered is False
         assert server.dropped_clients == [(websocket, "send-disconnect:refresh")]
+
+    @pytest.mark.unit
+    def test_on_cache_change_broadcasts_todo_renamed_with_old_and_new_slug(self) -> None:
+        server = _WebSocketMixinHarness()
+        event = CacheEvent.TODO_RENAMED.value
+
+        server._on_cache_change(
+            event,
+            {
+                "old_slug": "old-slug",
+                "new_slug": "new-slug",
+                "computer": "local",
+                "project_path": "/repo",
+            },
+        )
+
+        assert server.scheduled_refreshes == []
+        assert server.broadcasts == [
+            (
+                event,
+                {
+                    "event": event,
+                    "data": {
+                        "old_slug": "old-slug",
+                        "new_slug": "new-slug",
+                        "computer": "local",
+                        "project_path": "/repo",
+                    },
+                },
+                None,
+            )
+        ]

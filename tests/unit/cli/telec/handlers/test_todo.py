@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_create,
@@ -13,11 +14,13 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_dump,
     _handle_todo_reconcile,
     _handle_todo_remove,
+    _handle_todo_rename,
     _handle_todo_split,
     _handle_todo_stamp,
 )
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
+_RENAME_RESULT = "renamed old-slug->new-slug (todos.db, delivered_by:1, worktree)"
 
 
 class TestHandleTodoDump:
@@ -205,6 +208,43 @@ class TestHandleTodoRemove:
     def test_missing_slug_exits(self) -> None:
         with pytest.raises(SystemExit):
             _handle_todo_remove([])
+
+
+class TestHandleTodoRename:
+    """telec todo rename <old-slug> <new-slug>."""
+
+    def test_success_prints_confirmation(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        monkeypatch: pytest.MonkeyPatch,
+        snapshot: SnapshotAssertion,
+    ) -> None:
+        monkeypatch.setenv("TELEC_INVOCATION_CWD", "/repo")
+        receipt = {"operation_id": "op-1", "kind": "todo_rename", "state": "queued", "poll_after_ms": 250}
+        completed = {"operation_id": "op-1", "kind": "todo_rename", "state": "completed", "result": _RENAME_RESULT}
+
+        with (
+            patch(f"{_MODULE}.uuid.uuid4", return_value="req-1"),
+            patch(f"{_MODULE}.tool_api_call", return_value=receipt) as api_call,
+            patch(f"{_MODULE}.poll_operation", return_value=completed),
+        ):
+            _handle_todo_rename(["old-slug", "new-slug"])
+
+        assert capsys.readouterr().out == snapshot
+        api_call.assert_called_once_with(
+            "POST",
+            "/todos/rename",
+            json_body={
+                "old_slug": "old-slug",
+                "new_slug": "new-slug",
+                "cwd": "/repo",
+                "client_request_id": "req-1",
+            },
+        )
+
+    def test_missing_target_exits(self) -> None:
+        with pytest.raises(SystemExit):
+            _handle_todo_rename(["old-slug"])
 
 
 class TestHandleTodoSplit:

@@ -21,6 +21,15 @@ class SnippetStatusReconcileResult:
     removed_slugs: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class SnippetDeliveredByRewriteResult:
+    """A single delivered_by slug rewrite."""
+
+    path: Path
+    old_slug: str
+    new_slug: str
+
+
 class SnippetFrontmatter(TypedDict, total=False):
     """Snippet frontmatter fields relevant to lifecycle reconciliation."""
 
@@ -124,4 +133,31 @@ def reconcile_snippet_status(
             continue
         snippet_path.write_text(rendered, encoding="utf-8")
         results.append(SnippetStatusReconcileResult(path=snippet_path, removed_slugs=removed_slugs))
+    return results
+
+
+def rewrite_delivered_by_slug(
+    project_root: Path,
+    old_slug: str,
+    new_slug: str,
+) -> list[SnippetDeliveredByRewriteResult]:
+    """Rewrite snippet lifecycle delivered_by references from old slug to new slug."""
+    results: list[SnippetDeliveredByRewriteResult] = []
+    for snippet_path in _iter_snippet_files(project_root):
+        content = snippet_path.read_text(encoding="utf-8")
+        parsed = _split_frontmatter(content)
+        if parsed is None:
+            continue
+        metadata, body = parsed
+        delivered_by = _delivered_by(metadata)
+        if old_slug not in delivered_by:
+            continue
+
+        next_metadata = cast(SnippetFrontmatter, dict(metadata))
+        next_metadata["delivered_by"] = [new_slug if slug == old_slug else slug for slug in delivered_by]
+        rendered = _render_frontmatter(next_metadata, body)
+        if rendered == content:
+            continue
+        snippet_path.write_text(rendered, encoding="utf-8")
+        results.append(SnippetDeliveredByRewriteResult(path=snippet_path, old_slug=old_slug, new_slug=new_slug))
     return results

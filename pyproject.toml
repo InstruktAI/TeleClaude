@@ -333,6 +333,7 @@ orphan-exclude = [
     "tests/unit/core/test_metadata_driven_dispatch.py",  # Cross-module: metadata dispatch spans Redis messaging metadata and command type models.
     "tests/unit/core/test_output_pipeline_design_spec.py",  # Cross-module: output pipeline design spans UI adapter, output poller, and polling coordinator.
     "tests/unit/core/test_receipt_operations.py",  # Cross-module: receipt operations span todo API routes, caller identity, and operations service.
+    "tests/unit/core/operations/test_service_todo_rename.py",  # Cross-module: todo rename receipt contract spans operations service idempotency/dispatch and next_machine.rename bridge.
     "tests/unit/core/test_todo_watcher_removal.py",  # Deferred decision: stale watcher-removal spec has no import owner and must be rehomed or retired.
     "tests/unit/core/test_working_slug_derivation.py",  # Cross-module: working slug derivation spans session handlers and create-session command types.
     "tests/unit/core/todos_db/test_mutation_callback.py",  # Cross-module: mutation callback spans state_io singleton access and TodosDb hooks.

@@ -1,0 +1,7 @@
+# serializer version: 1
+# name: TestHandleTodoRename.test_success_prints_confirmation
+  '''
+  renamed old-slug->new-slug (todos.db, delivered_by:1, worktree)
+  
+  '''
+# ---

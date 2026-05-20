@@ -6,9 +6,10 @@ Provides instant reads for API endpoints and emits change events when data updat
 import asyncio
 import hashlib
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TypedDict
 
 from instrukt_ai_logging import get_logger
 
@@ -59,6 +60,45 @@ class TodoCacheEntry:
     computer: str
     project_path: str
     todos: list[TodoDTO]
+
+
+class TodoCacheNotificationPayload(TypedDict, total=False):
+    """Payload emitted when cached todos change."""
+
+    computer: str
+    project_path: str
+    todos: list[TodoDTO]
+    old_slug: str
+    new_slug: str
+    renamed_at: str
+    renamed_by_principal: str
+    surfaces_moved: list[str]
+
+
+def _merge_todo_event_data(
+    payload: TodoCacheNotificationPayload,
+    event_data: Mapping[str, object] | None,
+) -> None:
+    if event_data is None:
+        return
+
+    old_slug = event_data.get("old_slug")
+    if isinstance(old_slug, str):
+        payload["old_slug"] = old_slug
+    new_slug = event_data.get("new_slug")
+    if isinstance(new_slug, str):
+        payload["new_slug"] = new_slug
+    renamed_at = event_data.get("renamed_at")
+    if isinstance(renamed_at, str):
+        payload["renamed_at"] = renamed_at
+    renamed_by_principal = event_data.get("renamed_by_principal")
+    if isinstance(renamed_by_principal, str):
+        payload["renamed_by_principal"] = renamed_by_principal
+    surfaces_moved = event_data.get("surfaces_moved")
+    if isinstance(surfaces_moved, list):
+        parsed_surfaces = [surface for surface in surfaces_moved if isinstance(surface, str)]
+        if len(parsed_surfaces) == len(surfaces_moved):
+            payload["surfaces_moved"] = parsed_surfaces
 
 
 class DaemonCache:
@@ -413,6 +453,7 @@ class DaemonCache:
         todos: list[TodoDTO],
         *,
         event_name: str = "todos_updated",
+        event_data: Mapping[str, object] | None = None,
     ) -> None:
         """Set todos for a project.
 
@@ -425,9 +466,17 @@ class DaemonCache:
         key = f"{computer}:{project_path}"
         self._todos[key] = CachedItem(todos)
         logger.debug("Updated todos cache for %s: %d todos (event=%s)", key, len(todos), event_name)
-        self._notify(event_name, {"computer": computer, "project_path": project_path, "todos": todos})
+        payload: TodoCacheNotificationPayload = {"computer": computer, "project_path": project_path, "todos": todos}
+        _merge_todo_event_data(payload, event_data)
+        self._notify(event_name, payload)
 
-    async def refresh_local_todos(self, computer: str, project_path: str, event_hint: str) -> None:
+    async def refresh_local_todos(
+        self,
+        computer: str,
+        project_path: str,
+        event_hint: str,
+        event_data: Mapping[str, object] | None = None,
+    ) -> None:
         """Re-read todos from disk for a local project and update cache.
 
         Args:
@@ -436,7 +485,7 @@ class DaemonCache:
             event_hint: Granular event name (todo_created/todo_updated/todo_removed)
         """
         todos = await command_handlers.list_todos(project_path)
-        self.set_todos(computer, project_path, todos, event_name=event_hint)
+        self.set_todos(computer, project_path, todos, event_name=event_hint, event_data=event_data)
 
     def apply_projects_snapshot(self, computer: str, projects: list[ProjectInfo]) -> bool:
         """Apply a full projects snapshot for a computer with change detection."""

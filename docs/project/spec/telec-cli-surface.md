@@ -6,7 +6,6 @@ type: 'spec'
 visibility: 'public'
 status: 'mixed'
 delivered_by:
-  - 'telec-todo-rename'
   - 'roadmap-trash-reveal-ui'
   - 'v2-workflow-cli-refinement-commands'
   - 'v2-workflow-creation-cleanup'

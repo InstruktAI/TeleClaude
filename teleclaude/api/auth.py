@@ -376,6 +376,7 @@ clearance_todos_create = require_clearance("telec todo design")
 clearance_todos_prepare = require_clearance("telec todo prepare")
 clearance_todos_work = require_clearance("telec todo work")
 clearance_todos_integrate = require_clearance("telec todo integrate")
+clearance_todos_rename = require_clearance("telec todo rename")
 clearance_todos_remove = require_clearance("telec todo remove")
 clearance_todos_set_deps = require_clearance("telec todo set-deps")
 clearance_todos_reconcile = require_clearance("telec todo reconcile")
@@ -422,6 +423,7 @@ __all__ = [
     "clearance_todos_prepare",
     "clearance_todos_reconcile",
     "clearance_todos_remove",
+    "clearance_todos_rename",
     "clearance_todos_set_deps",
     "clearance_todos_work",
     "invalidate_session_cache",
