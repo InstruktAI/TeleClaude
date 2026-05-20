@@ -12,8 +12,8 @@ use identity::Principal;
 use shared::{ProjectId, Slug};
 use similar::TextDiff;
 use sqlx::Row;
-use workflow::models::{ArtifactName, TodoKind};
-use workflow::service::TodoPatch;
+use workflow::models::{ArtifactName, CreationMode, TodoKind};
+use workflow::service::{CreateTodoArgs, TodoPatch};
 use workflow::WorkflowService;
 
 use crate::output;
@@ -195,13 +195,16 @@ async fn create(
     let input_content = resolve_input_content(args.input.as_deref(), args.input_file.as_deref())?;
     let todo = service
         .create_todo(
-            project,
-            slug,
-            kind,
-            args.description,
-            after,
-            args.group,
-            input_content,
+            CreateTodoArgs {
+                project,
+                slug,
+                kind,
+                description: args.description,
+                after,
+                group: args.group,
+                input_content,
+                creation_mode: CreationMode::Pickup,
+            },
             principal,
         )
         .await?;
@@ -434,11 +437,20 @@ async fn fetch_artifact_version(
         .context("decode artifact version content")
 }
 
-fn parse_after(raw: Option<&str>) -> Result<Vec<Slug>> {
+pub(crate) fn parse_after(raw: Option<&str>) -> Result<Vec<Slug>> {
     let Some(raw) = raw else {
         return Ok(Vec::new());
     };
-    raw.split(',')
+    parse_after_values([raw])
+}
+
+pub(crate) fn parse_after_values<'a, I>(raw_values: I) -> Result<Vec<Slug>>
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    raw_values
+        .into_iter()
+        .flat_map(|raw| raw.split(','))
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(Slug::new)
@@ -446,7 +458,7 @@ fn parse_after(raw: Option<&str>) -> Result<Vec<Slug>> {
         .map_err(|err| anyhow!("invalid dependency slug: {err}"))
 }
 
-fn parse_kind(raw: &str) -> Result<TodoKind> {
+pub(crate) fn parse_kind(raw: &str) -> Result<TodoKind> {
     match raw {
         "feature" => Ok(TodoKind::Feature),
         "bug" => Ok(TodoKind::Bug),

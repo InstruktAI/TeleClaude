@@ -35,9 +35,22 @@ use crate::events::{
     ArtifactWritten, TodoCreated, TodoDeleted, TodoUpdated, CHANNEL_ARTIFACT_WRITTEN,
     CHANNEL_TODO_CREATED, CHANNEL_TODO_DELETED, CHANNEL_TODO_UPDATED,
 };
-use crate::models::{ArtifactName, LifecyclePhase, Todo, TodoKind};
+use crate::models::{ArtifactName, CreationMode, LifecyclePhase, Todo, TodoKind};
 use crate::service::artifacts::{sha256_hex, updated_by};
 use crate::service::WorkflowService;
+
+/// Arguments for creating a todo aggregate and its required input artifact.
+#[derive(Debug, Clone)]
+pub struct CreateTodoArgs {
+    pub project: ProjectId,
+    pub slug: Slug,
+    pub kind: TodoKind,
+    pub description: Option<String>,
+    pub after: Vec<Slug>,
+    pub group: Option<String>,
+    pub input_content: String,
+    pub creation_mode: CreationMode,
+}
 
 /// Patch applied by [`WorkflowService::update_todo`].
 ///
@@ -103,18 +116,22 @@ impl WorkflowService {
     /// transaction. The roadmap entry is appended to the tail of the project
     /// (no `--before`); use [`WorkflowService::add_roadmap_entry`] for
     /// finer ordering control. Emits `workflow.todo.created`.
-    #[allow(clippy::too_many_arguments)]
     pub async fn create_todo(
         &self,
-        project: ProjectId,
-        slug: Slug,
-        kind: TodoKind,
-        description: Option<String>,
-        after: Vec<Slug>,
-        group: Option<String>,
-        input_content: String,
+        args: CreateTodoArgs,
         principal: &Principal,
     ) -> Result<Todo, WorkflowError> {
+        let CreateTodoArgs {
+            project,
+            slug,
+            kind,
+            description,
+            after,
+            group,
+            input_content,
+            creation_mode,
+        } = args;
+
         // v2 deviation from v1 (reviewer RV2): a todo cannot exist without
         // an input artifact. The contract is enforced here so every transport
         // — CLI, future HTTP — converges on the same invariant.
@@ -209,6 +226,11 @@ impl WorkflowService {
         .fetch_one(&mut *tx)
         .await?;
         let artifact_updated_at: DateTime<Utc> = artifact_row.try_get("updated_at")?;
+        let project_path: String =
+            sqlx::query_scalar("select root_path from workflow.projects where id = $1")
+                .bind(project)
+                .fetch_one(&mut *tx)
+                .await?;
 
         tx.commit().await?;
 
@@ -220,6 +242,11 @@ impl WorkflowService {
                 project_id: todo.project_id,
                 lifecycle_phase: todo.lifecycle_phase,
                 created_at: todo.created_at,
+                kind: todo.kind,
+                creation_mode,
+                pickup_requested: matches!(creation_mode, CreationMode::Pickup),
+                created_by_principal: updated_by_value.clone().unwrap_or_default(),
+                project_path,
             },
             principal,
         )
@@ -348,6 +375,9 @@ impl WorkflowService {
                 slug: todo.slug.clone(),
                 project_id: todo.project_id,
                 updated_at: todo.updated_at,
+                change_summary: String::new(),
+                updated_by_principal: String::new(),
+                project_path: String::new(),
             },
             principal,
         )

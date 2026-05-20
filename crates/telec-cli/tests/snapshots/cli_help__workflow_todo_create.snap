@@ -1,0 +1,21 @@
+---
+source: crates/telec-cli/tests/cli_help.rs
+expression: output
+---
+Create a todo with substantive input content
+
+Usage: telec-cli workflow todo create [OPTIONS] <SLUG> [CONTENT]
+
+Arguments:
+  <SLUG>     Todo slug (unique per project)
+  [CONTENT]  Inline content for the required `input` artifact
+
+Options:
+      --project <PROJECT>          Override the project context. By default the project name is derived from the current working directory's basename
+      --silent                     Emit the created event without requesting autonomous pickup
+      --input-file <INPUT_FILE>    Path to a file whose contents seed the required `input` artifact
+      --after <AFTER>              Dependency slugs. Repeat the flag or pass comma-separated values
+      --kind <KIND>                Work item kind. Defaults to `feature` [default: feature]
+      --description <DESCRIPTION>  Optional free-form description
+      --group <GROUP>              Optional visual grouping label
+  -h, --help                       Print help

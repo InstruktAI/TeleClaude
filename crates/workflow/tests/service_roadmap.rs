@@ -10,7 +10,8 @@ use workflow::{
     events::{
         CHANNEL_ROADMAP_ENTRY_ADDED, CHANNEL_ROADMAP_ENTRY_MOVED, CHANNEL_ROADMAP_ENTRY_REMOVED,
     },
-    models::TodoKind,
+    models::{CreationMode, TodoKind},
+    service::CreateTodoArgs,
 };
 
 const MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
@@ -185,13 +186,16 @@ async fn deliver_roadmap_entry_marks_delivered_with_commit_hash(pool: PgPool) {
     // Use create_todo so the linked todo's delivered_at also flips.
     let slug = Slug::new("deliverable").expect("slug");
     svc.create_todo(
-        project,
-        slug.clone(),
-        TodoKind::Feature,
-        None,
-        vec![],
-        None,
-        common::test_input(),
+        CreateTodoArgs {
+            project,
+            slug: slug.clone(),
+            kind: TodoKind::Feature,
+            description: None,
+            after: vec![],
+            group: None,
+            input_content: common::test_input(),
+            creation_mode: CreationMode::Pickup,
+        },
         &principal,
     )
     .await

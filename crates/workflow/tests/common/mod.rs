@@ -16,6 +16,9 @@ use shared::ProjectId;
 use sqlx::PgPool;
 use workflow::{EventSink, WorkflowService};
 
+pub const HUMAN_PRINCIPAL_EMAIL: &str = "owner@example.com";
+pub const TEST_PROJECT_ROOT: &str = "/tmp/test";
+
 /// In-memory event sink used by the integration suite.
 ///
 /// Captures every emitted envelope in insertion order. Cheap to clone via
@@ -74,7 +77,7 @@ pub fn build_service(pool: PgPool) -> (WorkflowService, Arc<VecSink>) {
 /// so two tests in the same DB never collide on the `(name)` unique index.
 pub async fn seed_project(svc: &WorkflowService) -> ProjectId {
     let name = format!("test-{}", uuid::Uuid::new_v4());
-    svc.find_or_create_project(&name, "/tmp/test")
+    svc.find_or_create_project(&name, TEST_PROJECT_ROOT)
         .await
         .expect("project upsert succeeds")
 }
@@ -82,7 +85,7 @@ pub async fn seed_project(svc: &WorkflowService) -> ProjectId {
 /// Owner principal used by every test that needs an actor identity.
 pub fn human_principal() -> Principal {
     Principal::Human {
-        email: "owner@example.com".to_owned(),
+        email: HUMAN_PRINCIPAL_EMAIL.to_owned(),
         role: Role::Owner,
     }
 }
