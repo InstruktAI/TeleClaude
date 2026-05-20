@@ -1,15 +1,14 @@
 ---
-description: 'Authoritative surface for the telec command-line tool.'
-id: 'project/spec/telec-cli-surface'
-scope: 'project'
-type: 'spec'
-visibility: 'public'
-status: 'mixed'
+description: Authoritative surface for the telec command-line tool.
+id: project/spec/telec-cli-surface
+scope: project
+type: spec
+visibility: public
+status: mixed
 delivered_by:
-  - 'roadmap-trash-reveal-ui'
-  - 'v2-workflow-cli-refinement-commands'
-  - 'v2-workflow-creation-cleanup'
-  - 'v1-workflow-creation-hardening'
+- roadmap-trash-reveal-ui
+- v2-workflow-cli-refinement-commands
+- v1-workflow-creation-hardening
 ---
 
 # CLI Surface — Spec

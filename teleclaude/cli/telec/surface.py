@@ -1127,16 +1127,22 @@ CLI_SURFACE: dict[str, CommandDef] = {
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),
             ),
             "add": CommandDef(
-                desc="Stage NEW (untracked) files for the next commit",
+                desc="Stage files for the next commit (NEW, unmerged, or partial-staged tracked)",
                 args="<path> [<path> ...]",
                 flags=[_H],
                 notes=[
-                    "Sealed equivalent of 'git add' for the one case git's data model requires "
-                    "staging: NEW files. Modified-tracked files don't need staging — pathspec "
+                    "Sealed equivalent of 'git add' for the three cases git's data model genuinely requires staging:",
+                    "  (1) NEW (untracked) files — must enter the index before commit pathspec can match.",
+                    "  (2) Unmerged-index files (post-conflict) — must be marked resolved before commit.",
+                    "  (3) Partial-staged tracked files (staged hunks + later working-tree delta) — "
+                    "must be fully (re)staged so the pathspec commit does not silently sweep in "
+                    "unstaged hunks. The partial-staging guard in `telec code commit` directs agents "
+                    "here for recovery.",
+                    "Modified-tracked files that are NOT partial-staged don't need staging — pathspec "
                     "commits them straight from the working tree.",
-                    "NEW files in scope are NOT auto-committed; this is the explicit declaration "
-                    "step. Without it, untracked files stay untracked (safety net for temp/scratch "
-                    "artifacts the agent may have created incidentally).",
+                    "NEW files in scope are NOT auto-committed; this is the explicit declaration step. "
+                    "Without it, untracked files stay untracked (safety net for temp/scratch artifacts "
+                    "the agent may have created incidentally).",
                     "Alternative one-shot form: telec code commit --approved '<msg>' --include <path>.",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_ALL),

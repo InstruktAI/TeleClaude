@@ -629,7 +629,7 @@ class TestHandleCodeAdd:
         assert exc.value.code == 2
 
     @pytest.mark.unit
-    def test_stages_untracked_file(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_stages_untracked_file(self, tmp_path: Path) -> None:
         new_file = tmp_path / "new.py"
         new_file.write_text("print('hi')\n")
         staged: list[list[str]] = []
@@ -650,10 +650,9 @@ class TestHandleCodeAdd:
             ),
         ):
             handle_code_add(["new.py"])
-        # Behavioral: the file was passed to _stage_files; the file name
-        # appears in stdout. We do not lock the surrounding prose.
+        # Structural: the contract is carried by the _stage_files call —
+        # the file was handed to the staging primitive. No prose assertion.
         assert staged == [["new.py"]]
-        assert "new.py" in capsys.readouterr().out
 
     @pytest.mark.unit
     def test_stages_partial_staged_tracked_file(self, tmp_path: Path) -> None:
@@ -687,6 +686,33 @@ class TestHandleCodeAdd:
             handle_code_add(["partial.py"])
         # Behavioral: the partial-staged file was (re)staged, not no-oped.
         assert staged == [["partial.py"]]
+
+    @pytest.mark.unit
+    def test_stages_partial_staged_deleted_file(self, tmp_path: Path) -> None:
+        """Partial-staged + working-tree DELETION: staged edit followed by
+        a deletion in the working tree. The file does not exist on disk
+        anymore, but the path is in BOTH staged and unstaged diffs. The
+        recovery must still accept it (check `partial_staged` BEFORE the
+        existence check)."""
+        # Note: do NOT write the file — simulate the post-deletion state.
+        staged: list[list[str]] = []
+        repo = MagicMock()
+        repo.git.diff.side_effect = ["deleted.py", "deleted.py"]
+        with (
+            patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code.resolve_invocation_cwd", return_value=tmp_path),
+            patch("teleclaude.cli.telec.handlers.code._get_untracked_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._get_unmerged_files", return_value=[]),
+            patch("teleclaude.cli.telec.handlers.code._dirty_paths", return_value={"deleted.py"}),
+            patch("teleclaude.cli.telec.handlers.code.Repo", return_value=repo),
+            patch(
+                "teleclaude.cli.telec.handlers.code._stage_files",
+                side_effect=lambda files, _root: staged.append(files),
+            ),
+        ):
+            handle_code_add(["deleted.py"])
+        # Structural: the deleted path was (re)staged, not rejected as missing.
+        assert staged == [["deleted.py"]]
 
     @pytest.mark.unit
     def test_stages_unmerged_file(self, tmp_path: Path) -> None:

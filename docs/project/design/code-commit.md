@@ -89,18 +89,26 @@ The pathspec commit is built internally from `workspace scope plus
    No two agents can be inside their commit phase at the same time. The
    lock auto-releases on process exit or crash.
 
-2. **Workspace scope is authoritative.** `resolve_workspace_scope_resolution()`
-   is the single owner of worktree-vs-shared-branch scope. Telec stages the
-   files it returns. `--include` extends the set with explicit, agent-declared
-   paths; no other mechanism widens scope.
+2. **Workspace scope is authoritative — for pathspec construction, not staging.**
+   `resolve_workspace_scope_resolution()` is the single owner of
+   worktree-vs-shared-branch scope. The scope set drives the commit's
+   pathspec (with `--include` adding explicit, agent-declared paths and
+   untracked-not-staged files dropped); it does **not** drive staging.
+   Staging is a narrow follow-up step that runs only on the three cases
+   git's data model genuinely requires it for: untracked files in the
+   pathspec, unmerged-index files in the pathspec, and partial-staged
+   tracked files (handled via `telec code add` recovery). Modified-tracked
+   files in the pathspec are committed straight from the working tree —
+   `git commit -- <path>` records the working-tree version.
 
 3. **Pathspec on commit IS the boundary.** The final `git commit` runs with an
-   explicit pathspec equal to `workspace scope plus --include paths`. Anything
-   else in the index — concurrent stage from another session, crash residue
-   from a prior failed commit, human-staged files outside the agent's scope —
-   is **invisible to the pathspec** and stays staged for its owner. There is
-   no separate "foreign-staged" check; the pathspec alone enforces the
-   boundary. Agents must not unstage foreign files they see in the index.
+   explicit pathspec equal to `workspace scope plus --include paths` (minus
+   untracked-not-staged scope files). Anything else in the index — concurrent
+   stage from another session, crash residue from a prior failed commit,
+   human-staged files outside the agent's scope — is **invisible to the
+   pathspec** and stays staged for its owner. There is no separate
+   "foreign-staged" check; the pathspec alone enforces the boundary. Agents
+   must not unstage foreign files they see in the index.
 
 4. **Pre-commit hook owns format + lint.** Formatting and linting run inside
    the hook, which executes inside git's own `index.lock`. Telec does not run

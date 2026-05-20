@@ -110,11 +110,15 @@ def handle_code_add(args: list[str]) -> None:
 
     for path in positionals:
         full = project_root / path
-        if not full.exists():
-            missing.append(path)
-        elif path in untracked or path in unmerged or path in partial_staged:
-            # Untracked, unmerged-conflict, or partial-staged → stage fully.
+        # Stageable classes are checked BEFORE existence: a partial-staged
+        # tracked file with a pending DELETION has staged content (so git
+        # knows the path) but no working-tree file, and the recovery path
+        # must still accept it. Untracked/unmerged files all exist on disk
+        # by construction, so this ordering does not weaken those checks.
+        if path in untracked or path in unmerged or path in partial_staged:
             stageable.append(path)
+        elif not full.exists():
+            missing.append(path)
         elif path in dirty:
             already_tracked.append(path)
         else:
