@@ -346,3 +346,37 @@ class TestIsSettledOkPhase:
 
     def test_build_started_is_not_settled_ok(self) -> None:
         assert not is_settled_ok_phase("build_started")
+
+
+def test_cosmetic_drift_on_implementation_plan_does_not_block(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression: drift_reviewed stamp stored as 'implementation-plan' must be found
+    when deriving drift for implementation_plan (state key uses underscore, artifact name
+    uses dash — the lookup must use the ARTIFACT constant, not the STATE_KEY constant)."""
+    state = _base_feature()
+    state.artifacts.prd.digest = "prd"
+    state.artifacts.prd.codebase_sha_at_write = "head"
+    state.artifacts.architecture.digest = "arch"
+    state.artifacts.architecture.codebase_sha_at_write = "head"
+    state.artifacts.implementation_plan.digest = "plan"
+    state.artifacts.implementation_plan.codebase_sha_at_write = "base"
+    state.artifacts.implementation_plan.referenced_paths = ["src/main.py"]
+    state.approvals.prd_approved = _approved()
+    state.architecture_review.verdict = "approve"
+    state.plan_review.verdict = "approve"
+    # Stamp stored under the ARTIFACT name (dash), not the state-key name (underscore).
+    state.approvals.drift_reviewed["implementation-plan"] = DriftReviewedStamp(
+        verdict="cosmetic",
+        reason="only unrelated churn",
+        stamped_at="2026-01-01T00:00:00+00:00",
+    )
+    repo = MagicMock()
+    repo.git.rev_parse.return_value = "head"
+    repo.git.log.return_value = "src/main.py\n"
+    monkeypatch.setattr(
+        "teleclaude.core.next_machine.lifecycle._session_principal", lambda _session_id: "human:mo@example.com"
+    )
+
+    with patch("teleclaude.core.next_machine.git_ops.Repo", return_value=repo):
+        phase = adopt_prepare_handoff_phase(state, repo_root="/repo")
+
+    assert phase is LifecyclePhase.PREPARED
