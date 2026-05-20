@@ -88,10 +88,22 @@ Each event below carries:
 
 **Detailed entries:** to be expanded by `project/spec/domain/workflow` authoring.
 
-`workflow.todo.renamed` carries `old_slug` + `new_slug` so slug-keyed
-consumers (`frontend`, `telec-tui`, `integration`) can re-key rather than
-orphan cache entries — see `project/spec/domain/workflow` for the full entry.
-`status: mixed` / `delivered_by: telec-todo-rename` until that delivery lands.
+`workflow.todo.renamed` is owned end-to-end by
+`v2-workflow-cli-refinement-commands`. The canonical 8-field payload is
+`(todo_id, old_slug, new_slug, project_id, project_path, renamed_at,
+renamed_by_principal, rewritten_reference_count)`. One bus event drives
+three downstream effects, all owned here (no consumer deferred): (1)
+one daemon-cache invalidation via the v1 bridge's payload-aware branch,
+propagating to the TUI via the existing generic
+`todos_updated`/`todo_updated` WebSocket-refresh fallback path (no
+payload-aware TUI code); (2) one typed `todo_renamed` WebSocket frame
+to subscribed frontends so they re-key local UI state in place; (3) one
+`integration` bus subscriber rewriting slug-keyed subscription rows
+`old_slug → new_slug` from the event payload. `telec-todo-rename`
+retains historical interest as the initial slug-rename scaffolding work;
+current end-to-end contract ownership is this delivery's. See
+`project/spec/domain/workflow` for the full entry and consumer-route
+detail.
 
 `workflow.todo.created` carries an extended payload — `creation_mode`
 (`pickup` | `silent`) and `pickup_requested` (boolean) — added by
@@ -176,9 +188,10 @@ Inverse view: for each event, which consumers act on it. Populated as per-contex
 | `agent_runtime.session.ended`       | `session_mirrors` (extracts mirror from native_file_path), `identity` (auto-revokes session token), `frontend` (live UI removal) |
 | `session_mirrors.mirror.created`    | `frontend` (history search index refresh), audit log consumers                                                                   |
 | `agent_runtime.operation.completed` | `workflow` (advances todo phase when operation completes a step)                                                                 |
+| `workflow.todo.created`             | autonomous pickup consumers — the prepare/work dispatch routers in the v1 daemon — gated on `pickup_requested=true` (silent-mode events with `pickup_requested=false` are observed but trigger no dispatch); cache/bridge refresh consumers — `telec-tui` (daemon roadmap-cache invalidation per project), `frontend` (live roadmap view refresh via WebSocket push); audit log consumers |
 | `workflow.todo.phase_advanced`      | `integration` (outbox notifications to recipients per subscription)                                                              |
 | `workflow.todo.delivered`           | `integration` (delivery announcement notifications)                                                                              |
-| `workflow.todo.renamed`             | `frontend` (re-key roadmap/todo view old→new), `telec-tui` (cache invalidation — drop old_slug, refetch new_slug), `integration` (slug-keyed subscription bookkeeping) |
+| `workflow.todo.renamed`             | `frontend` (consumes typed `todo_renamed` WebSocket frame; re-keys local UI in place from `old_slug` to `new_slug`); `telec-tui` (generic project-scoped `todos_updated`/`todo_updated` WebSocket-refresh fallback — NO payload-aware rename handling, NO old/new awareness); `integration` (bus subscriber rewrites slug-keyed subscription rows `old_slug → new_slug` from the event payload) |
 | `memory.observation.saved`          | audit log consumers; future memory miner correlating observations                                                                |
 | `scheduler.tick.minute`             | per-pillar listeners (skill mining, memory mining, job-completion sweeps, etc.)                                                  |
 | `config.effective.updated`          | every service that caches config (re-read on next access)                                                                        |
