@@ -112,7 +112,7 @@ def test_self_grouped_todo_is_not_a_holder() -> None:
     sections = build_roadmap_sections(todos)
 
     assert len(sections.active) == 1
-    assert sections.active[0].todo is todos[0]
+    assert sections.active[0].todo == todos[0]
     assert sections.active[0].is_holder is False
 
 
