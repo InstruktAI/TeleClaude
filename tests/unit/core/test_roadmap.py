@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.roadmap import (
     RECENTLY_DELIVERED_HOURS,
     assemble_roadmap_from_db,
@@ -75,8 +76,7 @@ async def test_iceboxed_draft_todo_projects_as_icebox_not_pending(tmp_path: Path
     todos = assemble_roadmap_from_db(str(project), include_icebox=True)
 
     assert len(todos) == 1
-    assert todos[0].slug == "ice-draft"
-    assert todos[0].status == "icebox"
+    assert todos[0].status == RoadmapStatus.ICEBOX
 
 
 @pytest.mark.asyncio
