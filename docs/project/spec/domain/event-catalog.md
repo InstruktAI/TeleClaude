@@ -10,7 +10,6 @@ status: mixed
 delivered_by:
   - v2-workflow-cli-refinement-commands
   - v1-workflow-creation-hardening
-  - finalize-ready-integration-anchor
 ---
 
 # Domain Event Catalog — Spec
