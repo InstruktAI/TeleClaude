@@ -161,6 +161,32 @@ async def test_complete_and_fail_operations_record_terminal_metadata(db: Db) -> 
     assert failed.completed_at == now_iso
 
 
+async def test_fail_operation_persists_structured_error_payload(db: Db) -> None:
+    await db.create_operation(
+        operation_id="op-structured",
+        kind="todo_remove",
+        caller_session_id="sess-001",
+        client_request_id=None,
+        cwd="/repo",
+        slug="doomed",
+        payload_json="{}",
+        state="running",
+    )
+    now_iso = datetime.now(UTC).isoformat()
+
+    await db.fail_operation(
+        "op-structured",
+        "RemoveRefused",
+        now_iso=now_iso,
+        error_payload_json='{"kind":"remove_refused_orphan"}',
+    )
+
+    failed = await db.get_operation("op-structured")
+
+    assert failed is not None
+    assert failed.error_payload == '{"kind":"remove_refused_orphan"}'
+
+
 async def test_stale_helpers_mark_only_nonterminal_or_old_running_operations(db: Db) -> None:
     await db.create_operation(
         operation_id="op-queued",

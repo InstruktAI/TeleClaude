@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from teleclaude.core.todos_db._exceptions import RemoveRefused
+from teleclaude.docs_reconcile import BlockingSnippet
 from teleclaude.services.work._roadmap import RoadmapOps
 
 pytestmark = pytest.mark.asyncio
@@ -26,3 +28,28 @@ async def test_remove_threads_project_root_into_soft_primitive() -> None:
 
     assert result is True
     fake_db.soft_remove_from_roadmap.assert_awaited_once_with("doomed", cwd="/path/to/project")
+
+
+async def test_remove_preserves_soft_primitive_refusal() -> None:
+    refusal = RemoveRefused(
+        slug="doomed",
+        blocking_snippets=[
+            BlockingSnippet(
+                path="/path/to/project/docs/project/spec/snippet.md",
+                slug_role="sole",
+                live_deliverer_count=0,
+                other_removed_deliverers=[],
+            )
+        ],
+    )
+    fake_db = SimpleNamespace(soft_remove_from_roadmap=AsyncMock(side_effect=refusal))
+    base = SimpleNamespace(
+        project_root="/path/to/project",
+        _ensure_db=AsyncMock(return_value=fake_db),
+    )
+    ops = RoadmapOps(base)  # type: ignore[arg-type]
+
+    with pytest.raises(RemoveRefused) as exc_info:
+        await ops.remove("doomed")
+
+    assert exc_info.value.blocking_snippets == refusal.blocking_snippets

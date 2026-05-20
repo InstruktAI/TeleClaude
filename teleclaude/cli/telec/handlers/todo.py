@@ -378,11 +378,45 @@ def _handle_todo_remove(args: list[str]) -> None:
     if isinstance(status, dict) and status.get("state") == "completed":  # pyright: ignore[reportUnnecessaryIsInstance]
         print(f"Removed todo: {slug}")
     elif isinstance(status, dict) and status.get("error"):  # pyright: ignore[reportUnnecessaryIsInstance]
+        if _render_remove_refusal(status, slug):
+            raise SystemExit(1)
         print(f"Error: {status['error']}", file=sys.stderr)
         raise SystemExit(1)
     else:
         print_json(status)
         raise SystemExit(1)
+
+
+def _render_remove_refusal(status: dict[object, object], slug: str) -> bool:
+    """Render structured remove-refusal operation payloads."""
+    error_payload = status.get("error_payload")
+    if not isinstance(error_payload, dict) or error_payload.get("kind") != "remove_refused_orphan":
+        return False
+    raw_blocking = error_payload.get("blocking_snippets")
+    if not isinstance(raw_blocking, list):
+        return False
+
+    print("Remove refused; blocking snippets:", file=sys.stderr)
+    rendered_count = 0
+    for raw_snippet in raw_blocking:
+        if not isinstance(raw_snippet, dict):
+            continue
+        path = raw_snippet.get("path")
+        slug_role = raw_snippet.get("slug_role")
+        live_count = raw_snippet.get("live_deliverer_count")
+        if not isinstance(path, str) or not isinstance(slug_role, str) or not isinstance(live_count, int):
+            continue
+        print(
+            f"- path={path} slug_role={slug_role} live_deliverer_count={live_count}",
+            file=sys.stderr,
+        )
+        rendered_count += 1
+
+    print(
+        f"Refused: {slug} would orphan {rendered_count} snippet(s); see structured error above.",
+        file=sys.stderr,
+    )
+    return True
 
 
 def _handle_todo_rename(args: list[str]) -> None:

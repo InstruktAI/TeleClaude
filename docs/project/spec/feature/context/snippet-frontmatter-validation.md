@@ -70,6 +70,15 @@ Scenario: delivered_by references a slug unknown to the roadmap
 ```
 
 ```
+Scenario: delivered_by references a soft-removed slug
+  Given a snippet with status "target" and delivered_by ["removed-slug"]
+  And the roadmap status map records "removed-slug" as removed
+  When validation runs during the trash window
+  Then the slug is treated as known
+  And it does not count as delivered for unflipped-drift validation
+```
+
+```
 Scenario: Required reads is not the first H2
   Given a snippet whose first H2 after H1 is "## What it is"
   And a "## Required reads" H2 appears later
@@ -132,6 +141,9 @@ Scenario: Relative ref with .. parents is unsupported
 - The pre-commit lint pipeline calls `validate_all_snippets()` without
   supplying a roadmap status map; `enforce_delivered_drift=True` then applies
   by default, which may flag drift the next full sync would auto-reconcile.
+- Soft-removed roadmap slugs are accepted as known `delivered_by` references
+  during the trash window, but only delivered slugs count toward
+  `snippet_status_unflipped_drift`.
 - HTML comments inside `## Required reads` and `## See Also` are silently
   ignored.
 - `applies_to` is declared in the typed frontmatter but its path-vs-value

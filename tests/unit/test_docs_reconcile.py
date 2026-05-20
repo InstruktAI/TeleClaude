@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import cast
 
 import frontmatter
+import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude import docs_reconcile
 from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET, RoadmapStatus
@@ -41,6 +43,10 @@ def _write_snippet(
 
 def _metadata(path: Path) -> docs_reconcile.SnippetFrontmatter:
     return cast(docs_reconcile.SnippetFrontmatter, frontmatter.load(path).metadata)
+
+
+def _metadata_from_content(content: str) -> docs_reconcile.SnippetFrontmatter:
+    return cast(docs_reconcile.SnippetFrontmatter, frontmatter.loads(content).metadata)
 
 
 def _frontmatter_line(path: Path, key: str) -> bytes:
@@ -252,6 +258,171 @@ def test_reconcile_is_idempotent_across_runs(tmp_path: Path) -> None:
     assert second_results == []
 
 
+def test_reconcile_purged_slugs_plans_multi_slug_drop_without_writing(tmp_path: Path) -> None:
+    body = "# Snippet\n\nBody with purge-time content.\n"
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        status=SNIPPET_STATUS_MIXED,
+        delivered_by=["purged", "live-a", "live-b"],
+        body=body,
+    )
+    before = snippet_path.read_bytes()
+
+    plans = docs_reconcile.reconcile_snippets_for_purged_slugs(
+        tmp_path,
+        ("purged",),
+        {
+            "purged": RoadmapStatus.REMOVED,
+            "live-a": RoadmapStatus.ACTIVE,
+            "live-b": RoadmapStatus.ICEBOX,
+        },
+    )
+
+    assert len(plans) == 1
+    assert plans[0].path == snippet_path
+    assert plans[0].removed_slugs == ("purged",)
+    assert plans[0].write_required is True
+    planned_metadata = _metadata_from_content(plans[0].rendered_content)
+    assert planned_metadata["status"] == SNIPPET_STATUS_MIXED
+    assert planned_metadata["delivered_by"] == ["live-a", "live-b"]
+    assert plans[0].rendered_content.split("---\n", 2)[2] == body
+    assert snippet_path.read_bytes() == before
+
+
+def test_reconcile_purged_slugs_removes_multiple_purged_slugs_from_same_snippet(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["purged-a", "live", "purged-b"],
+    )
+
+    plans = docs_reconcile.reconcile_snippets_for_purged_slugs(
+        tmp_path,
+        ("purged-a", "purged-b"),
+        {
+            "purged-a": RoadmapStatus.REMOVED,
+            "purged-b": RoadmapStatus.REMOVED,
+            "live": RoadmapStatus.ACTIVE,
+        },
+    )
+
+    assert len(plans) == 1
+    assert plans[0].path == snippet_path
+    assert plans[0].removed_slugs == ("purged-a", "purged-b")
+    assert _metadata_from_content(plans[0].rendered_content)["delivered_by"] == ["live"]
+
+
+def test_reconcile_purged_slugs_raises_when_purged_slug_is_sole_deliverer(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["purged"],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        docs_reconcile.reconcile_snippets_for_purged_slugs(
+            tmp_path,
+            ("purged",),
+            {"purged": RoadmapStatus.REMOVED},
+        )
+
+    assert str(exc_info.value).replace(str(tmp_path), "TMP") == snapshot
+
+
+def test_reconcile_purged_slugs_raises_when_only_removed_siblings_remain(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["purged", "removed-sibling"],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        docs_reconcile.reconcile_snippets_for_purged_slugs(
+            tmp_path,
+            ("purged",),
+            {
+                "purged": RoadmapStatus.REMOVED,
+                "removed-sibling": RoadmapStatus.REMOVED,
+            },
+        )
+
+    assert str(exc_info.value).replace(str(tmp_path), "TMP") == snapshot
+
+
+def test_reconcile_purged_slugs_raises_when_remaining_sibling_is_unknown(
+    tmp_path: Path, snapshot: SnapshotAssertion
+) -> None:
+    _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["purged", "missing-sibling"],
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        docs_reconcile.reconcile_snippets_for_purged_slugs(
+            tmp_path,
+            ("purged",),
+            {"purged": RoadmapStatus.REMOVED},
+        )
+
+    assert str(exc_info.value).replace(str(tmp_path), "TMP") == snapshot
+
+
+def test_reconcile_purged_slugs_does_not_write_files(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["purged", "live"],
+    )
+    before = snippet_path.read_bytes()
+
+    docs_reconcile.reconcile_snippets_for_purged_slugs(
+        tmp_path,
+        ("purged",),
+        {
+            "purged": RoadmapStatus.REMOVED,
+            "live": RoadmapStatus.ACTIVE,
+        },
+    )
+
+    assert snippet_path.read_bytes() == before
+
+
+def test_reconcile_snippet_status_still_writes_delivered_plan(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["delivered", "live"],
+    )
+
+    results = docs_reconcile.reconcile_snippet_status(
+        tmp_path,
+        {
+            "delivered": RoadmapStatus.DELIVERED,
+            "live": RoadmapStatus.ACTIVE,
+        },
+    )
+
+    assert results == [
+        docs_reconcile.SnippetStatusReconcileResult(
+            path=snippet_path,
+            removed_slugs=("delivered",),
+        )
+    ]
+    assert _metadata(snippet_path)["delivered_by"] == ["live"]
+
+
+def test_docs_reconcile_does_not_define_sole_slug_blocker() -> None:
+    implementation = Path(docs_reconcile.__file__).read_text(encoding="utf-8")
+
+    assert "SoleSlugBlocker" not in implementation
+
+
 def test_rewrite_delivered_by_slug_updates_only_lifecycle_frontmatter_refs(tmp_path: Path) -> None:
     snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
     snippet_path.parent.mkdir(parents=True, exist_ok=True)
@@ -308,3 +479,113 @@ def test_rewrite_delivered_by_slug_leaves_snippets_valid_for_new_roadmap_slug(tm
 
     findings = _models.get_errors()
     assert _snippet.SNIPPET_DELIVERED_BY_UNKNOWN_SLUG not in {finding["code"] for finding in findings}
+
+
+def test_scan_remove_orphans_reports_sole_deliverer(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["candidate"],
+    )
+
+    blockers = docs_reconcile.scan_remove_orphans(
+        tmp_path,
+        "candidate",
+        {"candidate": RoadmapStatus.ACTIVE},
+    )
+
+    assert blockers == [
+        docs_reconcile.BlockingSnippet(
+            path=str(snippet_path),
+            slug_role="sole",
+            live_deliverer_count=0,
+            other_removed_deliverers=[],
+        )
+    ]
+
+
+def test_scan_remove_orphans_reports_last_live_among_removed_siblings(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["candidate", "removed-sibling"],
+    )
+
+    blockers = docs_reconcile.scan_remove_orphans(
+        tmp_path,
+        "candidate",
+        {
+            "candidate": RoadmapStatus.ACTIVE,
+            "removed-sibling": RoadmapStatus.REMOVED,
+        },
+    )
+
+    assert blockers == [
+        docs_reconcile.BlockingSnippet(
+            path=str(snippet_path),
+            slug_role="last_live_among_removed",
+            live_deliverer_count=0,
+            other_removed_deliverers=["removed-sibling"],
+        )
+    ]
+
+
+def test_scan_remove_orphans_treats_unknown_sibling_as_not_live(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["candidate", "missing-sibling"],
+    )
+
+    blockers = docs_reconcile.scan_remove_orphans(
+        tmp_path,
+        "candidate",
+        {"candidate": RoadmapStatus.ACTIVE},
+    )
+
+    assert blockers == [
+        docs_reconcile.BlockingSnippet(
+            path=str(snippet_path),
+            slug_role="sole",
+            live_deliverer_count=0,
+            other_removed_deliverers=[],
+        )
+    ]
+
+
+def test_scan_remove_orphans_allows_shared_live_deliverer(tmp_path: Path) -> None:
+    _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=["candidate", "live-sibling"],
+    )
+
+    blockers = docs_reconcile.scan_remove_orphans(
+        tmp_path,
+        "candidate",
+        {
+            "candidate": RoadmapStatus.ACTIVE,
+            "live-sibling": RoadmapStatus.ICEBOX,
+        },
+    )
+
+    assert blockers == []
+
+
+def test_scan_remove_orphans_ignores_non_lifecycle_snippets(tmp_path: Path) -> None:
+    snippet_path = tmp_path / "docs" / "project" / "spec" / "actual.md"
+    snippet_path.parent.mkdir(parents=True, exist_ok=True)
+    snippet_path.write_text(
+        "---\nid: project/spec/actual\ntype: spec\nscope: project\ndescription: Actual\n---\n# Actual\n",
+        encoding="utf-8",
+    )
+    before = snippet_path.read_bytes()
+
+    blockers = docs_reconcile.scan_remove_orphans(
+        tmp_path,
+        "candidate",
+        {"candidate": RoadmapStatus.ACTIVE},
+    )
+
+    assert blockers == []
+    assert snippet_path.read_bytes() == before

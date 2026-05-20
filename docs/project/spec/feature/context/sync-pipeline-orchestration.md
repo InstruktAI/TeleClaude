@@ -46,6 +46,12 @@ Two flags govern scope and failure semantics:
 Validation findings are stdout text grouped by error code and reason;
 there is no machine-readable output channel in v1.
 
+The delivered-snippet reconciliation engine is shared. `telec sync` is the
+full-sync caller that clears delivered drift after a slug reaches
+`status=delivered`; the removed-Todo maintenance sweep is the retention caller
+that removes hard-purged slugs from `delivered_by` before deleting the retained
+roadmap row.
+
 ## Canonical fields
 
 ### Use cases
@@ -102,6 +108,14 @@ Scenario: Roadmap delivery during sync
   And the next sync picks up the new delivery and reconciles its snippets
 ```
 
+```
+Scenario: Removed-row purge reuses the reconcile engine outside sync
+  Given an expired removed Todo still appears in a snippet's delivered_by list
+  When routine maintenance hard-purges the retained row
+  Then the maintenance sweep plans and commits the delivered_by update through the shared reconcile engine
+  And telec sync remains responsible only for full-sync delivered-drift reconciliation
+```
+
 ### Implementation pointers (v1)
 
 - `teleclaude/cli/telec/handlers/misc.py:93-112` — `_handle_sync()` parses `--validate-only` and `--warn-only`.
@@ -115,6 +129,10 @@ Scenario: Roadmap delivery during sync
 - `teleclaude/sync.py:97-99, 104-122` — distribute subprocess invocation with `check=not warn_only`.
 - `teleclaude/sync.py:124-160` — `_repair_broken_docs_links()` over the hardcoded tracked-docs tuple including `docs/global/baseline.md`.
 - `teleclaude/sync.py:163-202` — `_print_findings()` text grouping.
+- `teleclaude/docs_reconcile.py:34-41` — `SnippetWriteResult` carries purge-time write plans for callers that must stage and commit exact snippet pathspecs.
+- `teleclaude/docs_reconcile.py:241-252` — `reconcile_snippet_status()` remains the full-sync public write path.
+- `teleclaude/docs_reconcile.py:255-267` — `reconcile_snippets_for_purged_slugs()` is the shared purge-time planning entrypoint.
+- `teleclaude/services/maintenance_service.py:260-366` — removed-Todo retention cleanup uses the shared planning entrypoint before committing snippet changes and hard-deleting rows.
 - `teleclaude/cli/telec/surface.py:388-397` — `telec sync` CLI surface entry.
 
 ### Cross-context references
@@ -148,5 +166,9 @@ Scenario: Roadmap delivery during sync
   stripped-down deployments, dangerous on a corrupted checkout.
 - The roadmap status map is loaded once per sync. Slugs delivered
   during the sync run do not reflect until the next sync.
+- The reconcile engine has two v1 callers with different ownership: full sync
+  writes delivered-drift corrections during `telec sync`, while routine
+  maintenance writes and commits purge-time `delivered_by` removals before
+  deleting expired removed rows. `telec sync --validate-only` does neither.
 - v1 CLI namespace is `telec sync`. v2 target is `telec context sync`.
   Shedding candidate flagged for migration cleanup.

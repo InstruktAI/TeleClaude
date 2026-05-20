@@ -274,6 +274,14 @@ def _migrate_roadmap_tombstone_columns(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_roadmap_pending_purge_paths(conn: sqlite3.Connection) -> None:
+    """Additively add the durable purge-retry path column to roadmap rows."""
+    columns = _table_columns(conn, "roadmap")
+    if "pending_purge_paths" not in columns:
+        conn.execute("ALTER TABLE roadmap ADD COLUMN pending_purge_paths TEXT")  # guard: raw-sql
+    conn.commit()
+
+
 def _bootstrap_todos_db(db_path: str) -> None:
     """Run sync migrations and ensure the ORM schema exists."""
     Path(db_path).parent.mkdir(parents=True, exist_ok=True)
@@ -285,6 +293,7 @@ def _bootstrap_todos_db(db_path: str) -> None:
         if _table_exists(conn, "roadmap"):
             _migrate_foreign_key_schema(conn)
             _migrate_roadmap_tombstone_columns(conn)
+            _migrate_roadmap_pending_purge_paths(conn)
         conn.commit()
     finally:
         conn.close()

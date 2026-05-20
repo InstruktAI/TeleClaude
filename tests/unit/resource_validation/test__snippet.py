@@ -321,6 +321,32 @@ class TestStatusAndDeliveredByValidation:
 
         assert resource_models.get_errors() == []
 
+    def test_removed_slug_is_valid_delivered_by_reference(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
+        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
+
+        _snippet._validate_status_and_delivered_by(
+            snippet_path,
+            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["removed-work"]},
+            roadmap_status_map={"removed-work": RoadmapStatus.REMOVED},
+            enforce_delivered_drift=True,
+        )
+
+        assert resource_models.get_errors() == []
+
+    def test_removed_slug_does_not_count_as_delivered_drift(self, tmp_path: Path) -> None:
+        resource_models.clear_errors()
+        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
+
+        _snippet._validate_status_and_delivered_by(
+            snippet_path,
+            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["removed-work"]},
+            roadmap_status_map={"removed-work": RoadmapStatus.REMOVED},
+            enforce_delivered_drift=True,
+        )
+
+        assert resource_models.get_errors() == []
+
     def test_drift_rule_can_be_disabled_for_pre_reconcile_validation(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
@@ -346,6 +372,7 @@ class TestRoadmapStatusMap:
                 ("alpha", RoadmapStatus.ACTIVE),
                 ("beta", RoadmapStatus.ICEBOX),
                 ("gamma", RoadmapStatus.DELIVERED),
+                ("delta", RoadmapStatus.REMOVED),
             ],
         )
 
@@ -353,6 +380,7 @@ class TestRoadmapStatusMap:
             "alpha": RoadmapStatus.ACTIVE,
             "beta": RoadmapStatus.ICEBOX,
             "gamma": RoadmapStatus.DELIVERED,
+            "delta": RoadmapStatus.REMOVED,
         }
 
     def test_current_roadmap_entry_wins_over_historical_delivery(self, tmp_path: Path) -> None:
@@ -365,6 +393,28 @@ class TestRoadmapStatusMap:
         )
 
         assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == RoadmapStatus.ACTIVE
+
+    def test_live_status_wins_over_historical_removed_entry(self, tmp_path: Path) -> None:
+        _write_roadmap_db(
+            tmp_path,
+            [
+                ("reused-slug", RoadmapStatus.REMOVED),
+                ("reused-slug", RoadmapStatus.ICEBOX),
+            ],
+        )
+
+        assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == RoadmapStatus.ICEBOX
+
+    def test_delivered_status_wins_over_historical_removed_entry(self, tmp_path: Path) -> None:
+        _write_roadmap_db(
+            tmp_path,
+            [
+                ("reused-slug", RoadmapStatus.REMOVED),
+                ("reused-slug", RoadmapStatus.DELIVERED),
+            ],
+        )
+
+        assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == RoadmapStatus.DELIVERED
 
     def test_validate_all_snippets_builds_roadmap_status_map_once(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

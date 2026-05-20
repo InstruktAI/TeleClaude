@@ -426,6 +426,40 @@ class TestOperationStatusDTO:
         assert dto.poll_after_ms == 0
 
     @pytest.mark.unit
+    def test_error_payload_is_additive_structured_field(self):
+        """Structured operation failures can carry a machine-readable payload."""
+        dto = OperationStatusDTO(
+            operation_id="op-1",
+            kind="todo_remove",
+            state="failed",
+            status_path="/tmp/op-1",
+            recovery_command="telec operations get op-1",
+            error_payload={
+                "kind": "remove_refused_orphan",
+                "blocking_snippets": [
+                    {
+                        "path": "docs/project/spec/snippet.md",
+                        "slug_role": "sole",
+                        "live_deliverer_count": 0,
+                        "other_removed_deliverers": [],
+                    }
+                ],
+            },
+        )
+
+        assert dto.error_payload == {
+            "kind": "remove_refused_orphan",
+            "blocking_snippets": [
+                {
+                    "path": "docs/project/spec/snippet.md",
+                    "slug_role": "sole",
+                    "live_deliverer_count": 0,
+                    "other_removed_deliverers": [],
+                }
+            ],
+        }
+
+    @pytest.mark.unit
     def test_invalid_state_raises(self):
         """An unknown state value raises ValidationError."""
         with pytest.raises(ValidationError):

@@ -29,7 +29,7 @@ async def test_fresh_db_roadmap_has_tombstone_columns(tmp_path: Path) -> None:
     await database.close()
 
     columns = _roadmap_columns(db_path)
-    assert {"removed_at", "prev_status", "removed_deps"} <= columns
+    assert {"removed_at", "prev_status", "removed_deps", "pending_purge_paths"} <= columns
 
 
 async def test_removed_and_live_rows_share_a_slug(todos_db: TodosDb) -> None:

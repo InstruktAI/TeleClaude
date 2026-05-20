@@ -29,6 +29,7 @@ from teleclaude.core.next_machine.work import next_work
 from teleclaude.core.operation_caller_identity import reset_caller_session_id, set_caller_session_id
 from teleclaude.core.operation_progress import reset_progress_callback, set_progress_callback
 from teleclaude.core.task_registry import TaskRegistry
+from teleclaude.core.todos_db._exceptions import OperationErrorPayload, OperationFailure
 from teleclaude.events.envelope import EventVisibility
 
 logger = get_logger(__name__)
@@ -48,6 +49,7 @@ class SerializedOperation(TypedDict, total=False):
     progress_reason: str
     result: str
     error: str
+    error_payload: OperationErrorPayload
     client_request_id: str
 
 
@@ -653,10 +655,16 @@ class OperationsService:
             )
             raise
         except Exception as exc:
+            error_text = f"{type(exc).__name__}: {exc}"
+            error_payload_json: str | None = None
+            if isinstance(exc, OperationFailure):
+                error_text = exc.summary()
+                error_payload_json = json.dumps(exc.to_error_payload(), sort_keys=True)
             await self._db.fail_operation(
                 operation_id,
-                f"{type(exc).__name__}: {exc}",
+                error_text,
                 datetime.now(UTC).isoformat(),
+                error_payload_json=error_payload_json,
             )
             self._emit_completion_event(completion_event, operation_id, error=str(exc))
             logger.exception("Background operation failed for %s", operation_id)
@@ -774,6 +782,11 @@ class OperationsService:
             payload["result"] = operation.result_text
         if operation.error_text is not None:
             payload["error"] = operation.error_text
+        if operation.error_payload is not None:
+            parsed_error_payload = json.loads(operation.error_payload)
+            if not isinstance(parsed_error_payload, dict):
+                raise ValueError("operation error_payload must be a JSON object")
+            payload["error_payload"] = cast(OperationErrorPayload, parsed_error_payload)
         if operation.client_request_id is not None:
             payload["client_request_id"] = operation.client_request_id
         return payload

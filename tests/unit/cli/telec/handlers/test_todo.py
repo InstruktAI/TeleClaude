@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -18,6 +20,9 @@ from teleclaude.cli.telec.handlers.todo import (
     _handle_todo_split,
     _handle_todo_stamp,
 )
+from teleclaude.core.db import Db
+from teleclaude.core.operations.service import OperationsService
+from teleclaude.core.todos_db import close_todos_db_instances, get_todos_db
 
 _MODULE = "teleclaude.cli.telec.handlers.todo"
 _RENAME_RESULT = "renamed old-slug->new-slug (todos.db, delivered_by:1, worktree)"
@@ -87,6 +92,29 @@ class TestHandleTodoDump:
 _TODO_CONTENT = "Implement the feature"
 _TODO_SLUG = "my-slug"
 _API_DUMP_PATH = "/todos/dump"
+
+
+class _StoredTask:
+    def __init__(self) -> None:
+        self._done = False
+
+    def done(self) -> bool:
+        return self._done
+
+
+class _DeferredTaskRegistry:
+    def __init__(self) -> None:
+        self._coros: list[Awaitable[object]] = []
+
+    def spawn(self, coro: Awaitable[object], *, name: str) -> _StoredTask:
+        _ = name
+        self._coros.append(coro)
+        return _StoredTask()
+
+    async def drain(self) -> None:
+        while self._coros:
+            coro = self._coros.pop(0)
+            await coro
 
 
 class TestHandleTodoCreate:
@@ -192,6 +220,126 @@ class TestHandleTodoRemove:
             _handle_todo_remove(["my-slug"])
 
         assert "Removed todo: my-slug" in capsys.readouterr().out
+
+    def test_remove_refusal_renders_structured_payload(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        snapshot: SnapshotAssertion,
+    ) -> None:
+        receipt = {"operation_id": "op-1", "kind": "todo_remove", "state": "queued", "poll_after_ms": 250}
+        failed = {
+            "operation_id": "op-1",
+            "kind": "todo_remove",
+            "state": "failed",
+            "error": "RemoveRefused",
+            "error_payload": {
+                "kind": "remove_refused_orphan",
+                "blocking_snippets": [
+                    {
+                        "path": "/repo/docs/project/spec/snippet.md",
+                        "slug_role": "sole",
+                        "live_deliverer_count": 0,
+                        "other_removed_deliverers": [],
+                    }
+                ],
+            },
+        }
+
+        with (
+            patch(f"{_MODULE}.tool_api_call", return_value=receipt),
+            patch(f"{_MODULE}.poll_operation", return_value=failed),
+            pytest.raises(SystemExit),
+        ):
+            _handle_todo_remove(["my-slug"])
+
+        assert capsys.readouterr().err == snapshot
+
+    def test_remove_refusal_round_trips_through_operation_layer(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        cluster_event_bus: None,
+    ) -> None:
+        _ = cluster_event_bus
+
+        async def setup() -> tuple[Db, OperationsService, _DeferredTaskRegistry]:
+            project_root = tmp_path / "project"
+            project_root.mkdir()
+            monkeypatch.setenv("TELEC_INVOCATION_CWD", str(project_root))
+            snippet_path = project_root / "docs" / "project" / "spec" / "snippet.md"
+            snippet_path.parent.mkdir(parents=True, exist_ok=True)
+            snippet_path.write_text(
+                "---\n"
+                "id: project/spec/snippet\n"
+                "type: spec\n"
+                "scope: project\n"
+                "description: Snippet\n"
+                "status: target\n"
+                "delivered_by: [my-slug]\n"
+                "---\n"
+                "# Snippet\n\n"
+                "## What it is\n"
+                "A snippet.\n\n"
+                "## Canonical fields\n"
+                "Fields.\n",
+                encoding="utf-8",
+            )
+            todos_db = await get_todos_db(project_root)
+            await todos_db.add_to_roadmap(_TODO_SLUG)
+
+            database = Db(str(project_root / ".teleclaude" / "main.db"))
+            await database.initialize()
+            registry = _DeferredTaskRegistry()
+            return database, OperationsService(db=database, task_registry=registry), registry
+
+        database, service, registry = asyncio.run(setup())
+
+        def submit_remove(method: str, path: str, **kwargs: object) -> object:
+            assert method == "POST"
+            assert path == "/todos/remove"
+            body = kwargs["json_body"]
+            assert isinstance(body, dict)
+            return asyncio.run(
+                service.submit_todo_remove(
+                    slug=str(body["slug"]),
+                    cwd=str(body["cwd"]),
+                    caller_session_id="caller-123",
+                    client_request_id=str(body["client_request_id"]),
+                )
+            )
+
+        def drain_and_poll(receipt: object, *, estimated_timeout_ms: int) -> object:
+            _ = estimated_timeout_ms
+            assert isinstance(receipt, dict)
+
+            async def run() -> object:
+                await registry.drain()
+                return await service.get_operation_for_caller(
+                    operation_id=str(receipt["operation_id"]),
+                    caller_session_id="caller-123",
+                    human_role=None,
+                )
+
+            return asyncio.run(run())
+
+        try:
+            with (
+                patch(f"{_MODULE}.tool_api_call", side_effect=submit_remove),
+                patch(f"{_MODULE}.poll_operation", side_effect=drain_and_poll),
+                pytest.raises(SystemExit),
+            ):
+                _handle_todo_remove([_TODO_SLUG])
+        finally:
+            asyncio.run(database.close())
+            asyncio.run(close_todos_db_instances())
+
+        assert capsys.readouterr().err == (
+            "Remove refused; blocking snippets:\n"
+            f"- path={tmp_path}/project/docs/project/spec/snippet.md "
+            "slug_role=sole live_deliverer_count=0\n"
+            "Refused: my-slug would orphan 1 snippet(s); see structured error above.\n"
+        )
 
     def test_missing_slug_exits(self) -> None:
         with pytest.raises(SystemExit):

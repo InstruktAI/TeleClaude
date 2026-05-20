@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock
 
@@ -11,6 +13,7 @@ import pytest
 from sqlmodel import select
 
 from teleclaude.core.todos_db import TodosDb
+from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import (
     RoadmapDep,
     TodoArtifact,
@@ -19,6 +22,7 @@ from teleclaude.core.todos_db._models import (
     TodoStateModel,
 )
 from teleclaude.core.todos_db._roadmap import ReactivateRefused
+from teleclaude.docs_reconcile import scan_remove_orphans
 
 pytestmark = pytest.mark.asyncio
 
@@ -39,6 +43,34 @@ def _set_roadmap_children(todos_db: TodosDb, slug: str, children: list[str]) -> 
         conn.commit()
     finally:
         conn.close()
+
+
+def _project_root(todos_db: TodosDb) -> Path:
+    return Path(todos_db.db_path).parent
+
+
+def _write_delivered_by_snippet(project_root: Path, delivered_by: list[str]) -> Path:
+    snippet_path = project_root / "docs" / "project" / "spec" / "remove-guard.md"
+    snippet_path.parent.mkdir(parents=True, exist_ok=True)
+    snippet_path.write_text(
+        (
+            "---\n"
+            "id: project/spec/remove-guard\n"
+            "type: spec\n"
+            "scope: project\n"
+            "description: Remove guard\n"
+            "status: target\n"
+            f"delivered_by: {delivered_by}\n"
+            "---\n"
+            "# Remove Guard\n\n"
+            "## What it is\n"
+            "A remove guard.\n\n"
+            "## Canonical fields\n"
+            "Fields.\n"
+        ),
+        encoding="utf-8",
+    )
+    return snippet_path
 
 
 async def test_list_roadmap_empty_by_default(todos_db: TodosDb) -> None:
@@ -97,6 +129,96 @@ async def test_soft_remove_hides_entry_from_default_listings(todos_db: TodosDb, 
 async def test_soft_remove_nonexistent_returns_false(todos_db: TodosDb, patched_cleanup: MagicMock) -> None:
     removed = await todos_db.soft_remove_from_roadmap("ghost", cwd="/unused")
     assert removed is False
+
+
+async def test_soft_remove_refuses_when_slug_is_sole_live_snippet_deliverer(
+    todos_db: TodosDb, patched_cleanup: MagicMock
+) -> None:
+    await todos_db.add_to_roadmap("candidate")
+    project_root = _project_root(todos_db)
+    snippet_path = _write_delivered_by_snippet(project_root, ["candidate"])
+    before = snippet_path.read_bytes()
+
+    with pytest.raises(RemoveRefused) as exc_info:
+        await todos_db.soft_remove_from_roadmap("candidate", cwd=str(project_root))
+
+    assert exc_info.value.blocking_snippets[0].path == str(snippet_path)
+    assert exc_info.value.blocking_snippets[0].slug_role == "sole"
+    with todos_db._sync_session() as session:
+        entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "candidate").limit(1)).one()
+    assert entry.status == "active"
+    assert snippet_path.read_bytes() == before
+    patched_cleanup.assert_not_called()
+
+
+async def test_soft_remove_refuses_when_other_deliverers_are_already_removed(
+    todos_db: TodosDb, patched_cleanup: MagicMock
+) -> None:
+    await todos_db.add_to_roadmap("candidate")
+    await todos_db.add_to_roadmap("removed-sibling")
+    _mark_removed(todos_db, "removed-sibling")
+    project_root = _project_root(todos_db)
+    _write_delivered_by_snippet(project_root, ["candidate", "removed-sibling"])
+
+    with pytest.raises(RemoveRefused) as exc_info:
+        await todos_db.soft_remove_from_roadmap("candidate", cwd=str(project_root))
+
+    assert exc_info.value.blocking_snippets[0].slug_role == "last_live_among_removed"
+    assert exc_info.value.blocking_snippets[0].other_removed_deliverers == ["removed-sibling"]
+    with todos_db._sync_session() as session:
+        entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "candidate").limit(1)).one()
+    assert entry.status == "active"
+    patched_cleanup.assert_not_called()
+
+
+async def test_soft_remove_allows_shared_live_deliverer_without_mutating_snippet(
+    todos_db: TodosDb, patched_cleanup: MagicMock
+) -> None:
+    await todos_db.add_to_roadmap("candidate")
+    await todos_db.add_to_roadmap("live-sibling")
+    project_root = _project_root(todos_db)
+    snippet_path = _write_delivered_by_snippet(project_root, ["candidate", "live-sibling"])
+    before = snippet_path.read_bytes()
+
+    removed = await todos_db.soft_remove_from_roadmap("candidate", cwd=str(project_root))
+
+    assert removed is True
+    assert snippet_path.read_bytes() == before
+    with todos_db._sync_session() as session:
+        entry = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug == "candidate").limit(1)).one()
+    assert entry.status == "removed"
+    assert (
+        scan_remove_orphans(
+            project_root,
+            "candidate",
+            {
+                "candidate": "removed",
+                "live-sibling": "active",
+            },
+        )
+        == []
+    )
+
+
+async def test_concurrent_soft_removes_against_shared_snippet_leave_one_live_deliverer(
+    todos_db: TodosDb, patched_cleanup: MagicMock
+) -> None:
+    await todos_db.add_to_roadmap("first")
+    await todos_db.add_to_roadmap("second")
+    project_root = _project_root(todos_db)
+    _write_delivered_by_snippet(project_root, ["first", "second"])
+
+    results = await asyncio.gather(
+        todos_db.soft_remove_from_roadmap("first", cwd=str(project_root)),
+        todos_db.soft_remove_from_roadmap("second", cwd=str(project_root)),
+        return_exceptions=True,
+    )
+
+    assert sorted(type(result).__name__ for result in results) == ["RemoveRefused", "bool"]
+    assert sum(result is True for result in results) == 1
+    with todos_db._sync_session() as session:
+        rows = session.exec(select(TodoRoadmap).where(TodoRoadmap.slug.in_(("first", "second")))).all()
+    assert sorted(row.status for row in rows) == ["active", "removed"]
 
 
 async def test_slug_in_roadmap(todos_db: TodosDb) -> None:
@@ -251,6 +373,101 @@ async def test_list_roadmap_omits_removed_entries(todos_db: TodosDb) -> None:
 
     slugs = [item["slug"] for item in await todos_db.list_roadmap(include_icebox=True, include_delivered=True)]
     assert slugs == ["kept"]
+
+
+async def test_list_expired_removed_returns_pending_purge_paths(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("expired")
+    row_id = _mark_removed(todos_db, "expired")
+    with todos_db._sync_session() as session:
+        entry = session.get(TodoRoadmap, row_id)
+        assert entry is not None
+        entry.pending_purge_paths = json.dumps(["docs/a.md", "docs/b.md"])
+        session.add(entry)
+        session.commit()
+
+    rows = await todos_db.list_expired_removed("2026-05-20T00:00:00+00:00")
+
+    assert rows == [
+        {
+            "id": row_id,
+            "slug": "expired",
+            "removed_at": "2026-05-19T00:00:00+00:00",
+            "pending_purge_paths": ["docs/a.md", "docs/b.md"],
+        }
+    ]
+
+
+async def test_pending_purge_paths_round_trip_through_set_and_clear(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("expired")
+    row_id = _mark_removed(todos_db, "expired")
+
+    await todos_db.set_pending_purge_paths(row_id, ["docs/a.md"])
+
+    with todos_db._sync_session() as session:
+        entry = session.get(TodoRoadmap, row_id)
+        assert entry is not None
+        assert json.loads(entry.pending_purge_paths or "null") == ["docs/a.md"]
+
+    await todos_db.clear_pending_purge_paths(row_id)
+
+    with todos_db._sync_session() as session:
+        entry = session.get(TodoRoadmap, row_id)
+        assert entry is not None
+        assert entry.pending_purge_paths is None
+
+
+async def test_purge_one_removed_deletes_only_the_addressed_removed_row(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("first")
+    await todos_db.add_to_roadmap("second")
+    first_id = _mark_removed(todos_db, "first")
+    second_id = _mark_removed(todos_db, "second")
+
+    purged = await todos_db.purge_one_removed(first_id)
+
+    assert purged == {
+        "id": first_id,
+        "slug": "first",
+        "removed_at": "2026-05-19T00:00:00+00:00",
+    }
+    with todos_db._sync_session() as session:
+        assert session.get(TodoRoadmap, first_id) is None
+        assert session.get(TodoRoadmap, second_id) is not None
+
+
+async def test_list_expired_removed_self_heals_legacy_null_removed_at(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("legacy")
+    row_id = _mark_removed(todos_db, "legacy")
+    with todos_db._sync_session() as session:
+        entry = session.get(TodoRoadmap, row_id)
+        assert entry is not None
+        entry.removed_at = None
+        session.add(entry)
+        session.commit()
+
+    rows = await todos_db.list_expired_removed("2000-01-01T00:00:00+00:00")
+
+    assert rows == []
+    with todos_db._sync_session() as session:
+        entry = session.get(TodoRoadmap, row_id)
+        assert entry is not None
+        assert entry.removed_at is not None
+
+
+async def test_purge_expired_removed_wrapper_preserves_hard_delete_compatibility(todos_db: TodosDb) -> None:
+    await todos_db.add_to_roadmap("expired")
+    row_id = _mark_removed(todos_db, "expired")
+
+    purged = await todos_db.purge_expired_removed("2026-05-20T00:00:00+00:00")
+
+    assert purged == [
+        {
+            "id": row_id,
+            "slug": "expired",
+            "removed_at": "2026-05-19T00:00:00+00:00",
+        }
+    ]
+    with todos_db._sync_session() as session:
+        assert session.get(TodoRoadmap, row_id) is None
 
 
 @pytest.fixture

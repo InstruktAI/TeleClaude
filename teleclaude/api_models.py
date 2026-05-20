@@ -227,6 +227,22 @@ class TodoDTO(BaseModel):
     finalize_status: str | None = None
 
 
+class OperationStatusBlockingSnippetPayload(TypedDict):
+    """Machine-readable snippet blocker payload exposed by operation DTOs."""
+
+    path: str
+    slug_role: str
+    live_deliverer_count: int
+    other_removed_deliverers: list[str]
+
+
+class OperationStatusErrorPayload(TypedDict, total=False):
+    """Machine-readable operation failure payload exposed by API DTOs."""
+
+    kind: str
+    blocking_snippets: list[OperationStatusBlockingSnippetPayload]
+
+
 class OperationStatusDTO(BaseModel):
     """DTO for long-running operation receipts and status payloads."""
 
@@ -245,6 +261,7 @@ class OperationStatusDTO(BaseModel):
     progress_reason: str | None = None
     result: str | None = None
     error: str | None = None
+    error_payload: OperationStatusErrorPayload | None = None
     client_request_id: str | None = None
 
 
@@ -264,6 +281,7 @@ class OperationStatusPayload(TypedDict):
     progress_reason: NotRequired[str]
     result: NotRequired[str]
     error: NotRequired[str]
+    error_payload: NotRequired[OperationStatusErrorPayload]
     client_request_id: NotRequired[str]
 
 

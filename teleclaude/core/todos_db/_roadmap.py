@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TypedDict
 
 from sqlalchemy import delete, func, update
@@ -14,9 +15,21 @@ from sqlmodel.ext.asyncio.session import AsyncSession as SqlAsyncSession
 
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db._base import _generate_id
+from teleclaude.core.todos_db._exceptions import RemoveRefused
 from teleclaude.core.todos_db._models import ROADMAP_DEPS_TABLE, ROADMAP_TABLE, RoadmapDep, TodoRoadmap, TodoStateModel
 from teleclaude.core.todos_db._rows import RoadmapRow
 from teleclaude.core.todos_db._upcycle import canonicalize_state_for_storage
+from teleclaude.docs_reconcile import scan_remove_orphans
+
+_SOFT_REMOVE_LOCKS: dict[str, asyncio.Lock] = {}
+
+
+def _soft_remove_lock(db_path: str) -> asyncio.Lock:
+    lock = _SOFT_REMOVE_LOCKS.get(db_path)
+    if lock is None:
+        lock = asyncio.Lock()
+        _SOFT_REMOVE_LOCKS[db_path] = lock
+    return lock
 
 
 class ReactivateRefused(Exception):
@@ -65,6 +78,23 @@ class _EntryUpdates(TypedDict, total=False):
     updated_at: str
 
 
+class ExpiredRemovedRow(TypedDict):
+    """Removed roadmap row eligible for purge planning."""
+
+    id: str
+    slug: str
+    removed_at: str
+    pending_purge_paths: list[str] | None
+
+
+class PurgedRemovedRow(TypedDict):
+    """Removed roadmap row that was hard-deleted."""
+
+    id: str
+    slug: str
+    removed_at: str
+
+
 def _collect_entry_updates(
     existing: TodoRoadmap,
     *,
@@ -78,6 +108,19 @@ def _collect_entry_updates(
     if description is not None and existing.description != description:
         values["description"] = description
     return values
+
+
+def _decode_pending_purge_paths(value: str | None, *, roadmap_id: str) -> list[str] | None:
+    """Decode the durable purge-retry path list from a roadmap row."""
+    if value is None:
+        return None
+    try:
+        decoded = json.loads(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid pending_purge_paths for roadmap row {roadmap_id}") from exc
+    if not isinstance(decoded, list) or not all(isinstance(path, str) for path in decoded):
+        raise ValueError(f"Invalid pending_purge_paths for roadmap row {roadmap_id}")
+    return decoded
 
 
 class TodosDbRoadmapMixin:
@@ -103,6 +146,18 @@ class TodosDbRoadmapMixin:
             .limit(1)
         )
         return result.first()
+
+    async def _roadmap_status_map(self, session: SqlAsyncSession) -> dict[str, str]:
+        """Return a slug-status map where any non-removed row outranks removed history."""
+        rows = await session.exec(select(ROADMAP_TABLE.c.slug, ROADMAP_TABLE.c.status))
+        status_map: dict[str, str] = {}
+        for slug, status in rows.all():
+            if not isinstance(slug, str) or not isinstance(status, str):
+                continue
+            current = status_map.get(slug)
+            if current is None or (current == "removed" and status != "removed"):
+                status_map[slug] = status
+        return status_map
 
     async def _list_roadmap_models(
         self,
@@ -260,43 +315,61 @@ class TodosDbRoadmapMixin:
         before the caller's commit — the post-commit cleanup branch only fires
         on the owns-session path).
         """
+        is_draft = False
         owns_session = session is None
         db_session = session or self._session()  # type: ignore[attr-defined]
-        is_draft = False
-        try:
-            entry = await self._active_entry(db_session, slug)
-            if entry is None:
-                return False
+        async with _soft_remove_lock(self.db_path):  # type: ignore[attr-defined]
+            try:
+                if owns_session:
+                    connection = await db_session.connection()
+                    await connection.exec_driver_sql("BEGIN IMMEDIATE")
 
-            outgoing_deps = await db_session.exec(
-                select(RoadmapDep.depends_on).where(ROADMAP_DEPS_TABLE.c.slug == slug).order_by(RoadmapDep.depends_on)
-            )
-            outgoing = [str(dep) for dep in outgoing_deps.all()]
+                entry = await self._active_entry(db_session, slug)
+                if entry is None:
+                    if owns_session:
+                        await db_session.rollback()
+                    return False
 
-            state_model = await db_session.get(TodoStateModel, entry.id)
-            if state_model is not None:
-                try:
-                    is_draft = json.loads(state_model.state).get("kind") == "draft"
-                except (ValueError, TypeError):
-                    is_draft = False
+                roadmap_status_map = await self._roadmap_status_map(db_session)
+                blocking_snippets = scan_remove_orphans(Path(cwd), slug, roadmap_status_map)
+                if blocking_snippets:
+                    raise RemoveRefused(slug=slug, blocking_snippets=blocking_snippets)
 
-            now = datetime.now(UTC).isoformat()
-            entry.prev_status = entry.status
-            entry.status = "removed"
-            entry.removed_at = now
-            entry.removed_deps = json.dumps(outgoing) if outgoing else None
-            entry.updated_at = now
-            db_session.add(entry)
+                outgoing_deps = await db_session.exec(
+                    select(RoadmapDep.depends_on)
+                    .where(ROADMAP_DEPS_TABLE.c.slug == slug)
+                    .order_by(RoadmapDep.depends_on)
+                )
+                outgoing = [str(dep) for dep in outgoing_deps.all()]
 
-            await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
-            await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
+                state_model = await db_session.get(TodoStateModel, entry.id)
+                if state_model is not None:
+                    try:
+                        is_draft = json.loads(state_model.state).get("kind") == "draft"
+                    except (ValueError, TypeError):
+                        is_draft = False
 
-            if owns_session:
-                await db_session.commit()
-                self._on_mutation("todo_removed", None)
-        finally:
-            if owns_session:
-                await db_session.close()
+                now = datetime.now(UTC).isoformat()
+                entry.prev_status = entry.status
+                entry.status = "removed"
+                entry.removed_at = now
+                entry.removed_deps = json.dumps(outgoing) if outgoing else None
+                entry.updated_at = now
+                db_session.add(entry)
+
+                await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.slug == slug))
+                await db_session.exec(delete(RoadmapDep).where(ROADMAP_DEPS_TABLE.c.depends_on == slug))
+
+                if owns_session:
+                    await db_session.commit()
+                    self._on_mutation("todo_removed", None)
+            except Exception:
+                if owns_session:
+                    await db_session.rollback()
+                raise
+            finally:
+                if owns_session:
+                    await db_session.close()
 
         # Filesystem teardown runs only when this method owned the commit. A
         # caller-managed session has not yet committed at this point, so fs
@@ -413,25 +486,14 @@ class TodosDbRoadmapMixin:
             if owns_session:
                 await db_session.close()
 
-    async def purge_expired_removed(self, cutoff_iso: str) -> list[dict[str, str]]:
-        """Hard-delete every removed roadmap row whose tombstone predates ``cutoff_iso``.
+    async def list_expired_removed(self, cutoff_iso: str) -> list[ExpiredRemovedRow]:
+        """List removed roadmap rows whose tombstone predates ``cutoff_iso``.
 
         Self-heals legacy/partial rows first: any row with ``status='removed'`` and
         a NULL ``removed_at`` gets stamped with the current timestamp so it joins
         the retention window from that point forward instead of being mis-purged.
-
-        The delete is strictly row-id-addressed; the ``ON DELETE CASCADE`` foreign
-        keys clear the matching ``todo_state``, ``todo_artifacts``, and
-        ``todo_artifact_versions`` rows. Importantly, this method does **no**
-        slug-keyed work — no ``roadmap_deps`` scrub (already done at soft-remove),
-        no worktree / branch / workspace cleanup (already done at soft-remove).
-        A same-slug live todo may legitimately exist by the time purge runs;
-        touching anything keyed off the slug here would destroy *its* resources.
-
-        Returns a list of dicts ``{'id', 'slug', 'removed_at'}`` for each purged
-        row so the caller can emit per-row observability without re-querying.
         """
-        purged: list[dict[str, str]] = []
+        expired_rows: list[ExpiredRemovedRow] = []
         async with self._session() as session:  # type: ignore[attr-defined]
             now_iso = datetime.now(UTC).isoformat()
             await session.exec(
@@ -448,18 +510,73 @@ class TodosDbRoadmapMixin:
                 .where(ROADMAP_TABLE.c.removed_at < cutoff_iso)
             )
             for entry in expired.all():
-                purged.append(
+                expired_rows.append(
                     {
                         "id": str(entry.id),
                         "slug": str(entry.slug),
                         "removed_at": str(entry.removed_at),
+                        "pending_purge_paths": _decode_pending_purge_paths(
+                            entry.pending_purge_paths,
+                            roadmap_id=str(entry.id),
+                        ),
                     }
                 )
-                await session.delete(entry)
 
             await session.commit()
-        if purged:
-            self._on_mutation("todo_removed", None)
+        return expired_rows
+
+    async def set_pending_purge_paths(self, row_id: str, paths: list[str]) -> None:
+        """Persist the sweep-owned snippet paths for a removed roadmap row."""
+        encoded_paths = json.dumps(paths)
+        async with self._session() as session:  # type: ignore[attr-defined]
+            await session.exec(
+                update(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.id == row_id)
+                .values(pending_purge_paths=encoded_paths, updated_at=datetime.now(UTC).isoformat())
+            )
+            await session.commit()
+        self._on_mutation("todo_updated", None)
+
+    async def clear_pending_purge_paths(self, row_id: str) -> None:
+        """Clear the sweep-owned snippet paths for a removed roadmap row."""
+        async with self._session() as session:  # type: ignore[attr-defined]
+            await session.exec(
+                update(TodoRoadmap)
+                .where(ROADMAP_TABLE.c.id == row_id)
+                .values(pending_purge_paths=None, updated_at=datetime.now(UTC).isoformat())
+            )
+            await session.commit()
+        self._on_mutation("todo_updated", None)
+
+    async def purge_one_removed(self, row_id: str) -> PurgedRemovedRow | None:
+        """Hard-delete one removed roadmap row by durable row id.
+
+        The ``ON DELETE CASCADE`` foreign keys clear matching state and artifact
+        rows. No slug-keyed cleanup runs here because a same-slug live todo may
+        legitimately exist by the time purge runs.
+        """
+        purged: PurgedRemovedRow | None = None
+        async with self._session() as session:  # type: ignore[attr-defined]
+            entry = await session.get(TodoRoadmap, row_id)
+            if entry is None or entry.status != "removed":
+                return None
+            purged = {
+                "id": str(entry.id),
+                "slug": str(entry.slug),
+                "removed_at": str(entry.removed_at),
+            }
+            await session.delete(entry)
+            await session.commit()
+        self._on_mutation("todo_removed", None)
+        return purged
+
+    async def purge_expired_removed(self, cutoff_iso: str) -> list[PurgedRemovedRow]:
+        """Compatibility wrapper that hard-deletes every expired removed row."""
+        purged: list[PurgedRemovedRow] = []
+        for row in await self.list_expired_removed(cutoff_iso):
+            deleted = await self.purge_one_removed(row["id"])
+            if deleted is not None:
+                purged.append(deleted)
         return purged
 
     async def resolve_id(self, slug: str) -> str | None:

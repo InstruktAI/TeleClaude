@@ -47,8 +47,14 @@ from teleclaude.snippet_validation import (
 _MARKDOWN_LINK_RE = re.compile(r"^\[([^\]]+)\]\((https?://[^)]+)\)$")
 _THIRD_PARTY_TYPE = "third-party"
 _THIRD_PARTY_INDEX_NAMES = frozenset({"index.md", "index.yaml"})
-_ROADMAP_STATUS_VALUES = (RoadmapStatus.ACTIVE, RoadmapStatus.ICEBOX, RoadmapStatus.DELIVERED)
+_ROADMAP_STATUS_VALUES = (
+    RoadmapStatus.ACTIVE,
+    RoadmapStatus.ICEBOX,
+    RoadmapStatus.DELIVERED,
+    RoadmapStatus.REMOVED,
+)
 _ROADMAP_STATUS_PRIORITY = {
+    RoadmapStatus.REMOVED: -1,
     RoadmapStatus.DELIVERED: 0,
     RoadmapStatus.ACTIVE: 1,
     RoadmapStatus.ICEBOX: 1,
@@ -249,7 +255,7 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
     conn = sqlite3.connect(db_path)
     try:
         rows = conn.execute(
-            "SELECT slug, status FROM roadmap WHERE status IN (?, ?, ?)",  # guard: raw-sql
+            "SELECT slug, status FROM roadmap WHERE status IN (?, ?, ?, ?)",  # guard: raw-sql
             _ROADMAP_STATUS_VALUES,
         ).fetchall()
     except sqlite3.OperationalError as exc:

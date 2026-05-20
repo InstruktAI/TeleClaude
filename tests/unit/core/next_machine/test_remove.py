@@ -7,6 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from teleclaude.core.next_machine.remove import execute_todo_remove
+from teleclaude.core.todos_db._exceptions import RemoveRefused
+from teleclaude.docs_reconcile import BlockingSnippet
 
 pytestmark = pytest.mark.asyncio
 
@@ -37,6 +39,30 @@ async def test_execute_todo_remove_fails_when_no_live_row_removed() -> None:
         await execute_todo_remove(MagicMock(), "ghost", "/repo")
 
     mock_db.soft_remove_from_roadmap.assert_awaited_once_with("ghost", cwd="/repo")
+
+
+async def test_execute_todo_remove_preserves_remove_refusal_payload() -> None:
+    mock_db = MagicMock()
+    refusal = RemoveRefused(
+        slug="doomed",
+        blocking_snippets=[
+            BlockingSnippet(
+                path="/repo/docs/project/spec/snippet.md",
+                slug_role="sole",
+                live_deliverer_count=0,
+                other_removed_deliverers=[],
+            )
+        ],
+    )
+    mock_db.soft_remove_from_roadmap = AsyncMock(side_effect=refusal)
+
+    with (
+        patch("teleclaude.core.next_machine.remove.get_todos_db", AsyncMock(return_value=mock_db)),
+        pytest.raises(RemoveRefused) as exc_info,
+    ):
+        await execute_todo_remove(MagicMock(), "doomed", "/repo")
+
+    assert exc_info.value.blocking_snippets == refusal.blocking_snippets
 
 
 async def test_execute_todo_remove_requires_a_slug() -> None:

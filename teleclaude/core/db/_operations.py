@@ -204,6 +204,7 @@ class DbOperationsMixin:
                 state="completed",
                 result_text=result_text,
                 error_text=None,
+                error_payload=None,
                 updated_at=now_iso,
                 heartbeat_at=now_iso,
                 completed_at=now_iso,
@@ -213,7 +214,15 @@ class DbOperationsMixin:
             await db_session.exec(stmt)
             await db_session.commit()
 
-    async def fail_operation(self, operation_id: str, error_text: str, now_iso: str, *, state: str = "failed") -> None:
+    async def fail_operation(
+        self,
+        operation_id: str,
+        error_text: str,
+        now_iso: str,
+        *,
+        state: str = "failed",
+        error_payload_json: str | None = None,
+    ) -> None:
         """Mark an operation as terminal failure."""
         stmt = (
             update(db_models.Operation)
@@ -221,6 +230,7 @@ class DbOperationsMixin:
             .values(
                 state=state,
                 error_text=error_text,
+                error_payload=error_payload_json,
                 updated_at=now_iso,
                 heartbeat_at=now_iso,
                 completed_at=now_iso,
@@ -239,6 +249,7 @@ class DbOperationsMixin:
             .values(
                 state="stale",
                 error_text=error_text,
+                error_payload=None,
                 updated_at=now_iso,
                 heartbeat_at=now_iso,
                 completed_at=now_iso,
@@ -264,6 +275,7 @@ class DbOperationsMixin:
             .values(
                 state="stale",
                 error_text=error_text,
+                error_payload=None,
                 updated_at=now_iso,
                 completed_at=now_iso,
             )

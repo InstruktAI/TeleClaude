@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,13 +13,14 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.adapters.ui_adapter import UiAdapter
 from teleclaude.config import config
-from teleclaude.constants import RESTART_CONTINUATION_STIMULUS
+from teleclaude.constants import RESTART_CONTINUATION_STIMULUS, RoadmapStatus
 from teleclaude.core import polling_coordinator, session_cleanup, tmux_bridge
 from teleclaude.core.adapter_client import AdapterClient
 from teleclaude.core.agents import get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
 from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.next_machine.delivery import _run_git_cmd
 from teleclaude.core.operations import get_operations_service
 from teleclaude.core.output_poller import OutputPoller
 from teleclaude.core.session_bootstrap import ensure_tmux_with_identity
@@ -26,11 +28,15 @@ from teleclaude.core.session_utils import resolve_working_dir
 from teleclaude.core.todos_db import get_todos_db
 from teleclaude.core.voice_assignment import get_voice_env_vars
 from teleclaude.daemon_session import AGENT_PROMPT_READY_TIMEOUT_S
+from teleclaude.docs_reconcile import SnippetWriteResult, reconcile_snippets_for_purged_slugs
 from teleclaude.events import get_event_db
 from teleclaude.hooks.receiver._session import prune_session_map
+from teleclaude.resource_validation._snippet import build_roadmap_status_map
 
 if TYPE_CHECKING:
     from teleclaude.core.models import Session
+    from teleclaude.core.todos_db import TodosDb
+    from teleclaude.core.todos_db._roadmap import ExpiredRemovedRow, PurgedRemovedRow
 
 logger = get_logger(__name__)
 
@@ -42,6 +48,268 @@ COMPACTION_IDLE_THRESHOLD_S = 30 * 60  # 30 minutes — applies to any long-live
 # retention sweep and the soft-removed-todo retention sweep so the two windows
 # cannot drift apart. Mirrors the historical 7-day sessions window.
 RETENTION_WINDOW = timedelta(days=7)
+PURGE_REASON_COMMIT_FAILURE = "commit_failure"
+PURGE_REASON_FOREIGN_EDIT_ON_FRESH_PASS = "foreign_edit_on_fresh_pass"
+PURGE_REASON_GIT_ADD_FAILURE = "git_add_failure"
+PURGE_REASON_GIT_COMMAND_FAILURE = "git_command_failure"
+PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH = "layer_2_staged_set_mismatch"
+PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE = "layer_3_post_commit_verification_failure"
+
+
+def _repo_relative_path(project_root: Path, path: Path | str) -> str:
+    path_obj = Path(path)
+    if not path_obj.is_absolute():
+        return path_obj.as_posix()
+    return path_obj.relative_to(project_root).as_posix()
+
+
+def _parse_git_name_list(stdout: str) -> set[str]:
+    return {line.strip() for line in stdout.splitlines() if line.strip()}
+
+
+def _parse_git_porcelain_paths(stdout: str) -> set[str]:
+    paths: set[str] = set()
+    for line in stdout.splitlines():
+        if not line.strip():
+            continue
+        raw_path = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.rsplit(" -> ", 1)[1]
+        paths.add(raw_path.strip('"'))
+    return paths
+
+
+def _git_name_set(project_root: Path, args: list[str]) -> set[str] | None:
+    rc, stdout, stderr = _run_git_cmd(args, cwd=str(project_root))
+    if rc != 0:
+        logger.info(
+            "Removed-todo purge git command failed",
+            project_root=str(project_root),
+            reason=PURGE_REASON_GIT_COMMAND_FAILURE,
+            git_args=args,
+            stderr=stderr,
+        )
+        return None
+    return _parse_git_name_list(stdout)
+
+
+def _candidate_dirty_paths(project_root: Path, paths: list[str]) -> set[str] | None:
+    if not paths:
+        return set()
+    rc, stdout, stderr = _run_git_cmd(["status", "--porcelain", "--", *paths], cwd=str(project_root))
+    if rc != 0:
+        logger.info(
+            "Removed-todo purge git command failed",
+            project_root=str(project_root),
+            reason=PURGE_REASON_GIT_COMMAND_FAILURE,
+            git_args=["status", "--porcelain", "--", *paths],
+            stderr=stderr,
+        )
+        return None
+    return _parse_git_porcelain_paths(stdout) & set(paths)
+
+
+def _paths_match_head(project_root: Path, paths: list[str]) -> bool:
+    if not paths:
+        return True
+    rc, _stdout, _stderr = _run_git_cmd(["diff", "--quiet", "HEAD", "--", *paths], cwd=str(project_root))
+    return rc == 0
+
+
+def _write_snippet_plans(plans: list[SnippetWriteResult]) -> None:
+    for plan in plans:
+        if not plan.write_required and plan.path.read_text(encoding="utf-8") == plan.rendered_content:
+            continue
+        plan.path.write_text(plan.rendered_content, encoding="utf-8")
+        if plan.path.read_text(encoding="utf-8") != plan.rendered_content:
+            raise RuntimeError(f"Snippet purge write verification failed for {plan.path}")
+
+
+def _plans_for_paths(plans: list[SnippetWriteResult], paths: list[str], project_root: Path) -> list[SnippetWriteResult]:
+    wanted = set(paths)
+    return [plan for plan in plans if _repo_relative_path(project_root, plan.path) in wanted]
+
+
+async def _finalize_removed_row(
+    todos_db: TodosDb,
+    row: ExpiredRemovedRow,
+) -> PurgedRemovedRow | None:
+    await todos_db.clear_pending_purge_paths(row["id"])
+    return await todos_db.purge_one_removed(row["id"])
+
+
+def _verify_layer3(
+    project_root: Path,
+    row: ExpiredRemovedRow,
+    *,
+    pre_staged: set[str],
+    pending_paths: list[str],
+) -> bool:
+    pending_set = set(pending_paths)
+    cached = _git_name_set(project_root, ["diff", "--cached", "--name-only"])
+    if cached is None:
+        return False
+    staged_offenders = (cached - pre_staged) | (cached & pending_set)
+    if staged_offenders:
+        logger.info(
+            "Removed-todo purge retained pending paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=sorted(pending_set),
+            reason=PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE,
+            offending_entries=sorted(staged_offenders),
+        )
+        return False
+
+    rc, stdout, stderr = _run_git_cmd(["status", "--porcelain"], cwd=str(project_root))
+    if rc != 0:
+        logger.info(
+            "Removed-todo purge git command failed",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            reason=PURGE_REASON_GIT_COMMAND_FAILURE,
+            git_args=["status", "--porcelain"],
+            stderr=stderr,
+        )
+        return False
+    dirty_offenders = _parse_git_porcelain_paths(stdout) - pre_staged - pending_set
+    if dirty_offenders:
+        logger.info(
+            "Removed-todo purge retained pending paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=sorted(pending_set),
+            reason=PURGE_REASON_LAYER_3_POST_COMMIT_VERIFICATION_FAILURE,
+            offending_entries=sorted(dirty_offenders),
+        )
+        return False
+    return True
+
+
+async def _commit_and_finalize_removed_row(
+    project_root: Path,
+    todos_db: TodosDb,
+    row: ExpiredRemovedRow,
+    *,
+    pending_paths: list[str],
+) -> PurgedRemovedRow | None:
+    pending_set = set(pending_paths)
+    pre_staged = _git_name_set(project_root, ["diff", "--cached", "--name-only"])
+    if pre_staged is None:
+        return None
+
+    rc, _stdout, stderr = _run_git_cmd(["add", "--", *pending_paths], cwd=str(project_root))
+    if rc != 0:
+        logger.info(
+            "Removed-todo purge retained pending paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=pending_paths,
+            reason=PURGE_REASON_GIT_ADD_FAILURE,
+            stderr=stderr,
+        )
+        return None
+
+    staged = _git_name_set(project_root, ["diff", "--cached", "--name-only"])
+    if staged is None:
+        return None
+    expected = pre_staged | pending_set
+    if staged != expected:
+        logger.info(
+            "Removed-todo purge retained pending paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=pending_paths,
+            reason=PURGE_REASON_LAYER_2_STAGED_SET_MISMATCH,
+            expected=sorted(expected),
+            actual=sorted(staged),
+        )
+        return None
+
+    message = f"chore(roadmap): purge {row['slug']}; reconcile delivered_by in {len(pending_paths)} snippets"
+    rc, _stdout, stderr = _run_git_cmd(["commit", "-m", message, "--", *pending_paths], cwd=str(project_root))
+    if rc != 0:
+        logger.info(
+            "Removed-todo purge retained pending paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=pending_paths,
+            reason=PURGE_REASON_COMMIT_FAILURE,
+            stderr=stderr,
+        )
+        return None
+
+    if not _verify_layer3(project_root, row, pre_staged=pre_staged, pending_paths=pending_paths):
+        return None
+    return await _finalize_removed_row(todos_db, row)
+
+
+async def _cleanup_removed_todo_row(
+    project_root: Path,
+    todos_db: TodosDb,
+    row: ExpiredRemovedRow,
+    roadmap_status_map: Mapping[str, str],
+) -> PurgedRemovedRow | None:
+    row_status = roadmap_status_map.get(row["slug"])
+    if row_status is not None and row_status != RoadmapStatus.REMOVED:
+        return await todos_db.purge_one_removed(row["id"])
+
+    pending_paths = row["pending_purge_paths"]
+    if pending_paths is not None:
+        if not pending_paths:
+            return await _finalize_removed_row(todos_db, row)
+
+        if _paths_match_head(project_root, pending_paths):
+            pre_staged = _git_name_set(project_root, ["diff", "--cached", "--name-only"])
+            if pre_staged is None:
+                return None
+            if not _verify_layer3(project_root, row, pre_staged=pre_staged, pending_paths=pending_paths):
+                return None
+            return await _finalize_removed_row(todos_db, row)
+
+        plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], roadmap_status_map)
+        _write_snippet_plans(_plans_for_paths(plans, pending_paths, project_root))
+        return await _commit_and_finalize_removed_row(
+            project_root,
+            todos_db,
+            row,
+            pending_paths=pending_paths,
+        )
+
+    plans = reconcile_snippets_for_purged_slugs(project_root, [row["slug"]], roadmap_status_map)
+    candidate_paths = [_repo_relative_path(project_root, plan.path) for plan in plans]
+    if not candidate_paths:
+        return await todos_db.purge_one_removed(row["id"])
+
+    dirty_paths = _candidate_dirty_paths(project_root, candidate_paths)
+    if dirty_paths is None:
+        return None
+    if dirty_paths:
+        logger.info(
+            "Removed-todo purge skipped dirty candidate paths",
+            project_root=str(project_root),
+            roadmap_id=row["id"],
+            slug=row["slug"],
+            paths=sorted(dirty_paths),
+            reason=PURGE_REASON_FOREIGN_EDIT_ON_FRESH_PASS,
+        )
+        return None
+
+    await todos_db.set_pending_purge_paths(row["id"], candidate_paths)
+    row["pending_purge_paths"] = candidate_paths
+    _write_snippet_plans(plans)
+    return await _commit_and_finalize_removed_row(
+        project_root,
+        todos_db,
+        row,
+        pending_paths=candidate_paths,
+    )
 
 
 class MaintenanceService:
@@ -193,12 +461,9 @@ class MaintenanceService:
         Discovers project todo stores via the same trusted-dirs pattern that
         powers ``list_projects`` (the per-project ``.teleclaude/todos.db``
         location is the canonical workflow store; the daemon's operational DB
-        knows nothing about per-project todos). For each project, the DB-side
-        ``purge_expired_removed`` self-heals legacy tombstones, then hard-
-        deletes any row whose ``removed_at`` predates the cutoff. The cascade
-        through ``ON DELETE CASCADE`` clears state/artifacts/versions; no
-        slug-keyed work runs here — all of that ran at soft-remove while the
-        slug still unambiguously named the doomed entry.
+        knows nothing about per-project todos). For each expired removed row,
+        reconcile snippet lifecycle frontmatter before hard-delete and commit
+        the documentation change with verification.
         """
         cutoff_iso = (datetime.now(UTC) - RETENTION_WINDOW).isoformat()
         for trusted_dir in config.computer.get_all_trusted_dirs():
@@ -210,7 +475,22 @@ class MaintenanceService:
                 continue
             try:
                 todos_db = await get_todos_db(str(project_root))
-                purged = await todos_db.purge_expired_removed(cutoff_iso)
+                roadmap_status_map = build_roadmap_status_map(project_root)
+                rows = await todos_db.list_expired_removed(cutoff_iso)
+                for row in rows:
+                    purged = await _cleanup_removed_todo_row(project_root, todos_db, row, roadmap_status_map)
+                    if purged is None:
+                        continue
+                    removed_at = datetime.fromisoformat(row["removed_at"])
+                    removed_age_seconds = max(0.0, (datetime.now(UTC) - removed_at).total_seconds())
+                    logger.info(
+                        "Purged removed todo past retention",
+                        project_root=str(project_root),
+                        roadmap_id=purged["id"],
+                        slug=purged["slug"],
+                        removed_at=purged["removed_at"],
+                        removed_age_seconds=removed_age_seconds,
+                    )
             except Exception:
                 logger.warning(
                     "Removed-todo retention sweep failed for project",
@@ -218,17 +498,6 @@ class MaintenanceService:
                     exc_info=True,
                 )
                 continue
-            for row in purged:
-                removed_at = datetime.fromisoformat(row["removed_at"])
-                removed_age_seconds = max(0.0, (datetime.now(UTC) - removed_at).total_seconds())
-                logger.info(
-                    "Purged removed todo past retention",
-                    project_root=str(project_root),
-                    roadmap_id=row["id"],
-                    slug=row["slug"],
-                    removed_at=row["removed_at"],
-                    removed_age_seconds=removed_age_seconds,
-                )
 
     async def _check_idle_compaction(self) -> None:
         """Detect idle long-lived sessions and mark them for memory extraction.

@@ -276,6 +276,7 @@ class Operation(SQLModel, table=True):
     progress_reason: str | None = None
     result_text: str | None = None
     error_text: str | None = None
+    error_payload: str | None = None
     created_at: str
     updated_at: str
     started_at: str | None = None

@@ -28,6 +28,7 @@ class TodoRoadmap(SQLModel, table=True):
     removed_at: str | None = None
     prev_status: str | None = None
     removed_deps: str | None = None
+    pending_purge_paths: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: str
     updated_at: str
 

@@ -74,6 +74,7 @@ class RoadmapStatus(StrEnum):
     IN_PROGRESS = "in_progress"
     ICEBOX = "icebox"
     DELIVERED = "delivered"
+    REMOVED = "removed"
 
 
 class IntegrationPhase(StrEnum):

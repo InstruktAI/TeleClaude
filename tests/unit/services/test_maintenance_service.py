@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import sqlite3
+from collections.abc import Callable
 from contextlib import ExitStack
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -11,14 +13,28 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import frontmatter
 import pytest
 
 from teleclaude.config import TrustedDir
+from teleclaude.constants import RoadmapStatus
 from teleclaude.core.models import Session
 from teleclaude.core.todos_db import TodosDb, _instances
 from teleclaude.core.todos_db._models import TodoRoadmap
+from teleclaude.docs_reconcile import SnippetWriteResult
+from teleclaude.git import Repo
 from teleclaude.services import maintenance_service
 from teleclaude.services.maintenance_service import COMPACTION_IDLE_THRESHOLD_S, MaintenanceService
+
+_PURGED_SLUG = "purged-slug"
+_LIVE_SLUG = "live-slug"
+_SNIPPET_RELPATH = "docs/project/spec/snippet.md"
+_ROW_PURGE = "row-purge"
+_ROW_LIVE = "row-live"
+_ORDER_SET = "set"
+_ORDER_WRITE = "write"
+_ORDER_CLEAR = "clear"
+_ORDER_PURGE = "purge"
 
 
 def _make_service() -> MaintenanceService:
@@ -430,6 +446,68 @@ def _patch_trusted_dirs(monkeypatch: pytest.MonkeyPatch, paths: list[Path]) -> N
     )
 
 
+def _write_purge_snippet(project: Path, *, delivered_by: list[str]) -> Path:
+    snippet_path = project / _SNIPPET_RELPATH
+    snippet_path.parent.mkdir(parents=True, exist_ok=True)
+    snippet_path.write_text(
+        (
+            "---\n"
+            "id: project/spec/snippet\n"
+            "type: spec\n"
+            "scope: project\n"
+            "description: Snippet\n"
+            "status: target\n"
+            f"delivered_by: {delivered_by}\n"
+            "---\n"
+            "# Snippet\n\n"
+            "## What it is\n"
+            "A snippet.\n\n"
+            "## Canonical fields\n"
+            "Fields.\n"
+        ),
+        encoding="utf-8",
+    )
+    return snippet_path
+
+
+def _snippet_deliverers(path: Path) -> list[str]:
+    raw = frontmatter.load(path).metadata.get("delivered_by")
+    assert isinstance(raw, list)
+    return [str(item) for item in raw]
+
+
+async def _set_removed_row_pending(project: Path, row_id: str, paths: list[str]) -> None:
+    db = TodosDb(str(project / ".teleclaude" / "todos.db"))
+    await db.initialize()
+    try:
+        await db.set_pending_purge_paths(row_id, paths)
+    finally:
+        await db.close()
+    _instances.pop(str(project / ".teleclaude" / "todos.db"), None)
+
+
+def _fake_git_for_success(path: str, *, pre_staged: set[str] | None = None) -> Callable[..., tuple[int, str, str]]:
+    staged = set(pre_staged or set())
+
+    def fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        _ = cwd, timeout
+        if args == ["status", "--porcelain", "--", path]:
+            return 0, "", ""
+        if args == ["diff", "--cached", "--name-only"]:
+            return 0, "\n".join(sorted(staged)) + ("\n" if staged else ""), ""
+        if args == ["add", "--", path]:
+            staged.add(path)
+            return 0, "", ""
+        if args[:3] == ["commit", "-m", f"chore(roadmap): purge {_PURGED_SLUG}; reconcile delivered_by in 1 snippets"]:
+            staged.discard(path)
+            return 0, "", ""
+        if args == ["status", "--porcelain"]:
+            return 0, "", ""
+        return 1, "", f"unexpected git args: {args}"
+
+    return fake_git
+
+
 @pytest.mark.unit
 async def test_cleanup_removed_todos_purges_only_rows_past_retention(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -516,11 +594,11 @@ async def test_cleanup_removed_todos_cascades_to_state_artifacts_versions(
 
 
 @pytest.mark.unit
-async def test_cleanup_removed_todos_preserves_same_slug_live_twin(
+async def test_cleanup_removed_todos_purges_removed_row_while_preserving_same_slug_live_twin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A reused slug must keep its own roadmap_deps and resources intact when the
-    tombstoned twin is purged — proves zero slug-keyed operations at purge time."""
+    sweep sees a tombstoned twin — proves zero slug-keyed operations at purge time."""
     now = datetime.now(UTC)
     outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
     project = tmp_path / "project"
@@ -574,10 +652,268 @@ async def test_cleanup_removed_todos_preserves_same_slug_live_twin(
             conn.close()
     finally:
         await db2.close()
-    assert "row-removed" not in statuses  # tombstone gone
+    assert "row-removed" not in statuses
     assert live_deps == ["upstream"]  # live row's edges untouched
     assert resource_sentinel.exists()
     cleanup.assert_not_called()
+
+
+@pytest.mark.unit
+def test_paths_match_head_handles_files_with_trailing_newline(tmp_path: Path) -> None:
+    Repo.init(tmp_path)
+    repo = Repo(tmp_path)
+    repo.git.config("user.email", "test@example.com")
+    repo.git.config("user.name", "Test User")
+    snippet_path = tmp_path / _SNIPPET_RELPATH
+    snippet_path.parent.mkdir(parents=True)
+    snippet_path.write_text("content with final newline\n", encoding="utf-8")
+    repo.index.add([_SNIPPET_RELPATH])
+    repo.index.commit("initial")
+
+    assert maintenance_service._paths_match_head(tmp_path, [_SNIPPET_RELPATH]) is True
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_reconciles_snippets_before_purging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[
+            (_ROW_PURGE, _PURGED_SLUG, RoadmapStatus.REMOVED, outside),
+            (_ROW_LIVE, _LIVE_SLUG, RoadmapStatus.ACTIVE, None),
+        ],
+    )
+    snippet_path = _write_purge_snippet(project, delivered_by=[_PURGED_SLUG, _LIVE_SLUG])
+    _patch_trusted_dirs(monkeypatch, [project])
+    git_calls: list[list[str]] = []
+    success_git = _fake_git_for_success(_SNIPPET_RELPATH)
+
+    def fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        git_calls.append(args)
+        return success_git(args, cwd=cwd, timeout=timeout)
+
+    order: list[str] = []
+    original_set_pending = TodosDb.set_pending_purge_paths
+    original_clear_pending = TodosDb.clear_pending_purge_paths
+    original_purge_one = TodosDb.purge_one_removed
+    original_write_plans = maintenance_service._write_snippet_plans  # pylint: disable=protected-access
+
+    async def record_set_pending(self: TodosDb, row_id: str, paths: list[str]) -> None:
+        order.append(_ORDER_SET)
+        await original_set_pending(self, row_id, paths)
+
+    async def record_clear_pending(self: TodosDb, row_id: str) -> None:
+        order.append(_ORDER_CLEAR)
+        await original_clear_pending(self, row_id)
+
+    async def record_purge_one(self: TodosDb, row_id: str) -> Any:
+        order.append(_ORDER_PURGE)
+        return await original_purge_one(self, row_id)
+
+    def record_write_plans(plans: list[SnippetWriteResult]) -> None:
+        order.append(_ORDER_WRITE)
+        original_write_plans(plans)
+
+    monkeypatch.setattr("teleclaude.services.maintenance_service._run_git_cmd", fake_git)
+    monkeypatch.setattr(TodosDb, "set_pending_purge_paths", record_set_pending)
+    monkeypatch.setattr(TodosDb, "clear_pending_purge_paths", record_clear_pending)
+    monkeypatch.setattr(TodosDb, "purge_one_removed", record_purge_one)
+    monkeypatch.setattr("teleclaude.services.maintenance_service._write_snippet_plans", record_write_plans)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        remaining_ids = {
+            str(row[0])
+            for row in conn.execute("SELECT id FROM roadmap").fetchall()  # guard: raw-sql
+        }
+    finally:
+        conn.close()
+    assert _ROW_PURGE not in remaining_ids
+    assert _snippet_deliverers(snippet_path) == [_LIVE_SLUG]
+    assert order == [_ORDER_SET, _ORDER_WRITE, _ORDER_CLEAR, _ORDER_PURGE]
+    assert ["add", "--", _SNIPPET_RELPATH] in git_calls
+    assert any(
+        call[:3] == ["commit", "-m", f"chore(roadmap): purge {_PURGED_SLUG}; reconcile delivered_by in 1 snippets"]
+        for call in git_calls
+    )
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_skips_fresh_pass_when_candidate_path_is_dirty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[
+            (_ROW_PURGE, _PURGED_SLUG, RoadmapStatus.REMOVED, outside),
+            (_ROW_LIVE, _LIVE_SLUG, RoadmapStatus.ACTIVE, None),
+        ],
+    )
+    snippet_path = _write_purge_snippet(project, delivered_by=[_PURGED_SLUG, _LIVE_SLUG])
+    before = snippet_path.read_text(encoding="utf-8")
+    _patch_trusted_dirs(monkeypatch, [project])
+
+    def fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        _ = cwd, timeout
+        if args == ["status", "--porcelain", "--", _SNIPPET_RELPATH]:
+            return 0, f" M {_SNIPPET_RELPATH}\n", ""
+        return 1, "", f"unexpected git args: {args}"
+
+    monkeypatch.setattr("teleclaude.services.maintenance_service._run_git_cmd", fake_git)
+    logger_info = MagicMock()
+    monkeypatch.setattr("teleclaude.services.maintenance_service.logger.info", logger_info)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        row = conn.execute(
+            f"SELECT pending_purge_paths FROM roadmap WHERE id = '{_ROW_PURGE}'"  # guard: raw-sql
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (None,)
+    assert snippet_path.read_text(encoding="utf-8") == before
+    assert any(
+        call.kwargs.get("reason") == maintenance_service.PURGE_REASON_FOREIGN_EDIT_ON_FRESH_PASS
+        for call in logger_info.call_args_list
+    )
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_retry_match_head_skips_add_commit_and_finalizes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[(_ROW_PURGE, _PURGED_SLUG, RoadmapStatus.REMOVED, outside)],
+    )
+    _write_purge_snippet(project, delivered_by=[_LIVE_SLUG])
+    await _set_removed_row_pending(project, _ROW_PURGE, [_SNIPPET_RELPATH])
+    _patch_trusted_dirs(monkeypatch, [project])
+    git_calls: list[list[str]] = []
+
+    def fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        _ = cwd, timeout
+        git_calls.append(args)
+        if args == ["diff", "--quiet", "HEAD", "--", _SNIPPET_RELPATH]:
+            return 0, "", ""
+        if args == ["diff", "--cached", "--name-only"] or args == ["status", "--porcelain"]:
+            return 0, "", ""
+        return 1, "", f"unexpected git args: {args}"
+
+    monkeypatch.setattr("teleclaude.services.maintenance_service._run_git_cmd", fake_git)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        row = conn.execute(f"SELECT id FROM roadmap WHERE id = '{_ROW_PURGE}'").fetchone()  # guard: raw-sql
+    finally:
+        conn.close()
+    assert row is None
+    assert not any(call and call[0] == "add" for call in git_calls)
+    assert not any(call and call[0] == "commit" for call in git_calls)
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_commit_failure_retains_pending_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[
+            (_ROW_PURGE, _PURGED_SLUG, RoadmapStatus.REMOVED, outside),
+            (_ROW_LIVE, _LIVE_SLUG, RoadmapStatus.ACTIVE, None),
+        ],
+    )
+    snippet_path = _write_purge_snippet(project, delivered_by=[_PURGED_SLUG, _LIVE_SLUG])
+    await _set_removed_row_pending(project, _ROW_PURGE, [_SNIPPET_RELPATH])
+    _patch_trusted_dirs(monkeypatch, [project])
+    staged: set[str] = set()
+
+    def fake_git(args: list[str], *, cwd: str, timeout: float = 30) -> tuple[int, str, str]:
+        _ = cwd, timeout
+        if args == ["diff", "--quiet", "HEAD", "--", _SNIPPET_RELPATH]:
+            return 1, "", ""
+        if args == ["diff", "--cached", "--name-only"]:
+            return 0, "\n".join(sorted(staged)) + ("\n" if staged else ""), ""
+        if args == ["add", "--", _SNIPPET_RELPATH]:
+            staged.add(_SNIPPET_RELPATH)
+            return 0, "", ""
+        if args and args[0] == "commit":
+            return 1, "", "commit failed"
+        return 1, "", f"unexpected git args: {args}"
+
+    logger_info = MagicMock()
+    monkeypatch.setattr("teleclaude.services.maintenance_service._run_git_cmd", fake_git)
+    monkeypatch.setattr("teleclaude.services.maintenance_service.logger.info", logger_info)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        row = conn.execute(
+            f"SELECT pending_purge_paths FROM roadmap WHERE id = '{_ROW_PURGE}'"  # guard: raw-sql
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row is not None
+    assert json.loads(row[0]) == [_SNIPPET_RELPATH]
+    assert _snippet_deliverers(snippet_path) == [_LIVE_SLUG]
+    assert any(
+        call.kwargs.get("reason") == maintenance_service.PURGE_REASON_COMMIT_FAILURE
+        for call in logger_info.call_args_list
+    )
+
+
+@pytest.mark.unit
+async def test_cleanup_removed_todos_defensive_runtime_error_uses_project_error_handler(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    now = datetime.now(UTC)
+    outside = now - (maintenance_service.RETENTION_WINDOW + timedelta(hours=1))
+    project = await _seed_project_with_removed_rows(
+        tmp_path,
+        rows=[(_ROW_PURGE, _PURGED_SLUG, RoadmapStatus.REMOVED, outside)],
+    )
+    _patch_trusted_dirs(monkeypatch, [project])
+    monkeypatch.setattr(
+        "teleclaude.services.maintenance_service.reconcile_snippets_for_purged_slugs",
+        MagicMock(side_effect=RuntimeError("defensive purge failure")),
+    )
+    warning = MagicMock()
+    monkeypatch.setattr("teleclaude.services.maintenance_service.logger.warning", warning)
+
+    service = _make_service()
+    await service._cleanup_removed_todos()
+
+    conn = sqlite3.connect(str(project / ".teleclaude" / "todos.db"))
+    try:
+        row = conn.execute(
+            f"SELECT status, pending_purge_paths FROM roadmap WHERE id = '{_ROW_PURGE}'"  # guard: raw-sql
+        ).fetchone()
+    finally:
+        conn.close()
+    assert row == (RoadmapStatus.REMOVED, None)
+    warning.assert_called_once()
+    assert warning.call_args.kwargs["project_root"] == str(project)
+    assert warning.call_args.kwargs["exc_info"] is True
 
 
 @pytest.mark.unit

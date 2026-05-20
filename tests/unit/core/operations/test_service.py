@@ -20,11 +20,14 @@ import teleclaude.session_identity as session_identity_module
 from teleclaude.core.db_models import Operation
 from teleclaude.core.operation_progress import emit_operation_progress
 from teleclaude.core.operations.service import (
+    OPERATION_KIND_TODO_REMOVE,
     OPERATION_KIND_TODO_WORK,
     OperationsService,
     get_operations_service,
     set_operations_service,
 )
+from teleclaude.core.todos_db._exceptions import RemoveRefused
+from teleclaude.docs_reconcile import BlockingSnippet
 
 
 class _TaskHandle:
@@ -61,6 +64,7 @@ class _OperationValues(TypedDict, total=False):
     progress_reason: str | None
     result_text: str | None
     error_text: str | None
+    error_payload: str | None
     created_at: str
     updated_at: str
     started_at: str | None
@@ -98,6 +102,7 @@ def _operation(**overrides: Unpack[_OperationValues]) -> Operation:
         "progress_reason": None,
         "result_text": None,
         "error_text": None,
+        "error_payload": None,
         "created_at": "2024-01-01T00:00:00+00:00",
         "updated_at": "2024-01-01T00:00:00+00:00",
         "started_at": None,
@@ -384,6 +389,56 @@ async def test_run_operation_exposes_stored_caller_session_to_session_identity(c
     assert observed_session_ids == ["caller-123"]
     db.complete_operation.assert_awaited_once()
     db.fail_operation.assert_not_awaited()
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_run_operation_persists_remove_refusal_payload(cluster_event_bus: None) -> None:
+    operation = _operation(
+        operation_id="remove-op",
+        kind=OPERATION_KIND_TODO_REMOVE,
+        caller_session_id="caller-123",
+        slug="doomed",
+        state="queued",
+    )
+    db = MagicMock()
+    db.claim_operation = AsyncMock(return_value=True)
+    db.get_operation = AsyncMock(return_value=operation)
+    db.complete_operation = AsyncMock()
+    db.fail_operation = AsyncMock()
+    service = _service(db=db, heartbeat_interval_s=0.01)
+    refusal = RemoveRefused(
+        slug="doomed",
+        blocking_snippets=[
+            BlockingSnippet(
+                path="/repo/docs/project/spec/snippet.md",
+                slug_role="sole",
+                live_deliverer_count=0,
+                other_removed_deliverers=[],
+            )
+        ],
+    )
+
+    async def factory(_operation: Operation) -> str:
+        raise refusal
+
+    with patch.dict("os.environ", {}, clear=True):
+        await service._run_operation("remove-op", OPERATION_KIND_TODO_REMOVE, factory)
+
+    fail_kwargs = db.fail_operation.await_args.kwargs
+    assert json.loads(fail_kwargs["error_payload_json"]) == {
+        "kind": "remove_refused_orphan",
+        "blocking_snippets": [
+            {
+                "path": "/repo/docs/project/spec/snippet.md",
+                "slug_role": "sole",
+                "live_deliverer_count": 0,
+                "other_removed_deliverers": [],
+            }
+        ],
+    }
+    assert fail_kwargs["error_payload_json"]
+    assert db.fail_operation.await_args.args[1]
 
 
 @pytest.mark.unit

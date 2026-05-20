@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS operations (
     progress_reason TEXT,
     result_text TEXT,
     error_text TEXT,
+    error_payload TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     started_at TEXT,
