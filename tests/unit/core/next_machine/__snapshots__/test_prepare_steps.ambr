@@ -93,6 +93,19 @@
   NOTE: Required reading for this worker: agents/commands/next-review-architecture.md
   '''
 # ---
+# name: test_architecture_review_reuses_live_reviewer
+  '''
+  WORKER RE-DISPATCH (reuse): my-slug
+  
+  Execute in order:
+  
+  telec sessions send reviewer-arch-1 "Re-run your task for my-slug. The relevant artifact(s) have been updated since your prior pass. If a review-findings artifact exists, read it first: telec todo artifacts read my-slug review-findings. Then re-execute your loaded procedure on the new content. Reviewers: re-stamp via telec todo stamp my-slug --verdict approve|needs_work --phase architecture_review. Drift analyzers: stamp drift_reviewed for each re-assessed artifact."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the worker reports idle, call telec todo prepare my-slug.
+  '''
+# ---
 # name: test_blocked_no_drift_emits_blocker_resolution
   '''
   IMPORTANT: This output is an execution script. Follow it verbatim.
@@ -178,6 +191,19 @@
   You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
   
   NOTE: Required reading for this worker: agents/commands/next-drift-analyze.md
+  '''
+# ---
+# name: test_blocked_pending_drift_reuses_live_analyzer
+  '''
+  WORKER RE-DISPATCH (reuse): my-slug
+  
+  Execute in order:
+  
+  telec sessions send analyzer-1 "Re-run your task for my-slug. The relevant artifact(s) have been updated since your prior pass. If a review-findings artifact exists, read it first: telec todo artifacts read my-slug review-findings. Then re-execute your loaded procedure on the new content. Reviewers: re-stamp via telec todo stamp my-slug --verdict approve|needs_work --phase blocked. Drift analyzers: stamp drift_reviewed for each re-assessed artifact."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the worker reports idle, call telec todo prepare my-slug.
   '''
 # ---
 # name: test_plan_drafting_loads_plan_procedure
@@ -272,6 +298,19 @@
   You are an orchestrator. Execute the state machine's output verbatim. The state machine owns session lifecycle and dispatch decisions; phase is derived each call from stamped primitives (verdicts, approvals, skip stamps, drift review). Trust the process gates (pre-commit hooks, stamp clerical checks).
   
   NOTE: Required reading for this worker: agents/commands/next-review-plan.md
+  '''
+# ---
+# name: test_plan_review_reuses_live_reviewer
+  '''
+  WORKER RE-DISPATCH (reuse): my-slug
+  
+  Execute in order:
+  
+  telec sessions send reviewer-plan-1 "Re-run your task for my-slug. The relevant artifact(s) have been updated since your prior pass. If a review-findings artifact exists, read it first: telec todo artifacts read my-slug review-findings. Then re-execute your loaded procedure on the new content. Reviewers: re-stamp via telec todo stamp my-slug --verdict approve|needs_work --phase plan_review. Drift analyzers: stamp drift_reviewed for each re-assessed artifact."
+  
+  Cancel the old heartbeat timer via KillShell(shell_id=<task_id>).
+  Start a new non-blocking heartbeat timer via Bash(command="sleep 300", run_in_background=true) and save the new task_id.
+  When the worker reports idle, call telec todo prepare my-slug.
   '''
 # ---
 # name: test_prd_drafting_loads_intake_procedure
