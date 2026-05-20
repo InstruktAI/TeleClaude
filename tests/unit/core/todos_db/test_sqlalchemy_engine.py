@@ -152,7 +152,7 @@ class TestMutationHookPreserved:
         db = TodosDb(str(tmp_path / "todos.db"))
         await db.initialize()
         mutations: list[str] = []
-        db._on_mutation = lambda _event: mutations.append("fired")
+        db._on_mutation = lambda _event, _event_data=None: mutations.append("fired")
         try:
             await db.add_entry(slug="hook-test", position=1, description="Hook test")
             assert len(mutations) > 0, "Mutation callback did not fire"
