@@ -1,7 +1,10 @@
 ---
 description: 'Architecture, schema, worker design, and retry policy for the durable inbound message queue.'
+delivered_by:
+- session-projection-input-acceptance-races
 id: 'project/spec/inbound-queue'
 scope: 'project'
+status: target
 type: 'spec'
 visibility: 'public'
 ---
@@ -10,7 +13,7 @@ visibility: 'public'
 
 ## What it is
 
-The inbound queue provides guaranteed delivery of user messages to their agent sessions. Adapters enqueue messages and return immediately. A per-session worker drains the queue, delivering messages to the tmux session with FIFO ordering and exponential backoff retry.
+The inbound queue provides guaranteed delivery of user messages to their agent sessions. Adapters enqueue messages and return immediately. Successful enqueue is the accepted-input boundary for non-terminal UI input: core records accepted session metadata after durable insert and before typing callbacks, worker start, or projection-visible wakeups. A per-session worker drains the queue, delivering messages to the tmux session with FIFO ordering and exponential backoff retry.
 
 ## Canonical fields
 
@@ -80,6 +83,17 @@ Exponential backoff: `[5, 10, 20, 40, 80, 160, 300]` seconds. Index is `min(atte
 
 Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles worker crash/restart).
 
+### Accepted input metadata
+
+`InboundQueueManager.enqueue(...)` records accepted input metadata through a core-owned post-insert hook after `enqueue_inbound` returns a row id and before any queue side effects:
+
+- `last_message_sent`
+- `last_message_sent_at`
+- `last_input_origin`
+- typed origin metadata for the origin section
+
+If `enqueue_inbound` returns `None` because `(origin, source_message_id)` dedup skipped the row, the accepted metadata hook does not run. Duplicate source messages must not rewrite accepted-input state. Acceptance code must never write `last_projected_at`; the transcript projector owns that watermark.
+
 ### Delivery Function
 
 `deliver_inbound(row, client, start_polling)` in `command_handlers.py`:
@@ -87,14 +101,14 @@ Lock timeout: 5 minutes. Rows locked longer than this are reclaimable (handles w
 1. Fetch session from DB — raises if not found
 2. Startup gate: wait up to 15s for session to exit `initializing` — raises on timeout
 3. Headless adoption: if `lifecycle_status == 'headless'`, adopt a tmux session
-4. Record accepted input metadata before any projection-visible wakeup: `last_message_sent`, `last_message_sent_at`, `last_input_origin`
+4. Backfill accepted input metadata only for legacy queued rows whose accepted state is absent or stale; this fallback never advances `last_projected_at`
 5. Drop pending adapter QoS output if needed; this is delivery cleanup only, not projection truth
 6. Broadcast/project user input according to the routing and projection contracts
 7. Wrap text with bracketed paste, send via `tmux_io.process_text`
 8. On `process_text` returning False: raise `RuntimeError` (triggers retry)
 9. On success: update `last_activity`, start polling
 
-The metadata write in step 4 is the UI-origin acceptance boundary. It makes the origin fresh before the agent can produce source activity that wakes projection. Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `project/spec/session-projection`.
+Terminal input does not enter through this queue, so terminal-origin freshness is recorded by the `user_prompt_submit` hook path defined in `project/spec/session-projection`.
 
 ### Deduplication
 
@@ -114,7 +128,7 @@ Adapters that provide stable message IDs (Discord, Telegram) must pass `source_m
 
 ### Adapter Contract
 
-Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and the core delivery path records accepted state.
+Adapters enqueue via `InboundQueueManager.enqueue(...)` and return immediately. After a successful enqueue, adapters show a platform-native typing indicator. Adapters must not contain delivery logic or mutate session origin fields directly; they pass origin metadata into the queue and core records accepted state at the successful enqueue boundary.
 
 ## See Also
 

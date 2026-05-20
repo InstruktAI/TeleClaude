@@ -197,6 +197,7 @@ async def _handle_text_event(
         origin=InputOrigin.WHATSAPP.value,
         actor_id=f"whatsapp:{phone_number}",
         actor_name=phone_number,
+        source_message_id=message_id or None,
     )
     await _dispatch_whatsapp_command(
         session=session,

@@ -187,7 +187,9 @@ def test_describe_update_extras_returns_poll_update_when_present():
 async def test_handle_text_message_dispatches_typed_actor_metadata() -> None:
     """Telegram text input must populate typed actor metadata before dispatch."""
     handler = _StubInputHandlers()
-    session = SimpleNamespace(session_id="sess-123")
+    session_id = "sess-123"
+    platform_message_id = "99"
+    session = SimpleNamespace(session_id=session_id)
 
     async def _session_from_topic(_update: object) -> object | None:
         return session
@@ -202,7 +204,7 @@ async def test_handle_text_message_dispatches_typed_actor_metadata() -> None:
     )
     update.effective_message = MagicMock(
         text="hello from telegram",
-        message_id=99,
+        message_id=int(platform_message_id),
         message_thread_id=13,
     )
 
@@ -212,15 +214,16 @@ async def test_handle_text_message_dispatches_typed_actor_metadata() -> None:
     session_arg, message_id, metadata, event, payload = handler.dispatched_commands[0]
     assert isinstance(metadata, MessageMetadata)
     assert session_arg is session
-    assert message_id == "99"
+    assert message_id == platform_message_id
     assert event == "process_message"
     assert metadata.actor_id == "telegram:7"
     assert metadata.actor_name == "telegram-user"
-    assert metadata.platform_message_id == "99"
+    assert metadata.platform_message_id == platform_message_id
     assert payload == {
-        "session_id": "sess-123",
+        "session_id": session_id,
         "text": "hello from telegram",
         "origin": "telegram",
         "actor_id": "telegram:7",
         "actor_name": "telegram-user",
+        "source_message_id": platform_message_id,
     }

@@ -26,6 +26,7 @@ _FETCH_LIMIT = 1  # Process one at a time to preserve FIFO ordering
 
 TypingCallback = Callable[[str, str], Awaitable[None]]
 DeliverCallback = Callable[[InboundQueueRow], Awaitable[None]]
+PostInsertCallback = Callable[[int], Awaitable[None]]
 
 _manager: InboundQueueManager | None = None
 
@@ -88,6 +89,7 @@ class InboundQueueManager:
         actor_avatar_url: str | None = None,
         source_message_id: str | None = None,
         source_channel_id: str | None = None,
+        post_insert_callback: PostInsertCallback | None = None,
     ) -> int | None:
         """Enqueue a message, fire typing callback, and ensure worker is running.
 
@@ -108,6 +110,9 @@ class InboundQueueManager:
         if row_id is None:
             logger.debug("Inbound dedup: origin=%s msg_id=%s", origin, source_message_id)
             return None
+
+        if post_insert_callback is not None:
+            await post_insert_callback(row_id)
 
         if self._typing_callback is not None:
             try:

@@ -1,15 +1,14 @@
 ---
-description: 'Authoritative surface for the telec command-line tool.'
-id: 'project/spec/telec-cli-surface'
-scope: 'project'
-type: 'spec'
-visibility: 'public'
-status: 'mixed'
+description: Authoritative surface for the telec command-line tool.
+id: project/spec/telec-cli-surface
+scope: project
+type: spec
+visibility: public
+status: mixed
 delivered_by:
-  - 'roadmap-trash-reveal-ui'
-  - 'v2-workflow-cli-refinement-commands'
-  - 'v2-workflow-creation-cleanup'
-  - 'v1-workflow-creation-hardening'
+- roadmap-trash-reveal-ui
+- v2-workflow-cli-refinement-commands
+- v1-workflow-creation-hardening
 ---
 
 # CLI Surface — Spec
@@ -498,11 +497,11 @@ subcommands:
       changed:
         description: 'List workspace-scoped changed files — the set telec would consider for the next commit.'
       add:
-        description: 'Stage NEW (untracked) files for the next commit. Sealed equivalent of `git add` for the one case git''s data model requires staging — NEW files. Modified-tracked files do not need staging; `telec code commit` picks them up via pathspec straight from the working tree. Also handles unmerged-index files (post-conflict) for the integrator path.'
+        description: 'Stage files for the next commit. Sealed equivalent of `git add` for the three cases git''s data model genuinely requires staging: (1) NEW untracked files (must enter the index before commit pathspec can match), (2) unmerged-index files post-conflict (must be marked resolved), (3) partial-staged tracked files — staged hunks plus later working-tree delta — which must be fully (re)staged so the pathspec commit does not silently sweep in unstaged hunks; this is the recovery path the partial-staging guard in `telec code commit` directs agents to. Modified-tracked files that are NOT partial-staged do not need staging; `telec code commit` picks them up via pathspec straight from the working tree.'
         args:
           - paths: 'one or more paths (positional)'
       commit:
-        description: 'Stage workspace-scoped files and commit with a pathspec-scoped commit. Sealed contract — exactly one quoted message, optionally `--approved` and `--include <path> ...`. Nothing is forwarded to git (no `-m`, `-F`, `--`, bare pathspecs, or git flags). Modified-tracked files in scope are auto-included via pathspec; NEW files in scope are NOT auto-committed and must be declared via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts). On main + non-integrator a bare invocation surfaces the Path A/B/C classification card and exits; `--approved` is the gate to actually commit.'
+        description: 'Commit workspace-scoped changes via a pathspec-scoped commit. Sealed contract — exactly one quoted message, optionally `--approved` and `--include <path> ...`. Nothing is forwarded to git (no `-m`, `-F`, `--`, bare pathspecs, or git flags). Modified-tracked files in scope that are NOT partial-staged are auto-included via pathspec and ride straight from the working tree. Partial-staged tracked files in the pathspec are BLOCKED by the partial-staging guard (because `git commit -- <path>` would otherwise sweep unstaged hunks the agent did not declare); the agent recovers by running `telec code add <path>` to fully restage, then retries the commit. NEW (untracked) files in scope are NOT auto-committed and must be declared via `telec code add` or `--include` (safety net against incidental temp/scratch artifacts). Unmerged-index files (post-conflict) in the pathspec are staged internally for the integrator conflict path. On main + non-integrator a bare invocation surfaces the Path A/B/C classification card and exits; `--approved` is the gate to actually commit.'
         args:
           - message: 'one quoted commit message (required with --approved)'
         flags:

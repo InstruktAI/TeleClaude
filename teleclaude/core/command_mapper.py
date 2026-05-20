@@ -86,6 +86,7 @@ class CommandMapper:
                 actor_id=metadata.actor_id,
                 actor_name=metadata.actor_name,
                 actor_avatar_url=metadata.actor_avatar_url,
+                source_message_id=metadata.platform_message_id,
                 origin_metadata=metadata.origin_metadata,
             )
 
