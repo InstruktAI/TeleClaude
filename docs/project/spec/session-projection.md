@@ -4,9 +4,7 @@ id: 'project/spec/session-projection'
 scope: 'project'
 type: 'spec'
 visibility: 'public'
-status: 'target'
-delivered_by:
-  - 'session-projection-input-acceptance-races'
+status: 'actual'
 ---
 
 # Session Projection — Spec

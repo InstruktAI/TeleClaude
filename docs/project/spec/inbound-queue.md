@@ -4,9 +4,7 @@ id: 'project/spec/inbound-queue'
 scope: 'project'
 type: 'spec'
 visibility: 'public'
-status: 'target'
-delivered_by:
-  - 'session-projection-input-acceptance-races'
+status: 'actual'
 ---
 
 # Inbound Queue — Spec
