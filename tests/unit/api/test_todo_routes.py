@@ -115,10 +115,11 @@ class TestTodoRoutes:
         Depends(clearance_todos_reconcile). The dual-factor / RBAC boundary
         documented at the top of todo_routes.py is delegated to FastAPI's
         Depends graph; removing the binding silently de-authorizes the
-        endpoint. This test fails if the binding is ever dropped.
+        endpoint. Use the function reference (not a path literal) so this
+        survives URL refactors.
         """
         route = next(
-            r for r in todo_routes.router.routes if isinstance(r, APIRoute) and r.path == "/todos/reconcile/{slug}"
+            r for r in todo_routes.router.routes if isinstance(r, APIRoute) and r.endpoint is todo_routes.todo_reconcile
         )
         bound = {dep.call for dep in route.dependant.dependencies}
         assert clearance_todos_reconcile in bound
