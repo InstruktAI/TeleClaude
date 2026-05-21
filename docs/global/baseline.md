@@ -1,4 +1,5 @@
 @~/.teleclaude/docs/general/policy/autonomy.md
+@~/.teleclaude/docs/general/policy/leadership.md
 @~/.teleclaude/docs/general/policy/context-retrieval.md
 @~/.teleclaude/docs/general/policy/conflict-resolution.md
 @~/.teleclaude/docs/general/policy/heartbeat.md
