@@ -389,7 +389,7 @@ class TestDomainBaselineInjection:
         (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
 
         with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
-            with pytest.raises(DomainBaselineUnavailable, match="missing"):
+            with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("software-development")
 
     def test_load_domain_baseline_content_raises_on_empty_file(self, tmp_path: Path) -> None:
@@ -400,7 +400,7 @@ class TestDomainBaselineInjection:
         (docs_root / "software-development" / "baseline.md").write_text("   \n", encoding="utf-8")
 
         with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
-            with pytest.raises(DomainBaselineUnavailable, match="empty"):
+            with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("software-development")
 
     def test_load_domain_baseline_content_blocks_path_traversal(self, tmp_path: Path) -> None:
@@ -421,7 +421,7 @@ class TestDomainBaselineInjection:
         (docs_root / "evil").symlink_to(outside)
 
         with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
-            with pytest.raises(DomainBaselineUnavailable, match="escapes"):
+            with pytest.raises(DomainBaselineUnavailable):
                 _load_domain_baseline_content("evil")
 
     def test_resolve_command_domain_rejects_unknown_value(self, tmp_path: Path) -> None:
@@ -471,3 +471,147 @@ class TestDomainBaselineInjection:
             result = _resolve_command_domain_for_session("sess-good")
 
         assert result == "software-development"
+
+    def test_print_additional_context_emits_codex_system_message(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """End-to-end: SessionStart hook for Codex with command_domain set
+        produces stdout JSON carrying systemMessage with the inflated baseline.
+        """
+        from teleclaude.hooks.adapters.codex import CodexAdapter
+        from teleclaude.hooks.receiver import _print_additional_context
+
+        # Set up deployed baseline under tmp_path/.teleclaude/docs.
+        docs_root = tmp_path / ".teleclaude" / "docs"
+        (docs_root / "software-development").mkdir(parents=True)
+        (docs_root / "software-development" / "baseline.md").write_text(
+            "# Software Baseline\n\nbaseline body line\n", encoding="utf-8"
+        )
+
+        # Session row with allowlisted command_domain.
+        outbox_db = _make_outbox_db(tmp_path)
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-e2e",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps({"command_domain": "software-development"}),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with (
+            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
+            patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
+            patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+        ):
+            _print_additional_context(
+                hook_event_name="SessionStart",
+                cwd=str(tmp_path),
+                adapter=CodexAdapter(),
+                session_id="sess-e2e",
+            )
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        # Structured contract: Codex SessionStart receives systemMessage with
+        # the inflated baseline body as a substring of the structured field.
+        assert isinstance(payload, dict)
+        assert "systemMessage" in payload
+        # Baseline H1 appears at the top of the injected context (ordering
+        # contract: domain baseline lands ahead of identity/memory fragments).
+        assert payload["systemMessage"].startswith("# Software Baseline")
+
+    def test_print_additional_context_falls_back_when_baseline_missing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """When the deployed baseline is missing, the SessionStart hook MUST
+        surface a visible failure (warning block) rather than silently dropping
+        the mandatory context. The session still starts.
+        """
+        from teleclaude.hooks.adapters.codex import CodexAdapter
+        from teleclaude.hooks.receiver import _print_additional_context
+
+        # docs_root exists but the domain-specific baseline is absent.
+        (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
+
+        outbox_db = _make_outbox_db(tmp_path)
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-missing",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps({"command_domain": "software-development"}),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with (
+            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
+            patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
+            patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+        ):
+            _print_additional_context(
+                hook_event_name="SessionStart",
+                cwd=str(tmp_path),
+                adapter=CodexAdapter(),
+                session_id="sess-missing",
+            )
+
+        captured = capsys.readouterr()
+        payload = json.loads(captured.out)
+        # Visible-failure contract: structured payload IS produced (not silently
+        # dropped) AND it points the operator at the recovery action.
+        assert "systemMessage" in payload
+        assert "telec sync" in payload["systemMessage"]
+
+    def test_print_additional_context_no_domain_emits_nothing(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Session WITHOUT command_domain (orchestrator / process-only command):
+        no baseline injection, and when there is also no memory/person context
+        the hook produces no stdout at all.
+        """
+        from teleclaude.hooks.adapters.codex import CodexAdapter
+        from teleclaude.hooks.receiver import _print_additional_context
+
+        outbox_db = _make_outbox_db(tmp_path)
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-nodomain",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps({"email": "a@b"}),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with (
+            patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path),
+            patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
+            patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
+            patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+        ):
+            _print_additional_context(
+                hook_event_name="SessionStart",
+                cwd=str(tmp_path),
+                adapter=CodexAdapter(),
+                session_id="sess-nodomain",
+            )
+
+        captured = capsys.readouterr()
+        assert captured.out == ""

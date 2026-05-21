@@ -20,7 +20,7 @@ from sqlmodel import select
 
 from teleclaude import paths as tc_paths
 from teleclaude.config.loader import load_global_config
-from teleclaude.constants import CHECKPOINT_PREFIX, UI_MESSAGE_MAX_CHARS
+from teleclaude.constants import CHECKPOINT_PREFIX, DOMAIN_SCOPES, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
 from teleclaude.core.codex_transcript import is_codex_subagent_transcript
@@ -343,8 +343,6 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     (``DOMAIN_SCOPES``). Anything else — unknown values, path-traversal
     attempts, malformed metadata — is rejected.
     """
-    from teleclaude.constants import DOMAIN_SCOPES
-
     try:
         row = _load_session_row(session_id)
     except SQLAlchemyError:
@@ -361,7 +359,7 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     if not isinstance(domain, str) or not domain:
         return None
     if domain not in DOMAIN_SCOPES:
-        logger.warning("command_domain '%s' is not in DOMAIN_SCOPES; ignoring", domain)
+        logger.warning("command_domain_not_allowlisted", session_id=session_id, domain=domain)
         return None
     return domain
 
@@ -431,7 +429,12 @@ def _print_additional_context(
                 # visible warning so an operator/agent notices the gap. The
                 # session still starts; the agent receives a short inline
                 # notice instead of pre-loaded process enforcement.
-                logger.error("Domain baseline unavailable for session %s: %s", session_id, exc)
+                logger.error(
+                    "domain_baseline_unavailable",
+                    session_id=session_id,
+                    domain=domain,
+                    error=str(exc),
+                )
                 domain_baseline = (
                     f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
                     f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/baseline.md`, "
