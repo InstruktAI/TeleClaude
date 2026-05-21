@@ -96,6 +96,17 @@ The pathspec commit is built internally from `workspace scope plus
    No two agents can be inside their commit phase at the same time. The
    lock auto-releases on process exit or crash.
 
+   Stale `.git/index.lock` self-heal: immediately after acquiring the
+   flock, `_commit_under_lock` calls `wait_for_index_lock_clear()`. Two
+   removal paths: `lsof` shows no process holding the lock AND mtime
+   ≥ 10s (orphan signature, fast path), or mtime ≥ 180s (hung-holder
+   ceiling, slow path). Polls every 5s with structured logs at every
+   state. Self-healing without ever discarding an active git process's
+   work. The Python flock does not prevent orphan `index.lock` —
+   different lock, different file, owned by git itself — so this check
+   is the only protection against a previous git process that was
+   killed mid-write.
+
 2. **Workspace scope is authoritative — for pathspec construction, not staging.**
    `resolve_workspace_scope_resolution()` is the single owner of
    worktree-vs-shared-branch scope. The scope set drives the commit's
@@ -149,6 +160,7 @@ The pathspec commit is built internally from `workspace scope plus
 telec code commit --approved "feat(scope): subject"
   → ABC gate satisfied (--approved present)
   → lock acquired
+  → wait_for_index_lock_clear (self-heal any stale .git/index.lock)
   → workspace scope = WORKTREE → all dirty paths
   → pathspec = scope (no includes)
   → drop untracked-new files from pathspec (require explicit declaration)
