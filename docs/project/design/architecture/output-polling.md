@@ -34,8 +34,8 @@ sequenceDiagram
     participant UI
 
     loop Every configured cadence tick
-        Poller->>Tmux: capture-pane -p
-        Tmux->>Poller: Full buffer
+        Poller->>Tmux: capture-pane -p -S -<bounded lines>
+        Tmux->>Poller: Bounded pane window
         Poller->>Poller: Normalize + diff since last read
         alt New output detected
             Poller->>Coordinator: OutputChanged
@@ -102,7 +102,7 @@ sequenceDiagram
 
 ### 2. Output Detection and Streaming
 
-1. **Capture**: Execute `tmux capture-pane -p -t tc_{session_id}`
+1. **Capture**: Execute `tmux capture-pane -p -S -<bounded lines> -t tc_{session_id}`. Hot-path polling uses a small window for activity detection; non-hot fallback reads a bounded pane window before applying any character truncation.
 2. **Normalize**: Strip ANSI/control-noise for generic change detection while preserving the raw capture for Codex synthesis.
 3. **Diff**: Compare normalized buffer against last normalized read
 4. **Emit**: Send `OutputChanged` when normalized pane text changed

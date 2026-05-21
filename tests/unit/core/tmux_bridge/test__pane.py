@@ -89,7 +89,7 @@ class TestCaptureAndSessionListing:
             "-J",
             "-e",
             "-S",
-            f"-{_pane.UI_MESSAGE_MAX_CHARS}",
+            f"-{_pane.DEFAULT_CAPTURE_LINES}",
         )
 
     @pytest.mark.unit

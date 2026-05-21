@@ -35,9 +35,11 @@ from teleclaude.output_projection.conversation_projector import project_entries
 from teleclaude.output_projection.models import WEB_POLICY
 from teleclaude.types.commands import ProcessMessageCommand
 from teleclaude.utils.transcript import (
+    TranscriptTailCursor,
     _iter_claude_entries,
     _iter_codex_entries,
     _iter_gemini_entries,
+    read_appended_jsonl_entries,
 )
 
 logger = get_logger(__name__)
@@ -217,43 +219,17 @@ async def _emit_stream_finish(message_id: str) -> AsyncIterator[str]:
 async def _load_live_transcript_events(
     live_file: str,
     *,
-    file_size: int,
+    cursor: TranscriptTailCursor,
     session_id: str,
-) -> tuple[int, list[str]]:
+) -> tuple[TranscriptTailCursor, list[str]]:
     """Read newly appended transcript data and convert it into SSE events."""
     events: list[str] = []
-    try:
-        with open(live_file, "rb") as f:
-            f.seek(file_size)
-            new_bytes = f.read()
-            next_size = f.tell()
-    except OSError as exc:
-        logger.warning(
-            "Web lane error reading live transcript",
-            lane="web",
-            session_id=session_id,
-            event_type="data-session-status",
-            file=live_file,
-            error=str(exc),
-        )
-        return file_size, []
-
-    new_text = new_bytes.decode("utf-8", errors="ignore")
-    for line in new_text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            entry_value: object = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(entry_value, dict):
-            continue
-        entry: dict[str, object] = entry_value  # guard: loose-dict - JSONL parse
+    batch = read_appended_jsonl_entries(live_file, cursor)
+    for entry in batch.entries:
         for projected in project_entries([entry], WEB_POLICY):
             events.extend(convert_projected_block(projected))
 
-    return next_size, events
+    return batch.cursor, events
 
 
 async def _resolve_stream_closure(session_id: str) -> tuple[bool, str | None]:
@@ -278,7 +254,7 @@ async def _tail_live_transcript(
     live_file: str,
 ) -> AsyncIterator[str]:
     """Tail the live transcript file and yield incremental SSE events."""
-    file_size = os.path.getsize(live_file)
+    cursor = TranscriptTailCursor(offset=os.path.getsize(live_file))
     idle_elapsed = 0.0
     current_live_file = live_file
 
@@ -294,24 +270,24 @@ async def _tail_live_transcript(
             return
 
         current_size = os.path.getsize(current_live_file)
-        if current_size <= file_size:
+        if current_size <= cursor.offset:
             idle_elapsed += LIVE_POLL_INTERVAL_S
         else:
             idle_elapsed = 0.0
-            next_size, live_events = await _load_live_transcript_events(
+            next_cursor, live_events = await _load_live_transcript_events(
                 current_live_file,
-                file_size=file_size,
+                cursor=cursor,
                 session_id=session_id,
             )
-            if next_size == file_size:
+            if next_cursor == cursor:
                 return
-            file_size = next_size
+            cursor = next_cursor
             for sse_event in live_events:
                 yield sse_event
 
         if rotated_live_file and rotated_live_file != current_live_file and Path(rotated_live_file).exists():
             current_live_file = rotated_live_file
-            file_size = 0
+            cursor = TranscriptTailCursor()
 
 
 # ---------------------------------------------------------------------------

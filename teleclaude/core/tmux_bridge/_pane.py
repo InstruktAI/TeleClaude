@@ -11,7 +11,6 @@ import psutil
 from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
-from teleclaude.constants import UI_MESSAGE_MAX_CHARS
 from teleclaude.utils import strip_ansi_codes
 
 from ._subprocess import (
@@ -29,6 +28,8 @@ _SHELL_NAME = Path(os.environ.get("SHELL") or pwd.getpwuid(os.getuid()).pw_shell
 _TMUX_OPERATION_ERRORS = (OSError, ValueError, SubprocessTimeoutError)
 _TMUX_DIAGNOSTIC_ERRORS = (OSError, ValueError, TypeError, psutil.Error, SubprocessTimeoutError)
 _SNAPSHOT_MARKER = "__TELECLAUDE_PANE_SNAPSHOT_BOUNDARY_9f6d5e53__"
+DEFAULT_CAPTURE_LINES = 200
+FALLBACK_CAPTURE_LINES = 40
 
 
 @dataclass(frozen=True)
@@ -118,7 +119,7 @@ async def capture_pane(session_name: str, *, capture_lines: int | None = None) -
         # -S -N = capture from the last N lines of scrollback.
         # -J = preserve trailing spaces (better for capturing exact output)
         # -e = include escape sequences (ANSI codes for styling detection)
-        window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else UI_MESSAGE_MAX_CHARS
+        window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
         cmd = [
             config.computer.tmux_binary,
             "capture-pane",
@@ -175,7 +176,7 @@ async def collect_pane_snapshot(session_name: str, *, capture_lines: int | None 
     stable: liveness plus pane output only.
     """
 
-    window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else UI_MESSAGE_MAX_CHARS
+    window_lines = capture_lines if isinstance(capture_lines, int) and capture_lines > 0 else DEFAULT_CAPTURE_LINES
     cmd = [
         config.computer.tmux_binary,
         "capture-pane",

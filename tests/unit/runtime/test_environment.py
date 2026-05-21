@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 from teleclaude.runtime.environment import (
     compose_runtime_path,
+    filter_tui_tmux_environment,
+    reject_secret_like_environment,
     resolve_runtime_environment,
     resolve_user_shell,
 )
@@ -23,6 +25,35 @@ def test_compose_runtime_path_prepends_teleclaude_bin_and_dedupes_existing_entry
     result = compose_runtime_path(path_value, teleclaude_bin=teleclaude_bin)
 
     assert [Path(entry) for entry in result.split(os.pathsep)] == [teleclaude_bin, user_bin]
+
+
+def test_filter_tui_tmux_environment_keeps_only_non_secret_runtime_keys() -> None:
+    source = {
+        "GITHUB_PAT": "blocked",
+        "LC_ALL": "en_US.UTF-8",
+        "OPENAI_API_KEY": "blocked",
+        "PATH": "/usr/bin",
+        "TELEC_TUI_SESSION": "1",
+        "UNRELATED": "blocked",
+    }
+
+    result = filter_tui_tmux_environment(source)
+
+    assert result == {"LC_ALL": "en_US.UTF-8", "PATH": "/usr/bin", "TELEC_TUI_SESSION": "1"}
+
+
+def test_reject_secret_like_environment_removes_provider_and_credential_names() -> None:
+    source = {
+        "COLORTERM": "truecolor",
+        "DATABASE_URL": "blocked",
+        "GITHUB_PAT": "blocked",
+        "MY_SERVICE_TOKEN": "blocked",
+        "OPENAI_VOICE": "alloy",
+    }
+
+    result = reject_secret_like_environment(source)
+
+    assert result == {"COLORTERM": "truecolor", "OPENAI_VOICE": "alloy"}
 
 
 def test_resolve_user_shell_prefers_process_shell_when_it_is_not_the_wrapper(tmp_path: Path) -> None:

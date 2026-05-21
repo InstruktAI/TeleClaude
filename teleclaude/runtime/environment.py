@@ -16,6 +16,36 @@ from teleclaude.paths import BIN_DIR
 logger = get_logger(__name__)
 _SHELL_PATH_CAPTURE_TIMEOUT_SECONDS = 5
 _SHELL_CAPTURE_ENV_REMOVALS = ("ZDOTDIR", "BASH_ENV", "ENV", "TELECLAUDE_HOST_SHELL")
+_TUI_ENV_EXACT_ALLOWLIST = frozenset(
+    {
+        "APPEARANCE_MODE",
+        "COLORTERM",
+        "HOME",
+        "LANG",
+        "LOGNAME",
+        "NO_COLOR",
+        "PATH",
+        "PWD",
+        "REAL_TERM_PROGRAM",
+        "TELEC_INVOCATION_CWD",
+        "TELEC_RELOAD",
+        "TELEC_TUI_SESSION",
+        "TELECLAUDE_CONFIG_PATH",
+        "TELECLAUDE_ENV_PATH",
+        "TELECLAUDE_HOME",
+        "TEMP",
+        "TERM",
+        "TERMINAL_BG",
+        "TERM_PROGRAM",
+        "TERM_PROGRAM_VERSION",
+        "TMP",
+        "TMPDIR",
+        "USER",
+        "UV_NO_SYNC",
+    }
+)
+_SECRET_ENV_EXACT_DENYLIST = frozenset({"DATABASE_URL", "REDIS_URL", "SSH_AUTH_SOCK"})
+_SECRET_ENV_NAME_PARTS = ("TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL", "PAT")
 
 
 class RuntimeEnvironment(TypedDict):
@@ -23,6 +53,32 @@ class RuntimeEnvironment(TypedDict):
 
     PATH: str
     SHELL: NotRequired[str]
+
+
+def is_secret_like_env_name(name: str) -> bool:
+    """Return True when an env var name should not cross tmux argv boundaries."""
+
+    upper_name = name.upper()
+    if upper_name in _SECRET_ENV_EXACT_DENYLIST:
+        return True
+    parts = tuple(part for part in upper_name.split("_") if part)
+    return any(part in _SECRET_ENV_NAME_PARTS for part in parts) or upper_name.endswith("_KEY")
+
+
+def filter_tui_tmux_environment(env: Mapping[str, str]) -> dict[str, str]:
+    """Return the narrow environment allowed through tmux ``-e`` for the TUI."""
+
+    return {
+        key: value
+        for key, value in env.items()
+        if (key in _TUI_ENV_EXACT_ALLOWLIST or key.startswith("LC_")) and not is_secret_like_env_name(key)
+    }
+
+
+def reject_secret_like_environment(env: Mapping[str, str]) -> dict[str, str]:
+    """Drop secret-like env vars before they are encoded into tmux command arguments."""
+
+    return {key: value for key, value in env.items() if not is_secret_like_env_name(key)}
 
 
 def _dedupe_path_entries(entries: list[str]) -> list[str]:

@@ -454,7 +454,10 @@ async def get_session_data(
 
         tail = cmd.tail_chars if cmd.tail_chars > 0 else 2000
         try:
-            pane_output = await tmux_bridge.capture_pane(tmux_session_name, capture_lines=tail)
+            pane_output = await tmux_bridge.capture_pane(
+                tmux_session_name,
+                capture_lines=tmux_bridge.FALLBACK_CAPTURE_LINES,
+            )
         except Exception as exc:
             logger.warning(
                 "Tmux fallback capture failed for session %s (%s): %s",

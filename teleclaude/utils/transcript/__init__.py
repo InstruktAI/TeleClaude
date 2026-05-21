@@ -90,6 +90,11 @@ from teleclaude.utils.transcript._utils import (
     _parse_timestamp,
     _wrap_thinking_emphasis,
 )
+from teleclaude.utils.transcript.tailer import (
+    TranscriptTailBatch,
+    TranscriptTailCursor,
+    read_appended_jsonl_entries,
+)
 
 __all__ = [
     # _rendering
@@ -103,6 +108,8 @@ __all__ = [
     "StructuredMessage",
     "ToolCallRecord",
     "TranscriptParserInfo",
+    "TranscriptTailBatch",
+    "TranscriptTailCursor",
     "TurnTimeline",
     "_apply_tail_limit",
     "_apply_tail_limit_codex",
@@ -169,6 +176,7 @@ __all__ = [
     "parse_codex_transcript",
     "parse_gemini_transcript",
     "parse_session_transcript",
+    "read_appended_jsonl_entries",
     "render_agent_output",
     "render_clean_agent_output",
 ]

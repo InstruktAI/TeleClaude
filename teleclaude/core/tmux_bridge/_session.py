@@ -12,7 +12,7 @@ from instrukt_ai_logging import get_logger
 
 from teleclaude.config import config
 from teleclaude.paths import BIN_DIR, SHELL_DIR, TELECLAUDE_HOME, TMP_SESSIONS_DIR
-from teleclaude.runtime.environment import resolve_runtime_environment
+from teleclaude.runtime.environment import reject_secret_like_environment, resolve_runtime_environment
 
 from ._pane import session_exists
 from ._subprocess import SUBPROCESS_TIMEOUT_QUICK, SubprocessTimeoutError, communicate_with_timeout
@@ -129,7 +129,7 @@ async def _create_tmux_session(
         True if successful, False otherwise
     """
     try:
-        effective_env_vars: dict[str, str] = dict(env_vars) if env_vars else {}
+        effective_env_vars: dict[str, str] = reject_secret_like_environment(env_vars or {})
 
         # Prevent oh-my-zsh last-working-dir plugin from overriding our -c directory.
         # The plugin auto-restores the last directory when starting in $HOME unless this var is set.
@@ -321,7 +321,7 @@ async def update_tmux_session(session_name: str, env_vars: dict[str, str]) -> bo
         True if successful, False otherwise
     """
     try:
-        for var_name, var_value in env_vars.items():
+        for var_name, var_value in reject_secret_like_environment(env_vars).items():
             cmd = [config.computer.tmux_binary, "setenv", "-t", session_name, var_name, var_value]
             result = await asyncio.create_subprocess_exec(
                 *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE

@@ -18,6 +18,7 @@ from teleclaude.core.tmux_bridge._keys import (
     send_tab,
 )
 from teleclaude.core.tmux_bridge._pane import (
+    FALLBACK_CAPTURE_LINES,
     PaneSnapshot,
     capture_pane,
     collect_pane_snapshot,
@@ -55,6 +56,7 @@ __all__ = [
     "SUBPROCESS_TIMEOUT_DEFAULT",
     "SUBPROCESS_TIMEOUT_LONG",
     "SUBPROCESS_TIMEOUT_QUICK",
+    "FALLBACK_CAPTURE_LINES",
     "PaneSnapshot",
     "SubprocessTimeoutError",
     "capture_pane",

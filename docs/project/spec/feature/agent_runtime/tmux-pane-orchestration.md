@@ -45,6 +45,7 @@ When the bridge builds the tmux new-session command
 Then a per-session TMPDIR is materialized under TMP_SESSIONS_DIR / safe_session_tmp_component(session_id)
 And the directory is recreated empty with mode 0700 to drop any stray unix sockets
 And the env dict injects TELECLAUDE_HOME, SHELL=teleclaude-shell, ZDOTDIR, BASH_ENV, ENV, PATH, COLORTERM=truecolor, UV_NO_SYNC=1, ZSH_LAST_WORKING_DIRECTORY=1, TMPDIR/TMP/TEMP all pointing at the per-session TMPDIR
+And caller-supplied env vars are filtered to remove secret-like names before they are passed through tmux argv or session environment
 And each env var is validated against ^[A-Za-z_][A-Za-z0-9_]*$ — invalid names raise ValueError
 And tmux is invoked as `tmux new-session -d -s <name> -c <working_dir> [-e VAR=VAL ...] <shell_command>` with shell_command=`VAR=val ... exec teleclaude-shell`
 And on success, a follow-up `set-environment -u NO_COLOR ; set-option destroy-unattached off ; set-hook client-detached run-shell true` setup chain runs, with per-step markers logged so the failing step can be identified
@@ -72,7 +73,7 @@ When collect_pane_snapshot(session_name, capture_lines=N) is invoked
 Then ONE tmux process runs the chained command:
     capture-pane -t <name> -p -J -e -S -<N> ; display-message -p <BOUNDARY_MARKER> ; list-panes -t <name> -F '#{pane_dead}'
 And the boundary marker partitions stdout into pane output (raw) and pane_dead lines
-And if N is omitted or non-positive, N defaults to UI_MESSAGE_MAX_CHARS (3900) — see Known caveats
+And if N is omitted or non-positive, N defaults to DEFAULT_CAPTURE_LINES (200); hot poller callers pass their own smaller window
 And the result is a PaneSnapshot(session_exists, pane_dead, output_raw, output_normalized)
 And output_normalized strips ANSI, normalizes CRLF/CR to LF, and rstrips each line
 And if tmux stderr matches "can't find" or "no such" (case-insensitive), session_exists=False is returned without raising
@@ -88,7 +89,7 @@ Then tmux is invoked as `capture-pane -t <name> -p -J -e -S -<N>`
 And on returncode==0, the raw decoded stdout is returned
 And on returncode!=0 the call logs and returns "" (empty string)
 And on SubprocessTimeoutError or OSError the exception is re-raised
-And the same UI_MESSAGE_MAX_CHARS fallback applies when capture_lines is omitted
+And the same DEFAULT_CAPTURE_LINES fallback applies when capture_lines is omitted
 ```
 
 #### Send-keys uses the load-buffer / paste-buffer / send-keys C-m pipeline
@@ -214,7 +215,7 @@ And the call returns True on returncode==0
 
 ## Known caveats
 
-- **`capture_lines` parameter conflates a char budget with a line count.** Both `capture_pane` and `collect_pane_snapshot` accept `capture_lines: int | None`; when omitted, the value defaults to `UI_MESSAGE_MAX_CHARS` (3900) and is passed verbatim as `-S -<N>` to tmux. tmux interprets `-S -N` as "start N lines back in the scrollback," not as a character budget. The effect is that the default fetches 3900 LINES of scrollback when the constant is intended to bound MESSAGE CHARS. v1 has lived with this conflation. v2 is expected to separate the two concerns.
+- **Pane capture line budgets and message char budgets are separate.** `capture_pane` and `collect_pane_snapshot` accept `capture_lines: int | None`; when omitted, the line budget defaults to `DEFAULT_CAPTURE_LINES` (200). Session-data fallback callers use `FALLBACK_CAPTURE_LINES` (40) for the tmux read, then apply their independent `tail_chars` message budget.
 - **`send_keys` auto-creates on miss.** If the named tmux session is gone (crashed, killed externally), `send_keys` silently calls `ensure_tmux_session` and the text is delivered to a freshly created session with no prior state. The docstring is explicit: "Previous state is lost - this is NOT recovery, just creating a new session so the user can continue working." Callers that need miss-as-error must call `send_keys_existing_tmux` (with their own existence check) instead.
 - **Per-session TMPDIR is the Claude Code unix-socket workaround.** Claude Code's `fs.watch` can crash on macOS if TMPDIR contains stray unix sockets (e.g., `docker_cli_*`). The bridge mitigates this by giving every tmux session its own freshly-created, 0700, empty TMPDIR rather than sharing the global one. The directory is created on session start and not removed by `kill_session` — cleanup lives with higher-level lifecycle code.
 - **Setup chain failures are non-fatal but only logged.** After `new-session` succeeds, the `set-environment -u NO_COLOR ; set-option destroy-unattached off ; set-hook client-detached run-shell true` chain runs and is allowed to fail — `_describe_setup_chain_failure` reconstructs which step failed from chain markers in stdout. The session is still considered created. Symptoms (color leakage, premature destroy on detach) may surface later if a step silently failed.

@@ -54,6 +54,7 @@ from teleclaude.cli.telec.surface import (  # type: ignore[attr-defined]
 from teleclaude.cli.tool_client import ToolAPIError
 from teleclaude.constants import ENV_ENABLE, MAIN_MODULE
 from teleclaude.logging_config import setup_logging
+from teleclaude.runtime.environment import filter_tui_tmux_environment
 
 # Handler modules (handlers.{auth_cmds,bugs,code,config,content,docs,events_signals,
 # history,memories,misc,roadmap,todo}) and tool_commands are lazy-loaded inside
@@ -201,10 +202,10 @@ def _exec_tmux_tui() -> None:
             capture_output=True,
         )
 
-    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME, "-e", f"{TUI_ENV_KEY}={ENV_ENABLE}"]
-    for key, value in os.environ.items():
-        if key == TUI_ENV_KEY:
-            continue
+    tui_env = filter_tui_tmux_environment(os.environ)
+    tui_env[TUI_ENV_KEY] = ENV_ENABLE
+    tmux_args = [tmux, "new-session", "-s", TUI_SESSION_NAME]
+    for key, value in tui_env.items():
         tmux_args.extend(["-e", f"{key}={value}"])
     tmux_args.append("telec")
     os.execlp(tmux, *tmux_args)

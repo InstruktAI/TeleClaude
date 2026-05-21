@@ -52,7 +52,7 @@ When _parse_session_messages_query builds the SessionMessagesQuery
 Then since: an ISO 8601 UTC timestamp; the projector drops entries strictly before it
 And include_tools: when False, tool_use / tool_result blocks are excluded from the projection AND from MessageDTO output
 And include_thinking: when False, thinking / reasoning blocks are excluded
-And tail_chars: bounds the FALLBACK tmux/session tail char budget only (default 10000); has no effect on the structured-transcript path
+And tail_chars: bounds the FALLBACK tmux/session output char budget only (default 10000); has no effect on the structured-transcript path or the pane-capture line window
 And entry_index + file_index on each MessageDTO identify the source position (which file in the chain, which entry within it) so downstream callers can dedupe across reads
 ```
 
@@ -67,7 +67,7 @@ And otherwise returns an empty messages list
 And status/timestamp/agent_status fields are still populated from session-ledger metadata
 ```
 
-The fallback is the "tmux tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the daemon scrapes the live tmux pane buffer through `get_session_data` and returns the raw assistant-side text as one block.
+The fallback is the "tmux tail" path — for sessions whose transcript has not yet appeared (agent just started, native file not flushed) or has been removed (e.g., the agent CLI rotated logs), the daemon scrapes a bounded live tmux pane window through `get_session_data` and returns the raw assistant-side text as one block.
 
 #### Role inference
 
@@ -122,7 +122,7 @@ Then the daemon returns the access-control error from check_session_access (typi
 - **Fallback collapses many lines into one MessageDTO.** When the structured path yields no entries, the tmux-tail text is returned as a single `assistant` text block with `entry_index=0, file_index=0`. Callers expecting one DTO per logical message must detect this case (e.g., by the synthetic `timestamp=None`).
 - **`since` semantics are projector-defined.** The projector compares against entry timestamps when they are present; entries without timestamps cannot be reliably filtered and may pass through.
 - **`include_tools` is one knob for tool_use AND tool_result.** The endpoint sets both `include_tools` and `include_tool_results` on the `VisibilityPolicy` from the single query flag — a caller cannot ask for tool_use only.
-- **`tail_chars` only affects the fallback path.** It is silently ignored when the structured projection succeeds. Positive values are honored as supplied; zero or negative values fall back to 10000 inside `get_session_messages` (`tail_chars if tail_chars > 0 else 10000`).
+- **`tail_chars` only affects fallback output truncation.** It is silently ignored when the structured projection succeeds. Positive values are honored as supplied; zero or negative values fall back to 10000 inside `get_session_messages` (`tail_chars if tail_chars > 0 else 10000`). The fallback tmux capture itself uses a small fixed line window before this character truncation is applied.
 - **Revivals widen the chain monotonically.** Each `agent_restart` / revive that begins a new native session appends to `session.transcript_files`; old files remain referenced. Disk pressure scales with revive count for long-lived sessions.
 - **No streaming.** This endpoint returns a single snapshot. The live streaming surface is the SSE / listener path described elsewhere.
 - **Role inference is parser-supplied, not endpoint-supplied.** Don't expect `get_session_messages` to second-guess `MessageDTO.role` — it is exactly what the per-agent parser produced. The slash-command `_infer_role_from_message` in the same module is an unrelated dispatch-side helper.

@@ -484,7 +484,9 @@ class TestGetSessionData:
     ) -> None:
         session = make_session(native_log_file=None, last_output_at=None)
         db = SimpleNamespace(get_session=AsyncMock(return_value=session))
-        tmux_bridge = SimpleNamespace(capture_pane=AsyncMock(return_value="\x1b[31mhello world\x1b[0m"))
+        tmux_bridge = SimpleNamespace(
+            capture_pane=AsyncMock(return_value="\x1b[31mhello world\x1b[0m"), FALLBACK_CAPTURE_LINES=40
+        )
 
         monkeypatch.setattr(_session, "db", db)
         monkeypatch.setattr(_session, "tmux_bridge", tmux_bridge)
@@ -497,6 +499,10 @@ class TestGetSessionData:
         assert result["status"] == "success"
         assert result["messages"] == "world"
         assert "\x1b" not in str(result["messages"])
+        tmux_bridge.capture_pane.assert_awaited_once_with(
+            session.tmux_session_name,
+            capture_lines=_session.tmux_bridge.FALLBACK_CAPTURE_LINES,
+        )
 
     @pytest.mark.unit
     async def test_existing_native_log_is_parsed_to_messages(
