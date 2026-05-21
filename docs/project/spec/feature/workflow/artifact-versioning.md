@@ -15,8 +15,8 @@ description: 'Multi-version storage of workflow Artifacts in todos.db — every 
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/workflow.md
 
 ## What it is
