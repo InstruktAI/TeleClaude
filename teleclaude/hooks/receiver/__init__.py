@@ -19,7 +19,7 @@ from sqlmodel import Session as SqlSession
 from sqlmodel import select
 
 from teleclaude import paths as tc_paths
-from teleclaude.config import config
+from teleclaude.config.loader import load_global_config
 from teleclaude.constants import CHECKPOINT_PREFIX, UI_MESSAGE_MAX_CHARS
 from teleclaude.core import db_models
 from teleclaude.core.agents import AgentName, get_default_agent
@@ -197,7 +197,7 @@ def _resolve_identity_context(session_id: str) -> tuple[str | None, str | None]:
     human_email = getattr(row, "human_email", None)
     if not human_email:
         return identity_key, None
-    people = getattr(config, "people", [])
+    people = load_global_config().people
     person = next((person for person in people if person.email == human_email), None)
     if person is None:
         return identity_key, None
@@ -305,17 +305,14 @@ def _maybe_checkpoint_output(
 
 
 def _render_person_header(person: PersonEntry) -> str:
-    """Render human-readable person header with expertise or proficiency."""
+    """Render human-readable header for the human who owns this session chain."""
     name = person.name
     expertise = person.expertise
-    proficiency = person.proficiency
 
     if not expertise:
-        if proficiency:
-            return f"Human in the loop: {name} ({proficiency})"
-        return f"Human in the loop: {name}"
+        return f"Human owner: {name}"
 
-    lines = [f"Human in the loop: {name}", "Expertise:"]
+    lines = [f"Human owner: {name}", "Expertise:"]
     for domain, value in expertise.items():
         if isinstance(value, str):
             lines.append(f"  {domain}: {value}")
@@ -341,7 +338,13 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     This helper lets the SessionStart hook discover that value so the
     domain-baseline content is injected BEFORE the agent processes the
     command's own Required reads.
+
+    Returns the domain only when it matches the configured allowlist
+    (``DOMAIN_SCOPES``). Anything else — unknown values, path-traversal
+    attempts, malformed metadata — is rejected.
     """
+    from teleclaude.constants import DOMAIN_SCOPES
+
     try:
         row = _load_session_row(session_id)
     except SQLAlchemyError:
@@ -355,26 +358,47 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     if not isinstance(origin, dict):
         return None
     domain = origin.get("command_domain")
-    return domain if isinstance(domain, str) and domain else None
+    if not isinstance(domain, str) or not domain:
+        return None
+    if domain not in DOMAIN_SCOPES:
+        logger.warning("command_domain '%s' is not in DOMAIN_SCOPES; ignoring", domain)
+        return None
+    return domain
 
 
-def _load_domain_baseline_content(domain: str) -> str | None:
-    """Return the inflated content of the named domain baseline, or None if unavailable.
+class DomainBaselineUnavailable(RuntimeError):
+    """Raised when a session's configured domain baseline cannot be loaded."""
+
+
+def _load_domain_baseline_content(domain: str) -> str:
+    """Return the inflated content of the named domain baseline.
 
     The deploy pipeline writes a single fully-expanded baseline file at
     ``~/.teleclaude/docs/<domain>/baseline.md`` per source manifest. This
     helper reads it for injection at SessionStart so the agent — including
     runtimes that do not auto-follow ``@`` refs — has the full domain
     process-enforcement baseline loaded before the first user message.
+
+    The caller is expected to have validated ``domain`` against
+    ``DOMAIN_SCOPES``. As defence-in-depth, the resolved path is verified to
+    live under the canonical docs root before reading. Raises
+    ``DomainBaselineUnavailable`` when the deployed baseline is missing,
+    unreadable, or empty — the SessionStart hook surfaces this as a visible
+    failure rather than silently dropping mandatory context.
     """
-    baseline_path = Path.home() / ".teleclaude" / "docs" / domain / "baseline.md"
-    if not baseline_path.is_file():
-        return None
+    docs_root = (Path.home() / ".teleclaude" / "docs").resolve()
+    candidate = (docs_root / domain / "baseline.md").resolve()
+    if docs_root not in candidate.parents:
+        raise DomainBaselineUnavailable(f"resolved baseline path {candidate} escapes {docs_root}")
+    if not candidate.is_file():
+        raise DomainBaselineUnavailable(f"deployed baseline missing at {candidate}")
     try:
-        text = baseline_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    return text if text.strip() else None
+        text = candidate.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise DomainBaselineUnavailable(f"failed to read {candidate}: {exc}") from exc
+    if not text.strip():
+        raise DomainBaselineUnavailable(f"deployed baseline at {candidate} is empty")
+    return text
 
 
 def _print_additional_context(
@@ -400,7 +424,19 @@ def _print_additional_context(
     if session_id:
         domain = _resolve_command_domain_for_session(session_id)
         if domain:
-            domain_baseline = _load_domain_baseline_content(domain)
+            try:
+                domain_baseline = _load_domain_baseline_content(domain)
+            except DomainBaselineUnavailable as exc:
+                # Mandatory baseline cannot be silently dropped — surface a
+                # visible warning so an operator/agent notices the gap. The
+                # session still starts; the agent receives a short inline
+                # notice instead of pre-loaded process enforcement.
+                logger.error("Domain baseline unavailable for session %s: %s", session_id, exc)
+                domain_baseline = (
+                    f"WARNING: mandatory '{domain}' domain baseline could not be loaded "
+                    f"({exc}). Run `telec sync` to regenerate `~/.teleclaude/docs/{domain}/baseline.md`, "
+                    "then continue."
+                )
 
     context = _get_memory_context(project_name, identity_key=identity_key)
     if not context and not person_header and not domain_baseline:

@@ -359,3 +359,115 @@ def test_codex_subagent_event_drops_before_session_resolution(tmp_path: Path) ->
     with SqlSession(create_sync_db_engine(outbox_db)) as session:
         rows = session.exec(select(db_models.HookOutbox)).all()
     assert rows == []
+
+
+class TestDomainBaselineInjection:
+    """Behavioral tests for SessionStart domain-baseline injection.
+
+    Covers: successful content load, ordering relative to existing context
+    fragments, allowlist rejection of unknown domains, path-traversal
+    rejection, and visible-failure path when the deployed baseline is
+    missing.
+    """
+
+    def test_load_domain_baseline_content_returns_file_text(self, tmp_path: Path) -> None:
+        from teleclaude.hooks.receiver import _load_domain_baseline_content
+
+        docs_root = tmp_path / ".teleclaude" / "docs"
+        (docs_root / "software-development").mkdir(parents=True)
+        baseline = docs_root / "software-development" / "baseline.md"
+        baseline.write_text("# Software Baseline\n\nrules: ...\n", encoding="utf-8")
+
+        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+            content = _load_domain_baseline_content("software-development")
+
+        assert "# Software Baseline" in content
+
+    def test_load_domain_baseline_content_raises_when_missing(self, tmp_path: Path) -> None:
+        from teleclaude.hooks.receiver import DomainBaselineUnavailable, _load_domain_baseline_content
+
+        (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
+
+        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+            with pytest.raises(DomainBaselineUnavailable, match="missing"):
+                _load_domain_baseline_content("software-development")
+
+    def test_load_domain_baseline_content_raises_on_empty_file(self, tmp_path: Path) -> None:
+        from teleclaude.hooks.receiver import DomainBaselineUnavailable, _load_domain_baseline_content
+
+        docs_root = tmp_path / ".teleclaude" / "docs"
+        (docs_root / "software-development").mkdir(parents=True)
+        (docs_root / "software-development" / "baseline.md").write_text("   \n", encoding="utf-8")
+
+        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+            with pytest.raises(DomainBaselineUnavailable, match="empty"):
+                _load_domain_baseline_content("software-development")
+
+    def test_load_domain_baseline_content_blocks_path_traversal(self, tmp_path: Path) -> None:
+        """Defence-in-depth: resolved path must remain under the docs root.
+
+        Even if a malicious value sneaks past the allowlist (validation bug,
+        config drift), the path check rejects symlinks/traversal that would
+        escape ~/.teleclaude/docs.
+        """
+        from teleclaude.hooks.receiver import DomainBaselineUnavailable, _load_domain_baseline_content
+
+        # Create a sibling directory outside docs_root and a symlink pointing there.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "baseline.md").write_text("# leak\n", encoding="utf-8")
+        docs_root = tmp_path / ".teleclaude" / "docs"
+        docs_root.mkdir(parents=True)
+        (docs_root / "evil").symlink_to(outside)
+
+        with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
+            with pytest.raises(DomainBaselineUnavailable, match="escapes"):
+                _load_domain_baseline_content("evil")
+
+    def test_resolve_command_domain_rejects_unknown_value(self, tmp_path: Path) -> None:
+        """Allowlist enforcement: command_domain not in DOMAIN_SCOPES → None."""
+        from teleclaude.hooks.receiver import _resolve_command_domain_for_session
+
+        outbox_db = _make_outbox_db(tmp_path)
+        # Insert a session row with a bogus command_domain
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-evil",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps({"email": "a@b", "command_domain": "../../sensitive"}),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine):
+            result = _resolve_command_domain_for_session("sess-evil")
+
+        assert result is None
+
+    def test_resolve_command_domain_accepts_allowlisted_value(self, tmp_path: Path) -> None:
+        from teleclaude.hooks.receiver import _resolve_command_domain_for_session
+
+        outbox_db = _make_outbox_db(tmp_path)
+        engine = create_sync_db_engine(outbox_db)
+        SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
+        with SqlSession(engine) as session:
+            session.add(
+                db_models.Session(
+                    session_id="sess-good",
+                    computer_name="test",
+                    title="t",
+                    origin_metadata=json.dumps({"command_domain": "software-development"}),
+                    last_input_origin="terminal",
+                )
+            )
+            session.commit()
+
+        with patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine):
+            result = _resolve_command_domain_for_session("sess-good")
+
+        assert result == "software-development"

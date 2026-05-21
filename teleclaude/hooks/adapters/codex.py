@@ -39,7 +39,17 @@ class CodexAdapter(HookAdapter):
         return json.dumps({"decision": "block", "reason": reason})
 
     def format_additional_context(self, hook_event_name: str, context: str) -> str:
-        """Codex additional-context output is currently unused."""
+        """Serialize additional context for Codex via the ``systemMessage`` channel.
+
+        Codex's SessionStart, UserPromptSubmit, and Stop hooks accept a
+        ``systemMessage`` field on stdout-JSON (see ``Common output fields``
+        in the AGENTS.md hooks doc). Returning it here lets the receiver
+        deliver domain-baseline content and memory context into the Codex
+        agent's startup, matching the contract already used for Claude and
+        Gemini. An empty context produces no output so the receiver skips
+        printing.
+        """
         del hook_event_name
-        del context
-        return ""
+        if not context:
+            return ""
+        return json.dumps({"systemMessage": context})

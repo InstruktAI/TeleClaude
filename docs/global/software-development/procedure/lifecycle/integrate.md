@@ -58,7 +58,7 @@ The branch has been squash-merged; staged changes are ready.
    - Subject: imperative, scoped — e.g. `feat(my-feature): deliver my-feature`
    - Body: summarize what changed, key decisions, scope
    - Footer: `Co-Authored-By: TeleClaude <noreply@instrukt.ai>`
-3. Run `telec code commit -- -m '<message>'`, then call `telec todo integrate`.
+3. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 4. When the state machine reaches push, `make lint` and `make test` must already be green.
 
 ### CONFLICT RESOLUTION REQUIRED
@@ -91,7 +91,7 @@ contributions — this is the #1 cause of silent regression in multi-agent workf
 6. Stage resolved files with `git add <files>`.
 7. Compose a commit message (same quality standard as squash commit). In the body,
    note which conflicts were resolved and how both sides' contributions were preserved.
-8. Run `telec code commit -- -m '<message>'`, then call `telec todo integrate`.
+8. Run `telec code commit --approved '<message>'`, then call `telec todo integrate`.
 9. If conflicts are genuinely unresolvable, call `telec todo integrate` without
    committing — the state machine will detect this and re-prompt.
 10. Before any push, `make lint` and `make test` must pass.
