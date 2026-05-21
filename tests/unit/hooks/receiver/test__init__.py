@@ -17,9 +17,10 @@ from teleclaude.constants import DOMAIN_SCOPES
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.events import AgentHookEvents
-from teleclaude.hooks.adapters.codex import CodexAdapter
+from teleclaude.hooks.adapters.codex import CODEX_OUTPUT_SYSTEM_MESSAGE, CodexAdapter
 from teleclaude.hooks.receiver import (
     _HOOK_COALESCE_WINDOWS_S,
+    EVENT_DOMAIN_BASELINE_UNAVAILABLE,
     DomainBaselineUnavailable,
     _handle_user_prompt_submit,
     _is_system_injected_user_prompt,
@@ -524,23 +525,25 @@ class TestDomainBaselineInjection:
         payload = json.loads(captured.out)
         # Structured contract: Codex SessionStart receives systemMessage with
         # the inflated baseline body. Identity comparison against the same
-        # loader the production code uses — no inline string copy.
+        # loader the production code uses — no inline string copy. The key
+        # itself is referenced through the production constant.
         assert isinstance(payload, dict)
-        assert "systemMessage" in payload
+        assert CODEX_OUTPUT_SYSTEM_MESSAGE in payload
         with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
-            expected = _load_domain_baseline_content("software-development")
-        assert payload["systemMessage"] == expected
+            expected = _load_domain_baseline_content(DOMAIN_SCOPES[0])
+        assert payload[CODEX_OUTPUT_SYSTEM_MESSAGE] == expected
 
     def test_print_additional_context_falls_back_when_baseline_missing(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path
     ) -> None:
         """When the deployed baseline is missing, the SessionStart hook MUST
-        surface a visible failure (warning block) rather than silently dropping
-        the mandatory context. The session still starts.
+        surface the failure as a structured error event (named-constant
+        identity), rather than silently dropping mandatory context. The
+        session still starts.
         """
-
         # docs_root exists but the domain-specific baseline is absent.
         (tmp_path / ".teleclaude" / "docs").mkdir(parents=True)
+        domain = DOMAIN_SCOPES[0]
 
         outbox_db = _make_outbox_db(tmp_path)
         engine = create_sync_db_engine(outbox_db)
@@ -551,7 +554,7 @@ class TestDomainBaselineInjection:
                     session_id="sess-missing",
                     computer_name="test",
                     title="t",
-                    origin_metadata=json.dumps({"command_domain": "software-development"}),
+                    origin_metadata=json.dumps({"command_domain": domain}),
                     last_input_origin="terminal",
                 )
             )
@@ -562,6 +565,7 @@ class TestDomainBaselineInjection:
             patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine),
             patch("teleclaude.hooks.receiver._resolve_identity_context", return_value=(None, None)),
             patch("teleclaude.hooks.receiver._get_memory_context", return_value=""),
+            patch("teleclaude.hooks.receiver.logger") as logger_mock,
         ):
             _print_additional_context(
                 hook_event_name="SessionStart",
@@ -570,14 +574,14 @@ class TestDomainBaselineInjection:
                 session_id="sess-missing",
             )
 
-        captured = capsys.readouterr()
-        payload = json.loads(captured.out)
-        # Visible-failure contract: a structured payload IS produced (not
-        # silently dropped). Non-empty guard — payload content shape is the
-        # operator-recovery prose, governed by code in `_print_additional_context`,
-        # not asserted here.
-        assert "systemMessage" in payload
-        assert payload["systemMessage"]
+        # Visible-failure contract: the structured error event fired with the
+        # named event constant and structured fields (session_id, domain).
+        # Identity assertion on the event constant, not on prose.
+        logger_mock.error.assert_called_once()
+        call = logger_mock.error.call_args
+        assert call.args[0] == EVENT_DOMAIN_BASELINE_UNAVAILABLE
+        assert call.kwargs["session_id"] == "sess-missing"
+        assert call.kwargs["domain"] == domain
 
     def test_print_additional_context_no_domain_emits_nothing(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]

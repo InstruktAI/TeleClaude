@@ -9,6 +9,11 @@ from teleclaude.core.events import AgentHookEvents, AgentHookEventType
 from teleclaude.core.models import JsonDict
 from teleclaude.hooks.adapters.base import HookAdapter, normalize_common_payload, parse_stdin_hook_input
 
+# Canonical Codex stdout protocol keys — production and tests share these names
+# instead of repeating string literals (Testing — String Assertions, mode #3:
+# named-constant identity).
+CODEX_OUTPUT_SYSTEM_MESSAGE = "systemMessage"
+
 
 class CodexAdapter(HookAdapter):
     """Hook adapter for Codex."""
@@ -52,4 +57,4 @@ class CodexAdapter(HookAdapter):
         del hook_event_name
         if not context:
             return ""
-        return json.dumps({"systemMessage": context})
+        return json.dumps({CODEX_OUTPUT_SYSTEM_MESSAGE: context})

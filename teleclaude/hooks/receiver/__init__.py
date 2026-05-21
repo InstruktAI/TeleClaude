@@ -63,6 +63,12 @@ if TYPE_CHECKING:
 
 configure_logging("teleclaude")
 logger = get_logger("teleclaude.hooks.receiver")
+
+# Structured log event names for the domain-baseline SessionStart path.
+# Production and tests reference these by name (Testing — String Assertions,
+# mode #3: named-constant identity) instead of inlining the event string.
+EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED = "command_domain_not_allowlisted"
+EVENT_DOMAIN_BASELINE_UNAVAILABLE = "domain_baseline_unavailable"
 _SESSION_EXPORT_BINDINGS = (
     _get_session_map_path,
     _get_tmux_contract_session_id,
@@ -359,7 +365,7 @@ def _resolve_command_domain_for_session(session_id: str) -> str | None:
     if not isinstance(domain, str) or not domain:
         return None
     if domain not in DOMAIN_SCOPES:
-        logger.warning("command_domain_not_allowlisted", session_id=session_id, domain=domain)
+        logger.warning(EVENT_COMMAND_DOMAIN_NOT_ALLOWLISTED, session_id=session_id, domain=domain)
         return None
     return domain
 
@@ -430,7 +436,7 @@ def _print_additional_context(
                 # session still starts; the agent receives a short inline
                 # notice instead of pre-loaded process enforcement.
                 logger.error(
-                    "domain_baseline_unavailable",
+                    EVENT_DOMAIN_BASELINE_UNAVAILABLE,
                     session_id=session_id,
                     domain=domain,
                     error=str(exc),
