@@ -101,7 +101,14 @@ use `people[].name`.
 
 ```yaml
 environment_variables:
+  # Telegram adapter — wizard-managed via _ADAPTER_ENV_VARS["telegram"]
   - TELEGRAM_BOT_TOKEN
+  - TELEGRAM_SUPERGROUP_ID
+  - TELEGRAM_USER_IDS
+  # Discord adapter — wizard-managed via _ADAPTER_ENV_VARS["discord"]
+  - DISCORD_BOT_TOKEN
+  - DISCORD_GUILD_ID
+  # WhatsApp adapter — wizard-managed via _ADAPTER_ENV_VARS["whatsapp"]
   - WHATSAPP_PHONE_NUMBER_ID
   - WHATSAPP_ACCESS_TOKEN
   - WHATSAPP_WEBHOOK_SECRET
@@ -109,12 +116,19 @@ environment_variables:
   - WHATSAPP_TEMPLATE_NAME
   - WHATSAPP_TEMPLATE_LANGUAGE
   - WHATSAPP_BUSINESS_NUMBER
+  # AI keys — wizard-managed via _ADAPTER_ENV_VARS["ai"]
   - ANTHROPIC_API_KEY
   - OPENAI_API_KEY
   - GOOGLE_API_KEY
+  # Voice / TTS — wizard-managed via _ADAPTER_ENV_VARS["voice"]
+  - ELEVENLABS_API_KEY
+  # Redis transport — wizard-managed via _ADAPTER_ENV_VARS["redis"]
+  - REDIS_URL
+  - REDIS_PASSWORD
+  # Runtime state root + log control
   - TELECLAUDE_HOME # runtime state root override; defaults to ~/.teleclaude
   - TELECLAUDE_LOG_LEVEL
-  - REDIS_URL
+  # Email delivery (SMTP)
   - SMTP_HOST
   - SMTP_PORT
   - SMTP_USER
