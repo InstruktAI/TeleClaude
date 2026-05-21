@@ -1,5 +1,5 @@
 ---
-description: 'Why agent-to-agent exchanges compress aggressively, and when that compression is worth using.'
+description: 'Transparency is the default; compression is a deliberate opt-in the human authorizes for a specific exchange.'
 domain: 'general'
 id: 'general/principle/communication-compression'
 scope: 'global'
@@ -15,52 +15,31 @@ visibility: 'public'
 
 ## Principle
 
-When agents talk to agents, the shortest faithful representation is the right
-one. Compression is not shorthand for its own sake. It is the discipline of
-sending only the information that changes the receiver's next action.
+Transparency is the default. When agents talk to each other, the human is part of the conversation — they observe the exchange to follow the work, build trust in what the agents are doing, and intervene when something drifts. Default to prose that a human can read at speed.
 
-This applies only to the working exchange. Humans should not be forced to
-observe or parse compressed traffic in order to understand what happened.
+Compression is a tool, not a posture. It is the discipline of sending only the information that changes the receiver's next action. It is reached for deliberately — when the human has authorized it for a specific exchange, or when an agent-only channel has no human observer and economy genuinely matters more than legibility. Outside those conditions, compression silently buys speed by spending observability the human did not agree to spend.
 
 ## Rationale
 
-Agent-to-agent channels pay for every extra token twice: once in delivery cost
-and once again in receiver attention. A long acknowledgment, restatement, or
-status narration consumes context while adding no new decision value.
+Every reduction in token count is also a reduction in observability. When an agent-to-agent exchange compresses, humans watching the conversation lose the ability to follow the reasoning, catch the drift, and step in before damage compounds. That cost is real and often invisible — the agents feel faster while the human falls out of the loop.
 
-Compression works when the receiver can reliably reconstruct the intended
-meaning from a smaller packet. That is why it belongs in agent-only exchanges
-with tight shared context, and why it should relax as soon as ambiguity rises
-or a human becomes the primary reader.
+The economy case for compression is also real — fewer tokens, less context consumed, faster convergence — but it only justifies compression when no human is watching, or when the human has explicitly traded observability for speed in this exchange. The default trade is the opposite: spend the tokens to keep the human inside the loop.
 
-The goal is not minimal text at any cost. The goal is lower noise with preserved
-intent.
+Compression is also fragile. The receiver must reliably reconstruct the intended meaning from a smaller packet. When shared context between agents is tight, this works. Humans — by virtue of not sitting in the agent's working context — are never the tight-context reader, which is why compressed traffic that humans must parse fails them twice: less information, harder to reconstruct.
 
 ## Implications
 
-- **Compression is contextual.** Use it when the receiver shares enough context
-  for a smaller message to stay faithful.
-- **Protocol is separate from philosophy.** The actual levels, markers, and
-  rules belong in the Agent Shorthand spec. This principle only explains why
-  the protocol exists.
-- **Human readability remains the artifact standard.** Durable artifacts,
-  summaries, and user-facing reports stay in ordinary prose even when the
-  working exchange is compressed.
-- **No-op output is anti-compression.** Acknowledgment-only output, echo, and
-  narration are negative value in agent channels because they spend context
-  without moving the work.
-- **Compression yields to clarity.** If a compressed exchange starts producing
-  correction loops or uncertainty, expand the register immediately.
+- **Default is prose, not shorthand.** Agents talking to agents in observable channels default to readable prose. Compression is opt-in for the exchange, not opt-out.
+- **The human authorizes compression deliberately.** When the human signals that a specific exchange is too slow or too noisy and explicitly enables compression, agents may shift register. Absent that signal, stay readable.
+- **Protocol is separate from philosophy.** The actual levels, markers, and rules — when compression is in use — belong in the Agent Shorthand spec. This principle only explains the stance.
+- **Compression yields to observability and clarity.** If a compressed exchange starts producing correction loops, or a human asks "what's happening here?", expand the register immediately and stay expanded.
+- **Brevity is not emptiness.** Acknowledgment-only output, echo, and pure narration spend context without moving the work, regardless of register. Cut the noise, but write the substance in prose the human can follow.
 
 ## Tensions
 
-- **Density vs. ambiguity:** The shortest message is not always the clearest
-  one. Compression that causes reconstruction drift defeats its own purpose.
-- **Economy vs. observability:** Humans may want to inspect the work. That does
-  not justify forcing compressed traffic into artifacts; it just means artifacts
-  must be clean.
-- **Speed vs. correctness:** Over-compressing during convergence can cost more
-  than it saves. The protocol needs a clear fallback to richer forms.
+- **Transparency vs. economy.** Every token spent on readability is a token not spent on work. The trade leans toward transparency by default; only the human's explicit signal flips it.
+- **Density vs. ambiguity.** Even when compression is enabled, the shortest message is not always the clearest. Compression that causes reconstruction drift defeats its own purpose.
+- **Working exchange vs. artifact.** Durable artifacts, summaries, and user-facing reports stay in ordinary prose regardless of how the working exchange is conducted. The artifact contract is independent of the working register.
 
 ## See Also
 

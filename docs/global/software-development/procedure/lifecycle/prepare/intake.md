@@ -109,8 +109,8 @@ risks fragmenting features the human wanted atomic.
 
 When splitting, the feature spec snippet's `delivered_by` lists the children
 (not the container). The container's role is to hold the feature identity and
-source material until child scope is seeded, then reach `delivered` when all
-children deliver.
+frozen source input while child scope is seeded. It has no lifecycle state of
+its own; it projects delivered when all children deliver.
 
 The stakeholder being interviewed is the **Product Owner role** — either the
 real human directly, or a dispatched AI PO emulator standing in. The emulator
