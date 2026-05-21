@@ -33,6 +33,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WRAPPER_LOG="/var/log/instrukt-ai/teleclaude/git-wrapper.log"
 IDENTITY_FILENAME="teleclaude_identity.json"
 
+# Use gdate when available so timestamps match the daemon log format
+# (ms-precision ISO-8601 Z). Fall back to BSD date (s-precision).
+if command -v gdate >/dev/null 2>&1; then
+    _ts_cmd() { gdate -u +%Y-%m-%dT%H:%M:%S.%3NZ; }
+else
+    _ts_cmd() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+fi
+
 _find_real_git_fast() {
     IFS=: read -ra path_parts <<< "$PATH"
     for dir in "${path_parts[@]}"; do
@@ -63,13 +71,45 @@ _real_git() {
     export "GIT_CONFIG_VALUE_${_count}=false"
     export "GIT_CONFIG_KEY_$((_count + 1))=merge.autoStash"
     export "GIT_CONFIG_VALUE_$((_count + 1))=false"
-    _log_wrapper "$@"
-    "$_real_git_bin" "$@"
-    return $?
+
+    # Per-invocation id correlates start, stdout, stderr, and rc lines in
+    # WRAPPER_LOG across concurrent git invocations.
+    local _inv_id="$$.$(date +%s).$RANDOM"
+    _log_wrapper "$_inv_id" "$@"
+
+    # Save original stdout/stderr so the process-substitution children can
+    # pass git output through to the caller while also appending it to
+    # WRAPPER_LOG, line-prefixed and timestamped in the same format as the
+    # start/end lines.
+    exec 3>&1 4>&2
+    "$_real_git_bin" "$@" \
+        > >(while IFS= read -r _line || [ -n "$_line" ]; do
+                echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stdout msg=$_line" >> "$WRAPPER_LOG"
+                printf '%s\n' "$_line" >&3
+            done) \
+        2> >(while IFS= read -r _line || [ -n "$_line" ]; do
+                echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id stream=stderr msg=$_line" >> "$WRAPPER_LOG"
+                printf '%s\n' "$_line" >&4
+            done)
+    local _rc=$?
+    exec 3>&- 4>&-
+
+    _log_wrapper_end "$_inv_id" "$_rc"
+    return $_rc
 }
 
 _log_wrapper() {
-    { echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [git-wrapper] role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+    local _inv_id="$1"
+    shift
+    { echo "$(_ts_cmd) level=INFO logger=git-wrapper inv=$_inv_id event=start role=$_role subcmd=$_subcmd args=$* cwd=$(pwd)" >> "$WRAPPER_LOG"; } 2>/dev/null || true
+}
+
+_log_wrapper_end() {
+    local _inv_id="$1"
+    local _rc="$2"
+    local _level=INFO
+    [ "$_rc" -ne 0 ] && _level=ERROR
+    { echo "$(_ts_cmd) level=$_level logger=git-wrapper inv=$_inv_id event=end rc=$_rc" >> "$WRAPPER_LOG"; } 2>/dev/null || true
 }
 
 # ── Read identity from JSON file ─────────────────────────────────────────────
@@ -142,7 +182,6 @@ done
 # (This path is unreachable now — humans outside tmux exec'd above, humans
 #  inside tmux get _system_role=worker. Kept for defensive completeness.)
 if [ -n "$_human_role" ] && [ "$_role" = "" ]; then
-    _log_wrapper "$@"
     _real_git "$@"
     exit $?
 fi
