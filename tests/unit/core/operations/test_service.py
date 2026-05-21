@@ -497,9 +497,9 @@ async def test_run_operation_completion_event_carries_failure_summary(cluster_ev
     ):
         await service._run_operation("remove-op-summary", OPERATION_KIND_TODO_REMOVE, factory)
 
-    # _emit_completion_event is called twice: once on the failure path (with the
-    # error string), and once may be inferred from telemetry hooks elsewhere.
-    # The failure call is the one that targets the completion event with `error=...`.
+    # The failure path is identified by the `error` kwarg — the success path
+    # never sets it. Filtering here keeps the assertion robust against any
+    # additional (success-only) emit calls the operation lifecycle may make.
     failure_calls = [c for c in emit_spy.call_args_list if c.kwargs.get("error") is not None]
     assert len(failure_calls) == 1
     failure_call = failure_calls[0]
