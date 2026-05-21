@@ -649,9 +649,19 @@ def _apply_baseline_filter(
     if not baseline_only:
         return snippets
     baseline_ids: set[str] = set()
-    baseline_ids.update(
-        _load_baseline_ids(GLOBAL_SNIPPETS_DIR / "baseline.md", snippets_by_path, project_root=global_root)
-    )
+    # The global baseline manifest is intentionally not deployed to
+    # `~/.teleclaude/docs/baseline.md` (it would expose a raw @-ref list at
+    # the agent-runtime surface). Resolve the canonical source via any
+    # already-deployed domain symlink: each deployed domain dir links back
+    # to `<mother>/docs/global/<domain>/`, so `.resolve().parent` gives the
+    # mother docs root that owns `baseline.md`.
+    global_manifest = GLOBAL_SNIPPETS_DIR / "baseline.md"
+    if not global_manifest.exists():
+        try:
+            global_manifest = (GLOBAL_SNIPPETS_DIR / "general").resolve(strict=True).parent / "baseline.md"
+        except (OSError, RuntimeError):
+            global_manifest = GLOBAL_SNIPPETS_DIR / "baseline.md"
+    baseline_ids.update(_load_baseline_ids(global_manifest, snippets_by_path, project_root=global_root))
     baseline_ids.update(
         _load_baseline_ids(
             project_root / "docs" / "project" / "baseline.md", snippets_by_path, project_root=project_root
