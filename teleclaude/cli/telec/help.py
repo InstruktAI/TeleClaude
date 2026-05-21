@@ -83,8 +83,12 @@ def _iter_subcommand_entries_for(prefix: str, node: CommandDef, col: int) -> lis
     """Build usage entries for a node's subcommands."""
     entries: list[str] = []
     for sub_name, sub_cmd in node.subcommands.items():
+        if sub_cmd.hidden:
+            continue
         if sub_cmd.subcommands:
             for child_name, child_cmd in sub_cmd.subcommands.items():
+                if child_cmd.hidden:
+                    continue
                 args = f" {child_cmd.args}" if child_cmd.args else ""
                 entry = f"telec {prefix} {sub_name} {child_name}{args}{_inline_flags(child_cmd.flags)}"
                 entries.append(f"  {entry:<{col}}# {child_cmd.desc}")
@@ -195,10 +199,13 @@ def _usage_main_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
 
 
 def _usage_main_subcommand_entries(cmd_name: str, sub_name: str, sub_cmd: CommandDef, col: int) -> list[str]:
+    if sub_cmd.hidden:
+        return []
     if sub_cmd.subcommands:
         return [
             _format_usage_entry((cmd_name, sub_name, child_name), child_cmd.args, child_cmd.flags, child_cmd.desc, col)
             for child_name, child_cmd in sub_cmd.subcommands.items()
+            if not child_cmd.hidden
         ]
     return [_format_usage_entry((cmd_name, sub_name), sub_cmd.args, sub_cmd.flags, sub_cmd.desc, col)]
 
@@ -288,8 +295,12 @@ def _append_leaf_command_usage(lines: list[str], cmd_name: str, cmd: CommandDef)
 def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[str]:
     entries: list[str] = []
     for sub_name, sub_cmd in cmd.subcommands.items():
+        if sub_cmd.hidden:
+            continue
         if sub_cmd.subcommands:
             for child_name, child_cmd in sub_cmd.subcommands.items():
+                if child_cmd.hidden:
+                    continue
                 cleaned_child_args = strip_hidden_flag_tokens(child_cmd.args, child_cmd.flags)
                 child_args = f" {cleaned_child_args}" if cleaned_child_args else ""
                 child_flag_hints = _inline_flags(child_cmd.flags)
@@ -306,7 +317,8 @@ def _iter_subcommand_entries(cmd_name: str, cmd: CommandDef, col: int) -> list[s
 
 def _group_subcommand_flags(cmd: CommandDef) -> list[tuple[str, list[Flag]]]:
     grouped: dict[str, list[tuple[str, list[Flag]]]] = {}
-    for sub_name, sub_cmd in cmd.subcommands.items():
+    visible_subcmds = {name: sub for name, sub in cmd.subcommands.items() if not sub.hidden}
+    for sub_name, sub_cmd in visible_subcmds.items():
         if not sub_cmd.flags:
             continue
         key = "|".join(flag.long for flag in sub_cmd.flags)
@@ -315,7 +327,7 @@ def _group_subcommand_flags(cmd: CommandDef) -> list[tuple[str, list[Flag]]]:
     sections = []
     for group in grouped.values():
         names = [name for name, _ in group]
-        label = "Options" if len(names) == len(cmd.subcommands) else f"{'/'.join(names)} options"
+        label = "Options" if len(names) == len(visible_subcmds) else f"{'/'.join(names)} options"
         sections.append((label, group[0][1]))
     return sections
 

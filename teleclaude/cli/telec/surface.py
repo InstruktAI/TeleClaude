@@ -1010,70 +1010,75 @@ CLI_SURFACE: dict[str, CommandDef] = {
         },
     ),
     "memories": CommandDef(
-        desc="Search and manage memory observations",
+        desc=(
+            "Read or remove durable personal-preference observations about the human. "
+            "Memories capture meta-level things about who the human is — their relational stance, "
+            "values, communication style, vision — never coding norms, architectural decisions, "
+            "or operational gotchas (those live in policies, principles, and addenda). "
+            "Memories are written exclusively by the memory scraper; agents must never create them."
+        ),
         subcommands={
             "list": CommandDef(
-                desc="List memory observations",
+                desc="List personal-preference observations about the human.",
                 args="[--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--limit", desc="Max results (default: 50)"),
                     Flag(
                         "--type",
-                        desc="Filter by type: preference, decision, discovery, gotcha, pattern, friction, context",
+                        desc="Filter by observation type stored in the schema",
                     ),
                     _FLAG_PROJECT_FILTER,
                 ],
                 examples=[
                     "telec memories list",
-                    "telec memories list --type gotcha --project teleclaude",
+                    "telec memories list --type preference",
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "search": CommandDef(
-                desc="Search memory observations",
+                desc="Search personal-preference observations about the human.",
                 args="<query> [--limit <n>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     _FLAG_LIMIT_20,
                     Flag(
                         "--type",
-                        desc="Filter by type: preference, decision, discovery, gotcha, pattern, friction, context",
+                        desc="Filter by observation type stored in the schema",
                     ),
                     _FLAG_PROJECT_FILTER,
                 ],
                 examples=[
-                    'telec memories search "session reason"',
-                    'telec memories search "config wizard" --type discovery --project teleclaude',
+                    'telec memories search "communication style"',
+                    'telec memories search "narrative" --type preference',
                 ],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "save": CommandDef(
-                desc="Save a memory observation",
+                desc=(
+                    "Persist a memory observation. Reserved for the memory scraper — "
+                    "agents must never call this. Hidden from the baseline surface."
+                ),
                 args="<text> [--title <title>] [--type <type>] [--project <name>]",
                 flags=[
                     _H,
                     Flag("--title", desc="Observation title"),
-                    Flag("--type", desc="Type: preference, decision, discovery, gotcha, pattern, friction, context"),
+                    Flag("--type", desc="Observation type"),
                     Flag("--project", desc="Project name"),
                 ],
-                examples=[
-                    (
-                        'telec memories save "Root cause identified for session update reason suppression." '
-                        '--title "Session reason fix" --type discovery --project teleclaude'
-                    ),
-                ],
+                examples=[],
+                hidden=True,
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "delete": CommandDef(
-                desc="Delete a memory observation by ID",
+                desc="Delete a personal-preference observation by ID (typically run by the human while pruning).",
                 args="<id>",
                 flags=[_H],
-                examples=["telec memories delete 123"],
+                examples=["telec memories delete 42"],
                 auth=CommandAuth(system=_SYS_ALL, human=_HR_MEMBER_CONTRIB),
             ),
             "timeline": CommandDef(
-                desc="Show observations around an anchor ID",
+                desc="Show personal-preference observations around an anchor ID.",
                 args="<id> [--before <n>] [--after <n>] [--project <name>]",
                 flags=[
                     _H,

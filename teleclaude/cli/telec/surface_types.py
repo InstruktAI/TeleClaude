@@ -113,8 +113,8 @@ class CommandDef(_CommandPresentation):
 
     @property
     def subcmd_tuples(self) -> list[tuple[str, str]]:
-        """Subcommands as (name, desc) tuples for completion."""
-        return [(name, sub.desc) for name, sub in self.subcommands.items()]
+        """Subcommands as (name, desc) tuples for completion. Hidden subcommands excluded."""
+        return [(name, sub.desc) for name, sub in self.subcommands.items() if not sub.hidden]
 
 
 _H = Flag("--help", "-h", "Show usage information", hidden=True)
