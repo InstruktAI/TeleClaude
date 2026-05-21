@@ -243,7 +243,7 @@ lands in one of the five surfaces below.
 | People, subscriptions, interests, event domains       | `~/.teleclaude/teleclaude.yml` (global YAML)  | `GlobalConfig` (Pydantic)              | `cli/config_handlers.py:save_global_config`                  |
 | Per-person creds, subscriptions, interests            | `~/.teleclaude/people/<name>/teleclaude.yml`  | `PersonConfig` (Pydantic)              | `cli/config_handlers.py:save_person_config`                  |
 | Project metadata, deployment release channel + pin    | `<project>/teleclaude.yml` (project YAML)     | `ProjectConfig` (Pydantic)             | `config/loader.py:save_project_config` (atomic, per `atomic-project-config-write`) |
-| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                   | env-var registry (untyped)             | `cli/config_handlers.py:set_env_var`                         |
+| Adapter secrets, OpenAI key, runtime env overrides    | `.env` file                                   | env-var registry (untyped)             | `cli/config_handlers.py:set_env_var` (atomic — per `atomic-env-file-write`, promoted from `target.write_text` by this delivery) |
 | Computer identity, agents inventory, daemon settings  | `config.yml` (machine config)                 | `Config` dataclass tree (no Pydantic)  | `save_machine_config` (target — per `machine-config-write`)  |
 
 YAML overlays and machine config are typed and validated; the `.env`
@@ -396,8 +396,18 @@ rendering concern, not a state concern.
   validation contract UC-WIZ-7 references. The wizard surfaces the
   rule's outcome; the rule itself is invariant of the wizard.
 - `project/spec/feature/config/atomic-project-config-write` is the
-  persistence contract every wizard step's write traverses. The wizard
-  does not introduce a parallel write path.
+  persistence contract the wizard's release-channel step traverses
+  (project YAML).
+- `project/spec/feature/config/machine-config-write` is the
+  persistence contract the wizard's system-identity step traverses
+  (machine `config.yml`). Authored alongside this delivery; both
+  specs are joint-delivered.
+- `project/spec/feature/config/atomic-env-file-write` is the
+  persistence contract the wizard's adapter / API-key / env-override
+  steps traverse (`.env` file). The v1 `set_env_var` helper is
+  promoted from `target.write_text(...)` to the atomic-replace
+  pattern by this delivery so UC-WIZ-3 and UC-WIZ-5 hold uniformly
+  across every persistence surface.
 - The cleanup todo `simplify-install-flow-cleanup` retires the
   shell-layer interactive prompts so the single-setup-surface contract
   in UC-WIZ-9 holds. That todo's "owed-to-wizard" list seeds this
