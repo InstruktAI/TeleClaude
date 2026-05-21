@@ -1,0 +1,27 @@
+# serializer version: 1
+# name: TestThirdPartyValidationUsesErrors.test_non_url_source_reported_as_error
+  list([
+    dict({
+      'code': 'third_party_source_invalid',
+      'path': 'TMP/docs/third-party/guide.md',
+      'source': 'not-a-url',
+    }),
+  ])
+# ---
+# name: TestUnifiedSeverityAPI.test_error_function_records_findings
+  list([
+    dict({
+      'code': 'test_code',
+      'path': 'docs/a.md',
+      'reason': 'test',
+    }),
+  ])
+# ---
+# name: TestUnifiedSeverityAPI.test_extra_kwargs_preserved_in_findings
+  dict({
+    'code': 'ref_broken',
+    'path': 'docs/a.md',
+    'ref': '@docs/b.md',
+    'resolved': '/tmp/b.md',
+  })
+# ---

@@ -5,7 +5,8 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
-status: 'actual'
+status: 'target'
+delivered_by: [integrate-deliveredby-flip]
 description: 'Curated baseline.md files of @-refs that anchor the always-loaded snippet set per scope.'
 ---
 
@@ -54,20 +55,6 @@ And the rendered index path substitutes ~/.teleclaude/docs/ for docs/global/
 ```
 
 ```
-Given a tracked baseline file whose symlink is broken or self-pointing
-When sync runs _repair_broken_docs_links
-Then the file is restored from git HEAD
-And the symlink is rewritten to a valid target
-```
-
-```
-Given a tracked file that was never committed to git
-When the symlink is broken and _repair_broken_docs_links runs
-Then the restore attempt silently fails
-And no warning is surfaced to the operator
-```
-
-```
 Given a baseline manifest entry pointing at a snippet with Required reads
 When --baseline-only is applied
 Then only the manifest-referenced snippet is included
@@ -80,7 +67,6 @@ And its Required reads dependencies are NOT auto-pulled into the baseline set
 - `teleclaude/context_selector.py:366-402` — `_load_baseline_ids()` manifest resolver
 - `teleclaude/context_selector.py:641-660` — `_apply_baseline_filter()`
 - `teleclaude/docs_index.py:524-557` — baseline path/type inference at index build time
-- `teleclaude/sync.py:124-160` — `_repair_broken_docs_links()` symlink repair pass
 
 ### Cross-context references
 
@@ -90,13 +76,6 @@ And its Required reads dependencies are NOT auto-pulled into the baseline set
 
 ## Known caveats
 
-- Symlink repair is hardcoded to a small `tracked_docs_files` tuple
-  (`docs/global/baseline.md` and a few siblings). Adding a new tracked
-  baseline-adjacent file requires a code change to extend the tuple — there
-  is no config-driven registration.
-- Symlink repair reads from git HEAD silently. If the tracked file was never
-  committed, restoration fails with no warning, leaving the operator with a
-  broken link and no diagnostic.
 - Baseline manifests do NOT enforce dependency closure. A manifest entry
   whose snippet declares Required reads will not auto-include those reads in
   the baseline-only set, so callers under `--baseline-only` get less context

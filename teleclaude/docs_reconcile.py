@@ -213,6 +213,8 @@ def _planned_snippet_writes(
     project_root: Path,
     roadmap_status_map: Mapping[str, str],
     metadata_planner: _MetadataPlanner,
+    *,
+    only_slug: str | None = None,
 ) -> list[SnippetWriteResult]:
     results: list[SnippetWriteResult] = []
     for snippet_path in _iter_snippet_files(project_root):
@@ -223,6 +225,8 @@ def _planned_snippet_writes(
         metadata, body = parsed
         delivered_by = _delivered_by(metadata)
         if not delivered_by:
+            continue
+        if only_slug is not None and only_slug not in delivered_by:
             continue
         next_metadata, removed_slugs = metadata_planner(snippet_path, metadata, delivered_by, roadmap_status_map)
         if next_metadata is None:
@@ -242,10 +246,17 @@ def _planned_snippet_writes(
 def reconcile_snippet_status(
     project_root: Path,
     roadmap_status_map: Mapping[str, str],
+    *,
+    only_slug: str | None = None,
 ) -> list[SnippetStatusReconcileResult]:
     """Remove delivered slugs from snippet lifecycle frontmatter."""
     results: list[SnippetStatusReconcileResult] = []
-    for plan in _planned_snippet_writes(project_root, roadmap_status_map, _reconciled_metadata):
+    for plan in _planned_snippet_writes(
+        project_root,
+        roadmap_status_map,
+        _reconciled_metadata,
+        only_slug=only_slug,
+    ):
         if not plan.write_required:
             continue
         plan.path.write_text(plan.rendered_content, encoding="utf-8")

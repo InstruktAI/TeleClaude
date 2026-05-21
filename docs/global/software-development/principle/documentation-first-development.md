@@ -63,7 +63,7 @@ Validation rules:
 
 - `status: target` and `status: mixed` REQUIRE a non-empty `delivered_by` list.
 - `status: actual` FORBIDS `delivered_by` (no orphan delivery references on snippets that already reflect reality).
-- `delivered_by` references must be valid todo slugs (validated by `telec sync`).
+- `delivered_by` references are lifecycle-owned slug references; snippet validation checks the field shape, and lifecycle callers own relationship integrity.
 
 ### 2. The prepare phase authors target snippets
 
@@ -78,11 +78,11 @@ The work phase then has the target snippets as the authoritative design referenc
 
 ### 3. Delivery flips `target` to `actual`
 
-When a todo reaches `delivered`, the integrator (or the finalize step, depending on which role owns the reconciliation pass for the project) flips any snippet whose `delivered_by` list includes the delivered slug:
+When a todo reaches `delivered`, the integration lifecycle flips any snippet whose `delivered_by` list includes the delivered slug before the delivery commit is finalized:
 
 - If the slug was the ONLY entry in `delivered_by`, the snippet becomes `status: actual` and `delivered_by` is removed.
 - If there are still pending slugs in `delivered_by`, the slug is removed from the list and the snippet stays `target` (partially delivered; remaining slugs still in flight).
-- `telec sync` catches drift: any snippet whose `delivered_by` contains slugs that are all delivered must be flipped — failing to flip is a lint error.
+- `telec sync` does not own this lifecycle mutation; it validates snippet shape, rebuilds indexes, and distributes the source state it receives.
 
 ### 4. Discoverability surfaces ownership
 
@@ -284,7 +284,7 @@ The human reviewer confirms the split decomposition before child todos are dispa
 
 ## Tensions
 
-- **`target` snippets that never deliver.** When a slug in `delivered_by` is deferred, frozen, or abandoned, the system flags the snippet as invalid. The author either revives the delivery or converts the snippet back to `actual` (reverting the target content). Design nobody commits to deliver doesn't belong in the doc layer.
+- **`target` snippets that never deliver.** The slug they point to may be deferred, frozen, or abandoned. The author must either revive the delivery path or convert the snippet back to `actual` by reverting the target content to reflect current state — design that nobody is actually committing to deliver doesn't belong in the doc layer.
 
 - **Design churn during prepare.** Target snippets may go through revisions as the PRD iterates; only commit the snippet update when prepare converges on a stable design (typically after spec/plan review), not on every intermediate draft.
 

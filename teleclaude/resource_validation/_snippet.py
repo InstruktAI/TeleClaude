@@ -62,8 +62,6 @@ _ROADMAP_STATUS_PRIORITY = {
 SNIPPET_STATUS_INVALID_VALUE = "snippet_status_invalid_value"
 SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY = "snippet_status_target_missing_delivered_by"
 SNIPPET_STATUS_ACTUAL_FORBIDS_DELIVERED_BY = "snippet_status_actual_forbids_delivered_by"
-SNIPPET_DELIVERED_BY_UNKNOWN_SLUG = "snippet_delivered_by_unknown_slug"
-SNIPPET_STATUS_UNFLIPPED_DRIFT = "snippet_status_unflipped_drift"
 
 
 # ---------------------------------------------------------------------------
@@ -288,9 +286,6 @@ def build_roadmap_status_map(project_root: Path) -> dict[str, str]:
 def _validate_status_and_delivered_by(
     path: Path,
     meta: Mapping[str, object],
-    *,
-    roadmap_status_map: Mapping[str, str],
-    enforce_delivered_drift: bool,
 ) -> None:
     raw_status = meta.get("status")
     if raw_status is None:
@@ -312,17 +307,6 @@ def _validate_status_and_delivered_by(
         return
     if not delivered_by:
         _error(SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY, path=str(path))
-        return
-
-    unknown_slugs = [slug for slug in delivered_by if slug not in roadmap_status_map]
-    for slug in unknown_slugs:
-        _error(SNIPPET_DELIVERED_BY_UNKNOWN_SLUG, path=str(path), slug=slug)
-    if unknown_slugs or not enforce_delivered_drift:
-        return
-
-    delivered_slugs = [slug for slug in delivered_by if roadmap_status_map.get(slug) == RoadmapStatus.DELIVERED]
-    if len(delivered_slugs) == len(delivered_by):
-        _error(SNIPPET_STATUS_UNFLIPPED_DRIFT, path=str(path), delivered_slugs=",".join(delivered_slugs))
 
 
 def validate_snippet(
@@ -331,8 +315,6 @@ def validate_snippet(
     project_root: Path,
     *,
     domains: set[str],
-    roadmap_status_map: Mapping[str, str] | None = None,
-    enforce_delivered_drift: bool = True,
 ) -> None:
     """Validate a single doc snippet. Collects validation findings via ``_error``."""
     if _is_third_party_doc(path, project_root):
@@ -385,12 +367,7 @@ def validate_snippet(
     _validate_visibility(path, meta)
     snippet_type = _snippet_type_for_validation(path, meta)
     _validate_activation_trigger(path, meta, snippet_type=snippet_type)
-    _validate_status_and_delivered_by(
-        path,
-        meta,
-        roadmap_status_map=roadmap_status_map or {},
-        enforce_delivered_drift=enforce_delivered_drift,
-    )
+    _validate_status_and_delivered_by(path, meta)
     _validate_snippet_structure(path, lines, meta, has_frontmatter, domains=domains)
     _validate_snippet_refs(path, lines, project_root, domains=domains)
     _validate_snippet_sections(path, lines, meta, domains=domains)
@@ -772,17 +749,9 @@ def _iter_snippet_roots(project_root: Path) -> list[Path]:
     return iter_snippet_roots(project_root)
 
 
-def validate_all_snippets(
-    project_root: Path,
-    *,
-    roadmap_status_map: Mapping[str, str] | None = None,
-    enforce_delivered_drift: bool = True,
-) -> None:
+def validate_all_snippets(project_root: Path) -> None:
     """Validate all doc snippets under the project. Collects validation findings."""
     domains = load_domains(project_root)
-    resolved_roadmap_status_map = (
-        roadmap_status_map if roadmap_status_map is not None else build_roadmap_status_map(project_root)
-    )
     snippet_roots = _iter_snippet_roots(project_root)
     for snippets_root in snippet_roots:
         try:
@@ -802,12 +771,5 @@ def validate_all_snippets(
             except OSError as exc:
                 _error("snippet_read_failed", path=str(path), error=str(exc))
                 continue
-            validate_snippet(
-                path,
-                text,
-                project_root,
-                domains=domains,
-                roadmap_status_map=resolved_roadmap_status_map,
-                enforce_delivered_drift=enforce_delivered_drift,
-            )
+            validate_snippet(path, text, project_root, domains=domains)
     validate_third_party_docs(project_root)

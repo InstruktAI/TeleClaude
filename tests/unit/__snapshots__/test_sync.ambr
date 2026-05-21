@@ -1,0 +1,55 @@
+# serializer version: 1
+# name: TestGroupFindings.test_format_finding_includes_all_extra_fields
+  'snippet_missing_frontmatter_field: docs/third-party/tool.md (field=id)'
+# ---
+# name: TestRunDistribute.test_builds_deploy_command_with_warn_only_flag
+  list([
+    'SYS_EXECUTABLE',
+    'TMP/scripts/distribute.py',
+    '--project-root',
+    'TMP/project',
+    '--deploy',
+    '--warn-only',
+  ])
+# ---
+# name: TestSyncBootstrapOrdering.test_build_all_indexes_called_before_run_distribute
+  list([
+    'build_all_indexes',
+    '_run_distribute',
+  ])
+# ---
+# name: TestSyncBootstrapOrdering.test_full_sync_validates_once_before_index_and_distribute
+  list([
+    'validate',
+    'build_all_indexes',
+    '_run_distribute',
+  ])
+# ---
+# name: TestSyncBootstrapOrdering.test_validate_only_calls_validate_once_and_skips_indexes
+  list([
+    'validate',
+  ])
+# ---
+# name: TestSyncValidation.test_validate_only_fails_with_all_invalid_third_party_docs
+  '''
+  Validation findings: 8
+  snippet_missing_frontmatter_field:
+  - TMP/docs/third-party/one.md
+  - TMP/docs/third-party/one.md
+  - TMP/docs/third-party/one.md
+  - TMP/docs/third-party/one.md
+  - TMP/docs/third-party/two.md
+  - TMP/docs/third-party/two.md
+  - TMP/docs/third-party/two.md
+  - TMP/docs/third-party/two.md
+  snippet_missing_frontmatter_field: TMP/docs/third-party/one.md (field=id)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/one.md (field=type)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/one.md (field=scope)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/one.md (field=description)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/two.md (field=id)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/two.md (field=type)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/two.md (field=scope)
+  snippet_missing_frontmatter_field: TMP/docs/third-party/two.md (field=description)
+  
+  '''
+# ---

@@ -1,0 +1,97 @@
+# serializer version: 1
+# name: TestCollectInlineRefErrors.test_reports_missing_and_non_file_targets
+  list([
+    'snippet_inline_ref_missing',
+    'snippet_inline_ref_not_file',
+  ])
+# ---
+# name: TestIterInlineRefs.test_skips_code_fence_contents
+  list([
+    '@docs/project/policy/one.md',
+    '@docs/project/policy/three.md',
+  ])
+# ---
+# name: TestRoadmapStatusMap.test_reads_active_icebox_and_delivered_statuses
+  dict({
+    'alpha': 'active',
+    'beta': 'icebox',
+    'delta': 'removed',
+    'gamma': 'delivered',
+  })
+# ---
+# name: TestSeeAlsoValidation.test_global_docs_require_global_prefix
+  list([
+    dict({
+      'code': 'snippet_see_also_bad_prefix',
+      'expected': '~/.teleclaude/docs/...',
+      'path': 'TMP/docs/global/general/policy/doc.md',
+      'ref': 'docs/project/policy/other.md',
+    }),
+  ])
+# ---
+# name: TestStatusAndDeliveredByValidation.test_actual_status_with_delivered_by_is_rejected
+  list([
+    dict({
+      'code': 'snippet_status_actual_forbids_delivered_by',
+      'path': 'TMP/docs/project/spec/snippet.md',
+    }),
+  ])
+# ---
+# name: TestStatusAndDeliveredByValidation.test_invalid_status_value_is_rejected
+  list([
+    dict({
+      'code': 'snippet_status_invalid_value',
+      'path': 'TMP/docs/project/spec/snippet.md',
+      'value': 'pending',
+    }),
+  ])
+# ---
+# name: TestStatusAndDeliveredByValidation.test_mixed_status_without_delivered_by_is_rejected
+  list([
+    dict({
+      'code': 'snippet_status_target_missing_delivered_by',
+      'path': 'TMP/docs/project/spec/snippet.md',
+    }),
+  ])
+# ---
+# name: TestStatusAndDeliveredByValidation.test_target_status_without_delivered_by_is_rejected
+  list([
+    dict({
+      'code': 'snippet_status_target_missing_delivered_by',
+      'path': 'TMP/docs/project/spec/snippet.md',
+    }),
+  ])
+# ---
+# name: TestThirdPartyValidation.test_reports_all_missing_third_party_frontmatter_fields
+  list([
+    dict({
+      'code': 'snippet_missing_frontmatter_field',
+      'field': 'id',
+      'path': 'TMP/docs/third-party/guide.md',
+    }),
+    dict({
+      'code': 'snippet_missing_frontmatter_field',
+      'field': 'type',
+      'path': 'TMP/docs/third-party/guide.md',
+    }),
+    dict({
+      'code': 'snippet_missing_frontmatter_field',
+      'field': 'scope',
+      'path': 'TMP/docs/third-party/guide.md',
+    }),
+    dict({
+      'code': 'snippet_missing_frontmatter_field',
+      'field': 'description',
+      'path': 'TMP/docs/third-party/guide.md',
+    }),
+  ])
+# ---
+# name: TestThirdPartyValidation.test_reports_non_url_source_entries_as_errors
+  list([
+    dict({
+      'code': 'third_party_source_invalid',
+      'path': 'TMP/docs/third-party/guide.md',
+      'source': 'not-a-url',
+    }),
+  ])
+# ---

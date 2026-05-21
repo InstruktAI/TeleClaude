@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.docs_index import build_all_indexes
-from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter, reconcile_snippet_status
+from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter
 from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.resource_validation import (
@@ -25,7 +25,6 @@ from teleclaude.resource_validation import (
     validate_all_snippets,
     validate_jobs_config,
 )
-from teleclaude.resource_validation._snippet import build_roadmap_status_map
 
 
 @dataclass(frozen=True)
@@ -47,18 +46,11 @@ def sync(
 
     Returns True if successful, False if validation errors occurred.
     """
-    if not validate_only:
-        _repair_broken_docs_links(project_root)
     clear_errors()
     errors: list[str] = []
-    roadmap_status_map = build_roadmap_status_map(project_root)
 
     # Phase 1: Validate
-    validate_all_snippets(
-        project_root,
-        roadmap_status_map=roadmap_status_map,
-        enforce_delivered_drift=validate_only,
-    )
+    validate_all_snippets(project_root)
     artifact_errors = validate_all_artifacts(project_root)
     errors.extend(artifact_errors)
     errors.extend(validate_jobs_config(project_root))
@@ -76,29 +68,6 @@ def sync(
     if validate_only:
         return warn_only or not errors
 
-    # Phase 1b: Reconcile snippet lifecycle frontmatter, then assert drift-clean state.
-    reconciled = reconcile_snippet_status(project_root, roadmap_status_map)
-    for result in reconciled:
-        try:
-            rel_path = result.path.relative_to(project_root)
-        except ValueError:
-            rel_path = result.path
-        print(f"Reconcile: {rel_path} flipped (delivered: {','.join(result.removed_slugs)})")
-
-    clear_errors()
-    validate_all_snippets(
-        project_root,
-        roadmap_status_map=roadmap_status_map,
-        enforce_delivered_drift=True,
-    )
-    post_reconcile_findings = get_errors()
-    if post_reconcile_findings:
-        _print_findings(post_reconcile_findings, quiet=warn_only)
-        for finding in post_reconcile_findings:
-            print(_format_finding(finding))
-        if not warn_only:
-            return False
-
     _record_snippet_provenance_from_environment(project_root)
 
     # Phase 2: Build indexes
@@ -106,11 +75,9 @@ def sync(
     for path in written:
         if path.exists():
             print(f"Index: {path}")
-    _repair_broken_docs_links(project_root)
 
     # Phase 3: Build and deploy artifacts
     _run_distribute(project_root, warn_only=warn_only)
-    _repair_broken_docs_links(project_root)
 
     return True
 
@@ -222,45 +189,6 @@ def _run_distribute(project_root: Path, *, warn_only: bool) -> None:
 
     env = os.environ.copy()
     subprocess.run(cmd, cwd=project_root, check=not warn_only, env=env)
-
-
-def _repair_broken_docs_links(project_root: Path) -> None:
-    """Repair known self-referential docs symlink corruption in-place.
-
-    Some local watcher/filter failure modes can turn tracked files like
-    ``docs/global/baseline.md`` into self-pointing symlinks
-    (``baseline.md -> .../baseline.md``), which then breaks sync with
-    ``Too many levels of symbolic links``.
-    """
-    tracked_docs_files = ("docs/global/baseline.md",)
-    for rel_path in tracked_docs_files:
-        file_path = project_root / rel_path
-        needs_repair = False
-        if not file_path.exists():
-            needs_repair = True
-        elif file_path.is_symlink():
-            try:
-                raw_target = os.readlink(file_path)
-            except OSError:
-                raw_target = ""
-            target_path = Path(raw_target)
-            if not target_path.is_absolute():
-                target_path = (file_path.parent / target_path).resolve(strict=False)
-            # Repair if link is broken or points to itself.
-            needs_repair = (not file_path.exists()) or (target_path == file_path)
-
-        if not needs_repair:
-            continue
-
-        try:
-            repo = Repo(str(project_root))
-            blob_content = repo.git.show(f"HEAD:{rel_path}")
-        except (GitCommandError, OSError):
-            continue
-
-        file_path.unlink(missing_ok=True)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(blob_content, encoding="utf-8")
 
 
 def _group_findings(findings: list[dict[str, str]]) -> dict[str, dict[str, list[str]]]:

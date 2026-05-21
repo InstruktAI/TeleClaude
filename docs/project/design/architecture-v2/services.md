@@ -2,8 +2,12 @@
 description: 'The eight services that compose v2 TeleClaude. Each is a Rust crate with a Postgres schema; binaries embed the crates they need.'
 id: 'project/design/architecture-v2/services'
 scope: 'project'
+domain: 'software-development'
 type: 'design'
 visibility: 'public'
+applies_to: v2
+status: target
+delivered_by: [integrate-deliveredby-flip]
 ---
 
 # Services — Design
@@ -145,6 +149,9 @@ and TUI also embed it for read queries.
   plan, etc.) — content stored as TEXT columns in Postgres
 - workflow state machines (prepare/work/integrate lifecycle)
 - local bookkeeping operations
+- integration delivery calls into context docs-authority to reconcile
+  `delivered_by` during delivery so snippet flips are staged in the
+  squash-merge commit
 
 **Does not own:**
 
@@ -213,6 +220,10 @@ mirrors as a compensating mechanism.
 - Distribution / deployment to agent runtime directories
   (`~/.claude/`, `~/.codex/`, `~/.gemini/`)
 - `telec context sync` operation (replaces v1 `telec sync` docs portion)
+- docs-authority operations for serialized structural writes to `docs/`
+- file watching for authored docs source and debounce-triggered sync
+- sync triggering after external docs edits, with manual sync retained as
+  an escape hatch
 - Selection policy as a pure function
 - CRUD CLI per kind: `telec context docs|skills|commands|agents
 list/get/create/update/delete`

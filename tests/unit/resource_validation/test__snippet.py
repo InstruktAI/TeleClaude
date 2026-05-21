@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude import paths as tc_paths
 from teleclaude.constants import (
@@ -72,8 +73,20 @@ class TestResolveRefPath:
         assert resolved == target.resolve()
 
 
+def _normalize_error_paths(errors: list[dict[str, object]], root: Path) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    for error in errors:
+        normalized.append(
+            {
+                key: value.replace(str(root), "TMP") if isinstance(value, str) else value
+                for key, value in error.items()
+            }
+        )
+    return normalized
+
+
 class TestIterInlineRefs:
-    def test_skips_code_fence_contents(self) -> None:
+    def test_skips_code_fence_contents(self, snapshot: SnapshotAssertion) -> None:
         refs = _snippet.iter_inline_refs(
             [
                 "@docs/project/policy/one.md",
@@ -84,11 +97,11 @@ class TestIterInlineRefs:
             ]
         )
 
-        assert refs == ["@docs/project/policy/one.md", "@docs/project/policy/three.md"]
+        assert refs == snapshot
 
 
 class TestCollectInlineRefErrors:
-    def test_reports_missing_and_non_file_targets(self, tmp_path: Path) -> None:
+    def test_reports_missing_and_non_file_targets(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         project_root = tmp_path
         snippet_path = project_root / "docs" / "project" / "policy" / "snippet.md"
         snippet_path.parent.mkdir(parents=True)
@@ -106,14 +119,11 @@ class TestCollectInlineRefErrors:
             domains={"software-development"},
         )
 
-        assert {error["code"] for error in errors} == {
-            "snippet_inline_ref_missing",
-            "snippet_inline_ref_not_file",
-        }
+        assert sorted(error["code"] for error in errors) == snapshot
 
 
 class TestSeeAlsoValidation:
-    def test_global_docs_require_global_prefix(self, tmp_path: Path) -> None:
+    def test_global_docs_require_global_prefix(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         path = tmp_path / "docs" / "global" / "general" / "policy" / "doc.md"
         path.parent.mkdir(parents=True)
@@ -121,7 +131,7 @@ class TestSeeAlsoValidation:
 
         _snippet._validate_see_also_ref("docs/project/policy/other.md", path, tmp_path)
 
-        assert resource_models.get_errors()[0]["code"] == "snippet_see_also_bad_prefix"
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
     def test_global_docs_accept_smudged_home_prefix(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
@@ -140,51 +150,38 @@ class TestSeeAlsoValidation:
 
 
 class TestStatusAndDeliveredByValidation:
-    def test_target_status_without_delivered_by_is_rejected(self, tmp_path: Path) -> None:
+    def test_target_status_without_delivered_by_is_rejected(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET},
-            roadmap_status_map={},
-            enforce_delivered_drift=True,
         )
 
-        assert resource_models.get_errors() == [
-            {
-                "code": _snippet.SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY,
-                "path": str(snippet_path),
-            }
-        ]
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
-    def test_mixed_status_without_delivered_by_is_rejected(self, tmp_path: Path) -> None:
+    def test_mixed_status_without_delivered_by_is_rejected(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_MIXED},
-            roadmap_status_map={},
-            enforce_delivered_drift=True,
         )
 
-        assert resource_models.get_errors()[0]["code"] == _snippet.SNIPPET_STATUS_TARGET_MISSING_DELIVERED_BY
-        assert resource_models.get_errors()[0]["path"] == str(snippet_path)
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
-    def test_actual_status_with_delivered_by_is_rejected(self, tmp_path: Path) -> None:
+    def test_actual_status_with_delivered_by_is_rejected(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_ACTUAL, "delivered_by": ["some-slug"]},
-            roadmap_status_map={"some-slug": RoadmapStatus.ACTIVE},
-            enforce_delivered_drift=True,
         )
 
-        assert resource_models.get_errors()[0]["code"] == _snippet.SNIPPET_STATUS_ACTUAL_FORBIDS_DELIVERED_BY
-        assert resource_models.get_errors()[0]["path"] == str(snippet_path)
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
     def test_omitted_status_is_treated_as_actual(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
@@ -193,169 +190,50 @@ class TestStatusAndDeliveredByValidation:
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {},
-            roadmap_status_map={},
-            enforce_delivered_drift=True,
         )
 
         assert resource_models.get_errors() == []
 
-    def test_invalid_status_value_is_rejected(self, tmp_path: Path) -> None:
+    def test_invalid_status_value_is_rejected(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": "pending"},
-            roadmap_status_map={},
-            enforce_delivered_drift=True,
         )
 
-        assert resource_models.get_errors() == [
-            {
-                "code": _snippet.SNIPPET_STATUS_INVALID_VALUE,
-                "path": str(snippet_path),
-                "value": "pending",
-            }
-        ]
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
-    def test_delivered_by_reference_missing_from_roadmap_is_rejected(self, tmp_path: Path) -> None:
+    def test_unknown_delivered_by_slug_is_accepted(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["gamma"]},
-            roadmap_status_map={"alpha": RoadmapStatus.ACTIVE, "beta": RoadmapStatus.ACTIVE},
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors() == [
-            {
-                "code": _snippet.SNIPPET_DELIVERED_BY_UNKNOWN_SLUG,
-                "path": str(snippet_path),
-                "slug": "gamma",
-            }
-        ]
-
-    def test_delivered_by_reports_only_unknown_slugs(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["alpha", "ghost"]},
-            roadmap_status_map={"alpha": RoadmapStatus.ACTIVE},
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors() == [
-            {
-                "code": _snippet.SNIPPET_DELIVERED_BY_UNKNOWN_SLUG,
-                "path": str(snippet_path),
-                "slug": "ghost",
-            }
-        ]
-
-    def test_icebox_slugs_are_valid_delivered_by_references(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["frozen-work"]},
-            roadmap_status_map={"frozen-work": RoadmapStatus.ICEBOX},
-            enforce_delivered_drift=True,
         )
 
         assert resource_models.get_errors() == []
 
-    def test_target_whose_delivered_by_slugs_all_delivered_fails_drift_rule(self, tmp_path: Path) -> None:
+    def test_all_delivered_target_snippet_is_accepted(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a", "work-b"]},
-            roadmap_status_map={
-                "work-a": RoadmapStatus.DELIVERED,
-                "work-b": RoadmapStatus.DELIVERED,
-            },
-            enforce_delivered_drift=True,
         )
 
-        assert resource_models.get_errors() == [
-            {
-                "code": _snippet.SNIPPET_STATUS_UNFLIPPED_DRIFT,
-                "path": str(snippet_path),
-                "delivered_slugs": "work-a,work-b",
-            }
-        ]
+        assert resource_models.get_errors() == []
 
-    def test_mixed_whose_delivered_by_slugs_all_delivered_fails_drift_rule(self, tmp_path: Path) -> None:
+    def test_all_delivered_mixed_snippet_is_accepted(self, tmp_path: Path) -> None:
         resource_models.clear_errors()
         snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
 
         _snippet._validate_status_and_delivered_by(
             snippet_path,
             {"status": SNIPPET_STATUS_MIXED, "delivered_by": ["work-a"]},
-            roadmap_status_map={"work-a": RoadmapStatus.DELIVERED},
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors()[0]["code"] == _snippet.SNIPPET_STATUS_UNFLIPPED_DRIFT
-        assert resource_models.get_errors()[0]["path"] == str(snippet_path)
-
-    def test_target_with_in_flight_slug_passes_drift_rule(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a", "work-b"]},
-            roadmap_status_map={
-                "work-a": RoadmapStatus.DELIVERED,
-                "work-b": RoadmapStatus.ACTIVE,
-            },
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors() == []
-
-    def test_removed_slug_is_valid_delivered_by_reference(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["removed-work"]},
-            roadmap_status_map={"removed-work": RoadmapStatus.REMOVED},
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors() == []
-
-    def test_removed_slug_does_not_count_as_delivered_drift(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["removed-work"]},
-            roadmap_status_map={"removed-work": RoadmapStatus.REMOVED},
-            enforce_delivered_drift=True,
-        )
-
-        assert resource_models.get_errors() == []
-
-    def test_drift_rule_can_be_disabled_for_pre_reconcile_validation(self, tmp_path: Path) -> None:
-        resource_models.clear_errors()
-        snippet_path = tmp_path / "docs" / "project" / "spec" / "snippet.md"
-
-        _snippet._validate_status_and_delivered_by(
-            snippet_path,
-            {"status": SNIPPET_STATUS_TARGET, "delivered_by": ["work-a"]},
-            roadmap_status_map={"work-a": RoadmapStatus.DELIVERED},
-            enforce_delivered_drift=False,
         )
 
         assert resource_models.get_errors() == []
@@ -365,7 +243,7 @@ class TestRoadmapStatusMap:
     def test_missing_todos_db_returns_empty_status_map(self, tmp_path: Path) -> None:
         assert _snippet.build_roadmap_status_map(tmp_path) == {}
 
-    def test_reads_active_icebox_and_delivered_statuses(self, tmp_path: Path) -> None:
+    def test_reads_active_icebox_and_delivered_statuses(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         _write_roadmap_db(
             tmp_path,
             [
@@ -376,12 +254,7 @@ class TestRoadmapStatusMap:
             ],
         )
 
-        assert _snippet.build_roadmap_status_map(tmp_path) == {
-            "alpha": RoadmapStatus.ACTIVE,
-            "beta": RoadmapStatus.ICEBOX,
-            "gamma": RoadmapStatus.DELIVERED,
-            "delta": RoadmapStatus.REMOVED,
-        }
+        assert _snippet.build_roadmap_status_map(tmp_path) == snapshot
 
     def test_current_roadmap_entry_wins_over_historical_delivery(self, tmp_path: Path) -> None:
         _write_roadmap_db(
@@ -416,31 +289,6 @@ class TestRoadmapStatusMap:
 
         assert _snippet.build_roadmap_status_map(tmp_path)["reused-slug"] == RoadmapStatus.DELIVERED
 
-    def test_validate_all_snippets_builds_roadmap_status_map_once(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        resource_models.clear_errors()
-        snippets_root = tmp_path / "docs" / "project"
-        _write_policy_snippet(snippets_root / "policy", "alpha.md", ["alpha"])
-        _write_policy_snippet(snippets_root / "policy", "beta.md", ["beta"])
-        calls = 0
-
-        def fake_build_roadmap_status_map(project_root: Path) -> dict[str, str]:
-            nonlocal calls
-            calls += 1
-            assert project_root == tmp_path
-            return {
-                "alpha": RoadmapStatus.ACTIVE,
-                "beta": RoadmapStatus.ACTIVE,
-            }
-
-        monkeypatch.setattr(_snippet, "build_roadmap_status_map", fake_build_roadmap_status_map)
-
-        _snippet.validate_all_snippets(tmp_path)
-
-        assert calls == 1
-        assert resource_models.get_errors() == []
-
 
 class TestThirdPartyValidation:
     def test_accepts_valid_third_party_frontmatter(self, tmp_path: Path) -> None:
@@ -471,7 +319,9 @@ class TestThirdPartyValidation:
 
         assert resource_models.get_errors() == []
 
-    def test_reports_all_missing_third_party_frontmatter_fields(self, tmp_path: Path) -> None:
+    def test_reports_all_missing_third_party_frontmatter_fields(
+        self, tmp_path: Path, snapshot: SnapshotAssertion
+    ) -> None:
         resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
@@ -484,18 +334,9 @@ class TestThirdPartyValidation:
             domains={"software-development"},
         )
 
-        assert [
-            (error["code"], error.get("field"))
-            for error in resource_models.get_errors()
-            if error["code"] == "snippet_missing_frontmatter_field"
-        ] == [
-            ("snippet_missing_frontmatter_field", "id"),
-            ("snippet_missing_frontmatter_field", "type"),
-            ("snippet_missing_frontmatter_field", "scope"),
-            ("snippet_missing_frontmatter_field", "description"),
-        ]
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot
 
-    def test_reports_non_url_source_entries_as_errors(self, tmp_path: Path) -> None:
+    def test_reports_non_url_source_entries_as_errors(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
         doc_path.parent.mkdir(parents=True)
@@ -518,6 +359,4 @@ class TestThirdPartyValidation:
 
         _snippet.validate_third_party_docs(tmp_path)
 
-        assert resource_models.get_errors() == [
-            {"code": "third_party_source_invalid", "path": str(doc_path), "source": "not-a-url"}
-        ]
+        assert _normalize_error_paths(resource_models.get_errors(), tmp_path) == snapshot

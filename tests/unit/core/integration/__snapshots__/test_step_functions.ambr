@@ -5,3 +5,78 @@
   todos_db.deliver_sync returned False for ghost-slug and the slug is not in delivered_slugs — roadmap entry is missing
   '''
 # ---
+# name: test_delivery_bookkeeping_idempotently_continues_when_slug_already_delivered
+  ''
+# ---
+# name: test_do_merge_calls_reconcile_with_delivered_status_override[message]
+  'commit-prompt'
+# ---
+# name: test_do_merge_calls_reconcile_with_delivered_status_override[reconcile_call]
+  dict({
+    'only_slug': 'integrate-deliveredby-flip',
+    'project_root': 'TMP/trees/_integration',
+    'status_map': dict({
+      'integrate-deliveredby-flip': <RoadmapStatus.DELIVERED: 'delivered'>,
+    }),
+  })
+# ---
+# name: test_do_merge_stages_reconciled_snippet_for_current_slug[git_calls]
+  list([
+    list([
+      'merge-base',
+      '--is-ancestor',
+      'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      'HEAD',
+    ]),
+    list([
+      'merge',
+      '--squash',
+      'task-branch',
+    ]),
+    list([
+      'diff',
+      '--cached',
+      '--quiet',
+    ]),
+    list([
+      'add',
+      '--',
+      'TMP/trees/_integration/docs/project/spec/snippet.md',
+    ]),
+  ])
+# ---
+# name: test_do_merge_stages_reconciled_snippet_for_current_slug[message]
+  'commit-prompt'
+# ---
+# name: test_get_candidate_key_returns_key_when_all_fields_present
+  CandidateKey(slug='my-slug', branch='my-branch', sha='my-sha')
+# ---
+# name: test_step_awaiting_commit_for_clean_merge_stages_reconciled_snippet[git_calls]
+  list([
+    list([
+      'add',
+      '--',
+      'TMP/trees/_integration/docs/project/spec/snippet.md',
+    ]),
+  ])
+# ---
+# name: test_step_awaiting_commit_for_clean_merge_stages_reconciled_snippet[message]
+  'commit-prompt'
+# ---
+# name: test_step_awaiting_commit_for_conflict_stages_reconciled_snippet[git_calls]
+  list([
+    list([
+      'add',
+      '--',
+      'TMP/trees/_integration/docs/project/spec/snippet.md',
+    ]),
+  ])
+# ---
+# name: test_step_awaiting_commit_for_conflict_stages_reconciled_snippet[message]
+  'conflict-prompt'
+# ---
+# name: test_sweep_stale_artifacts_cleans_up_delivered_slugs
+  list([
+    'slug-1',
+  ])
+# ---

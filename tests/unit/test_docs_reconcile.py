@@ -13,6 +13,8 @@ from teleclaude import docs_reconcile
 from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET, RoadmapStatus
 from teleclaude.resource_validation import _models, _snippet
 
+pytestmark = pytest.mark.unit
+
 _OLD_SLUG = "old-slug"
 _NEW_SLUG = "new-slug"
 
@@ -261,6 +263,38 @@ def test_reconcile_is_idempotent_across_runs(tmp_path: Path) -> None:
     assert second_results == []
 
 
+def test_reconcile_only_slug_leaves_unrelated_delivered_snippet_unchanged(tmp_path: Path) -> None:
+    related_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/related.md",
+        delivered_by=["candidate", "peer"],
+    )
+    unrelated_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/unrelated.md",
+        delivered_by=["other"],
+    )
+    unrelated_before = unrelated_path.read_bytes()
+
+    results = docs_reconcile.reconcile_snippet_status(
+        tmp_path,
+        {
+            "candidate": RoadmapStatus.DELIVERED,
+            "peer": RoadmapStatus.ACTIVE,
+            "other": RoadmapStatus.DELIVERED,
+        },
+        only_slug="candidate",
+    )
+
+    assert results == [
+        docs_reconcile.SnippetStatusReconcileResult(
+            path=related_path,
+            removed_slugs=("candidate",),
+        )
+    ]
+    assert unrelated_path.read_bytes() == unrelated_before
+
+
 def test_reconcile_purged_slugs_plans_multi_slug_drop_without_writing(tmp_path: Path) -> None:
     body = "# Snippet\n\nBody with purge-time content.\n"
     snippet_path = _write_snippet(
@@ -487,13 +521,10 @@ def test_rewrite_delivered_by_slug_leaves_snippets_valid_for_new_roadmap_slug(tm
     docs_reconcile.rewrite_delivered_by_slug(tmp_path, "old-slug", "new-slug")
     _models.clear_errors()
 
-    _snippet.validate_all_snippets(
-        tmp_path,
-        roadmap_status_map={"new-slug": RoadmapStatus.ACTIVE},
-    )
+    _snippet.validate_all_snippets(tmp_path)
 
     findings = _models.get_errors()
-    assert _snippet.SNIPPET_DELIVERED_BY_UNKNOWN_SLUG not in {finding["code"] for finding in findings}
+    assert findings == []
 
 
 def test_scan_remove_orphans_reports_sole_deliverer(tmp_path: Path) -> None:

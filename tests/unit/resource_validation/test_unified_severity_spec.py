@@ -36,6 +36,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 import teleclaude.resource_validation as rv
 from teleclaude import sync
@@ -44,10 +45,22 @@ from teleclaude.resource_validation import _models as resource_models
 from teleclaude.resource_validation import _snippet
 
 
+def _normalize_error_paths(errors: list[dict[str, object]], root: Path) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    for error in errors:
+        normalized.append(
+            {
+                key: value.replace(str(root), "TMP") if isinstance(value, str) else value
+                for key, value in error.items()
+            }
+        )
+    return normalized
+
+
 class TestUnifiedSeverityAPI:
     """R1: The module exposes a single collection, retrieval, and clear function."""
 
-    def test_error_function_records_findings(self) -> None:
+    def test_error_function_records_findings(self, snapshot: SnapshotAssertion) -> None:
         """Single collection function records validation findings as errors."""
         m.clear_errors()
 
@@ -55,9 +68,7 @@ class TestUnifiedSeverityAPI:
 
         findings = m.get_errors()
         assert len(findings) == 1
-        assert findings[0]["code"] == "test_code"
-        assert findings[0]["path"] == "docs/a.md"
-        assert findings[0]["reason"] == "test"
+        assert findings == snapshot
 
         m.clear_errors()
 
@@ -85,14 +96,13 @@ class TestUnifiedSeverityAPI:
 
         m.clear_errors()
 
-    def test_extra_kwargs_preserved_in_findings(self) -> None:
+    def test_extra_kwargs_preserved_in_findings(self, snapshot: SnapshotAssertion) -> None:
         """Arbitrary keyword arguments are preserved in the finding dict."""
         m.clear_errors()
         m._error("ref_broken", path="docs/a.md", ref="@docs/b.md", resolved="/tmp/b.md")
 
         finding = m.get_errors()[0]
-        assert finding["ref"] == "@docs/b.md"
-        assert finding["resolved"] == "/tmp/b.md"
+        assert finding == snapshot
 
         m.clear_errors()
 
@@ -123,7 +133,7 @@ class TestThirdPartyValidationUsesErrors:
     Replacement spec for F-03 (test__snippet.py::TestThirdPartyValidation).
     """
 
-    def test_non_url_source_reported_as_error(self, tmp_path: Path) -> None:
+    def test_non_url_source_reported_as_error(self, tmp_path: Path, snapshot: SnapshotAssertion) -> None:
         """Invalid third-party sources produce error findings, not warnings."""
         resource_models.clear_errors()
         doc_path = tmp_path / "docs" / "third-party" / "guide.md"
@@ -149,9 +159,7 @@ class TestThirdPartyValidationUsesErrors:
 
         errors = resource_models.get_errors()
         assert len(errors) == 1
-        assert errors[0]["code"] == "third_party_source_invalid"
-        assert errors[0]["path"] == str(doc_path)
-        assert errors[0]["source"] == "not-a-url"
+        assert _normalize_error_paths(errors, tmp_path) == snapshot
 
         resource_models.clear_errors()
 
@@ -167,7 +175,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """When ``warn_only=True``, sync returns True even if findings exist."""
-        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _pr: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _pr: [])
@@ -191,7 +198,6 @@ class TestSyncWarnOnlyLeniencyPreserved:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """When ``warn_only=False``, sync returns False if findings exist."""
-        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_snippets", lambda _pr: None)
         monkeypatch.setattr(sync, "validate_all_artifacts", lambda _pr: [])
         monkeypatch.setattr(sync, "validate_jobs_config", lambda _pr: [])

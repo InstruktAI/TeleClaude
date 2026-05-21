@@ -15,7 +15,7 @@ from typing import Any
 
 from instrukt_ai_logging import get_logger
 
-from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR
+from teleclaude.constants import ARTIFACT_IMPLEMENTATION_PLAN, ARTIFACT_REQUIREMENTS, WORKTREE_DIR, RoadmapStatus
 from teleclaude.core import integration_bridge as bridge
 from teleclaude.core.integration.checkpoint import IntegrationCheckpoint, IntegrationPhase, _now_iso, _write_checkpoint
 from teleclaude.core.integration.formatters import (
@@ -30,8 +30,10 @@ from teleclaude.core.integration.lease import IntegrationLeaseStore
 from teleclaude.core.integration.readiness_projection import CandidateKey
 from teleclaude.core.next_machine.delivery import cleanup_delivered_slug
 from teleclaude.core.todos_db import get_todos_db_sync
+from teleclaude.docs_reconcile import reconcile_snippet_status
 from teleclaude.git import GitCommandError, Repo
 from teleclaude.git_lock import main_branch_lock
+from teleclaude.resource_validation._snippet import build_roadmap_status_map
 
 logger = get_logger(__name__)
 
@@ -41,6 +43,7 @@ _tls = threading.local()
 _INTEGRATION_LEASE_KEY = "integration/main"
 _INTEGRATION_LEASE_TTL_SECONDS = 120
 _NEXT_INTEGRATE_PHASE_LOG = "NEXT_INTEGRATE_PHASE"
+RECONCILE_STAGING_FAILED = "RECONCILE_STAGING_FAILED"
 
 
 # ---------------------------------------------------------------------------
@@ -547,6 +550,10 @@ def _do_merge(
         _emit_lifecycle_event("integration.merge.succeeded", {"slug": key.slug, "branch": key.branch})
         logger.info("%s slug=%s phase=MERGE_CLEAN", _NEXT_INTEGRATE_PHASE_LOG, key.slug)
 
+        stage_err = _reconcile_and_stage_delivery_snippets(key, cwd, wt)
+        if stage_err is not None:
+            return stage_err
+
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
         # Conflict
@@ -564,6 +571,20 @@ def _do_merge(
         )
 
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
+
+
+def _reconcile_and_stage_delivery_snippets(key: CandidateKey, cwd: str, wt: str) -> tuple[bool, str] | None:
+    status_map = dict(build_roadmap_status_map(Path(cwd)))
+    status_map[key.slug] = RoadmapStatus.DELIVERED
+    reconciled = reconcile_snippet_status(Path(wt), status_map, only_slug=key.slug)
+    for result in reconciled:
+        rc_add, _, add_err = _run_git(["add", "--", str(result.path)], cwd=wt)
+        if rc_add != 0:
+            return False, _format_error(
+                RECONCILE_STAGING_FAILED,
+                f"Failed to stage reconciled snippet {result.path}: {add_err.strip()}",
+            )
+    return None
 
 
 def _step_awaiting_commit(
@@ -602,12 +623,18 @@ def _step_awaiting_commit(
     # No commit yet — re-prompt
     merge_type = (checkpoint.error_context or {}).get("merge_type", "conflicted")
     if merge_type == "clean":
+        stage_err = _reconcile_and_stage_delivery_snippets(key, cwd, wt)
+        if stage_err is not None:
+            return stage_err
         diff_stats = _get_diff_stats(wt)
         branch_log = _get_branch_log(wt, key.branch, base_ref="origin/main")
         requirements = _read_artifact_safe(cwd, key.slug, ARTIFACT_REQUIREMENTS)
         impl_plan = _read_artifact_safe(cwd, key.slug, ARTIFACT_IMPLEMENTATION_PLAN)
         return False, _format_commit_decision(key.slug, key.branch, diff_stats, branch_log, requirements, impl_plan)
     else:
+        stage_err = _reconcile_and_stage_delivery_snippets(key, cwd, wt)
+        if stage_err is not None:
+            return stage_err
         conflicted_files = list((checkpoint.error_context or {}).get("conflicted_files", []))
         return False, _format_conflict_decision(key.slug, key.branch, conflicted_files)
 

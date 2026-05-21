@@ -189,7 +189,6 @@ tests/unit/core/integration/test_runtime.py
 tests/unit/core/integration/test_service.py
 tests/unit/core/integration/test_state_machine.py
 tests/unit/core/integration/test_step_delivery_bookkeeping.py
-tests/unit/core/integration/test_step_functions.py
 tests/unit/core/integration/test_worktree_guards.py
 tests/unit/core/models/test__adapter.py
 tests/unit/core/models/test__context.py
@@ -362,9 +361,7 @@ tests/unit/quality/test_format.py
 tests/unit/quality/test_lint.py
 tests/unit/quality/test_test_runner.py
 tests/unit/quality/test_toolchain.py
-tests/unit/resource_validation/test__snippet.py
 tests/unit/resource_validation/test_activation_trigger_validation_spec.py
-tests/unit/resource_validation/test_unified_severity_spec.py
 tests/unit/runtime/test_binaries.py
 tests/unit/scripts/test_distribute.py
 tests/unit/scripts/test_release_changelog.py
@@ -403,7 +400,6 @@ tests/unit/test_required_reads.py
 tests/unit/test_session_identity.py
 tests/unit/test_slug.py
 tests/unit/test_snippet_validation.py
-tests/unit/test_sync.py
 tests/unit/test_todo_artifacts.py
 tests/unit/tools/lint/test_guardrails.py
 tests/unit/tools/test_migration.py
