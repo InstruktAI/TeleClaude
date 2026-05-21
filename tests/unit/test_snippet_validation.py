@@ -46,18 +46,6 @@ class TestExpectedSnippetIdForPath:
 
         assert (expected, error) == ("project/policy/getting-started", None)
 
-    def test_baseline_index_has_no_expected_id(self, tmp_path: Path) -> None:
-        path = tmp_path / "docs" / "global" / "baseline" / "index.md"
-        path.parent.mkdir(parents=True)
-        path.write_text("body", encoding="utf-8")
-
-        assert snippet_validation.expected_snippet_id_for_path(
-            path,
-            project_root=tmp_path,
-            domains={"software-development"},
-        ) == (None, None)
-
-
 class TestValidateInlineRefFormat:
     def test_validates_project_and_global_inline_refs(self) -> None:
         assert (

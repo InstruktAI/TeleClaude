@@ -85,6 +85,18 @@ that applies to it. Per-artifact provenance:
 - `referenced_paths` — tracked repo paths mentioned in the artifact body.
 - `upstream_artifact_digests` — map of `{upstream_artifact_name: digest}` for
   every artifact this artifact derives from (per artifact-kind table below).
+  **Field consolidation:** the existing `ArtifactEntry.upstream_digests`
+  field (`teleclaude/types/todos.py:150`) carries the same provenance
+  concept today, populated by `_apply_readiness_stamp` and
+  `_capture_upstream_digests`. The implementation plan renames it in place
+  to `upstream_artifact_digests` (preferred — single canonical field, no
+  alias) OR keeps `upstream_digests` as the storage field and treats
+  `upstream_artifact_digests` as the spec-side display name (acceptable
+  fallback if call-site renames are too widespread to land in one todo).
+  The fail-safe drift behavior is unchanged either way: an artifact with
+  an empty digest map for an applicable class derives to `pending` and
+  routes the analyzer to establish a fresh anchor. The plan picks the
+  rename strategy; this spec accepts either as a stable target.
 - `owned_snippet_digests` — map of `{snippet_id: digest}` for every snippet
   the Todo owns via its `delivered_by` membership at write time.
 - `referenced_snippet_digests` — map of `{snippet_id: digest}` for every
@@ -254,7 +266,7 @@ first review)" or "verdict cleared by reviewer needs_work (needs author
 fix inside the existing review loop)" is an explicit marker on the
 review state:
 
-- `ReviewState` (the typed model for `architecture_review` and
+- `ReviewVerdictState` (the typed model for `architecture_review` and
   `plan_review`) gains a `cleared_by_substantive_drift: bool` field
   (default `false`). The marker is set in the same `StateWriter` commit
   that clears the verdict due to a substantive `--drift-reviewed`
@@ -519,10 +531,17 @@ Scenario: re-writing an artifact clears its drift stamps
   for collapse to per-artifact status: `substantive` > `pending` >
   `cosmetic` > `fresh`.
 - **Drift-reviewed verdict (stamp):** `cosmetic`, `substantive`.
-- **Age window:** configurable per artifact kind in project config;
-  default `30 days` for `implementation-plan` and `architecture`,
-  `60 days` for `prd`, `90 days` for `input`. `0` (or unset) disables the
-  age class for that artifact kind.
+- **Age window:** configurable per artifact kind in project config.
+  **Architecture-resolved default: disabled per project until explicit
+  config is set.** The age class is opt-in — projects that do not
+  configure an age window for an artifact kind pay no age cost on their
+  prepare/work cycles. When a project opts in, the recommended starting
+  values are `30 days` for `implementation-plan` and `architecture`,
+  `60 days` for `prd`, `90 days` for `input`; the project owner chooses
+  the actual values. `0` or unset is the disabled state. This avoids
+  surprising all in-flight todos with an age-pending sweep on first
+  prepare/work after this delivery merges; teams enable the class
+  deliberately when they want freshness pressure.
 
 ## Known caveats
 
