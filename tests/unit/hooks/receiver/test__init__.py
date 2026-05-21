@@ -13,6 +13,7 @@ import pytest
 from sqlmodel import Session as SqlSession
 from sqlmodel import SQLModel, select
 
+from teleclaude.constants import DOMAIN_SCOPES
 from teleclaude.core import db_models
 from teleclaude.core.db.connection_factory import create_sync_db_engine
 from teleclaude.core.events import AgentHookEvents
@@ -376,7 +377,6 @@ class TestDomainBaselineInjection:
     """
 
     def test_load_domain_baseline_content_returns_file_text(self, tmp_path: Path) -> None:
-
         docs_root = tmp_path / ".teleclaude" / "docs"
         (docs_root / "software-development").mkdir(parents=True)
         baseline = docs_root / "software-development" / "baseline.md"
@@ -385,7 +385,10 @@ class TestDomainBaselineInjection:
         with patch("teleclaude.hooks.receiver.Path.home", return_value=tmp_path):
             content = _load_domain_baseline_content("software-development")
 
-        assert "# Software Baseline" in content
+        # Identity comparison vs the file the production code reads — proves
+        # the loader returns exactly the on-disk content, not a constant or a
+        # different file. No inline-string assertion.
+        assert content == baseline.read_text(encoding="utf-8")
 
     def test_load_domain_baseline_content_raises_when_missing(self, tmp_path: Path) -> None:
 
@@ -450,7 +453,10 @@ class TestDomainBaselineInjection:
         assert result is None
 
     def test_resolve_command_domain_accepts_allowlisted_value(self, tmp_path: Path) -> None:
-
+        # Named-constant identity: use a DOMAIN_SCOPES entry as the round-trip
+        # value, so the assertion compares two references to the same constant
+        # rather than to inline copy.
+        allowlisted = DOMAIN_SCOPES[0]
         outbox_db = _make_outbox_db(tmp_path)
         engine = create_sync_db_engine(outbox_db)
         SQLModel.metadata.create_all(engine, tables=[db_models.Session.__table__])
@@ -460,7 +466,7 @@ class TestDomainBaselineInjection:
                     session_id="sess-good",
                     computer_name="test",
                     title="t",
-                    origin_metadata=json.dumps({"command_domain": "software-development"}),
+                    origin_metadata=json.dumps({"command_domain": allowlisted}),
                     last_input_origin="terminal",
                 )
             )
@@ -469,7 +475,7 @@ class TestDomainBaselineInjection:
         with patch("teleclaude.hooks.receiver._create_sync_engine", return_value=engine):
             result = _resolve_command_domain_for_session("sess-good")
 
-        assert result == "software-development"
+        assert result == allowlisted
 
     def test_print_additional_context_emits_codex_system_message(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
