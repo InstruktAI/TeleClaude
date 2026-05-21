@@ -119,7 +119,13 @@ async def _run_rename(
     async def _get_todos_db(_cwd: str) -> TodosDb:
         return todos_db
 
+    def _git_boundary(args: list[str], **_kwargs: object) -> tuple[int, str, str]:
+        if args == ["rev-parse", "--git-dir"]:
+            return 0, ".git", ""
+        return 0, "", ""
+
     monkeypatch.setattr(module, "get_todos_db", _get_todos_db, raising=False)
+    monkeypatch.setattr(module, "_run_git_cmd", _git_boundary, raising=False)
     executor = cast(_RenameExecutor, module.execute_todo_rename)
     database = await _main_db(tmp_path)
     try:
@@ -166,6 +172,29 @@ def _snippet_delivered_by(snippet_path: Path) -> list[str]:
     return cast(list[str], metadata["delivered_by"])
 
 
+async def test_would_mutate_paths_returns_snippets_with_target_deliverer(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    matching_snippet = _write_target_snippet(project_root)
+    nonmatching_snippet = project_root / "docs" / "project" / "spec" / "other-contract.md"
+    nonmatching_snippet.write_text(
+        (
+            "---\n"
+            "id: project/spec/other-contract\n"
+            "type: spec\n"
+            "scope: project\n"
+            "description: Other contract\n"
+            "status: target\n"
+            "delivered_by: [sibling]\n"
+            "---\n"
+            "# Other Contract\n"
+        ),
+        encoding="utf-8",
+    )
+    module = importlib.import_module("teleclaude.core.next_machine.rename")
+
+    assert module._would_mutate_paths(project_root, _OLD_SLUG) == [matching_snippet]  # pylint: disable=protected-access
+
+
 async def test_execute_todo_rename_rekeys_todo_db_and_snippet_surfaces(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -198,7 +227,7 @@ async def test_execute_todo_rename_emits_renamed_event_with_surface_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root = tmp_path / "project"
-    _write_target_snippet(project_root)
+    snippet_path = _write_target_snippet(project_root)
     todos_db = await _todos_db(project_root)
     await _seed_active_todo(todos_db)
     events: list[tuple[str, Mapping[str, object] | None]] = []
@@ -227,7 +256,7 @@ async def test_execute_todo_rename_preserves_delivered_history_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     project_root = tmp_path / "project"
-    _write_target_snippet(project_root)
+    snippet_path = _write_target_snippet(project_root)
     todos_db = await _todos_db(project_root)
     await todos_db.add_to_roadmap(_OLD_SLUG)
     await todos_db.write_state(_OLD_SLUG, {"lifecycle_phase": "finalize_ready"})
@@ -449,7 +478,7 @@ async def test_execute_todo_rename_success_summary_names_moved_surfaces(
     snapshot: SnapshotAssertion,
 ) -> None:
     project_root = tmp_path / "project"
-    _write_target_snippet(project_root)
+    snippet_path = _write_target_snippet(project_root)
     todos_db = await _todos_db(project_root)
     await _seed_active_todo(todos_db)
 

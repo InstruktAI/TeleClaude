@@ -1,0 +1,27 @@
+# serializer version: 1
+# name: test_execute_todo_rename_commits_snippet_mutations_to_git
+  'refactor(workflow): rename old-slug->new-slug; substitute delivered_by in 1 snippets'
+# ---
+# name: test_execute_todo_rename_commits_snippet_mutations_to_git.1
+  '''
+  refactor(workflow): rename old-slug->new-slug; substitute delivered_by in 1 snippets
+  
+   docs/project/spec/rename-contract.md | 3 ++-
+   1 file changed, 2 insertions(+), 1 deletion(-)
+  '''
+# ---
+# name: test_execute_todo_rename_compensates_on_post_db_commit_failure
+  'error: post-db failure (compensated): git commit failed for delivered_by rename: injected commit failure'
+# ---
+# name: test_execute_todo_rename_compensates_when_snippet_gets_dirty_after_precondition
+  'error: post-db failure (compensated): dirty working tree changed during delivered_by rename: docs/project/spec/rename-contract.md'
+# ---
+# name: test_execute_todo_rename_refuses_on_dirty_snippet_path
+  'error: dirty working tree on snippet path: docs/project/spec/rename-contract.md'
+# ---
+# name: test_execute_todo_rename_refuses_on_hook_env_failure
+  'error: project root is not a git repository'
+# ---
+# name: test_frontmatter_leg_failure_restores_project_byte_for_byte
+  'error: post-db failure (compensated): delivered_by rewrite failed: injected frontmatter leg failure'
+# ---

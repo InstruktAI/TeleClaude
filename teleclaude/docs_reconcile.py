@@ -283,7 +283,14 @@ def rewrite_delivered_by_slug(
             continue
 
         next_metadata = cast(SnippetFrontmatter, dict(metadata))
-        next_metadata["delivered_by"] = [new_slug if slug == old_slug else slug for slug in delivered_by]
+        replaced = [new_slug if slug == old_slug else slug for slug in delivered_by]
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for slug in replaced:
+            if slug not in seen:
+                seen.add(slug)
+                deduped.append(slug)
+        next_metadata["delivered_by"] = deduped
         rendered = _render_frontmatter(next_metadata, body)
         if rendered == content:
             continue

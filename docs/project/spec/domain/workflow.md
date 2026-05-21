@@ -7,9 +7,9 @@ visibility: public
 status: target
 delivered_by:
 - v2-workflow-cutover
-- removal-snippet-frontmatter-sync
 - roadmap-trash-reveal-ui
 - v2-workflow-cli-refinement-commands
+- rename-deliveredby-substitution
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -587,6 +587,12 @@ Then workflow re-keys the live entry's atomic unit from "feature-x" to
   single all-or-nothing operation
 And the todos.db slug-update cascade commits in one transaction as the
   linearization point
+And after the todos.db transaction commits, workflow re-scans snippets whose
+  frontmatter `delivered_by` contains "feature-x", runs
+  `rewrite_delivered_by_slug` to substitute "feature-z" for "feature-x"
+  (deduplicating if both slugs were present), stages exactly those mutated
+  snippet paths with `git add -- <paths>`, and creates a pathspec-scoped local
+  git commit whose pre-commit hooks run normally
 And on commit emits workflow.todo.renamed with old_slug and new_slug
 And the remote branch and daemon-DB references (operations.slug,
   sessions.working_slug, sessions.subdir) for terminal/audit and
@@ -595,10 +601,16 @@ And the remote branch and daemon-DB references (operations.slug,
 And retained delivered/removed history rows for "feature-x" keep their
   original slug (addressed by durable row identity, not the active alias)
 And if any non-removed entry already holds "feature-z", or a non-terminal
-  session/operation is bound to "feature-x", the rename is refused and
-  nothing changes on any surface
-And if any leg fails, every completed leg is reversed (LIFO) and the system
-  is left exactly as before
+  session/operation is bound to "feature-x", or git sanity / snippet
+  cleanliness preconditions fail for any target snippet path, the rename is
+  refused before the DB transaction and nothing changes on any surface
+And if the post-DB snippet write/add/commit leg fails, workflow restores
+  mutated snippet paths and their index entries to HEAD, rolls back local slug
+  surfaces, runs a compensating reverse DB rename from "feature-z" back to
+  "feature-x", and returns an operation-level error; no `blocked` field or
+  operator recovery command is introduced
+And if any pre-DB leg fails, every completed leg is reversed (LIFO) and the
+  system is left exactly as before
 ```
 
 #### UC-WFL-14: Reveal removed entries through the recovery surface

@@ -13,6 +13,9 @@ from teleclaude import docs_reconcile
 from teleclaude.constants import SNIPPET_STATUS_MIXED, SNIPPET_STATUS_TARGET, RoadmapStatus
 from teleclaude.resource_validation import _models, _snippet
 
+_OLD_SLUG = "old-slug"
+_NEW_SLUG = "new-slug"
+
 
 def _write_snippet(
     project_root: Path,
@@ -453,6 +456,18 @@ def test_rewrite_delivered_by_slug_updates_only_lifecycle_frontmatter_refs(tmp_p
     assert metadata["delivered_by"] == ["new-slug", "sibling"]
     assert _frontmatter_line(snippet_path, "description") == description_before
     assert snippet_path.read_bytes().split(b"---\n", 2)[2] == body_before
+
+
+def test_rewrite_delivered_by_slug_deduplicates_when_new_slug_already_present(tmp_path: Path) -> None:
+    snippet_path = _write_snippet(
+        tmp_path,
+        "docs/project/spec/snippet.md",
+        delivered_by=[_OLD_SLUG, _NEW_SLUG],
+    )
+
+    docs_reconcile.rewrite_delivered_by_slug(tmp_path, _OLD_SLUG, _NEW_SLUG)
+
+    assert _metadata(snippet_path)["delivered_by"] == [_NEW_SLUG]
 
 
 def test_rewrite_delivered_by_slug_leaves_snippets_valid_for_new_roadmap_slug(tmp_path: Path) -> None:
