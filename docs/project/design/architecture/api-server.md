@@ -136,7 +136,7 @@ Response mode is declared on the command, not the route. Routes derive HTTP stat
 | POST   | /sessions/{id}/message          | IMMEDIATE       | Send message to session            |
 | POST   | /sessions/{id}/keys             | IMMEDIATE       | Inject key input                   |
 | POST   | /sessions/{id}/voice            | IMMEDIATE       | Handle voice input                 |
-| POST   | /sessions/self/file             | IMMEDIATE       | Handle file upload                 |
+| POST   | /sessions/self/file             | IMMEDIATE       | Deliver file attachment to user    |
 | POST   | /sessions/self/result           | IMMEDIATE       | Send formatted result to user      |
 | POST   | /sessions/self/widget           | IMMEDIATE       | Render widget and send summary     |
 | POST   | /sessions/{id}/agent-restart    | FIRE_AND_FORGET | Restart agent                      |
