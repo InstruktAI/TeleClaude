@@ -11,7 +11,6 @@ visibility: 'public'
 ## Required reads
 
 - @~/.teleclaude/docs/software-development/policy/python/core.md
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
 
 ## Rationale
 

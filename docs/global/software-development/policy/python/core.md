@@ -10,7 +10,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/software-development/policy/code-quality.md
 - @~/.teleclaude/docs/software-development/policy/python/tooling.md
 
 ## Rules

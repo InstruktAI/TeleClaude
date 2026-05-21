@@ -8,10 +8,6 @@ visibility: 'public'
 
 # Tester — Concept
 
-## Required reads
-
-- @~/.teleclaude/docs/software-development/policy/testing.md
-
 ## What
 
 Test-focused role. Improve test quality, fix failures, enforce testing standards and coverage.
