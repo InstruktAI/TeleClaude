@@ -10,6 +10,7 @@ from teleclaude.api_models import (
     AgentAvailabilityEventDTO,
     ChiptunesTrackEventDTO,
     ComputerDTO,
+    OperationCompletedEventDTO,
     ProjectDTO,
     ProjectsInitialDataDTO,
     ProjectsInitialEventDTO,
@@ -502,3 +503,52 @@ def test_chiptunes_track_toast_fires_before_footer_update() -> None:
         app._handle_ws_event(ChiptunesTrackEventDTO(track="Lazy Jones", sid_path="/music/Lazy_Jones.sid"))
 
     app.notify.assert_called_once()
+
+
+@pytest.mark.unit
+def test_operation_completed_with_error_surfaces_toast() -> None:
+    """Failed background operations (e.g. RemoveRefused) must surface to the user.
+
+    The TUI fires the operation via POST and returns immediately with an
+    operation_id; the actual work runs async. When the worker raises an
+    OperationFailure, the daemon broadcasts OperationCompletedEventDTO carrying
+    the structured failure summary in `error`. Without a TUI handler, the user
+    sees no feedback. This pins the contract: the TUI translates that error
+    into an error-severity toast.
+    """
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_event(
+        OperationCompletedEventDTO(
+            event="operation.todo_remove.completed",
+            operation_id="op-42",
+            error="RemoveRefused: 3 snippet(s) would be orphaned",
+        )
+    )
+
+    app.notify.assert_called_once()
+    args, kwargs = app.notify.call_args
+    assert args[0] == "RemoveRefused: 3 snippet(s) would be orphaned"
+    assert kwargs["severity"] == "error"
+
+
+@pytest.mark.unit
+def test_operation_completed_without_error_is_silent() -> None:
+    """Successful background operations don't toast — the relevant view refresh
+    already reflects the new state. Toasts are reserved for failures the user
+    cannot otherwise discover."""
+    sessions_view = _SessionsView()
+    pane_bridge = _PaneBridge()
+    app = _WsApp(sessions_view, pane_bridge)
+
+    app._handle_ws_event(
+        OperationCompletedEventDTO(
+            event="operation.todo_remove.completed",
+            operation_id="op-42",
+            error=None,
+        )
+    )
+
+    app.notify.assert_not_called()

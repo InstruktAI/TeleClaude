@@ -226,10 +226,8 @@ class TodoDTO(BaseModel):
     finalize_status: str | None = None
 
 
-class OperationStatusBlockingSnippetPayload(BaseModel):
+class OperationStatusBlockingSnippetPayload(TypedDict):
     """Machine-readable snippet blocker payload exposed by operation DTOs."""
-
-    model_config = ConfigDict(frozen=True)
 
     path: str
     slug_role: str
@@ -237,18 +235,11 @@ class OperationStatusBlockingSnippetPayload(BaseModel):
     other_removed_deliverers: list[str]
 
 
-class OperationStatusErrorPayload(BaseModel):
+class OperationStatusErrorPayload(TypedDict, total=False):
     """Machine-readable operation failure payload exposed by API DTOs."""
 
-    model_config = ConfigDict(frozen=True)
-
-    kind: str | None = None
-    blocking_snippets: list[OperationStatusBlockingSnippetPayload] | None = None
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, dict):
-            return self.model_dump(exclude_none=True) == other
-        return super().__eq__(other)
+    kind: str
+    blocking_snippets: list[OperationStatusBlockingSnippetPayload]
 
 
 class OperationStatusDTO(BaseModel):
@@ -449,25 +440,6 @@ class RefreshEventDTO(BaseModel):
         "todo_removed",
     ]
     data: RefreshDataDTO
-
-
-class TodoRenamedDataDTO(BaseModel):
-    """Data for todo_renamed event."""
-
-    model_config = ConfigDict(frozen=True)
-
-    old_slug: str = Field(..., min_length=1)
-    new_slug: str = Field(..., min_length=1)
-    project_path: str = Field(..., min_length=1)
-
-
-class TodoRenamedEventDTO(BaseModel):
-    """WebSocket event for todo slug rename."""
-
-    model_config = ConfigDict(frozen=True)
-
-    event: Literal["todo_renamed"] = "todo_renamed"
-    data: TodoRenamedDataDTO
 
 
 class ErrorEventDataDTO(BaseModel):

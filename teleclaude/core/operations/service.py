@@ -666,7 +666,7 @@ class OperationsService:
                 datetime.now(UTC).isoformat(),
                 error_payload_json=error_payload_json,
             )
-            self._emit_completion_event(completion_event, operation_id, error=str(exc))
+            self._emit_completion_event(completion_event, operation_id, error=error_text)
             logger.exception("Background operation failed for %s", operation_id)
         finally:
             if token is not None:

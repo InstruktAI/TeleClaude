@@ -13,6 +13,7 @@ from teleclaude.api_models import (
     ChiptunesStateEventDTO,
     ChiptunesTrackEventDTO,
     ErrorEventDTO,
+    OperationCompletedEventDTO,
     ProjectDTO,
     ProjectsInitialEventDTO,
     ProjectWithTodosDTO,
@@ -175,6 +176,14 @@ class TelecAppWsMixin:
 
         if isinstance(event, ErrorEventDTO):
             self.notify(event.data.message, severity="error")  # type: ignore[attr-defined]
+            return True
+
+        if isinstance(event, OperationCompletedEventDTO):
+            # Surface background-operation failures (e.g. RemoveRefused) as toasts.
+            # Successful completions stay silent — the relevant view already
+            # reflects the new state through its own data refresh.
+            if event.error:
+                self.notify(event.error, severity="error")  # type: ignore[attr-defined]
             return True
 
         return False
