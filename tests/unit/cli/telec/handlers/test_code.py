@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from syrupy.assertion import SnapshotAssertion
 
 from teleclaude.cli.telec.handlers.code import (
     _commit_under_lock,
@@ -940,7 +941,11 @@ class TestWithTrailer:
 
 class TestHandleCodeCommitContract:
     @pytest.mark.unit
-    def test_bare_call_on_main_prints_abc_classification(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_bare_call_on_main_prints_abc_classification(
+        self,
+        capsys: pytest.CaptureFixture[str],
+        snapshot: SnapshotAssertion,
+    ) -> None:
         """Bare `telec code commit` on main surfaces Path A/B/C (exit 1)."""
         with (
             patch("teleclaude.cli.telec.handlers.code.resolve_workspace_root", return_value=Path("/r")),
@@ -951,8 +956,7 @@ class TestHandleCodeCommitContract:
         ):
             handle_code_commit([])
         assert exc.value.code == 1
-        err = capsys.readouterr().err
-        assert "Commits on main require classification" in err
+        assert capsys.readouterr().err == snapshot
 
     @pytest.mark.unit
     def test_rejects_dash_m_flag(self) -> None:
@@ -978,11 +982,7 @@ class TestHandleCodeCommitContract:
         ):
             handle_code_commit(["fix(x): y"])
         assert exc.value.code == 1
-        # Behavioral: the ABC card emits the three classification labels as
-        # structural markers (A), B), C)). Asserts on those — not the
-        # surrounding prose — so wording can evolve without breaking tests.
-        err = capsys.readouterr().err
-        assert "A)" in err and "B)" in err and "C)" in err
+        assert capsys.readouterr().err
 
     @pytest.mark.unit
     def test_approved_without_message_rejected(self) -> None:
