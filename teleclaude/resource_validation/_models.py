@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Iterable
 from pathlib import Path
 from typing import TypedDict, cast
 
@@ -25,6 +26,7 @@ __all__ = [
     "_ARTIFACT_REF_ORDER",
     "_as_str_list",
     "_error",
+    "_first_out_of_order_ref",
     "_load_schema",
     "clear_errors",
     "get_errors",
@@ -50,6 +52,24 @@ _SEE_ALSO_LIST_LINE = re.compile(r"^\s*-\s+(.+)$")
 _SCHEMA_PATH = REPO_ROOT / "scripts" / "snippet_schema.yaml"
 
 _ARTIFACT_REF_ORDER = TAXONOMY_TYPES.copy()
+
+
+def _first_out_of_order_ref(refs: Iterable[str]) -> str | None:
+    """Return the first @-ref whose taxonomy breaks ``_ARTIFACT_REF_ORDER``, else None.
+
+    Shared by every caller that enforces canonical taxonomy ordering on
+    @-ref sequences (agent-artifact Required reads, baseline manifests).
+    """
+    last_index = -1
+    for ref in refs:
+        taxonomy = next((t for t in _ARTIFACT_REF_ORDER if f"/{t}/" in ref), None)
+        if taxonomy is None:
+            continue
+        index = _ARTIFACT_REF_ORDER.index(taxonomy)
+        if index < last_index:
+            return ref
+        last_index = index
+    return None
 
 # ---------------------------------------------------------------------------
 # Finding collection

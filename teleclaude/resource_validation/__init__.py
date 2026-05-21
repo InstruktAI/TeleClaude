@@ -24,6 +24,7 @@ from teleclaude.resource_validation._models import (
     REPO_ROOT,
     _as_str_list,
     _error,
+    _first_out_of_order_ref,
     _load_schema,
     clear_errors,
     get_errors,
@@ -97,13 +98,6 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # Agent artifact validation
 # ---------------------------------------------------------------------------
-
-
-def _taxonomy_from_ref(ref: str) -> str | None:
-    for taxonomy in _ARTIFACT_REF_ORDER:
-        if f"/{taxonomy}/" in ref:
-            return taxonomy
-    return None
 
 
 def _extract_artifact_required_reads(lines: list[str]) -> list[str]:
@@ -331,15 +325,8 @@ def validate_artifact_body(post: frontmatter.Post, path: str, *, kind: str) -> N
 
 
 def _validate_required_reads_order(refs: list[str], path: str) -> None:
-    last_index = -1
-    for ref in refs:
-        taxonomy = _taxonomy_from_ref(ref)
-        if not taxonomy:
-            continue
-        index = _ARTIFACT_REF_ORDER.index(taxonomy)
-        if index < last_index:
-            raise ValueError(f"{path} required reads are out of order; expected {' → '.join(_ARTIFACT_REF_ORDER)}")
-        last_index = index
+    if _first_out_of_order_ref(refs) is not None:
+        raise ValueError(f"{path} required reads are out of order; expected {' → '.join(_ARTIFACT_REF_ORDER)}")
 
 
 def validate_artifact_refs_exist(refs: list[str], path: str, *, project_root: Path) -> None:
