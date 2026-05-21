@@ -81,22 +81,35 @@ When a tracked artifact is written (`telec todo artifacts write`), the
 state-stamping boundary captures all evidence needed for every drift class
 that applies to it. Per-artifact provenance:
 
-- `codebase_sha_at_write` — `origin/main` HEAD SHA at write time.
+- `codebase_sha_at_write` — `origin/main` HEAD SHA at write time. Captured
+  via a single `get_origin_main_sha(cwd)` helper added to
+  `teleclaude/core/next_machine/git_ops.py` (sibling to `get_head_commit`).
+  This is the canonical drift anchor. ALL artifact-provenance write paths
+  (HTTP `write_artifact`, CLI `_handle_artifacts_write`, dump-route
+  `_sync_artifact_digest_state` calls, `stamp_artifact`, prepare-handoff
+  adoption hydration, reconcile/mark-phase hydration, the fast-track
+  `apply_prepared_state` path) read from this helper rather than
+  `get_head_commit(cwd)`. The drift derivation (`derive_lifecycle_drift`
+  and its per-class helpers) compares against the same helper, so the
+  write-time anchor and the derivation-time comparison agree on what
+  "current main" means even when the local repo's HEAD diverges from
+  origin/main between write and derive.
 - `referenced_paths` — tracked repo paths mentioned in the artifact body.
 - `upstream_artifact_digests` — map of `{upstream_artifact_name: digest}` for
   every artifact this artifact derives from (per artifact-kind table below).
-  **Field consolidation:** the existing `ArtifactEntry.upstream_digests`
-  field (`teleclaude/types/todos.py:150`) carries the same provenance
-  concept today, populated by `_apply_readiness_stamp` and
-  `_capture_upstream_digests`. The implementation plan renames it in place
-  to `upstream_artifact_digests` (preferred — single canonical field, no
-  alias) OR keeps `upstream_digests` as the storage field and treats
-  `upstream_artifact_digests` as the spec-side display name (acceptable
-  fallback if call-site renames are too widespread to land in one todo).
-  The fail-safe drift behavior is unchanged either way: an artifact with
-  an empty digest map for an applicable class derives to `pending` and
-  routes the analyzer to establish a fresh anchor. The plan picks the
-  rename strategy; this spec accepts either as a stable target.
+  **Field consolidation (architecture-resolved):** the existing
+  `ArtifactEntry.upstream_digests` field (`teleclaude/types/todos.py:150`)
+  is **kept as the canonical storage field** under its current name. The
+  spec-side name `upstream_artifact_digests` is the spec/documentation
+  display label only; persisted state continues to use
+  `upstream_digests`. This avoids any persisted-schema migration,
+  Pydantic field alias, or read/write compatibility shim — the existing
+  storage is reused with no on-disk change. New per-class provenance
+  fields (`owned_snippet_digests`, `referenced_snippet_digests`,
+  `dependency_set_at_write`, `produced_at`) are pure additions to
+  `ArtifactEntry` (default-empty) and follow the same backward-compat
+  rule: absent values resolve to `pending` per the fail-safe contract,
+  so old state loads cleanly.
 - `owned_snippet_digests` — map of `{snippet_id: digest}` for every snippet
   the Todo owns via its `delivered_by` membership at write time.
 - `referenced_snippet_digests` — map of `{snippet_id: digest}` for every
@@ -490,8 +503,10 @@ Scenario: re-writing an artifact clears its drift stamps
 - `teleclaude/api/todo_routes.py:_sync_artifact_digest_state` — extended
   to capture the new provenance fields at every drift-tracked artifact
   write. **This is the single provenance boundary every write path
-  must enter.** Today, four separate code paths touch artifact
-  provenance fields and must be consolidated under one boundary:
+  must enter.** Today, the following code paths touch artifact provenance
+  fields and must be consolidated under one boundary (any path that is
+  NOT a drift-tracked artifact write must be explicitly documented in
+  the implementation plan as out-of-scope for provenance hydration):
   - `_sync_artifact_digest_state` at `todo_routes.py:322` — async,
     invoked from the `write_artifact` HTTP route at line 428 with
     SHA + referenced_paths supplied.
@@ -514,11 +529,32 @@ Scenario: re-writing an artifact clears its drift stamps
     `upstream_digests` independently of the `_sync_artifact_digest_state`
     boundary. The implementation plan consolidates upstream-digest
     capture into the single provenance boundary so there is exactly
-    one place that mutates the extended provenance fields. The
-    Should-tier scope item "no parallel provenance write paths" makes
-    this consolidation a build-time deliverable; the analyzer's
-    fail-safe behavior covers any artifact whose provenance was
-    captured through a path that did not populate the new fields.
+    one place that mutates the extended provenance fields.
+  - **Prepare-handoff adoption hydration** at
+    `teleclaude/core/next_machine/prepare.py:100`
+    (`_load_artifact_presence_into_state`) — hydrates artifact digest
+    during adoption when state's digest is empty but the artifact
+    exists on disk. Routes through the provenance boundary so adoption
+    populates extended provenance the same way the dump path does.
+  - **Reconcile / mark-phase hydration** at
+    `teleclaude/core/next_machine/state_io.py:204` / `:292` / `:325` —
+    state-evidence helpers that refresh digests during reconcile-driven
+    phase derivation. Each must either route through the provenance
+    boundary or explicitly assert it does not mutate drift-tracked
+    provenance (the plan classifies each).
+  - **Fast-track `apply_prepared_state`** at
+    `teleclaude/core/next_machine/state_io.py:624` — the prepped/bug
+    fast-track that stamps PRD/requirements/implementation-plan digest
+    + produced_at directly. Routes through the same provenance boundary
+    so fast-tracked artifacts carry the same extended provenance as
+    organically prepared ones.
+
+  The Should-tier scope item "no parallel provenance write paths"
+  makes this consolidation a build-time deliverable; the analyzer's
+  fail-safe behavior covers any artifact whose provenance was
+  captured through a path that did not populate the new fields. The
+  plan's task list enumerates each path above and either routes it
+  through the boundary or marks it explicitly out-of-scope with reason.
 - `teleclaude/cli/telec/handlers/todo.py:--drift-reviewed` — flag
   signature unchanged; analyzer supplies the evidence anchor implicitly
   from current state at stamp time.
