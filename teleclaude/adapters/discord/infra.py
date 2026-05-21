@@ -379,33 +379,55 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         if existing_message_id is None:
             existing_message_id = await db.get_system_setting(legacy_message_key)
 
-        if (
-            existing_thread_id
-            and existing_thread_id.isdigit()
-            and existing_message_id
-            and existing_message_id.isdigit()
-        ):
+        if existing_thread_id or existing_message_id:
+            if not (
+                existing_thread_id
+                and existing_thread_id.isdigit()
+                and existing_message_id
+                and existing_message_id.isdigit()
+            ):
+                logger.warning(
+                    "Discord launcher record for forum %s is incomplete; skipping creation",
+                    forum_id,
+                )
+                return
+
             launcher_thread = await self._get_channel(int(existing_thread_id))
-            if launcher_thread is not None and self._resolve_parent_forum_id(launcher_thread) == forum_id:
-                try:
-                    fetch_fn = self._require_async_callable(
-                        getattr(launcher_thread, "fetch_message", None),
-                        label="Discord thread fetch_message",
-                    )
-                    message = await fetch_fn(int(existing_message_id))
-                    edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
-                    await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
-                    await self._pin_launcher_message(message, forum_id=forum_id)
-                    await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
-                    return
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
-                        existing_message_id,
-                        forum_id,
-                        existing_thread_id,
-                        exc,
-                    )
+            if launcher_thread is None:
+                logger.warning(
+                    "Discord launcher thread %s for forum %s could not be resolved; skipping creation",
+                    existing_thread_id,
+                    forum_id,
+                )
+                return
+
+            if self._resolve_parent_forum_id(launcher_thread) != forum_id:
+                logger.warning(
+                    "Discord launcher thread %s does not belong to forum %s; skipping creation",
+                    existing_thread_id,
+                    forum_id,
+                )
+                return
+
+            try:
+                fetch_fn = self._require_async_callable(
+                    getattr(launcher_thread, "fetch_message", None),
+                    label="Discord thread fetch_message",
+                )
+                message = await fetch_fn(int(existing_message_id))
+                edit_fn = self._require_async_callable(getattr(message, "edit", None), label="Discord message edit")
+                await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
+                await self._pin_launcher_message(message, forum_id=forum_id)
+                await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
+                    existing_message_id,
+                    forum_id,
+                    existing_thread_id,
+                    exc,
+                )
+            return
 
         create_thread_fn = getattr(forum_channel, "create_thread", None)
         if not callable(create_thread_fn):

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -18,6 +18,7 @@ class DummyDiscordError(Exception):
 
 class DummyInfrastructure(InfrastructureMixin):
     def __init__(self) -> None:
+        self._client = object()
         self._parse_optional_int = lambda value: (
             int(str(value).strip()) if value is not None and str(value).strip().isdigit() else None
         )
@@ -25,6 +26,11 @@ class DummyInfrastructure(InfrastructureMixin):
         self._get_enabled_agents = lambda: ["alpha", "beta"]
         self._handle_launcher_click = AsyncMock()
         self._require_async_callable = lambda fn, *, label: fn
+        self._is_forum_channel = lambda channel: True
+
+    @property
+    def _multi_agent(self) -> bool:
+        return True
 
 
 def test_extract_forum_thread_result_handles_tuple_and_thread_object() -> None:
@@ -67,6 +73,23 @@ async def test_build_session_launcher_view_uses_enabled_agents_for_button_labels
     buttons = [(child.label, child.custom_id) for child in view.children]
 
     assert buttons == [("Alpha", "launch:alpha"), ("Beta", "launch:beta")]
+
+
+@pytest.mark.asyncio
+async def test_post_or_update_launcher_does_not_recreate_when_existing_launcher_fetch_fails() -> None:
+    adapter = DummyInfrastructure()
+    forum = SimpleNamespace(id=99, create_thread=AsyncMock())
+    thread = SimpleNamespace(id=42, parent_id=99, fetch_message=AsyncMock(side_effect=RuntimeError("discord unavailable")))
+    adapter._get_channel = AsyncMock(side_effect=[forum, thread])
+    fake_db = MagicMock()
+    fake_db.get_system_setting = AsyncMock(side_effect=["42", "77"])
+    fake_db.set_system_setting = AsyncMock()
+
+    with patch("teleclaude.adapters.discord.infra.db", fake_db):
+        await adapter._post_or_update_launcher(99)
+
+    forum.create_thread.assert_not_called()
+    fake_db.set_system_setting.assert_not_awaited()
 
 
 @pytest.mark.asyncio
