@@ -443,6 +443,74 @@ async def test_run_operation_persists_remove_refusal_payload(cluster_event_bus: 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
+async def test_run_operation_completion_event_carries_failure_summary(cluster_event_bus: None) -> None:
+    """The WS completion event must carry OperationFailure.summary(), not str(exc).
+
+    Subscribers like the TUI translate this string into a user-visible toast.
+    Falling back to ``str(exc)`` would leak whatever
+    ``Exception.__init__`` was passed (for ``RemoveRefused``, just the slug),
+    which makes the toast useless. Pins the integration between
+    OperationFailure.summary() and the WS broadcast.
+    """
+    operation = _operation(
+        operation_id="remove-op-summary",
+        kind=OPERATION_KIND_TODO_REMOVE,
+        caller_session_id="caller-123",
+        slug="doomed",
+        state="queued",
+    )
+    db = MagicMock()
+    db.claim_operation = AsyncMock(return_value=True)
+    db.get_operation = AsyncMock(return_value=operation)
+    db.complete_operation = AsyncMock()
+    db.fail_operation = AsyncMock()
+    service = _service(db=db, heartbeat_interval_s=0.01)
+    refusal = RemoveRefused(
+        slug="doomed",
+        blocking_snippets=[
+            BlockingSnippet(
+                path="/repo/docs/project/spec/snippet.md",
+                slug_role="sole",
+                live_deliverer_count=0,
+                other_removed_deliverers=[],
+            ),
+            BlockingSnippet(
+                path="/repo/docs/project/spec/another.md",
+                slug_role="last_active",
+                live_deliverer_count=0,
+                other_removed_deliverers=["frozen-a"],
+            ),
+        ],
+    )
+    raw_repr = str(refusal)
+    summary = refusal.summary()
+    # Discriminator: summary() and str(exc) must differ for the test to be meaningful.
+    assert raw_repr != summary
+
+    async def factory(_operation: Operation) -> str:
+        raise refusal
+
+    emit_spy = MagicMock()
+    with (
+        patch.dict("os.environ", {}, clear=True),
+        patch.object(service, "_emit_completion_event", side_effect=emit_spy),
+    ):
+        await service._run_operation("remove-op-summary", OPERATION_KIND_TODO_REMOVE, factory)
+
+    # _emit_completion_event is called twice: once on the failure path (with the
+    # error string), and once may be inferred from telemetry hooks elsewhere.
+    # The failure call is the one that targets the completion event with `error=...`.
+    failure_calls = [c for c in emit_spy.call_args_list if c.kwargs.get("error") is not None]
+    assert len(failure_calls) == 1
+    failure_call = failure_calls[0]
+    assert failure_call.args[0] == "operation.todo_remove.completed"
+    assert failure_call.args[1] == "remove-op-summary"
+    assert failure_call.kwargs["error"] == summary
+    assert failure_call.kwargs["error"] != raw_repr
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
 async def test_submit_todo_work_reattaches_queued_match_and_starts_background_task() -> None:
     existing = _operation(
         operation_id="queued-op",

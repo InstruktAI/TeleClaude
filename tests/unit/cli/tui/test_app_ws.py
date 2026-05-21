@@ -513,24 +513,31 @@ def test_operation_completed_with_error_surfaces_toast() -> None:
     operation_id; the actual work runs async. When the worker raises an
     OperationFailure, the daemon broadcasts OperationCompletedEventDTO carrying
     the structured failure summary in `error`. Without a TUI handler, the user
-    sees no feedback. This pins the contract: the TUI translates that error
-    into an error-severity toast.
+    sees no feedback. This pins the contract: the TUI passes that error
+    through verbatim as an error-severity toast — no reformatting, no
+    classification, no string assembly at the renderer.
     """
     sessions_view = _SessionsView()
     pane_bridge = _PaneBridge()
     app = _WsApp(sessions_view, pane_bridge)
 
+    # The error string is produced by OperationFailure.summary() in the
+    # daemon and is opaque to the TUI; the TUI's contract is pass-through.
+    # Use a representative value here, but assert pass-through rather than
+    # exact prose so the test is robust against summary() wording changes.
+    daemon_summary = "RemoveRefused: 3 snippet(s) would be orphaned"
+
     app._handle_ws_event(
         OperationCompletedEventDTO(
             event="operation.todo_remove.completed",
             operation_id="op-42",
-            error="RemoveRefused: 3 snippet(s) would be orphaned",
+            error=daemon_summary,
         )
     )
 
     app.notify.assert_called_once()
     args, kwargs = app.notify.call_args
-    assert args[0] == "RemoveRefused: 3 snippet(s) would be orphaned"
+    assert args[0] == daemon_summary
     assert kwargs["severity"] == "error"
 
 

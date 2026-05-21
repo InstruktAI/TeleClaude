@@ -667,7 +667,11 @@ class OperationsService:
                 error_payload_json=error_payload_json,
             )
             self._emit_completion_event(completion_event, operation_id, error=error_text)
-            logger.exception("Background operation failed for %s", operation_id)
+            logger.exception(
+                "Background operation failed",
+                operation_id=operation_id,
+                error_text=error_text,
+            )
         finally:
             if token is not None:
                 reset_progress_callback(token)

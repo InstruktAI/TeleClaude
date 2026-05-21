@@ -25,6 +25,7 @@ from teleclaude.api_models import (
     JobDTO,
     KeysRequest,
     MessageDTO,
+    OperationCompletedEventDTO,
     OperationStatusDTO,
     OperationStatusPayload,
     PersonDTO,
@@ -470,6 +471,72 @@ class TestOperationStatusDTO:
                 status_path="/tmp/op-1",
                 recovery_command="telec operations get op-1",
             )
+
+
+# ---------------------------------------------------------------------------
+# OperationCompletedEventDTO — WS broadcast contract
+# ---------------------------------------------------------------------------
+
+
+class TestOperationCompletedEventDTO:
+    """Pins the OperationCompletedEventDTO event Literal — must cover every
+    operation kind the OperationsService can emit, otherwise the API-side
+    handler raises ValidationError instead of broadcasting completions to WS
+    clients.
+    """
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "event",
+        [
+            "operation.todo_work.completed",
+            "operation.todo_integrate.completed",
+            "operation.todo_create.completed",
+            "operation.todo_prepare.completed",
+            "operation.todo_remove.completed",
+            "operation.todo_rename.completed",
+        ],
+    )
+    def test_each_emitted_completion_event_is_accepted(self, event: str) -> None:
+        """The Literal must include every event the OperationsService emits.
+
+        Mirrors `_OPERATION_COMPLETION_EVENTS` in `teleclaude.core.operations.service` —
+        adding a new operation kind without extending this Literal would make the
+        API handler raise ValidationError on emit, silently dropping the broadcast.
+        """
+        dto = OperationCompletedEventDTO(event=event, operation_id="op-1", error=None)  # type: ignore[arg-type]
+        assert dto.event == event
+
+    @pytest.mark.unit
+    def test_unknown_event_rejected(self) -> None:
+        """Events outside the Literal raise ValidationError."""
+        with pytest.raises(ValidationError):
+            OperationCompletedEventDTO(  # type: ignore[call-arg]
+                event="operation.unknown.completed",
+                operation_id="op-1",
+            )
+
+    @pytest.mark.unit
+    def test_error_field_is_optional_string(self) -> None:
+        """`error` defaults to None and accepts a passed-through summary string.
+
+        The completion event carries `OperationFailure.summary()` (e.g.
+        ``"RemoveRefused: 3 snippet(s) would be orphaned"``) on failures and
+        None on success.
+        """
+        success = OperationCompletedEventDTO(
+            event="operation.todo_remove.completed",
+            operation_id="op-1",
+            error=None,
+        )
+        assert success.error is None
+
+        failure = OperationCompletedEventDTO(
+            event="operation.todo_remove.completed",
+            operation_id="op-1",
+            error="RemoveRefused: 3 snippet(s) would be orphaned",
+        )
+        assert failure.error == "RemoveRefused: 3 snippet(s) would be orphaned"
 
 
 # ---------------------------------------------------------------------------
