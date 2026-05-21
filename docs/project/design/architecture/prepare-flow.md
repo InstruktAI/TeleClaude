@@ -4,6 +4,9 @@ id: 'project/design/architecture/prepare-flow'
 scope: 'project'
 type: 'design'
 visibility: 'public'
+status: 'target'
+delivered_by:
+  - drift-detection-consolidation
 ---
 
 # Prepare Flow — Design
@@ -58,9 +61,11 @@ The confirmed plan is the handoff input to the work phase.
 
 **Drift:**
 
-- Drift is detected by reconciliation: `current main SHA != artifact.codebase_sha_at_write` AND at least one referenced path changed between.
+- Drift is a multi-class derivation. The full taxonomy and per-artifact coverage matrix live in `@spec/feature/workflow/drift-detection` (code, upstream-artifact, owned-snippet, upstream-snippet, dependency-graph, age). Per-artifact status collapses by `substantive > pending > cosmetic > fresh`.
+- The same shared `derive_lifecycle_drift` function runs at every lifecycle entry point where prepared artifacts must reflect current truth: during the prepare BLOCKED branch AND at the work state machine's entry boundary before the `prepared → build_started` handoff.
 - Drift surfacing dispatches a lean drift-analysis worker to ascertain impact; the active procedure integrates findings on re-entry.
-- Substantive drift triggers re-derivation of affected layers; cosmetic drift is noted, not acted on.
+- Substantive drift triggers re-derivation of affected layers and clears every downstream review verdict; cosmetic drift is recorded with an evidence anchor and expires lazily per class when current evidence moves past the anchor.
+- Work-entry drift triggers a bounce to `telec todo prepare {slug}` — the prepare BLOCKED branch handles the drift, and the PREPARED terminal script tail bounces the orchestrator back to `telec todo work {slug}` automatically. No human gate on either cosmetic or substantive verdicts; intent-level PRD refinement is the only human-gated path and is orthogonal to drift.
 
 **Cross-model verification:**
 
@@ -146,7 +151,7 @@ Also covers the `--draft` dump case: human comes back to a slug with an `input` 
 ## Failure modes
 
 - **PRD authored in standin mode but human never returns.** Todo sits idle indefinitely. The system does not auto-proceed past `prd_approved` gate. Human's eventual return triggers the approval flow.
-- **Drift detected mid-chain.** Reconciliation flags drift in artifact-referenced paths. Lean drift-analysis worker dispatched. If substantive, the affected layer's approval is invalidated and the active procedure re-enters drafting. If cosmetic, drift is noted in artifact metadata and the chain continues.
+- **Drift detected mid-chain or at work entry.** Per-class derivation across the six drift classes (see `@spec/feature/workflow/drift-detection`) flags pending or substantive drift. Lean drift-analysis worker dispatched from the prepare BLOCKED branch. If substantive, the affected artifact's review verdict and every downstream review verdict are cleared, and the active procedure re-enters drafting. If cosmetic, the verdict is recorded with an evidence anchor and the chain continues; the verdict expires lazily when evidence later moves past the anchor on any anchored dimension. The same derivation runs at work entry (`telec todo work`); pending/substantive there returns a bounce-to-prepare script and the orchestrator continues through the existing script-driven loop without a human gate.
 - **Reviewer verdict `changes_requested` cannot be addressed by auto-remediation.** Surface to the human as a blocker requiring direction. Do not grind through endless revision rounds.
 - **Work item is too large.** BA at intake recommends breakdown in plain register. Uses `telec todo split` to spawn children. Each child gets its own track through the chain. Parent becomes a container.
 - **Standard scaffold doesn't exist for a needed surface.** Architecture phase surfaces this as a blocking finding. Options: defer this work until the flavor is built; split the flavor-build as its own todo first; ask the human whether the product constraint permits a documented one-off.

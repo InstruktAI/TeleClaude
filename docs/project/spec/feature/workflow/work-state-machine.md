@@ -5,7 +5,9 @@ domain: 'software-development'
 scope: 'project'
 visibility: 'public'
 applies_to: 'v1'
-status: 'actual'
+status: 'target'
+delivered_by:
+  - drift-detection-consolidation
 description: 'Phase B state machine driving a prepared Todo through build → review → fix → terminal finalize_ready inside a per-slug worktree, with a single-flight lock per (project_root, slug) and caller-session ownership for finalize.'
 ---
 
@@ -13,8 +15,8 @@ description: 'Phase B state machine driving a prepared Todo through build → re
 
 ## Required reads
 
-- docs/global/software-development/principle/domain-driven-design.md
-- docs/global/software-development/spec/domain-spec.md
+- @~/.teleclaude/docs/software-development/principle/domain-driven-design.md
+- @~/.teleclaude/docs/software-development/spec/domain-spec.md
 - @docs/project/spec/domain/workflow.md
 
 ## What it is
@@ -22,6 +24,8 @@ description: 'Phase B state machine driving a prepared Todo through build → re
 The work state machine is the workflow capability that drives a prepared Todo through Phase B — `prepared` → `build_started` → `build_complete` → `review_changes_requested` (zero-or-more loops) → `review_approved` → terminal `finalize_ready`. Each call by the orchestrator reads the authoritative `lifecycle_phase`, dispatches the matching Phase handler, and returns a verbatim instruction telling the orchestrator what to do next — dispatch a builder, dispatch a reviewer, relay findings to an already-live builder, dispatch a finalizer, or perform terminal worker-session cleanup. Integration emission is owned by the `TodosDb` phase-transition chokepoint when an owned-session write lands `lifecycle_phase=finalize_ready`. Review verdicts (`approve` | `needs_work` | `needs_decision`) drive transitions between build, fix, and finalize.
 
 Work is the first stage that materializes a per-slug worktree under `trees/<slug>`, branched from `origin/main` so the worktree baseline is a single source of truth shared by every concurrent worker. A single-flight asyncio lock keyed per `(canonical_project_root, slug)` makes same-slug calls in the same repo wait and reuse the prepared worktree, while same-slug calls in different repos remain fully independent. The caller's session ID is preserved across the async boundary so the finalize Phase records who owns the handoff — the peer-conversation contract that lets builders and reviewers iterate directly without context-destroying churn. A loop guard bounds in-call internal transitions, every Phase emits a grep-friendly `NEXT_WORK_PHASE` log line with decision and duration, and worktree prep failures surface as `unexpected_<ExceptionType>` reasons so the orchestrator can diagnose without inspecting daemon logs.
+
+Before the `prepared → build_started` handoff and BEFORE `_ensure_worktree_ready`, work calls the shared `derive_lifecycle_drift` (the same function the prepare state machine uses; see `@spec/feature/workflow/drift-detection`). The state read that drives the derivation moves ahead of worktree creation in `next_work`: slug resolution and non-worktree preconditions happen first, then the state is read from `todos_db`, then `derive_lifecycle_drift` is called against repo-root state. When any tracked artifact's collapsed drift status is `pending` or `substantive`, work does NOT mutate work-state, does NOT create or touch a worktree on this call, and does NOT dispatch any worker; it returns an orchestrator script telling the caller to run `telec todo prepare {slug}` to resolve drift. The prepare flow's existing BLOCKED branch routes the drift analyzer; when prepare reaches `prepared` again, its terminal script line tells the orchestrator to call `telec todo work {slug}` next. The continuation across the bounce is the existing script-driven contract — no new mechanism, no human gate on cosmetic verdicts, and substantive verdicts cascade through the existing re-derivation chain back into a prepared Todo.
 
 ## Canonical fields
 
@@ -31,10 +35,26 @@ Work is the first stage that materializes a per-slug worktree under `trees/<slug
 Given a Todo at lifecycle_phase=prepared with no worktree
 When the orchestrator calls `telec todo work my-feature`
 Then the machine acquires the (project_root, my-feature) single-flight lock
+And calls derive_lifecycle_drift against current evidence
+And every tracked artifact's collapsed drift status is fresh or cosmetic with a valid anchor
 And creates a worktree at trees/my-feature branched from origin/main
 And merges origin/main into the worktree once before dispatch
 And advances lifecycle_phase from prepared to build_started in a machine-owned transition
 And on the same call dispatches the next-build worker session
+```
+
+```
+Given a Todo at lifecycle_phase=prepared whose plan artifact's owned-snippet digests no longer match current truth
+When the orchestrator calls `telec todo work my-feature`
+Then derive_lifecycle_drift reports drift.implementation-plan = pending
+And the machine does NOT advance lifecycle_phase
+And the machine does NOT create or touch the worktree
+And the machine returns an orchestrator script saying "Drift detected on implementation-plan. Call `telec todo prepare my-feature` to resolve."
+And the orchestrator follows the script verbatim
+And the prepare BLOCKED branch dispatches the next-drift-analyze worker
+And on cosmetic verdict the prepare machine reaches PREPARED again and its terminal script tells the orchestrator to call `telec todo work my-feature`
+And on substantive verdict the prepare machine clears the affected review verdicts and re-derives through draft → review → PREPARED, then the same terminal script bounces work
+And work re-runs derive_lifecycle_drift, observes fresh / valid-anchor status, and proceeds with worktree creation and dispatch
 ```
 
 ```
@@ -105,7 +125,7 @@ And the lifecycle still requires an explicit `telec todo stamp my-bug --build-co
 
 ### Implementation pointers (v1)
 
-- `teleclaude/core/next_machine/work.py:102` — `next_work()` orchestration entry, slug + worktree preconditions, dispatch loop.
+- `teleclaude/core/next_machine/work.py:102` — `next_work()` orchestration entry. The implementation plan must reorder this function so the state read and `derive_lifecycle_drift` call happen AFTER slug resolution and non-worktree preconditions but BEFORE `_ensure_worktree_ready` (currently at work.py:130). On `pending` or `substantive` collapsed status for any tracked artifact, return the bounce-to-prepare script via existing output-formatting helpers without calling `_ensure_worktree_ready`, without merging origin/main, without entering the dispatch loop, and without mutating work state. The `derive_lifecycle_drift` function is renamed from `derive_prepare_drift` in `lifecycle.py`.
 - `teleclaude/core/next_machine/work.py:55` — `_SINGLE_FLIGHT_LOCKS` registry keyed per `(canonical_cwd, slug)`.
 - `teleclaude/core/next_machine/work.py:60` — `_get_slug_single_flight_lock()` canonicalizes cwd then takes the per-pair lock.
 - `teleclaude/core/next_machine/work.py:218` — `_advance_prepared_to_build_started()` machine-owned handoff applied on first work entry.
