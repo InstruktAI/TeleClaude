@@ -9,10 +9,6 @@ visibility: 'public'
 
 # Work Overview — Procedure
 
-## Required reads
-
-- @~/.teleclaude/docs/general/principle/communication-compression.md
-
 ## Goal
 
 Drive the work state machine (`telec todo work`) through the build-review-fix-finalize

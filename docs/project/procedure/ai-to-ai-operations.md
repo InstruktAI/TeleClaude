@@ -10,7 +10,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/principle/communication-compression.md
 - @docs/project/spec/command-surface.md
 - @docs/project/spec/command-contracts.md
 - @docs/project/spec/session-subscriptions.md

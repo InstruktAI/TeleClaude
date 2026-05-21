@@ -11,7 +11,6 @@ visibility: 'public'
 
 ## Required reads
 
-- @~/.teleclaude/docs/general/principle/communication-compression.md
 - @~/.teleclaude/docs/software-development/concept/intake-frameworks.md
 - @~/.teleclaude/docs/software-development/principle/architectural-defaults.md
 - @~/.teleclaude/docs/software-development/policy/preparation-artifact-quality.md
