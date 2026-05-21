@@ -7,7 +7,7 @@ visibility: 'public'
 applies_to: 'v1'
 status: 'target'
 delivered_by: [integrate-deliveredby-flip]
-description: 'telec sync orchestrates snippet validation, index build, and artifact distribution, governed by --validate-only and --warn-only flags.'
+description: 'telec sync validates source, records best-effort provenance, builds indexes, and distributes artifacts under --validate-only / --warn-only semantics.'
 ---
 
 # Sync Pipeline Orchestration — Spec
@@ -20,16 +20,20 @@ description: 'telec sync orchestrates snippet validation, index build, and artif
 
 `telec sync` is the operator-facing command that promotes git-tracked Source
 into Deployed agent runtime outputs. Its v1 responsibility is synchronization:
-validate authored source shape, rebuild derived indexes, and distribute
-runtime artifacts. It does not mutate doc snippets in response to roadmap
+validate authored source shape, record best-effort provenance, rebuild derived
+indexes, and distribute runtime artifacts. It does not mutate doc snippets in response to roadmap
 delivery state; delivery-driven `delivered_by` reconciliation belongs to the
 integration lifecycle before the delivery commit is made.
 
 The sync pipeline is:
 
 1. **Validate** — run snippet, artifact, and jobs-config validators.
-2. **Build indexes** — write fresh derived doc indexes from source snippets.
-3. **Distribute** — invoke `scripts/distribute.py` with `--deploy` and the
+2. **Record provenance** *(best-effort)* — if `DATABASE_URL` is set, insert
+   `delivered_by` memberships into `workflow.snippet_provenance` for v2 audit.
+   v2 postgres failures (container down, credential mismatch, missing migration)
+   are caught and logged as warnings. This step never blocks phases 3–4.
+3. **Build indexes** — write fresh derived doc indexes from source snippets.
+4. **Distribute** — invoke `scripts/distribute.py` with `--deploy` and the
    optional `--warn-only` flag.
 
 Two flags govern scope and failure semantics:
@@ -85,6 +89,16 @@ Scenario: Distribute subprocess fails under --warn-only and the failure is suppr
 ```
 
 ```
+Scenario: v2 postgres is unavailable during provenance recording
+  Given DATABASE_URL is set
+  And the v2 postgres container is down, credentials are wrong, or migration 0002 is missing
+  When telec sync runs
+  Then the provenance recording step logs a warning to stderr
+  And the pipeline continues to build indexes and distribute artifacts
+  And sync returns True
+```
+
+```
 Scenario: Delivery completes before sync
   Given an integration delivery staged snippet lifecycle reconciliation in its merge commit
   When telec sync runs after the delivery
@@ -111,7 +125,7 @@ Scenario: Delivery completes before sync
   `delivered_by` reconciliation.
 - **config** — supplies project root and Mother-project resolution consumed by
   the distribute subprocess.
-- **agent_runtime** — phase 3's distribute step deploys to the agent runtime
+- **agent_runtime** — phase 4's distribute step deploys to the agent runtime
   boundary.
 
 ## Known caveats
@@ -119,10 +133,14 @@ Scenario: Delivery completes before sync
 - Sync is idempotent at the source markdown layer: it may update generated
   indexes and deployed artifacts, but it must not mutate authored
   `docs/**/*.md` snippets for delivery-state reasons.
+- Provenance recording is best-effort: v2 postgres availability is not required
+  for sync to complete. When v2 postgres is unavailable, provenance rows are
+  skipped and a warning is emitted to stderr. Drift between v1 sync
+  runs and v2 provenance store is expected until v2 postgres is healthy again.
 - `--validate-only` exits before index build and symlink repair. Broken tracked
   symlinks may therefore remain broken until a full sync runs.
 - `--warn-only` is risky because distribute failures are suppressed when
   `check=False`.
 - The distribute step is optional in stripped-down deployments because a
-  missing `scripts/distribute.py` silently skips phase 3.
+  missing `scripts/distribute.py` silently skips phase 4.
 - v1 CLI namespace is `telec sync`. v2 target is `telec context sync`.

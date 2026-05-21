@@ -12,6 +12,18 @@
     '--warn-only',
   ])
 # ---
+# name: TestSnippetProvenance.test_psql_failure_does_not_block_index_build_and_distribute
+  dict({
+    'call_order': list([
+      'build_all_indexes',
+      '_run_distribute',
+    ]),
+    'stderr': '''
+      Warning: snippet provenance import skipped: psql exited with status 1
+  
+    ''',
+  })
+# ---
 # name: TestSyncBootstrapOrdering.test_build_all_indexes_called_before_run_distribute
   list([
     'build_all_indexes',

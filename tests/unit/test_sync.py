@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -257,6 +258,71 @@ delivered_by:
 
         assert sync.sync(tmp_path) is True
         assert call_order == ["record_snippet_provenance", "build_all_indexes"]
+
+    def test_psql_failure_does_not_block_index_build_and_distribute(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+        snapshot: SnapshotAssertion,
+    ) -> None:
+        snippet_path = tmp_path / _WORKFLOW_SNIPPET
+        snippet_path.parent.mkdir(parents=True)
+        snippet_path.write_text(
+            f"""---
+id: project/spec/domain/workflow
+type: spec
+scope: project
+status: target
+delivered_by:
+- {_DELIVERY_A}
+---
+# Workflow
+""",
+            encoding="utf-8",
+        )
+        call_order: list[str] = []
+
+        class FakeCommit:
+            hexsha = _HEAD_SHA
+
+        class FakeHead:
+            commit = FakeCommit()
+
+        class FakeRepo:
+            head = FakeHead()
+
+            def __init__(self, project_root: Path, *, search_parent_directories: bool) -> None:
+                assert project_root == tmp_path
+                assert search_parent_directories is True
+
+        def failing_import(database_url: str, script: str) -> None:
+            del script
+            raise subprocess.CalledProcessError(1, ["psql", database_url, "-v", "ON_ERROR_STOP=1"])
+
+        monkeypatch.setenv("DATABASE_URL", _DATABASE_URL)
+        monkeypatch.setattr(sync, "Repo", FakeRepo)
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _project_root: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _project_root: [])
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _project_root, **_kwargs: None)
+
+        def fake_build_all_indexes(_project_root: Path) -> list[Path]:
+            call_order.append("build_all_indexes")
+            return []
+
+        def fake_run_distribute(_project_root: Path, **_kwargs: object) -> None:
+            call_order.append("_run_distribute")
+
+        monkeypatch.setattr(sync, "build_all_indexes", fake_build_all_indexes)
+        monkeypatch.setattr(sync, "_run_distribute", fake_run_distribute)
+        monkeypatch.setattr(sync, "_run_psql_snippet_provenance_import", failing_import)
+
+        result = sync.sync(tmp_path)
+
+        assert result is True
+        assert {"call_order": call_order, "stderr": capsys.readouterr().err} == snapshot
 
     def test_record_imports_current_head_for_each_membership(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

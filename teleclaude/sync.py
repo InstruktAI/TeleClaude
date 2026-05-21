@@ -42,7 +42,7 @@ def sync(
     validate_only: bool = False,
     warn_only: bool = False,
 ) -> bool:
-    """Run the full sync pipeline: validate → build indexes → distribute artifacts.
+    """Run the full sync pipeline: validate → record provenance → build indexes → distribute artifacts.
 
     Returns True if successful, False if validation errors occurred.
     """
@@ -68,15 +68,16 @@ def sync(
     if validate_only:
         return warn_only or not errors
 
+    # Phase 2: Record provenance
     _record_snippet_provenance_from_environment(project_root)
 
-    # Phase 2: Build indexes
+    # Phase 3: Build indexes
     written = build_all_indexes(project_root)
     for path in written:
         if path.exists():
             print(f"Index: {path}")
 
-    # Phase 3: Build and deploy artifacts
+    # Phase 4: Build and deploy artifacts
     _run_distribute(project_root, warn_only=warn_only)
 
     return True
@@ -101,10 +102,20 @@ def _record_snippet_provenance(project_root: Path, head_sha: str, database_url: 
     records = _collect_snippet_provenance_records(project_root, head_sha)
     if not records:
         return 0
-    _run_psql_snippet_provenance_import(
-        database_url,
-        _render_snippet_provenance_import_script(records),
-    )
+    try:
+        _run_psql_snippet_provenance_import(
+            database_url,
+            _render_snippet_provenance_import_script(records),
+        )
+    except subprocess.CalledProcessError as exc:
+        print(
+            f"Warning: snippet provenance import skipped: psql exited with status {exc.returncode}",
+            file=sys.stderr,
+        )
+        return 0
+    except OSError as exc:
+        print(f"Warning: snippet provenance import skipped: {exc}", file=sys.stderr)
+        return 0
     return len(records)
 
 
