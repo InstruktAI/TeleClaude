@@ -462,23 +462,20 @@ async def send_file_endpoint(
     request: FileUploadRequest,
     identity: CallerIdentity = Depends(clearance_sessions_file),
 ) -> dict[str, object]:  # guard: loose-dict - API boundary
-    """Send file input to session."""
+    """Send a file attachment to the session's user."""
     session_id = identity.session_id
+    cmd = SystemCommand(
+        command="deliver_file",
+        session_id=session_id,
+        data={
+            "file_path": request.file_path,
+            "filename": request.filename,
+            "caption": request.caption,
+            "file_size": request.file_size,
+        },
+    )
     try:
-        metadata = _build_metadata()
-        cmd = CommandMapper.map_api_input(
-            "handle_file",
-            {
-                "session_id": session_id,
-                "file_path": request.file_path,
-                "filename": request.filename,
-                "caption": request.caption,
-                "file_size": request.file_size,
-            },
-            metadata,
-        )
-        await get_command_service().handle_file(cmd)
-        return {"status": "success"}
+        return await get_command_service().deliver_file(cmd)  # type: ignore[return-value]
     except Exception as e:
         logger.error("send_file failed (session=%s): %s", session_id, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to send file: {e}") from e

@@ -160,7 +160,7 @@ class TestSessionsActionsRoutes:
     @pytest.mark.unit
     @pytest.mark.asyncio
     async def test_send_file_success_uses_caller_session_identity(self) -> None:
-        """File uploads always target the caller's own session."""
+        """File delivery always targets the caller's own session."""
         request = FileUploadRequest(
             file_path="/tmp/report.txt",
             filename="report.txt",
@@ -168,33 +168,24 @@ class TestSessionsActionsRoutes:
             file_size=512,
         )
         identity = _identity("sess-file")
-        mapped_command = object()
-        service = SimpleNamespace(handle_file=AsyncMock())
+        expected = {"status": "success", "message_id": "file-msg"}
+        service = SimpleNamespace(deliver_file=AsyncMock(return_value=expected))
 
-        with (
-            patch.object(
-                sessions_actions_routes.CommandMapper,
-                "map_api_input",
-                return_value=mapped_command,
-            ) as map_api_input,
-            patch.object(sessions_actions_routes, "get_command_service", return_value=service),
-        ):
+        with patch.object(sessions_actions_routes, "get_command_service", return_value=service):
             response = await sessions_actions_routes.send_file_endpoint(request, identity=identity)
 
-        assert response == {"status": "success"}
-        service.handle_file.assert_awaited_once_with(mapped_command)
+        assert response == expected
+        service.deliver_file.assert_awaited_once()
 
-        command_name, payload, metadata = map_api_input.call_args.args
-        assert command_name == "handle_file"
-        assert payload == {
-            "session_id": "sess-file",
+        cmd = service.deliver_file.await_args.args[0]
+        assert cmd.command == "deliver_file"
+        assert cmd.session_id == "sess-file"
+        assert cmd.data == {
             "file_path": "/tmp/report.txt",
             "filename": "report.txt",
             "caption": "Quarterly report",
             "file_size": 512,
         }
-        assert isinstance(metadata, MessageMetadata)
-        assert metadata.origin == InputOrigin.TERMINAL.value
 
     @pytest.mark.unit
     @pytest.mark.asyncio

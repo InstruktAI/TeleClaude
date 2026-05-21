@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from instrukt_ai_logging import get_logger
@@ -218,6 +219,10 @@ class CommandService:
         """Deliver a formatted result to a session's user via the adapter."""
         return await self._dispatch_system_command(cmd)
 
+    async def deliver_file(self, cmd: SystemCommand) -> object:
+        """Deliver a file attachment to a session's user via the adapter."""
+        return await self._dispatch_system_command(cmd)
+
     async def render_widget(self, cmd: SystemCommand) -> object:
         """Render a widget expression and send summary to the session's user."""
         return await self._dispatch_system_command(cmd)
@@ -235,6 +240,8 @@ class CommandService:
         match cmd.command:
             case "deliver_result":
                 return await self._handle_deliver_result(cmd)
+            case "deliver_file":
+                return await self._handle_deliver_file(cmd)
             case "render_widget":
                 return await self._handle_render_widget(cmd)
             case "escalate_session":
@@ -284,6 +291,32 @@ class CommandService:
                 }
             except (AdapterError, RuntimeError, ValueError, TypeError) as fallback_error:
                 raise ValueError(f"Failed to send result: {fallback_error}") from fallback_error
+
+    async def _handle_deliver_file(self, cmd: SystemCommand) -> object:
+        """Send a file attachment to a session's user via the adapter."""
+        data = cmd.data or {}
+        file_path = str(data.get("file_path", "")).strip()
+        filename = str(data.get("filename", "")).strip()
+        caption_obj = data.get("caption")
+        caption = caption_obj if isinstance(caption_obj, str) else None
+
+        if not file_path:
+            raise ValueError("file_path is required")
+
+        session = await db.get_session(cmd.session_id)
+        if not session:
+            raise ValueError(f"Session {cmd.session_id} not found")
+
+        try:
+            message_id = await self.client.send_file(session, file_path, caption=caption)
+        except (AdapterError, OSError, RuntimeError, ValueError, TypeError) as e:
+            raise ValueError(f"Failed to send file: {e}") from e
+
+        return {
+            "status": "success",
+            "message_id": message_id,
+            "filename": filename or Path(file_path).name,
+        }
 
     async def _handle_render_widget(self, cmd: SystemCommand) -> object:
         """Render a rich widget and send text summary to the session's user."""

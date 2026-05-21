@@ -204,6 +204,37 @@ class TestSystemCommandHandlers:
 
     @pytest.mark.unit
     @pytest.mark.asyncio
+    async def test_deliver_file_sends_attachment_via_adapter_client(self) -> None:
+        """deliver_file routes through AdapterClient.send_file, not text feedback."""
+        session = SimpleNamespace(session_id="sess-file")
+        client = SimpleNamespace(
+            send_file=AsyncMock(return_value="file-msg"),
+            adapters={},
+        )
+        service = _make_service(client=client)
+        cmd = SystemCommand(
+            command="deliver_file",
+            session_id="sess-file",
+            data={
+                "file_path": "/tmp/report.txt",
+                "filename": "report.txt",
+                "caption": "Quarterly report",
+            },
+        )
+
+        with patch("teleclaude.core.command_service.db") as mock_db:
+            mock_db.get_session = AsyncMock(return_value=session)
+            result = await service.deliver_file(cmd)
+
+        assert result == {
+            "status": "success",
+            "message_id": "file-msg",
+            "filename": "report.txt",
+        }
+        client.send_file.assert_awaited_once_with(session, "/tmp/report.txt", caption="Quarterly report")
+
+    @pytest.mark.unit
+    @pytest.mark.asyncio
     async def test_render_widget_sends_markdownified_summary(self) -> None:
         """render_widget builds summary, markdownifies, and sends via adapter."""
         session = SimpleNamespace(session_id="sess-widget")
