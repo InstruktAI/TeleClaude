@@ -9,7 +9,6 @@ delivered_by:
 - v2-workflow-cutover
 - roadmap-trash-reveal-ui
 - v2-workflow-cli-refinement-commands
-- rename-deliveredby-substitution
 description: Workflow bounded context — todos, roadmap entries, preparation artifacts,
   lifecycle state machines. The system that organizes what gets built.
 ---
@@ -254,30 +253,12 @@ cutover.
 
 - **Producer:** `workflow`
 - **Emitted when:** the atomic rename operation commits the todo slug change from `old_slug` to `new_slug`.
-- **Payload:** `old_slug`, `new_slug`, `renamed_at`, `renamed_by_principal`, `surfaces_moved`.
+- **Payload:** `todo_id`, `old_slug`, `new_slug`, `project_id`, `project_path`, `renamed_at`, `renamed_by_principal`, `rewritten_reference_count`.
 - **Visibility:** CLUSTER
 - **Known consumers:** `frontend` and `telec-tui` slug-keyed caches, `integration` notification dispatch, audit consumers.
 - **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
 - **Posture:** `commit-then-emit`; terminal/audit daemon reference reconciliation is post-commit best-effort, not an atomic rollback leg.
-
-#### `workflow.roadmap.entry_moved`
-
-- **Producer:** `workflow`
-- **Emitted when:** an operator changes the order of entries (via `telec roadmap move`), changes a dependency edge (`deps`), or freezes/unfreezes an entry.
-- **Payload:** `slug`, `change_type` (`reordered` | `dependency_changed` | `frozen` | `unfrozen` | `delivered`), `details`, `moved_at`, `moved_by_principal`.
-- **Visibility:** CLUSTER
-- **Known consumers:** `frontend` (roadmap view refresh), `telec-tui` (cache invalidation).
-- **Idempotency key:** `(slug, change_type, moved_at)`.
-- **Posture:** `commit-then-emit`.
-
-#### `workflow.todo.renamed`
-
-- **Producer:** `workflow`
-- **Emitted when:** `telec todo rename` commits the slug re-key (after the
-  todos.db transaction commits — the rename's linearization point).
-- **Payload:** `old_slug`, `new_slug`, `renamed_at`, `renamed_by_principal`.
-- **Visibility:** CLUSTER
-- **Known consumers** and the route by which each receives the
+- **Consumer route:** consumers receive the
   `old_slug → new_slug` pair:
   - **v1 daemon bridge** (`teleclaude/transport/workflow_bridge.py`) —
     receives the full payload dict (the bridge is payload-agnostic and
@@ -307,7 +288,20 @@ cutover.
   implementation-plan concern; the durable contract is the `(old_slug,
   new_slug)` pair carried end-to-end through bridge → dispatcher → cache /
   WebSocket / integration subscriber.
-- **Idempotency key:** `(old_slug, new_slug, renamed_at)`.
+
+The retired `surfaces_moved` list is intentionally not part of the canonical
+event. Rename surface movement is verified synchronously by the command path;
+consumers need the aggregate identity, project scope, actor, timestamp, and
+the `rewritten_reference_count` audit counter for managed snippet provenance.
+
+#### `workflow.roadmap.entry_moved`
+
+- **Producer:** `workflow`
+- **Emitted when:** an operator changes the order of entries (via `telec roadmap move`), changes a dependency edge (`deps`), or freezes/unfreezes an entry.
+- **Payload:** `slug`, `change_type` (`reordered` | `dependency_changed` | `frozen` | `unfrozen` | `delivered`), `details`, `moved_at`, `moved_by_principal`.
+- **Visibility:** CLUSTER
+- **Known consumers:** `frontend` (roadmap view refresh), `telec-tui` (cache invalidation).
+- **Idempotency key:** `(slug, change_type, moved_at)`.
 - **Posture:** `commit-then-emit`.
 
 ### Domain events consumed

@@ -71,6 +71,30 @@ fn workflow_todo_create_help_snapshot() {
     insta::assert_snapshot!("workflow_todo_create", output);
 }
 
+#[test]
+fn workflow_todo_update_help_snapshot() {
+    let output = help_stdout(&["workflow", "todo", "update", "--help"]);
+    insta::assert_snapshot!("workflow_todo_update", output);
+}
+
+#[test]
+fn workflow_todo_rename_help_snapshot() {
+    let output = help_stdout(&["workflow", "todo", "rename", "--help"]);
+    insta::assert_snapshot!("workflow_todo_rename", output);
+}
+
+#[test]
+fn workflow_todo_diff_help_snapshot() {
+    let output = help_stdout(&["workflow", "todo", "diff", "--help"]);
+    insta::assert_snapshot!("workflow_todo_diff", output);
+}
+
+#[test]
+fn workflow_artifacts_diff_help_snapshot() {
+    let output = help_stdout(&["workflow", "artifacts", "diff", "--help"]);
+    insta::assert_snapshot!("workflow_artifacts_diff", output);
+}
+
 fn extract_section(text: &str, start_marker: &str, end_marker: &str) -> String {
     let mut collecting = false;
     let mut buf = String::new();

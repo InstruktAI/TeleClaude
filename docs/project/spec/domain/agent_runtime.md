@@ -6,8 +6,7 @@ scope: project
 visibility: public
 status: target
 delivered_by:
-  - v2-agent-runtime
-  - unified-readiness-race
+- v2-agent-runtime
 description: Agent Runtime bounded context — live agent sessions, tmux orchestration,
   agent CLI supervision, three-lane signal architecture. The heart of v2 — the genuine
   daemon-shaped part of the platform.

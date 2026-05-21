@@ -170,7 +170,6 @@ class TestWsMixin:
                     "data": {
                         "old_slug": "old-slug",
                         "new_slug": "new-slug",
-                        "computer": "local",
                         "project_path": "/repo",
                     },
                 },

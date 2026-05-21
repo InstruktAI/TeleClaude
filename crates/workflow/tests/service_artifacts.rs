@@ -222,3 +222,47 @@ async fn read_artifact_for_missing_name_returns_artifact_not_found(pool: PgPool)
             if todo == slug && name == ArtifactName::Prd
     ));
 }
+
+#[sqlx::test(migrator = "MIGRATOR")]
+async fn artifact_diff_returns_unified_diff_for_exact_digests(pool: PgPool) {
+    let (svc, _sink) = build_service(pool);
+    let project = seed_project(&svc).await;
+    let slug = Slug::new("artifact-diff").expect("slug");
+    seed_todo(&svc, project, &slug).await;
+    let principal = human_principal();
+
+    let old = svc
+        .write_artifact(
+            project,
+            &slug,
+            ArtifactName::Requirements,
+            "old\n".into(),
+            &principal,
+        )
+        .await
+        .expect("write old artifact");
+    let new = svc
+        .write_artifact(
+            project,
+            &slug,
+            ArtifactName::Requirements,
+            "new\n".into(),
+            &principal,
+        )
+        .await
+        .expect("write new artifact");
+
+    let diff = svc
+        .artifact_diff(
+            project,
+            &slug,
+            ArtifactName::Requirements,
+            &old.digest,
+            &new.digest,
+        )
+        .await
+        .expect("artifact diff succeeds");
+
+    assert!(diff.diff.contains("-old"));
+    assert!(diff.diff.contains("+new"));
+}

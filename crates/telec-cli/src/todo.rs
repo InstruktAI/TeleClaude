@@ -13,7 +13,7 @@ use shared::{ProjectId, Slug};
 use similar::TextDiff;
 use sqlx::Row;
 use workflow::models::{ArtifactName, CreationMode, TodoKind};
-use workflow::service::{CreateTodoArgs, TodoPatch};
+use workflow::service::{CreateTodoArgs, UpdateTodoArgs};
 use workflow::WorkflowService;
 
 use crate::output;
@@ -264,13 +264,13 @@ async fn set_deps(
 ) -> Result<i32> {
     let slug = Slug::new(&args.slug).context("parse todo slug")?;
     let after = parse_after(Some(&args.after))?;
-    let patch = TodoPatch {
+    let update = UpdateTodoArgs {
+        project,
+        slug: slug.clone(),
         after: Some(after),
         ..Default::default()
     };
-    let todo = service
-        .update_todo(project, &slug, patch, principal)
-        .await?;
+    let todo = service.update_todo(update, principal).await?;
     output::print_json(&todo)?;
     Ok(0)
 }
@@ -471,7 +471,7 @@ pub(crate) fn parse_kind(raw: &str) -> Result<TodoKind> {
     }
 }
 
-fn parse_artifact_name(raw: &str) -> Result<ArtifactName> {
+pub(crate) fn parse_artifact_name(raw: &str) -> Result<ArtifactName> {
     // ArtifactName uses serde kebab-case; round-trip a JSON string.
     let json = format!("\"{}\"", raw.replace('"', "\\\""));
     serde_json::from_str::<ArtifactName>(&json).map_err(|_| {
@@ -484,7 +484,7 @@ fn parse_artifact_name(raw: &str) -> Result<ArtifactName> {
     })
 }
 
-fn artifact_name_label(name: ArtifactName) -> &'static str {
+pub(crate) fn artifact_name_label(name: ArtifactName) -> &'static str {
     match name {
         ArtifactName::Input => "input",
         ArtifactName::Prd => "prd",
@@ -504,7 +504,7 @@ fn artifact_name_label(name: ArtifactName) -> &'static str {
     }
 }
 
-fn short_digest(digest: &str) -> &str {
+pub(crate) fn short_digest(digest: &str) -> &str {
     if digest.len() > 12 {
         &digest[..12]
     } else {

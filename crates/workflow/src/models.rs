@@ -179,6 +179,34 @@ pub struct Artifact {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Unified diff between two exact versions of one artifact.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ArtifactDiff {
+    pub slug: Slug,
+    pub name: ArtifactName,
+    pub old_digest: String,
+    pub new_digest: String,
+    pub diff: String,
+}
+
+/// Todo-scoped refinement diff over reviewed artifacts and owned snippets.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TodoDiff {
+    pub slug: Slug,
+    pub sections: Vec<TodoDiffSection>,
+    pub diagnostics: Vec<String>,
+}
+
+/// One rendered diff section in a [`TodoDiff`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TodoDiffSection {
+    pub label: String,
+    pub baseline: String,
+    pub current: String,
+    pub diff: String,
+    pub prefix: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

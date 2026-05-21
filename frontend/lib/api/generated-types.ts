@@ -4,31 +4,17 @@
  */
 
 export type AgentActivityEvent = UserPromptSubmitActivityEvent | ToolUseActivityEvent | AgentStopActivityEvent;
-export type AgentName = 'claude' | 'gemini' | 'codex';
-export type AgentStatus = 'available' | 'unavailable' | 'degraded';
-export type ErrorSeverity = 'warning' | 'error' | 'critical';
-export type HumanRole = 'admin' | 'member' | 'contributor' | 'newcomer';
-export type LaunchKind = 'empty' | 'agent' | 'agent_then_message' | 'agent_resume';
-export type MessageRole = 'user' | 'assistant' | 'system';
-export type MessageType = 'text' | 'compaction' | 'tool_use' | 'tool_result' | 'thinking';
-export type RefreshEventType =
-  | 'computer_updated'
-  | 'project_updated'
-  | 'projects_updated'
-  | 'todos_updated'
-  | 'todo_created'
-  | 'todo_updated'
-  | 'todo_removed';
+export type AgentName = "claude" | "gemini" | "codex";
+export type AgentStatus = "available" | "unavailable" | "degraded";
+export type ErrorSeverity = "warning" | "error" | "critical";
+export type HumanRole = "admin" | "member" | "contributor" | "newcomer";
+export type LaunchKind = "empty" | "agent" | "agent_then_message" | "agent_resume";
+export type MessageRole = "user" | "assistant" | "system";
+export type MessageType = "text" | "compaction" | "tool_use" | "tool_result" | "thinking";
+export type RefreshEventType = "computer_updated" | "project_updated" | "projects_updated" | "todos_updated" | "todo_created" | "todo_updated" | "todo_removed";
 export type SessionLifecycleStatusEvent = SessionStatusEvent;
-export type ThinkingMode = 'fast' | 'med' | 'slow';
-export type TuiBootstrapPillar =
-  | 'computers'
-  | 'projects'
-  | 'sessions'
-  | 'availability'
-  | 'jobs'
-  | 'settings'
-  | 'chiptunes';
+export type ThinkingMode = "fast" | "med" | "slow";
+export type TuiBootstrapPillar = "computers" | "projects" | "sessions" | "availability" | "jobs" | "settings" | "chiptunes";
 
 export interface AgentStatusRequest {
   status?: AgentStatus | null;
@@ -43,7 +29,7 @@ export interface CreateSessionRequest {
   project_path: string;
   launch_kind?: LaunchKind;
   agent?: AgentName | null;
-  thinking_mode?: 'fast' | 'med' | 'slow' | 'default' | null;
+  thinking_mode?: "fast" | "med" | "slow" | "default" | null;
   message?: string | null;
   direct?: boolean;
   skip_listener_registration?: boolean;
@@ -98,7 +84,7 @@ export interface SendMessageRequest {
 
 export interface SendResultRequest {
   content: string;
-  output_format?: 'markdown' | 'html';
+  output_format?: "markdown" | "html";
 }
 
 export interface SetAgentStatusRequest {
@@ -119,8 +105,9 @@ export interface TodoDumpRequest {
   slug: string;
   content: string;
   after?: string[] | null;
-  kind?: 'bug' | 'draft' | 'prepped' | null;
+  kind?: "bug" | "draft" | "prepped" | null;
   cwd?: string | null;
+  silent?: boolean;
 }
 
 export interface VoiceInputRequest {
@@ -131,7 +118,7 @@ export interface VoiceInputRequest {
 }
 
 export interface AgentAvailabilityEvent {
-  event: 'agent_availability';
+  event: "agent_availability";
   data: AgentAvailabilityInfo;
 }
 
@@ -146,12 +133,12 @@ export interface AgentAvailabilityInfo {
 }
 
 export interface AgentStopActivityEvent extends BaseAgentActivityEvent {
-  type: 'agent_stop';
+  type: "agent_stop";
   summary?: string | null;
 }
 
 export interface BaseAgentActivityEvent {
-  event: 'agent_activity';
+  event: "agent_activity";
   session_id: string;
   timestamp?: string | null;
   canonical_type?: string | null;
@@ -160,14 +147,14 @@ export interface BaseAgentActivityEvent {
 }
 
 export interface ChiptunesCommandReceipt {
-  status: 'accepted';
+  status: "accepted";
   command_id: string;
-  action: 'resume' | 'pause' | 'next' | 'prev';
+  action: "resume" | "pause" | "next" | "prev";
 }
 
 export interface ChiptunesStateEvent {
-  event: 'chiptunes_state';
-  playback: 'cold' | 'loading' | 'playing' | 'paused';
+  event: "chiptunes_state";
+  playback: "cold" | "loading" | "playing" | "paused";
   state_version: number;
   loaded: boolean;
   playing: boolean;
@@ -176,11 +163,11 @@ export interface ChiptunesStateEvent {
   track: string;
   sid_path: string;
   pending_command_id: string;
-  pending_action: '' | 'resume' | 'pause' | 'next' | 'prev';
+  pending_action: "" | "resume" | "pause" | "next" | "prev";
 }
 
 export interface ChiptunesStatus {
-  playback: 'cold' | 'loading' | 'playing' | 'paused';
+  playback: "cold" | "loading" | "playing" | "paused";
   state_version: number;
   loaded: boolean;
   playing: boolean;
@@ -189,11 +176,11 @@ export interface ChiptunesStatus {
   track: string;
   sid_path: string;
   pending_command_id: string;
-  pending_action: '' | 'resume' | 'pause' | 'next' | 'prev';
+  pending_action: "" | "resume" | "pause" | "next" | "prev";
 }
 
 export interface ChiptunesTrackEvent {
-  event: 'chiptunes_track';
+  event: "chiptunes_track";
   track: string;
   sid_path: string;
 }
@@ -209,7 +196,7 @@ export interface ComputerInfo {
 }
 
 export interface CreateSessionResponse {
-  status: 'success' | 'error';
+  status: "success" | "error";
   session_id: string;
   tmux_session_name: string;
   agent?: AgentName | null;
@@ -217,7 +204,7 @@ export interface CreateSessionResponse {
 }
 
 export interface ErrorEvent {
-  event: 'error';
+  event: "error";
   data: ErrorEventData;
 }
 
@@ -233,7 +220,7 @@ export interface ErrorEventData {
 
 export interface JobInfo {
   name: string;
-  type: 'agent' | 'script';
+  type: "agent" | "script";
   schedule: string | null;
   last_run: string | null;
   status: string;
@@ -249,12 +236,7 @@ export interface MessageInfo {
 }
 
 export interface OperationCompletedEvent {
-  event:
-    | 'operation.todo_work.completed'
-    | 'operation.todo_integrate.completed'
-    | 'operation.todo_create.completed'
-    | 'operation.todo_prepare.completed'
-    | 'operation.todo_remove.completed';
+  event: "operation.todo_work.completed" | "operation.todo_integrate.completed" | "operation.todo_create.completed" | "operation.todo_prepare.completed" | "operation.todo_remove.completed";
   operation_id: string;
   error?: string | null;
 }
@@ -262,7 +244,7 @@ export interface OperationCompletedEvent {
 export interface OperationStatus {
   operation_id: string;
   kind: string;
-  state: 'queued' | 'running' | 'completed' | 'failed' | 'stale' | 'cancelled';
+  state: "queued" | "running" | "completed" | "failed" | "stale" | "cancelled";
   poll_after_ms: number;
   status_path: string;
   recovery_command: string;
@@ -273,7 +255,20 @@ export interface OperationStatus {
   progress_reason?: string | null;
   result?: string | null;
   error?: string | null;
+  error_payload?: OperationStatusErrorPayload | null;
   client_request_id?: string | null;
+}
+
+export interface OperationStatusBlockingSnippetPayload {
+  path: string;
+  slug_role: string;
+  live_deliverer_count: number;
+  other_removed_deliverers: string[];
+}
+
+export interface OperationStatusErrorPayload {
+  kind?: string | null;
+  blocking_snippets?: OperationStatusBlockingSnippetPayload[] | null;
 }
 
 export interface PersonInfo {
@@ -281,7 +276,7 @@ export interface PersonInfo {
   email?: string | null;
   role: HumanRole;
   expertise?: Record<string, string | Record<string, string>> | null;
-  proficiency?: 'novice' | 'intermediate' | 'advanced' | 'expert' | null;
+  proficiency?: "novice" | "intermediate" | "advanced" | "expert" | null;
 }
 
 export interface ProjectInfo {
@@ -302,7 +297,7 @@ export interface ProjectsInitialData {
 }
 
 export interface ProjectsInitialEvent {
-  event: 'projects_initial' | 'preparation_initial';
+  event: "projects_initial" | "preparation_initial";
   data: ProjectsInitialData;
 }
 
@@ -317,11 +312,11 @@ export interface RefreshEvent {
 }
 
 export interface SendMessageResponse {
-  status: 'success' | 'error';
-  mode?: 'work' | 'direct' | null;
-  action?: 'closed' | null;
+  status: "success" | "error";
+  mode?: "work" | "direct" | null;
+  action?: "closed" | null;
   link_id?: string | null;
-  link_state?: 'created' | null;
+  link_state?: "created" | null;
   delivered_to?: number | null;
   members?: number | null;
   message?: string | null;
@@ -332,7 +327,7 @@ export interface SessionClosedData {
 }
 
 export interface SessionClosedEvent {
-  event: 'session_closed';
+  event: "session_closed";
   data: SessionClosedData;
 }
 
@@ -365,7 +360,7 @@ export interface SessionInfo {
   visibility?: string;
   system_role?: string | null;
   job?: string | null;
-  agent_status?: 'active' | 'idle' | 'unknown' | null;
+  agent_status?: "active" | "idle" | "unknown" | null;
 }
 
 export interface SessionMessagesResponse {
@@ -374,17 +369,17 @@ export interface SessionMessagesResponse {
   last_activity?: string | null;
   last_input_at?: string | null;
   last_agent_stop_at?: string | null;
-  agent_status?: 'active' | 'idle' | 'unknown' | null;
+  agent_status?: "active" | "idle" | "unknown" | null;
   messages: MessageInfo[];
 }
 
 export interface SessionStartedEvent {
-  event: 'session_started';
+  event: "session_started";
   data: SessionInfo;
 }
 
 export interface SessionStatusEvent {
-  event: 'session_status';
+  event: "session_status";
   session_id: string;
   status: string;
   reason: string;
@@ -395,7 +390,7 @@ export interface SessionStatusEvent {
 }
 
 export interface SessionUpdatedEvent {
-  event: 'session_updated';
+  event: "session_updated";
   data: SessionInfo;
 }
 
@@ -405,7 +400,7 @@ export interface SessionsInitialData {
 }
 
 export interface SessionsInitialEvent {
-  event: 'sessions_initial';
+  event: "sessions_initial";
   data: SessionsInitialData;
 }
 
@@ -438,8 +433,19 @@ export interface TodoInfo {
   finalize_status?: string | null;
 }
 
+export interface TodoRenamedData {
+  old_slug: string;
+  new_slug: string;
+  project_path: string;
+}
+
+export interface TodoRenamedEvent {
+  event: "todo_renamed";
+  data: TodoRenamedData;
+}
+
 export interface ToolUseActivityEvent extends BaseAgentActivityEvent {
-  type: 'tool_use';
+  type: "tool_use";
   tool_name?: string | null;
   tool_preview?: string | null;
 }
@@ -467,5 +473,5 @@ export interface TuiBootstrapError {
 }
 
 export interface UserPromptSubmitActivityEvent extends BaseAgentActivityEvent {
-  type: 'user_prompt_submit';
+  type: "user_prompt_submit";
 }

@@ -31,6 +31,8 @@ from teleclaude.api_models import (
     SessionsInitialEventDTO,
     SessionStartedEventDTO,
     SessionUpdatedEventDTO,
+    TodoRenamedDataDTO,
+    TodoRenamedEventDTO,
 )
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, HUMAN_ROLE_MEMBER, CacheEvent
@@ -338,6 +340,12 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
             self._broadcast_payload(event, self._build_session_closed_payload(event, data))
             return
 
+        if event == CacheEvent.TODO_RENAMED.value:
+            todo_renamed_payload = self._build_todo_renamed_payload(data)
+            if todo_renamed_payload is not None:
+                self._broadcast_payload(event, todo_renamed_payload)
+            return
+
         refresh_payload = self._build_refresh_payload(event, data)
         if refresh_payload is not None:
             self._schedule_refresh_broadcast(refresh_payload)
@@ -373,6 +381,27 @@ class _WebSocketMixin:  # pyright: ignore[reportUnusedClass]
                 data=SessionClosedDataDTO(session_id=str(data.get("session_id", "")))
             ).model_dump(exclude_none=True)
         return self._build_generic_payload(event, data)
+
+    def _build_todo_renamed_payload(self, data: object) -> JsonDict | None:
+        """Build the todo_renamed websocket payload."""
+        if not isinstance(data, dict):
+            logger.warning("Skipping todo_renamed websocket payload: cache data is not an object")
+            return None
+
+        old_slug = data.get("old_slug")
+        new_slug = data.get("new_slug")
+        project_path = data.get("project_path")
+        if not isinstance(old_slug, str) or not isinstance(new_slug, str) or not isinstance(project_path, str):
+            logger.warning("Skipping todo_renamed websocket payload: required fields missing")
+            return None
+
+        return TodoRenamedEventDTO(
+            data=TodoRenamedDataDTO(
+                old_slug=old_slug,
+                new_slug=new_slug,
+                project_path=project_path,
+            )
+        ).model_dump(exclude_none=True)
 
     def _build_refresh_payload(self, event: str, data: object) -> JsonDict | None:
         """Build coalesced refresh payloads for cache snapshot/update events."""

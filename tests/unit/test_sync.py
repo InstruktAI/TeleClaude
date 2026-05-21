@@ -15,6 +15,12 @@ from teleclaude.git import GitCommandError
 
 pytestmark = pytest.mark.unit
 
+_HEAD_SHA = "abc123"
+_WORKFLOW_SNIPPET = "docs/project/spec/domain/workflow.md"
+_DELIVERY_A = "delivery-a"
+_DELIVERY_B = "delivery-b"
+_DATABASE_URL = "postgres://postgres:postgres@localhost:5432/teleclaude"
+
 
 class TestRunDistribute:
     def test_builds_deploy_command_with_warn_only_flag(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -247,6 +253,101 @@ class TestSyncBootstrapOrdering:
 
         assert sync.sync(tmp_path, validate_only=True) is True
         assert call_order == ["validate:True"]
+
+
+class TestSnippetProvenance:
+    def test_collects_one_record_per_delivered_by_slug(self, tmp_path: Path) -> None:
+        snippet_path = tmp_path / _WORKFLOW_SNIPPET
+        snippet_path.parent.mkdir(parents=True)
+        snippet_path.write_text(
+            f"""---
+id: project/spec/domain/workflow
+type: spec
+scope: project
+status: target
+delivered_by:
+- {_DELIVERY_A}
+- {_DELIVERY_B}
+---
+# Workflow
+""",
+            encoding="utf-8",
+        )
+
+        records = sync._collect_snippet_provenance_records(tmp_path, _HEAD_SHA)
+
+        assert records == [
+            sync.SnippetProvenanceRecord(_WORKFLOW_SNIPPET, _DELIVERY_A, _HEAD_SHA),
+            sync.SnippetProvenanceRecord(_WORKFLOW_SNIPPET, _DELIVERY_B, _HEAD_SHA),
+        ]
+
+    def test_records_snippet_provenance_before_building_indexes(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        call_order: list[str] = []
+
+        monkeypatch.setattr(sync, "_repair_broken_docs_links", lambda _project_root: None)
+        monkeypatch.setattr(sync, "clear_errors", lambda: None)
+        monkeypatch.setattr(sync, "get_errors", lambda: [])
+        monkeypatch.setattr(sync, "validate_all_artifacts", lambda _project_root: [])
+        monkeypatch.setattr(sync, "validate_jobs_config", lambda _project_root: [])
+        monkeypatch.setattr(sync, "build_roadmap_status_map", lambda _project_root: {})
+        monkeypatch.setattr(sync, "validate_all_snippets", lambda _project_root, **_kwargs: None)
+        monkeypatch.setattr(sync, "reconcile_snippet_status", lambda _project_root, _roadmap_status_map: [])
+
+        def fake_record(project_root: Path) -> int:
+            assert project_root == tmp_path
+            call_order.append("record_snippet_provenance")
+            return 1
+
+        def fake_build(project_root: Path) -> list[Path]:
+            assert project_root == tmp_path
+            call_order.append("build_all_indexes")
+            return []
+
+        monkeypatch.setattr(sync, "_record_snippet_provenance_from_environment", fake_record)
+        monkeypatch.setattr(sync, "build_all_indexes", fake_build)
+        monkeypatch.setattr(sync, "_run_distribute", lambda _project_root, **_kwargs: None)
+
+        assert sync.sync(tmp_path) is True
+        assert call_order == ["record_snippet_provenance", "build_all_indexes"]
+
+    def test_record_imports_current_head_for_each_membership(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        snippet_path = tmp_path / _WORKFLOW_SNIPPET
+        snippet_path.parent.mkdir(parents=True)
+        snippet_path.write_text(
+            f"""---
+id: project/spec/domain/workflow
+type: spec
+scope: project
+status: target
+delivered_by:
+- {_DELIVERY_A}
+---
+# Workflow
+""",
+            encoding="utf-8",
+        )
+        imports: list[tuple[str, str]] = []
+
+        def fake_import(database_url: str, script: str) -> None:
+            imports.append((database_url, script))
+
+        monkeypatch.setattr(sync, "_run_psql_snippet_provenance_import", fake_import)
+
+        count = sync._record_snippet_provenance(tmp_path, _HEAD_SHA, _DATABASE_URL)
+
+        assert count == 1
+        assert imports == [
+            (
+                _DATABASE_URL,
+                sync._render_snippet_provenance_import_script(
+                    [sync.SnippetProvenanceRecord(_WORKFLOW_SNIPPET, _DELIVERY_A, _HEAD_SHA)]
+                ),
+            )
+        ]
 
 
 class TestSyncDoesNotRegisterProject:

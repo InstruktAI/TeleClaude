@@ -21,6 +21,9 @@ _BUILD_PHASE = "build"
 _SHA = "abc123"
 _WORKER_SESSION_ID = "sess-123"
 _READY_AT = "2026-05-20T00:00:00+00:00"
+_PROJECT_PATH = "/repo/project"
+_OLD_SLUG = "old-slug"
+_NEW_SLUG = "new-slug"
 
 
 async def _get_hooked_todos_db(tmp_path: Path) -> TodosDb:
@@ -76,6 +79,47 @@ def test_acquire_lock_raises_when_another_handle_already_holds_it(tmp_path: Path
             second._acquire_lock()
     finally:
         first._release_lock()
+
+
+@pytest.mark.unit
+def test_dispatch_workflow_todo_renamed_invalidates_and_broadcasts_typed_frame(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    daemon_instance = daemon.TeleClaudeDaemon.__new__(daemon.TeleClaudeDaemon)
+    daemon_instance.cache = MagicMock()
+    api_server = SimpleNamespace(_broadcast_payload=MagicMock())
+    daemon_instance.lifecycle = SimpleNamespace(api_server=api_server)
+    monkeypatch.setattr(daemon.config, "computer", SimpleNamespace(name="fallback-computer"))
+    envelope = daemon.WorkflowEnvelope(
+        channel="workflow.todo.renamed",
+        idempotency_key="rename-key",
+        emitted_at="2026-05-21T10:00:00Z",
+        principal=None,
+        payload={
+            "old_slug": _OLD_SLUG,
+            "new_slug": _NEW_SLUG,
+            "project_path": _PROJECT_PATH,
+        },
+    )
+
+    daemon_instance._dispatch_workflow_event(envelope)
+
+    daemon_instance.cache.publish_workflow_change.assert_called_once_with(
+        "todos",
+        computer="fallback-computer",
+        project_path=_PROJECT_PATH,
+    )
+    api_server._broadcast_payload.assert_called_once_with(
+        "todo_renamed",
+        {
+            "event": "todo_renamed",
+            "data": {
+                "old_slug": _OLD_SLUG,
+                "new_slug": _NEW_SLUG,
+                "project_path": _PROJECT_PATH,
+            },
+        },
+    )
 
 
 @pytest.mark.unit

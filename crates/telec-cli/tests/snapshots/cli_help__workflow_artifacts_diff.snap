@@ -1,0 +1,17 @@
+---
+source: crates/telec-cli/tests/cli_help.rs
+expression: output
+---
+Show a unified diff between two exact artifact versions
+
+Usage: telec-cli workflow artifacts diff [OPTIONS] <SLUG> <NAME> <OLD_DIGEST> <NEW_DIGEST>
+
+Arguments:
+  <SLUG>        Todo slug (unique per project)
+  <NAME>        Artifact kind
+  <OLD_DIGEST>  Digest of the older artifact version
+  <NEW_DIGEST>  Digest of the newer artifact version
+
+Options:
+      --project <PROJECT>  Override the project context. By default the project name is derived from the current working directory's basename
+  -h, --help               Print help

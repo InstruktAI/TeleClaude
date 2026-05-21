@@ -1,0 +1,15 @@
+---
+source: crates/telec-cli/tests/cli_help.rs
+expression: output
+---
+Atomically rename a live todo across workflow-owned surfaces
+
+Usage: telec-cli workflow todo rename [OPTIONS] <OLD_SLUG> <NEW_SLUG>
+
+Arguments:
+  <OLD_SLUG>  Current todo slug
+  <NEW_SLUG>  New todo slug
+
+Options:
+      --project <PROJECT>  Override the project context. By default the project name is derived from the current working directory's basename
+  -h, --help               Print help

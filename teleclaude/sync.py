@@ -6,14 +6,17 @@ two-step pipeline with a single idempotent operation.
 
 from __future__ import annotations
 
+import csv
+import io
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from teleclaude.docs_index import build_all_indexes
-from teleclaude.docs_reconcile import reconcile_snippet_status
-from teleclaude.git import GitCommandError, Repo
+from teleclaude.docs_reconcile import _delivered_by, _iter_snippet_files, _split_frontmatter, reconcile_snippet_status
+from teleclaude.git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 from teleclaude.paths import REPO_ROOT
 from teleclaude.resource_validation import (
     clear_errors,
@@ -23,6 +26,15 @@ from teleclaude.resource_validation import (
     validate_jobs_config,
 )
 from teleclaude.resource_validation._snippet import build_roadmap_status_map
+
+
+@dataclass(frozen=True)
+class SnippetProvenanceRecord:
+    """A snippet delivered_by membership anchored to the current git HEAD."""
+
+    snippet_path: str
+    slug: str
+    head_sha_at_acquisition: str
 
 
 def sync(
@@ -87,6 +99,8 @@ def sync(
         if not warn_only:
             return False
 
+    _record_snippet_provenance_from_environment(project_root)
+
     # Phase 2: Build indexes
     written = build_all_indexes(project_root)
     for path in written:
@@ -99,6 +113,95 @@ def sync(
     _repair_broken_docs_links(project_root)
 
     return True
+
+
+def _record_snippet_provenance_from_environment(project_root: Path) -> int:
+    """Record first-acquisition provenance for snippet delivered_by slugs."""
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        return 0
+
+    try:
+        repo = Repo(project_root, search_parent_directories=True)
+        head_sha = repo.head.commit.hexsha
+    except (InvalidGitRepositoryError, NoSuchPathError, GitCommandError, ValueError):
+        return 0
+    return _record_snippet_provenance(project_root, head_sha, database_url)
+
+
+def _record_snippet_provenance(project_root: Path, head_sha: str, database_url: str) -> int:
+    """Insert provenance rows for every current snippet delivered_by membership."""
+    records = _collect_snippet_provenance_records(project_root, head_sha)
+    if not records:
+        return 0
+    _run_psql_snippet_provenance_import(
+        database_url,
+        _render_snippet_provenance_import_script(records),
+    )
+    return len(records)
+
+
+def _render_snippet_provenance_import_script(records: list[SnippetProvenanceRecord]) -> str:
+    """Render a psql COPY script that preserves existing provenance anchors."""
+    buf = io.StringIO()
+    buf.write("begin;\n")
+    buf.write(
+        "create temporary table snippet_provenance_import "
+        "(snippet_path text, slug text, head_sha_at_acquisition text) on commit drop;\n"
+    )
+    buf.write(
+        "copy snippet_provenance_import (snippet_path, slug, head_sha_at_acquisition) from stdin with (format csv);\n"
+    )
+    writer = csv.writer(buf, lineterminator="\n")
+    for record in records:
+        writer.writerow([record.snippet_path, record.slug, record.head_sha_at_acquisition])
+    buf.write("\\.\n")
+    buf.write(
+        "insert into workflow.snippet_provenance "
+        "(snippet_path, slug, head_sha_at_acquisition) "
+        "select snippet_path, slug, head_sha_at_acquisition from snippet_provenance_import "
+        "on conflict (snippet_path, slug) do nothing;\n"
+    )
+    buf.write("commit;\n")
+    return buf.getvalue()
+
+
+def _run_psql_snippet_provenance_import(database_url: str, script: str) -> None:
+    """Run provenance import through psql.
+
+    The Python runtime intentionally does not depend on a PostgreSQL DBAPI
+    driver; `psql` is the available native workflow database boundary here.
+    """
+    subprocess.run(
+        ["psql", database_url, "-v", "ON_ERROR_STOP=1"],
+        input=script,
+        text=True,
+        check=True,
+    )
+
+
+def _collect_snippet_provenance_records(project_root: Path, head_sha: str) -> list[SnippetProvenanceRecord]:
+    """Collect delivered_by memberships from snippet frontmatter."""
+    records: list[SnippetProvenanceRecord] = []
+    for snippet_path in _iter_snippet_files(project_root):
+        content = snippet_path.read_text(encoding="utf-8")
+        parsed = _split_frontmatter(content)
+        if parsed is None:
+            continue
+        metadata, _body = parsed
+        try:
+            relative_path = snippet_path.relative_to(project_root).as_posix()
+        except ValueError:
+            relative_path = snippet_path.as_posix()
+        for slug in _delivered_by(metadata):
+            records.append(
+                SnippetProvenanceRecord(
+                    snippet_path=relative_path,
+                    slug=slug,
+                    head_sha_at_acquisition=head_sha,
+                )
+            )
+    return records
 
 
 def _run_distribute(project_root: Path, *, warn_only: bool) -> None:

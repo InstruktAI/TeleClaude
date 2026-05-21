@@ -15,6 +15,16 @@ use crate::models::{ArtifactName, CreationMode, LifecyclePhase, TodoKind};
 pub const CHANNEL_TODO_CREATED: &str = "workflow.todo.created";
 /// Channel for [`TodoUpdated`] events.
 pub const CHANNEL_TODO_UPDATED: &str = "workflow.todo.updated";
+/// Change-summary token for description updates.
+pub const TODO_UPDATE_CHANGE_DESCRIPTION: &str = "description";
+/// Change-summary token for group updates.
+pub const TODO_UPDATE_CHANGE_GROUP: &str = "group";
+/// Change-summary token for kind updates.
+pub const TODO_UPDATE_CHANGE_KIND: &str = "kind";
+/// Change-summary token for dependency replacement updates.
+pub const TODO_UPDATE_CHANGE_AFTER: &str = "after";
+/// Change-summary token for artifact content updates.
+pub const TODO_UPDATE_CHANGE_ARTIFACT: &str = "artifact";
 /// Channel for [`TodoRenamed`] events.
 pub const CHANNEL_TODO_RENAMED: &str = "workflow.todo.renamed";
 /// Channel for [`TodoDeleted`] events.

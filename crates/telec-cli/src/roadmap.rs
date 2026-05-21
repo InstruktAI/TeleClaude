@@ -7,6 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{Args, Subcommand};
 use identity::Principal;
 use shared::{ProjectId, Slug};
+use workflow::service::UpdateTodoArgs;
 use workflow::WorkflowService;
 
 use crate::output;
@@ -231,13 +232,13 @@ async fn deps(
     let after = parse_after(Some(&args.after))?;
     // Roadmap deps live alongside todo deps; updating the todo cascades to
     // both the todo row, the roadmap entry, and the `roadmap_deps` edges.
-    let patch = workflow::TodoPatch {
+    let update = UpdateTodoArgs {
+        project,
+        slug: slug.clone(),
         after: Some(after),
         ..Default::default()
     };
-    let todo = service
-        .update_todo(project, &slug, patch, principal)
-        .await?;
+    let todo = service.update_todo(update, principal).await?;
     output::print_json(&todo)?;
     Ok(0)
 }

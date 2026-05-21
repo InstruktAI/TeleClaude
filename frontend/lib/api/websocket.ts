@@ -55,6 +55,7 @@ const KNOWN_EVENT_TYPES = new Set<string>([
   'todo_created',
   'todo_updated',
   'todo_removed',
+  'todo_renamed',
   'error',
   'agent_activity',
 ]);

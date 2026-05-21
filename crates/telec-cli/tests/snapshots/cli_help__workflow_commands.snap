@@ -2,5 +2,6 @@
 source: crates/telec-cli/tests/cli_help.rs
 expression: extracted
 ---
-  todo  Manage workflow todos
-  help  Print this message or the help of the given subcommand(s)
+  todo       Manage workflow todos
+  artifacts  Manage workflow artifacts
+  help       Print this message or the help of the given subcommand(s)
