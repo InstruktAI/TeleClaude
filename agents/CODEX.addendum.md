@@ -58,6 +58,11 @@ This file defines Codex-specific operating rules for this repository.
 
 ## `telec code commit` Addendum
 
+Before committing on `main`, run `telec code commit` with no arguments. Treat its
+Path A/B/C output as binding. For B/C, assess whether review is needed from the
+change context, ask the human whether to send it, and include the recommendation.
+Do not call B/C work done until review is declined or REVIEW COMPLETE returns.
+
 Use this trailer in commits made by Codex:
 
 `Co-Authored-By: Codex <noreply@openai.com>`
