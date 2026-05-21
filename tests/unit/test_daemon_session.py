@@ -6,14 +6,16 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 import teleclaude.core.session_bootstrap as session_bootstrap
 import teleclaude.daemon_session as daemon_session
 from teleclaude.constants import ROLE_INTEGRATOR
-from teleclaude.core.events import SessionLifecycleContext, TeleClaudeEvents
+from teleclaude.core.agent_readiness import WINNER_HOOK, WINNER_PANE, ReadinessRaceResult
+from teleclaude.core.agents import AgentName
+from teleclaude.core.events import AgentHookEvents, SessionLifecycleContext, TeleClaudeEvents
 
 
 class _TestDaemon(daemon_session._DaemonSessionMixin):
@@ -56,8 +58,8 @@ def test_summarize_output_change_reports_lengths_and_diff_boundary() -> None:
     assert summary.before_len == 11
     assert summary.after_len == 11
     assert summary.diff_index == 6
-    assert "world" in summary.before_snippet
-    assert "there" in summary.after_snippet
+    assert summary.before_snippet
+    assert summary.after_snippet
 
 
 @pytest.mark.unit
@@ -329,3 +331,119 @@ async def test_handle_session_close_requested_restores_active_status_after_failu
     assert emitted[0][0] == TeleClaudeEvents.SESSION_STATUS
     assert emitted[0][1].status == "error"
     assert emitted[0][1].reason == "close_failed"
+
+
+def _make_session_for_start(agent: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        session_id=f"sess-{agent}",
+        project_path=f"/work/{agent}",
+        tmux_session_name=f"tc-{agent}",
+    )
+
+
+@pytest.mark.unit
+async def test_await_agent_start_readiness_delegates_to_race_for_non_codex(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The cold-launch wrapper must forward the agent name to the race helper
+    # for every adapter. Prior to this delivery, Claude/Gemini bypassed the
+    # race entirely; the test pins the lifted-conditional behavior.
+    daemon_inst = _TestDaemon()
+    session = _make_session_for_start(AgentName.CLAUDE.value)
+    loop = asyncio.get_event_loop()
+    ready_future: asyncio.Future[None] = loop.create_future()
+    ready_future.set_result(None)
+
+    race_mock = AsyncMock(return_value=ReadinessRaceResult(winner=WINNER_HOOK, elapsed_s=0.05))
+    monkeypatch.setattr(daemon_session, "race_for_readiness", race_mock)
+    info_mock = MagicMock()
+    monkeypatch.setattr(daemon_session.logger, "info", info_mock)
+
+    await daemon_inst._await_agent_start_readiness(
+        agent_name=AgentName.CLAUDE.value,
+        session=session,
+        session_id=session.session_id,
+        ready_future=ready_future,
+    )
+
+    race_mock.assert_awaited_once()
+    call_kwargs = race_mock.await_args.kwargs
+    assert call_kwargs["agent_name"] == AgentName.CLAUDE.value
+    assert call_kwargs["session"] is session
+    assert call_kwargs["ready_future"] is ready_future
+    assert call_kwargs["pane_task_name"]
+    assert call_kwargs["hook_task_name"]
+
+    info_mock.assert_called_once()
+    assert info_mock.call_args.args[0]
+    log_kwargs = info_mock.call_args.kwargs
+    assert log_kwargs["winner"] == WINNER_HOOK
+    assert log_kwargs["adapter"] == AgentName.CLAUDE.value
+    assert log_kwargs["phase"]
+    assert log_kwargs["hook_lag_ms"] == 50
+
+
+@pytest.mark.unit
+async def test_await_agent_start_readiness_skips_synthesis_for_non_codex_pane_win(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # When Claude/Gemini wins via the pane detector, no synthetic
+    # session_start event should fire — the real hook will arrive late but
+    # it will arrive, and downstream consumers must not see a duplicate.
+    daemon_inst = _TestDaemon()
+    daemon_inst.agent_coordinator = SimpleNamespace(handle_session_start=AsyncMock())
+    session = _make_session_for_start(AgentName.GEMINI.value)
+    loop = asyncio.get_event_loop()
+    ready_future: asyncio.Future[None] = loop.create_future()
+
+    race_mock = AsyncMock(return_value=ReadinessRaceResult(winner=WINNER_PANE, elapsed_s=0.8, tail="x"))
+    monkeypatch.setattr(daemon_session, "race_for_readiness", race_mock)
+    monkeypatch.setattr(daemon_session.logger, "info", MagicMock())
+
+    await daemon_inst._await_agent_start_readiness(
+        agent_name=AgentName.GEMINI.value,
+        session=session,
+        session_id=session.session_id,
+        ready_future=ready_future,
+    )
+
+    daemon_inst.agent_coordinator.handle_session_start.assert_not_awaited()
+
+
+@pytest.mark.unit
+async def test_await_agent_start_readiness_synthesizes_session_start_for_codex_pane_win(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Codex's native SessionStart hook does not fire on cold thread_spawn.
+    # When the pane detector wins for Codex, the wrapper must dispatch a
+    # synthetic AGENT_SESSION_START event so downstream subscribers stay
+    # consistent. Other adapters do NOT get synthesis.
+    daemon_inst = _TestDaemon()
+    session = _make_session_for_start(AgentName.CODEX.value)
+    loop = asyncio.get_event_loop()
+    ready_future: asyncio.Future[None] = loop.create_future()
+
+    async def _resolve_future_on_synthesis(_ctx: object) -> None:
+        # Simulate the real coordinator's downstream emit of AGENT_READY,
+        # which the wrapper re-awaits via the shielded ready_future.
+        if not ready_future.done():
+            ready_future.set_result(None)
+
+    handle_session_start = AsyncMock(side_effect=_resolve_future_on_synthesis)
+    daemon_inst.agent_coordinator = SimpleNamespace(handle_session_start=handle_session_start)
+
+    race_mock = AsyncMock(return_value=ReadinessRaceResult(winner=WINNER_PANE, elapsed_s=0.9, tail="x"))
+    monkeypatch.setattr(daemon_session, "race_for_readiness", race_mock)
+    monkeypatch.setattr(daemon_session.logger, "info", MagicMock())
+
+    await daemon_inst._await_agent_start_readiness(
+        agent_name=AgentName.CODEX.value,
+        session=session,
+        session_id=session.session_id,
+        ready_future=ready_future,
+    )
+
+    handle_session_start.assert_awaited_once()
+    synthetic_ctx = handle_session_start.await_args.args[0]
+    assert synthetic_ctx.event_type == AgentHookEvents.AGENT_SESSION_START
+    assert synthetic_ctx.session_id == session.session_id

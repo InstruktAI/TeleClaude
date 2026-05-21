@@ -41,6 +41,7 @@ class _TestDaemon(daemon_hook_outbox._DaemonHookOutboxMixin):
         self._hook_outbox_coalesced_count = 0
         self._hook_outbox_stale_dropped_count = 0
         self._hook_outbox_lag_samples_s: list[float] = []
+        self._hook_outbox_lag_warn_count = 0
         self._hook_outbox_last_summary_at = 0.0
         self._hook_outbox_last_backlog_warn_at: dict[str, float] = {}
         self._hook_outbox_last_lag_warn_at: dict[str, float] = {}

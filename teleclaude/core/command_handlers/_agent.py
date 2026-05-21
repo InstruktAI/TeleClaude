@@ -11,7 +11,7 @@ from instrukt_ai_logging import get_logger
 from teleclaude.config import config
 from teleclaude.constants import HUMAN_ROLE_ADMIN, RESTART_CONTINUATION_STIMULUS
 from teleclaude.core import tmux_bridge, tmux_io
-from teleclaude.core.agent_readiness import wait_for_agent_ready
+from teleclaude.core.agent_readiness import WINNER_HOOK, race_for_readiness
 from teleclaude.core.agents import AgentName, assert_agent_enabled, get_agent_command
 from teleclaude.core.db import db
 from teleclaude.core.event_bus import event_bus
@@ -34,7 +34,6 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 _THINKING_MODE_VALUES = {mode.value for mode in ThinkingMode}
-_RESTART_QUIET_S = 1.0
 
 
 def _get_session_profile(session: Session) -> str:
@@ -50,51 +49,47 @@ async def _await_restart_readiness(
     session: Session,
     ready_future: asyncio.Future[None],
 ) -> None:
-    """Wait for an agent restart to become ready, racing pane-quiet for Codex.
+    """Race the hook AGENT_READY future against the pane-quiet detector.
 
-    Codex CLI v0.130+ doesn't fire its native SessionStart hook on cold launch
-    or resume, so the hook-only path times out for ~55% of dispatches. For
-    Codex, race the proven `wait_for_agent_ready` pane-quiet detector against
-    the hook subscription; for Claude and Gemini, keep the existing single-path
-    AGENT_READY subscription.
+    Hook delivery is fragile against daemon restarts, SQLite contention, and
+    receiver subprocess churn — lag samples of 14s have been observed in
+    production. The pane detector is independent (tmux capture-pane is OS-
+    level state, decoupled from daemon health), so a hook-vs-pane race gives
+    defense in depth: hook typically wins in healthy cases (sub-second),
+    pane wins when the hook path is starved.
 
-    Raises TimeoutError when neither detector wins within
+    Applied uniformly across Claude, Gemini, and Codex — every adapter now
+    follows the same arbitration shape.
+
+    Raises ``TimeoutError`` when neither detector resolves within
     ``AGENT_PROMPT_READY_TIMEOUT_S``.
     """
-    if agent != AgentName.CODEX.value:
-        await asyncio.wait_for(ready_future, timeout=AGENT_PROMPT_READY_TIMEOUT_S)
-        return
-
-    pane_task = asyncio.create_task(
-        wait_for_agent_ready(
-            AgentName.CODEX.value,
-            session,
-            AGENT_PROMPT_READY_TIMEOUT_S,
-            _RESTART_QUIET_S,
-        ),
-        name=f"agent-restart-readiness-pane:{session.session_id}",
+    result = await race_for_readiness(
+        agent_name=agent,
+        session=session,
+        timeout_s=AGENT_PROMPT_READY_TIMEOUT_S,
+        ready_future=ready_future,
+        pane_task_name=f"agent-restart-readiness-pane:{session.session_id}",
+        hook_task_name=f"agent-restart-readiness-hook:{session.session_id}",
     )
-    # Shield ready_future from cancellation when hook_task is cancelled.
-    hook_task = asyncio.create_task(
-        asyncio.wait_for(asyncio.shield(ready_future), timeout=AGENT_PROMPT_READY_TIMEOUT_S),
-        name=f"agent-restart-readiness-hook:{session.session_id}",
-    )
-    try:
-        done, _pending = await asyncio.wait(
-            {pane_task, hook_task},
-            return_when=asyncio.FIRST_COMPLETED,
+    if result.winner == WINNER_HOOK:
+        logger.info(
+            "readiness_winner",
+            winner=WINNER_HOOK,
+            adapter=agent,
+            session_id=session.session_id,
+            phase="restart",
+            hook_lag_ms=int(result.elapsed_s * 1000),
         )
-    finally:
-        for task in (pane_task, hook_task):
-            if not task.done():
-                task.cancel()
-    hook_won = hook_task in done and not hook_task.cancelled() and hook_task.exception() is None
-    pane_won = False
-    if pane_task in done and not pane_task.cancelled() and pane_task.exception() is None:
-        ready, _tail = pane_task.result()
-        pane_won = ready
-    if not (hook_won or pane_won):
-        raise TimeoutError("codex restart readiness: pane and hook both failed within timeout")
+    else:
+        logger.info(
+            "readiness_winner",
+            winner=result.winner,
+            adapter=agent,
+            session_id=session.session_id,
+            phase="restart",
+            elapsed_ms=int(result.elapsed_s * 1000),
+        )
 
 
 @with_session
