@@ -409,6 +409,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
                 )
                 return
 
+            launcher_update_errors = self._launcher_update_errors()
             try:
                 fetch_fn = self._require_async_callable(
                     getattr(launcher_thread, "fetch_message", None),
@@ -419,7 +420,7 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
                 await edit_fn(content=launcher_text, view=self._build_session_launcher_view())
                 await self._pin_launcher_message(message, forum_id=forum_id)
                 await self._pin_launcher_thread(launcher_thread, forum_id=forum_id)
-            except Exception as exc:
+            except launcher_update_errors as exc:
                 logger.warning(
                     "Failed to update Discord launcher message %s in forum %s (thread %s): %s",
                     existing_message_id,
@@ -456,6 +457,14 @@ class InfrastructureMixin(TeamChannelsMixin, ProvisioningMixin):
         await db.set_system_setting(thread_key, str(launcher_thread_id))
         await db.set_system_setting(message_key, str(launcher_message_id))
         await db.set_system_setting(legacy_message_key, str(launcher_message_id))
+
+    def _launcher_update_errors(self) -> tuple[type[Exception], ...]:
+        """Return Discord/API failures that should not recreate a stored launcher."""
+        errors: list[type[Exception]] = [OSError, TimeoutError]
+        discord_exception = getattr(getattr(self, "_discord", None), "DiscordException", None)
+        if isinstance(discord_exception, type) and issubclass(discord_exception, Exception):
+            errors.insert(0, discord_exception)
+        return tuple(errors)
 
     async def _resolve_interaction_forum_id(self, interaction: object) -> int | None:
         channel = getattr(interaction, "channel", None)

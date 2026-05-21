@@ -1,0 +1,13 @@
+# serializer version: 1
+# name: test_build_session_launcher_view_uses_enabled_agents_for_button_labels_and_ids
+  list([
+    tuple(
+      'Alpha',
+      'launch:alpha',
+    ),
+    tuple(
+      'Beta',
+      'launch:beta',
+    ),
+  ])
+# ---
