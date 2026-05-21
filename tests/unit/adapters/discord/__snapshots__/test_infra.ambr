@@ -11,3 +11,19 @@
     ),
   ])
 # ---
+# name: test_post_or_update_launcher_recreates_legacy_only_records
+  list([
+    tuple(
+      'discord_launcher:99:thread_id',
+      '42',
+    ),
+    tuple(
+      'discord_launcher:99:message_id',
+      '88',
+    ),
+    tuple(
+      'discord_launcher:99',
+      '88',
+    ),
+  ])
+# ---

@@ -13,9 +13,10 @@ pytestmark = pytest.mark.unit
 
 
 class DummyDiscordError(Exception):
-    def __init__(self, message: str, *, code: int | None = None) -> None:
+    def __init__(self, message: str, *, code: int | None = None, status: int | None = None) -> None:
         super().__init__(message)
         self.code = code
+        self.status = status
 
 
 class DummyInfrastructure(InfrastructureMixin):
@@ -87,7 +88,7 @@ async def test_post_or_update_launcher_does_not_recreate_when_existing_launcher_
     thread = SimpleNamespace(
         id=42,
         parent_id=99,
-        fetch_message=AsyncMock(side_effect=DummyDiscordError("discord unavailable")),
+        fetch_message=AsyncMock(side_effect=DummyDiscordError("discord unavailable", status=503)),
     )
     adapter._get_channel = AsyncMock(side_effect=[forum, thread])
     fake_db = MagicMock()
@@ -98,6 +99,45 @@ async def test_post_or_update_launcher_does_not_recreate_when_existing_launcher_
         await adapter._post_or_update_launcher(99)
 
     thread.fetch_message.assert_awaited_once_with(77)
+    forum.create_thread.assert_not_called()
+    fake_db.set_system_setting.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_post_or_update_launcher_recreates_legacy_only_records(snapshot: SnapshotAssertion) -> None:
+    adapter = DummyInfrastructure()
+    launcher_message = SimpleNamespace(id=88, pin=AsyncMock())
+    launcher_thread = SimpleNamespace(id=42, edit=AsyncMock())
+    forum = SimpleNamespace(id=99, create_thread=AsyncMock(return_value=(launcher_thread, launcher_message)))
+    adapter._get_channel = AsyncMock(return_value=forum)
+    fake_db = MagicMock()
+    fake_db.get_system_setting = AsyncMock(side_effect=[None, None, "77"])
+    fake_db.set_system_setting = AsyncMock()
+
+    with patch("teleclaude.adapters.discord.infra.db", fake_db):
+        await adapter._post_or_update_launcher(99)
+
+    forum.create_thread.assert_awaited_once()
+    settings_writes = [(call.args[0], call.args[1]) for call in fake_db.set_system_setting.await_args_list]
+    assert settings_writes == snapshot
+
+
+@pytest.mark.asyncio
+async def test_post_or_update_launcher_surfaces_deleted_existing_launcher() -> None:
+    adapter = DummyInfrastructure()
+    forum = SimpleNamespace(id=99, create_thread=AsyncMock())
+    deleted_message_error = DummyDiscordError("unknown message", code=10008, status=404)
+    thread = SimpleNamespace(id=42, parent_id=99, fetch_message=AsyncMock(side_effect=deleted_message_error))
+    adapter._get_channel = AsyncMock(side_effect=[forum, thread])
+    fake_db = MagicMock()
+    fake_db.get_system_setting = AsyncMock(side_effect=["42", "77"])
+    fake_db.set_system_setting = AsyncMock()
+
+    with patch("teleclaude.adapters.discord.infra.db", fake_db):
+        with pytest.raises(DummyDiscordError) as exc_info:
+            await adapter._post_or_update_launcher(99)
+
+    assert exc_info.value is deleted_message_error
     forum.create_thread.assert_not_called()
     fake_db.set_system_setting.assert_not_awaited()
 
